@@ -155,13 +155,15 @@ mod tests {
         let d = MichiganDefines::parse(include_str!(
             "../../../../content/scenarios/michigan/defines.toml"
         ))
-        .unwrap();
+        .expect("the authored literal parses as the declared type");
         let campaign = CampaignId::from_uuid(Uuid::from_u128(26163));
-        let config = config(campaign, &d.organizer, [7; 32]).unwrap();
-        let state = babylon_practice_contract::initial_organizer_state(&config).unwrap();
+        let config = config(campaign, &d.organizer, [7; 32])
+            .expect("the fixture call `config` succeeds for the authored inputs");
+        let state = babylon_practice_contract::initial_organizer_state(&config)
+            .expect("the authored config admits an opening organizer state");
         let view =
             babylon_practice_contract::organizer_view(&config, &state, config.controlled_actor_id)
-                .unwrap();
+                .expect("the fixture call `organizer_view` succeeds for the authored inputs");
         assert_eq!(
             (view.available_hours, view.inquiry_hours, view.contact_hours),
             (16, 12, 8)
@@ -183,14 +185,17 @@ mod tests {
             32
         );
         let catalog = crate::test_support::catalog();
-        let source = append_declarations(catalog.graph_scenario_source()).unwrap();
+        let source = append_declarations(catalog.graph_scenario_source())
+            .expect("the fixture call `append_declarations` succeeds for the authored inputs");
         assert_eq!(source.matches("HyperedgeType/ORGANIZATION_BODY").count(), 3);
         assert_eq!(source.matches("NodeType/PARTICIPANT_BODY").count(), 3);
         assert_eq!(source.matches("EdgeType/CONTACT").count(), 2);
         assert!(!source.contains("solidarity"));
         assert_ne!(
-            actor_id(COLLECTIVE).unwrap(),
-            actor_id(WORKPLACE_COMMITTEE).unwrap()
+            actor_id(COLLECTIVE)
+                .expect("the fixture call `actor_id` succeeds for the authored inputs"),
+            actor_id(WORKPLACE_COMMITTEE)
+                .expect("the fixture call `actor_id` succeeds for the authored inputs")
         );
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../content/scenarios/michigan/defines.toml");
@@ -198,19 +203,32 @@ mod tests {
             &path,
             MichiganDeliveryPreset::OrganizeInWayne,
         )
-        .unwrap();
+        .expect("the preset content loads");
         let foundation = MichiganContentPreset::OrganizeInWayne
             .create_foundation_for_campaign(&authored, campaign)
-            .unwrap();
+            .expect("the authored catalog builds the campaign foundation");
         let register = foundation.initial_register();
         assert_eq!(
-            register.organizer_config().unwrap().campaign_id,
+            register
+                .organizer_config()
+                .expect("the fixture register carries organizer config")
+                .campaign_id,
             *campaign.canonical_bytes()
         );
-        assert_eq!(register.organizer_state().unwrap().period, 0);
         assert_eq!(
-            register.organizer_config().unwrap().workplace_id,
-            actor_id("business-26163-31-33").unwrap()
+            register
+                .organizer_state()
+                .expect("the fixture register carries organizer state")
+                .period,
+            0
+        );
+        assert_eq!(
+            register
+                .organizer_config()
+                .expect("the fixture register carries organizer config")
+                .workplace_id,
+            actor_id("business-26163-31-33")
+                .expect("the fixture call `actor_id` succeeds for the authored inputs")
         );
     }
 }

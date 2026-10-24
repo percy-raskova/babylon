@@ -90,7 +90,9 @@ pub(crate) mod tests {
         dispatch(&mut app, &[ObserverCommand::Step]);
         let RuntimeSessionRequest::Advance {
             scope, request_id, ..
-        } = requests.try_recv().unwrap()
+        } = requests
+            .try_recv()
+            .expect("the producer sends before this receive")
         else {
             panic!("expected actual advance")
         };
@@ -104,7 +106,7 @@ pub(crate) mod tests {
                 4,
                 "preparing_commitments",
             )))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         app.update();
         assert_eq!(app.world().resource::<SessionChanges>().0, [false]);
         assert_eq!(app.world().resource::<ObserverSession>().context(), context);
@@ -112,7 +114,7 @@ pub(crate) mod tests {
             .world()
             .resource::<OperationProgress>()
             .caption()
-            .unwrap()
+            .expect("the fixture call `caption` succeeds for the authored inputs")
             .starts_with("Period 4 · Preparing commitments · "));
         assert!(requests.try_recv().is_err());
     }
@@ -125,7 +127,9 @@ pub(crate) mod tests {
             dispatch(&mut app, &[ObserverCommand::Step]);
             let RuntimeSessionRequest::Advance {
                 scope, request_id, ..
-            } = requests.try_recv().unwrap()
+            } = requests
+                .try_recv()
+                .expect("the producer sends before this receive")
             else {
                 panic!("expected real advance")
             };
@@ -136,22 +140,24 @@ pub(crate) mod tests {
                     4,
                     "preparing_commitments",
                 )))
-                .unwrap();
+                .expect("the receiver stays alive for the send");
             app.update();
             assert!(app
                 .world()
                 .resource::<OperationProgress>()
                 .caption()
-                .unwrap()
+                .expect("the fixture call `caption` succeeds for the authored inputs")
                 .contains("Preparing commitments"));
             if transport_loss {
-                replies.send(Err("transport lost".into())).unwrap();
+                replies
+                    .send(Err("transport lost".into()))
+                    .expect("the receiver stays alive for the send");
             } else {
                 replies.send(Ok(RuntimeSessionResponse::Error { scope,
                 request_id:Some(request_id),
                 code:babylon_persistence::runtime_session::RuntimeSessionErrorCode::StorageRefused,
                 tail:Some(RuntimeSessionTail { resolve_tick:3,tick_content_hash:None })
-            })).unwrap();
+            })).expect("the receiver stays alive for the send");
             }
             app.update();
             let state = app.world().resource::<ObserverSession>();
@@ -194,7 +200,9 @@ pub(crate) mod tests {
             dispatch(&mut app, &[ObserverCommand::Step]);
             let RuntimeSessionRequest::Advance {
                 scope, request_id, ..
-            } = requests.try_recv().unwrap()
+            } = requests
+                .try_recv()
+                .expect("the producer sends before this receive")
             else {
                 panic!("expected real advance")
             };
@@ -206,7 +214,7 @@ pub(crate) mod tests {
                     4,
                     "preparing_commitments",
                 )))
-                .unwrap();
+                .expect("the receiver stays alive for the send");
             app.update();
             if fault == "regress" {
                 replies
@@ -216,7 +224,7 @@ pub(crate) mod tests {
                         4,
                         "resolving_economy",
                     )))
-                    .unwrap();
+                    .expect("the receiver stays alive for the send");
                 app.update();
             }
             let mut wrong_scope = scope;
@@ -241,7 +249,7 @@ pub(crate) mod tests {
             };
             replies
                 .send(Ok(advance_progress_wire(wrong_scope, id, tick, stage)))
-                .unwrap();
+                .expect("the receiver stays alive for the send");
             app.update();
             let session = app.world().resource::<ObserverSession>();
             assert_eq!(session.phase, SessionPhase::Failed, "{fault}");
@@ -252,7 +260,10 @@ pub(crate) mod tests {
             );
             assert_eq!(session.context(), context);
             assert_eq!(session.durable_tick, 3);
-            let error = session.error.as_deref().unwrap();
+            let error = session
+                .error
+                .as_deref()
+                .expect("the fixture set the optional value before this read");
             assert!(
                 error.contains(if matches!(fault, "campaign" | "epoch") {
                     "lifecycle identity"
@@ -272,7 +283,9 @@ pub(crate) mod tests {
         dispatch(&mut app, &[ObserverCommand::Step]);
         let RuntimeSessionRequest::Advance {
             scope, request_id, ..
-        } = requests.try_recv().unwrap()
+        } = requests
+            .try_recv()
+            .expect("the producer sends before this receive")
         else {
             panic!("expected real advance")
         };
@@ -281,7 +294,7 @@ pub(crate) mod tests {
         old.epoch -= 1;
         replies
             .send(Ok(advance_progress_wire(old, 999, 999, "saving_period")))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         app.update();
         assert_eq!(
             app.world().resource::<ObserverSession>().phase,
@@ -300,7 +313,7 @@ pub(crate) mod tests {
                     4,
                     stage,
                 )))
-                .unwrap();
+                .expect("the receiver stays alive for the send");
             app.update();
             let state = app.world().resource::<ObserverSession>();
             assert_eq!(state.context(), context);
@@ -316,7 +329,7 @@ pub(crate) mod tests {
                     tick_content_hash: Some("4".repeat(64)),
                 },
             }))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         app.update();
         let state = app.world().resource::<ObserverSession>();
         assert_eq!(state.durable_tick, 4);
@@ -329,7 +342,7 @@ pub(crate) mod tests {
                 4,
                 "saving_period",
             )))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         app.update();
         assert_eq!(
             app.world().resource::<ObserverSession>().phase,
@@ -414,17 +427,20 @@ pub(crate) mod tests {
                 protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
                 scope: previous_scope.clone(),
             }))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         app.update();
         let RuntimeSessionRequest::Switch {
             request_id, target, ..
-        } = requests.try_recv().unwrap()
+        } = requests
+            .try_recv()
+            .expect("the producer sends before this receive")
         else {
             panic!("initial campaign switch");
         };
         let (RuntimeSessionTarget::New { campaign_id, .. }
         | RuntimeSessionTarget::Open { campaign_id }) = target;
-        let campaign = CampaignId::from_uuid(Uuid::parse_str(&campaign_id).unwrap());
+        let campaign =
+            CampaignId::from_uuid(Uuid::parse_str(&campaign_id).expect("the authored text parses"));
         let scope = RuntimeSessionScope {
             epoch: 1,
             campaign_id: Some(campaign_id),
@@ -435,7 +451,7 @@ pub(crate) mod tests {
                 previous_scope,
                 scope: scope.clone(),
             }))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         responses
             .send(Ok(RuntimeSessionResponse::Error {
                 request_id: Some(request_id),
@@ -443,7 +459,7 @@ pub(crate) mod tests {
                 code: RuntimeSessionErrorCode::StorageRefused,
                 tail: None,
             }))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         app.update();
         campaign
     }
@@ -606,7 +622,9 @@ pub(crate) mod tests {
                 .fail("Admission refused".into());
             dispatch(&mut app, &[command]);
             assert_eq!(exit_count(&app), 0);
-            let RuntimeSessionRequest::Switch { scope, target, .. } = requests.try_recv().unwrap()
+            let RuntimeSessionRequest::Switch { scope, target, .. } = requests
+                .try_recv()
+                .expect("the producer sends before this receive")
             else {
                 panic!("one campaign switch");
             };
@@ -731,7 +749,9 @@ pub(crate) mod tests {
         dispatch(&mut app, &[ObserverCommand::Quit]);
         assert!(app.world().resource::<ObserverSession>().quit_requested);
         assert!(matches!(
-            requests.try_recv().unwrap(),
+            requests
+                .try_recv()
+                .expect("the producer sends before this receive"),
             RuntimeSessionRequest::Stop { .. }
         ));
     }
@@ -777,7 +797,7 @@ pub(crate) mod tests {
                     campaign_id: None,
                 },
             }))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         app.update();
         let state = app.world().resource::<ObserverSession>();
         assert_eq!(state.phase, SessionPhase::Failed);
@@ -838,7 +858,7 @@ pub(crate) mod tests {
                 verified_tick: 1,
                 request_id: None,
             }))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         app.update();
         app.update();
         assert_eq!(
@@ -902,11 +922,13 @@ pub(crate) mod tests {
                         durable_tick: tick,
                         verified_tick: tick,
                     }))
-                    .unwrap();
+                    .expect("the receiver stays alive for the send");
                 app.update();
                 assert_eq!(
                     app.world().resource::<DossierRefresh>().0,
-                    initial_refresh + u64::try_from(index).unwrap() + 1
+                    initial_refresh
+                        + u64::try_from(index).expect("the fixture value fits the target range")
+                        + 1
                 );
                 let state = app.world().resource::<ObserverSession>();
                 assert_eq!(state.context(), context);
@@ -954,7 +976,7 @@ pub(crate) mod tests {
                     durable_tick,
                     verified_tick,
                 }))
-                .unwrap();
+                .expect("the receiver stays alive for the send");
             app.update();
             let state = app.world().resource::<ObserverSession>();
             assert_eq!(state.phase, SessionPhase::Failed);
@@ -984,8 +1006,10 @@ pub(crate) mod tests {
         let campaign = state.campaign;
         let context = state.context();
         let frame = ObserverFrame(Some(snapshot_with_event(state, "production", 3)), None);
-        let scope = ArchiveReadScope::committed(campaign, 3, [0xaa; 32]).unwrap();
-        let subject = ArchivePageRef::try_new(ArchiveSubjectKind::County, "26163".into()).unwrap();
+        let scope = ArchiveReadScope::committed(campaign, 3, [0xaa; 32])
+            .expect("the fixture observation carries the committed value");
+        let subject = ArchivePageRef::try_new(ArchiveSubjectKind::County, "26163".into())
+            .expect("the authored fixture satisfies the constructor invariants");
         let read = ArchiveDossierRead {
             scope: scope.clone(),
             subject: subject.clone(),
@@ -1016,7 +1040,7 @@ pub(crate) mod tests {
                 durable_tick: 3,
                 verified_tick: 2,
             }))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         app.update();
         let world = app.world();
         let active = world.resource::<ActiveCountyDossier>();
@@ -1028,7 +1052,11 @@ pub(crate) mod tests {
             .for_observer(state, world.resource::<ObserverFrame>(), refresh, "26163")
             .is_none());
         assert_eq!(
-            active.0.as_ref().unwrap().read,
+            active
+                .0
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .read,
             read,
             "a progress notification cannot replace or verify the scoped reader's page"
         );
@@ -1041,11 +1069,15 @@ pub(crate) mod tests {
         dispatch(&mut app, &[ObserverCommand::Step]);
         let RuntimeSessionRequest::Advance {
             request_id, scope, ..
-        } = requests.try_recv().unwrap()
+        } = requests
+            .try_recv()
+            .expect("the producer sends before this receive")
         else {
             panic!("one explicit advance request");
         };
-        let campaign_id = scope.campaign_id.unwrap();
+        let campaign_id = scope
+            .campaign_id
+            .expect("the fixture scope carries its campaign identity");
         responses
             .send(Ok(RuntimeSessionResponse::ArchiveProgress {
                 request_id: None,
@@ -1053,7 +1085,7 @@ pub(crate) mod tests {
                 durable_tick: 3,
                 verified_tick: 2,
             }))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         app.update();
         let state = app.world().resource::<ObserverSession>();
         assert!(state.advance_pending());
@@ -1068,7 +1100,7 @@ pub(crate) mod tests {
                     tick_content_hash: Some("4".repeat(64)),
                 },
             }))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         responses
             .send(Ok(RuntimeSessionResponse::ArchiveProgress {
                 request_id: None,
@@ -1076,7 +1108,7 @@ pub(crate) mod tests {
                 durable_tick: 4,
                 verified_tick: 3,
             }))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         app.update();
         let state = app.world().resource::<ObserverSession>();
         assert!(!state.advance_pending());
@@ -1107,7 +1139,9 @@ pub(crate) mod tests {
                 request_id,
                 expected_tail,
                 ..
-            } = requests.try_recv().unwrap()
+            } = requests
+                .try_recv()
+                .expect("the producer sends before this receive")
             else {
                 panic!("playback must send one period advance");
             };
@@ -1274,7 +1308,12 @@ pub(crate) mod tests {
             true,
         );
         assert!(state.playing);
-        assert!(frame.0.as_ref().unwrap().production.is_none());
+        assert!(frame
+            .0
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .production
+            .is_none());
     }
 
     #[test]
@@ -1296,7 +1335,14 @@ pub(crate) mod tests {
             false,
         );
         assert_eq!(frame.1, Some(Err(ProductionEvidenceError::Bound)));
-        assert_eq!(frame.0.as_ref().unwrap().resolve_tick, 3);
+        assert_eq!(
+            frame
+                .0
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .resolve_tick,
+            3
+        );
         state.set_perspective(Perspective::PlayerKnowledge);
         let stale_snapshot = snapshot_with_event(&state, "production", 3);
         runtime::install_observation(
@@ -1323,7 +1369,11 @@ pub(crate) mod tests {
         );
         assert_eq!(frame.1, Some(Ok(None)));
         assert_eq!(
-            frame.0.as_ref().unwrap().visibility,
+            frame
+                .0
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .visibility,
             ObserverVisibility::KnownPreview
         );
     }
@@ -1333,12 +1383,16 @@ pub(crate) mod tests {
         let (mut app, requests, responses) = quit_app();
         dispatch(&mut app, &[ObserverCommand::Step]);
         assert!(matches!(
-            requests.try_recv().unwrap(),
+            requests
+                .try_recv()
+                .expect("the producer sends before this receive"),
             RuntimeSessionRequest::Advance { .. }
         ));
         dispatch(&mut app, &[ObserverCommand::Quit]);
         assert!(matches!(
-            requests.try_recv().unwrap(),
+            requests
+                .try_recv()
+                .expect("the producer sends before this receive"),
             RuntimeSessionRequest::Stop { request_id: 2, .. }
         ));
         assert_eq!(exit_count(&app), 0);
@@ -1356,14 +1410,14 @@ pub(crate) mod tests {
                     .world()
                     .resource::<ObserverSession>()
                     .runtime_scope()
-                    .unwrap()
+                    .expect("the fixture runtime scope exists")
                     .clone(),
                 tail: RuntimeSessionTail {
                     resolve_tick: 4,
                     tick_content_hash: Some("committed".into()),
                 },
             }))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         app.update();
         assert_eq!(app.world().resource::<ObserverSession>().durable_tick, 4);
         assert_eq!(exit_count(&app), 0);
@@ -1374,10 +1428,10 @@ pub(crate) mod tests {
                     .world()
                     .resource::<ObserverSession>()
                     .runtime_scope()
-                    .unwrap()
+                    .expect("the fixture runtime scope exists")
                     .clone(),
             }))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         drop(responses);
         app.update();
         assert_eq!(
@@ -1396,12 +1450,16 @@ pub(crate) mod tests {
         assert_eq!(exit_count(&app), 0);
         assert!(!app.world().resource::<ShutdownProgress>().stop_sent);
         assert!(matches!(
-            requests.try_recv().unwrap(),
+            requests
+                .try_recv()
+                .expect("the producer sends before this receive"),
             RuntimeSessionRequest::Advance { .. }
         ));
         app.update();
         assert!(matches!(
-            requests.try_recv().unwrap(),
+            requests
+                .try_recv()
+                .expect("the producer sends before this receive"),
             RuntimeSessionRequest::Stop { .. }
         ));
         dispatch(&mut app, &[ObserverCommand::Quit]);
@@ -1414,11 +1472,15 @@ pub(crate) mod tests {
         for disconnected in [false, true] {
             let (mut app, requests, responses) = quit_app();
             dispatch(&mut app, &[ObserverCommand::Step]);
-            requests.try_recv().unwrap();
+            requests
+                .try_recv()
+                .expect("the producer sends before this receive");
             if disconnected {
                 drop(responses);
             } else {
-                responses.send(Err("Runtime pipe failed".into())).unwrap();
+                responses
+                    .send(Err("Runtime pipe failed".into()))
+                    .expect("the receiver stays alive for the send");
             }
             dispatch(&mut app, &[ObserverCommand::Quit]);
             let state = app.world().resource::<ObserverSession>();
@@ -1433,7 +1495,9 @@ pub(crate) mod tests {
     fn quit_has_a_wall_clock_deadline_when_runtime_never_answers() {
         let (mut app, requests, _responses) = quit_app();
         dispatch(&mut app, &[ObserverCommand::Quit]);
-        requests.try_recv().unwrap();
+        requests
+            .try_recv()
+            .expect("the producer sends before this receive");
         app.world_mut()
             .resource_mut::<Time<Real>>()
             .advance_by(Duration::from_secs(149));
@@ -1458,7 +1522,9 @@ pub(crate) mod tests {
             .start_playback());
         dispatch(&mut app, &[ObserverCommand::Step, ObserverCommand::Step]);
         assert!(matches!(
-            receiver.try_recv().unwrap(),
+            receiver
+                .try_recv()
+                .expect("the producer sends before this receive"),
             RuntimeSessionRequest::Advance {
                 request_id: 1,
                 expected_tail: RuntimeSessionTail {
@@ -1531,7 +1597,9 @@ pub(crate) mod tests {
     fn history_disclosure_pauses_further_play_without_cancelling_the_period() {
         let (mut app, receiver) = command_app();
         dispatch(&mut app, &[ObserverCommand::Step]);
-        receiver.try_recv().unwrap();
+        receiver
+            .try_recv()
+            .expect("the producer sends before this receive");
         app.world_mut().resource_mut::<ObserverSession>().playing = true;
         dispatch(&mut app, &[ObserverCommand::History]);
         let state = app.world().resource::<ObserverSession>();

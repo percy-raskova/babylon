@@ -791,31 +791,40 @@ mod tests {
     );
 
     fn push_str32(output: &mut Vec<u8>, value: &str) {
-        output.extend_from_slice(&u32::try_from(value.len()).unwrap().to_be_bytes());
+        output.extend_from_slice(
+            &u32::try_from(value.len())
+                .expect("the fixture value fits the target range")
+                .to_be_bytes(),
+        );
         output.extend_from_slice(value.as_bytes());
     }
 
     #[test]
     fn prepared_environment_is_exact_and_recomputes_loaded_rules_hash() {
         let mut graph = HypergraphStore::new();
-        let mut prepared = crate::prepare_rules(SCENARIO, None, RULES, &mut graph).unwrap();
+        let mut prepared = crate::prepare_rules(SCENARIO, None, RULES, &mut graph)
+            .expect("the fixture prepares the authored state");
         let resolver = StableElementResolver::seal(
             &graph,
             &prepared.scenario_scope,
             &prepared.node_content_ids,
             &prepared.hyperedge_content_ids,
         )
-        .unwrap();
-        let rules_hash = canonical_ast::rules_hash_of(&prepared.rule_forms).unwrap();
+        .expect("the fixture seals the prepared period");
+        let rules_hash = canonical_ast::rules_hash_of(&prepared.rule_forms)
+            .expect("the rule set has a canonical hash");
         let content = ContentDigest {
             defines_hash: [0x5a; 32],
             rules_hash,
         };
-        let registers = super::world_register_manifest().unwrap();
+        let registers = super::world_register_manifest()
+            .expect("the fixture call `world_register_manifest` succeeds for the authored inputs");
         let environment =
-            super::encode_prepared_environment(&content, &prepared, &resolver, &registers).unwrap();
+            super::encode_prepared_environment(&content, &prepared, &resolver, &registers)
+                .expect("the fixture value encodes to its canonical bytes");
 
-        let schedule = phase_order::phase_schedule().unwrap();
+        let schedule = phase_order::phase_schedule()
+            .expect("the fixture call `phase_schedule` succeeds for the authored inputs");
         let bsl = identity_sections::encode_prepared_bsl_sections(
             &prepared.types,
             &prepared.intrinsics,
@@ -823,7 +832,7 @@ mod tests {
             &prepared.enums,
             prepared.vocabulary.as_ref(),
         )
-        .unwrap();
+        .expect("the fixture value encodes to its canonical bytes");
         let mut expected = Vec::new();
         expected.extend_from_slice(b"babylon.prepared-environment\0");
         expected.extend_from_slice(&PREPARED_ENVIRONMENT_LAYOUT_VERSION.to_be_bytes());
@@ -833,7 +842,11 @@ mod tests {
         expected.extend_from_slice(&PhaseSchedule::layout_version().to_be_bytes());
         expected.extend_from_slice(&schedule.digest());
         expected.push(0x03);
-        expected.extend_from_slice(&u32::try_from(prepared.rules.len()).unwrap().to_be_bytes());
+        expected.extend_from_slice(
+            &u32::try_from(prepared.rules.len())
+                .expect("the fixture value fits the target range")
+                .to_be_bytes(),
+        );
         for (rule_id, _) in &prepared.rules {
             push_str32(&mut expected, rule_id);
         }
@@ -858,7 +871,8 @@ mod tests {
         let original = environment.digest();
         prepared.rules.reverse();
         let reordered =
-            super::encode_prepared_environment(&content, &prepared, &resolver, &registers).unwrap();
+            super::encode_prepared_environment(&content, &prepared, &resolver, &registers)
+                .expect("the fixture value encodes to its canonical bytes");
         assert_ne!(original, reordered.digest());
 
         let mismatch = ContentDigest {

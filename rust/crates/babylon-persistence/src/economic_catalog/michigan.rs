@@ -150,12 +150,12 @@ fn import_site(
 ) -> Result<EconomicSiteSeed> {
     let mut quantities = BTreeMap::<String, u64>::new();
     let mut processes = Vec::new();
-    for (index, p) in catalog
+    let site_processes = catalog
         .processes()
         .iter()
         .enumerate()
-        .filter(|(_, p)| p.site_key == site.key)
-    {
+        .filter(|(_, p)| p.site_key == site.key);
+    for (index, p) in site_processes {
         quantities.entry(p.output_good_key.clone()).or_default();
         for input in &p.inputs {
             let amount = quantities.entry(input.good_key.clone()).or_default();

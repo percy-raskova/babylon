@@ -249,18 +249,23 @@ const FAILURE_RULE: &str = r#"
 
 fn str32(value: &str) -> Vec<u8> {
     [
-        u32::try_from(value.len()).unwrap().to_be_bytes().as_slice(),
+        u32::try_from(value.len())
+            .expect("the fixture value fits the target range")
+            .to_be_bytes()
+            .as_slice(),
         value.as_bytes(),
     ]
     .concat()
 }
 
 fn content_for(rule_src: &str) -> ContentDigest {
-    let (_, rules) = rule_pipeline::split_content(rule_src).unwrap();
+    let (_, rules) = rule_pipeline::split_content(rule_src)
+        .expect("the authored content splits into its sections");
     let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     ContentDigest {
         defines_hash: [0x2d; 32],
-        rules_hash: canonical_ast::rules_hash_of(&forms).unwrap(),
+        rules_hash: canonical_ast::rules_hash_of(&forms)
+            .expect("the rule set has a canonical hash"),
     }
 }
 
@@ -281,12 +286,14 @@ fn stable_material_node(local_name: &str) -> StableElementKey {
 }
 
 fn foundation_material_state() -> MaterialState {
-    MaterialState::try_new(michigan_foundation()).unwrap()
+    MaterialState::try_new(michigan_foundation())
+        .expect("the authored fixture satisfies the constructor invariants")
 }
 
 #[test]
 fn material_state_is_foundation_only_with_exact_graph_derived_families() {
-    let replay_id = ReplaySessionId::try_from("per281/foundation-only-material").unwrap();
+    let replay_id = ReplaySessionId::try_from("per281/foundation-only-material")
+        .expect("the fixture value fits the target range");
     let mut session = ReplayTickSession::new(
         MATERIAL_SCENARIO,
         None,
@@ -296,12 +303,16 @@ fn material_state_is_foundation_only_with_exact_graph_derived_families() {
         ReplaySeed::new(37),
         content_for(RETAINED_OUTPUT_RULE),
         foundation_reference(),
-        MaterialState::try_new(michigan_foundation()).unwrap(),
+        MaterialState::try_new(michigan_foundation())
+            .expect("the authored fixture satisfies the constructor invariants"),
     )
-    .unwrap();
-    let actions = OrderedPracticeActionBatch::empty(replay_id, 1).unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
+    let actions = OrderedPracticeActionBatch::empty(replay_id, 1)
+        .expect("the empty authored batch constructs");
     let mut sink = CollectingSink::default();
-    let report = session.advance(&mut sink, &actions).unwrap();
+    let report = session
+        .advance(&mut sink, &actions)
+        .expect("the fixture advances the authored period");
     let material = report.material_state_rows();
     let dynamic = material.dynamic_hexes();
 
@@ -334,13 +345,15 @@ fn dynamic_h3_rows_are_activated_from_the_exact_foundation_and_reference() {
         .expect("the governed foundation must decode once");
     let expected_reference = RefDigest::from_bytes(foundation.reference_bundle_digest());
     let foreign_reference = RefDigest::from_bytes([0x55; 32]);
-    let foreign_material = MaterialState::try_new(foundation).unwrap();
+    let foreign_material = MaterialState::try_new(foundation)
+        .expect("the authored fixture satisfies the constructor invariants");
     let foreign_error = ReplayTickSession::new(
         "this is deliberately not a scenario",
         None,
         RETAINED_OUTPUT_RULE,
         HypergraphStore::new(),
-        ReplaySessionId::try_from("per281/foundation-reference-refusal").unwrap(),
+        ReplaySessionId::try_from("per281/foundation-reference-refusal")
+            .expect("the fixture value fits the target range"),
         ReplaySeed::new(37),
         content_for(RETAINED_OUTPUT_RULE),
         foreign_reference,
@@ -356,8 +369,10 @@ fn dynamic_h3_rows_are_activated_from_the_exact_foundation_and_reference() {
         })
     );
 
-    let material = MaterialState::try_new(foundation).unwrap();
-    let replay_id = ReplaySessionId::try_from("per281/foundation-activation").unwrap();
+    let material = MaterialState::try_new(foundation)
+        .expect("the authored fixture satisfies the constructor invariants");
+    let replay_id = ReplaySessionId::try_from("per281/foundation-activation")
+        .expect("the fixture value fits the target range");
     let mut session = ReplayTickSession::new(
         MATERIAL_SCENARIO,
         None,
@@ -369,10 +384,13 @@ fn dynamic_h3_rows_are_activated_from_the_exact_foundation_and_reference() {
         expected_reference,
         material,
     )
-    .unwrap();
-    let actions = OrderedPracticeActionBatch::empty(replay_id, 1).unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
+    let actions = OrderedPracticeActionBatch::empty(replay_id, 1)
+        .expect("the empty authored batch constructs");
     let mut sink = CollectingSink::default();
-    let report = session.advance(&mut sink, &actions).unwrap();
+    let report = session
+        .advance(&mut sink, &actions)
+        .expect("the fixture advances the authored period");
     let dynamic = report.material_state_rows().dynamic_hexes();
 
     assert_eq!(dynamic.source_count(), 45_572);
@@ -433,12 +451,15 @@ fn nonempty_action_batch(session: ReplaySessionId) -> OrderedPracticeActionBatch
         campaign_id: CampaignId::from_bytes([0x10; 16]),
         resolve_tick: 11,
         authority_ledger_digest: babylon_practice_contract::input_authority_ledger_digest(&ledger)
-            .unwrap(),
+            .expect(
+                "the fixture call `input_authority_ledger_digest` succeeds for the authored inputs",
+            ),
         resource_allocation_contract_digest: [0x40; 32],
         content_digest: [0x30; 32],
         items: vec![ResolvedPracticeBatchItem { authority, intent }],
     };
-    OrderedPracticeActionBatch::project(session, &source, &ledger).unwrap()
+    OrderedPracticeActionBatch::project(session, &source, &ledger)
+        .expect("the fixture projection accepts the authored state")
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -459,7 +480,8 @@ fn run_replay<G>(seed: i64) -> ReplayRun
 where
     G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy + Default,
 {
-    let replay_id = ReplaySessionId::try_from("per60/cross-substrate").unwrap();
+    let replay_id = ReplaySessionId::try_from("per60/cross-substrate")
+        .expect("the fixture value fits the target range");
     let mut session = ReplayTickSession::new(
         REPLAY_SCENARIO,
         None,
@@ -471,10 +493,13 @@ where
         foundation_reference(),
         foundation_material_state(),
     )
-    .unwrap();
-    let actions = OrderedPracticeActionBatch::empty(replay_id, 1).unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
+    let actions = OrderedPracticeActionBatch::empty(replay_id, 1)
+        .expect("the empty authored batch constructs");
     let mut sink = CollectingSink::default();
-    let report = session.advance(&mut sink, &actions).unwrap();
+    let report = session
+        .advance(&mut sink, &actions)
+        .expect("the fixture advances the authored period");
     let choice_receipts = &report.report().choice_receipts;
     ReplayRun {
         outer: report.tick_content_hash().to_hex(),
@@ -498,7 +523,7 @@ where
                 session
                     .graph()
                     .node_attribute(node, "social-class/draw")
-                    .unwrap()
+                    .expect("the fixture node carries the authored attribute")
                     .to_bits()
             })
             .collect(),
@@ -512,7 +537,8 @@ fn replay_session_constructor_is_typed_to_identity() {
 
 #[test]
 fn replay_session_publishes_exact_identity_and_retains_static_bytes_once() {
-    let replay_id = ReplaySessionId::try_from("per60/session-a").unwrap();
+    let replay_id = ReplaySessionId::try_from("per60/session-a")
+        .expect("the fixture value fits the target range");
     let seed = ReplaySeed::new(-71);
     let content = content_for(REPLAY_RULE);
     let reference = foundation_reference();
@@ -527,7 +553,7 @@ fn replay_session_publishes_exact_identity_and_retains_static_bytes_once() {
         reference,
         foundation_material_state(),
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     let resolver_storage = session.resolver_manifest_bytes().as_ptr();
     let register_storage = session.register_manifest_bytes().as_ptr();
     let prepared_storage = session.prepared_environment_bytes().as_ptr();
@@ -535,8 +561,11 @@ fn replay_session_publishes_exact_identity_and_retains_static_bytes_once() {
         session.prepared_environment_bytes(),
     ));
     let mut sink = CollectingSink::default();
-    let actions = OrderedPracticeActionBatch::empty(replay_id.clone(), 1).unwrap();
-    let identified = session.advance(&mut sink, &actions).unwrap();
+    let actions = OrderedPracticeActionBatch::empty(replay_id.clone(), 1)
+        .expect("the empty authored batch constructs");
+    let identified = session
+        .advance(&mut sink, &actions)
+        .expect("the fixture advances the authored period");
 
     assert_eq!(session.completed_tick(), 1);
     assert_eq!(identified.action_batch_bytes(), actions.canonical_bytes());
@@ -589,14 +618,17 @@ fn replay_session_publishes_exact_identity_and_retains_static_bytes_once() {
         result_world: identified.result_world().digest(),
         payload: identified.payload().digest(),
     })
-    .unwrap();
+    .expect("the fixture call `compose` succeeds for the authored inputs");
     assert_eq!(
         identified.outer_preimage().as_bytes(),
         independently_composed.as_bytes()
     );
 
-    let next_actions = OrderedPracticeActionBatch::empty(replay_id, 2).unwrap();
-    let second = session.advance(&mut sink, &next_actions).unwrap();
+    let next_actions = OrderedPracticeActionBatch::empty(replay_id, 2)
+        .expect("the empty authored batch constructs");
+    let second = session
+        .advance(&mut sink, &next_actions)
+        .expect("the fixture advances the authored period");
     assert_eq!(second.prior_registers().completed_tick(), 1);
     assert_eq!(second.result_registers().completed_tick(), 2);
     assert_eq!(session.resolver_manifest_bytes().as_ptr(), resolver_storage);
@@ -608,8 +640,13 @@ fn replay_session_publishes_exact_identity_and_retains_static_bytes_once() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`completed_replay_retains_typed_graph_rows_and_successful_event_batch` keeps one authored boundary's fixture and assertions together"
+)]
 fn completed_replay_retains_typed_graph_rows_and_successful_event_batch() {
-    let replay_id = ReplaySessionId::try_from("per281/retained-output").unwrap();
+    let replay_id = ReplaySessionId::try_from("per281/retained-output")
+        .expect("the fixture value fits the target range");
     let mut session = ReplayTickSession::new(
         REPLAY_SCENARIO,
         None,
@@ -621,11 +658,14 @@ fn completed_replay_retains_typed_graph_rows_and_successful_event_batch() {
         foundation_reference(),
         foundation_material_state(),
     )
-    .unwrap();
-    let actions = OrderedPracticeActionBatch::empty(replay_id, 1).unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
+    let actions = OrderedPracticeActionBatch::empty(replay_id, 1)
+        .expect("the empty authored batch constructs");
     let mut sink = CollectingSink::default();
 
-    let identified = session.advance(&mut sink, &actions).unwrap();
+    let identified = session
+        .advance(&mut sink, &actions)
+        .expect("the fixture advances the authored period");
 
     let stable_graph = identified.result_stable_graph();
     assert_eq!(
@@ -714,7 +754,8 @@ fn completed_replay_retains_typed_graph_rows_and_successful_event_batch() {
 
 #[test]
 fn prepared_replay_publishes_once_only_after_exact_commit_acknowledgement() {
-    let replay_id = ReplaySessionId::try_from("per281/prepared-commit-ack").unwrap();
+    let replay_id = ReplaySessionId::try_from("per281/prepared-commit-ack")
+        .expect("the fixture value fits the target range");
     let mut session = ReplayTickSession::new(
         REPLAY_SCENARIO,
         None,
@@ -726,9 +767,15 @@ fn prepared_replay_publishes_once_only_after_exact_commit_acknowledgement() {
         foundation_reference(),
         foundation_material_state(),
     )
-    .unwrap();
-    let actions = OrderedPracticeActionBatch::empty(replay_id, 1).unwrap();
-    let before_graph = session.graph().encode_state().unwrap().as_bytes().to_vec();
+    .expect("the constructor accepts the authored fixture arguments");
+    let actions = OrderedPracticeActionBatch::empty(replay_id, 1)
+        .expect("the empty authored batch constructs");
+    let before_graph = session
+        .graph()
+        .encode_state()
+        .expect("the graph encodes its canonical state")
+        .as_bytes()
+        .to_vec();
     let before_cursors = session.graph().allocator_cursors();
     let before_material = foundation_material_state();
     let mut sink = CollectingSink {
@@ -736,29 +783,45 @@ fn prepared_replay_publishes_once_only_after_exact_commit_acknowledgement() {
     };
     let before_events = sink.events.clone();
 
-    let abandoned = session.prepare_advance(&actions).unwrap();
+    let abandoned = session
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance");
     assert_eq!(abandoned.report().result_registers().completed_tick(), 1);
     drop(abandoned);
     assert_eq!(session.completed_tick(), 0);
     assert_eq!(
-        session.graph().encode_state().unwrap().as_bytes(),
+        session
+            .graph()
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes(),
         before_graph
     );
     assert_eq!(session.graph().allocator_cursors(), before_cursors);
     assert_eq!(session.material_state(), &before_material);
     assert_eq!(sink.events, before_events);
 
-    let prepared = session.prepare_advance(&actions).unwrap();
-    let stale_after_first_publication = session.prepare_advance(&actions).unwrap();
+    let prepared = session
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance");
+    let stale_after_first_publication = session
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance");
     let tick_content_hash = prepared.report().tick_content_hash();
     let acknowledgement =
         ReplayCommitAcknowledgement::new(ReplayCommitDisposition::Committed, 1, tick_content_hash);
     let report = session
         .acknowledge_prepared(&mut sink, prepared, acknowledgement)
-        .unwrap();
+        .expect("the fixture call `acknowledge_prepared` succeeds for the authored inputs");
     assert_eq!(session.completed_tick(), 1);
     assert_eq!(report.tick_content_hash(), tick_content_hash);
-    assert_eq!(session.graph().state_hash().unwrap(), report.report().after);
+    assert_eq!(
+        session
+            .graph()
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        report.report().after
+    );
     assert_eq!(session.graph().allocator_cursors(), before_cursors);
     assert_eq!(sink.events.first(), before_events.first());
     assert_eq!(sink.events.len(), 3);
@@ -776,7 +839,7 @@ fn prepared_replay_publishes_once_only_after_exact_commit_acknowledgement() {
                 stale_after_first_publication,
                 ambiguous_acknowledgement,
             )
-            .unwrap_err(),
+            .expect_err("the fixture call `acknowledge_prepared` fails for the authored inputs"),
         ReplayTickError::StalePreparedTick {
             prepared_after: 0,
             live_completed: 1,
@@ -804,7 +867,7 @@ fn assert_populated_material_rows(material: &MaterialStateRows) {
             if world == &WorldRegisterRow::try_new(
                 "world/completed-tick".to_owned(),
                 StableBslValue::Int(1),
-            ).unwrap()
+            ).expect("the authored fixture satisfies the constructor invariants")
     ));
     let Some(MaterialStateRowRef::Territory(territory)) = material_rows.next() else {
         panic!("material rows lost the derived territory family")
@@ -878,7 +941,7 @@ fn assert_empty_material_rows(empty: &MaterialStateRows) {
             if world == &WorldRegisterRow::try_new(
                 "world/completed-tick".to_owned(),
                 StableBslValue::Int(1),
-            ).unwrap()
+            ).expect("the authored fixture satisfies the constructor invariants")
     ));
     for foundation_row in michigan_foundation().rows() {
         assert!(matches!(
@@ -895,10 +958,11 @@ fn assert_empty_material_rows(empty: &MaterialStateRows) {
 fn completed_replay_retains_every_source_owned_material_family() {
     assert_eq!(
         WorldRegisterRow::try_new("world/completed-tick".to_owned(), StableBslValue::Int(-1),)
-            .unwrap_err(),
+            .expect_err("the authored input violates a constructor invariant"),
         MaterialStateError::WorldRegister
     );
-    let replay_id = ReplaySessionId::try_from("per281/material-complete").unwrap();
+    let replay_id = ReplaySessionId::try_from("per281/material-complete")
+        .expect("the fixture value fits the target range");
     let material_state = foundation_material_state();
     let mut session = ReplayTickSession::new(
         MATERIAL_SCENARIO,
@@ -911,15 +975,19 @@ fn completed_replay_retains_every_source_owned_material_family() {
         foundation_reference(),
         material_state,
     )
-    .unwrap();
-    let actions = OrderedPracticeActionBatch::empty(replay_id, 1).unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
+    let actions = OrderedPracticeActionBatch::empty(replay_id, 1)
+        .expect("the empty authored batch constructs");
     let mut sink = CollectingSink::default();
 
-    let identified = session.advance(&mut sink, &actions).unwrap();
+    let identified = session
+        .advance(&mut sink, &actions)
+        .expect("the fixture advances the authored period");
     let material = identified.material_state_rows();
     assert_populated_material_rows(material);
 
-    let empty_replay_id = ReplaySessionId::try_from("per281/material-empty").unwrap();
+    let empty_replay_id = ReplaySessionId::try_from("per281/material-empty")
+        .expect("the fixture value fits the target range");
     let mut empty_session = ReplayTickSession::new(
         REPLAY_SCENARIO,
         None,
@@ -931,12 +999,13 @@ fn completed_replay_retains_every_source_owned_material_family() {
         foundation_reference(),
         foundation_material_state(),
     )
-    .unwrap();
-    let empty_actions = OrderedPracticeActionBatch::empty(empty_replay_id, 1).unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
+    let empty_actions = OrderedPracticeActionBatch::empty(empty_replay_id, 1)
+        .expect("the empty authored batch constructs");
     let mut empty_sink = CollectingSink::default();
     let empty_identified = empty_session
         .advance(&mut empty_sink, &empty_actions)
-        .unwrap();
+        .expect("the fixture advances the authored period");
     let empty = empty_identified.material_state_rows();
     assert_empty_material_rows(empty);
 }
@@ -960,10 +1029,16 @@ fn territory_rows_are_derived_from_the_post_tick_graph() {
         "stable graph local-name order is lexical"
     );
     assert!(
-        short_id.canonical_bytes().unwrap() < long_id.canonical_bytes().unwrap(),
+        short_id
+            .canonical_bytes()
+            .expect("the graph value exposes canonical bytes")
+            < long_id
+                .canonical_bytes()
+                .expect("the graph value exposes canonical bytes"),
         "length-framed material primary-key order must put z before aa"
     );
-    let replay_id = ReplaySessionId::try_from("per281/territory-derived").unwrap();
+    let replay_id = ReplaySessionId::try_from("per281/territory-derived")
+        .expect("the fixture value fits the target range");
     let mut session = ReplayTickSession::new(
         DERIVED_TERRITORY_SCENARIO,
         None,
@@ -975,10 +1050,13 @@ fn territory_rows_are_derived_from_the_post_tick_graph() {
         foundation_reference(),
         foundation_material_state(),
     )
-    .unwrap();
-    let actions = OrderedPracticeActionBatch::empty(replay_id, 1).unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
+    let actions = OrderedPracticeActionBatch::empty(replay_id, 1)
+        .expect("the empty authored batch constructs");
     let mut sink = CollectingSink::default();
-    let identified = session.advance(&mut sink, &actions).unwrap();
+    let identified = session
+        .advance(&mut sink, &actions)
+        .expect("the fixture advances the authored period");
     let territory_rows = identified.material_state_rows().territories();
 
     assert_eq!(territory_rows.source_count(), 2);
@@ -1042,7 +1120,7 @@ fn territory_rows_are_derived_from_the_post_tick_graph() {
         .iter()
         .fold(String::new(), |mut output, byte| {
             use std::fmt::Write as _;
-            write!(output, "{byte:02x}").unwrap();
+            write!(output, "{byte:02x}").expect("the in-memory formatter accepts the written text");
             output
         });
     assert_eq!(
@@ -1074,8 +1152,12 @@ fn organization_rows_are_derived_from_the_post_tick_graph_and_presence_topology(
         "stable graph organization order is lexical"
     );
     assert!(
-        organization_id("f").canonical_bytes().unwrap()
-            < organization_id("council").canonical_bytes().unwrap(),
+        organization_id("f")
+            .canonical_bytes()
+            .expect("the graph value exposes canonical bytes")
+            < organization_id("council")
+                .canonical_bytes()
+                .expect("the graph value exposes canonical bytes"),
         "length-framed organization primary-key order must put f before council"
     );
     assert!(
@@ -1083,12 +1165,17 @@ fn organization_rows_are_derived_from_the_post_tick_graph_and_presence_topology(
         "stable graph territory order is lexical"
     );
     assert!(
-        territory_id("z").canonical_bytes().unwrap()
-            < territory_id("aa").canonical_bytes().unwrap(),
+        territory_id("z")
+            .canonical_bytes()
+            .expect("the graph value exposes canonical bytes")
+            < territory_id("aa")
+                .canonical_bytes()
+                .expect("the graph value exposes canonical bytes"),
         "length-framed territory primary-key order must put z before aa"
     );
 
-    let replay_id = ReplaySessionId::try_from("per281/organization-derived").unwrap();
+    let replay_id = ReplaySessionId::try_from("per281/organization-derived")
+        .expect("the fixture value fits the target range");
     let mut session = ReplayTickSession::new(
         DERIVED_ORGANIZATION_SCENARIO,
         None,
@@ -1100,10 +1187,13 @@ fn organization_rows_are_derived_from_the_post_tick_graph_and_presence_topology(
         foundation_reference(),
         foundation_material_state(),
     )
-    .unwrap();
-    let actions = OrderedPracticeActionBatch::empty(replay_id, 1).unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
+    let actions = OrderedPracticeActionBatch::empty(replay_id, 1)
+        .expect("the empty authored batch constructs");
     let mut sink = CollectingSink::default();
-    let identified = session.advance(&mut sink, &actions).unwrap();
+    let identified = session
+        .advance(&mut sink, &actions)
+        .expect("the fixture advances the authored period");
     let organizations = identified.material_state_rows().organizations();
 
     assert_eq!(organizations.source_count(), 2);
@@ -1149,7 +1239,8 @@ fn organization_rows_are_derived_from_the_post_tick_graph_and_presence_topology(
             .iter()
             .fold(String::new(), |mut output, byte| {
                 use std::fmt::Write as _;
-                write!(output, "{byte:02x}").unwrap();
+                write!(output, "{byte:02x}")
+                    .expect("the in-memory formatter accepts the written text");
                 output
             });
     assert_eq!(
@@ -1199,7 +1290,8 @@ fn organization_rows_are_derived_from_the_post_tick_graph_and_presence_topology(
 
 #[test]
 fn duplicate_retained_event_field_refuses_without_publication() {
-    let replay_id = ReplaySessionId::try_from("per281/duplicate-retained-field").unwrap();
+    let replay_id = ReplaySessionId::try_from("per281/duplicate-retained-field")
+        .expect("the fixture value fits the target range");
     let mut session = ReplayTickSession::new(
         REPLAY_SCENARIO,
         None,
@@ -1211,18 +1303,26 @@ fn duplicate_retained_event_field_refuses_without_publication() {
         foundation_reference(),
         foundation_material_state(),
     )
-    .unwrap();
-    let before = session.graph().encode_state().unwrap().as_bytes().to_vec();
+    .expect("the constructor accepts the authored fixture arguments");
+    let before = session
+        .graph()
+        .encode_state()
+        .expect("the graph encodes its canonical state")
+        .as_bytes()
+        .to_vec();
     let before_cursors = session.graph().allocator_cursors();
     let before_completed_tick = session.completed_tick();
-    let actions = OrderedPracticeActionBatch::empty(replay_id, 1).unwrap();
+    let actions = OrderedPracticeActionBatch::empty(replay_id, 1)
+        .expect("the empty authored batch constructs");
     let mut sink = CollectingSink {
         events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
     };
     let before_events = sink.events.clone();
 
     assert_eq!(
-        session.advance(&mut sink, &actions).unwrap_err(),
+        session
+            .advance(&mut sink, &actions)
+            .expect_err("the fixture call `advance` fails for the authored inputs"),
         ReplayTickError::DuplicateSuccessfulEventField {
             event_type: "REPLAY_DUPLICATE".to_owned(),
             field: "subject".to_owned(),
@@ -1230,7 +1330,14 @@ fn duplicate_retained_event_field_refuses_without_publication() {
     );
     assert_eq!(session.completed_tick(), before_completed_tick);
     assert_eq!(sink.events, before_events);
-    assert_eq!(session.graph().encode_state().unwrap().as_bytes(), before);
+    assert_eq!(
+        session
+            .graph()
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes(),
+        before
+    );
     assert_eq!(session.graph().allocator_cursors(), before_cursors);
 }
 
@@ -1275,7 +1382,7 @@ fn replay_identity_is_exact_across_fresh_processes() {
         );
         return;
     }
-    let executable = std::env::current_exe().unwrap();
+    let executable = std::env::current_exe().expect("the test host resolves its own executable");
     let run_child = || {
         let output = Command::new(&executable)
             .args([
@@ -1285,20 +1392,21 @@ fn replay_identity_is_exact_across_fresh_processes() {
             ])
             .env(PROCESS_CHILD_ENV, "1")
             .output()
-            .unwrap();
+            .expect("the fixture call `output` succeeds for the authored inputs");
         assert!(output.status.success(), "{output:?}");
         String::from_utf8(output.stdout)
-            .unwrap()
+            .expect("the fixture bytes came from a UTF-8 string")
             .lines()
             .find_map(|line| line.strip_prefix(PROCESS_MARKER).map(str::to_owned))
-            .unwrap()
+            .expect("the fixture yields the searched value")
     };
     assert_eq!(run_child(), run_child());
 }
 
 #[test]
 fn replay_action_guards_and_rules_hash_refuse_without_publication() {
-    let replay_id = ReplaySessionId::try_from("per60/guarded").unwrap();
+    let replay_id = ReplaySessionId::try_from("per60/guarded")
+        .expect("the fixture value fits the target range");
     let mut bad_content = content_for(REPLAY_RULE);
     bad_content.rules_hash = [0xff; 32];
     assert!(matches!(
@@ -1329,8 +1437,13 @@ fn replay_action_guards_and_rules_hash_refuse_without_publication() {
         foundation_reference(),
         foundation_material_state(),
     )
-    .unwrap();
-    let before = session.graph().encode_state().unwrap().as_bytes().to_vec();
+    .expect("the constructor accepts the authored fixture arguments");
+    let before = session
+        .graph()
+        .encode_state()
+        .expect("the graph encodes its canonical state")
+        .as_bytes()
+        .to_vec();
     let mut sink = CollectingSink::default();
 
     let structural = nonempty_action_batch(replay_id.clone());
@@ -1339,13 +1452,16 @@ fn replay_action_guards_and_rules_hash_refuse_without_publication() {
         Err(ReplayTickError::NonEmptyActionBatch { count: 1 })
     ));
 
-    let other_session = ReplaySessionId::try_from("per60/other").unwrap();
-    let wrong_session = OrderedPracticeActionBatch::empty(other_session, 1).unwrap();
+    let other_session =
+        ReplaySessionId::try_from("per60/other").expect("the fixture value fits the target range");
+    let wrong_session = OrderedPracticeActionBatch::empty(other_session, 1)
+        .expect("the empty authored batch constructs");
     assert!(matches!(
         session.advance(&mut sink, &wrong_session),
         Err(ReplayTickError::ActionSessionMismatch)
     ));
-    let wrong_tick = OrderedPracticeActionBatch::empty(replay_id, 2).unwrap();
+    let wrong_tick = OrderedPracticeActionBatch::empty(replay_id, 2)
+        .expect("the empty authored batch constructs");
     assert!(matches!(
         session.advance(&mut sink, &wrong_tick),
         Err(ReplayTickError::ActionTickMismatch {
@@ -1355,12 +1471,20 @@ fn replay_action_guards_and_rules_hash_refuse_without_publication() {
     ));
     assert_eq!(session.completed_tick(), 0);
     assert!(sink.events.is_empty());
-    assert_eq!(session.graph().encode_state().unwrap().as_bytes(), before);
+    assert_eq!(
+        session
+            .graph()
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes(),
+        before
+    );
 }
 
 #[test]
 fn replay_rule_failure_discards_detached_writes_events_and_identity() {
-    let replay_id = ReplaySessionId::try_from("per60/rule-failure").unwrap();
+    let replay_id = ReplaySessionId::try_from("per60/rule-failure")
+        .expect("the fixture value fits the target range");
     let mut session = ReplayTickSession::new(
         FAILURE_SCENARIO,
         None,
@@ -1372,9 +1496,15 @@ fn replay_rule_failure_discards_detached_writes_events_and_identity() {
         foundation_reference(),
         foundation_material_state(),
     )
-    .unwrap();
-    let before = session.graph().encode_state().unwrap().as_bytes().to_vec();
-    let actions = OrderedPracticeActionBatch::empty(replay_id, 1).unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
+    let before = session
+        .graph()
+        .encode_state()
+        .expect("the graph encodes its canonical state")
+        .as_bytes()
+        .to_vec();
+    let actions = OrderedPracticeActionBatch::empty(replay_id, 1)
+        .expect("the empty authored batch constructs");
     let mut sink = CollectingSink::default();
 
     assert!(matches!(
@@ -1383,12 +1513,20 @@ fn replay_rule_failure_discards_detached_writes_events_and_identity() {
     ));
     assert_eq!(session.completed_tick(), 0);
     assert!(sink.events.is_empty());
-    assert_eq!(session.graph().encode_state().unwrap().as_bytes(), before);
+    assert_eq!(
+        session
+            .graph()
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes(),
+        before
+    );
 }
 
 #[test]
 fn register_manifest_set_and_stable_world_bytes_are_exact() {
-    let manifest = replay_identity::world_register_manifest().unwrap();
+    let manifest = replay_identity::world_register_manifest()
+        .expect("the fixture call `world_register_manifest` succeeds for the authored inputs");
     assert_eq!(
         manifest.canonical_bytes(),
         [
@@ -1400,7 +1538,8 @@ fn register_manifest_set_and_stable_world_bytes_are_exact() {
         ]
         .concat()
     );
-    let registers = replay_identity::encode_world_register_set(&manifest, 0).unwrap();
+    let registers = replay_identity::encode_world_register_set(&manifest, 0)
+        .expect("the world register set encodes canonically");
     assert_eq!(
         registers.canonical_bytes(),
         [
@@ -1420,16 +1559,20 @@ fn register_manifest_set_and_stable_world_bytes_are_exact() {
     );
 
     let mut graph = MemoryGraph::new();
-    let node = graph.add_node("class").unwrap();
+    let node = graph
+        .add_node("class")
+        .expect("the fixture adds a node with a registered kind");
     let resolver = StableElementResolver::seal(
         &graph,
         "demo/world",
         &HashMap::from([(node, "workers".to_owned())]),
         &HashMap::new(),
     )
-    .unwrap();
-    let stable_graph = stable_state::encode_stable_graph_state(&graph, &resolver).unwrap();
-    let world = replay_identity::encode_stable_world(&stable_graph, &registers).unwrap();
+    .expect("the fixture seals the prepared period");
+    let stable_graph = stable_state::encode_stable_graph_state(&graph, &resolver)
+        .expect("the fixture graph encodes its stable state");
+    let world = replay_identity::encode_stable_world(&stable_graph, &registers)
+        .expect("the stable world encodes canonically");
     assert_eq!(
         world.canonical_bytes(),
         [
@@ -1448,7 +1591,8 @@ fn register_manifest_set_and_stable_world_bytes_are_exact() {
 
 #[test]
 fn register_tick_domain_is_checked() {
-    let manifest = replay_identity::world_register_manifest().unwrap();
+    let manifest = replay_identity::world_register_manifest()
+        .expect("the fixture call `world_register_manifest` succeeds for the authored inputs");
     assert!(replay_identity::encode_world_register_set(&manifest, i64::MAX).is_ok());
     assert_eq!(
         replay_identity::encode_world_register_set(&manifest, -1),
@@ -1463,14 +1607,16 @@ fn register_tick_domain_is_checked() {
 )]
 fn tick_payload_is_exact_and_order_sensitive_without_reencoding_fired() {
     let mut graph = MemoryGraph::new();
-    let node = graph.add_node("class").unwrap();
+    let node = graph
+        .add_node("class")
+        .expect("the fixture adds a node with a registered kind");
     let resolver = StableElementResolver::seal(
         &graph,
         "demo/world",
         &HashMap::from([(node, "workers".to_owned())]),
         &HashMap::new(),
     )
-    .unwrap();
+    .expect("the fixture seals the prepared period");
     let order = vec!["demo/a".to_owned(), "demo/b".to_owned()];
     let outcomes = vec![("demo/a".to_owned(), 1), ("demo/b".to_owned(), 2)];
     let events = vec![
@@ -1515,7 +1661,7 @@ fn tick_payload_is_exact_and_order_sensitive_without_reencoding_fired() {
         &receipts,
         &resolver,
     )
-    .unwrap();
+    .expect("the fixture value encodes to its canonical bytes");
     assert!(payload.canonical_bytes().starts_with(
         &[
             b"babylon.tick-payload.v2\0".as_slice(),
@@ -1534,7 +1680,7 @@ fn tick_payload_is_exact_and_order_sensitive_without_reencoding_fired() {
         &receipts,
         &resolver,
     )
-    .unwrap();
+    .expect("the fixture value encodes to its canonical bytes");
     assert_ne!(payload.digest(), reversed.digest());
     let reversed_pairs = vec![
         ("value".to_owned(), Value::Int(2)),
@@ -1558,7 +1704,7 @@ fn tick_payload_is_exact_and_order_sensitive_without_reencoding_fired() {
         &receipts,
         &resolver,
     )
-    .unwrap();
+    .expect("the fixture value encodes to its canonical bytes");
     assert_ne!(payload.digest(), pair_reordered.digest());
     let provenance_changed_events = vec![
         CommittedEvent::new(
@@ -1581,7 +1727,7 @@ fn tick_payload_is_exact_and_order_sensitive_without_reencoding_fired() {
         &receipts,
         &resolver,
     )
-    .unwrap();
+    .expect("the fixture value encodes to its canonical bytes");
     assert_ne!(payload.digest(), provenance_changed.digest());
     let receipt_reordered = replay_identity::encode_tick_payload(
         &order,
@@ -1592,7 +1738,7 @@ fn tick_payload_is_exact_and_order_sensitive_without_reencoding_fired() {
         &receipts.iter().cloned().rev().collect::<Vec<_>>(),
         &resolver,
     )
-    .unwrap();
+    .expect("the fixture value encodes to its canonical bytes");
     assert_ne!(payload.digest(), receipt_reordered.digest());
     assert!(matches!(
         replay_identity::encode_tick_payload(

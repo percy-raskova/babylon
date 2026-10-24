@@ -446,7 +446,7 @@ mod tests {
     #[test]
     fn retained_historical_rows_and_exact_live_matches_are_legal() {
         let rows = [FIRST];
-        super::validate_kernel_slot_ledger(&rows).unwrap();
+        super::validate_kernel_slot_ledger(&rows).expect("the authored fixture satisfies the rule");
         assert_eq!(
             super::match_kernel_slot_reservation(
                 &rows,

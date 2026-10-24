@@ -33,22 +33,33 @@ fn place(state: &mut MaterialCircuitState, location: EconomicLocation) {
 fn national_foreign_and_dependency_locations_use_the_same_paid_consumption_close() {
     let locations = ["01001", "02013", "15005", "11001"]
         .into_iter()
-        .map(|key| EconomicLocation::domestic_county(CountyGeoid::try_from(key).unwrap()).unwrap())
+        .map(|key| {
+            EconomicLocation::domestic_county(
+                CountyGeoid::try_from(key).expect("the fixture value fits the target range"),
+            )
+            .expect("the fixture geoid names a domestic county")
+        })
         .chain(ForeignCounterpart::ALL.map(EconomicLocation::Foreign))
         .chain(UsDependency::ALL.map(EconomicLocation::Dependency));
     for location in locations {
         let mut state = crate::opening();
         place(&mut state, location);
-        let encoded = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
-        let restored = babylon_material_circuit::decode_material_circuit_state(&encoded).unwrap();
+        let encoded = babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes");
+        let restored = babylon_material_circuit::decode_material_circuit_state(&encoded)
+            .expect("the canonical material bytes decode");
         assert_eq!(restored.final_demand_principals[0].location, location);
-        let close = babylon_material_circuit::advance_material_circuit(&restored).unwrap();
+        let close = babylon_material_circuit::advance_material_circuit(&restored)
+            .expect("the authored material state advances one period");
         assert_eq!(close.household_consumption[0].consumed_quantity, 4);
         let CircuitAccounting::Monetary(economy) = &close.state.accounting else {
             panic!("the shared close lost its monetary authority");
         };
         assert_eq!(
-            economy.book.total_cash_and_reserves().unwrap(),
+            economy
+                .book
+                .total_cash_and_reserves()
+                .expect("the fixture book totals without overflow"),
             crate::money(24)
         );
         assert_eq!(
@@ -87,10 +98,13 @@ fn separately_accounted_household_cohorts_can_share_one_market_location() {
         unit_id: crate::units(),
         amount: crate::money(0),
     });
-    economy.book = MonetaryBook::open(accounts).unwrap();
-    economy.costs =
-        HistoricalCostBook::open(&economy.book, stocks, vec![], vec![], vec![]).unwrap();
-    let recurring = economy.recurring.as_mut().unwrap();
+    economy.book = MonetaryBook::open(accounts).expect("the fixture opens the authored source");
+    economy.costs = HistoricalCostBook::open(&economy.book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
+    let recurring = economy
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     // One cohort consumes its own pantry while its neighbor buys from the store.
     recurring.household_purchases[0].enabled = false;
     recurring.households.push(HouseholdCohort {
@@ -121,7 +135,8 @@ fn separately_accounted_household_cohorts_can_share_one_market_location() {
         maximum_purchase: 1,
         enabled: true,
     });
-    let close = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let close = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(close.household_consumption.len(), 2);
     assert_eq!(
         close
@@ -143,7 +158,10 @@ fn separately_accounted_household_cohorts_can_share_one_market_location() {
         panic!("the shared close lost its monetary authority");
     };
     assert_eq!(
-        economy.book.total_cash_and_reserves().unwrap(),
+        economy
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         crate::money(32)
     );
 }
@@ -154,7 +172,8 @@ fn a_local_retail_order_cannot_skip_an_international_delivery() {
     state.final_demand_principals[0].location =
         EconomicLocation::Foreign(ForeignCounterpart::Canada);
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state).unwrap_err(),
+        babylon_material_circuit::advance_material_circuit(&state)
+            .expect_err("the invalid material state is refused"),
         MaterialCircuitError::FinalDemandInvariant
     );
 }
@@ -162,7 +181,8 @@ fn a_local_retail_order_cannot_skip_an_international_delivery() {
 #[test]
 fn material_wire_refuses_invalid_locations_and_the_previous_state_format() {
     let state = crate::opening();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     let pattern = state.final_demand_principals[0].location.canonical_bytes();
     let offsets: Vec<_> = bytes
         .windows(pattern.len())
@@ -183,7 +203,8 @@ fn material_wire_refuses_invalid_locations_and_the_previous_state_format() {
             let mut changed = bytes.clone();
             changed[offset..offset + 6].copy_from_slice(&malformed);
             assert_eq!(
-                babylon_material_circuit::decode_material_circuit_state(&changed).unwrap_err(),
+                babylon_material_circuit::decode_material_circuit_state(&changed)
+                    .expect_err("`decode_material_circuit_state` rejects the malformed bytes"),
                 MaterialCircuitError::WireEnum
             );
         }

@@ -333,7 +333,10 @@ fn resolve_probability_carrier(
 /// partially-loaded rules.
 // Module-qualified free-function calls (Google style) wrap this pipeline past
 // the Clippy line budget without changing its stages.
-#[allow(clippy::too_many_lines)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`load_rule_form` keeps one authored sequence in a single place"
+)]
 pub fn load_rule_form(
     rule: SExpr,
     root_path: FormPath,
@@ -723,7 +726,10 @@ pub fn bind_environment<S: std::hash::BuildHasher>(
 ///
 /// [`crate::evaluator::EvalError`] from the operand expression, including `E-EVAL-040` when
 /// the shared meter runs out.
-#[allow(clippy::too_many_arguments)] // graph joins types/enums (Territory port, Task 6) — same shape as tick.rs::collect_pass's own exemption
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`resolve_expr_bindings` takes every authored field explicitly"
+)] // graph joins types/enums (Territory port, Task 6) — same shape as tick.rs::collect_pass's own exemption
 pub fn resolve_expr_bindings<S: std::hash::BuildHasher + Clone>(
     decls: &[BindingDecl],
     env: &mut HashMap<String, Value, S>,
@@ -767,7 +773,10 @@ fn literal_value(atom: &Atom) -> Value {
         Atom::Currency(c) => Value::Currency(*c),
         Atom::Scaled(s) => {
             // Unit-interval literal, unscaled < 10⁹ — exact in f64.
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let value = s.unscaled as f64 / 10f64.powi(i32::from(s.scale));
             Value::Real(value)
         }
@@ -1020,7 +1029,8 @@ mod split_content_tests {
     #[test]
     fn an_intrinsic_declaration_before_the_rule_splits_out() {
         let source = format!("{INTRINSIC}\n{RULE}");
-        let (intrinsics, rules) = super::split_content(&source).unwrap();
+        let (intrinsics, rules) =
+            super::split_content(&source).expect("the authored content splits into its sections");
         assert_eq!(intrinsics.len(), 1);
         assert_eq!(rules.len(), 1);
         assert!(matches!(rules[0].form, crate::reader::SExpr::List(_)));
@@ -1030,7 +1040,8 @@ mod split_content_tests {
     #[test]
     fn an_intrinsic_declaration_after_the_rule_splits_out_the_same_way() {
         let source = format!("{RULE}\n{INTRINSIC}");
-        let (intrinsics, rules) = super::split_content(&source).unwrap();
+        let (intrinsics, rules) =
+            super::split_content(&source).expect("the authored content splits into its sections");
         assert_eq!(intrinsics.len(), 1);
         assert_eq!(rules.len(), 1);
         assert!(matches!(rules[0].form, crate::reader::SExpr::List(_)));
@@ -1041,13 +1052,15 @@ mod split_content_tests {
     fn two_intrinsic_declarations_both_split_out() {
         const SECOND: &str = "(intrinsic exp :params (real) :returns real :cost 40)";
         let source = format!("{INTRINSIC}\n{SECOND}\n{RULE}");
-        let (intrinsics, _) = super::split_content(&source).unwrap();
+        let (intrinsics, _) =
+            super::split_content(&source).expect("the authored content splits into its sections");
         assert_eq!(intrinsics.len(), 2);
     }
 
     #[test]
     fn a_source_with_no_rule_form_is_a_loud_content_error() {
-        let err = super::split_content(INTRINSIC).unwrap_err();
+        let err = super::split_content(INTRINSIC)
+            .expect_err("the fixture call `split_content` fails for the authored inputs");
         assert!(matches!(err, LoadError::Content(_)));
         assert!(format!("{err}").contains("found 0"));
     }
@@ -1055,7 +1068,8 @@ mod split_content_tests {
     #[test]
     fn a_source_with_duplicate_rule_forms_is_a_typed_duplicate_error() {
         let source = format!("{RULE}\n{RULE}");
-        let err = super::split_content(&source).unwrap_err();
+        let err = super::split_content(&source)
+            .expect_err("the fixture call `split_content` fails for the authored inputs");
         assert!(matches!(err, LoadError::DuplicateRuleId { .. }));
         assert_eq!(err.spec_code(), Some("E-LOAD-001"));
     }
@@ -1069,7 +1083,8 @@ mod split_content_tests {
 
     #[test]
     fn a_read_failure_propagates_as_load_error_read() {
-        let err = super::split_content("(unterminated").unwrap_err();
+        let err = super::split_content("(unterminated")
+            .expect_err("the fixture call `split_content` fails for the authored inputs");
         assert!(matches!(err, LoadError::Read(_)));
     }
 
@@ -1106,7 +1121,8 @@ mod split_content_tests {
 
     #[test]
     fn split_content_refuses_nonempty_intrinsic_only_sources() {
-        let err = super::split_content(INTRINSIC).unwrap_err();
+        let err = super::split_content(INTRINSIC)
+            .expect_err("the fixture call `split_content` fails for the authored inputs");
         assert!(err.to_string().contains("found 0"));
     }
 
@@ -1120,7 +1136,8 @@ mod split_content_tests {
   (bindings (binding v :field a/v2))
   (effects (update-node self a/v2 (set v))))
 "#;
-        let err = super::split_content(source).unwrap_err();
+        let err = super::split_content(source)
+            .expect_err("the fixture call `split_content` fails for the authored inputs");
         assert_eq!(err.spec_code(), Some("E-LOAD-001"));
         assert!(err.to_string().contains("E-LOAD-001"));
         assert!(err.to_string().contains("a/dup"));
@@ -1204,7 +1221,7 @@ mod deferred_shape_verb_tests {
   (effects (remove-node self)))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(
             matches!(err, LoadError::DeferredShapeVerb(_)),
             "expected LoadError::DeferredShapeVerb, got {err:?}"
@@ -1247,7 +1264,8 @@ mod deferred_shape_verb_tests {
                      (bindings (binding group :field geography/group)) \
                      (effects {effect}))"
                 );
-                let error = super::load_rule(&source, &ctx).unwrap_err();
+                let error =
+                    super::load_rule(&source, &ctx).expect_err("the malformed rule is refused");
                 assert_eq!(error.spec_code(), Some("E-LOAD-060"), "{source}: {error}");
                 assert!(matches!(
                     error,
@@ -1285,7 +1303,7 @@ mod deferred_shape_verb_tests {
     (payload (add-node NodeType/TERRITORY made)))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(matches!(
             error,
             LoadError::Causal(ContractError::UnauthorizedEffect {
@@ -1306,7 +1324,7 @@ mod deferred_shape_verb_tests {
   (effects (guard #t (remove-node self))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(matches!(err, LoadError::DeferredShapeVerb(_)), "{err}");
         assert!(err.to_string().contains("remove-node"), "{err}");
     }
@@ -1331,7 +1349,7 @@ mod deferred_shape_verb_tests {
   (effects (emit EventType/RUPTURE (payload (add-node NodeType/SOCIAL_CLASS 5)))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(
             matches!(err, LoadError::DeferredShapeVerb(_)),
             "expected LoadError::DeferredShapeVerb, got {err:?}"
@@ -1348,7 +1366,7 @@ mod deferred_shape_verb_tests {
   (effects (guard #t (emit EventType/RUPTURE (payload (remove-node self))))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(matches!(err, LoadError::DeferredShapeVerb(_)), "{err}");
         assert!(err.to_string().contains("remove-node"), "{err}");
     }
@@ -1431,7 +1449,7 @@ mod governed_field_write_prohibition_tests {
                  :material-basis \"captured source mutation probe\" :fuel 64 \
                  (bindings) (effects (update-node self {field} (set 1))))"
             );
-            let error = super::load_rule(&source, &ctx).unwrap_err();
+            let error = super::load_rule(&source, &ctx).expect_err("the malformed rule is refused");
             assert!(
                 matches!(
                     error,
@@ -1463,7 +1481,7 @@ mod governed_field_write_prohibition_tests {
   (effects (update-node self territory/county-fips (set 26163))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(
             matches!(
                 err,
@@ -1485,7 +1503,7 @@ mod governed_field_write_prohibition_tests {
   (effects (guard #t (update-node self territory/county-fips (set 26163)))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(
             matches!(
                 err,
@@ -1545,7 +1563,7 @@ mod enum_fold_body_tests {
                 "OrgKind",
                 &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let fields = HashMap::from([(
             "organization/kind".to_owned(),
             FieldDecl {
@@ -1590,7 +1608,7 @@ mod enum_fold_body_tests {
   (effects (emit EventType/RUPTURE (probe 1))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         let LoadError::Type(type_err) = &err else {
             panic!("expected LoadError::Type, got {err:?}");
         };
@@ -1615,7 +1633,7 @@ mod enum_fold_body_tests {
   (effects (emit EventType/RUPTURE (probe 1))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         let LoadError::Type(type_err) = &err else {
             panic!("expected LoadError::Type, got {err:?}");
         };
@@ -1676,7 +1694,8 @@ mod vocabulary_membership_tests {
     use std::collections::{HashMap, HashSet};
 
     fn vocabulary() -> ClosedVocabulary {
-        ClosedVocabulary::new([(EnumKind::EventType, vec!["RUPTURE".to_owned()])]).unwrap()
+        ClosedVocabulary::new([(EnumKind::EventType, vec!["RUPTURE".to_owned()])])
+            .expect("the constructor accepts the authored fixture arguments")
     }
 
     fn load_ctx(vocabulary_registry: Option<&ClosedVocabulary>) -> LoadContext<'_> {
@@ -1722,7 +1741,7 @@ mod vocabulary_membership_tests {
     fn an_unregistered_enum_ref_in_a_rule_is_e_load_031_under_a_declared_vocabulary() {
         let vocab = vocabulary();
         let ctx = load_ctx(Some(&vocab));
-        let err = super::load_rule(TYPO_RULE, &ctx).unwrap_err();
+        let err = super::load_rule(TYPO_RULE, &ctx).expect_err("the malformed rule is refused");
         assert_eq!(err.spec_code(), Some("E-LOAD-031"));
         assert!(
             matches!(
@@ -1834,7 +1853,7 @@ mod kind_mixing_wiring_tests {
   (effects (emit EventType/RUPTURE (probe (+ budget share)))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         let LoadError::Type(type_err) = &err else {
             panic!("expected LoadError::Type, got {err:?}");
         };
@@ -1853,7 +1872,7 @@ mod kind_mixing_wiring_tests {
   (effects (update-node self organization/budget (unset 1))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(matches!(err, LoadError::Grammar(_)), "{err:?}");
         assert_eq!(err.spec_code(), Some("E-PARSE-015"));
     }
@@ -1870,7 +1889,7 @@ mod kind_mixing_wiring_tests {
   (effects (emit EventType/RUPTURE (probe (+ budget share)))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(matches!(err, LoadError::Type(_)), "{err:?}");
         assert_eq!(err.spec_code(), Some("E-TYPE-040"));
     }
@@ -1885,7 +1904,7 @@ mod kind_mixing_wiring_tests {
   (effects))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(matches!(
             err,
             LoadError::Causal(ContractError::GovernedAttributionMismatch { .. })
@@ -1904,7 +1923,7 @@ mod kind_mixing_wiring_tests {
   (effects (emit EventType/RUPTURE (probe (+ budget share)))))"#,
             &ctx,
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert!(matches!(err, LoadError::Type(_)), "{err:?}");
         assert_eq!(err.spec_code(), Some("E-TYPE-040"));
     }
@@ -1921,7 +1940,8 @@ mod empty_program_tests {
             assert!(rules.is_empty());
             let forms: Vec<_> = rules.into_iter().map(|rule| rule.form).collect();
             assert_eq!(
-                crate::canonical_ast::rules_hash_of(&forms).unwrap(),
+                crate::canonical_ast::rules_hash_of(&forms)
+                    .expect("the rule set has a canonical hash"),
                 expected
             );
         }

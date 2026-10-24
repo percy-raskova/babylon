@@ -500,7 +500,10 @@ fn membership_and_h3_gap_refusals_are_exact() {
 }
 
 #[test]
-#[allow(clippy::needless_range_loop)] // Every closed kind uses a fixed audit row.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // Every closed kind uses a fixed audit row.
 fn append_uses_every_closed_collection_limit_without_mutating_failure_input() {
     let kinds = [
         (RtdCollectionKind::Focus, 64),

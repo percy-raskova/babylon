@@ -48,8 +48,8 @@ fn header(tx: &mut Transaction<'_>, campaign: CampaignId, id: i64, tick: i64, co
         local_name: "fault".into(),
     }
     .canonical_bytes()
-    .unwrap();
-    tx.execute("INSERT INTO babylon_state.territory_definition_v1(campaign_id,definition_id,first_tick,territory_id,field_count,canonical_sha256) VALUES($1,$2,$3,$4,$5,$6)", &[campaign.as_uuid(),&id,&tick,&key,&count,&&[1_u8;32][..]]).unwrap();
+    .expect("the graph value exposes canonical bytes");
+    tx.execute("INSERT INTO babylon_state.territory_definition_v1(campaign_id,definition_id,first_tick,territory_id,field_count,canonical_sha256) VALUES($1,$2,$3,$4,$5,$6)", &[campaign.as_uuid(),&id,&tick,&key,&count,&&[1_u8;32][..]]).expect("the test database applies the setup statement");
 }
 
 fn manifest(tx: &mut Transaction<'_>, campaign: CampaignId, tick: i64, count: i64) {
@@ -57,7 +57,7 @@ fn manifest(tx: &mut Transaction<'_>, campaign: CampaignId, tick: i64, count: i6
         "INSERT INTO babylon_state.territory_tick_manifest_v1 VALUES($1,$2,$3)",
         &[campaign.as_uuid(), &tick, &count],
     )
-    .unwrap();
+    .expect("the test database applies the setup statement");
 }
 
 fn membership(tx: &mut Transaction<'_>, campaign: CampaignId, tick: i64, id: i64) {
@@ -65,7 +65,7 @@ fn membership(tx: &mut Transaction<'_>, campaign: CampaignId, tick: i64, id: i64
         "INSERT INTO babylon_state.territory_tick_membership_v1 VALUES($1,$2,$3)",
         &[campaign.as_uuid(), &tick, &id],
     )
-    .unwrap();
+    .expect("the test database applies the setup statement");
 }
 
 fn field(
@@ -100,18 +100,18 @@ fn definition_case(
     match case {
         "same_transaction_overfill" => {
             header(tx, campaign, id, 0, 0);
-            tx.batch_execute("SET CONSTRAINTS babylon_state.territory_definition_complete_v1 IMMEDIATE").unwrap();
+            tx.batch_execute("SET CONSTRAINTS babylon_state.territory_definition_complete_v1 IMMEDIATE").expect("the test database applies the schema statements");
             return field(tx, campaign, id, 0, "late");
         }
         "missing_field" => header(tx, campaign, id, 1, 1),
         "field_position_gap" => {
             header(tx, campaign, id, 1, 1);
-            field(tx, campaign, id, 1, "a").unwrap();
+            field(tx, campaign, id, 1, "a").expect("the fixture call `field` succeeds for the authored inputs");
         }
         "field_name_order" => {
             header(tx, campaign, id, 1, 2);
-            field(tx, campaign, id, 0, "z").unwrap();
-            field(tx, campaign, id, 1, "a").unwrap();
+            field(tx, campaign, id, 0, "z").expect("the fixture call `field` succeeds for the authored inputs");
+            field(tx, campaign, id, 1, "a").expect("the fixture call `field` succeeds for the authored inputs");
         }
         "sealed_fields" => return field(tx, campaign, 0, i32::MAX, "sealed-extra"),
         _ => unreachable!(),
@@ -172,7 +172,7 @@ fn sealed_case(
         return tx.execute(sql, &[campaign.as_uuid()]);
     }
     manifest(tx, campaign, 1, 0);
-    marker_result(tx, campaign, 1).unwrap();
+    marker_result(tx, campaign, 1).expect("the fixture call `marker_result` succeeds for the authored inputs");
     match case {
         "late_membership" => tx.execute(
             "INSERT INTO babylon_state.territory_tick_membership_v1 VALUES($1,1,0)",
@@ -185,7 +185,7 @@ fn sealed_case(
                 local_name: "late".into(),
             }
             .canonical_bytes()
-            .unwrap();
+            .expect("the graph value exposes canonical bytes");
             tx.execute("INSERT INTO babylon_state.territory_definition_v1(campaign_id,definition_id,first_tick,territory_id,field_count,canonical_sha256) VALUES($1,$2,$3,$4,0,$5)", &[campaign.as_uuid(),&id,&tick,&key,&&[1_u8;32][..]])
         }
         _ => unreachable!(),
@@ -229,9 +229,9 @@ fn raw_counts(client: &mut impl GenericClient, campaign: CampaignId) -> Vec<i64>
                 &format!("SELECT count(*) FROM babylon_state.{table} WHERE campaign_id=$1"),
                 &[campaign.as_uuid()],
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .try_get(0)
-            .unwrap()
+            .expect("the fixture row holds the addressed column")
     })
     .collect()
 }
@@ -241,14 +241,14 @@ fn raw_counts(client: &mut impl GenericClient, campaign: CampaignId) -> Vec<i64>
 fn live_territory_sql_guards_refuse_faults_without_durable_changes() {
     let (database, config) = disposable_config("territoryfault");
     let campaign = foundation(&config, 0x40_7e12);
-    let mut client = config.connect(NoTls).unwrap();
+    let mut client = config.connect(NoTls).expect("the test database accepts the connection");
     let before = raw_counts(&mut client, campaign);
     assert!(
         before[0] > 0,
         "actual foundation seeds admitted territory definitions"
     );
     for &(case, message) in CASES {
-        let mut tx = client.transaction().unwrap();
+        let mut tx = client.transaction().expect("the test database opens a transaction");
         let error = fault_result(&mut tx, campaign, before[0], case).expect_err(case);
         let database = error.as_db_error().expect("actual PostgreSQL refusal");
         if case == "missing_reference" {
@@ -261,7 +261,7 @@ fn live_territory_sql_guards_refuse_faults_without_durable_changes() {
             assert_eq!(database.code(), &SqlState::RAISE_EXCEPTION, "{case}");
             assert_eq!(database.message(), message, "{case}");
         }
-        tx.rollback().unwrap();
+        tx.rollback().expect("the open transaction rolls back");
         assert_eq!(
             raw_counts(&mut client, campaign),
             before,

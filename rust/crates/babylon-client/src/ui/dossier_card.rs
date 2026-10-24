@@ -1735,7 +1735,8 @@ mod tests {
     use uuid::Uuid;
 
     fn subject(kind: ArchiveSubjectKind, id: &str) -> ArchivePageRef {
-        ArchivePageRef::try_new(kind, id.into()).unwrap()
+        ArchivePageRef::try_new(kind, id.into())
+            .expect("the authored fixture satisfies the constructor invariants")
     }
     fn frame(session: &ObserverSession, hash: &str) -> ObserverFrame {
         ObserverFrame(
@@ -1755,7 +1756,8 @@ mod tests {
     }
     fn installed(session: &ObserverSession, hash: &str) -> InstalledDossier {
         let read_scope =
-            dossier::observation_scope(session.campaign, session.viewed_tick, Some(hash)).unwrap();
+            dossier::observation_scope(session.campaign, session.viewed_tick, Some(hash))
+                .expect("the fixture call `observation_scope` succeeds for the authored inputs");
         let subject = subject(ArchiveSubjectKind::County, "26163");
         let page = ArchiveDossierPage {
             revision_id: [1; 32],
@@ -1805,9 +1807,10 @@ mod tests {
             "jobs".into(),
             "Original jobs label".into(),
             "1469 annual average jobs".into(),
-            ArchiveCitation::try_new("observed-source".into(), "exact/locator".into()).unwrap(),
+            ArchiveCitation::try_new("observed-source".into(), "exact/locator".into())
+                .expect("the authored fixture satisfies the constructor invariants"),
         )
-        .unwrap()
+        .expect("the authored fixture satisfies the constructor invariants")
     }
     fn page_mut(installed: &mut InstalledDossier) -> &mut ArchiveDossierPage {
         match &mut installed.read.state {
@@ -1824,7 +1827,7 @@ mod tests {
         let installed = installed(&session, &"a".repeat(64));
         let scope = installed.scope.clone();
         let links = dossier::retained_page(&installed.read)
-            .unwrap()
+            .expect("the fixture call `retained_page` succeeds for the authored inputs")
             .links
             .clone();
         let request = chip_request(&links[0], &scope);
@@ -1832,7 +1835,7 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../../assets/map/county_atlas.bin"
         )))
-        .unwrap();
+        .expect("the authored literal parses as the declared type");
         let selected = SelectedCounty(atlas.index_of_fips("26163"));
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
@@ -1868,7 +1871,7 @@ mod tests {
             .world_mut()
             .query_filtered::<Entity, With<PlaceChipNode>>()
             .single(app.world())
-            .unwrap();
+            .expect("the fixture holds exactly one matching row");
         (app, entity, request)
     }
 
@@ -1878,7 +1881,7 @@ mod tests {
         assert!(
             app.world()
                 .get::<ObserverFocusTarget>(entity)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .available
         );
         app.world_mut().trigger(ObserverKeyboardActivate {
@@ -1923,7 +1926,7 @@ mod tests {
                             .resource_mut::<ActiveCountyDossier>()
                             .0
                             .as_mut()
-                            .unwrap(),
+                            .expect("the fixture set the optional field before this borrow"),
                     )
                     .links[0]
                         .target_state = ArchiveLinkedPageState::Unknown;
@@ -1933,7 +1936,7 @@ mod tests {
                         .resource_mut::<ObserverFrame>()
                         .0
                         .as_mut()
-                        .unwrap()
+                        .expect("the fixture set the optional field before this borrow")
                         .tick_content_hash = Some("b".repeat(64));
                 }
                 _ => unreachable!(),
@@ -1948,7 +1951,7 @@ mod tests {
             assert!(
                 !app.world()
                     .get::<ObserverFocusTarget>(entity)
-                    .unwrap()
+                    .expect("the fixture world holds the addressed component")
                     .available
             );
         }
@@ -1969,7 +1972,10 @@ mod tests {
         app.update();
         app.update();
         assert_eq!(app.world().resource::<ChangedTargets>().0, 0);
-        let mut wrong = request.scope.observer.unwrap();
+        let mut wrong = request
+            .scope
+            .observer
+            .expect("the fixture request carries its observer identity");
         wrong.tick += 1;
         app.world_mut().trigger(ObserverKeyboardActivate {
             entity,
@@ -1993,7 +1999,9 @@ mod tests {
         app.update();
         assert!(app.world().resource::<ActiveCountyDossier>().0.is_none());
         let mut scope = request.scope.clone();
-        scope.subject = request.target().unwrap();
+        scope.subject = request
+            .target()
+            .expect("the fixture call `target` succeeds for the authored inputs");
         *app.world_mut().resource_mut::<DossierFetchState>() =
             DossierFetchState::Failed(DossierFetchError::ReadFailed("offline".into()));
         app.world_mut().write_message(DossierControl::Back(scope));
@@ -2017,12 +2025,14 @@ mod tests {
         app.insert_resource(OrganizerArchiveOrigin(Some(campaign)))
             .add_message::<ObserverCommand>()
             .add_systems(Update, sync_organizer_return);
-        app.world_mut().run_system_once(spawn_dossier_card).unwrap();
+        app.world_mut()
+            .run_system_once(spawn_dossier_card)
+            .expect("the Bevy system completes one run");
         let navigation = app
             .world_mut()
             .query_filtered::<Entity, With<OrganizerArchiveReturn>>()
             .single(app.world())
-            .unwrap();
+            .expect("the fixture holds exactly one matching row");
         *app.world_mut().resource_mut::<DossierFetchState>() =
             DossierFetchState::Failed(DossierFetchError::ReadFailed("offline".into()));
         app.world_mut()
@@ -2030,7 +2040,10 @@ mod tests {
             .inspect_tick(0);
         app.update();
         assert_eq!(
-            app.world().get::<Node>(navigation).unwrap().display,
+            app.world()
+                .get::<Node>(navigation)
+                .expect("the fixture world holds the addressed component")
+                .display,
             Display::Flex
         );
         assert_eq!(app.world().resource::<ObserverSession>().viewed_tick, 0);
@@ -2043,7 +2056,10 @@ mod tests {
         app.world_mut().write_message(ObserverCommand::Archive);
         app.update();
         assert_eq!(
-            app.world().get::<Node>(navigation).unwrap().display,
+            app.world()
+                .get::<Node>(navigation)
+                .expect("the fixture world holds the addressed component")
+                .display,
             Display::None
         );
         assert!(app.world().resource::<OrganizerArchiveOrigin>().0.is_none());
@@ -2054,7 +2070,10 @@ mod tests {
         app.update();
         assert!(app.world().resource::<OrganizerArchiveOrigin>().0.is_none());
         assert_eq!(
-            app.world().get::<Node>(navigation).unwrap().display,
+            app.world()
+                .get::<Node>(navigation)
+                .expect("the fixture world holds the addressed component")
+                .display,
             Display::None
         );
     }
@@ -2068,11 +2087,13 @@ mod tests {
                 .resource_mut::<ActiveCountyDossier>()
                 .0
                 .as_mut()
-                .unwrap(),
+                .expect("the fixture set the optional field before this borrow"),
         )
         .links
         .clear();
-        app.world_mut().run_system_once(spawn_dossier_card).unwrap();
+        app.world_mut()
+            .run_system_once(spawn_dossier_card)
+            .expect("the Bevy system completes one run");
         app.add_systems(Update, repaint_dossier_card.after(apply_page_requests));
         app.update();
         for (_, node) in app
@@ -2117,13 +2138,13 @@ mod tests {
                 .resource_mut::<ActiveCountyDossier>()
                 .0
                 .as_mut()
-                .unwrap(),
+                .expect("the fixture set the optional field before this borrow"),
         )
         .links[0]
             .retained_label = None;
         app.world_mut()
             .get_mut::<PlaceChipNode>(entity)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .control = DossierControl::Link(unlabeled.clone());
         app.world_mut().trigger(ObserverKeyboardActivate {
             entity,
@@ -2144,14 +2165,27 @@ mod tests {
         assert!(session.installed(&session.context()));
         let frame = frame(&session, &"a".repeat(64));
         let mut active = ActiveCountyDossier(Some(installed(&session, &"a".repeat(64))));
-        let page = dossier::retained_page(&active.0.as_ref().unwrap().read)
-            .unwrap()
-            .clone();
-        active.0.as_mut().unwrap().read.state = ArchiveDossierState::Pending {
+        let page = dossier::retained_page(
+            &active
+                .0
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .read,
+        )
+        .expect("the fixture call `retained_page` succeeds for the authored inputs")
+        .clone();
+        active
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .read
+            .state = ArchiveDossierState::Pending {
             page: Some(page),
             reason: ArchiveDossierPending::KnowledgeRefresh,
         };
-        let read = active.for_observer(&session, &frame, 0, "26163").unwrap();
+        let read = active
+            .for_observer(&session, &frame, 0, "26163")
+            .expect("the fixture call `for_observer` succeeds for the authored inputs");
         assert_eq!(read.scope.tick_content_hash(), Some([0xaa; 32]));
         assert_eq!(
             dossier::verified_tick(read),
@@ -2163,8 +2197,13 @@ mod tests {
                 .for_observer(&session, &frame, refresh, county)
                 .is_none());
         }
-        active.0.as_mut().unwrap().read.scope =
-            ArchiveReadScope::committed(session.campaign, 1, [0xbb; 32]).unwrap();
+        active
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .read
+            .scope = ArchiveReadScope::committed(session.campaign, 1, [0xbb; 32])
+            .expect("the fixture observation carries the committed value");
         assert!(active.for_observer(&session, &frame, 0, "26163").is_none());
     }
 
@@ -2180,7 +2219,7 @@ mod tests {
                     .resource_mut::<ActiveCountyDossier>()
                     .0
                     .as_mut()
-                    .unwrap(),
+                    .expect("the fixture set the optional field before this borrow"),
             )
             .links[0]
                 .target_state = state;
@@ -2209,7 +2248,7 @@ mod tests {
                 .resource_mut::<ActiveCountyDossier>()
                 .0
                 .as_mut()
-                .unwrap(),
+                .expect("the fixture set the optional field before this borrow"),
         )
         .links
         .clear();
@@ -2225,7 +2264,9 @@ mod tests {
         app.world_mut()
             .resource_mut::<ObserverFocusPolicy>()
             .context = Some(context.clone());
-        app.world_mut().run_system_once(spawn_dossier_card).unwrap();
+        app.world_mut()
+            .run_system_once(spawn_dossier_card)
+            .expect("the Bevy system completes one run");
         app.update();
         app.update();
         let title = {
@@ -2234,7 +2275,7 @@ mod tests {
                 .query::<(Entity, &DossierZone)>()
                 .iter(world)
                 .find_map(|(entity, zone)| (*zone == DossierZone::Title).then_some(entity))
-                .unwrap()
+                .expect("the fixture yields the searched value")
         };
         assert!(app.world().get::<TabIndex>(title).is_some());
         let (frame, mut next) = {
@@ -2258,7 +2299,10 @@ mod tests {
         app.update();
         assert!(app.world().get::<TabIndex>(title).is_none());
         app.update();
-        let target = app.world().get::<ObserverFocusTarget>(title).unwrap();
+        let target = app
+            .world()
+            .get::<ObserverFocusTarget>(title)
+            .expect("the fixture world holds the addressed component");
         assert_eq!(target.context.as_ref(), Some(&context));
         assert!(target.available);
         assert!(app.world().get::<TabIndex>(title).is_some());
@@ -2269,7 +2313,9 @@ mod tests {
         let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::nil()));
         session.ready(1, Some("a".repeat(64)));
         let mut installed = installed(&session, &"a".repeat(64));
-        let page = dossier::retained_page(&installed.read).unwrap().clone();
+        let page = dossier::retained_page(&installed.read)
+            .expect("the fixture call `retained_page` succeeds for the authored inputs")
+            .clone();
         installed.read.processed_tick = 99;
         installed.read.state = ArchiveDossierState::Pending {
             page: Some(page),
@@ -2317,21 +2363,32 @@ mod tests {
         let (_, container, children) = world
             .query::<(&DossierZone, &Node, &Children)>()
             .single(world)
-            .unwrap();
+            .expect("the fixture holds exactly one matching row");
         assert_eq!(container.flex_direction, FlexDirection::Column);
         assert_eq!(container.width, percent(100));
         let row = children[0];
-        let node = world.get::<Node>(row).unwrap();
+        let node = world
+            .get::<Node>(row)
+            .expect("the fixture world holds the addressed component");
         assert_eq!(node.min_width, px(0));
         assert_eq!(
-            world.get::<TextLayout>(row).unwrap().linebreak,
+            world
+                .get::<TextLayout>(row)
+                .expect("the fixture world holds the addressed component")
+                .linebreak,
             LineBreak::WordOrCharacter
         );
         let actual: String = world
             .get::<Children>(row)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .iter()
-            .map(|span| world.get::<TextSpan>(span).unwrap().0.as_str())
+            .map(|span| {
+                world
+                    .get::<TextSpan>(span)
+                    .expect("the fixture world holds the addressed component")
+                    .0
+                    .as_str()
+            })
             .collect();
         assert_eq!(actual, expected);
     }

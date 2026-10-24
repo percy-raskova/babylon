@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 
 #[test]
 fn matrix_changes_only_stock_and_selected_delivery() {
-    let cases = run::cases().unwrap();
+    let cases = run::cases().expect("the fixture call `cases` succeeds for the authored inputs");
     assert_eq!(cases.len(), 4);
     assert_eq!(
         cases.iter().map(|case| case.spec.id).collect::<Vec<_>>(),
@@ -19,7 +19,7 @@ fn matrix_changes_only_stock_and_selected_delivery() {
         .iter()
         .map(|case| {
             CapturedEconomicCatalog::from_michigan(&case.catalog)
-                .unwrap()
+                .expect("the Michigan fixture content loads")
                 .digest()
         })
         .collect();
@@ -31,28 +31,29 @@ fn matrix_changes_only_stock_and_selected_delivery() {
     let normalized: Vec<Value> = cases
         .iter()
         .map(|case| {
-            let captured: Value = serde_json::to_value(case.catalog.resolved_report()).unwrap();
+            let captured: Value = serde_json::to_value(case.catalog.resolved_report())
+                .expect("the value serializes to JSON");
             let mut content = captured["normalized"].clone();
             let panel = content["processes"]
                 .as_array_mut()
-                .unwrap()
+                .expect("the JSON fixture field is an array")
                 .iter_mut()
                 .find(|process| process["key"] == "panel-forming")
-                .unwrap();
+                .expect("the fixture holds the searched element");
             let sheet = panel["inputs"]
                 .as_array_mut()
-                .unwrap()
+                .expect("the JSON fixture field is an array")
                 .iter_mut()
                 .find(|input| input["good_key"] == "sheet")
-                .unwrap();
+                .expect("the fixture holds the searched element");
             assert_eq!(sheet["opening_quantity"], case.spec.opening_sheet_kg);
             sheet["opening_quantity"] = 0.into();
             let route = content["routes"]
                 .as_array_mut()
-                .unwrap()
+                .expect("the JSON fixture field is an array")
                 .iter_mut()
                 .find(|route| route["key"] == "sheet-transfer")
-                .unwrap();
+                .expect("the fixture holds the searched element");
             let travel = if case.spec.id.starts_with("delayed") {
                 3
             } else {
@@ -65,16 +66,26 @@ fn matrix_changes_only_stock_and_selected_delivery() {
         .collect();
     assert!(normalized.windows(2).all(|pair| pair[0] == pair[1]));
     let reformatted = format!("# irrelevant comment\n{}\n", run::BASELINE);
-    let catalog = MichiganMaterialCatalog::from_defines_toml(&reformatted).unwrap();
-    let original = MichiganMaterialCatalog::from_defines_toml(run::BASELINE).unwrap();
+    let catalog = MichiganMaterialCatalog::from_defines_toml(&reformatted)
+        .expect("the authored input admits the derived value");
+    let original = MichiganMaterialCatalog::from_defines_toml(run::BASELINE)
+        .expect("the authored input admits the derived value");
     assert_eq!(
-        serde_json::to_value(catalog.resolved_report()).unwrap(),
-        serde_json::to_value(original.resolved_report()).unwrap()
+        serde_json::to_value(catalog.resolved_report()).expect("the value serializes to JSON"),
+        serde_json::to_value(original.resolved_report()).expect("the value serializes to JSON")
     );
-    let first = run::experiment_identity(&cases).unwrap();
+    let first = run::experiment_identity(&cases)
+        .expect("the fixture call `experiment_identity` succeeds for the authored inputs");
     assert_eq!(
-        run::digest_json(&first).unwrap(),
-        run::digest_json(&run::experiment_identity(&run::cases().unwrap()).unwrap()).unwrap()
+        run::digest_json(&first)
+            .expect("the fixture call `digest_json` succeeds for the authored inputs"),
+        run::digest_json(
+            &run::experiment_identity(
+                &run::cases().expect("the fixture call `cases` succeeds for the authored inputs")
+            )
+            .expect("the fixture call `experiment_identity` succeeds for the authored inputs")
+        )
+        .expect("the fixture call `digest_json` succeeds for the authored inputs")
     );
 }
 
@@ -83,18 +94,20 @@ fn process<'a>(result: &'a CaseResult, period: usize, key: &str) -> &'a ProcessR
         .processes
         .iter()
         .find(|row| row.process == key)
-        .unwrap()
+        .expect("the fixture holds the searched element")
 }
 
 #[test]
 fn delivery_stock_comparison_preserves_controls_and_exposes_staffing_interruption() {
     let results: Vec<_> = run::cases()
-        .unwrap()
+        .expect("the fixture call `cases` succeeds for the authored inputs")
         .into_iter()
-        .map(|case| run::run_case(&case, |_| Ok(())).unwrap())
+        .map(|case| run::run_case(&case, |_| Ok(())).expect("the fixture run completes"))
         .collect();
-    let summary = run::summarize(&results).unwrap();
-    run::qualify(&results, &summary).unwrap();
+    let summary = run::summarize(&results)
+        .expect("the fixture call `summarize` succeeds for the authored inputs");
+    run::qualify(&results, &summary)
+        .expect("the fixture call `qualify` succeeds for the authored inputs");
     for (index, (first, complete, metal, panels)) in [
         (5, 6, 600, 0),
         (7, 8, 600, 0),
@@ -125,7 +138,14 @@ fn delivery_stock_comparison_preserves_controls_and_exposes_staffing_interruptio
     let arriving = process(&results[0], 2, "panel-forming");
     assert!(arriving.completed_receipt.is_none());
     assert_eq!(arriving.closing_input, 320);
-    assert_eq!(arriving.next_opening.as_ref().unwrap().planned_batches, 32);
+    assert_eq!(
+        arriving
+            .next_opening
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .planned_batches,
+        32
+    );
     assert!(process(&results[2], 1, "panel-forming")
         .completed_receipt
         .is_none());
@@ -155,14 +175,25 @@ fn delivery_stock_comparison_preserves_controls_and_exposes_staffing_interruptio
         process(&results[3], 6, "subassembly-making").staffing.hires,
         4
     );
-    let repeat = run::run_case(&run::cases().unwrap().pop().unwrap(), |_| Ok(())).unwrap();
+    let repeat = run::run_case(
+        &run::cases()
+            .expect("the fixture call `cases` succeeds for the authored inputs")
+            .pop()
+            .expect("the fixture map holds the entry being removed"),
+        |_| Ok(()),
+    )
+    .expect("the fixture run completes");
     assert_eq!(
-        serde_json::to_vec(&repeat.rows).unwrap(),
-        serde_json::to_vec(&results[3].rows).unwrap()
+        serde_json::to_vec(&repeat.rows).expect("the value serializes to canonical JSON bytes"),
+        serde_json::to_vec(&results[3].rows).expect("the value serializes to canonical JSON bytes")
     );
     let foundations: BTreeSet<_> = results
         .iter()
-        .map(|case| case.foundation["foundation_sha256"].as_str().unwrap())
+        .map(|case| {
+            case.foundation["foundation_sha256"]
+                .as_str()
+                .expect("the JSON fixture field is a string")
+        })
         .collect();
     assert_eq!(foundations.len(), 4);
 }
@@ -172,7 +203,8 @@ fn only_absolute_output_directory_is_accepted() {
     assert!(super::output_argument(["--seed".into(), "319".into()]).is_err());
     assert!(super::output_argument(["--output".into(), "relative".into()]).is_err());
     assert_eq!(
-        super::output_argument(["--output".into(), "/tmp/owned-experiment".into()]).unwrap(),
+        super::output_argument(["--output".into(), "/tmp/owned-experiment".into()])
+            .expect("the fixture call `output_argument` succeeds for the authored inputs"),
         std::path::PathBuf::from("/tmp/owned-experiment")
     );
 }

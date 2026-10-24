@@ -180,7 +180,10 @@ fn stages(count: usize, edges: &BTreeSet<(usize, usize)>) -> Vec<usize> {
 type PlacedGroups = (BTreeMap<String, Vec3>, Vec<(Vec3, Vec2)>);
 
 // Counts only determine schematic spacing; no quantity is converted here.
-#[allow(clippy::cast_precision_loss)]
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "the cast feeds display geometry, where f64 approximation is invisible"
+)]
 fn place_groups(ids: &[String], ranks: &[usize], groups: &[BTreeSet<usize>]) -> PlacedGroups {
     let mut positions = BTreeMap::new();
     let mut platforms = Vec::new();

@@ -696,11 +696,11 @@ pub(super) fn validate_period_allocations(
 ) -> Result<(), OrganizerError> {
     let mut promised = BTreeMap::<(u64, u64, u64), u64>::new();
     let mut total = BTreeMap::<(u64, u64), u64>::new();
-    for receipt in state
+    let all_receipts = state
         .receipts
         .iter()
-        .chain(state.aid_receipts.iter().map(|row| &row.practice))
-    {
+        .chain(state.aid_receipts.iter().map(|row| &row.practice));
+    for receipt in all_receipts {
         for row in &receipt.time_use {
             let p = config
                 .participants

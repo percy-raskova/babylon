@@ -5,7 +5,7 @@ use crate::national_household_allocation::HouseholdBudgetKey;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::geography::CountyGeoid;
 fn county() -> CountyGeoid {
-    CountyGeoid::try_from("26163").unwrap()
+    CountyGeoid::try_from("26163").expect("the fixture value fits the target range")
 }
 fn margins() -> HouseholdLeafMargins {
     HouseholdLeafMargins {
@@ -42,10 +42,10 @@ fn exact_eight_margins_and_identity_survive_reordered_children_and_count_changes
     let second = child(2);
     let forward =
         refine::refine_parent(county(), first.parent_key, margins(), vec![&first, &second])
-            .unwrap();
+            .expect("the fixture call `refine_parent` succeeds for the authored inputs");
     let backward =
         refine::refine_parent(county(), first.parent_key, margins(), vec![&second, &first])
-            .unwrap();
+            .expect("the fixture call `refine_parent` succeeds for the authored inputs");
     assert_eq!(forward, backward);
     for index in 0..8 {
         assert_eq!(
@@ -65,7 +65,7 @@ fn exact_eight_margins_and_identity_survive_reordered_children_and_count_changes
         margins(),
         vec![&changed, &second],
     )
-    .unwrap();
+    .expect("the fixture call `refine_parent` succeeds for the authored inputs");
     assert_eq!(
         forward
             .iter()
@@ -77,9 +77,13 @@ fn exact_eight_margins_and_identity_survive_reordered_children_and_count_changes
             .collect::<Vec<_>>()
     );
     assert_eq!(
-        forward.last().unwrap().principal_id,
+        forward
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .principal_id,
         household_principal(
-            EconomicLocation::domestic_county(county()).unwrap(),
+            EconomicLocation::domestic_county(county())
+                .expect("the fixture geoid names a domestic county"),
             first.parent_key
         )
     );
@@ -122,7 +126,7 @@ fn collective_residence_keeps_positive_people_without_fabricating_households() {
         collective,
         vec![],
     )
-    .unwrap();
+    .expect("the fixture call `refine_parent` succeeds for the authored inputs");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].margins, collective);
     assert_eq!(

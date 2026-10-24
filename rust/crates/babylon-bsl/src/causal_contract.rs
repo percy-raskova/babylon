@@ -1283,7 +1283,9 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                walk_effects_with_limits(&ast, limits).unwrap_err(),
+                walk_effects_with_limits(&ast, limits).expect_err(
+                    "the fixture call `walk_effects_with_limits` fails for the authored inputs"
+                ),
                 expected
             );
         }
@@ -1292,7 +1294,8 @@ mod tests {
     #[test]
     fn missing_role_is_an_uncoded_mandatory_metadata_error() {
         let ast = wrapped(":evidence derived", "(emit EventType/NOTICE)");
-        let error = parse_rule_contract(&ast).unwrap_err();
+        let error = parse_rule_contract(&ast)
+            .expect_err("`parse_rule_contract` rejects the malformed declaration");
         assert_eq!(error.spec_code(), None);
         assert_eq!(error, ContractError::MissingMetadata { keyword: "role" });
     }
@@ -1300,7 +1303,8 @@ mod tests {
     #[test]
     fn missing_evidence_is_an_uncoded_mandatory_metadata_error() {
         let ast = wrapped(":role mechanic", "(emit EventType/NOTICE)");
-        let error = parse_rule_contract(&ast).unwrap_err();
+        let error = parse_rule_contract(&ast)
+            .expect_err("`parse_rule_contract` rejects the malformed declaration");
         assert_eq!(error.spec_code(), None);
         assert_eq!(
             error,
@@ -1316,8 +1320,8 @@ mod tests {
             (":role shock :evidence derived", "role", "shock"),
             (":role mechanic :evidence asserted", "evidence", "asserted"),
         ] {
-            let error =
-                parse_rule_contract(&wrapped(options, "(emit EventType/NOTICE)")).unwrap_err();
+            let error = parse_rule_contract(&wrapped(options, "(emit EventType/NOTICE)"))
+                .expect_err("`parse_rule_contract` rejects the malformed declaration");
             assert_eq!(error.spec_code(), Some("E-PARSE-015"));
             assert_eq!(
                 error,
@@ -1341,7 +1345,7 @@ mod tests {
                 &format!(":role mechanic :evidence {source}"),
                 "(emit EventType/NOTICE)",
             ))
-            .unwrap();
+            .expect("the authored rule contract parses");
             assert_eq!(contract.evidence, expected);
         }
     }
@@ -1354,7 +1358,7 @@ mod tests {
                (update-node it territory/public-health-pressure (set 1)) \
                (emit EventType/TERMINAL_DECISION)))",
         );
-        let error = check_rule_contract(&ast).unwrap_err();
+        let error = check_rule_contract(&ast).expect_err("the malformed rule contract is refused");
         assert_eq!(error.spec_code(), Some("E-LOAD-060"));
         assert!(matches!(
             error,
@@ -1402,7 +1406,8 @@ mod tests {
             "(update-node self social-class/population (set 0)) \
              (emit EventType/POPULATION_ATTRITION)",
         );
-        let contract = check_rule_contract(&ast).unwrap();
+        let contract =
+            check_rule_contract(&ast).expect("the authored rule passes the contract check");
         assert_eq!(contract.role, RuleRole::Mechanic);
     }
 
@@ -1412,10 +1417,14 @@ mod tests {
             ":role mechanic :evidence derived",
             "(update-node self social-class/population (set 0))",
         );
-        let parsed = parse_rule_contract(&ast).unwrap();
-        validate_governed_attribution(&parsed).unwrap();
-        authorize_rule_effects(&ast, &parsed).unwrap();
-        assert_eq!(check_rule_contract(&ast).unwrap(), parsed);
+        let parsed = parse_rule_contract(&ast).expect("the authored rule contract parses");
+        validate_governed_attribution(&parsed).expect("the authored fixture satisfies the rule");
+        authorize_rule_effects(&ast, &parsed)
+            .expect("the fixture call `authorize_rule_effects` succeeds for the authored inputs");
+        assert_eq!(
+            check_rule_contract(&ast).expect("the authored rule passes the contract check"),
+            parsed
+        );
     }
 
     #[test]
@@ -1432,7 +1441,9 @@ mod tests {
         };
 
         assert_eq!(
-            authorize_rule_effects(&restricted_ast, &mechanic_contract).unwrap_err(),
+            authorize_rule_effects(&restricted_ast, &mechanic_contract).expect_err(
+                "the fixture call `authorize_rule_effects` fails for the authored inputs"
+            ),
             ContractError::MismatchedRuleContract {
                 ast_contract: RuleContract {
                     rule_id: "demo/restricted".to_owned(),
@@ -1489,9 +1500,11 @@ mod tests {
                 "(rule {rule_id} :role mechanic :evidence derived \
                  :material-basis \"role escalation probe\" :fuel 8 (bindings) (effects))"
             ));
-            let contract = parse_rule_contract(&ast).unwrap();
+            let contract = parse_rule_contract(&ast).expect("the authored rule contract parses");
             assert_eq!(
-                validate_governed_attribution(&contract).unwrap_err(),
+                validate_governed_attribution(&contract).expect_err(
+                    "the malformed input is rejected by `validate_governed_attribution`"
+                ),
                 ContractError::GovernedAttributionMismatch {
                     rule_id: rule_id.to_owned(),
                     expected_role: RuleRole::Recognizer,
@@ -1509,9 +1522,10 @@ mod tests {
             "(rule economics/fundamental-theorem :role mechanic :evidence designed \
              :material-basis \"evidence relabelling probe\" :fuel 8 (bindings) (effects))",
         );
-        let contract = parse_rule_contract(&ast).unwrap();
+        let contract = parse_rule_contract(&ast).expect("the authored rule contract parses");
         assert_eq!(
-            validate_governed_attribution(&contract).unwrap_err(),
+            validate_governed_attribution(&contract)
+                .expect_err("the malformed input is rejected by `validate_governed_attribution`"),
             ContractError::GovernedAttributionMismatch {
                 rule_id: "economics/fundamental-theorem".to_owned(),
                 expected_role: RuleRole::Mechanic,
@@ -1545,7 +1559,9 @@ mod tests {
                 evidence,
             };
             assert_eq!(
-                reduce_audit_receipts(&forged, &[], &[]).unwrap_err(),
+                reduce_audit_receipts(&forged, &[], &[]).expect_err(
+                    "the fixture call `reduce_audit_receipts` fails for the authored inputs"
+                ),
                 ContractError::GovernedAttributionMismatch {
                     rule_id: rule_id.to_owned(),
                     expected_role: RuleRole::Mechanic,
@@ -1592,7 +1608,9 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                check_rule_contract(&ast).unwrap_err().spec_code(),
+                check_rule_contract(&ast)
+                    .expect_err("the malformed rule contract is refused")
+                    .spec_code(),
                 Some("E-LOAD-060")
             );
         }
@@ -1610,7 +1628,8 @@ mod tests {
                 "(remove-hyperedge group HyperedgeType/COMMUNITY)",
             ] {
                 let ast = wrapped(&format!(":role {role} :evidence designed"), effect);
-                let error = check_rule_contract(&ast).unwrap_err();
+                let error =
+                    check_rule_contract(&ast).expect_err("the malformed rule contract is refused");
                 assert_eq!(error.spec_code(), Some("E-LOAD-060"));
                 assert!(matches!(
                     error,
@@ -1634,7 +1653,8 @@ mod tests {
                  (update-hyperedge it community/heat (set 0.5i))))",
         );
         assert_eq!(
-            effect_footprint(&ast).unwrap(),
+            effect_footprint(&ast)
+                .expect("the fixture call `effect_footprint` succeeds for the authored inputs"),
             vec![
                 EffectSignature::EdgeField("solidarity/strength".to_owned()),
                 EffectSignature::HyperedgeField("community/heat".to_owned()),
@@ -1650,7 +1670,8 @@ mod tests {
              (emit EventType/CONTROL_RATIO_CRISIS (add-node 1) (emit 2))))",
         );
         assert_eq!(
-            effect_footprint(&ast).unwrap(),
+            effect_footprint(&ast)
+                .expect("the fixture call `effect_footprint` succeeds for the authored inputs"),
             vec![EffectSignature::Event(
                 "EventType/CONTROL_RATIO_CRISIS".to_owned()
             )]
@@ -1667,7 +1688,8 @@ mod tests {
                (payload (add-node NodeType/TERRITORY county)))))",
         );
         assert_eq!(
-            effect_footprint(&ast).unwrap(),
+            effect_footprint(&ast)
+                .expect("the fixture call `effect_footprint` succeeds for the authored inputs"),
             vec![
                 EffectSignature::Event("EventType/CONTROL_RATIO_CRISIS".to_owned()),
                 EffectSignature::Shape(ShapeVerb::AddNode),
@@ -1764,7 +1786,7 @@ mod tests {
             &["FIRST".to_owned(), "EventType/SECOND".to_owned()],
             &records,
         )
-        .unwrap();
+        .expect("the audit receipts aggregate");
         assert_eq!(
             receipts
                 .iter()
@@ -1783,9 +1805,16 @@ mod tests {
 
     #[test]
     fn receipt_capacity_refuses_an_unrepresentable_last_ordinal_before_allocation() {
-        assert_eq!(checked_receipt_capacity(2, 1).unwrap(), 3);
         assert_eq!(
-            checked_receipt_capacity(u64::from(u32::MAX) + 2, 0).unwrap_err(),
+            checked_receipt_capacity(2, 1).expect(
+                "the fixture call `checked_receipt_capacity` succeeds for the authored inputs"
+            ),
+            3
+        );
+        assert_eq!(
+            checked_receipt_capacity(u64::from(u32::MAX) + 2, 0).expect_err(
+                "the fixture call `checked_receipt_capacity` fails for the authored inputs"
+            ),
             ContractError::ReceiptOrdinalOverflow
         );
     }
@@ -1808,7 +1837,9 @@ mod tests {
             },
         };
         assert_eq!(
-            reduce_audit_receipts(&contract, &[], &[record]).unwrap_err(),
+            reduce_audit_receipts(&contract, &[], &[record]).expect_err(
+                "the fixture call `reduce_audit_receipts` fails for the authored inputs"
+            ),
             ContractError::MismatchedWriteOrdinal {
                 expected: 0,
                 actual: 1,
@@ -1834,7 +1865,9 @@ mod tests {
             },
         };
         assert_eq!(
-            reduce_audit_receipts(&contract, &[], &[record]).unwrap_err(),
+            reduce_audit_receipts(&contract, &[], &[record]).expect_err(
+                "the fixture call `reduce_audit_receipts` fails for the authored inputs"
+            ),
             ContractError::MismatchedWriteAttribution {
                 expected: "demo/probe".to_owned(),
                 actual: "demo/other".to_owned(),
@@ -1878,9 +1911,10 @@ mod tests {
                 value,
             },
         };
-        let first = reduce_audit_receipts(&contract, &[], &[record(1, Some(9.0), 8.0)]).unwrap();
-        let second =
-            reduce_audit_receipts(&contract, &[], &[record(999, Some(20.0), 3.0)]).unwrap();
+        let first = reduce_audit_receipts(&contract, &[], &[record(1, Some(9.0), 8.0)])
+            .expect("the audit receipts aggregate");
+        let second = reduce_audit_receipts(&contract, &[], &[record(999, Some(20.0), 3.0)])
+            .expect("the audit receipts aggregate");
         assert_eq!(first, second);
     }
 
@@ -1891,8 +1925,8 @@ mod tests {
             role: RuleRole::Recognizer,
             evidence: EvidenceClass::Derived,
         };
-        let error =
-            reduce_audit_receipts(&contract, &["TERMINAL_DECISION".to_owned()], &[]).unwrap_err();
+        let error = reduce_audit_receipts(&contract, &["TERMINAL_DECISION".to_owned()], &[])
+            .expect_err("the fixture call `reduce_audit_receipts` fails for the authored inputs");
         assert_eq!(error.spec_code(), Some("E-LOAD-060"));
         assert!(matches!(
             error,
@@ -1941,7 +1975,7 @@ mod tests {
                 write(1, "institution/control-crisis-tick"),
             ],
         )
-        .unwrap();
+        .expect("the audit receipts aggregate");
         assert_eq!(receipts.len(), 3);
         assert_eq!(receipts[0].ordinal, 0);
         assert_eq!(receipts[2].ordinal, 2);

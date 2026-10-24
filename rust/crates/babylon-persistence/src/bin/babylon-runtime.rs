@@ -1440,10 +1440,12 @@ mod tests {
             Ok(Command::Describe)
         );
         let descriptor = super::content_descriptor().expect("captured content description");
-        let foundation = super::material_diagnostic_foundation().unwrap();
+        let foundation = super::material_diagnostic_foundation().expect(
+            "the fixture call `material_diagnostic_foundation` succeeds for the authored inputs",
+        );
         assert_eq!(
             descriptor["scope"]["duration"],
-            serde_json::to_value(foundation.spec().duration).unwrap()
+            serde_json::to_value(foundation.spec().duration).expect("the value serializes to JSON")
         );
         assert_eq!(
             descriptor["scope"]["duration"],
@@ -1453,19 +1455,33 @@ mod tests {
             descriptor["scope"]["fixed_replay_seed"],
             i64::from_be_bytes(foundation.graph_foundation().rng_seed().to_be_bytes())
         );
-        let session = foundation.into_session().unwrap();
-        let state = session.graph_session().stable_graph_state().unwrap();
+        let session = foundation
+            .into_session()
+            .expect("the fixture opens a session");
+        let state = session
+            .graph_session()
+            .stable_graph_state()
+            .expect("the fixture graph has a stable state");
         assert_eq!(descriptor["scope"]["scenario"], state.scenario_scope());
-        let inventory = descriptor["observables"].as_array().unwrap();
+        let inventory = descriptor["observables"]
+            .as_array()
+            .expect("the JSON fixture field is an array");
         assert!(!inventory.is_empty());
         assert_eq!(inventory.len(), state.rows().node_f64().len());
-        assert!(inventory
-            .iter()
-            .all(|row| row.as_object().unwrap().len() == 5));
+        assert!(inventory.iter().all(|row| row
+            .as_object()
+            .expect("the JSON fixture field is an object")
+            .len()
+            == 5));
         for namespace in ["territory/qcew-", "organization/qcew-"] {
             let fixed: Vec<_> = inventory
                 .iter()
-                .filter(|row| row["field"].as_str().unwrap().starts_with(namespace))
+                .filter(|row| {
+                    row["field"]
+                        .as_str()
+                        .expect("the JSON fixture field is a string")
+                        .starts_with(namespace)
+                })
                 .collect();
             assert!(!fixed.is_empty());
             assert!(fixed.iter().all(|row| row["role"] == "observed_baseline"));
@@ -1485,10 +1501,13 @@ mod tests {
         use babylon_graph::stable_state::StableGraphStateRowsInput;
 
         let session = super::material_diagnostic_foundation()
-            .unwrap()
+            .expect("the fixture call `material_diagnostic_foundation` succeeds for the authored inputs")
             .into_session()
-            .unwrap();
-        let before = session.graph_session().stable_graph_state().unwrap();
+            .expect("the fixture opens a session");
+        let before = session
+            .graph_session()
+            .stable_graph_state()
+            .expect("the fixture graph has a stable state");
         let rows = before.rows();
         for remove in [true, false] {
             let mut node_f64 = rows.node_f64().to_vec();
@@ -1509,7 +1528,7 @@ mod tests {
                     hyperedge_f64: rows.hyperedge_f64().to_vec(),
                 },
             )
-            .unwrap();
+            .expect("the authored rows compose a stable graph state");
             assert!(
                 super::collect_observable_transitions(&before, &after).is_err(),
                 "captured observable identities must survive the tick (remove={remove})"

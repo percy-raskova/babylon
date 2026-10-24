@@ -141,31 +141,41 @@ mod tests {
         progress.observe(&state, Duration::from_secs(10));
         progress.observe(&state, Duration::from_secs(22));
         assert_eq!(
-            progress.caption().unwrap(),
+            progress
+                .caption()
+                .expect("the fixture call `caption` succeeds for the authored inputs"),
             "Opening campaign · 12s elapsed"
         );
         state.ready(0, None);
         progress.observe(&state, Duration::from_secs(25));
         assert_eq!(
-            progress.caption().unwrap(),
+            progress
+                .caption()
+                .expect("the fixture call `caption` succeeds for the authored inputs"),
             "Loading opening observation · 0s elapsed"
         );
         assert!(state.installed(&state.context()));
         progress.observe(&state, Duration::from_secs(29));
         assert!(progress.caption().is_none());
-        let request = state.begin_advance().unwrap();
+        let request = state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         assert!(state.begin_advance().is_none());
         progress.observe(&state, Duration::from_secs(30));
         progress.observe(&state, Duration::from_secs(37));
         assert_eq!(
-            progress.caption().unwrap(),
+            progress
+                .caption()
+                .expect("the fixture call `caption` succeeds for the authored inputs"),
             "Period 1 requested; awaiting commit · 7s elapsed"
         );
         assert_eq!(state.durable_tick, 0);
         assert!(state.acknowledge(request, 1, Some("committed".into())));
         progress.observe(&state, Duration::from_secs(38));
         assert_eq!(
-            progress.caption().unwrap(),
+            progress
+                .caption()
+                .expect("the fixture call `caption` succeeds for the authored inputs"),
             "Loading saved period 1 · 0s elapsed"
         );
         assert!(state.begin_advance().is_none());
@@ -181,7 +191,9 @@ mod tests {
             state.ready(3, None);
             let context = state.context();
             assert!(state.installed(&context));
-            let request = state.begin_advance().unwrap();
+            let request = state
+                .begin_advance()
+                .expect("the session begins the authored advance");
             let mut progress = OperationProgress::default();
             // First stage arrives before track has seen the pending request.
             progress
@@ -192,7 +204,7 @@ mod tests {
                     Stage::PreparingCommitments,
                     Duration::from_secs(30),
                 )
-                .unwrap();
+                .expect("the fixture call `report_stage` succeeds for the authored inputs");
             progress
                 .report_stage(
                     &state,
@@ -201,9 +213,11 @@ mod tests {
                     Stage::ResolvingEconomy,
                     Duration::from_secs(37),
                 )
-                .unwrap();
+                .expect("the fixture call `report_stage` succeeds for the authored inputs");
             assert_eq!(
-                progress.caption().unwrap(),
+                progress
+                    .caption()
+                    .expect("the fixture call `caption` succeeds for the authored inputs"),
                 "Period 4 · Resolving economy · 7s elapsed"
             );
             let before = progress.caption();
@@ -235,7 +249,7 @@ mod tests {
             } else {
                 assert!(progress
                     .caption()
-                    .unwrap()
+                    .expect("the fixture call `caption` succeeds for the authored inputs")
                     .starts_with("Loading saved period"));
             }
         }
@@ -250,7 +264,9 @@ mod tests {
         state.inspect_tick(1);
         progress.observe(&state, Duration::from_secs(25));
         assert_eq!(
-            progress.caption().unwrap(),
+            progress
+                .caption()
+                .expect("the fixture call `caption` succeeds for the authored inputs"),
             "Loading saved period 1 · 0s elapsed"
         );
         state.fail("Read refused".into());

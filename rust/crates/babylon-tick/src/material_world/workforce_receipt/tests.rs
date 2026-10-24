@@ -24,10 +24,12 @@ fn staffing() -> StaffingMemberReceipt {
         member: StaffingMemberBinding::try_new(
             StaffingMemberId::from_bytes([4; 32]),
             FinalDemandPrincipalId::from_bytes([5; 32]),
-            "county:26163".parse().unwrap(),
+            "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             2,
         )
-        .unwrap(),
+        .expect("the authored fixture satisfies the constructor invariants"),
         hours_per_person: 4,
         opening_employed: 1,
         opening_reserve: 1,
@@ -71,7 +73,8 @@ fn member_wire_roundtrips_and_refuses_false_population_or_wage_partitions() {
     let staff = staffing();
     let work = attendance();
     let mut bytes = vec![];
-    workforce_receipt::encode_staffing(&staff, 1, &mut bytes).unwrap();
+    workforce_receipt::encode_staffing(&staff, 1, &mut bytes)
+        .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(bytes.len(), STAFFING_BYTES);
     assert_eq!(
         decode_staffing(
@@ -81,11 +84,12 @@ fn member_wire_roundtrips_and_refuses_false_population_or_wage_partitions() {
             },
             1
         )
-        .unwrap(),
+        .expect("the canonical bytes decode into the declared type"),
         staff
     );
     bytes.clear();
-    workforce_receipt::encode_attendance(&work, 1, &mut bytes).unwrap();
+    workforce_receipt::encode_attendance(&work, 1, &mut bytes)
+        .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(bytes.len(), ATTENDANCE_BYTES);
     assert_eq!(
         decode_attendance(
@@ -95,7 +99,7 @@ fn member_wire_roundtrips_and_refuses_false_population_or_wage_partitions() {
             },
             1
         )
-        .unwrap(),
+        .expect("the canonical bytes decode into the declared type"),
         work
     );
     let mut corrupt = bytes.clone();
@@ -161,7 +165,7 @@ fn member_receipts_authenticate_payee_and_earned_wages_against_the_aggregate() {
         std::slice::from_ref(&work),
         std::slice::from_ref(&wage),
     )
-    .unwrap();
+    .expect("the authored fixture passes validation");
     assert!(validate(
         std::slice::from_ref(&staff),
         std::slice::from_ref(&work),

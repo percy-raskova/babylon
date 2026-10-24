@@ -71,7 +71,7 @@ pub(crate) fn opening() -> MaterialCircuitState {
             }])
             .collect(),
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let costs = HistoricalCostBook::open(
         &book,
         inventory
@@ -87,7 +87,7 @@ pub(crate) fn opening() -> MaterialCircuitState {
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     MaterialCircuitState {
         capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
@@ -251,7 +251,9 @@ pub(crate) fn opening() -> MaterialCircuitState {
         handling_coefficients: vec![],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,
@@ -276,7 +278,7 @@ pub(crate) fn funded(mut state: MaterialCircuitState) -> MaterialCircuitState {
             }),
             money(price),
         )
-        .unwrap()
+        .expect("the fixture admits the authored purchase")
         .0;
     }
     state
@@ -287,7 +289,8 @@ pub(crate) fn native_services_feed_later_stages_without_freight_or_stored_servic
     let mut state = opening();
     state.inventory[0].quantity = 2;
     let state = funded(state);
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(
         closed
             .production
@@ -321,7 +324,13 @@ pub(crate) fn native_services_feed_later_stages_without_freight_or_stored_servic
     let CircuitAccounting::Monetary(economy) = &closed.state.accounting else {
         panic!()
     };
-    assert_eq!(economy.book.total_cash_and_reserves().unwrap(), money(30));
+    assert_eq!(
+        economy
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
+        money(30)
+    );
     assert_eq!(
         economy
             .costs
@@ -329,20 +338,25 @@ pub(crate) fn native_services_feed_later_stages_without_freight_or_stored_servic
             .stocks
             .iter()
             .find(|r| r.good_id == good(3))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .amount,
         money(6)
     );
     assert!(closed.state.service_orders.is_empty());
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&closed.state).unwrap();
-    assert_eq!(decode_material_circuit_state(&bytes).unwrap(), closed.state);
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&closed.state)
+        .expect("the canonical material state encodes");
+    assert_eq!(
+        decode_material_circuit_state(&bytes).expect("the canonical material bytes decode"),
+        closed.state
+    );
 }
 
 #[test]
 pub(crate) fn absent_utility_constrains_services_and_goods_without_spending_work_twice() {
     let mut state = opening();
     state.inventory[0].quantity = 0;
-    let closed = babylon_material_circuit::advance_material_circuit(&funded(state)).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&funded(state))
+        .expect("the authored material state advances one period");
     assert!(closed.production.iter().all(|r| r.produced_batches == 0));
     assert!(closed
         .service_performance

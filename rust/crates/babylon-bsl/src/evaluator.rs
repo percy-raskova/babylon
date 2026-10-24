@@ -400,7 +400,10 @@ fn atom_value(atom: &Atom, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
             // (`floor`/`cap: None`, i.e. the full `(0, ∞)` domain) — a bound
             // is something only a `defconst`'s `:floor`/`:cap` narrows
             // (`scenario.rs`).
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let raw = s.unscaled as f64 / 10f64.powi(i32::from(s.scale));
             let value = Ratio::new(raw).map_err(|e| {
                 EvalError::plain(format!(
@@ -419,7 +422,10 @@ fn atom_value(atom: &Atom, env: &EvalEnv<'_>) -> Result<Value, EvalError> {
         Atom::Scaled(s) => {
             // A p/i/c literal is unit-interval with scale ≤ 9, so the
             // unscaled integer is < 10⁹ — exact in f64 by construction.
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let value = s.unscaled as f64 / 10f64.powi(i32::from(s.scale));
             Ok(Value::Real(value))
         }
@@ -684,7 +690,10 @@ fn eval_quantize_mass(
         Value::Real(value) => value,
         // `quantize-mass` is the explicit governed binary64 crossing; exact
         // nanounit rounding begins from the represented f64 value afterward.
-        #[allow(clippy::cast_precision_loss)]
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "the authored integer magnitudes are exact in f64"
+        )]
         Value::Int(value) => value as f64,
         other => {
             return Err(EvalError::plain(format!(
@@ -1147,7 +1156,10 @@ fn fold_count(elements: &[Element]) -> Result<Value, EvalError> {
     Ok(Value::Int(n))
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`fold_sum` takes every authored field explicitly"
+)]
 fn fold_sum(
     elements: &[Element],
     elem_name: Option<&str>,
@@ -1185,7 +1197,10 @@ fn fold_sum(
     Ok(acc.expect("non-empty elements guarantees at least one accumulation"))
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`fold_mean` takes every authored field explicitly"
+)]
 fn fold_mean(
     elements: &[Element],
     elem_name: Option<&str>,
@@ -1224,7 +1239,10 @@ fn fold_mean(
         };
         let w = match weight_val {
             Some(Value::Real(r)) => r,
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             Some(Value::Int(n)) => n as f64,
             Some(other) => {
                 return Err(EvalError::plain(format!(
@@ -1261,7 +1279,10 @@ fn fold_mean(
     Ok(Value::Real(result))
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`fold_min_max` takes every authored field explicitly"
+)]
 fn fold_min_max(
     elements: &[Element],
     elem_name: Option<&str>,
@@ -1746,7 +1767,10 @@ fn real_lane(value: &Value) -> Option<f64> {
         Value::Real(r) => Some(*r),
         // i64 → f64 is round-to-nearest and deterministic; exactness above
         // 2⁵³ is not promised by §3.3's promotion, determinism is.
-        #[allow(clippy::cast_precision_loss)]
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "the authored integer magnitudes are exact in f64"
+        )]
         Value::Int(n) => Some(*n as f64),
         _ => None,
     }
@@ -2051,7 +2075,10 @@ fn apply_equality(op: &str, lhs: &Value, rhs: &Value) -> Result<Value, EvalError
         // deterministic — clippy's suggested epsilon margin would be an
         // invented semantics the spec does not have.
         _ => match (real_lane(lhs), real_lane(rhs)) {
-            #[allow(clippy::float_cmp)]
+            #[allow(
+                clippy::float_cmp,
+                reason = "these comparisons pin exact authored f64 values"
+            )]
             (Some(a), Some(b)) => a == b,
             _ => {
                 return Err(EvalError::plain(format!(
@@ -2077,7 +2104,8 @@ mod tests {
     #[test]
     fn native_expression_refusal_identifies_the_requested_operation() {
         for operation in ["material-cycle", "organizer-products", "organizer-practice"] {
-            let error = eval_with(&format!("({operation})"), HashMap::new(), &mut 100).unwrap_err();
+            let error = eval_with(&format!("({operation})"), HashMap::new(), &mut 100)
+                .expect_err("the authored expression is refused");
             assert!(
                 error
                     .message
@@ -2125,7 +2153,8 @@ mod tests {
         // consumed fuel is exactly the static per-node sum — cmp(1) +
         // variable-ref(1) + literal(0) = 2 of the declared 64.
         let mut fuel = 64;
-        let result = eval_with("(< wealth 1000.5$)", wealth_bindings(), &mut fuel).unwrap();
+        let result = eval_with("(< wealth 1000.5$)", wealth_bindings(), &mut fuel)
+            .expect("the authored expression evaluates");
         assert_eq!(result, Value::Bool(true));
         assert_eq!(
             fuel, 62,
@@ -2135,35 +2164,53 @@ mod tests {
 
     #[test]
     fn arithmetic_is_strictly_binary() {
-        let err = eval("(+ 1 2 3)").unwrap_err();
+        let err = eval("(+ 1 2 3)").expect_err("the authored expression is refused");
         assert!(err.message.contains("E-PARSE-040"), "{err}");
-        assert_eq!(eval("(+ 1 2)").unwrap(), Value::Int(3));
+        assert_eq!(
+            eval("(+ 1 2)").expect("the authored expression evaluates"),
+            Value::Int(3)
+        );
     }
 
     #[test]
     fn int_arithmetic_is_checked_i64() {
-        assert_eq!(eval("(* 3 4)").unwrap(), Value::Int(12));
-        let err = eval("(* 9223372036854775807 2)").unwrap_err();
+        assert_eq!(
+            eval("(* 3 4)").expect("the authored expression evaluates"),
+            Value::Int(12)
+        );
+        let err =
+            eval("(* 9223372036854775807 2)").expect_err("the authored expression is refused");
         assert_eq!(err.code, Some(EvalCode::Overflow));
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-011");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-011"
+        );
     }
 
     #[test]
     fn int_division_is_a_loud_unpinned_gap_not_truncation() {
-        let err = eval("(/ 4 2)").unwrap_err();
+        let err = eval("(/ 4 2)").expect_err("the authored expression is refused");
         assert_eq!(err.code, None);
         assert!(err.message.contains("no pinned semantics"), "{err}");
     }
 
     #[test]
     fn int_promotes_to_real_in_a_binary64_expression() {
-        assert_eq!(eval("(+ 1 0.5c)").unwrap(), Value::Real(1.5));
-        assert_eq!(eval("(* 2 0.25p)").unwrap(), Value::Real(0.5));
+        assert_eq!(
+            eval("(+ 1 0.5c)").expect("the authored expression evaluates"),
+            Value::Real(1.5)
+        );
+        assert_eq!(
+            eval("(* 2 0.25p)").expect("the authored expression evaluates"),
+            Value::Real(0.5)
+        );
     }
 
     #[test]
     fn binary64_division_by_zero_is_e_eval_012() {
-        let err = eval("(/ 1 0.0c)").unwrap_err();
+        let err = eval("(/ 1 0.0c)").expect_err("the authored expression is refused");
         assert_eq!(err.code, Some(EvalCode::DivisionByZero));
     }
 
@@ -2174,19 +2221,24 @@ mod tests {
         for _ in 0..6 {
             source = format!("(* {source} {source})");
         }
-        let err = eval(&source).unwrap_err();
+        let err = eval(&source).expect_err("the authored expression is refused");
         assert_eq!(err.code, Some(EvalCode::NonFinite));
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-014");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-014"
+        );
     }
 
     #[test]
     fn currency_addition_and_subtraction_are_checked_both_ends() {
         assert_eq!(
-            eval("(+ 900$ 100.5$)").unwrap(),
+            eval("(+ 900$ 100.5$)").expect("the authored expression evaluates"),
             Value::Currency(Currency::from_micro_units(1_000_500_000))
         );
         // Below zero: E-EVAL-010, the [0, ∞) domain — never a signed result.
-        let err = eval("(- 100$ 200$)").unwrap_err();
+        let err = eval("(- 100$ 200$)").expect_err("the authored expression is refused");
         assert_eq!(err.code, Some(EvalCode::CurrencyNegative));
         // i128 overflow through a binding: E-EVAL-011.
         let big = HashMap::from([(
@@ -2194,15 +2246,22 @@ mod tests {
             Value::Currency(Currency::from_micro_units(i128::MAX)),
         )]);
         let mut fuel = 10_000;
-        let err = eval_with("(+ hoard hoard)", big, &mut fuel).unwrap_err();
+        let err = eval_with("(+ hoard hoard)", big, &mut fuel)
+            .expect_err("the authored expression is refused");
         assert_eq!(err.code, Some(EvalCode::Overflow));
     }
 
     #[test]
     fn currency_times_coefficient_rounds_half_even_and_commutes() {
         let half = Value::Currency(Currency::from_micro_units(500_000_000));
-        assert_eq!(eval("(* 1000$ 0.5c)").unwrap(), half);
-        assert_eq!(eval("(* 0.5c 1000$)").unwrap(), half);
+        assert_eq!(
+            eval("(* 1000$ 0.5c)").expect("the authored expression evaluates"),
+            half
+        );
+        assert_eq!(
+            eval("(* 0.5c 1000$)").expect("the authored expression evaluates"),
+            half
+        );
     }
 
     /// §3.2 addendum (#492/ADR194): the whole point — a Ratio OUTSIDE
@@ -2211,12 +2270,18 @@ mod tests {
     #[test]
     fn currency_times_ratio_accepts_values_above_one_and_commutes() {
         let expected = Value::Currency(Currency::from_micro_units(2_000_000_000));
-        assert_eq!(eval("(* 1000$ 2r)").unwrap(), expected);
-        assert_eq!(eval("(* 2r 1000$)").unwrap(), expected);
+        assert_eq!(
+            eval("(* 1000$ 2r)").expect("the authored expression evaluates"),
+            expected
+        );
+        assert_eq!(
+            eval("(* 2r 1000$)").expect("the authored expression evaluates"),
+            expected
+        );
         // rent_spike_multiplier's exact moddable-to-2.0 shape from the
         // fixture the Territory port train cites.
         assert_eq!(
-            eval("(* 1500.5$ 2.0r)").unwrap(),
+            eval("(* 1500.5$ 2.0r)").expect("the authored expression evaluates"),
             Value::Currency(Currency::from_micro_units(3_001_000_000))
         );
     }
@@ -2228,7 +2293,7 @@ mod tests {
         // beyond any of the four named consumers' domains are still legal
         // arithmetic here; the type itself is unbounded above.
         assert_eq!(
-            eval("(* 1$ 1000000r)").unwrap(),
+            eval("(* 1$ 1000000r)").expect("the authored expression evaluates"),
             Value::Currency(Currency::from_micro_units(1_000_000_000_000))
         );
     }
@@ -2243,15 +2308,25 @@ mod tests {
         let bindings = HashMap::from([(
             "k".to_owned(),
             Value::Ratio {
-                value: Ratio::new(12.0).unwrap(),
+                value: Ratio::new(12.0)
+                    .expect("the constructor accepts the authored fixture arguments"),
                 floor: None,
-                cap: Some(Ratio::new(10.0).unwrap()),
+                cap: Some(
+                    Ratio::new(10.0)
+                        .expect("the constructor accepts the authored fixture arguments"),
+                ),
             },
         )]);
         let mut fuel = 10_000;
-        let err = eval_with("(* 100$ k)", bindings, &mut fuel).unwrap_err();
+        let err = eval_with("(* 100$ k)", bindings, &mut fuel)
+            .expect_err("the authored expression is refused");
         assert_eq!(err.code, Some(EvalCode::RatioOutsideDeclaredDomain));
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-041");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-041"
+        );
     }
 
     /// The mirror image: a capped Ratio AT or under its cap still multiplies
@@ -2263,14 +2338,19 @@ mod tests {
         let bindings = HashMap::from([(
             "k".to_owned(),
             Value::Ratio {
-                value: Ratio::new(10.0).unwrap(),
+                value: Ratio::new(10.0)
+                    .expect("the constructor accepts the authored fixture arguments"),
                 floor: None,
-                cap: Some(Ratio::new(10.0).unwrap()),
+                cap: Some(
+                    Ratio::new(10.0)
+                        .expect("the constructor accepts the authored fixture arguments"),
+                ),
             },
         )]);
         let mut fuel = 10_000;
         assert_eq!(
-            eval_with("(* 100$ k)", bindings, &mut fuel).unwrap(),
+            eval_with("(* 100$ k)", bindings, &mut fuel)
+                .expect("the authored expression evaluates"),
             Value::Currency(Currency::from_micro_units(1_000_000_000))
         );
     }
@@ -2283,15 +2363,25 @@ mod tests {
         let bindings = HashMap::from([(
             "k".to_owned(),
             Value::Ratio {
-                value: Ratio::new(1.0).unwrap(),
-                floor: Some(Ratio::new(1.0).unwrap()),
+                value: Ratio::new(1.0)
+                    .expect("the constructor accepts the authored fixture arguments"),
+                floor: Some(
+                    Ratio::new(1.0)
+                        .expect("the constructor accepts the authored fixture arguments"),
+                ),
                 cap: None,
             },
         )]);
         let mut fuel = 10_000;
-        let err = eval_with("(* 100$ k)", bindings, &mut fuel).unwrap_err();
+        let err = eval_with("(* 100$ k)", bindings, &mut fuel)
+            .expect_err("the authored expression is refused");
         assert_eq!(err.code, Some(EvalCode::RatioOutsideDeclaredDomain));
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-041");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-041"
+        );
     }
 
     /// A value strictly above its declared floor multiplies cleanly —
@@ -2302,14 +2392,22 @@ mod tests {
         let bindings = HashMap::from([(
             "k".to_owned(),
             Value::Ratio {
-                value: Ratio::new(1.5).unwrap(),
-                floor: Some(Ratio::new(1.0).unwrap()),
-                cap: Some(Ratio::new(3.0).unwrap()),
+                value: Ratio::new(1.5)
+                    .expect("the constructor accepts the authored fixture arguments"),
+                floor: Some(
+                    Ratio::new(1.0)
+                        .expect("the constructor accepts the authored fixture arguments"),
+                ),
+                cap: Some(
+                    Ratio::new(3.0)
+                        .expect("the constructor accepts the authored fixture arguments"),
+                ),
             },
         )]);
         let mut fuel = 10_000;
         assert_eq!(
-            eval_with("(* 100$ k)", bindings, &mut fuel).unwrap(),
+            eval_with("(* 100$ k)", bindings, &mut fuel)
+                .expect("the authored expression evaluates"),
             Value::Currency(Currency::from_micro_units(150_000_000))
         );
     }
@@ -2321,14 +2419,22 @@ mod tests {
         let bindings = HashMap::from([(
             "k".to_owned(),
             Value::Ratio {
-                value: Ratio::new(3.0).unwrap(),
-                floor: Some(Ratio::new(1.0).unwrap()),
-                cap: Some(Ratio::new(3.0).unwrap()),
+                value: Ratio::new(3.0)
+                    .expect("the constructor accepts the authored fixture arguments"),
+                floor: Some(
+                    Ratio::new(1.0)
+                        .expect("the constructor accepts the authored fixture arguments"),
+                ),
+                cap: Some(
+                    Ratio::new(3.0)
+                        .expect("the constructor accepts the authored fixture arguments"),
+                ),
             },
         )]);
         let mut fuel = 10_000;
         assert_eq!(
-            eval_with("(* 100$ k)", bindings, &mut fuel).unwrap(),
+            eval_with("(* 100$ k)", bindings, &mut fuel)
+                .expect("the authored expression evaluates"),
             Value::Currency(Currency::from_micro_units(300_000_000))
         );
     }
@@ -2364,27 +2470,30 @@ mod tests {
 
     #[test]
     fn currency_ratio_is_a_coefficient_with_both_domain_codes() {
-        assert_eq!(eval("(/ 500$ 1000$)").unwrap(), Value::Real(0.5));
-        let over = eval("(/ 1000$ 500$)").unwrap_err();
+        assert_eq!(
+            eval("(/ 500$ 1000$)").expect("the authored expression evaluates"),
+            Value::Real(0.5)
+        );
+        let over = eval("(/ 1000$ 500$)").expect_err("the authored expression is refused");
         assert_eq!(over.code, Some(EvalCode::CoefficientOutOfRange));
-        let zero = eval("(/ 500$ 0$)").unwrap_err();
+        let zero = eval("(/ 500$ 0$)").expect_err("the authored expression is refused");
         assert_eq!(zero.code, Some(EvalCode::DivisionByZero));
     }
 
     #[test]
     fn currency_div_integer_is_half_even_and_rejects_nonpositive_divisors() {
         assert_eq!(
-            eval("(/ 1000$ 4)").unwrap(),
+            eval("(/ 1000$ 4)").expect("the authored expression evaluates"),
             Value::Currency(Currency::from_micro_units(250_000_000))
         );
-        let err = eval("(/ 1000$ -4)").unwrap_err();
+        let err = eval("(/ 1000$ -4)").expect_err("the authored expression is refused");
         assert_eq!(err.code, Some(EvalCode::DivisionByZero));
     }
 
     #[test]
     fn off_table_currency_mixes_are_loud_type_shaped_errors() {
         for source in ["(+ 100$ 1)", "(* 100$ 2)", "(* 100$ 200$)"] {
-            let err = eval(source).unwrap_err();
+            let err = eval(source).expect_err("the authored expression is refused");
             assert_eq!(err.code, None, "{source}");
             assert!(err.message.contains("E-TYPE-030"), "{source}: {err}");
         }
@@ -2392,21 +2501,32 @@ mod tests {
 
     #[test]
     fn comparisons_stay_within_one_lane() {
-        assert_eq!(eval("(< 900$ 1000.5$)").unwrap(), Value::Bool(true));
-        assert_eq!(eval("(>= 3 3)").unwrap(), Value::Bool(true));
-        assert_eq!(eval("(< 0 0.5c)").unwrap(), Value::Bool(true));
-        let err = eval("(< 100$ 0.5c)").unwrap_err();
+        assert_eq!(
+            eval("(< 900$ 1000.5$)").expect("the authored expression evaluates"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            eval("(>= 3 3)").expect("the authored expression evaluates"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            eval("(< 0 0.5c)").expect("the authored expression evaluates"),
+            Value::Bool(true)
+        );
+        let err = eval("(< 100$ 0.5c)").expect_err("the authored expression is refused");
         assert_eq!(err.code, None);
     }
 
     #[test]
     fn enum_members_compare_with_equality_only_within_one_type() {
         assert_eq!(
-            eval("(= NodeType/SOCIAL_CLASS NodeType/SOCIAL_CLASS)").unwrap(),
+            eval("(= NodeType/SOCIAL_CLASS NodeType/SOCIAL_CLASS)")
+                .expect("the authored expression evaluates"),
             Value::Bool(true)
         );
         assert_eq!(
-            eval("(!= NodeType/SOCIAL_CLASS NodeType/TERRITORY)").unwrap(),
+            eval("(!= NodeType/SOCIAL_CLASS NodeType/TERRITORY)")
+                .expect("the authored expression evaluates"),
             Value::Bool(true)
         );
         assert!(eval("(= NodeType/SOCIAL_CLASS EdgeType/SOLIDARITY)").is_err());
@@ -2445,7 +2565,8 @@ mod tests {
         ] {
             let mut fuel = 32;
             assert_eq!(
-                eval_with(source, bindings.clone(), &mut fuel).unwrap(),
+                eval_with(source, bindings.clone(), &mut fuel)
+                    .expect("the authored expression evaluates"),
                 Value::Bool(expected),
                 "{source}"
             );
@@ -2457,14 +2578,14 @@ mod tests {
         // The unbound second operand would be a loud error if evaluated;
         // the short-circuit means it never is (§4.1's deliberate exception).
         assert_eq!(
-            eval("(and (< 1 0) undeclared-var)").unwrap(),
+            eval("(and (< 1 0) undeclared-var)").expect("the authored expression evaluates"),
             Value::Bool(false)
         );
         assert_eq!(
-            eval("(or (< 0 1) undeclared-var)").unwrap(),
+            eval("(or (< 0 1) undeclared-var)").expect("the authored expression evaluates"),
             Value::Bool(true)
         );
-        let err = eval("(and)").unwrap_err();
+        let err = eval("(and)").expect_err("the authored expression is refused");
         assert!(err.message.contains("E-PARSE-021"), "{err}");
     }
 
@@ -2472,20 +2593,26 @@ mod tests {
     fn if_evaluates_and_charges_only_the_taken_branch() {
         let mut fuel = 100;
         let result = eval_with("(if (< 0 1) 1 undeclared-var)", HashMap::new(), &mut fuel);
-        assert_eq!(result.unwrap(), Value::Int(1));
+        assert_eq!(
+            result.expect("the fixture call returns its expected result"),
+            Value::Int(1)
+        );
         // if(1) + cmp(1) + two literals(0) + taken literal(0) = 2 consumed.
         assert_eq!(fuel, 98);
     }
 
     #[test]
     fn not_negates_bools_and_rejects_numbers() {
-        assert_eq!(eval("(not #f)").unwrap(), Value::Bool(true));
+        assert_eq!(
+            eval("(not #f)").expect("the authored expression evaluates"),
+            Value::Bool(true)
+        );
         assert!(eval("(not 1)").is_err());
     }
 
     #[test]
     fn unbound_variables_are_loud_loader_bugs_never_defaults() {
-        let err = eval("(+ 1 undeclared-var)").unwrap_err();
+        let err = eval("(+ 1 undeclared-var)").expect_err("the authored expression is refused");
         assert!(err.message.contains("E-LOAD-010"), "{err}");
     }
 
@@ -2498,7 +2625,7 @@ mod tests {
     /// is (the test above).
     #[test]
     fn it_outside_any_iterating_form_is_loud() {
-        let err = eval("it").unwrap_err();
+        let err = eval("it").expect_err("the authored expression is refused");
         // The load-bearing assertions pin the ELEMENT-STACK refusal
         // specifically — `contains("it")` alone was vacuous (the verify
         // round showed the unbound-variable fall-through also contains
@@ -2550,9 +2677,15 @@ mod tests {
         // second charge — E-EVAL-040 by §4.5's "reaching or passing zero";
         // a meter of 3 stays strictly positive and succeeds.
         let mut starved = 2;
-        let err = eval_with("(< wealth 1000.5$)", wealth_bindings(), &mut starved).unwrap_err();
+        let err = eval_with("(< wealth 1000.5$)", wealth_bindings(), &mut starved)
+            .expect_err("the authored expression is refused");
         assert_eq!(err.code, Some(EvalCode::FuelExhausted));
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-040");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-040"
+        );
         let mut enough = 3;
         assert!(eval_with("(< wealth 1000.5$)", wealth_bindings(), &mut enough).is_ok());
         assert_eq!(enough, 1);
@@ -2585,9 +2718,11 @@ mod tests {
             elements: Vec::new(),
             draw_context: None,
         };
-        let (expr, _) = crate::reader::read("(double 5)").unwrap();
+        let (expr, _) = crate::reader::read("(double 5)")
+            .expect("the fixture reader returns its authored facts");
         let mut fuel = 100;
-        let result = evaluate(&expr, &env, &Doubler, &mut fuel).unwrap();
+        let result =
+            evaluate(&expr, &env, &Doubler, &mut fuel).expect("the authored expression evaluates");
         assert_eq!(result, Value::Int(10));
         // base(5) + declared(4) + literal arg(0) = 9 consumed.
         assert_eq!(fuel, 91);
@@ -2595,7 +2730,7 @@ mod tests {
         let mut fuel2 = 100;
         assert!(evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel2).is_err());
         // An intrinsic with no declared cost is a loud loader-bug error.
-        let err = eval("(sigmoid 0.5c)").unwrap_err();
+        let err = eval("(sigmoid 0.5c)").expect_err("the authored expression is refused");
         assert!(err.message.contains("E-LOAD-021"), "{err}");
     }
 
@@ -2615,7 +2750,8 @@ mod tests {
             elements: Vec::new(),
             draw_context: None,
         };
-        let (expr, _) = crate::reader::read("(floor x)").unwrap();
+        let (expr, _) = crate::reader::read("(floor x)")
+            .expect("the fixture reader returns its authored facts");
         let mut fuel = 100;
         let result = evaluate(
             &expr,
@@ -2623,7 +2759,7 @@ mod tests {
             &crate::intrinsic_host::KernelIntrinsicHost,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored expression evaluates");
         assert_eq!(result, Value::Int(7));
 
         // A negative binding surfaces the intrinsic's own E-EVAL-039,
@@ -2644,9 +2780,14 @@ mod tests {
             &crate::intrinsic_host::KernelIntrinsicHost,
             &mut fuel2,
         )
-        .unwrap_err();
+        .expect_err("the fixture call `evaluate` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::DemotionOutOfDomain));
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-039");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-039"
+        );
     }
 
     /// Task 1: the old `GRAPH_SEAM_HEADS` conflation reported EVERY one of
@@ -2661,7 +2802,8 @@ mod tests {
     fn refusal_messages_name_their_slice() {
         // `emit` is EFFECT-position only (§2.8): in expression position it
         // is a grammar error, never "Task 16".
-        let emit_err = eval("(emit EventType/RUPTURE (severity 0.9c))").unwrap_err();
+        let emit_err = eval("(emit EventType/RUPTURE (severity 0.9c))")
+            .expect_err("the authored expression is refused");
         assert!(!emit_err.message.contains("Task 16"), "{emit_err}");
         assert!(emit_err.message.contains("§2.8"), "{emit_err}");
         assert!(emit_err.message.contains("effect position"), "{emit_err}");
@@ -2671,7 +2813,8 @@ mod tests {
         // query-operand-only law (§2.7: no bare `<query>` production),
         // never a slice number: the served heads' refusal is grammatical,
         // not a TODO.
-        let members_of_err = eval("(members-of self HyperedgeType/CELL)").unwrap_err();
+        let members_of_err = eval("(members-of self HyperedgeType/CELL)")
+            .expect_err("the authored expression is refused");
         assert!(
             members_of_err.message.contains("query operand"),
             "{members_of_err}"
@@ -2685,7 +2828,8 @@ mod tests {
         // §2.8 home — and NEVER a claim that it is already served in effect
         // position (it refuses there too, pending Task 10; the verify round
         // caught the earlier message asserting service that does not exist).
-        let for_each_err = eval("(for-each (nodes NodeType/X) (emit EventType/E))").unwrap_err();
+        let for_each_err = eval("(for-each (nodes NodeType/X) (emit EventType/E))")
+            .expect_err("the authored expression is refused");
         assert!(for_each_err.message.contains("§2.8"), "{for_each_err}");
         assert!(
             !for_each_err.message.contains("already served"),
@@ -2694,13 +2838,15 @@ mod tests {
 
         // `update-membership` (Amendment-AG-era §2.8 verb): same grammar
         // refusal, not E-LOAD-021 "undeclared intrinsic".
-        let upd_mem_err = eval("(update-membership self self (set x/y 1))").unwrap_err();
+        let upd_mem_err = eval("(update-membership self self (set x/y 1))")
+            .expect_err("the authored expression is refused");
         assert!(upd_mem_err.message.contains("§2.8"), "{upd_mem_err}");
         assert!(!upd_mem_err.message.contains("E-LOAD-021"), "{upd_mem_err}");
 
         // `membership-field-of` (§2.10) stays unserved — its note now cites
         // #653 by number, never a slice (Task 3 Step 4's own amendment).
-        let mem_field_err = eval("(membership-field-of self self x/y)").unwrap_err();
+        let mem_field_err = eval("(membership-field-of self self x/y)")
+            .expect_err("the authored expression is refused");
         assert!(mem_field_err.message.contains("#653"), "{mem_field_err}");
     }
 
@@ -2714,6 +2860,10 @@ mod tests {
     /// `GraphSubstrate::update_hyperedge_attribute` — `update-hyperedge`
     /// writes too, through the SAME execute path.
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "`update_edge_and_update_hyperedge_are_both_served` keeps one authored boundary's fixture and assertions together"
+    )]
     fn update_edge_and_update_hyperedge_are_both_served() {
         use crate::structural_verbs::{CollectingSink, EffectExecutor};
         use crate::typecheck::TypeEnv;
@@ -2722,14 +2872,18 @@ mod tests {
         use babylon_graph::substrate::GraphSubstrate;
 
         let mut graph = MemoryGraph::new();
-        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
-        let other_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let self_id = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let other_id = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .add_edge("SOLIDARITY", self_id, other_id, 0.5)
-            .unwrap();
+            .expect("the fixture graph admits the authored edge");
         let cell = graph
             .add_hyperedge("COMMUNITY", &[self_id, other_id])
-            .unwrap();
+            .expect("the fixture graph admits the authored hyperedge");
         let types = TypeEnv {
             fields: HashMap::from([
                 (
@@ -2789,7 +2943,7 @@ mod tests {
             .expect("update-edge is served since T3");
         let stored = graph
             .edge_attribute("SOLIDARITY", self_id, other_id, "solidarity/strength")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert!(
             (stored - 0.25).abs() < 1e-12,
             "0.5 scaled by 0.5, stored: {stored}"
@@ -2815,7 +2969,9 @@ mod tests {
                 &mut fuel,
             )
             .expect("update-hyperedge is served since Task 6 (E2b)");
-        let stored = graph.hyperedge_attribute(cell, "community/heat").unwrap();
+        let stored = graph
+            .hyperedge_attribute(cell, "community/heat")
+            .expect("the fixture hyperedge carries the authored attribute");
         assert!((stored - 0.5).abs() < 1e-12, "set to 0.5, stored: {stored}");
     }
 
@@ -2908,7 +3064,7 @@ mod tests {
             "(nodes NodeType/SOCIAL_CLASS)",
             "(neighbors self EdgeType/SOLIDARITY :out NodeType/SOCIAL_CLASS)",
         ] {
-            let err = eval(source).unwrap_err();
+            let err = eval(source).expect_err("the authored expression is refused");
             assert!(!err.message.contains("slice 1"), "{source}: {err}");
             assert!(
                 err.message.contains("no <expr> production"),
@@ -2984,7 +3140,7 @@ mod tests {
                 "OrgKind",
                 &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let types = TypeEnv {
             fields: HashMap::from([(
                 "organization/kind".to_owned(),
@@ -3008,14 +3164,18 @@ mod tests {
     fn field_of_over_an_enum_field_compares_correctly_per_node() {
         use babylon_graph::memory::MemoryGraph;
         let mut graph = MemoryGraph::new();
-        let state_org = graph.add_node("ORGANIZATION").unwrap();
+        let state_org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(state_org, "organization/kind", 0.0)
-            .unwrap();
-        let biz_org = graph.add_node("ORGANIZATION").unwrap();
+            .expect("the fixture node carries the authored attribute");
+        let biz_org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(biz_org, "organization/kind", 1.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let (types, enums) = org_kind_types_and_enums();
         let mut fuel = 1_000;
 
@@ -3027,7 +3187,7 @@ mod tests {
             &enums,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the fixture call `eval_field_of_over_typed` succeeds for the authored inputs");
         assert_eq!(state_result, Value::Bool(true));
 
         let biz_result = eval_field_of_over_typed(
@@ -3038,7 +3198,7 @@ mod tests {
             &enums,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the fixture call `eval_field_of_over_typed` succeeds for the authored inputs");
         assert_eq!(biz_result, Value::Bool(false));
     }
 
@@ -3054,10 +3214,12 @@ mod tests {
     fn field_of_over_an_enum_field_cross_enum_type_comparison_still_errors() {
         use babylon_graph::memory::MemoryGraph;
         let mut graph = MemoryGraph::new();
-        let biz_org = graph.add_node("ORGANIZATION").unwrap();
+        let biz_org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(biz_org, "organization/kind", 1.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let (types, enums) = org_kind_types_and_enums();
         let mut fuel = 1_000;
         let err = eval_field_of_over_typed(
@@ -3068,7 +3230,7 @@ mod tests {
             &enums,
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the fixture call `eval_field_of_over_typed` fails for the authored inputs");
         assert!(
             err.message.contains("compares only to the same enum type"),
             "{}",
@@ -3085,8 +3247,12 @@ mod tests {
     fn field_of_over_an_enum_field_still_refuses_arithmetic() {
         use babylon_graph::memory::MemoryGraph;
         let mut graph = MemoryGraph::new();
-        let org = graph.add_node("ORGANIZATION").unwrap();
-        graph.update_node(org, "organization/kind", 0.0).unwrap();
+        let org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .update_node(org, "organization/kind", 0.0)
+            .expect("the fixture node carries the authored attribute");
         let (types, enums) = org_kind_types_and_enums();
         let mut fuel = 1_000;
         let err = eval_field_of_over_typed(
@@ -3097,7 +3263,7 @@ mod tests {
             &enums,
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the fixture call `eval_field_of_over_typed` fails for the authored inputs");
         assert!(
             err.message.contains("no arithmetic is defined"),
             "{}",
@@ -3118,8 +3284,12 @@ mod tests {
     fn field_of_over_an_enum_field_with_no_type_registry_is_a_loud_driver_error() {
         use babylon_graph::memory::MemoryGraph;
         let mut graph = MemoryGraph::new();
-        let org = graph.add_node("ORGANIZATION").unwrap();
-        graph.update_node(org, "organization/kind", 1.0).unwrap();
+        let org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .update_node(org, "organization/kind", 1.0)
+            .expect("the fixture node carries the authored attribute");
         let costs = costs();
         let env = EvalEnv {
             bindings: HashMap::from([("self".to_owned(), Value::NodeRef(org))]),
@@ -3133,7 +3303,8 @@ mod tests {
         let (expr, _) =
             crate::reader::read("(field-of self organization/kind)").expect("must parse");
         let mut fuel = 1_000;
-        let err = evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel).unwrap_err();
+        let err = evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel)
+            .expect_err("the fixture call `evaluate` fails for the authored inputs");
         assert!(
             err.message.contains("declared field-type registry"),
             "{}",
@@ -3151,10 +3322,12 @@ mod tests {
     fn field_of_reads_a_declared_field_of_the_referent() {
         use babylon_graph::memory::MemoryGraph;
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(subject, "social-class/wealth", 42.5)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let mut fuel = 1_000;
         let result = eval_field_of_over(
             "(field-of self social-class/wealth)",
@@ -3162,7 +3335,7 @@ mod tests {
             subject,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the fixture call `eval_field_of_over` succeeds for the authored inputs");
         assert_eq!(result, Value::Real(42.5));
     }
 
@@ -3173,7 +3346,9 @@ mod tests {
     fn field_of_whose_referent_is_of_another_type_is_e_eval_033() {
         use babylon_graph::memory::MemoryGraph;
         let mut graph = MemoryGraph::new();
-        let territory = graph.add_node("TERRITORY").unwrap();
+        let territory = graph
+            .add_node("TERRITORY")
+            .expect("the fixture adds a node with a registered kind");
         let mut fuel = 1_000;
         let err = eval_field_of_over(
             "(field-of self social-class/wealth)",
@@ -3181,9 +3356,14 @@ mod tests {
             territory,
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the fixture call `eval_field_of_over` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::AccessorTypeOrValueMismatch));
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-033");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-033"
+        );
     }
 
     /// §2.10 discipline 2: absence is not a value — an element of the RIGHT
@@ -3193,7 +3373,9 @@ mod tests {
     fn field_of_a_field_the_element_carries_no_value_for_is_e_eval_033() {
         use babylon_graph::memory::MemoryGraph;
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         let mut fuel = 1_000;
         let err = eval_field_of_over(
             "(field-of self social-class/wealth)",
@@ -3201,9 +3383,14 @@ mod tests {
             subject,
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the fixture call `eval_field_of_over` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::AccessorTypeOrValueMismatch));
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-033");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-033"
+        );
     }
 
     /// `bound_checker`'s own pinned figure: `cost_of("(field-of it \
@@ -3213,10 +3400,12 @@ mod tests {
     fn field_of_is_charged_as_a_keyed_lookup_not_an_iteration() {
         use babylon_graph::memory::MemoryGraph;
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(subject, "social-class/wealth", 1.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let mut fuel = 10;
         eval_field_of_over(
             "(field-of self social-class/wealth)",
@@ -3224,7 +3413,7 @@ mod tests {
             subject,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the fixture call `eval_field_of_over` succeeds for the authored inputs");
         assert_eq!(
             fuel, 8,
             ":fuel-used is a conformance-vector quantity (§6.1)"
@@ -3272,9 +3461,15 @@ mod tests {
     fn edge_between_resolves_to_an_edge_ref() {
         use babylon_graph::memory::MemoryGraph;
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
-        let other = graph.add_node("SOCIAL_CLASS").unwrap();
-        graph.add_edge("SOLIDARITY", subject, other, 0.5).unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let other = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("SOLIDARITY", subject, other, 0.5)
+            .expect("the fixture graph admits the authored edge");
         let mut fuel = 1_000;
         let result = eval_with_pair(
             "(edge-between EdgeType/SOLIDARITY self other)",
@@ -3283,7 +3478,7 @@ mod tests {
             other,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored expression evaluates");
         assert_eq!(
             result,
             Value::EdgeRef(EdgeKey {
@@ -3298,8 +3493,12 @@ mod tests {
     fn edge_between_on_a_missing_pair_is_e_eval_034() {
         use babylon_graph::memory::MemoryGraph;
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
-        let other = graph.add_node("SOCIAL_CLASS").unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let other = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         let mut fuel = 1_000;
         let err = eval_with_pair(
             "(edge-between EdgeType/SOLIDARITY self other)",
@@ -3308,9 +3507,14 @@ mod tests {
             other,
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the fixture call `eval_with_pair` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::NoSuchEdge), "{err}");
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-034");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-034"
+        );
     }
 
     /// The static/runtime fuel agreement (§4.5's loud-failure-inversion
@@ -3325,9 +3529,15 @@ mod tests {
     fn edge_between_charges_the_static_bounds_own_three() {
         use babylon_graph::memory::MemoryGraph;
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
-        let other = graph.add_node("SOCIAL_CLASS").unwrap();
-        graph.add_edge("SOLIDARITY", subject, other, 0.5).unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let other = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("SOLIDARITY", subject, other, 0.5)
+            .expect("the fixture graph admits the authored edge");
         let mut fuel = 10;
         eval_with_pair(
             "(edge-between EdgeType/SOLIDARITY self other)",
@@ -3336,7 +3546,7 @@ mod tests {
             other,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored expression evaluates");
         assert_eq!(
             fuel, 7,
             ":fuel-used is a conformance-vector quantity (§6.1) — the \
@@ -3350,9 +3560,15 @@ mod tests {
     fn field_of_an_edge_ref_reads_the_seeded_strength() {
         use babylon_graph::memory::MemoryGraph;
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
-        let other = graph.add_node("SOCIAL_CLASS").unwrap();
-        graph.add_edge("SOLIDARITY", subject, other, 0.5).unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let other = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("SOLIDARITY", subject, other, 0.5)
+            .expect("the fixture graph admits the authored edge");
         let mut fuel = 1_000;
         let result = eval_with_pair(
             "(field-of (edge-between EdgeType/SOLIDARITY self other) solidarity/strength)",
@@ -3361,7 +3577,7 @@ mod tests {
             other,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored expression evaluates");
         assert_eq!(result, Value::Real(0.5));
     }
 
@@ -3373,9 +3589,15 @@ mod tests {
     fn field_of_an_edge_ref_with_a_wrong_owner_qname_is_e_eval_033() {
         use babylon_graph::memory::MemoryGraph;
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
-        let other = graph.add_node("SOCIAL_CLASS").unwrap();
-        graph.add_edge("SOLIDARITY", subject, other, 0.5).unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let other = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("SOLIDARITY", subject, other, 0.5)
+            .expect("the fixture graph admits the authored edge");
         let mut fuel = 1_000;
         let err = eval_with_pair(
             "(field-of (edge-between EdgeType/SOLIDARITY self other) social-class/wealth)",
@@ -3384,13 +3606,18 @@ mod tests {
             other,
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the fixture call `eval_with_pair` fails for the authored inputs");
         assert_eq!(
             err.code,
             Some(EvalCode::AccessorTypeOrValueMismatch),
             "{err}"
         );
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-033");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-033"
+        );
     }
 
     /// A LEGALLY-typed but never-written edge qname (a `deffield`-declarable
@@ -3401,9 +3628,15 @@ mod tests {
     fn field_of_an_edge_ref_with_an_unstored_qname_is_e_eval_033() {
         use babylon_graph::memory::MemoryGraph;
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
-        let other = graph.add_node("SOCIAL_CLASS").unwrap();
-        graph.add_edge("SOLIDARITY", subject, other, 0.5).unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let other = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("SOLIDARITY", subject, other, 0.5)
+            .expect("the fixture graph admits the authored edge");
         let mut fuel = 1_000;
         let err = eval_with_pair(
             "(field-of (edge-between EdgeType/SOLIDARITY self other) solidarity/tension)",
@@ -3412,13 +3645,18 @@ mod tests {
             other,
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the fixture call `eval_with_pair` fails for the authored inputs");
         assert_eq!(
             err.code,
             Some(EvalCode::AccessorTypeOrValueMismatch),
             "{err}"
         );
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-033");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-033"
+        );
     }
 
     // ---- Task 5: fold ----
@@ -3471,10 +3709,12 @@ mod tests {
         use babylon_graph::substrate::GraphSubstrate;
         let mut graph = babylon_graph::memory::MemoryGraph::new();
         for i in 0..n {
-            let id = graph.add_node("SOCIAL_CLASS").unwrap();
+            let id = graph
+                .add_node("SOCIAL_CLASS")
+                .expect("the fixture adds a node with a registered kind");
             graph
                 .update_node(id, "social-class/wealth", f64::from(i))
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
         }
         graph
     }
@@ -3494,9 +3734,14 @@ mod tests {
                 None,
                 &mut fuel,
             )
-            .unwrap_err();
+            .expect_err("the authored expression is refused");
             assert_eq!(err.code, Some(EvalCode::EmptyAggregate), "{op}: {err}");
-            assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-021");
+            assert_eq!(
+                err.code
+                    .expect("the asserted error carries a specification code")
+                    .spec_code(),
+                "E-EVAL-021"
+            );
         }
     }
 
@@ -3512,7 +3757,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(result, Value::Real(0.0));
 
         // An Int literal body: identity is Int(0).
@@ -3523,7 +3768,7 @@ mod tests {
             None,
             &mut fuel2,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(result2, Value::Int(0));
     }
 
@@ -3549,7 +3794,7 @@ mod tests {
                 None,
                 &mut fuel,
             )
-            .unwrap_err();
+            .expect_err("the authored expression is refused");
             assert!(err.code.is_none(), "{body_src}: {err}");
             assert!(err.message.contains("D-row Q12"), "{body_src}: {err}");
         }
@@ -3563,7 +3808,8 @@ mod tests {
     /// deliberately no more", so this tightens rather than widens it.
     #[test]
     fn static_additive_identity_refuses_currency_times_currency() {
-        let (expr, _) = crate::reader::read("(* 5$ 3$)").unwrap();
+        let (expr, _) = crate::reader::read("(* 5$ 3$)")
+            .expect("the fixture reader returns its authored facts");
         assert_eq!(static_additive_identity(&expr), None);
     }
 
@@ -3577,7 +3823,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(result, Value::Int(0));
     }
 
@@ -3598,7 +3844,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(result, Value::Int(3));
     }
 
@@ -3613,8 +3859,12 @@ mod tests {
     fn fold_reduces_in_iteration_order_and_the_order_is_observable() {
         let mut graph = babylon_graph::memory::MemoryGraph::new();
         for value in [1.0e16, 1.0, -1.0e16] {
-            let id = graph.add_node("SOCIAL_CLASS").unwrap();
-            graph.update_node(id, "social-class/wealth", value).unwrap();
+            let id = graph
+                .add_node("SOCIAL_CLASS")
+                .expect("the fixture adds a node with a registered kind");
+            graph
+                .update_node(id, "social-class/wealth", value)
+                .expect("the fixture node carries the authored attribute");
         }
         let mut fuel = 1_000;
         let result = eval_over(
@@ -3623,7 +3873,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(
             result,
             Value::Real(0.0),
@@ -3658,8 +3908,12 @@ mod tests {
         let values = [1.0e16_f64, 1.0, 1.0];
         let mut graph = babylon_graph::memory::MemoryGraph::new();
         for value in values {
-            let id = graph.add_node("SOCIAL_CLASS").unwrap();
-            graph.update_node(id, "social-class/wealth", value).unwrap();
+            let id = graph
+                .add_node("SOCIAL_CLASS")
+                .expect("the fixture adds a node with a registered kind");
+            graph
+                .update_node(id, "social-class/wealth", value)
+                .expect("the fixture node carries the authored attribute");
         }
         let mut fuel = 1_000;
         let result = eval_over(
@@ -3668,7 +3922,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
 
         // The LEFT fold in ascending-id order, computed independently of
         // `fold_sum`'s own implementation.
@@ -3707,11 +3961,15 @@ mod tests {
         let bodies = [1.0e16_f64, 1.0, 1.0];
         let mut graph = babylon_graph::memory::MemoryGraph::new();
         for value in bodies {
-            let id = graph.add_node("SOCIAL_CLASS").unwrap();
-            graph.update_node(id, "social-class/wealth", value).unwrap();
+            let id = graph
+                .add_node("SOCIAL_CLASS")
+                .expect("the fixture adds a node with a registered kind");
+            graph
+                .update_node(id, "social-class/wealth", value)
+                .expect("the fixture node carries the authored attribute");
             graph
                 .update_node(id, "social-class/head-count", 1.0)
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
         }
         let mut fuel = 1_000;
         let result = eval_over(
@@ -3721,7 +3979,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
 
         let left_sum_wx = bodies[1..].iter().fold(bodies[0], |acc, &v| acc + v);
         let chunked_sum_wx = bodies[0] + (bodies[1] + bodies[2]);
@@ -3780,26 +4038,32 @@ mod tests {
     fn fold_min_max_are_order_invariant_and_idempotent_under_duplication() {
         let mut graph_a = babylon_graph::memory::MemoryGraph::new();
         for value in [3.0, 1.0, 2.0] {
-            let id = graph_a.add_node("SOCIAL_CLASS").unwrap();
+            let id = graph_a
+                .add_node("SOCIAL_CLASS")
+                .expect("the fixture adds a node with a registered kind");
             graph_a
                 .update_node(id, "social-class/wealth", value)
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
         }
         // The SAME multiset {1.0, 2.0, 3.0}, a DIFFERENT element order.
         let mut graph_b = babylon_graph::memory::MemoryGraph::new();
         for value in [1.0, 2.0, 3.0] {
-            let id = graph_b.add_node("SOCIAL_CLASS").unwrap();
+            let id = graph_b
+                .add_node("SOCIAL_CLASS")
+                .expect("the fixture adds a node with a registered kind");
             graph_b
                 .update_node(id, "social-class/wealth", value)
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
         }
         // The multiset WITH a duplicated element: {3.0, 1.0, 2.0, 2.0}.
         let mut graph_c = babylon_graph::memory::MemoryGraph::new();
         for value in [3.0, 1.0, 2.0, 2.0] {
-            let id = graph_c.add_node("SOCIAL_CLASS").unwrap();
+            let id = graph_c
+                .add_node("SOCIAL_CLASS")
+                .expect("the fixture adds a node with a registered kind");
             graph_c
                 .update_node(id, "social-class/wealth", value)
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
         }
 
         for op in ["min", "max"] {
@@ -3807,11 +4071,14 @@ mod tests {
                 "(fold {op} (nodes NodeType/SOCIAL_CLASS) (field-of it social-class/wealth))"
             );
             let mut fuel_a = 1_000;
-            let result_a = eval_over(&query, &graph_a, None, &mut fuel_a).unwrap();
+            let result_a = eval_over(&query, &graph_a, None, &mut fuel_a)
+                .expect("the authored rule evaluates over the fixture state");
             let mut fuel_b = 1_000;
-            let result_b = eval_over(&query, &graph_b, None, &mut fuel_b).unwrap();
+            let result_b = eval_over(&query, &graph_b, None, &mut fuel_b)
+                .expect("the authored rule evaluates over the fixture state");
             let mut fuel_c = 1_000;
-            let result_c = eval_over(&query, &graph_c, None, &mut fuel_c).unwrap();
+            let result_c = eval_over(&query, &graph_c, None, &mut fuel_c)
+                .expect("the authored rule evaluates over the fixture state");
 
             assert_eq!(result_a, result_b, "{op}: element order must not matter");
             assert_eq!(
@@ -3829,13 +4096,15 @@ mod tests {
     fn weighted_mean_is_sum_of_products_over_sum_of_weights() {
         let mut graph = babylon_graph::memory::MemoryGraph::new();
         for (wealth, head_count) in [(1.0, 10.0), (2.0, 20.0), (3.0, 30.0)] {
-            let id = graph.add_node("SOCIAL_CLASS").unwrap();
+            let id = graph
+                .add_node("SOCIAL_CLASS")
+                .expect("the fixture adds a node with a registered kind");
             graph
                 .update_node(id, "social-class/wealth", wealth)
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
             graph
                 .update_node(id, "social-class/head-count", head_count)
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
         }
         let mut fuel = 1_000;
         let result = eval_over(
@@ -3845,7 +4114,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         // Σ(wᵢ·xᵢ) = 10*1 + 20*2 + 30*3 = 140.0; Σwᵢ = 60.0 — both reduced
         // left-to-right in ascending-id order (D-row Q5's exact shape).
         let sum_wx = 10.0_f64 * 1.0 + 20.0 * 2.0 + 30.0 * 3.0;
@@ -3883,7 +4152,7 @@ mod tests {
                 None,
                 &mut fuel,
             )
-            .unwrap_err();
+            .expect_err("the authored expression is refused");
             assert!(err.code.is_none(), "{op}: {err}");
             assert!(err.message.contains(op), "{op}: {err}");
             assert!(err.message.contains(":weight"), "{op}: {err}");
@@ -3903,7 +4172,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(
             fuel, 91,
             ":fuel-used is a conformance-vector quantity (§6.1)"
@@ -3923,7 +4192,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the authored expression is refused");
         assert!(err.message.contains("mean"), "{err}");
         assert!(err.message.contains("Int"), "{err}");
         assert!(err.message.contains("D-row Q6"), "{err}");
@@ -3939,7 +4208,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(min, Value::Real(0.0));
         let mut fuel2 = 1_000;
         let max = eval_over(
@@ -3948,7 +4217,7 @@ mod tests {
             None,
             &mut fuel2,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(max, Value::Real(3.0));
     }
 
@@ -3962,7 +4231,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(result, Value::Int(5));
     }
 
@@ -3972,12 +4241,20 @@ mod tests {
         // neighbors reading a field — the exact motivating consumer shape.
         use babylon_graph::substrate::GraphSubstrate;
         let mut graph = babylon_graph::memory::MemoryGraph::new();
-        let subject = graph.add_node("TERRITORY").unwrap();
+        let subject = graph
+            .add_node("TERRITORY")
+            .expect("the fixture adds a node with a registered kind");
         let mut total = 0.0;
         for heat in [1.5, 2.5, 3.0] {
-            let neighbor = graph.add_node("TERRITORY").unwrap();
-            graph.update_node(neighbor, "territory/heat", heat).unwrap();
-            graph.add_edge("ADJACENCY", subject, neighbor, 1.0).unwrap();
+            let neighbor = graph
+                .add_node("TERRITORY")
+                .expect("the fixture adds a node with a registered kind");
+            graph
+                .update_node(neighbor, "territory/heat", heat)
+                .expect("the fixture node carries the authored attribute");
+            graph
+                .add_edge("ADJACENCY", subject, neighbor, 1.0)
+                .expect("the fixture graph admits the authored edge");
             total += heat;
         }
         let mut fuel = 1_000;
@@ -3988,7 +4265,7 @@ mod tests {
             Some(subject),
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(result, Value::Real(total));
     }
 
@@ -4004,7 +4281,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(exists_result, Value::Bool(false));
 
         let mut fuel2 = 1_000;
@@ -4014,7 +4291,7 @@ mod tests {
             None,
             &mut fuel2,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(forall_result, Value::Bool(true));
     }
 
@@ -4031,7 +4308,7 @@ mod tests {
                 None,
                 &mut fuel
             )
-            .unwrap(),
+            .expect("the authored rule evaluates over the fixture state"),
             Value::Bool(false)
         );
         let nonempty = wealth_ladder(1);
@@ -4043,7 +4320,7 @@ mod tests {
                 None,
                 &mut fuel2
             )
-            .unwrap(),
+            .expect("the authored rule evaluates over the fixture state"),
             Value::Bool(true)
         );
     }
@@ -4068,7 +4345,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the authored expression is refused");
         assert_eq!(err.code, None, "{err}");
         assert!(err.message.contains("forall"), "{err}");
         assert!(err.message.contains("MANDATORY"), "{err}");
@@ -4091,7 +4368,7 @@ mod tests {
             None,
             &mut fuel_early,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         let early_used = 1_000 - fuel_early;
 
         // exists: only element 2 (wealth 2.0 > 1) satisfies — must visit all three.
@@ -4102,7 +4379,7 @@ mod tests {
             None,
             &mut fuel_late,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         let late_used = 1_000 - fuel_late;
 
         assert!(
@@ -4118,7 +4395,7 @@ mod tests {
             None,
             &mut fuel_forall_early,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         let forall_early_used = 1_000 - fuel_forall_early;
 
         // forall: all three satisfy (< 10) — every element visited.
@@ -4129,7 +4406,7 @@ mod tests {
             None,
             &mut fuel_forall_late,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         let forall_late_used = 1_000 - fuel_forall_late;
 
         assert!(
@@ -4150,7 +4427,9 @@ mod tests {
     fn exists_guards_a_selection_over_a_possibly_empty_query() {
         use babylon_graph::substrate::GraphSubstrate;
         let mut graph = babylon_graph::memory::MemoryGraph::new();
-        let subject = graph.add_node("TERRITORY").unwrap();
+        let subject = graph
+            .add_node("TERRITORY")
+            .expect("the fixture adds a node with a registered kind");
         // No ADJACENCY edges at all — an empty neighbourhood.
         let mut fuel = 1_000;
         let result = eval_over(
@@ -4162,7 +4441,7 @@ mod tests {
             Some(subject),
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(
             result,
             Value::NodeRef(subject),
@@ -4178,14 +4457,18 @@ mod tests {
     #[test]
     fn tied_scores_break_to_the_smaller_id_for_both_operators() {
         let mut graph = babylon_graph::memory::MemoryGraph::new();
-        let first = graph.add_node("SOCIAL_CLASS").unwrap(); // id 0
-        let second = graph.add_node("SOCIAL_CLASS").unwrap(); // id 1
+        let first = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind"); // id 0
+        let second = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind"); // id 1
         graph
             .update_node(first, "social-class/wealth", 5.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         graph
             .update_node(second, "social-class/wealth", 5.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         for op in ["select-max", "select-min"] {
             let mut fuel = 1_000;
             let result = eval_over(
@@ -4194,7 +4477,7 @@ mod tests {
                 None,
                 &mut fuel,
             )
-            .unwrap();
+            .expect("the authored rule evaluates over the fixture state");
             assert_eq!(
                 result,
                 Value::NodeRef(first),
@@ -4214,9 +4497,14 @@ mod tests {
                 None,
                 &mut fuel,
             )
-            .unwrap_err();
+            .expect_err("the authored expression is refused");
             assert_eq!(err.code, Some(EvalCode::EmptyAggregate), "{op}: {err}");
-            assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-021");
+            assert_eq!(
+                err.code
+                    .expect("the asserted error carries a specification code")
+                    .spec_code(),
+                "E-EVAL-021"
+            );
         }
     }
 
@@ -4235,7 +4523,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(result, Value::NodeRef(babylon_graph::substrate::NodeId(3)));
     }
 
@@ -4244,10 +4532,18 @@ mod tests {
     #[test]
     fn a_selection_result_is_the_element_operand_of_field_of() {
         let mut graph = babylon_graph::memory::MemoryGraph::new();
-        let low = graph.add_node("SOCIAL_CLASS").unwrap();
-        let high = graph.add_node("SOCIAL_CLASS").unwrap();
-        graph.update_node(low, "social-class/wealth", 1.0).unwrap();
-        graph.update_node(high, "social-class/wealth", 9.0).unwrap();
+        let low = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let high = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .update_node(low, "social-class/wealth", 1.0)
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .update_node(high, "social-class/wealth", 9.0)
+            .expect("the fixture node carries the authored attribute");
         let mut fuel = 1_000;
         let result = eval_over(
             "(field-of \
@@ -4257,7 +4553,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(result, Value::Real(9.0));
     }
 
@@ -4276,19 +4572,31 @@ mod tests {
         let mut graph = babylon_graph::memory::MemoryGraph::new();
         // Two outer SOCIAL_CLASS nodes, each with one ORGANIZATION neighbor
         // via TENANCY, each neighbor carrying a distinguishable field.
-        let outer_a = graph.add_node("SOCIAL_CLASS").unwrap();
-        let inner_a = graph.add_node("ORGANIZATION").unwrap();
+        let outer_a = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let inner_a = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(inner_a, "organization/claim-strength", 10.0)
-            .unwrap();
-        graph.add_edge("TENANCY", outer_a, inner_a, 1.0).unwrap();
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .add_edge("TENANCY", outer_a, inner_a, 1.0)
+            .expect("the fixture graph admits the authored edge");
 
-        let outer_b = graph.add_node("SOCIAL_CLASS").unwrap();
-        let inner_b = graph.add_node("ORGANIZATION").unwrap();
+        let outer_b = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let inner_b = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(inner_b, "organization/claim-strength", 20.0)
-            .unwrap();
-        graph.add_edge("TENANCY", outer_b, inner_b, 1.0).unwrap();
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .add_edge("TENANCY", outer_b, inner_b, 1.0)
+            .expect("the fixture graph admits the authored edge");
         let mut fuel = 10_000;
         // The outer fold names its element `outer`; the inner fold's query
         // reads `outer` (the OUTER NodeRef) to find that subject's tenant,
@@ -4301,7 +4609,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(
             result,
             Value::Real(30.0),
@@ -4329,7 +4637,7 @@ mod tests {
             None,
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored rule evaluates over the fixture state");
         assert_eq!(
             fuel, 95,
             ":fuel-used is a conformance-vector quantity (§6.1)"

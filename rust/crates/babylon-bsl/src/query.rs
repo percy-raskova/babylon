@@ -517,12 +517,14 @@ mod tests {
         const N: usize = 50;
         let mut graph = MemoryGraph::new();
         for _ in 0..N {
-            graph.add_node("SOCIAL_CLASS").unwrap();
+            graph
+                .add_node("SOCIAL_CLASS")
+                .expect("the fixture adds a node with a registered kind");
         }
         let costs = costs();
         let mut fuel = 10_000;
-        let result =
-            materialize_src("(nodes NodeType/SOCIAL_CLASS)", &graph, &costs, &mut fuel).unwrap();
+        let result = materialize_src("(nodes NodeType/SOCIAL_CLASS)", &graph, &costs, &mut fuel)
+            .expect("the fixture call `materialize_src` succeeds for the authored inputs");
         let ids: Vec<NodeId> = result
             .iter()
             .map(|element| match element {
@@ -542,12 +544,16 @@ mod tests {
     #[test]
     fn nodes_filters_by_the_annotated_type() {
         let mut graph = MemoryGraph::new();
-        let sc = graph.add_node("SOCIAL_CLASS").unwrap();
-        graph.add_node("ORGANIZATION").unwrap();
+        let sc = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         let costs = costs();
         let mut fuel = 1_000;
-        let result =
-            materialize_src("(nodes NodeType/SOCIAL_CLASS)", &graph, &costs, &mut fuel).unwrap();
+        let result = materialize_src("(nodes NodeType/SOCIAL_CLASS)", &graph, &costs, &mut fuel)
+            .expect("the fixture call `materialize_src` succeeds for the authored inputs");
         assert_eq!(result, vec![Element::Node(sc)]);
     }
 
@@ -557,11 +563,21 @@ mod tests {
     #[test]
     fn neighbors_filters_by_the_annotated_node_type() {
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
-        let tenant = graph.add_node("SOCIAL_CLASS").unwrap();
-        let org = graph.add_node("ORGANIZATION").unwrap();
-        graph.add_edge("TENANCY", tenant, subject, 1.0).unwrap();
-        graph.add_edge("TENANCY", org, subject, 1.0).unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let tenant = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("TENANCY", tenant, subject, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("TENANCY", org, subject, 1.0)
+            .expect("the fixture graph admits the authored edge");
         let costs = costs();
         let mut fuel = 1_000;
         let bindings = HashMap::from([("self".to_owned(), Value::NodeRef(subject))]);
@@ -576,8 +592,9 @@ mod tests {
         };
         let (expr, _) =
             crate::reader::read("(neighbors self EdgeType/TENANCY :in NodeType/SOCIAL_CLASS)")
-                .unwrap();
-        let result = materialize(&expr, &env, &EmptyIntrinsicHost, &mut fuel).unwrap();
+                .expect("the fixture reader returns its authored facts");
+        let result = materialize(&expr, &env, &EmptyIntrinsicHost, &mut fuel)
+            .expect("the fixture call `materialize` succeeds for the authored inputs");
         assert_eq!(result, vec![Element::Node(tenant)]);
     }
 
@@ -587,10 +604,18 @@ mod tests {
     #[test]
     fn neighbors_is_a_set_not_a_multiset() {
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
-        let other = graph.add_node("SOCIAL_CLASS").unwrap();
-        graph.add_edge("SOLIDARITY", subject, other, 1.0).unwrap();
-        graph.add_edge("SOLIDARITY", other, subject, 1.0).unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let other = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("SOLIDARITY", subject, other, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("SOLIDARITY", other, subject, 1.0)
+            .expect("the fixture graph admits the authored edge");
         let costs = costs();
         let mut fuel = 1_000;
         let bindings = HashMap::from([("self".to_owned(), Value::NodeRef(subject))]);
@@ -605,8 +630,9 @@ mod tests {
         };
         let (expr, _) =
             crate::reader::read("(neighbors self EdgeType/SOLIDARITY :any NodeType/SOCIAL_CLASS)")
-                .unwrap();
-        let result = materialize(&expr, &env, &EmptyIntrinsicHost, &mut fuel).unwrap();
+                .expect("the fixture reader returns its authored facts");
+        let result = materialize(&expr, &env, &EmptyIntrinsicHost, &mut fuel)
+            .expect("the fixture call `materialize` succeeds for the authored inputs");
         assert_eq!(
             result,
             vec![Element::Node(other)],
@@ -631,8 +657,9 @@ mod tests {
         };
         let (expr, _) =
             crate::reader::read("(neighbors self EdgeType/SOLIDARITY :any NodeType/SOCIAL_CLASS)")
-                .unwrap();
-        let err = materialize(&expr, &env, &EmptyIntrinsicHost, &mut fuel).unwrap_err();
+                .expect("the fixture reader returns its authored facts");
+        let err = materialize(&expr, &env, &EmptyIntrinsicHost, &mut fuel)
+            .expect_err("the fixture call `materialize` fails for the authored inputs");
         assert_eq!(err.code, None, "D-row Q3: uncoded loud, not E-EVAL-031");
         assert!(err.message.contains("D-row Q3"), "{err}");
         assert!(err.message.contains("never reads as an empty"), "{err}");
@@ -641,11 +668,14 @@ mod tests {
     #[test]
     fn query_materialization_charges_the_3_7_query_base() {
         let mut graph = MemoryGraph::new();
-        graph.add_node("SOCIAL_CLASS").unwrap();
+        graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         let costs = costs();
         // (nodes <enum-ref>): QUERY_BASE(1) + enum-ref(0) = 1.
         let mut fuel = 10;
-        materialize_src("(nodes NodeType/SOCIAL_CLASS)", &graph, &costs, &mut fuel).unwrap();
+        materialize_src("(nodes NodeType/SOCIAL_CLASS)", &graph, &costs, &mut fuel)
+            .expect("the fixture call `materialize_src` succeeds for the authored inputs");
         assert_eq!(fuel, 9);
 
         // (neighbors self <EdgeType> <dir> <NodeType>):
@@ -663,26 +693,39 @@ mod tests {
         };
         let (expr, _) =
             crate::reader::read("(neighbors self EdgeType/SOLIDARITY :any NodeType/SOCIAL_CLASS)")
-                .unwrap();
+                .expect("the fixture reader returns its authored facts");
         let mut fuel2 = 10;
-        materialize(&expr, &env, &EmptyIntrinsicHost, &mut fuel2).unwrap();
+        materialize(&expr, &env, &EmptyIntrinsicHost, &mut fuel2)
+            .expect("the fixture call `materialize` succeeds for the authored inputs");
         assert_eq!(fuel2, 8);
     }
 
     #[test]
     fn edges_materializes_in_ascending_source_target_order_and_charges_query_base() {
         let mut graph = MemoryGraph::new();
-        let a = graph.add_node("SOCIAL_CLASS").unwrap();
-        let b = graph.add_node("SOCIAL_CLASS").unwrap();
-        let c = graph.add_node("SOCIAL_CLASS").unwrap();
+        let a = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let b = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let c = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         // Insertion order deliberately SHUFFLED against ascending (source, target).
-        graph.add_edge("SOLIDARITY", c, a, 0.9).unwrap();
-        graph.add_edge("SOLIDARITY", a, b, 0.1).unwrap();
-        graph.add_edge("SOLIDARITY", a, c, 0.5).unwrap();
+        graph
+            .add_edge("SOLIDARITY", c, a, 0.9)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("SOLIDARITY", a, b, 0.1)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("SOLIDARITY", a, c, 0.5)
+            .expect("the fixture graph admits the authored edge");
         let costs = costs();
         let mut fuel = 10;
-        let result =
-            materialize_src("(edges EdgeType/SOLIDARITY)", &graph, &costs, &mut fuel).unwrap();
+        let result = materialize_src("(edges EdgeType/SOLIDARITY)", &graph, &costs, &mut fuel)
+            .expect("the fixture call `materialize_src` succeeds for the authored inputs");
         let keys: Vec<EdgeKey> = result
             .iter()
             .map(|element| match element {
@@ -724,7 +767,11 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let mut ids = Vec::with_capacity(N);
         for _ in 0..N {
-            ids.push(graph.add_node("SOCIAL_CLASS").unwrap());
+            ids.push(
+                graph
+                    .add_node("SOCIAL_CLASS")
+                    .expect("the fixture adds a node with a registered kind"),
+            );
         }
         // Add edges over a SHUFFLED pairing of the id space (every id i -> id (i*17+3) % N,
         // a fixed permutation with no monotonic relationship to insertion/id order) so the
@@ -733,13 +780,15 @@ mod tests {
         for (i, &from) in ids.iter().enumerate() {
             let to = ids[(i * 17 + 3) % N];
             if from != to {
-                graph.add_edge("SOLIDARITY", from, to, 0.1).unwrap();
+                graph
+                    .add_edge("SOLIDARITY", from, to, 0.1)
+                    .expect("the fixture graph admits the authored edge");
             }
         }
         let costs = costs();
         let mut fuel = 10_000;
-        let result =
-            materialize_src("(edges EdgeType/SOLIDARITY)", &graph, &costs, &mut fuel).unwrap();
+        let result = materialize_src("(edges EdgeType/SOLIDARITY)", &graph, &costs, &mut fuel)
+            .expect("the fixture call `materialize_src` succeeds for the authored inputs");
         let pairs: Vec<(NodeId, NodeId)> = result
             .iter()
             .map(|element| match element {
@@ -787,16 +836,28 @@ mod tests {
     #[test]
     fn edges_materializes_in_exactly_graph_edges_own_order() {
         let mut graph = MemoryGraph::new();
-        let a = graph.add_node("SOCIAL_CLASS").unwrap();
-        let b = graph.add_node("SOCIAL_CLASS").unwrap();
-        let c = graph.add_node("SOCIAL_CLASS").unwrap();
-        graph.add_edge("SOLIDARITY", c, a, 0.9).unwrap();
-        graph.add_edge("SOLIDARITY", a, b, 0.1).unwrap();
-        graph.add_edge("SOLIDARITY", a, c, 0.5).unwrap();
+        let a = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let b = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let c = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("SOLIDARITY", c, a, 0.9)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("SOLIDARITY", a, b, 0.1)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("SOLIDARITY", a, c, 0.5)
+            .expect("the fixture graph admits the authored edge");
         let costs = costs();
         let mut fuel = 10;
-        let result =
-            materialize_src("(edges EdgeType/SOLIDARITY)", &graph, &costs, &mut fuel).unwrap();
+        let result = materialize_src("(edges EdgeType/SOLIDARITY)", &graph, &costs, &mut fuel)
+            .expect("the fixture call `materialize_src` succeeds for the authored inputs");
         let materialized: Vec<(NodeId, NodeId)> = result
             .iter()
             .map(|element| match element {
@@ -824,7 +885,7 @@ mod tests {
             &costs,
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the fixture call `materialize_src` fails for the authored inputs");
         assert!(err.message.contains("element-predicate"), "{err}");
     }
 
@@ -840,7 +901,7 @@ mod tests {
         let costs = costs();
         let mut fuel = 1_000;
         let err = materialize_src("(edges EdgeType/SOLIDARITY #t)", &graph, &costs, &mut fuel)
-            .unwrap_err();
+            .expect_err("the fixture call `materialize_src` fails for the authored inputs");
         assert!(err.message.contains("element-predicate"), "{err}");
     }
 
@@ -852,9 +913,15 @@ mod tests {
     #[test]
     fn hyperedges_and_members_of_are_served_in_query_position() {
         let mut graph = MemoryGraph::new();
-        let alpha = graph.add_node("social_class").unwrap();
-        let beta = graph.add_node("social_class").unwrap();
-        let cell = graph.add_hyperedge("CELL", &[alpha, beta]).unwrap();
+        let alpha = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let beta = graph
+            .add_node("social_class")
+            .expect("the fixture adds a node with a registered kind");
+        let cell = graph
+            .add_hyperedge("CELL", &[alpha, beta])
+            .expect("the fixture graph admits the authored hyperedge");
         let costs = costs();
         let mut fuel = 10_000;
 
@@ -868,8 +935,12 @@ mod tests {
         // Iteration order is the ruled order — ascending HyperedgeId (D25),
         // pinned against a deliberately multi-hyperedge world; the Step-7
         // mutation (inverting the materializer's order) reds this.
-        let cell2 = graph.add_hyperedge("CELL", &[beta]).unwrap();
-        let cell0 = graph.add_hyperedge("CELL", &[alpha]).unwrap();
+        let cell2 = graph
+            .add_hyperedge("CELL", &[beta])
+            .expect("the fixture graph admits the authored hyperedge");
+        let cell0 = graph
+            .add_hyperedge("CELL", &[alpha])
+            .expect("the fixture graph admits the authored hyperedge");
         let mut fuel = 10_000;
         let result = materialize_src("(hyperedges HyperedgeType/CELL)", &graph, &costs, &mut fuel)
             .expect("the type-wide head is served");

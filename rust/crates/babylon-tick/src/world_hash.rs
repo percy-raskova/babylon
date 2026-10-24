@@ -78,54 +78,68 @@ mod tests {
 
     fn seeded_world<G: GraphSubstrate + Default>(reverse_writes: bool) -> G {
         let mut graph = G::default();
-        let worker = graph.add_node("SOCIAL_CLASS").unwrap();
-        let organizer = graph.add_node("ORGANIZATION").unwrap();
+        let worker = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let organizer = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         if reverse_writes {
             graph
                 .update_node(organizer, "organization/cadre", 0.25)
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
             graph
                 .update_node(worker, "social-class/wealth", 0.75)
-                .unwrap();
-            graph.add_hyperedge("CLASS", &[organizer, worker]).unwrap();
+                .expect("the fixture node carries the authored attribute");
+            graph
+                .add_hyperedge("CLASS", &[organizer, worker])
+                .expect("the fixture graph admits the authored hyperedge");
             graph
                 .add_edge("SOLIDARITY", worker, organizer, 0.5)
-                .unwrap();
+                .expect("the fixture graph admits the authored edge");
         } else {
             graph
                 .update_node(worker, "social-class/wealth", 0.75)
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
             graph
                 .update_node(organizer, "organization/cadre", 0.25)
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
             graph
                 .add_edge("SOLIDARITY", worker, organizer, 0.5)
-                .unwrap();
-            graph.add_hyperedge("CLASS", &[worker, organizer]).unwrap();
+                .expect("the fixture graph admits the authored edge");
+            graph
+                .add_hyperedge("CLASS", &[worker, organizer])
+                .expect("the fixture graph admits the authored hyperedge");
         }
         graph
     }
 
     fn seeded_world_hash<G: CanonicalState + AllocatorState>(graph: &G) -> [u8; 32] {
         super::nominal_world_hash(
-            graph.state_hash().unwrap(),
+            graph
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
             17,
             graph.allocator_cursors(),
-            phase_order::schedule_digest().unwrap(),
+            phase_order::schedule_digest()
+                .expect("the fixture call `schedule_digest` succeeds for the authored inputs"),
         )
-        .unwrap()
+        .expect("the committed world publishes its nominal hash")
     }
 
     #[test]
     fn empty_tick_zero_world_hash_pins_the_version_one_layout() {
         let graph = HypergraphStore::new();
         let hash = super::nominal_world_hash(
-            graph.state_hash().unwrap(),
+            graph
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
             0,
             graph.allocator_cursors(),
-            phase_order::schedule_digest().unwrap(),
+            phase_order::schedule_digest()
+                .expect("the fixture call `schedule_digest` succeeds for the authored inputs"),
         )
-        .unwrap();
+        .expect("the committed world publishes its nominal hash");
         assert_eq!(
             crate::hex(&hash),
             "bb1fd62f9053807b13fe00a45fc7f2c032dc9d23a4d778e8c5c016bbb59c2932"
@@ -134,8 +148,12 @@ mod tests {
 
     #[test]
     fn asymmetric_world_state_vector_pins_every_canonical_byte_and_its_sha() {
-        let graph_hash = core::array::from_fn(|index| u8::try_from(index + 1).unwrap());
-        let schedule_digest = core::array::from_fn(|index| u8::try_from(index).unwrap() + 0xa1);
+        let graph_hash = core::array::from_fn(|index| {
+            u8::try_from(index + 1).expect("the fixture value fits the target range")
+        });
+        let schedule_digest = core::array::from_fn(|index| {
+            u8::try_from(index).expect("the fixture value fits the target range") + 0xa1
+        });
         let cursors = AllocatorCursors {
             next_node: 0x1112_1314_1516_1718,
             next_hyperedge: 0x2122_2324_2526_2728,
@@ -146,7 +164,7 @@ mod tests {
             cursors,
             schedule_digest,
         )
-        .unwrap();
+        .expect("the fixture value encodes to its canonical bytes");
 
         // STYLE-EXCEPTION(EXC-05): manual byte-table alignment
         #[rustfmt::skip]
@@ -186,28 +204,41 @@ mod tests {
     fn allocator_history_moves_world_hash_when_live_graph_facts_match() {
         let untouched = HypergraphStore::new();
         let mut allocated = HypergraphStore::new();
-        let transient = allocated.add_node("SOCIAL_CLASS").unwrap();
-        allocated.remove_node(transient).unwrap();
+        let transient = allocated
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        allocated
+            .remove_node(transient)
+            .expect("the fixture node exists before removal");
         assert_eq!(
-            untouched.state_hash().unwrap(),
-            allocated.state_hash().unwrap()
+            untouched
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
+            allocated
+                .state_hash()
+                .expect("the fixture graph hashes its state")
         );
 
-        let schedule = phase_order::schedule_digest().unwrap();
+        let schedule = phase_order::schedule_digest()
+            .expect("the fixture call `schedule_digest` succeeds for the authored inputs");
         let a = super::nominal_world_hash(
-            untouched.state_hash().unwrap(),
+            untouched
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
             0,
             untouched.allocator_cursors(),
             schedule,
         )
-        .unwrap();
+        .expect("the committed world publishes its nominal hash");
         let b = super::nominal_world_hash(
-            allocated.state_hash().unwrap(),
+            allocated
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
             0,
             allocated.allocator_cursors(),
             schedule,
         )
-        .unwrap();
+        .expect("the committed world publishes its nominal hash");
         assert_ne!(a, b);
     }
 
@@ -217,8 +248,12 @@ mod tests {
         let hypergraph = seeded_world::<HypergraphStore>(true);
 
         assert_eq!(
-            memory.state_hash().unwrap(),
-            hypergraph.state_hash().unwrap()
+            memory
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
+            hypergraph
+                .state_hash()
+                .expect("the fixture graph hashes its state")
         );
         assert_eq!(memory.allocator_cursors(), hypergraph.allocator_cursors());
         assert_eq!(seeded_world_hash(&memory), seeded_world_hash(&hypergraph));
@@ -235,7 +270,7 @@ mod tests {
             },
             [0; 32],
         )
-        .unwrap_err();
+        .expect_err("the fixture call `nominal_world_hash` fails for the authored inputs");
         assert_eq!(error, "completed tick must be non-negative, got -1");
     }
 }

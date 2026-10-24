@@ -41,7 +41,7 @@ fn pledged_opening() -> MaterialCircuitState {
         .inventory
         .iter_mut()
         .find(|r| r.site_id == crate::site() && r.good_id == crate::good(1))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity = 1;
     let buyer = SiteId::from_bytes([2; 32]);
     state.supplier_routes[0].buyer_site_id = buyer;
@@ -63,7 +63,7 @@ fn pledged_opening() -> MaterialCircuitState {
             cash: crate::money(0),
         },
     ])
-    .unwrap();
+    .expect("the fixture opens the authored source");
     book.reserve_purchase(
         PurchaseEscrow::new(
             OutboundOrderId::Delivery(id),
@@ -72,16 +72,17 @@ fn pledged_opening() -> MaterialCircuitState {
             1,
             crate::money(20),
         )
-        .unwrap(),
+        .expect("the constructor accepts the authored fixture arguments"),
     )
-    .unwrap();
+    .expect("the fixture reserve admits the purchase");
     let mut stocks = crate::economy(&state).costs.snapshot().stocks;
     stocks
         .iter_mut()
         .find(|r| r.owner == AccountId::Site(crate::site()) && r.good_id == crate::good(1))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .amount = crate::money(20);
-    let costs = HistoricalCostBook::open(&book, stocks, vec![], vec![], vec![]).unwrap();
+    let costs = HistoricalCostBook::open(&book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     crate::economy_mut(&mut state).book = book;
     crate::economy_mut(&mut state).costs = costs;
     state.orders.push(OrderRow {
@@ -107,7 +108,8 @@ fn pledged_opening() -> MaterialCircuitState {
 #[test]
 fn installation_choice_preserves_owned_equipment_pledged_to_a_paid_buyer() {
     let state = pledged_opening();
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert!(
         equipment(&closed.state).pending.is_empty(),
         "sale inventory must not become WIP"
@@ -142,10 +144,12 @@ fn installation_choice_does_not_expand_a_process_already_at_its_captured_target(
         .accounts
         .iter_mut()
         .find(|r| r.account == AccountId::Site(crate::site()))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .opening_capital = crate::money(142);
-    crate::economy_mut(&mut state).costs = HistoricalCostBook::from_snapshot(snapshot).unwrap();
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    crate::economy_mut(&mut state).costs =
+        HistoricalCostBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert!(
         equipment(&closed.state).pending.is_empty(),
         "owned spare stock is not automatic expansion"
@@ -156,24 +160,29 @@ fn installation_choice_does_not_expand_a_process_already_at_its_captured_target(
 
 #[test]
 fn installation_choice_lowered_target_keeps_existing_wip_and_exact_restart() {
-    let first = babylon_material_circuit::advance_material_circuit(&crate::opening()).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&crate::opening())
+        .expect("the authored material state advances one period");
     let mut state = first.state;
     crate::equipment_mut(&mut state).installation_policies[0].target =
         InstallationTarget::FixedUnits(0);
-    let second = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(second.installation_decisions[0].target_units, 0);
     assert_eq!(second.installation_decisions[0].pending_units, 1);
     assert_eq!(second.installation_decisions[0].requested_units, 0);
     assert_eq!(second.installation_decisions[0].started_units, 0);
     assert_eq!(second.installation[0].used_hours, 2);
     let restored = babylon_material_circuit::decode_material_circuit_state(
-        &babylon_material_circuit::encode_material_circuit_state(&second.state).unwrap(),
+        &babylon_material_circuit::encode_material_circuit_state(&second.state)
+            .expect("the canonical material state encodes"),
     )
-    .unwrap();
-    let third = babylon_material_circuit::advance_material_circuit(&second.state).unwrap();
+    .expect("the canonical material bytes decode");
+    let third = babylon_material_circuit::advance_material_circuit(&second.state)
+        .expect("the authored material state advances one period");
     assert_eq!(
         third,
-        babylon_material_circuit::advance_material_circuit(&restored).unwrap()
+        babylon_material_circuit::advance_material_circuit(&restored)
+            .expect("the authored material state advances one period")
     );
     assert_eq!(equipment(&third.state).cohorts[0].units, 1);
     assert_eq!(equipment_cost(&third.state), crate::money(32));
@@ -187,29 +196,30 @@ fn installation_choice_owned_equipment_can_install_above_the_purchase_ceiling() 
         .inventory
         .iter_mut()
         .find(|r| r.site_id == crate::site() && r.good_id == crate::good(1))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity = 2;
     state
         .inventory
         .iter_mut()
         .find(|r| r.site_id == crate::site() && r.good_id == crate::good(2))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity = 4;
     let mut stocks = crate::economy(&state).costs.snapshot().stocks;
     stocks
         .iter_mut()
         .find(|r| r.owner == AccountId::Site(crate::site()) && r.good_id == crate::good(1))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .amount = crate::money(20);
     let costs =
         HistoricalCostBook::open(&crate::economy(&state).book, stocks, vec![], vec![], vec![])
-            .unwrap();
+            .expect("the fixture opens the authored source");
     crate::economy_mut(&mut state).costs = costs;
     let e = crate::equipment_mut(&mut state);
     e.installation_policies[0].target = InstallationTarget::FixedUnits(2);
     e.installation_policies[0].maximum_started_units_per_period = 2;
     e.investment_policies[0].maximum_installed_units = 1;
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(closed.installation_decisions[0].target_units, 2);
     assert_eq!(closed.installation_decisions[0].started_units, 2);
     assert_eq!(equipment(&closed.state).pending[0].units, 2);
@@ -223,14 +233,15 @@ fn installation_choice_plan_withdrawal_and_explicit_replacement_are_distinct() {
     crate::economy_mut(&mut state)
         .recurring
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .production[0]
         .planned_batches = 0;
     crate::equipment_mut(&mut state).installation_policies[0].target =
         InstallationTarget::ProductionPlan {
             replacement_units: 0,
         };
-    let held = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let held = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(held.installation_decisions[0].captured_plan_batches, 0);
     assert_eq!(held.installation_decisions[0].target_units, 0);
     assert_eq!(held.installation_decisions[0].started_units, 0);
@@ -239,7 +250,8 @@ fn installation_choice_plan_withdrawal_and_explicit_replacement_are_distinct() {
         InstallationTarget::ProductionPlan {
             replacement_units: 1,
         };
-    let replacement = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let replacement = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(replacement.installation_decisions[0].target_units, 1);
     assert_eq!(replacement.installation_decisions[0].started_units, 1);
     assert_eq!(equipment(&replacement.state).pending[0].remaining_hours, 3);
@@ -249,24 +261,27 @@ fn installation_choice_plan_withdrawal_and_explicit_replacement_are_distinct() {
 fn installation_choice_staffing_does_not_request_work_for_sale_inventory() {
     let mut state = pledged_opening();
     state.corridor_capacities[0].available_grams = 0;
-    let closed = babylon_material_circuit::close_material_period(&state).unwrap();
+    let closed = babylon_material_circuit::close_material_period(&state)
+        .expect("the material period closes");
     let binding = StaffingPoolBinding::try_new(
         StaffingPoolId::from_bytes([1; 32]),
         crate::site(),
         crate::hours(),
         1,
-        StaffingPolicy::one_period(1).unwrap(),
+        StaffingPolicy::one_period(1).expect("the one-period fixture advances"),
         vec![
             StaffingWorkSource::Production(crate::process()),
             StaffingWorkSource::Installation(crate::process()),
         ],
     )
-    .unwrap();
-    let requests = closed.staffing_requests(&[binding]).unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
+    let requests = closed
+        .staffing_requests(&[binding])
+        .expect("the fixture staffing requests are present");
     let installation = requests
         .iter()
         .find(|r| r.work_source() == StaffingWorkSource::Installation(crate::process()))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(installation.hours(), 0);
 }
 
@@ -308,7 +323,8 @@ fn installation_choice_pledged_stock_does_not_suppress_a_real_replacement_purcha
             expansion_earnings_fraction_bps: 0,
             cash_floor: crate::money(0),
         });
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert!(closed.installation.is_empty());
     assert_eq!(closed.investment[0].on_hand_units, 0);
     assert_eq!(closed.investment[0].replacement_requested_units, 1);
@@ -320,7 +336,8 @@ fn installation_choice_pledged_stock_does_not_suppress_a_real_replacement_purcha
 #[test]
 fn installation_choice_wire_refuses_an_unknown_target_and_absent_plan_without_defaulting() {
     let state = crate::opening();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     let mut policy = crate::process().as_bytes().to_vec();
     policy.push(1);
     for value in [1_u64, 1, 2] {

@@ -34,8 +34,14 @@
 // Conformance fixtures exercise exact engine values, transcribe spec literals,
 // and build whole scenarios in one test. These pedantic lints would force
 // ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::unreadable_literal)]
-#![allow(clippy::float_cmp)]
+#![allow(
+    clippy::unreadable_literal,
+    reason = "the literal is an authored byte pattern"
+)]
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
 
 use babylon_bsl::scenario;
 use babylon_bsl::structural_verbs::CollectingSink;
@@ -62,27 +68,54 @@ const SCENARIO: &str = include_str!("../content/scenarios/territory-conformance.
 // select-max that fell back to plain id-order would still have passed).
 const SUB_THRESHOLD_HIGH: NodeId = NodeId(0);
 const SUB_THRESHOLD_LOW: NodeId = NodeId(1);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const LATCH_TICK_SOURCE: NodeId = NodeId(2);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const SINK_RESERVATION: NodeId = NodeId(3);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const SINK_PENAL: NodeId = NodeId(4);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const LATCH_NO_SINK: NodeId = NodeId(5);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const ALREADY_LATCHED_TO_CAMP: NodeId = NodeId(6);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const CONCENTRATION_CAMP: NodeId = NodeId(7);
 const CHAIN_1: NodeId = NodeId(8);
 const CHAIN_2: NodeId = NodeId(9);
 const CHAIN_3: NodeId = NodeId(10);
 const ISOLATED_FALLBACK: NodeId = NodeId(11);
-#[allow(dead_code)] // named for documentation symmetry with the id map above
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)] // named for documentation symmetry with the id map above
 const TENANT_1: NodeId = NodeId(12);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const TENANT_2: NodeId = NodeId(13);
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)]
 const NON_TENANT: NodeId = NodeId(14);
 
 /// Task 3, Step 2: the scenario loads clean and the node/edge census

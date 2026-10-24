@@ -318,16 +318,21 @@ mod tests {
     fn tuple(fields: [&[u8]; 5]) -> Vec<u8> {
         let mut raw = DOMAIN.to_vec();
         for field in fields {
-            raw.extend_from_slice(&u32::try_from(field.len()).unwrap().to_be_bytes());
+            raw.extend_from_slice(
+                &u32::try_from(field.len())
+                    .expect("the fixture value fits the target range")
+                    .to_be_bytes(),
+            );
             raw.extend_from_slice(field);
         }
         raw
     }
     fn admit(raw: &[u8]) -> Result<DecodedBody> {
-        let encoded = storage_compression::compress_exact(raw, MAX_BODY_BYTES).unwrap();
+        let encoded = storage_compression::compress_exact(raw, MAX_BODY_BYTES)
+            .expect("the body fits the exact compressed bound");
         decode(
             ENCODING,
-            u32::try_from(raw.len()).unwrap(),
+            u32::try_from(raw.len()).expect("the fixture value fits the target range"),
             content_digest::sha256_of(raw),
             &encoded,
         )
@@ -335,7 +340,7 @@ mod tests {
     #[test]
     fn exact_utf8_tuple_is_bounded_and_rejects_invalid_framing() {
         let raw = tuple(["題|é".as_bytes(), b"# markdown\n", b"search", b"[]", b"{}"]);
-        let decoded = admit(&raw).unwrap();
+        let decoded = admit(&raw).expect("the fixture admits the authored value");
         assert_eq!(decoded.title, "題|é");
         assert_eq!(decoded.markdown, "# markdown\n");
         assert_eq!(decoded.search_text, "search");
@@ -355,43 +360,51 @@ mod tests {
         domain[0] ^= 1;
         assert!(admit(&domain).is_err());
         let mut overlong = DOMAIN.to_vec();
-        overlong.extend_from_slice(&u32::try_from(TITLE_BYTES + 1).unwrap().to_be_bytes());
+        overlong.extend_from_slice(
+            &u32::try_from(TITLE_BYTES + 1)
+                .expect("the fixture value fits the target range")
+                .to_be_bytes(),
+        );
         assert!(admit(&overlong).is_err());
         assert!(admit(&raw[..raw.len() - 1]).is_err());
-        let encoded = storage_compression::compress_exact(&raw, MAX_BODY_BYTES).unwrap();
+        let encoded = storage_compression::compress_exact(&raw, MAX_BODY_BYTES)
+            .expect("the body fits the exact compressed bound");
         assert!(decode(
             2,
-            u32::try_from(raw.len()).unwrap(),
+            u32::try_from(raw.len()).expect("the fixture value fits the target range"),
             content_digest::sha256_of(&raw),
             &encoded
         )
         .is_err());
         assert!(decode(
             ENCODING,
-            u32::try_from(raw.len()).unwrap(),
+            u32::try_from(raw.len()).expect("the fixture value fits the target range"),
             [0; 32],
             &encoded
         )
         .is_err());
         assert!(decode(
             ENCODING,
-            u32::try_from(raw.len() + 1).unwrap(),
+            u32::try_from(raw.len() + 1).expect("the fixture value fits the target range"),
             content_digest::sha256_of(&raw),
             &encoded
         )
         .is_err());
         assert!(decode(
             ENCODING,
-            u32::try_from(raw.len()).unwrap(),
+            u32::try_from(raw.len()).expect("the fixture value fits the target range"),
             content_digest::sha256_of(&raw),
             &encoded[..encoded.len() - 1]
         )
         .is_err());
         let mut appended = encoded;
-        appended.extend(storage_compression::compress_exact(&[], 0).unwrap());
+        appended.extend(
+            storage_compression::compress_exact(&[], 0)
+                .expect("the body fits the exact compressed bound"),
+        );
         assert!(decode(
             ENCODING,
-            u32::try_from(raw.len()).unwrap(),
+            u32::try_from(raw.len()).expect("the fixture value fits the target range"),
             content_digest::sha256_of(&raw),
             &appended
         )
@@ -404,15 +417,16 @@ mod tests {
             SemanticArchiveError::CollectionBound
         );
         let raw = tuple([b"a", b"m", b"s", b"[]", b"{}"]);
-        let frame = storage_compression::compress_exact(&raw, MAX_BODY_BYTES).unwrap();
+        let frame = storage_compression::compress_exact(&raw, MAX_BODY_BYTES)
+            .expect("the body fits the exact compressed bound");
         let bounded = decode(
             ENCODING,
-            u32::try_from(MAX_BODY_BYTES + 1).unwrap(),
+            u32::try_from(MAX_BODY_BYTES + 1).expect("the fixture value fits the target range"),
             content_digest::sha256_of(&raw),
             &frame,
         )
         .err()
-        .unwrap();
+        .expect("the fixture call `err` succeeds for the authored inputs");
         assert_eq!(
             bounded.into_semantic(),
             SemanticArchiveError::CollectionBound

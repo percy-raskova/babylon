@@ -285,7 +285,7 @@ fn accounting(recurring: RecurringEconomy) -> CircuitAccounting {
                 cash: money(0),
             },
         ])
-        .unwrap();
+        .expect("the fixture opens the authored source");
         MonetaryCircuit {
             aid: AidBook::default(),
 
@@ -326,7 +326,7 @@ fn accounting(recurring: RecurringEconomy) -> CircuitAccounting {
                 vec![],
                 vec![],
             )
-            .unwrap(),
+            .expect("the fixture opens the authored source"),
             book,
             recurring: Some(Box::new(recurring)),
             employment: [1, 2, 3]
@@ -497,7 +497,9 @@ pub(crate) fn opening() -> MaterialCircuitState {
             .collect(),
         merchants: vec![MerchantHandling {
             site_id: site(3),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             role: MerchantRole::Retail,
             capacity_id: corridor(3),
             labor_unit_id: hours(),
@@ -510,7 +512,9 @@ pub(crate) fn opening() -> MaterialCircuitState {
         }],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,
@@ -530,7 +534,10 @@ pub(crate) fn aid_opening(routed: bool) -> MaterialCircuitState {
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         panic!("monetary control");
     };
-    let rows = economy.recurring.as_mut().unwrap();
+    let rows = economy
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     rows.household_purchases[0].enabled = false;
     rows.households.push(HouseholdCohort {
         principal_id: recipient(),
@@ -560,7 +567,8 @@ pub(crate) fn aid_opening(routed: bool) -> MaterialCircuitState {
         id: AccountId::Household(recipient()),
         cash: money(0),
     });
-    economy.book = MonetaryBook::from_snapshot(cash).unwrap();
+    economy.book =
+        MonetaryBook::from_snapshot(cash).expect("the snapshot admits the derived value");
     let mut stocks = economy.costs.snapshot().stocks;
     stocks.push(StockCarryingValue {
         owner: AccountId::Household(recipient()),
@@ -568,8 +576,8 @@ pub(crate) fn aid_opening(routed: bool) -> MaterialCircuitState {
         unit_id: units(),
         amount: money(0),
     });
-    economy.costs =
-        HistoricalCostBook::open(&economy.book, stocks, vec![], vec![], vec![]).unwrap();
+    economy.costs = HistoricalCostBook::open(&economy.book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     economy.household_time = HouseholdTimeAccounting::Modeled(
         HouseholdTimeBook::new(
             [household(), recipient()]
@@ -595,7 +603,7 @@ pub(crate) fn aid_opening(routed: bool) -> MaterialCircuitState {
                 })
                 .collect(),
         )
-        .unwrap(),
+        .expect("the constructor accepts the authored fixture arguments"),
     );
     economy.aid = AidBook {
         mandates: vec![mandate(routed)],
@@ -748,10 +756,10 @@ fn staffing() -> StaffingComposition {
                     site(id),
                     hours(),
                     persons,
-                    StaffingPolicy::one_period(4).unwrap(),
+                    StaffingPolicy::one_period(4).expect("the one-period fixture advances"),
                     vec![source],
                 )
-                .unwrap(),
+                .expect("the authored fixture satisfies the constructor invariants"),
                 vec![
                     babylon_tick::material_staffing::StaffingMemberNodeBinding::try_new(
                         StableElementKey::Node {
@@ -761,19 +769,21 @@ fn staffing() -> StaffingComposition {
                         StaffingMemberBinding::try_new(
                             StaffingMemberId::from_bytes([id; 32]),
                             household(),
-                            "county:26163".parse().unwrap(),
+                            "county:26163"
+                                .parse()
+                                .expect("the authored literal parses as the declared type"),
                             persons,
                         )
-                        .unwrap(),
+                        .expect("the authored fixture satisfies the constructor invariants"),
                     )
-                    .unwrap(),
+                    .expect("the authored fixture satisfies the constructor invariants"),
                 ],
             )
-            .unwrap()
+            .expect("the authored fixture satisfies the constructor invariants")
         })
         .collect(),
     )
-    .unwrap()
+    .expect("the authored fixture satisfies the constructor invariants")
 }
 pub(crate) fn try_session(
     foundation: &MichiganDynamicHexFoundation,
@@ -781,29 +791,34 @@ pub(crate) fn try_session(
     material: MaterialCircuitState,
     organizer: OrganizerConfig,
 ) -> Result<Session, MaterialReplayError> {
-    let (_, parsed) = rule_pipeline::split_content(rules).unwrap();
+    let (_, parsed) =
+        rule_pipeline::split_content(rules).expect("the authored content splits into its sections");
     let forms = parsed.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     let graph = ReplayTickSession::new(
         SCENARIO,
         None,
         rules,
         HypergraphStore::new(),
-        ReplaySessionId::try_from("organizer/replay-session").unwrap(),
+        ReplaySessionId::try_from("organizer/replay-session")
+            .expect("the fixture value fits the target range"),
         ReplaySeed::new(40),
         ContentDigest {
             defines_hash: [40; 32],
-            rules_hash: canonical_ast::rules_hash_of(&forms).unwrap(),
+            rules_hash: canonical_ast::rules_hash_of(&forms)
+                .expect("the rule set has a canonical hash"),
         },
         RefDigest::from_bytes(foundation.reference_bundle_digest()),
-        MaterialState::try_new(foundation).unwrap(),
+        MaterialState::try_new(foundation)
+            .expect("the authored fixture satisfies the constructor invariants"),
     )
     .map_err(MaterialReplayError::Graph)?;
     let config = organizer;
-    let state = babylon_practice_contract::initial_organizer_state(&config).unwrap();
+    let state = babylon_practice_contract::initial_organizer_state(&config)
+        .expect("the authored config admits an opening organizer state");
     let material = MaterialWorldRegister::try_new(0, material)
-        .unwrap()
+        .expect("the authored fixture satisfies the constructor invariants")
         .with_organizer(config, state)
-        .unwrap();
+        .expect("the fixture builder accepts the authored options");
     MaterialReplaySession::new(
         graph,
         material,
@@ -814,8 +829,14 @@ pub(crate) fn try_session(
 }
 
 pub(crate) fn commitment(session: &Session, choice: OrganizerChoice) -> OrganizerCommitment {
-    let config = session.material().organizer_config().unwrap();
-    let state = session.material().organizer_state().unwrap();
+    let config = session
+        .material()
+        .organizer_config()
+        .expect("the fixture register carries organizer config");
+    let state = session
+        .material()
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
     babylon_practice_contract::admit_organizer(
         config,
         state,
@@ -825,25 +846,32 @@ pub(crate) fn commitment(session: &Session, choice: OrganizerChoice) -> Organize
             authority_id: config.input_authority_id,
             expected_period: state.period,
             content_digest: config.content_digest,
-            resource_digest: babylon_practice_contract::organizer_resource_digest().unwrap(),
+            resource_digest: babylon_practice_contract::organizer_resource_digest()
+                .expect("the organizer resource set has a digest"),
             nonce: [7; 16],
             choice,
         },
     )
-    .unwrap()
+    .expect("the fixture admits the organizer actor")
 }
 
 pub(crate) fn prepare(session: &Session, accepted: Option<&OrganizerCommitment>) -> Candidate {
     let actions = babylon_practice_contract::organizer_action_batch(
-        session.material().organizer_config().unwrap(),
-        session.material().organizer_state().unwrap(),
+        session
+            .material()
+            .organizer_config()
+            .expect("the fixture register carries organizer config"),
+        session
+            .material()
+            .organizer_state()
+            .expect("the fixture register carries organizer state"),
         accepted,
         session.graph_session().session_identity().clone(),
     )
-    .unwrap();
+    .expect("the authored action batch builds");
     session
         .prepare_advance_with_organizer(&actions, accepted)
-        .unwrap()
+        .expect("the session prepares the authored organizer advance")
 }
 
 pub(crate) fn commit(session: &mut Session, sink: &mut CollectingSink, candidate: Candidate) {
@@ -851,7 +879,7 @@ pub(crate) fn commit(session: &mut Session, sink: &mut CollectingSink, candidate
         .commit_prepared_and_publish(sink, candidate, |_| {
             Ok::<_, &'static str>(ReplayCommitDisposition::Committed)
         })
-        .unwrap();
+        .expect("the prepared period commits");
 }
 
 pub(crate) fn authored_session(
@@ -876,7 +904,7 @@ pub(crate) fn authored_session_with_loss(
             .route_stages
             .iter_mut()
             .find(|stage| stage.route_id == route(2))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .loss_ppm = loss_ppm;
     } else {
         assert_eq!(loss_ppm, 0);
@@ -886,32 +914,36 @@ pub(crate) fn authored_session_with_loss(
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         unreachable!()
     };
-    let total = economy.book.total_cash_and_reserves().unwrap();
+    let total = economy
+        .book
+        .total_cash_and_reserves()
+        .expect("the fixture book totals without overflow");
     let payer = AccountId::Organization(OrganizationAccountId::from_bytes([96; 32]));
     let mut snapshot = economy.book.snapshot();
     snapshot
         .accounts
         .iter_mut()
         .find(|a| a.id == AccountId::Site(site(2)))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .cash = money(8);
     snapshot
         .accounts
         .iter_mut()
         .find(|a| a.id == AccountId::Site(site(3)))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .cash = money(6);
     snapshot
         .accounts
         .iter_mut()
         .find(|a| a.id == AccountId::Household(household()))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .cash = money(6);
     snapshot.accounts.push(CashAccount {
         id: payer,
         cash: money(0),
     });
-    economy.book = MonetaryBook::from_snapshot(snapshot).unwrap();
+    economy.book =
+        MonetaryBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     economy
         .book
         .transfer_cash(
@@ -920,7 +952,7 @@ pub(crate) fn authored_session_with_loss(
             money(6),
             CashTransferPurpose::MutualAid,
         )
-        .unwrap();
+        .expect("the fixture transfer stays funded");
     economy.aid.mandates[0].payer = payer;
     economy.financial.locations.push(InstitutionLocation {
         account: payer,
@@ -933,8 +965,14 @@ pub(crate) fn authored_session_with_loss(
         vec![],
         vec![],
     )
-    .unwrap();
-    assert_eq!(economy.book.total_cash_and_reserves().unwrap(), total);
+    .expect("the fixture opens the authored source");
+    assert_eq!(
+        economy
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
+        total
+    );
     if routed {
         let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
             unreachable!()
@@ -958,5 +996,5 @@ pub(crate) fn authored_session_with_loss(
         state,
         organizer,
     )
-    .unwrap()
+    .expect("the fixture opens a session")
 }

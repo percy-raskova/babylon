@@ -129,7 +129,8 @@ mod tests {
             labor: vec![],
         };
         assert_eq!(
-            ProductionOutputPoint::from_process(0, &process).unwrap(),
+            ProductionOutputPoint::from_process(0, &process)
+                .expect("the authored input admits the derived value"),
             ProductionOutputPoint {
                 period: 0,
                 planned: None,
@@ -139,7 +140,8 @@ mod tests {
         process.planned_batches = Some(8);
         process.produced_batches = Some(0);
         assert_eq!(
-            ProductionOutputPoint::from_process(1, &process).unwrap(),
+            ProductionOutputPoint::from_process(1, &process)
+                .expect("the authored input admits the derived value"),
             ProductionOutputPoint {
                 period: 1,
                 planned: Some(80),
@@ -157,9 +159,9 @@ mod tests {
     fn preview_history_refuses_before_connecting_or_examining_identities() {
         let config = "host=127.0.0.1 port=1 user=unavailable dbname=unavailable"
             .parse()
-            .unwrap();
-        let reader =
-            ObserverEconomyReader::connect(&config, ObserverVisibility::KnownPreview).unwrap();
+            .expect("the authored literal parses as the declared type");
+        let reader = ObserverEconomyReader::connect(&config, ObserverVisibility::KnownPreview)
+            .expect("the test database accepts the connection");
         let target = ProductionHistoryTarget {
             site_id: "unknown".into(),
             process_id: "unknown".into(),

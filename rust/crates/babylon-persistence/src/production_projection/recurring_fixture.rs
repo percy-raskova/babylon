@@ -161,7 +161,7 @@ fn accounting() -> CircuitAccounting {
                 cash: money(0),
             },
         ])
-        .unwrap();
+        .expect("the fixture opens the authored source");
         MonetaryCircuit {
             aid: AidBook::default(),
             household_time: HouseholdTimeAccounting::NotModeled,
@@ -199,7 +199,7 @@ fn accounting() -> CircuitAccounting {
                 vec![],
                 vec![],
             )
-            .unwrap(),
+            .expect("the fixture opens the authored source"),
             book,
             recurring: Some(Box::new(recurring_policies())),
             employment: [1, 2, 3]
@@ -280,6 +280,10 @@ fn labor_coefficients() -> Vec<LaborCoefficient> {
         .collect()
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "`opening` keeps one authored boundary's fixture and assertions together"
+)]
 pub(crate) fn opening() -> MaterialCircuitState {
     MaterialCircuitState {
         period: 1,
@@ -361,7 +365,9 @@ pub(crate) fn opening() -> MaterialCircuitState {
             .collect(),
         merchants: vec![MerchantHandling {
             site_id: site(3),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             role: MerchantRole::Retail,
             capacity_id: corridor(3),
             labor_unit_id: hours(),
@@ -374,7 +380,9 @@ pub(crate) fn opening() -> MaterialCircuitState {
         }],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,

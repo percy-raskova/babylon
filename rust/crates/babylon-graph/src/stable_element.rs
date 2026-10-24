@@ -1221,11 +1221,11 @@ fn frame_segments(
         });
     }
     let mut output = reserve_string(field, capacity)?;
-    for (index, segment) in segments
+    let bounded_segments = segments
         .iter()
         .take(MAX_STABLE_CARRIER_ACTIVE_ELEMENTS + 2)
-        .enumerate()
-    {
+        .enumerate();
+    for (index, segment) in bounded_segments {
         if index > 0 {
             output.push('|');
         }
@@ -1576,7 +1576,8 @@ mod tests {
 
     #[test]
     fn frame_segments_enforces_its_supplied_byte_ceiling() {
-        let exact = super::frame_segments("test frame", &["xxxxxxxxxxxx"], 15).unwrap();
+        let exact = super::frame_segments("test frame", &["xxxxxxxxxxxx"], 15)
+            .expect("the fixture call `frame_segments` succeeds for the authored inputs");
         assert_eq!(exact.len(), 15);
         assert_eq!(
             super::frame_segments("test frame", &["xxxxxxxxxxxxx"], 15),

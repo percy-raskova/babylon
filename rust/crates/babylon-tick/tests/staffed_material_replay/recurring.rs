@@ -28,7 +28,11 @@ use babylon_material_circuit::{
 };
 
 fn capture_empty_pantry_cost(economy: &mut MonetaryCircuit) {
-    let pantry = &economy.recurring.as_ref().unwrap().household_stocks[0];
+    let pantry = &economy
+        .recurring
+        .as_ref()
+        .expect("the fixture set the optional field before this read")
+        .household_stocks[0];
     let mut costs = economy.costs.snapshot();
     costs
         .stocks
@@ -38,7 +42,8 @@ fn capture_empty_pantry_cost(economy: &mut MonetaryCircuit) {
             unit_id: pantry.unit_id,
             amount: Currency::from_micro_units(0),
         });
-    economy.costs = HistoricalCostBook::from_snapshot(costs).unwrap();
+    economy.costs =
+        HistoricalCostBook::from_snapshot(costs).expect("the snapshot admits the derived value");
 }
 
 fn opening() -> MaterialCircuitState {
@@ -47,7 +52,9 @@ fn opening() -> MaterialCircuitState {
     let handling = CorridorId::from_bytes([2; 32]);
     material.merchants.push(MerchantHandling {
         site_id: crate::site(1),
-        location: "county:26163".parse().unwrap(),
+        location: "county:26163"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
         role: MerchantRole::Retail,
         capacity_id: handling,
         labor_unit_id: crate::unit(1),
@@ -137,21 +144,22 @@ fn session_with_material(material: MaterialCircuitState) -> Session {
         crate::site(1),
         crate::unit(1),
         1,
-        StaffingPolicy::one_period(160).unwrap(),
+        StaffingPolicy::one_period(160).expect("the one-period fixture advances"),
         vec![
             StaffingWorkSource::Production(process()),
             StaffingWorkSource::MerchantHandling(crate::site(1)),
         ],
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     let staffing = StaffingComposition::try_new(vec![StaffingNodeBinding::try_new(
         subject(),
         pool.clone(),
         vec![resident_member(&pool)],
     )
-    .unwrap()])
-    .unwrap();
-    crate::try_session_with_material(MATERIAL_CYCLE, staffing, material).unwrap()
+    .expect("the authored fixture satisfies the constructor invariants")])
+    .expect("the authored fixture satisfies the constructor invariants");
+    crate::try_session_with_material(MATERIAL_CYCLE, staffing, material)
+        .expect("the fixture opens a session with material")
 }
 
 fn household_time_session() -> Session {
@@ -163,7 +171,12 @@ fn household_time_session() -> Session {
     let CircuitAccounting::Monetary(economy) = &mut material.accounting else {
         panic!("paid household opening");
     };
-    let household = economy.recurring.as_ref().unwrap().households[0].principal_id;
+    let household = economy
+        .recurring
+        .as_ref()
+        .expect("the fixture set the optional field before this read")
+        .households[0]
+        .principal_id;
     economy.household_time = HouseholdTimeAccounting::Modeled(
         HouseholdTimeBook::new(vec![HouseholdTimePolicy {
             principal_id: household,
@@ -184,7 +197,7 @@ fn household_time_session() -> Session {
                 hours_per_unmet_unit: 4,
             }],
         }])
-        .unwrap(),
+        .expect("the constructor accepts the authored fixture arguments"),
     );
     session_with_material(material)
 }
@@ -196,7 +209,8 @@ fn household_time_receipts_publish_atomically_and_replay_after_restart() {
     let mut sink = CollectingSink::default();
     let before = crate::live(&session, &sink);
     let candidate = crate::prepare(&session);
-    let receipts = crate::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    let receipts = crate::decode_material_receipts(candidate.material().receipt_bytes())
+        .expect("the canonical bytes decode into the declared type");
     let time = &receipts.household_time[0];
     assert_eq!(receipts.household_time.len(), 1);
     assert_eq!((time.period, time.attended_hours), (1, 160));
@@ -237,9 +251,9 @@ fn household_time_receipts_publish_atomically_and_replay_after_restart() {
             &graph,
             &graph_material,
             &registers,
-            MaterialWorldRegister::decode(&material).unwrap(),
+            MaterialWorldRegister::decode(&material).expect("the committed canonical bytes decode"),
         )
-        .unwrap();
+        .expect("the committed checkpoint restores");
     assert_eq!(restored.material(), session.material());
     let mut restored_sink = CollectingSink::default();
     for period in 2..=5 {
@@ -250,7 +264,8 @@ fn household_time_receipts_publish_atomically_and_replay_after_restart() {
             replay.material().receipt_bytes(),
             next.material().receipt_bytes()
         );
-        let current = crate::decode_material_receipts(next.material().receipt_bytes()).unwrap();
+        let current = crate::decode_material_receipts(next.material().receipt_bytes())
+            .expect("the canonical bytes decode into the declared type");
         assert_eq!(current.household_time[0].period, period);
         assert_eq!(
             current.household_time[0].attended_hours,
@@ -276,7 +291,8 @@ fn household_admission_consumption_and_retirement_replay_atomically() {
     let mut sink = CollectingSink::default();
     let before = crate::live(&session, &sink);
     let candidate = crate::prepare(&session);
-    let receipts = crate::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    let receipts = crate::decode_material_receipts(candidate.material().receipt_bytes())
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(receipts.household_demand.len(), 1);
     assert_eq!(receipts.household_demand[0].admitted_quantity, 1);
     assert_eq!(receipts.household_demand[0].expired_quantity, 1);
@@ -314,9 +330,9 @@ fn household_admission_consumption_and_retirement_replay_atomically() {
             &graph,
             &graph_material,
             &registers,
-            MaterialWorldRegister::decode(&material).unwrap(),
+            MaterialWorldRegister::decode(&material).expect("the committed canonical bytes decode"),
         )
-        .unwrap();
+        .expect("the committed checkpoint restores");
     let mut restored_sink = CollectingSink::default();
     let mut consumed = 0;
     for period in 2..=5 {
@@ -327,7 +343,8 @@ fn household_admission_consumption_and_retirement_replay_atomically() {
             replay.material().receipt_bytes(),
             next.material().receipt_bytes()
         );
-        let receipts = crate::decode_material_receipts(next.material().receipt_bytes()).unwrap();
+        let receipts = crate::decode_material_receipts(next.material().receipt_bytes())
+            .expect("the canonical bytes decode into the declared type");
         assert_eq!(receipts.household_consumption[0].period, period);
         consumed += receipts.household_consumption[0].consumed_quantity;
         assert!(next
@@ -348,14 +365,23 @@ fn household_admission_consumption_and_retirement_replay_atomically() {
         panic!("paid circuit")
     };
     assert_eq!(
-        economy.book.cash(AccountId::Site(crate::site(2))).unwrap(),
+        economy
+            .book
+            .cash(AccountId::Site(crate::site(2)))
+            .expect("the fixture book holds the payer account"),
         Currency::from_micro_units(8)
     );
     assert_eq!(
-        economy.book.total_cash_and_reserves().unwrap(),
+        economy
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         Currency::from_micro_units(1000)
     );
-    let recurring = economy.recurring.as_ref().unwrap();
+    let recurring = economy
+        .recurring
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(recurring.last_household_admission_period, 5);
     assert_eq!(recurring.last_household_consumption_period, 5);
     assert_eq!(recurring.household_stocks[0].quantity, 0);

@@ -16,8 +16,10 @@ fn seed_from_i64(value: i64) -> ReplaySeed {
 
 #[test]
 fn checked_constructors_accept_graphic_ascii_at_the_session_boundaries() {
-    let one = checked_session_from_bytes(b"!").unwrap();
-    let maximum = checked_session_from_string(&"~".repeat(256)).unwrap();
+    let one = checked_session_from_bytes(b"!")
+        .expect("the fixture call `checked_session_from_bytes` succeeds for the authored inputs");
+    let maximum = checked_session_from_string(&"~".repeat(256))
+        .expect("the fixture call `checked_session_from_string` succeeds for the authored inputs");
 
     assert_eq!(one.as_bytes(), b"!");
     assert_eq!(maximum.as_bytes(), "~".repeat(256).as_bytes());
@@ -25,9 +27,15 @@ fn checked_constructors_accept_graphic_ascii_at_the_session_boundaries() {
 
 #[test]
 fn canonical_session_bytes_prefix_the_exact_u16_big_endian_length() {
-    let session = checked_session_from_string("A9!").unwrap();
+    let session = checked_session_from_string("A9!")
+        .expect("the fixture call `checked_session_from_string` succeeds for the authored inputs");
 
-    assert_eq!(session.canonical_bytes().unwrap(), b"\0\x03A9!");
+    assert_eq!(
+        session
+            .canonical_bytes()
+            .expect("the graph value exposes canonical bytes"),
+        b"\0\x03A9!"
+    );
 }
 
 #[test]
@@ -83,7 +91,7 @@ fn rng_domain_accepts_only_bsl_qnames_at_the_boundaries() {
     let maximum = format!("{}/{}/c/d", "a".repeat(64), "b".repeat(59));
 
     for valid in ["a/b", "rule-name/segment-2", maximum.as_str()] {
-        let domain = RngDomain::try_from(valid).unwrap();
+        let domain = RngDomain::try_from(valid).expect("the fixture value fits the target range");
         assert_eq!(domain.as_str(), valid);
     }
 }

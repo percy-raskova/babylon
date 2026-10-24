@@ -131,7 +131,10 @@ impl RunIdentity {
     ///
     /// # Errors
     /// Returns the first exact session, NFC, ASCII, or length refusal.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "`new` takes every authored field explicitly"
+    )]
     pub fn new(
         session: SessionId,
         scenario_digest: Digest32,
@@ -423,7 +426,10 @@ impl SfsTrace {
     ///
     /// # Errors
     /// Returns the first width, count, tick, arithmetic, or classifier refusal.
-    #[allow(clippy::needless_range_loop)] // Literal ceiling is part of the trace contract.
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "the loop index is the authored row ordinal"
+    )] // Literal ceiling is part of the trace contract.
     pub fn new(
         run_identity_digest: Digest32,
         relational_scope_digest: Digest32,
@@ -486,7 +492,10 @@ impl T3Record for SfsTrace {
     const MAX_PAYLOAD_BYTES: usize = 22_067;
     type Error = SfsRecordError;
 
-    #[allow(clippy::needless_range_loop)] // Literal ceiling is part of the trace contract.
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "the loop index is the authored row ordinal"
+    )] // Literal ceiling is part of the trace contract.
     fn encode_payload(&self, out: &mut PayloadEncoder) -> Result<(), SfsWireError> {
         out.push_digest(self.run_identity_digest)?;
         out.push_digest(self.relational_scope_digest)?;
@@ -639,7 +648,10 @@ impl T3Record for PracticeCandidateSchedule {
     const MAX_PAYLOAD_BYTES: usize = 6_815_644;
     type Error = SfsRecordError;
 
-    #[allow(clippy::needless_range_loop)] // Literal ceiling is part of the row contract.
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "the loop index is the authored row ordinal"
+    )] // Literal ceiling is part of the row contract.
     fn encode_payload(&self, out: &mut PayloadEncoder) -> Result<(), SfsWireError> {
         out.push_u32(u32::try_from(self.rows.len()).map_err(|_| {
             SfsWireError::ArithmeticOverflow {
@@ -689,7 +701,10 @@ impl SfsPreregistration {
     ///
     /// # Errors
     /// Returns start-tick overflow or a non-positive cadence refusal.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "`new` takes every authored field explicitly"
+    )]
     pub fn new(
         preregistered_at_tick: u64,
         relational_scope_digest: Digest32,
@@ -981,7 +996,10 @@ impl T3Record for PracticeAttemptLedger {
     const MAX_PAYLOAD_BYTES: usize = 8_978_331;
     type Error = SfsRecordError;
 
-    #[allow(clippy::needless_range_loop)] // Literal ceiling is part of the row contract.
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "the loop index is the authored row ordinal"
+    )] // Literal ceiling is part of the row contract.
     fn encode_payload(&self, out: &mut PayloadEncoder) -> Result<(), SfsWireError> {
         out.push_digest(self.accepted_intent_ledger_digest)?;
         out.push_u32(u32::try_from(self.rows.len()).map_err(|_| {

@@ -18,14 +18,17 @@ fn first_period(
     MaterialTickReceipts,
     Vec<StaffingEvidence>,
 ) {
-    let foundation = tests::spec(profile).create_foundation().unwrap();
-    let manifest = manifest::capture(&foundation).unwrap();
+    let foundation = tests::spec(profile)
+        .create_foundation()
+        .expect("the authored catalog builds the foundation");
+    let manifest = manifest::capture(&foundation).expect("the fixture captures the authored state");
     let session = foundation
         .reconstruct_captured()
-        .unwrap()
+        .expect("the fixture call `reconstruct_captured` succeeds for the authored inputs")
         .into_session()
-        .unwrap();
-    let candidate = super::super::prepare(&session).unwrap();
+        .expect("the fixture opens a session");
+    let candidate = super::super::prepare(&session)
+        .expect("the fixture call `prepare` succeeds for the authored inputs");
     let report = candidate.graph_report().report();
     let copied_report = TickReport {
         before: report.before,
@@ -43,8 +46,10 @@ fn first_period(
     (
         manifest,
         copied_report,
-        material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap(),
-        super::super::staffing(&candidate).unwrap(),
+        material_world::decode_material_receipts(candidate.material().receipt_bytes())
+            .expect("the canonical bytes decode into the declared type"),
+        super::super::staffing(&candidate)
+            .expect("the fixture call `staffing` succeeds for the authored inputs"),
     )
 }
 
@@ -68,7 +73,7 @@ fn coverage_refuses_misattributed_duplicate_and_unselected_effects() {
     let material = original
         .iter()
         .position(|r| r.effect == EffectSignature::MaterialCycle)
-        .unwrap();
+        .expect("the fixture sequence holds the addressed position");
     report.audit_receipts[material].evidence = EvidenceClass::Observed;
     assert!(manifest::verify(&manifest, &report, &receipts, &staffing).is_err());
     report.audit_receipts = original.clone();
@@ -87,15 +92,19 @@ fn coverage_refuses_misattributed_duplicate_and_unselected_effects() {
 #[test]
 fn coverage_matches_captured_subjects_and_native_family_selection() {
     let (manifest, report, receipts, mut staffing) = first_period(ExperimentProfile::DeliveryStock);
-    let (coverage, execution) = manifest::verify(&manifest, &report, &receipts, &staffing).unwrap();
+    let (coverage, execution) = manifest::verify(&manifest, &report, &receipts, &staffing)
+        .expect("the fixture call `verify` succeeds for the authored inputs");
     assert_eq!(execution.len(), manifest.rules.len());
     assert_eq!(
         coverage.staffing_events,
-        count(manifest.staffing_subjects.len()).unwrap()
+        count(manifest.staffing_subjects.len())
+            .expect("the fixture call `count` succeeds for the authored inputs")
     );
     assert_eq!(
         coverage.staffing_writes,
-        coverage.staffing_events * count(STAFFING_FIELDS.len()).unwrap()
+        coverage.staffing_events
+            * count(STAFFING_FIELDS.len())
+                .expect("the fixture call `count` succeeds for the authored inputs")
     );
     staffing[0].subject = "unselected-workforce".to_owned();
     assert!(manifest::verify(&manifest, &report, &receipts, &staffing).is_err());
@@ -104,7 +113,7 @@ fn coverage_matches_captured_subjects_and_native_family_selection() {
         .material_families
         .iter_mut()
         .find(|family| family.family == "production")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     family.selected = false;
     family.captured_rows = 0;
     assert!(!receipts.production.is_empty());
@@ -120,7 +129,9 @@ fn captured_selection_and_real_first_period_cover_each_admitted_profile() {
         ExperimentProfile::HistoricalEmployment,
         ExperimentProfile::HistoricalFreight,
     ] {
-        let foundation = tests::spec(profile).create_foundation().unwrap();
+        let foundation = tests::spec(profile)
+            .create_foundation()
+            .expect("the authored catalog builds the foundation");
         let (manifest, report, receipts, staffing) = first_period(profile);
         assert_eq!(
             manifest.staffing_subjects.len(),
@@ -131,9 +142,10 @@ fn captured_selection_and_real_first_period_cover_each_admitted_profile() {
                 .material_families
                 .iter()
                 .find(|r| r.family == "production")
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .captured_rows,
-            count(foundation.initial_register().state().process_outputs.len()).unwrap()
+            count(foundation.initial_register().state().process_outputs.len())
+                .expect("the fixture call `count` succeeds for the authored inputs")
         );
         assert!(manifest
             .material_families
@@ -147,7 +159,7 @@ fn captured_selection_and_real_first_period_cover_each_admitted_profile() {
             .bsl_families
             .iter()
             .find(|r| r.family == "metabolism")
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .rule_ids
             .is_empty());
         assert_eq!(

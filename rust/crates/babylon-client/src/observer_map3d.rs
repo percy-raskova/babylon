@@ -106,7 +106,11 @@ struct MapObservation<'w> {
     hovered: Res<'w, HoveredCounty>,
 }
 
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    reason = "the cast feeds display geometry, where f64 approximation is invisible; the display value is range-checked before the f32 narrowing"
+)]
 fn height(value: Option<u64>, maximum: Option<u64>) -> f32 {
     let ratio = match (value, maximum) {
         (Some(value), Some(maximum)) if maximum > 0 => {
@@ -254,7 +258,11 @@ fn select_county(
     }
 }
 
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    reason = "the cast feeds display geometry, where f64 approximation is invisible; the display value is range-checked before the f32 narrowing"
+)]
 fn update_observation(
     input: MapObservation,
     mut counties: Query<(
@@ -511,7 +519,11 @@ fn keyboard_orbit(
     }
 }
 
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "the display value is range-checked before the f32 narrowing; the value is non-negative before the unsigned cast"
+)]
 fn sync_camera(
     mut orbit: ResMut<MapOrbit>,
     geometry: Res<MapGeometry>,
@@ -729,7 +741,9 @@ mod tests {
             }
             // Exercise the same navigator using Bevy's accumulated pointer
             // input while the actual focused-reading claim remains active.
-            app.world_mut().run_system_once(navigate).unwrap();
+            app.world_mut()
+                .run_system_once(navigate)
+                .expect("the Bevy system completes one run");
             assert_ne!(app.world().resource::<MapOrbit>().transform(), before);
             assert_eq!(app.world().resource::<InputFocus>().get(), Some(reading));
             assert!(app
@@ -806,10 +820,13 @@ mod tests {
                     let measured = Vec2::new(500.0, 36.0) * scale;
                     app.world_mut()
                         .get_mut::<ComputedNode>(legend)
-                        .unwrap()
+                        .expect("the fixture world holds the addressed component")
                         .size = measured;
                     app.update();
-                    let node = app.world().get::<Node>(legend).unwrap();
+                    let node = app
+                        .world()
+                        .get::<Node>(legend)
+                        .expect("the fixture world holds the addressed component");
                     let (Val::Px(left), Val::Px(top)) = (node.left, node.top) else {
                         panic!("legend placement uses measured pixel coordinates");
                     };
@@ -817,7 +834,9 @@ mod tests {
                     assert!(min.cmpge(world.min).all());
                     assert!((min + measured).cmple(world.max).all());
                     assert_eq!(
-                        *app.world().get::<Visibility>(legend).unwrap(),
+                        *app.world()
+                            .get::<Visibility>(legend)
+                            .expect("the fixture world holds the addressed component"),
                         Visibility::Visible
                     );
                 }
@@ -826,7 +845,9 @@ mod tests {
         app.world_mut().resource_mut::<ObserverUiState>().lens = MapLens::Relationships;
         app.update();
         assert_eq!(
-            *app.world().get::<Visibility>(legend).unwrap(),
+            *app.world()
+                .get::<Visibility>(legend)
+                .expect("the fixture world holds the addressed component"),
             Visibility::Hidden
         );
         app.world_mut().resource_mut::<ObserverUiState>().lens =
@@ -834,7 +855,9 @@ mod tests {
         *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
         app.update();
         assert_eq!(
-            *app.world().get::<Visibility>(legend).unwrap(),
+            *app.world()
+                .get::<Visibility>(legend)
+                .expect("the fixture world holds the addressed component"),
             Visibility::Hidden
         );
         *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Map;
@@ -842,7 +865,9 @@ mod tests {
             Some(ObserverDisclosure::Lens);
         app.update();
         assert_eq!(
-            *app.world().get::<Visibility>(legend).unwrap(),
+            *app.world()
+                .get::<Visibility>(legend)
+                .expect("the fixture world holds the addressed component"),
             Visibility::Hidden
         );
     }
@@ -853,7 +878,8 @@ mod tests {
         for measured in [Vec2::ZERO, Vec2::new(100.0, 201.0), Vec2::new(605.0, 36.0)] {
             assert_eq!(legend_rect(world, measured), None);
         }
-        let rect = legend_rect(world, Vec2::new(500.0, 36.0)).unwrap();
+        let rect = legend_rect(world, Vec2::new(500.0, 36.0))
+            .expect("the fixture call `legend_rect` succeeds for the authored inputs");
         assert_eq!(rect.min, Vec2::new(24.0, 256.0));
         assert_eq!(rect.max, Vec2::new(524.0, 292.0));
     }

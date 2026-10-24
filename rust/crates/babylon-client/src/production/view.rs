@@ -1117,7 +1117,10 @@ pub(crate) fn rail(
 
 // Actual lots get static, evenly separated schematic positions, not invented
 // travel motion or geographic progress between committed observations.
-#[allow(clippy::cast_precision_loss)]
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "the cast feeds display geometry, where f64 approximation is invisible"
+)]
 pub(crate) fn freight_markers(
     snapshot: &ProductionSnapshot,
     layout: &ProductionLayout,
@@ -1258,11 +1261,11 @@ pub(crate) fn spawn_county_cohorts(
         sites.len(),
         context,
     );
-    for site in sites
+    let page_sites = sites
         .into_iter()
         .skip(navigation.cohort_page.saturating_mul(6))
-        .take(6)
-    {
+        .take(6);
+    for site in page_sites {
         let accounts: Vec<_> = snapshot
             .staffing_accounts
             .iter()
@@ -1342,11 +1345,11 @@ pub(crate) fn spawn_freight_participants(
             competitors.len(),
             context,
         );
-        for competitor in competitors
+        let page_competitors = competitors
             .into_iter()
             .skip(navigation.competitor_page.saturating_mul(6))
-            .take(6)
-        {
+            .take(6);
+        for competitor in page_competitors {
             button(
                 panel,
                 &format!(

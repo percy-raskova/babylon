@@ -559,7 +559,11 @@ pub(crate) fn reconcile_delivery_expansion(
     }
 }
 
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    reason = "the cast feeds display geometry, where f64 approximation is invisible; the display value is range-checked before the f32 narrowing"
+)]
 pub(crate) fn bar_height(value: Option<u64>, maximum: u64) -> f32 {
     value.map_or(0.0, |value| {
         ((value as f64 / maximum.max(1) as f64) * 56.0) as f32
@@ -653,7 +657,10 @@ pub(crate) fn paint_buttons(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`paint` declares each Bevy parameter explicitly"
+)]
 pub(crate) fn paint(
     mut commands: Commands,
     organizer: Option<Res<OrganizerClient>>,
@@ -1169,7 +1176,7 @@ mod tests {
                 .resource::<HistoryState>()
                 .selected_event
                 .as_ref()
-                .unwrap()
+                .expect("the fixture set the optional field before this read")
                 .1,
             original
         );
@@ -1214,7 +1221,9 @@ mod tests {
         ProductionSite {
             function: "manufacturing".into(),
             id: id.into(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             name: name.into(),
             industry_code: Some("331".into()),
             observed_employment: None,
@@ -1252,7 +1261,13 @@ mod tests {
             .resource_mut::<ObserverUiState>()
             .history_open = true;
         let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
-        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+        let snapshot = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         snapshot.sites = vec![
             delivery_site("supplier", "Wayne metal"),
             delivery_site("buyer", "Macomb parts"),
@@ -1384,10 +1399,10 @@ mod tests {
             .resource::<ObserverFrame>()
             .0
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .production
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .events
             .clone();
         let world = app.world_mut();
@@ -1439,7 +1454,7 @@ mod tests {
                 HistoryButton::Event { event, .. } => Some((entity, event.clone())),
                 _ => None,
             })
-            .unwrap();
+            .expect("the fixture yields the searched value");
         app.world_mut()
             .entity_mut(entity)
             .insert(Interaction::Pressed);
@@ -1459,7 +1474,11 @@ mod tests {
             .is_none());
         {
             let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
-            frame.0.as_mut().unwrap().resolve_tick = 2;
+            frame
+                .0
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .resolve_tick = 2;
         }
         let context = app.world().resource::<ObserverSession>().context();
         assert!(app
@@ -1481,7 +1500,7 @@ mod tests {
                 .resource::<HistoryState>()
                 .selected_event
                 .as_ref()
-                .unwrap()
+                .expect("the fixture set the optional field before this read")
                 .1
                 .receipt_digest,
             event.receipt_digest
@@ -1522,10 +1541,10 @@ mod tests {
                         .resource_mut::<ObserverFrame>()
                         .0
                         .as_mut()
-                        .unwrap()
+                        .expect("the fixture set the optional field before this borrow")
                         .production
                         .as_mut()
-                        .unwrap()
+                        .expect("the fixture set the optional field before this borrow")
                         .events
                         .clear();
                 }
@@ -1565,7 +1584,7 @@ mod tests {
             world
                 .query_filtered::<Entity, With<LogPanel>>()
                 .single(world)
-                .unwrap()
+                .expect("the fixture holds exactly one matching row")
         };
         *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
         app.world_mut()
@@ -1581,7 +1600,9 @@ mod tests {
             .insert(Interaction::Pressed);
         app.update();
         assert_eq!(
-            *app.world().get::<Visibility>(log).unwrap(),
+            *app.world()
+                .get::<Visibility>(log)
+                .expect("the fixture world holds the addressed component"),
             Visibility::Hidden
         );
         assert!(app
@@ -1613,7 +1634,9 @@ mod tests {
             .history_open = true;
         app.update();
         assert_eq!(
-            *app.world().get::<Visibility>(log).unwrap(),
+            *app.world()
+                .get::<Visibility>(log)
+                .expect("the fixture world holds the addressed component"),
             Visibility::Visible
         );
         assert!(app.world().resource::<ProductionNavigation>().details_open);
@@ -1632,7 +1655,7 @@ mod tests {
         assert_eq!(app.world().resource::<DossierRefresh>().0, 0);
         app.world_mut().resource_mut::<ObserverFrame>().0 = None;
         app.update();
-        assert_eq!(*app.world().get::<Visibility>(log).unwrap(), Visibility::Visible,
+        assert_eq!(*app.world().get::<Visibility>(log).expect("the fixture world holds the addressed component"), Visibility::Visible,
             "a retained details flag without a validated reading must not obscure the unavailable log");
     }
 
@@ -1706,14 +1729,14 @@ mod tests {
             .resource_mut::<ObserverFrame>()
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .events[0]
             .delivery_evidence
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .good_id = "different-good".into();
         app.update();
         assert!(history_buttons(&mut app).is_empty());
@@ -1749,10 +1772,10 @@ mod tests {
             .resource_mut::<ObserverFrame>()
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .events = events;
         app.init_resource::<ProductionNavigation>()
             .init_resource::<HistoryPaintChanges>()
@@ -1802,12 +1825,16 @@ mod tests {
             .into_iter()
             .enumerate()
         {
-            *app.world_mut().get_mut::<Interaction>(entity).unwrap() = interaction;
+            *app.world_mut()
+                .get_mut::<Interaction>(entity)
+                .expect("the fixture world holds the addressed component") = interaction;
             app.update();
             assert_eq!(app.world().resource::<ButtonPaintPasses>().0, index + 2);
         }
         let context = app.world().resource::<ObserverSession>().context();
-        *app.world_mut().get_mut::<HistoryButton>(entity).unwrap() =
+        *app.world_mut()
+            .get_mut::<HistoryButton>(entity)
+            .expect("the fixture world holds the addressed component") =
             HistoryButton::Period { context, period: 2 };
         app.update();
         assert_eq!(app.world().resource::<ButtonPaintPasses>().0, 4);
@@ -1855,36 +1882,45 @@ mod tests {
         );
         app.update();
         assert_eq!(
-            app.world().get::<BackgroundColor>(entity).unwrap().0,
+            app.world()
+                .get::<BackgroundColor>(entity)
+                .expect("the fixture world holds the addressed component")
+                .0,
             theme::PANEL
         );
         app.world_mut()
             .resource_mut::<ObserverFrame>()
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .events[0]
             .receipt_digest = "b".repeat(64);
         app.update();
         assert_eq!(
-            app.world().get::<BackgroundColor>(entity).unwrap().0,
+            app.world()
+                .get::<BackgroundColor>(entity)
+                .expect("the fixture world holds the addressed component")
+                .0,
             theme::INK
         );
         app.world_mut()
             .resource_mut::<ObserverFrame>()
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .events[0] = event;
         app.update();
         assert_eq!(
-            app.world().get::<BackgroundColor>(entity).unwrap().0,
+            app.world()
+                .get::<BackgroundColor>(entity)
+                .expect("the fixture world holds the addressed component")
+                .0,
             theme::PANEL
         );
         app.world_mut()
@@ -1892,10 +1928,15 @@ mod tests {
             .set_perspective(Perspective::PlayerKnowledge);
         app.update();
         assert_eq!(
-            app.world().get::<BackgroundColor>(entity).unwrap().0,
+            app.world()
+                .get::<BackgroundColor>(entity)
+                .expect("the fixture world holds the addressed component")
+                .0,
             theme::INK
         );
-        *app.world_mut().get_mut::<Interaction>(entity).unwrap() = Interaction::Pressed;
+        *app.world_mut()
+            .get_mut::<Interaction>(entity)
+            .expect("the fixture world holds the addressed component") = Interaction::Pressed;
         app.update();
         assert!(app
             .world()
@@ -1915,7 +1956,9 @@ mod tests {
             let (mut app, _) = history_app(event.clone());
             let context = {
                 let mut session = app.world_mut().resource_mut::<ObserverSession>();
-                session.begin_advance().unwrap();
+                session
+                    .begin_advance()
+                    .expect("the session begins the authored advance");
                 session.context()
             };
             let button = if choose_event {
@@ -1940,7 +1983,10 @@ mod tests {
                 Some("Wait for the current period to finish committing")
             );
             assert_eq!(
-                app.world().get::<BackgroundColor>(entity).unwrap().0,
+                app.world()
+                    .get::<BackgroundColor>(entity)
+                    .expect("the fixture world holds the addressed component")
+                    .0,
                 theme::INK
             );
         }
@@ -1951,7 +1997,9 @@ mod tests {
         let (mut app, hint) = history_app(event(2));
         let context = {
             let mut session = app.world_mut().resource_mut::<ObserverSession>();
-            session.begin_advance().unwrap();
+            session
+                .begin_advance()
+                .expect("the session begins the authored advance");
             session.context()
         };
         spawn_button(
@@ -1962,7 +2010,10 @@ mod tests {
         app.update();
         app.update();
         assert_eq!(
-            app.world().get::<Text>(hint).unwrap().0,
+            app.world()
+                .get::<Text>(hint)
+                .expect("the fixture world holds the addressed component")
+                .0,
             "Wait for the current period to finish committing"
         );
         assert_eq!(app.world().resource::<ObserverFeedback>().revision, 0);
@@ -2001,14 +2052,16 @@ mod tests {
         let event = event(2);
         let (mut app, _) = history_app(event.clone());
         app.world_mut().spawn((LogPanel, Visibility::Visible));
-        app.world_mut().run_system_once(paint_log).unwrap();
+        app.world_mut()
+            .run_system_once(paint_log)
+            .expect("the Bevy system completes one run");
         let mut query = app.world_mut().query::<(Entity, &HistoryButton)>();
         let button = query
             .iter(app.world())
             .find_map(|(entity, button)| {
                 matches!(button, HistoryButton::Event { .. }).then_some(entity)
             })
-            .unwrap();
+            .expect("the fixture yields the searched value");
         app.world_mut()
             .resource_mut::<ObserverUiState>()
             .history_open = false;
@@ -2045,7 +2098,9 @@ mod tests {
         app.world_mut()
             .resource_mut::<ObserverSession>()
             .set_perspective(Perspective::PlayerKnowledge);
-        app.world_mut().run_system_once(paint_log).unwrap();
+        app.world_mut()
+            .run_system_once(paint_log)
+            .expect("the Bevy system completes one run");
         let mut query = app.world_mut().query::<&HistoryButton>();
         assert_eq!(query.iter(app.world()).count(), 0);
         let mut texts = app.world_mut().query::<&Text>();
@@ -2070,7 +2125,9 @@ mod tests {
             history.selected_event = Some((context, event));
             history.focus_selected_event = true;
         }
-        app.world_mut().run_system_once(update).unwrap();
+        app.world_mut()
+            .run_system_once(update)
+            .expect("the Bevy system completes one run");
         let messages = app
             .world_mut()
             .resource_mut::<Messages<ProductionCommand>>()
@@ -2080,7 +2137,9 @@ mod tests {
         app.world_mut()
             .resource_mut::<ProductionNavigation>()
             .selected_site = Some("other".into());
-        app.world_mut().run_system_once(update).unwrap();
+        app.world_mut()
+            .run_system_once(update)
+            .expect("the Bevy system completes one run");
         assert_eq!(
             app.world_mut()
                 .resource_mut::<Messages<ProductionCommand>>()

@@ -65,8 +65,18 @@ impl ArchiveControl for Driver {
         if self.refresh_full {
             return Err(RuntimeSessionErrorCode::StorageBusy);
         }
-        self.state.refreshes.lock().unwrap().push(request_id);
-        if let Some(sink) = self.state.sink.lock().unwrap().as_ref() {
+        self.state
+            .refreshes
+            .lock()
+            .expect("the fixture lock is never poisoned")
+            .push(request_id);
+        if let Some(sink) = self
+            .state
+            .sink
+            .lock()
+            .expect("the fixture lock is never poisoned")
+            .as_ref()
+        {
             assert!(sink(progress(
                 Some(request_id),
                 self.state.tick.load(Ordering::SeqCst),
@@ -142,10 +152,16 @@ impl SessionBackend for Backend {
         self.tick += 1;
         self.state.tick.store(self.tick, Ordering::SeqCst);
         if self.notify_inside_advance {
-            let guard = self.state.sink.lock().unwrap();
-            assert!(guard.as_ref().unwrap()(progress(
-                None, self.tick, self.tick
-            )));
+            let guard = self
+                .state
+                .sink
+                .lock()
+                .expect("the fixture lock is never poisoned");
+            assert!(guard
+                .as_ref()
+                .expect("the fixture set the optional field before this read")(
+                progress(None, self.tick, self.tick)
+            ));
         }
         Ok(self.tail())
     }
@@ -219,7 +235,8 @@ pub(in crate::runtime_session::coordinator) fn refresh() -> RuntimeSessionReques
 pub(in crate::runtime_session::coordinator) fn wire(requests: &[RuntimeSessionRequest]) -> Vec<u8> {
     let mut bytes = Vec::new();
     for request in requests {
-        serde_json::to_writer(&mut bytes, request).unwrap();
+        serde_json::to_writer(&mut bytes, request)
+            .expect("the in-memory writer accepts the JSON bytes");
         bytes.push(b'\n');
     }
     bytes
@@ -231,7 +248,9 @@ pub(in crate::runtime_session::coordinator) fn wire_responses(
     output
         .split(|byte| *byte == b'\n')
         .filter(|line| !line.is_empty())
-        .map(|line| serde_json::from_slice(line).unwrap())
+        .map(|line| {
+            serde_json::from_slice(line).expect("the authored bytes match the declared schema")
+        })
         .collect()
 }
 
@@ -338,7 +357,10 @@ pub(in crate::runtime_session::coordinator) fn run(
 ) -> Result<(), RuntimeSessionErrorCode> {
     let shared = backend.state.clone();
     serve_open(Cursor::new(input), output, backend, move |sink| {
-        *shared.sink.lock().unwrap() = Some(sink);
+        *shared
+            .sink
+            .lock()
+            .expect("the fixture lock is never poisoned") = Some(sink);
         Ok(driver(&shared))
     })
 }
@@ -354,7 +376,7 @@ pub(in crate::runtime_session::coordinator) fn completion_queued_inside_advance_
         &mut backend,
         &mut output,
     )
-    .unwrap();
+    .expect("the fixture run completes");
     let rows = responses(&output);
     assert_eq!(rows.len(), 4);
     assert!(matches!(rows[0], RuntimeSessionResponse::Ready { .. }));
@@ -377,7 +399,12 @@ pub(in crate::runtime_session::coordinator) fn completion_queued_inside_advance_
     ));
     assert_eq!(backend.tick, 1);
     assert!(
-        backend.state.refreshes.lock().unwrap().is_empty(),
+        backend
+            .state
+            .refreshes
+            .lock()
+            .expect("the fixture lock is never poisoned")
+            .is_empty(),
         "Advance did not invoke a synchronous Archive fallback"
     );
     assert!(backend.state.joined.load(Ordering::SeqCst));
@@ -398,7 +425,7 @@ pub(in crate::runtime_session::coordinator) fn ready_precedes_archive_completion
             Ok(driver(&state))
         },
     )
-    .unwrap();
+    .expect("the fixture call `serve_open` succeeds for the authored inputs");
     let rows = responses(&output);
     assert!(matches!(rows[0], RuntimeSessionResponse::Ready { .. }));
     assert!(matches!(
@@ -416,8 +443,15 @@ pub(in crate::runtime_session::coordinator) fn explicit_refresh_uses_the_driver_
 ) {
     let mut backend = backend();
     let mut output = Vec::new();
-    run(wire(&[refresh(), stop()]), &mut backend, &mut output).unwrap();
-    assert_eq!(*backend.state.refreshes.lock().unwrap(), [3]);
+    run(wire(&[refresh(), stop()]), &mut backend, &mut output).expect("the fixture run completes");
+    assert_eq!(
+        *backend
+            .state
+            .refreshes
+            .lock()
+            .expect("the fixture lock is never poisoned"),
+        [3]
+    );
     assert_eq!(backend.tick, 0);
     assert!(responses(&output).iter().any(|row| matches!(
         row,
@@ -441,7 +475,7 @@ pub(in crate::runtime_session::coordinator) fn failed_commit_and_duplicate_tail_
             &mut backend,
             &mut output,
         )
-        .unwrap();
+        .expect("the fixture run completes");
         let rows = responses(&output);
         assert_eq!(
             rows.iter()
@@ -450,7 +484,12 @@ pub(in crate::runtime_session::coordinator) fn failed_commit_and_duplicate_tail_
             usize::from(!failed)
         );
         assert_eq!(backend.tick, u64::from(!failed));
-        assert!(backend.state.refreshes.lock().unwrap().is_empty());
+        assert!(backend
+            .state
+            .refreshes
+            .lock()
+            .expect("the fixture lock is never poisoned")
+            .is_empty());
         let expected = if failed {
             RuntimeSessionErrorCode::CommitRefused
         } else {
@@ -506,7 +545,7 @@ pub(in crate::runtime_session::coordinator) fn malformed_actions_versions_campai
         }
         let mut backend = backend();
         let mut output = Vec::new();
-        run(wire(&[request]), &mut backend, &mut output).unwrap();
+        run(wire(&[request]), &mut backend, &mut output).expect("the fixture run completes");
         assert_eq!(backend.tick, 0);
         assert!(
             matches!(responses(&output)[1], RuntimeSessionResponse::Error { code, .. } if code == expected)
@@ -537,25 +576,25 @@ pub(in crate::runtime_session::coordinator) fn old_future_and_invalid_progress_n
         let mut coordinator = active_coordinator(&mut output, &mut backend, archive);
         coordinator
             .archive_event(&scope(1, A), &progress(None, 2, 2))
-            .unwrap();
+            .expect("the fixture archives the authored event");
         coordinator
             .archive_event(&scope(1, A), &progress(Some(7), 2, 2))
-            .unwrap();
+            .expect("the fixture archives the authored event");
         coordinator
             .archive_event(&scope(1, A), &progress(None, 4, 4))
-            .unwrap();
+            .expect("the fixture archives the authored event");
         coordinator
             .archive_event(&scope(1, A), &progress(None, 3, 4))
-            .unwrap();
+            .expect("the fixture archives the authored event");
         coordinator
             .archive_event(&scope(1, A), &progress(None, 3, 2))
-            .unwrap();
+            .expect("the fixture archives the authored event");
         coordinator
             .archive_event(&scope(1, A), &progress(None, 3, 1))
-            .unwrap();
+            .expect("the fixture archives the authored event");
         coordinator
             .archive_event(&scope(1, A), &progress(None, 3, 2))
-            .unwrap();
+            .expect("the fixture archives the authored event");
     }
     let rows = responses(&output);
     let progresses: Vec<_> = rows
@@ -642,15 +681,15 @@ pub(in crate::runtime_session::coordinator) fn finished_worker_drains_full_event
             scope: scope(1, A),
             event: progress(None, 0, 0),
         })
-        .unwrap();
+        .expect("the receiver stays alive for the send");
     sender
         .send(SessionEvent::Input(InputEvent::Frame(wire(&[advance()]))))
-        .unwrap();
+        .expect("the receiver stays alive for the send");
     {
         let mut coordinator = active_coordinator(&mut output, &mut backend, archive);
         coordinator
             .shutdown(&receiver, Some(8), Duration::from_secs(1))
-            .unwrap();
+            .expect("the fixture call `shutdown` succeeds for the authored inputs");
     }
     assert_eq!(backend.tick, 0);
     assert!(matches!(
@@ -713,7 +752,7 @@ pub(in crate::runtime_session::coordinator) fn full_refresh_queue_refuses_the_re
         &mut backend,
         |_| Ok(archive),
     )
-    .unwrap();
+    .expect("the fixture call `serve_open` succeeds for the authored inputs");
     assert!(matches!(
         responses(&output).as_slice(),
         [
@@ -725,7 +764,12 @@ pub(in crate::runtime_session::coordinator) fn full_refresh_queue_refuses_the_re
             }
         ]
     ));
-    assert!(backend.state.refreshes.lock().unwrap().is_empty());
+    assert!(backend
+        .state
+        .refreshes
+        .lock()
+        .expect("the fixture lock is never poisoned")
+        .is_empty());
 }
 
 #[test]
@@ -776,11 +820,11 @@ pub(in crate::runtime_session::coordinator) fn retrying_manual_failure_keeps_cor
                         retrying: true,
                     },
                 )
-                .unwrap();
+                .expect("the fixture archives the authored event");
         }
         coordinator
             .archive_event(&scope(1, A), &progress(None, 0, 0))
-            .unwrap();
+            .expect("the fixture archives the authored event");
     }
     assert!(matches!(
         responses(&output).as_slice(),
@@ -834,8 +878,10 @@ pub(in crate::runtime_session::coordinator) fn silent_driver_panic_refuses_while
         },
         sender,
     )
-    .unwrap();
-    entered.recv_timeout(Duration::from_secs(1)).unwrap();
+    .expect("the fixture starts the authored period");
+    entered
+        .recv_timeout(Duration::from_secs(1))
+        .expect("the producer sends before the fixture timeout");
     state.exited.store(true, Ordering::SeqCst);
     let mut archive = driver(&state);
     archive.join_fails = true;
@@ -875,7 +921,7 @@ pub(in crate::runtime_session::coordinator) fn cooperative_shutdown_waits_for_co
         let mut coordinator = active_coordinator(&mut output, &mut backend, archive);
         coordinator
             .shutdown(&receiver, Some(8), Duration::from_secs(1))
-            .unwrap();
+            .expect("the fixture call `shutdown` succeeds for the authored inputs");
     }
     assert!(state.joined.load(Ordering::SeqCst));
     assert!(matches!(
@@ -912,8 +958,9 @@ impl Write for ProgressOutput {
             .split(|byte| *byte == b'\n')
             .filter(|line| !line.is_empty())
             .next_back()
-            .unwrap();
-        let row: Value = serde_json::from_slice(last).unwrap();
+            .expect("the fixture iterator yields its authored rows");
+        let row: Value =
+            serde_json::from_slice(last).expect("the authored bytes match the declared schema");
         if row["type"] == "advance_progress" {
             assert_eq!(
                 self.state.tick.load(Ordering::SeqCst),
@@ -943,7 +990,10 @@ pub(in crate::runtime_session::coordinator) fn raw_progress(bytes: &[u8]) -> Vec
     bytes
         .split(|byte| *byte == b'\n')
         .filter(|line| !line.is_empty())
-        .map(|line| serde_json::from_slice::<Value>(line).unwrap())
+        .map(|line| {
+            serde_json::from_slice::<Value>(line)
+                .expect("the fixture world holds the addressed component")
+        })
         .filter(|row| row["type"] == "advance_progress")
         .collect()
 }
@@ -958,7 +1008,7 @@ pub(in crate::runtime_session::coordinator) fn actual_progress_flushes_in_order_
         &mut backend,
         &mut output,
     )
-    .unwrap();
+    .expect("the fixture run completes");
     assert_eq!(output.flushed, 4);
     assert_eq!(backend.tick, 1);
     let rows = raw_progress(&output.bytes);
@@ -995,7 +1045,7 @@ pub(in crate::runtime_session::coordinator) fn actual_progress_flushes_in_order_
     let ack = wire
         .iter()
         .position(|row| matches!(row, RuntimeSessionResponse::Committed { request_id: 2, .. }))
-        .unwrap();
+        .expect("the fixture sequence holds the addressed position");
     assert_eq!(
         raw_progress(
             &output
@@ -1016,7 +1066,7 @@ pub(in crate::runtime_session::coordinator) fn progress_refusal_never_becomes_co
     let mut refused = backend();
     refused.fail_commit = true;
     let mut output = progress_output(&refused, false);
-    run(wire(&[advance(), stop()]), &mut refused, &mut output).unwrap();
+    run(wire(&[advance(), stop()]), &mut refused, &mut output).expect("the fixture run completes");
     assert_eq!(output.flushed, 4);
     assert_eq!(refused.tick, 0);
     assert!(!wire_responses(&output.bytes)

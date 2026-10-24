@@ -22,10 +22,11 @@ fn retained(state: &mut MaterialCircuitState, earnings: i128) {
         .accounts
         .iter_mut()
         .find(|r| r.account == AccountId::Site(crate::site()))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     row.opening_capital = crate::money(row.opening_capital.micro_units() - earnings);
     row.retained_earnings = crate::money(earnings);
-    e.costs = HistoricalCostBook::from_snapshot(snapshot).unwrap();
+    e.costs =
+        HistoricalCostBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     e.financial.distributions.push(DistributionPolicy {
         issuer_site_id: crate::site(),
         earnings_fraction_bps: 10_000,
@@ -38,15 +39,20 @@ fn retained(state: &mut MaterialCircuitState, earnings: i128) {
 fn maximum_currency_distribution_conserves_every_remainder_without_multiplication_overflow() {
     let mut state = crate::opening([i128::MAX, 0, 0, 0, 0]);
     retained(&mut state, i128::MAX);
-    let t = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let t = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     let third = i128::MAX / 3;
     assert_eq!(t.distributions[0].paid, crate::money(third + 1));
     assert_eq!(t.distributions[1].paid, crate::money(third * 2));
     assert_eq!(
-        economy(&t.state).book.total_cash_and_reserves().unwrap(),
+        economy(&t.state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         crate::money(i128::MAX)
     );
-    babylon_material_circuit::validate_distribution_receipts(&t.distributions).unwrap();
+    babylon_material_circuit::validate_distribution_receipts(&t.distributions)
+        .expect("the authored fixture satisfies the rule");
 }
 
 #[test]
@@ -63,27 +69,32 @@ fn equity_backed_retained_income_cannot_be_distributed_without_cash() {
         id: AccountId::Site(other),
         cash: crate::money(0),
     });
-    e.book = MonetaryBook::from_snapshot(cash).unwrap();
+    e.book = MonetaryBook::from_snapshot(cash).expect("the snapshot admits the derived value");
     let mut equity = e.costs.snapshot().equity;
     equity.push(EquityCarryingValue {
         owner: AccountId::Site(crate::site()),
         issuer_site_id: other,
         amount: crate::money(7),
     });
-    e.costs = HistoricalCostBook::open(&e.book, vec![], vec![], equity, vec![]).unwrap();
+    e.costs = HistoricalCostBook::open(&e.book, vec![], vec![], equity, vec![])
+        .expect("the fixture opens the authored source");
     e.financial.ownership.push(OwnershipClaim {
         issuer_site_id: other,
         beneficiary: AccountId::Site(crate::site()),
         shares: 1,
     });
     retained(&mut state, 7);
-    let t = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let t = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert!(t
         .distributions
         .iter()
         .all(|r| r.eligible_earnings == crate::money(7) && r.paid == crate::money(0)));
     assert_eq!(
-        economy(&t.state).book.total_cash_and_reserves().unwrap(),
+        economy(&t.state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         crate::money(0)
     );
 }
@@ -91,7 +102,8 @@ fn equity_backed_retained_income_cannot_be_distributed_without_cash() {
 #[test]
 fn ownership_requires_explicit_claim_and_descriptors_independent_of_foreign_location() {
     let state = crate::opening([0, 0, 0, 0, 0]);
-    let t = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let t = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert!(t.taxes.is_empty());
     let mut duplicate = state.clone();
     let f = &mut crate::economy_mut(&mut duplicate).financial;
@@ -111,7 +123,8 @@ fn ownership_requires_explicit_claim_and_descriptors_independent_of_foreign_loca
 #[test]
 fn financial_state_wire_refuses_old_schema_noncanonical_claims_and_truncation() {
     let state = crate::opening([7, 0, 0, 0, 0]);
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     let mut old = bytes.clone();
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     old[version..version + 2].copy_from_slice(&11_u16.to_be_bytes());
@@ -150,7 +163,7 @@ fn incoming_distribution_cannot_fund_another_issuer_until_the_next_period() {
         id: AccountId::Site(other),
         cash: crate::money(0),
     });
-    e.book = MonetaryBook::from_snapshot(book).unwrap();
+    e.book = MonetaryBook::from_snapshot(book).expect("the snapshot admits the derived value");
     e.financial.ownership = vec![
         OwnershipClaim {
             issuer_site_id: crate::site(),
@@ -181,7 +194,7 @@ fn incoming_distribution_cannot_fund_another_issuer_until_the_next_period() {
         ],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     retained(&mut state, 7);
     crate::economy_mut(&mut state)
         .financial
@@ -192,21 +205,32 @@ fn incoming_distribution_cannot_fund_another_issuer_until_the_next_period() {
             period_cap: crate::money(100),
             cash_floor: crate::money(0),
         });
-    let first = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(first.distributions[0].paid, crate::money(7));
     assert_eq!(first.distributions[1].paid, crate::money(0));
     assert_eq!(
-        economy(&first.state).book.cash(owner(3)).unwrap(),
+        economy(&first.state)
+            .book
+            .cash(owner(3))
+            .expect("the fixture book holds the payer account"),
         crate::money(0)
     );
-    let next = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
+    let next = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("the authored material state advances one period");
     assert_eq!(next.distributions[1].paid, crate::money(7));
     assert_eq!(
-        economy(&next.state).book.cash(owner(3)).unwrap(),
+        economy(&next.state)
+            .book
+            .cash(owner(3))
+            .expect("the fixture book holds the payer account"),
         crate::money(7)
     );
     assert_eq!(
-        economy(&next.state).book.total_cash_and_reserves().unwrap(),
+        economy(&next.state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         crate::money(7)
     );
 }

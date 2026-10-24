@@ -315,7 +315,9 @@ mod tests {
                 },
             );
         }
-        history.retire(&state).unwrap();
+        history
+            .retire(&state)
+            .expect("the fixture call `retire` succeeds for the authored inputs");
         assert!(history.deliveries.is_empty());
         assert_eq!(history.retired_deliveries.len(), 2);
         assert_eq!(

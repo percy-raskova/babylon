@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn independent_current_source_vector_round_trips_exactly() {
         let raw = vector();
-        let (input, compiler) = decode(&raw).unwrap();
+        let (input, compiler) = decode(&raw).expect("the committed canonical bytes decode");
         assert_eq!(compiler, "c");
         assert_eq!(input.scenario_id, "s");
         assert_eq!(input.preset_id, "p");
@@ -280,7 +280,10 @@ mod tests {
             SourceArtifactKind::GraphDeclarations
         );
         assert_eq!(input.sources[0].bytes(), b"abc");
-        assert_eq!(encode(&input, &compiler).unwrap(), raw);
+        assert_eq!(
+            encode(&input, &compiler).expect("the fixture value encodes canonically"),
+            raw
+        );
     }
     #[test]
     fn source_wire_refuses_wrong_version_timebase_scope_digest_and_trailing_data() {
@@ -356,33 +359,46 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/michigan/defines.toml"
         )))
-        .unwrap();
+        .expect("the authored literal parses as the declared type");
         let campaign = CampaignId::from_uuid(Uuid::from_u128(26163));
-        let config = crate::organizer_content::config(campaign, &d.organizer, [7; 32]).unwrap();
+        let config = crate::organizer_content::config(campaign, &d.organizer, [7; 32])
+            .expect("the fixture call `config` succeeds for the authored inputs");
         input.organizer = Some(config.clone());
-        let bytes = encode(&input, "michigan-control-v1").unwrap();
-        let (decoded, _) = decode(&bytes).unwrap();
+        let bytes =
+            encode(&input, "michigan-control-v1").expect("the fixture value encodes canonically");
+        let (decoded, _) = decode(&bytes).expect("the committed canonical bytes decode");
         assert_eq!(decoded.organizer, Some(config));
-        assert_eq!(encode(&decoded, "michigan-control-v1").unwrap(), bytes);
+        assert_eq!(
+            encode(&decoded, "michigan-control-v1").expect("the fixture value encodes canonically"),
+            bytes
+        );
         let mut old = bytes.clone();
         old[DOMAIN.len() + 1] = 1;
-        assert_eq!(decode(&old).unwrap_err(), EconomicCatalogError::WireVersion);
+        assert_eq!(
+            decode(&old).expect_err("the malformed bytes are refused"),
+            EconomicCatalogError::WireVersion
+        );
         let mut trailing = bytes.clone();
         trailing.push(0);
         assert_eq!(
-            decode(&trailing).unwrap_err(),
+            decode(&trailing).expect_err("the malformed bytes are refused"),
             EconomicCatalogError::WireTrailing
         );
         // Config presence and encoded length cannot disagree.
         let mut absent = bytes;
         let marker = absent.len()
-            - babylon_practice_contract::encode_organizer_config(input.organizer.as_ref().unwrap())
-                .unwrap()
-                .len()
+            - babylon_practice_contract::encode_organizer_config(
+                input
+                    .organizer
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read"),
+            )
+            .expect("the fixture value encodes to its canonical bytes")
+            .len()
             - 5;
         absent[marker] = 0;
         assert_eq!(
-            decode(&absent).unwrap_err(),
+            decode(&absent).expect_err("the malformed bytes are refused"),
             EconomicCatalogError::WireNoncanonical
         );
     }

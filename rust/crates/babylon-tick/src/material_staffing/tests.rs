@@ -1,4 +1,7 @@
-#![allow(clippy::float_cmp)]
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
 
 use super::read_stock;
 use super::MaterialStaffingError;
@@ -57,14 +60,15 @@ impl Fixture {
             nodes[0], nodes[1]
         );
         let mut graph = HypergraphStore::new();
-        let scenario = scenario::load_scenario(&source, &mut graph).unwrap();
+        let scenario =
+            scenario::load_scenario(&source, &mut graph).expect("the authored scenario compiles");
         let resolver = StableElementResolver::seal(
             &graph,
             &scenario.id,
             &scenario.node_content_ids,
             &scenario.hyperedge_content_ids,
         )
-        .unwrap();
+        .expect("the fixture seals the prepared period");
         Self {
             graph,
             types: TypeEnv {
@@ -77,7 +81,9 @@ impl Fixture {
     }
 
     fn node(&self, name: &str) -> NodeId {
-        self.resolver.node_handle_by_local_name(name).unwrap()
+        self.resolver
+            .node_handle_by_local_name(name)
+            .expect("the fixture call `node_handle_by_local_name` succeeds for the authored inputs")
     }
 
     fn apply(
@@ -106,13 +112,13 @@ fn pool(key: u8, force: u64, schedule: u64, processes: &[u8]) -> StaffingPoolBin
         SiteId::from_bytes([key; 32]),
         UnitId::from_bytes([9; 32]),
         force,
-        StaffingPolicy::one_period(schedule).unwrap(),
+        StaffingPolicy::one_period(schedule).expect("the one-period fixture advances"),
         processes
             .iter()
             .map(|key| StaffingWorkSource::Production(ProcessId::from_bytes([*key; 32])))
             .collect(),
     )
-    .unwrap()
+    .expect("the authored fixture satisfies the constructor invariants")
 }
 
 fn subject(name: &str) -> StableElementKey {
@@ -129,7 +135,8 @@ fn binding(name: &str, pool: StaffingPoolBinding) -> StaffingNodeBinding {
     } else {
         format!("{name}-workplace")
     };
-    StaffingNodeBinding::try_new(subject(&workplace), pool, vec![member]).unwrap()
+    StaffingNodeBinding::try_new(subject(&workplace), pool, vec![member])
+        .expect("the authored fixture satisfies the constructor invariants")
 }
 
 fn member_binding(name: &str, pool: &StaffingPoolBinding) -> StaffingMemberNodeBinding {
@@ -138,16 +145,19 @@ fn member_binding(name: &str, pool: &StaffingPoolBinding) -> StaffingMemberNodeB
         StaffingMemberBinding::try_new(
             StaffingMemberId::from_bytes(pool.pool_id().as_bytes()),
             FinalDemandPrincipalId::from_bytes(pool.pool_id().as_bytes()),
-            "county:26163".parse().unwrap(),
+            "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             pool.labor_force(),
         )
-        .unwrap(),
+        .expect("the authored fixture satisfies the constructor invariants"),
     )
-    .unwrap()
+    .expect("the authored fixture satisfies the constructor invariants")
 }
 
 fn composition() -> StaffingComposition {
-    StaffingComposition::try_new(vec![binding("a", pool(1, 4, 160, &[1, 2]))]).unwrap()
+    StaffingComposition::try_new(vec![binding("a", pool(1, 4, 160, &[1, 2]))])
+        .expect("the authored fixture satisfies the constructor invariants")
 }
 
 fn request(
@@ -185,34 +195,37 @@ fn shared_process_work_retains_only_one_period_then_recovers_with_exact_evidence
     let a = fixture.node("a");
     let first = fixture
         .apply(&composition, 1, &requests(&composition, 1, [80, 80]))
-        .unwrap();
+        .expect("the fixture applies the authored transition");
     assert_eq!(first.staffing_receipts()[0].retained_hours(), 480);
     assert_eq!(first.staffing_receipts()[0].current_unretained_hours(), 160);
     assert_eq!(
         fixture
             .graph
             .node_attribute(fixture.node("a-workplace"), PREVIOUS_UNRETAINED_HOURS)
-            .unwrap()
+            .expect("the fixture node carries the authored attribute")
             .to_bits(),
         160.0_f64.to_bits()
     );
     let second = fixture
         .apply(&composition, 2, &requests(&composition, 2, [80, 80]))
-        .unwrap();
+        .expect("the fixture applies the authored transition");
     assert_eq!(second.staffing_receipts()[0].closing_employed(), 1);
     assert_eq!(second.staffing_receipts()[0].closing_reserve(), 3);
     assert_eq!(second.staffing_receipts()[0].separations(), 2);
     assert_eq!(second.next_labor()[0].available, 160);
     let third = fixture
         .apply(&composition, 3, &requests(&composition, 3, [80, 81]))
-        .unwrap();
+        .expect("the fixture applies the authored transition");
     assert_eq!(third.staffing_receipts()[0].hires(), 1);
     assert_eq!(third.next_labor()[0].available, 320);
     assert_eq!(third.next_labor()[0].period, 4);
     assert_eq!(third.writes().len(), 3);
     assert_eq!(third.audit_receipts().len(), 4);
     for (index, receipt) in third.audit_receipts().iter().enumerate() {
-        assert_eq!(receipt.ordinal, u32::try_from(index).unwrap());
+        assert_eq!(
+            receipt.ordinal,
+            u32::try_from(index).expect("the fixture value fits the target range")
+        );
         assert_eq!(receipt.rule_id, STAFFING_COMPOSITION_ID);
         assert_eq!(receipt.role, RuleRole::Mechanic);
         assert_eq!(receipt.evidence, EvidenceClass::Designed);
@@ -221,7 +234,7 @@ fn shared_process_work_retains_only_one_period_then_recovers_with_exact_evidence
         fixture
             .graph
             .node_attribute(a, EMPLOYED_POPULATION)
-            .unwrap()
+            .expect("the fixture node carries the authored attribute")
             .to_bits(),
         2.0_f64.to_bits()
     );
@@ -243,15 +256,15 @@ fn supplied_schedule_controls_employment_and_next_period_hours() {
         fixture
             .graph
             .update_node(fixture.node("a-workplace"), PREVIOUS_UNRETAINED_HOURS, 0.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let composition =
             StaffingComposition::try_new(vec![binding("a", pool(1, 4, hours_per_person, &[1, 2]))])
-                .unwrap();
+                .expect("the authored fixture satisfies the constructor invariants");
         // The same 241-hour work request needs three people at 120 hours each,
         // and two at 160; both policies apply once over the same period.
         let effects = fixture
             .apply(&composition, 1, &requests(&composition, 1, [120, 121]))
-            .unwrap();
+            .expect("the fixture applies the authored transition");
         let receipt = &effects.staffing_receipts()[0];
         assert_eq!(receipt.target_employed(), expected_employed);
         assert_eq!(receipt.closing_employed(), expected_employed);
@@ -263,15 +276,17 @@ fn supplied_schedule_controls_employment_and_next_period_hours() {
             fixture
                 .graph
                 .node_attribute(a, EMPLOYED_POPULATION)
-                .unwrap()
+                .expect("the fixture node carries the authored attribute")
                 .to_bits(),
-            super::exact_real(expected_employed).unwrap().to_bits()
+            super::exact_real(expected_employed)
+                .expect("the fixture call `exact_real` succeeds for the authored inputs")
+                .to_bits()
         );
         assert_eq!(
             fixture
                 .graph
                 .node_attribute(fixture.node("a-workplace"), PREVIOUS_UNRETAINED_HOURS)
-                .unwrap()
+                .expect("the fixture node carries the authored attribute")
                 .to_bits(),
             241.0_f64.to_bits()
         );
@@ -286,10 +301,10 @@ fn evidence_subject_is_stable_across_different_node_allocation_order() {
     assert_ne!(first.node("a"), second.node("a"));
     let left = first
         .apply(&composition, 1, &requests(&composition, 1, [0, 0]))
-        .unwrap();
+        .expect("the fixture applies the authored transition");
     let right = second
         .apply(&composition, 1, &requests(&composition, 1, [0, 0]))
-        .unwrap();
+        .expect("the fixture applies the authored transition");
     let stable_payload = |effects: &StaffingEffects, resolver: &StableElementResolver| {
         effects.committed_events()[0]
             .payload()
@@ -297,7 +312,8 @@ fn evidence_subject_is_stable_across_different_node_allocation_order() {
             .map(|(name, value)| {
                 (
                     name.clone(),
-                    identity_codec::project_stable_value(value, resolver).unwrap(),
+                    identity_codec::project_stable_value(value, resolver)
+                        .expect("the fixture projection accepts the authored input"),
                 )
             })
             .collect::<Vec<_>>()
@@ -323,7 +339,10 @@ fn evidence_subject_is_stable_across_different_node_allocation_order() {
 fn complete_request_roster_and_exact_bindings_are_required_before_writes() {
     let composition = composition();
     let mut fixture = Fixture::new(false);
-    let before = fixture.graph.state_hash().unwrap();
+    let before = fixture
+        .graph
+        .state_hash()
+        .expect("the fixture graph hashes its state");
     let missing = requests(&composition, 1, [0, 0]);
     assert!(matches!(
         fixture.apply(&composition, 1, &missing[..1]),
@@ -341,7 +360,13 @@ fn complete_request_roster_and_exact_bindings_are_required_before_writes() {
         fixture.apply(&composition, 1, &[wrong, missing[1]]),
         Err(MaterialStaffingError::Core(StaffingError::RequestBinding))
     ));
-    assert_eq!(fixture.graph.state_hash().unwrap(), before);
+    assert_eq!(
+        fixture
+            .graph
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        before
+    );
 }
 
 #[test]
@@ -363,7 +388,7 @@ fn malformed_numeric_readings_never_become_workforce_defaults() {
                 PREVIOUS_UNRETAINED_HOURS,
                 invalid,
             )
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let composition = composition();
         assert!(fixture
             .apply(&composition, 1, &requests(&composition, 1, [0, 0]))
@@ -372,7 +397,7 @@ fn malformed_numeric_readings_never_become_workforce_defaults() {
             fixture
                 .graph
                 .node_attribute(fixture.node("a-workplace"), PREVIOUS_UNRETAINED_HOURS)
-                .unwrap()
+                .expect("the fixture node carries the authored attribute")
                 .to_bits(),
             invalid.to_bits()
         );
@@ -380,7 +405,7 @@ fn malformed_numeric_readings_never_become_workforce_defaults() {
             fixture
                 .graph
                 .node_attribute(a, EMPLOYED_POPULATION)
-                .unwrap()
+                .expect("the fixture node carries the authored attribute")
                 .to_bits(),
             3.0_f64.to_bits()
         );
@@ -391,7 +416,7 @@ fn malformed_numeric_readings_never_become_workforce_defaults() {
 fn exact_boundary_and_negative_zero_are_canonical() {
     assert_eq!(
         super::exact_real(MAX_EXACT_STAFFING_INTEGER)
-            .unwrap()
+            .expect("the fixture call `exact_real` succeeds for the authored inputs")
             .to_bits(),
         9_007_199_254_740_992.0_f64.to_bits()
     );
@@ -403,13 +428,14 @@ fn exact_boundary_and_negative_zero_are_canonical() {
         .update_node(
             fixture.node("a-workplace"),
             PREVIOUS_UNRETAINED_HOURS,
-            super::exact_real(MAX_EXACT_STAFFING_INTEGER).unwrap(),
+            super::exact_real(MAX_EXACT_STAFFING_INTEGER)
+                .expect("the fixture call `exact_real` succeeds for the authored inputs"),
         )
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     let composition = composition();
     let boundary = fixture
         .apply(&composition, 1, &requests(&composition, 1, [0, 0]))
-        .unwrap();
+        .expect("the fixture applies the authored transition");
     assert_eq!(
         boundary.staffing_receipts()[0].previous_unretained_hours(),
         MAX_EXACT_STAFFING_INTEGER
@@ -418,10 +444,10 @@ fn exact_boundary_and_negative_zero_are_canonical() {
     fixture
         .graph
         .update_node(fixture.node("a-workplace"), PREVIOUS_UNRETAINED_HOURS, -0.0)
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     fixture
         .apply(&composition, 1, &requests(&composition, 1, [0, 0]))
-        .unwrap();
+        .expect("the fixture applies the authored transition");
     for field in [EMPLOYED_POPULATION, PREVIOUS_UNRETAINED_HOURS] {
         assert_eq!(
             fixture
@@ -434,7 +460,7 @@ fn exact_boundary_and_negative_zero_are_canonical() {
                     },
                     field
                 )
-                .unwrap()
+                .expect("the fixture node carries the authored attribute")
                 .to_bits(),
             0.0_f64.to_bits()
         );
@@ -448,8 +474,11 @@ fn every_output_conversion_finishes_before_the_first_effect() {
         binding("a", pool(1, 4, 160, &[1])),
         binding("b", pool(2, 2, 160, &[2])),
     ])
-    .unwrap();
-    let before = fixture.graph.state_hash().unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
+    let before = fixture
+        .graph
+        .state_hash()
+        .expect("the fixture graph hashes its state");
     let inputs = [
         request(&composition.bindings()[0], 1, 1, 0),
         request(
@@ -463,7 +492,13 @@ fn every_output_conversion_finishes_before_the_first_effect() {
         fixture.apply(&composition, 1, &inputs),
         Err(MaterialStaffingError::ExactInteger)
     ));
-    assert_eq!(fixture.graph.state_hash().unwrap(), before);
+    assert_eq!(
+        fixture
+            .graph
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        before
+    );
 }
 
 #[test]
@@ -474,7 +509,11 @@ fn field_declarations_require_all_three_int_extensive_fields() {
             if mutation == 0 {
                 fixture.types.fields.remove(field);
             } else {
-                let declaration = fixture.types.fields.get_mut(field).unwrap();
+                let declaration = fixture
+                    .types
+                    .fields
+                    .get_mut(field)
+                    .expect("the fixture holds the addressed entry");
                 if mutation == 1 {
                     declaration.ty = BslType::Real;
                 } else {
@@ -482,12 +521,21 @@ fn field_declarations_require_all_three_int_extensive_fields() {
                 }
             }
             let composition = composition();
-            let before = fixture.graph.state_hash().unwrap();
+            let before = fixture
+                .graph
+                .state_hash()
+                .expect("the fixture graph hashes its state");
             assert!(matches!(
                 fixture.apply(&composition, 1, &requests(&composition, 1, [0, 0])),
                 Err(MaterialStaffingError::FieldDeclaration(_))
             ));
-            assert_eq!(fixture.graph.state_hash().unwrap(), before);
+            assert_eq!(
+                fixture
+                    .graph
+                    .state_hash()
+                    .expect("the fixture graph hashes its state"),
+                before
+            );
         }
     }
 }
@@ -502,8 +550,8 @@ fn missing_node_fields_wrong_owners_and_foreign_scopes_refuse() {
         bound,
         vec![member],
     )
-    .unwrap()])
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants")])
+    .expect("the authored fixture satisfies the constructor invariants");
     assert!(matches!(
         fixture.apply(&land, 1, &[request(&land.bindings()[0], 1, 1, 0)]),
         Err(MaterialStaffingError::NodeOwner)
@@ -517,12 +565,15 @@ fn missing_node_fields_wrong_owners_and_foreign_scopes_refuse() {
         pool(1, 4, 160, &[1]),
         vec![member_binding("a", &pool(1, 4, 160, &[1]))],
     )
-    .unwrap()])
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants")])
+    .expect("the authored fixture satisfies the constructor invariants");
     assert!(fixture
         .apply(&foreign, 1, &[request(&foreign.bindings()[0], 1, 1, 0)])
         .is_err());
-    let empty = fixture.graph.add_node("SOCIAL_CLASS").unwrap();
+    let empty = fixture
+        .graph
+        .add_node("SOCIAL_CLASS")
+        .expect("the fixture adds a node with a registered kind");
     assert!(read_stock(
         &fixture.graph,
         empty,
@@ -569,12 +620,12 @@ fn different_pool_ids_cannot_double_count_one_site_unit() {
             a.pool().site_id(),
             a.pool().unit_id(),
             2,
-            StaffingPolicy::one_period(160).unwrap(),
+            StaffingPolicy::one_period(160).expect("the one-period fixture advances"),
             vec![StaffingWorkSource::Production(ProcessId::from_bytes(
                 [2; 32],
             ))],
         )
-        .unwrap(),
+        .expect("the authored fixture satisfies the constructor invariants"),
     );
     assert!(matches!(
         StaffingComposition::try_new(vec![a, b]),
@@ -590,12 +641,12 @@ fn every_node_read_finishes_before_the_first_effect() {
     fixture
         .graph
         .update_node(fixture.node("b-workplace"), PREVIOUS_UNRETAINED_HOURS, 0.5)
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     let composition = StaffingComposition::try_new(vec![
         binding("a", pool(1, 4, 160, &[1])),
         binding("b", pool(2, 2, 160, &[2])),
     ])
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     let inputs = [
         request(&composition.bindings()[0], 1, 1, 0),
         request(&composition.bindings()[1], 1, 2, 0),
@@ -605,7 +656,7 @@ fn every_node_read_finishes_before_the_first_effect() {
         fixture
             .graph
             .node_attribute(fixture.node("a-workplace"), PREVIOUS_UNRETAINED_HOURS)
-            .unwrap()
+            .expect("the fixture node carries the authored attribute")
             .to_bits(),
         480.0_f64.to_bits()
     );
@@ -615,13 +666,19 @@ fn every_node_read_finishes_before_the_first_effect() {
 fn binding_and_request_permutations_preserve_effect_and_evidence_order() {
     let a = binding("a", pool(1, 4, 160, &[1]));
     let b = binding("b", pool(2, 2, 160, &[2]));
-    let left = StaffingComposition::try_new(vec![a.clone(), b.clone()]).unwrap();
-    let right = StaffingComposition::try_new(vec![b.clone(), a.clone()]).unwrap();
+    let left = StaffingComposition::try_new(vec![a.clone(), b.clone()])
+        .expect("the authored fixture satisfies the constructor invariants");
+    let right = StaffingComposition::try_new(vec![b.clone(), a.clone()])
+        .expect("the authored fixture satisfies the constructor invariants");
     let inputs = [request(&b, 1, 2, 321), request(&a, 1, 1, 0)];
     let mut first = Fixture::new(false);
     let mut second = Fixture::new(false);
-    let first_effects = first.apply(&left, 1, &inputs).unwrap();
-    let second_effects = second.apply(&right, 1, &[inputs[1], inputs[0]]).unwrap();
+    let first_effects = first
+        .apply(&left, 1, &inputs)
+        .expect("the fixture applies the authored transition");
+    let second_effects = second
+        .apply(&right, 1, &[inputs[1], inputs[0]])
+        .expect("the fixture applies the authored transition");
     assert_eq!(first_effects.writes(), second_effects.writes());
     assert_eq!(
         first_effects.audit_receipts(),
@@ -633,8 +690,14 @@ fn binding_and_request_permutations_preserve_effect_and_evidence_order() {
     );
     assert_eq!(first_effects.next_labor(), second_effects.next_labor());
     assert_eq!(
-        first.graph.state_hash().unwrap(),
-        second.graph.state_hash().unwrap()
+        first
+            .graph
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        second
+            .graph
+            .state_hash()
+            .expect("the fixture graph hashes its state")
     );
 }
 
@@ -649,7 +712,7 @@ fn population_and_arithmetic_refusals_precede_effects() {
     fixture
         .graph
         .update_node(a, RESERVE_POPULATION, 0.0)
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     let composition = composition();
     assert!(matches!(
         fixture.apply(&composition, 1, &requests(&composition, 1, [0, 0])),
@@ -660,26 +723,45 @@ fn population_and_arithmetic_refusals_precede_effects() {
     fixture
         .graph
         .update_node(a, RESERVE_POPULATION, 1.0)
-        .unwrap();
-    let before = fixture.graph.state_hash().unwrap();
+        .expect("the fixture node carries the authored attribute");
+    let before = fixture
+        .graph
+        .state_hash()
+        .expect("the fixture graph hashes its state");
     assert!(matches!(
         fixture.apply(&composition, 1, &requests(&composition, 1, [u64::MAX, 1])),
         Err(MaterialStaffingError::Core(StaffingError::Arithmetic))
     ));
-    assert_eq!(fixture.graph.state_hash().unwrap(), before);
+    assert_eq!(
+        fixture
+            .graph
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        before
+    );
     let overflowing =
-        StaffingComposition::try_new(vec![binding("a", pool(1, 4, u64::MAX, &[1, 2]))]).unwrap();
+        StaffingComposition::try_new(vec![binding("a", pool(1, 4, u64::MAX, &[1, 2]))])
+            .expect("the authored fixture satisfies the constructor invariants");
     assert!(matches!(
         fixture.apply(&overflowing, 1, &requests(&overflowing, 1, [0, 0])),
         Err(MaterialStaffingError::Core(StaffingError::Arithmetic))
     ));
-    assert_eq!(fixture.graph.state_hash().unwrap(), before);
+    assert_eq!(
+        fixture
+            .graph
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        before
+    );
 }
 
 #[test]
 fn dropping_a_successful_detached_candidate_does_not_publish_its_writes() {
     let fixture = Fixture::new(false);
-    let before = fixture.graph.state_hash().unwrap();
+    let before = fixture
+        .graph
+        .state_hash()
+        .expect("the fixture graph hashes its state");
     let mut candidate = fixture.graph.detached_copy();
     let composition = composition();
     let effects = super::apply_material_staffing(
@@ -693,11 +775,22 @@ fn dropping_a_successful_detached_candidate_does_not_publish_its_writes() {
         1,
         &requests(&composition, 1, [0, 0]),
     )
-    .unwrap();
+    .expect("the fixture applies the authored staffing");
     assert_eq!(effects.writes().len(), 3);
-    assert_ne!(candidate.state_hash().unwrap(), before);
+    assert_ne!(
+        candidate
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        before
+    );
     drop(candidate);
-    assert_eq!(fixture.graph.state_hash().unwrap(), before);
+    assert_eq!(
+        fixture
+            .graph
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        before
+    );
 }
 
 #[test]
@@ -712,11 +805,12 @@ fn one_workplace_updates_two_resident_partitions_and_memory_without_duplicate_pe
             member_binding("b", &pool(2, 2, 160, &[2])),
         ],
     )
-    .unwrap();
-    let composition = StaffingComposition::try_new(vec![binding]).unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
+    let composition = StaffingComposition::try_new(vec![binding])
+        .expect("the authored fixture satisfies the constructor invariants");
     let effects = fixture
         .apply(&composition, 1, &requests(&composition, 1, [80, 80]))
-        .unwrap();
+        .expect("the fixture applies the authored transition");
     assert_eq!(effects.staffing_receipts()[0].closing_employed(), 3);
     assert_eq!(
         effects
@@ -738,26 +832,26 @@ fn one_workplace_updates_two_resident_partitions_and_memory_without_duplicate_pe
         fixture
             .graph
             .node_attribute(fixture.node("a"), EMPLOYED_POPULATION)
-            .unwrap(),
+            .expect("the fixture node carries the authored attribute"),
         2.0
     );
     assert_eq!(
         fixture
             .graph
             .node_attribute(fixture.node("b"), EMPLOYED_POPULATION)
-            .unwrap(),
+            .expect("the fixture node carries the authored attribute"),
         1.0
     );
     assert_eq!(
         fixture
             .graph
             .node_attribute(fixture.node("a-workplace"), PREVIOUS_UNRETAINED_HOURS)
-            .unwrap(),
+            .expect("the fixture node carries the authored attribute"),
         160.0
     );
     let recovered = fixture
         .apply(&composition, 2, &requests(&composition, 2, [480, 480]))
-        .unwrap();
+        .expect("the fixture applies the authored transition");
     assert_eq!(
         recovered
             .member_receipts()

@@ -47,7 +47,10 @@ fn aid_opening(routed: bool) -> MaterialCircuitState {
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         panic!("monetary control");
     };
-    let rows = economy.recurring.as_mut().unwrap();
+    let rows = economy
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     rows.household_purchases[0].enabled = false;
     rows.households.push(HouseholdCohort {
         principal_id: recipient(),
@@ -77,7 +80,8 @@ fn aid_opening(routed: bool) -> MaterialCircuitState {
         id: AccountId::Household(recipient()),
         cash: crate::money(0),
     });
-    economy.book = MonetaryBook::from_snapshot(cash).unwrap();
+    economy.book =
+        MonetaryBook::from_snapshot(cash).expect("the snapshot admits the derived value");
     let mut stocks = economy.costs.snapshot().stocks;
     stocks.push(StockCarryingValue {
         owner: AccountId::Household(recipient()),
@@ -85,8 +89,8 @@ fn aid_opening(routed: bool) -> MaterialCircuitState {
         unit_id: crate::units(),
         amount: crate::money(0),
     });
-    economy.costs =
-        HistoricalCostBook::open(&economy.book, stocks, vec![], vec![], vec![]).unwrap();
+    economy.costs = HistoricalCostBook::open(&economy.book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     economy.household_time = HouseholdTimeAccounting::Modeled(
         HouseholdTimeBook::new(
             [crate::household(), recipient()]
@@ -116,7 +120,7 @@ fn aid_opening(routed: bool) -> MaterialCircuitState {
                 })
                 .collect(),
         )
-        .unwrap(),
+        .expect("the constructor accepts the authored fixture arguments"),
     );
     economy.aid = AidBook {
         mandates: vec![mandate(routed)],
@@ -147,17 +151,19 @@ fn consumed(
     rows.household_consumption
         .iter()
         .find(|r| r.principal_id == principal)
-        .unwrap()
+        .expect("the fixture holds the searched element")
 }
 
 #[test]
 fn local_gift_conserves_cash_and_basis_without_a_sale_and_debits_actual_time() {
     let state = aid_opening(false);
-    let before = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
-    let ordinary = close_aid(&state, &[]).unwrap();
-    let gifted = close_aid(&state, &[input(2)]).unwrap();
+    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
+    let ordinary = close_aid(&state, &[]).expect("the fixture closes the pending aid");
+    let gifted = close_aid(&state, &[input(2)]).expect("the fixture closes the pending aid");
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&state).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes"),
         before
     );
     assert_eq!(consumed(&ordinary, recipient()).consumed_quantity, 0);
@@ -167,7 +173,7 @@ fn local_gift_conserves_cash_and_basis_without_a_sale_and_debits_actual_time() {
         .aid
         .iter()
         .find(|r| r.outcome == AidOutcome::Granted)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (
             grant.quantity,
@@ -181,29 +187,29 @@ fn local_gift_conserves_cash_and_basis_without_a_sale_and_debits_actual_time() {
         crate::economy(&gifted.state)
             .book
             .total_cash_and_reserves()
-            .unwrap(),
+            .expect("the fixture book totals without overflow"),
         crate::economy(&state)
             .book
             .total_cash_and_reserves()
-            .unwrap()
+            .expect("the fixture book totals without overflow")
     );
     assert_eq!(
         crate::economy(&gifted.state)
             .book
             .cash(AccountId::Household(recipient()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         crate::money(6)
     );
     let donor = gifted
         .income
         .iter()
         .find(|r| r.account == AccountId::Household(crate::household()))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let receiver = gifted
         .income
         .iter()
         .find(|r| r.account == AccountId::Household(recipient()))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(donor.statement.gift_expense, crate::money(14));
     assert_eq!(receiver.statement.gift_income, crate::money(14));
     assert_eq!(receiver.statement.sales, crate::money(0));
@@ -215,16 +221,18 @@ fn local_gift_conserves_cash_and_basis_without_a_sale_and_debits_actual_time() {
     };
     assert_eq!(time.contributions[0].contribution.hours, 4);
     let restarted = babylon_material_circuit::decode_material_circuit_state(
-        &babylon_material_circuit::encode_material_circuit_state(&gifted.state).unwrap(),
+        &babylon_material_circuit::encode_material_circuit_state(&gifted.state)
+            .expect("the canonical material state encodes"),
     )
-    .unwrap();
+    .expect("the canonical material bytes decode");
     assert_eq!(restarted, gifted.state);
     assert_eq!(
         close_aid(
-            &babylon_material_circuit::decode_material_circuit_state(&before).unwrap(),
+            &babylon_material_circuit::decode_material_circuit_state(&before)
+                .expect("the canonical material bytes decode"),
             &[input(2)]
         )
-        .unwrap(),
+        .expect("the fixture closes the pending aid"),
         gifted
     );
 }
@@ -239,7 +247,7 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
     let total = crate::economy(&state)
         .book
         .total_cash_and_reserves()
-        .unwrap();
+        .expect("the fixture book totals without overflow");
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
         panic!("monetary");
     };
@@ -249,14 +257,15 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
     cash.accounts
         .iter_mut()
         .find(|a| a.id == AccountId::Site(crate::site(2)))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .cash = crate::money(10);
     cash.accounts
         .iter_mut()
         .find(|a| a.id == AccountId::Site(crate::site(3)))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .cash = crate::money(10);
-    accounts.book = MonetaryBook::from_snapshot(cash).unwrap();
+    accounts.book =
+        MonetaryBook::from_snapshot(cash).expect("the snapshot admits the derived value");
     accounts.costs = HistoricalCostBook::open(
         &accounts.book,
         accounts.costs.snapshot().stocks,
@@ -264,27 +273,33 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
         vec![],
         vec![],
     )
-    .unwrap();
-    assert_eq!(accounts.book.total_cash_and_reserves().unwrap(), total);
+    .expect("the fixture opens the authored source");
+    assert_eq!(
+        accounts
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
+        total
+    );
     crate::recurring_mut(&mut state)
         .replenishment
         .iter_mut()
         .find(|r| r.buyer_site_id == crate::site(3))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .target_stock = 6;
     state
         .corridor_capacities
         .iter_mut()
         .filter(|r| r.corridor_id == crate::corridor(2))
         .for_each(|r| r.available_grams = 2);
-    let first = close_aid(&state, &[input(2)]).unwrap();
+    let first = close_aid(&state, &[input(2)]).expect("the fixture closes the pending aid");
     assert_eq!(consumed(&first, recipient()).consumed_quantity, 0);
     assert!(!first.dispatches.is_empty());
     let commercial = first
         .procurement
         .iter()
         .find(|r| r.buyer_site_id == crate::site(3))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (
             commercial.desired_quantity,
@@ -305,14 +320,14 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
         crate::economy(&first.state)
             .book
             .total_cash_and_reserves()
-            .unwrap(),
+            .expect("the fixture book totals without overflow"),
         total
     );
     let dispatch = first
         .aid
         .iter()
         .find(|r| r.outcome == AidOutcome::Dispatched)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(dispatch.quantity, 1);
     assert_eq!(
         first
@@ -327,27 +342,33 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
     let account = crate::economy(&first.state)
         .book
         .aid_reserve(dispatch.commitment_id)
-        .unwrap();
-    assert_eq!(account.reserved_amount().unwrap(), crate::money(3));
+        .expect("the fixture reserve carries its authored balance");
+    assert_eq!(
+        account
+            .reserved_amount()
+            .expect("the fixture reservation exists"),
+        crate::money(3)
+    );
     assert_eq!(account.refunded, 1);
     assert_eq!(
         crate::economy(&first.state)
             .book
             .cash(AccountId::Household(recipient()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         crate::money(0)
     );
     let restored = babylon_material_circuit::decode_material_circuit_state(
-        &babylon_material_circuit::encode_material_circuit_state(&first.state).unwrap(),
+        &babylon_material_circuit::encode_material_circuit_state(&first.state)
+            .expect("the canonical material state encodes"),
     )
-    .unwrap();
-    let second = close_aid(&restored, &[]).unwrap();
+    .expect("the canonical material bytes decode");
+    let second = close_aid(&restored, &[]).expect("the fixture closes the pending aid");
     assert_eq!(consumed(&second, recipient()).consumed_quantity, 1);
     assert_eq!(
         crate::economy(&second.state)
             .book
             .cash(AccountId::Household(recipient()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         crate::money(3)
     );
     assert!(crate::economy(&second.state).aid.freight.is_empty());
@@ -365,16 +386,16 @@ fn physical_loss_refunds_donor_cash_and_never_grants_phantom_food() {
         .route_stages
         .iter_mut()
         .find(|r| r.route_id == crate::route(2))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .loss_ppm = 1_000_000;
-    let first = close_aid(&state, &[input(2)]).unwrap();
-    let second = close_aid(&first.state, &[]).unwrap();
+    let first = close_aid(&state, &[input(2)]).expect("the fixture closes the pending aid");
+    let second = close_aid(&first.state, &[]).expect("the fixture closes the pending aid");
     assert_eq!(consumed(&second, recipient()).consumed_quantity, 0);
     assert_eq!(
         crate::economy(&second.state)
             .book
             .cash(AccountId::Household(recipient()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         crate::money(0)
     );
     assert!(second.aid.iter().any(|r| r.outcome == AidOutcome::Lost));
@@ -398,7 +419,7 @@ fn generic_residual_protects_own_food_and_shared_actor_aliases_cannot_double_spe
     let mut alias = input(2);
     alias.mandate_id = [93; 32];
     alias.donor_actor = 11;
-    let result = close_aid(&state, &[input(2), alias]).unwrap();
+    let result = close_aid(&state, &[input(2), alias]).expect("the fixture closes the pending aid");
     assert_eq!(consumed(&result, crate::household()).consumed_quantity, 4);
     assert_eq!(
         result
@@ -421,7 +442,7 @@ fn generic_residual_protects_own_food_and_shared_actor_aliases_cannot_double_spe
         crate::economy(&result.state)
             .book
             .cash(AccountId::Household(recipient()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         crate::money(9)
     );
 }
@@ -429,7 +450,8 @@ fn generic_residual_protects_own_food_and_shared_actor_aliases_cannot_double_spe
 #[test]
 fn stale_changed_duplicate_and_uncaptured_aid_refuse_atomically() {
     let state = aid_opening(false);
-    let before = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     let mut stale_input = input(2);
     stale_input.admitted_period = 1;
     assert_eq!(
@@ -453,7 +475,8 @@ fn stale_changed_duplicate_and_uncaptured_aid_refuse_atomically() {
         Err(MaterialCircuitError::AidAuthority)
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&state).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes"),
         before
     );
 }
@@ -468,7 +491,7 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
     let total = crate::economy(&state)
         .book
         .total_cash_and_reserves()
-        .unwrap();
+        .expect("the fixture book totals without overflow");
     let payer = AccountId::Organization(OrganizationAccountId::from_bytes([96; 32]));
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
         panic!("monetary");
@@ -478,19 +501,20 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
         .accounts
         .iter_mut()
         .find(|a| a.id == AccountId::Site(crate::site(3)))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .cash = crate::money(2);
     snapshot
         .accounts
         .iter_mut()
         .find(|a| a.id == AccountId::Household(crate::household()))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .cash = crate::money(6);
     snapshot.accounts.push(CashAccount {
         id: payer,
         cash: crate::money(0),
     });
-    accounts.book = MonetaryBook::from_snapshot(snapshot).unwrap();
+    accounts.book =
+        MonetaryBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     accounts
         .book
         .transfer_cash(
@@ -499,7 +523,7 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
             crate::money(6),
             CashTransferPurpose::MutualAid,
         )
-        .unwrap();
+        .expect("the fixture transfer stays funded");
     accounts.aid.mandates[0].payer = payer;
     accounts.costs = HistoricalCostBook::open(
         &accounts.book,
@@ -508,8 +532,14 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
         vec![],
         vec![],
     )
-    .unwrap();
-    assert_eq!(accounts.book.total_cash_and_reserves().unwrap(), total);
+    .expect("the fixture opens the authored source");
+    assert_eq!(
+        accounts
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
+        total
+    );
     // A cash namespace alone is not authenticated institution geography.
     assert_eq!(
         close_aid(&state, &[input(4)]),
@@ -519,7 +549,7 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
         .final_demand_principals
         .iter()
         .find(|p| p.id == crate::household())
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .location;
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
         panic!("monetary");
@@ -529,11 +559,14 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
         location,
     });
     let donor_account = AccountId::Household(crate::household());
-    let after_funding = crate::economy(&state).book.cash(donor_account).unwrap();
+    let after_funding = crate::economy(&state)
+        .book
+        .cash(donor_account)
+        .expect("the fixture book holds the payer account");
     assert_eq!(after_funding, crate::money(0));
     // Four authorized units compete for supply; the original organization cash
     // funds only two. Residual physical capacity cannot re-admit unfunded units.
-    let result = close_aid(&state, &[input(4)]).unwrap();
+    let result = close_aid(&state, &[input(4)]).expect("the fixture closes the pending aid");
     let donor_postings = result
         .money_transfers
         .iter()
@@ -543,7 +576,7 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
         .try_fold(after_funding.micro_units(), |cash, posting| {
             cash.checked_add(posting.delta.micro_units())
         })
-        .unwrap();
+        .expect("the fixture input satisfies the fallible conversion");
     let paid_wages = result
         .money_transfers
         .iter()
@@ -552,7 +585,7 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
         .try_fold(0_i128, |paid, row| {
             paid.checked_add(row.credit.delta.micro_units())
         })
-        .unwrap();
+        .expect("the fixture input satisfies the fallible conversion");
     // Site 3 has only two cash units after the conserved opening redistribution.
     // Actual payroll is 4 + 8 + 2; unfunded attendance cannot mint the other two.
     assert_eq!(paid_wages, crate::money(14).micro_units());
@@ -569,29 +602,36 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
         .flat_map(|row| [&row.debit, &row.credit])
         .all(|posting| posting.location != MoneyLocation::Cash(donor_account)));
     assert_eq!(
-        crate::economy(&result.state).book.cash(payer).unwrap(),
+        crate::economy(&result.state)
+            .book
+            .cash(payer)
+            .expect("the fixture book holds the payer account"),
         crate::money(0)
     );
     assert_eq!(
         crate::economy(&result.state)
             .book
             .cash(AccountId::Household(crate::household()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         Currency::from_micro_units(closing_cash)
     );
     assert_eq!(
         crate::economy(&result.state)
             .book
             .cash(AccountId::Household(recipient()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         crate::money(6)
     );
-    let organization = result.income.iter().find(|r| r.account == payer).unwrap();
+    let organization = result
+        .income
+        .iter()
+        .find(|r| r.account == payer)
+        .expect("the fixture holds the searched element");
     let donor = result
         .income
         .iter()
         .find(|r| r.account == AccountId::Household(crate::household()))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(organization.statement.gift_expense, crate::money(6));
     assert_eq!(donor.statement.gift_expense, crate::money(8));
     assert!(result.aid.iter().all(|r| r.payer == payer));
@@ -599,7 +639,7 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
         crate::economy(&result.state)
             .book
             .total_cash_and_reserves()
-            .unwrap(),
+            .expect("the fixture book totals without overflow"),
         total
     );
 }
@@ -634,8 +674,10 @@ fn mandate(routed: bool) -> AidMandate {
 
 #[test]
 fn serialized_pending_gift_refuses_invented_arrival_cash_owner_and_principal() {
-    let first = close_aid(&aid_opening(true), &[input(2)]).unwrap();
-    let before = babylon_material_circuit::encode_material_circuit_state(&first.state).unwrap();
+    let first =
+        close_aid(&aid_opening(true), &[input(2)]).expect("the fixture closes the pending aid");
+    let before = babylon_material_circuit::encode_material_circuit_state(&first.state)
+        .expect("the canonical material state encodes");
     let mut wrong_arrival = first.state.clone();
     let CircuitAccounting::Monetary(accounts) = &mut wrong_arrival.accounting else {
         panic!("monetary");
@@ -651,7 +693,8 @@ fn serialized_pending_gift_refuses_invented_arrival_cash_owner_and_principal() {
     };
     let mut snapshot = accounts.book.snapshot();
     snapshot.aid[0].payer = AccountId::Site(crate::site(1));
-    accounts.book = MonetaryBook::from_snapshot(snapshot).unwrap();
+    accounts.book =
+        MonetaryBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     assert_eq!(
         babylon_material_circuit::encode_material_circuit_state(&wrong_owner),
         Err(MaterialCircuitError::AidInvariant)
@@ -666,7 +709,8 @@ fn serialized_pending_gift_refuses_invented_arrival_cash_owner_and_principal() {
         Err(MaterialCircuitError::AidInvariant)
     );
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&before).unwrap(),
+        babylon_material_circuit::decode_material_circuit_state(&before)
+            .expect("the canonical material bytes decode"),
         first.state
     );
     let mut trailing = before;
@@ -680,15 +724,20 @@ fn donor_own_food_need_is_protected_even_when_requested_time_and_cash_are_availa
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
         panic!("monetary");
     };
-    accounts.recurring.as_mut().unwrap().household_stocks[0].quantity = 5;
-    let result = close_aid(&state, &[input(2)]).unwrap();
+    accounts
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .household_stocks[0]
+        .quantity = 5;
+    let result = close_aid(&state, &[input(2)]).expect("the fixture closes the pending aid");
     assert_eq!(consumed(&result, crate::household()).consumed_quantity, 4);
     assert_eq!(consumed(&result, crate::household()).unmet_quantity, 0);
     let grant = result
         .aid
         .iter()
         .find(|r| r.outcome == AidOutcome::Granted)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(grant.quantity, 1);
     assert_eq!(grant.carrying_amount, crate::money(6));
     assert!(result

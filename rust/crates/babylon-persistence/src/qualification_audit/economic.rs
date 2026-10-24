@@ -42,9 +42,14 @@ fn value(q: u64, p: i128) -> Result<i128> {
 }
 fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
-    let mut result = String::with_capacity(bytes.len().checked_mul(2).unwrap());
+    let mut result = String::with_capacity(
+        bytes
+            .len()
+            .checked_mul(2)
+            .expect("the hex length fits the host address space"),
+    );
     for byte in bytes {
-        write!(&mut result, "{byte:02x}").unwrap();
+        write!(&mut result, "{byte:02x}").expect("writing to a String cannot fail");
     }
     result
 }

@@ -255,7 +255,10 @@ fn public_canonical_apis_refuse_limit_plus_one_without_result() {
 }
 
 #[test]
-#[allow(clippy::needless_range_loop)] // fixed six-case envelope contract
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // fixed six-case envelope contract
 fn vector_reader_refuses_closed_envelope_and_depth_violations() {
     let too_long_id = "x".repeat(129);
     let witnesses = [

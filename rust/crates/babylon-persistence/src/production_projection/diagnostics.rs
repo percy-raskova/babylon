@@ -245,13 +245,14 @@ mod memory_controls {
 
     #[test]
     fn process_status_memory_is_exact_bounded_numeric_or_unavailable() {
-        let memory =
-            parse_process_memory("Name: hidden\nVmHWM: 8398300 kB\nVmRSS: 7293040 kB\n").unwrap();
+        let memory = parse_process_memory("Name: hidden\nVmHWM: 8398300 kB\nVmRSS: 7293040 kB\n")
+            .expect("the recorded process memory parses");
         assert_eq!(memory.resident, Some(7_293_040));
         assert_eq!(memory.high_water, Some(8_398_300));
         assert_eq!(MemoryValue(None).to_string(), "unavailable");
         assert_eq!(MemoryValue(Some(0)).to_string(), "0");
-        let absent = parse_process_memory("Name: hidden\n").unwrap();
+        let absent =
+            parse_process_memory("Name: hidden\n").expect("the recorded process memory parses");
         assert_eq!(absent.resident, None);
         assert_eq!(absent.high_water, None);
         for malformed in [

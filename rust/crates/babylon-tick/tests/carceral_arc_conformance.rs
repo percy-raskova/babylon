@@ -87,7 +87,10 @@
 // Conformance fixtures exercise exact engine values, transcribe spec literals,
 // and build whole scenarios in one test. These pedantic lints would force
 // ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::float_cmp)]
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
@@ -534,7 +537,7 @@ fn governed_phase_order_exposes_decomposition_to_control_ratio_in_the_same_tick(
         session
             .graph()
             .node_attribute(BOR_CARCERAL_REGISTER, "institution/decomposition-fire-tick")
-            .unwrap(),
+            .expect("the fixture node carries the authored attribute"),
         1.0,
         "tick 1: decomposition-fire-tick IS written this tick, by p03"
     );

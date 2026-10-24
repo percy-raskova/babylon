@@ -2,15 +2,15 @@ use crate::runtime::RustPersistenceRuntimeError;
 use babylon_kernel::content_digest;
 
 fn header_savepoint(tx: &mut Transaction<'_>) {
-    tx.batch_execute("SAVEPOINT territory_header_corruption; ALTER TABLE babylon_state.territory_definition_v1 DISABLE TRIGGER territory_definition_immutable_v1").unwrap();
+    tx.batch_execute("SAVEPOINT territory_header_corruption; ALTER TABLE babylon_state.territory_definition_v1 DISABLE TRIGGER territory_definition_immutable_v1").expect("the test database applies the schema statements");
 }
 
 fn enable_header_guard(tx: &mut Transaction<'_>) {
-    tx.batch_execute("ALTER TABLE babylon_state.territory_definition_v1 ENABLE TRIGGER territory_definition_immutable_v1").unwrap();
+    tx.batch_execute("ALTER TABLE babylon_state.territory_definition_v1 ENABLE TRIGGER territory_definition_immutable_v1").expect("the test database applies the schema statements");
 }
 
 fn restored_header(tx: &mut Transaction<'_>, campaign: CampaignId, expected: &[TerritoryStateRow]) {
-    tx.batch_execute("ROLLBACK TO SAVEPOINT territory_header_corruption; RELEASE SAVEPOINT territory_header_corruption").unwrap();
+    tx.batch_execute("ROLLBACK TO SAVEPOINT territory_header_corruption; RELEASE SAVEPOINT territory_header_corruption").expect("the test database applies the schema statements");
     let canonical: Vec<_> = expected
         .iter()
         .map(|row| row.canonical_bytes().to_vec())
@@ -25,7 +25,7 @@ fn restored_header(tx: &mut Transaction<'_>, campaign: CampaignId, expected: &[T
             "savepoint restores healthy canonical rows and trigger catalog"
         );
     }
-    let enabled: String = tx.query_one("SELECT tgenabled::text FROM pg_catalog.pg_trigger WHERE tgrelid='babylon_state.territory_definition_v1'::regclass AND tgname='territory_definition_immutable_v1'", &[]).unwrap().try_get(0).unwrap();
+    let enabled: String = tx.query_one("SELECT tgenabled::text FROM pg_catalog.pg_trigger WHERE tgrelid='babylon_state.territory_definition_v1'::regclass AND tgname='territory_definition_immutable_v1'", &[]).expect("the seeded row is present exactly once").try_get(0).expect("the fixture row holds the addressed column");
     assert_eq!(enabled, "O");
 }
 
@@ -53,18 +53,18 @@ fn assert_header_corruption_refused(
 ) {
     // Clear only this table's pending completeness/FK events before owner ALTER.
     // All target marker rows exist inside this rollback-only positive fixture.
-    tx.batch_execute("SET CONSTRAINTS babylon_state.territory_definition_complete_v1, babylon_state.territory_definition_marker_v1 IMMEDIATE").unwrap();
+    tx.batch_execute("SET CONSTRAINTS babylon_state.territory_definition_complete_v1, babylon_state.territory_definition_marker_v1 IMMEDIATE").expect("the test database applies the schema statements");
     let digest = content_digest::sha256_of(original[1].canonical_bytes());
-    let id: i64 = tx.query_one("SELECT definition_id FROM babylon_state.territory_definition_v1 WHERE campaign_id=$1 AND canonical_sha256=$2", &[campaign.as_uuid(),&&digest[..]]).unwrap().try_get(0).unwrap();
+    let id: i64 = tx.query_one("SELECT definition_id FROM babylon_state.territory_definition_v1 WHERE campaign_id=$1 AND canonical_sha256=$2", &[campaign.as_uuid(),&&digest[..]]).expect("the seeded row is present exactly once").try_get(0).expect("the fixture row holds the addressed column");
     assert_ne!(digest, [0; 32]);
     header_savepoint(tx);
-    tx.execute("UPDATE babylon_state.territory_definition_v1 SET canonical_sha256=$3 WHERE campaign_id=$1 AND definition_id=$2", &[campaign.as_uuid(),&id,&&[0_u8;32][..]]).unwrap();
+    tx.execute("UPDATE babylon_state.territory_definition_v1 SET canonical_sha256=$3 WHERE campaign_id=$1 AND definition_id=$2", &[campaign.as_uuid(),&id,&&[0_u8;32][..]]).expect("the test database applies the setup statement");
     enable_header_guard(tx);
     assert_both_header_readers_refuse(tx, campaign);
     restored_header(tx, campaign, original);
 
     header_savepoint(tx);
-    tx.execute("UPDATE babylon_state.territory_definition_v1 SET field_count=field_count+1 WHERE campaign_id=$1 AND definition_id=$2", &[campaign.as_uuid(),&id]).unwrap();
+    tx.execute("UPDATE babylon_state.territory_definition_v1 SET field_count=field_count+1 WHERE campaign_id=$1 AND definition_id=$2", &[campaign.as_uuid(),&id]).expect("the test database applies the setup statement");
     enable_header_guard(tx);
     assert_both_header_readers_refuse(tx, campaign);
     restored_header(tx, campaign, original);
@@ -74,7 +74,7 @@ fn assert_header_corruption_refused(
     let claimed = content_digest::sha256_of(changed[1].canonical_bytes());
     assert_ne!(digest, claimed);
     header_savepoint(tx);
-    tx.execute("UPDATE babylon_state.territory_definition_v1 SET canonical_sha256=$3 WHERE campaign_id=$1 AND definition_id=$2", &[campaign.as_uuid(),&id,&&claimed[..]]).unwrap();
+    tx.execute("UPDATE babylon_state.territory_definition_v1 SET canonical_sha256=$3 WHERE campaign_id=$1 AND definition_id=$2", &[campaign.as_uuid(),&id,&&claimed[..]]).expect("the test database applies the setup statement");
     enable_header_guard(tx);
     assert!(matches!(
         territory_storage::insert(tx, campaign, 5, changed),

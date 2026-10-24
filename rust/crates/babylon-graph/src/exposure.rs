@@ -282,11 +282,17 @@ mod tests {
     /// The centralized organization — Sparrow's "messiah" shape.
     fn star(spokes: usize) -> (MemoryGraph, NodeId, Vec<NodeId>) {
         let mut graph = MemoryGraph::new();
-        let hub = graph.add_node("cadre").unwrap();
+        let hub = graph
+            .add_node("cadre")
+            .expect("the fixture adds a node with a registered kind");
         let mut all = vec![hub];
         for _ in 0..spokes {
-            let leaf = graph.add_node("cadre").unwrap();
-            graph.add_edge("coordination", hub, leaf, 1.0).unwrap();
+            let leaf = graph
+                .add_node("cadre")
+                .expect("the fixture adds a node with a registered kind");
+            graph
+                .add_edge("coordination", hub, leaf, 1.0)
+                .expect("the fixture graph admits the authored edge");
             all.push(leaf);
         }
         (graph, hub, all)
@@ -297,13 +303,17 @@ mod tests {
     fn ring(size: usize) -> (MemoryGraph, Vec<NodeId>) {
         let mut graph = MemoryGraph::new();
         let all: Vec<NodeId> = (0..size)
-            .map(|_| graph.add_node("cadre").unwrap())
+            .map(|_| {
+                graph
+                    .add_node("cadre")
+                    .expect("the fixture adds a node with a registered kind")
+            })
             .collect();
         for index in 0..size {
             let next = all[(index + 1) % size];
             graph
                 .add_edge("coordination", all[index], next, 1.0)
-                .unwrap();
+                .expect("the fixture graph admits the authored edge");
         }
         (graph, all)
     }
@@ -311,13 +321,22 @@ mod tests {
     #[test]
     fn components_are_deterministic_and_include_isolates() {
         let mut graph = MemoryGraph::new();
-        let a = graph.add_node("cadre").unwrap();
-        let b = graph.add_node("cadre").unwrap();
-        let isolate = graph.add_node("cadre").unwrap();
-        graph.add_edge("coordination", b, a, 1.0).unwrap();
+        let a = graph
+            .add_node("cadre")
+            .expect("the fixture adds a node with a registered kind");
+        let b = graph
+            .add_node("cadre")
+            .expect("the fixture adds a node with a registered kind");
+        let isolate = graph
+            .add_node("cadre")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("coordination", b, a, 1.0)
+            .expect("the fixture graph admits the authored edge");
         // declared b->a, asked in a different order: output is by id anyway
         assert_eq!(
-            super::components(&graph, &[isolate, b, a], "coordination").unwrap(),
+            super::components(&graph, &[isolate, b, a], "coordination")
+                .expect("the fixture call `components` succeeds for the authored inputs"),
             vec![vec![a, b], vec![isolate]]
         );
     }
@@ -325,12 +344,19 @@ mod tests {
     #[test]
     fn traversal_is_undirected_because_a_raid_ignores_edge_authorship() {
         let mut graph = MemoryGraph::new();
-        let a = graph.add_node("cadre").unwrap();
-        let b = graph.add_node("cadre").unwrap();
-        graph.add_edge("coordination", a, b, 1.0).unwrap();
+        let a = graph
+            .add_node("cadre")
+            .expect("the fixture adds a node with a registered kind");
+        let b = graph
+            .add_node("cadre")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("coordination", a, b, 1.0)
+            .expect("the fixture graph admits the authored edge");
         // one component, though the only edge points a -> b
         assert_eq!(
-            super::components(&graph, &[a, b], "coordination").unwrap(),
+            super::components(&graph, &[a, b], "coordination")
+                .expect("the fixture call `components` succeeds for the authored inputs"),
             vec![vec![a, b]]
         );
     }
@@ -345,20 +371,26 @@ mod tests {
     fn giant_fraction_measures_fragmentation() {
         let (graph, _hub, all) = star(3);
         assert!(
-            (super::giant_component_fraction(&graph, &all, "coordination").unwrap() - 1.0).abs()
+            (super::giant_component_fraction(&graph, &all, "coordination").expect(
+                "the fixture call `giant_component_fraction` succeeds for the authored inputs"
+            ) - 1.0)
+                .abs()
                 < 1e-12
         );
         // the three leaves alone share no ties: three singleton components
         let leaves = &all[1..];
-        let fraction = super::giant_component_fraction(&graph, leaves, "coordination").unwrap();
+        let fraction = super::giant_component_fraction(&graph, leaves, "coordination")
+            .expect("the fixture call `giant_component_fraction` succeeds for the authored inputs");
         assert!((fraction - 1.0 / 3.0).abs() < 1e-12);
     }
 
     #[test]
     fn removing_a_hub_costs_more_than_removing_a_leaf() {
         let (graph, hub, all) = star(3);
-        let hub_loss = super::removal_differential(&graph, &all, "coordination", hub).unwrap();
-        let leaf_loss = super::removal_differential(&graph, &all, "coordination", all[1]).unwrap();
+        let hub_loss = super::removal_differential(&graph, &all, "coordination", hub)
+            .expect("the fixture call `removal_differential` succeeds for the authored inputs");
+        let leaf_loss = super::removal_differential(&graph, &all, "coordination", all[1])
+            .expect("the fixture call `removal_differential` succeeds for the authored inputs");
         // hub: 1.0 -> 1/3 ; leaf: 1.0 -> 1.0
         assert!((hub_loss - (1.0 - 1.0 / 3.0)).abs() < 1e-12);
         assert!((leaf_loss - 0.0).abs() < 1e-12);
@@ -368,9 +400,13 @@ mod tests {
     #[test]
     fn removing_the_last_node_reports_the_whole_loss() {
         let mut graph = MemoryGraph::new();
-        let only = graph.add_node("cadre").unwrap();
+        let only = graph
+            .add_node("cadre")
+            .expect("the fixture adds a node with a registered kind");
         assert!(
-            (super::removal_differential(&graph, &[only], "coordination", only).unwrap() - 1.0)
+            (super::removal_differential(&graph, &[only], "coordination", only).expect(
+                "the fixture call `removal_differential` succeeds for the authored inputs"
+            ) - 1.0)
                 .abs()
                 < 1e-12
         );
@@ -380,11 +416,13 @@ mod tests {
     fn signature_separates_a_hub_from_its_leaves() {
         let (graph, hub, all) = star(3);
         assert_eq!(
-            degree_signature(&graph, &all, "coordination", hub, 2).unwrap(),
+            degree_signature(&graph, &all, "coordination", hub, 2)
+                .expect("the fixture call `degree_signature` succeeds for the authored inputs"),
             vec![3, 1]
         );
         assert_eq!(
-            degree_signature(&graph, &all, "coordination", all[1], 2).unwrap(),
+            degree_signature(&graph, &all, "coordination", all[1], 2)
+                .expect("the fixture call `degree_signature` succeeds for the authored inputs"),
             vec![1, 3]
         );
     }
@@ -394,19 +432,21 @@ mod tests {
         let (graph, hub, all) = star(3);
         // the hub is a specialist: nobody shares its signature
         assert_eq!(
-            super::signature_class_size(&graph, &all, "coordination", hub, 2).unwrap(),
+            super::signature_class_size(&graph, &all, "coordination", hub, 2)
+                .expect("the fixture call `signature_class_size` succeeds for the authored inputs"),
             1
         );
         // each leaf is interchangeable with the other two
         assert_eq!(
-            super::signature_class_size(&graph, &all, "coordination", all[1], 2).unwrap(),
+            super::signature_class_size(&graph, &all, "coordination", all[1], 2)
+                .expect("the fixture call `signature_class_size` succeeds for the authored inputs"),
             3
         );
         // a ring is wholly redundant: every node shares one class
         let (ring_graph, ring_nodes) = ring(6);
         assert_eq!(
             super::signature_class_size(&ring_graph, &ring_nodes, "coordination", ring_nodes[0], 2)
-                .unwrap(),
+                .expect("the fixture call `signature_class_size` succeeds for the authored inputs"),
             6
         );
     }
@@ -420,10 +460,11 @@ mod tests {
         let (ring_graph, ring_nodes) = ring(6);
 
         let centralized =
-            super::decapitation_value(&star_graph, &star_nodes, "coordination", hub, 2).unwrap();
+            super::decapitation_value(&star_graph, &star_nodes, "coordination", hub, 2)
+                .expect("the fixture call `decapitation_value` succeeds for the authored inputs");
         let distributed =
             super::decapitation_value(&ring_graph, &ring_nodes, "coordination", ring_nodes[0], 2)
-                .unwrap();
+                .expect("the fixture call `decapitation_value` succeeds for the authored inputs");
 
         assert!(
             centralized > distributed,
@@ -443,32 +484,56 @@ mod tests {
         // interchangeable with each other. A caterpillar: two hubs, two
         // leaves apiece, one bridge between the hubs.
         let mut graph = MemoryGraph::new();
-        let h1 = graph.add_node("cadre").unwrap();
-        let h2 = graph.add_node("cadre").unwrap();
-        let leaves: Vec<NodeId> = (0..4).map(|_| graph.add_node("cadre").unwrap()).collect();
-        graph.add_edge("coordination", h1, leaves[0], 1.0).unwrap();
-        graph.add_edge("coordination", h1, leaves[1], 1.0).unwrap();
-        graph.add_edge("coordination", h2, leaves[2], 1.0).unwrap();
-        graph.add_edge("coordination", h2, leaves[3], 1.0).unwrap();
-        graph.add_edge("coordination", h1, h2, 1.0).unwrap();
+        let h1 = graph
+            .add_node("cadre")
+            .expect("the fixture adds a node with a registered kind");
+        let h2 = graph
+            .add_node("cadre")
+            .expect("the fixture adds a node with a registered kind");
+        let leaves: Vec<NodeId> = (0..4)
+            .map(|_| {
+                graph
+                    .add_node("cadre")
+                    .expect("the fixture adds a node with a registered kind")
+            })
+            .collect();
+        graph
+            .add_edge("coordination", h1, leaves[0], 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("coordination", h1, leaves[1], 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("coordination", h2, leaves[2], 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("coordination", h2, leaves[3], 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("coordination", h1, h2, 1.0)
+            .expect("the fixture graph admits the authored edge");
         let all: Vec<NodeId> = [h1, h2].into_iter().chain(leaves).collect();
 
-        let differential = super::removal_differential(&graph, &all, "coordination", h1).unwrap();
+        let differential = super::removal_differential(&graph, &all, "coordination", h1)
+            .expect("the fixture call `removal_differential` succeeds for the authored inputs");
         assert!((differential - 0.4).abs() < 1e-12, "Δφ was {differential}");
         assert_eq!(
-            super::signature_class_size(&graph, &all, "coordination", h1, 2).unwrap(),
+            super::signature_class_size(&graph, &all, "coordination", h1, 2)
+                .expect("the fixture call `signature_class_size` succeeds for the authored inputs"),
             2,
             "the two hubs are structurally interchangeable"
         );
         // …so the strike is worth exactly half what its fragmentation alone
         // would suggest. Remove the quotient and this reads 0.4.
-        let value = super::decapitation_value(&graph, &all, "coordination", h1, 2).unwrap();
+        let value = super::decapitation_value(&graph, &all, "coordination", h1, 2)
+            .expect("the fixture call `decapitation_value` succeeds for the authored inputs");
         assert!(
             (value - 0.2).abs() < 1e-12,
             "decapitation value was {value}"
         );
         // symmetric by construction: neither hub is the better target
-        let sibling = super::decapitation_value(&graph, &all, "coordination", h2, 2).unwrap();
+        let sibling = super::decapitation_value(&graph, &all, "coordination", h2, 2)
+            .expect("the fixture call `decapitation_value` succeeds for the authored inputs");
         assert!((value - sibling).abs() < 1e-12);
     }
 
@@ -481,16 +546,20 @@ mod tests {
         // counterproductive" — the state's own rule refuses it without any
         // special case.
         let (mut graph, hub, mut all) = star(2);
-        let isolate = graph.add_node("cadre").unwrap();
+        let isolate = graph
+            .add_node("cadre")
+            .expect("the fixture adds a node with a registered kind");
         all.push(isolate);
-        let isolate_value =
-            super::removal_differential(&graph, &all, "coordination", isolate).unwrap();
+        let isolate_value = super::removal_differential(&graph, &all, "coordination", isolate)
+            .expect("the fixture call `removal_differential` succeeds for the authored inputs");
         assert!(
             isolate_value < 0.0,
             "expected a negative differential, got {isolate_value}"
         );
         assert!(
-            super::removal_differential(&graph, &all, "coordination", hub).unwrap() > isolate_value
+            super::removal_differential(&graph, &all, "coordination", hub)
+                .expect("the fixture call `removal_differential` succeeds for the authored inputs")
+                > isolate_value
         );
     }
 
@@ -524,8 +593,8 @@ mod tests {
         // through to "target is not in the node set", which is true but
         // misleading.
         let graph = MemoryGraph::new();
-        let error =
-            super::removal_differential(&graph, &[], "coordination", NodeId(0)).unwrap_err();
+        let error = super::removal_differential(&graph, &[], "coordination", NodeId(0))
+            .expect_err("the fixture call `removal_differential` fails for the authored inputs");
         assert!(
             error.message.contains("empty node set"),
             "{}",

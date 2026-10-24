@@ -22,14 +22,17 @@ fn live_packed_membership_rejects_invalid_arrays_and_unresolved_references() {
     record_phase("publication", &mut phase);
     archive_reader::with_reader(&target.config, |reader| {
         record_phase("confined_reader", &mut phase);
-        let mut client = target.config.connect(NoTls).unwrap();
+        let mut client = target
+            .config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         let retired: bool = client
             .query_one(
                 "SELECT to_regclass('babylon_meta.archive_revision_atom_v2') IS NULL \
              AND to_regclass('babylon_meta.archive_revision_grant_v2') IS NULL",
                 &[],
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get(0);
         assert!(
             retired,
@@ -49,11 +52,11 @@ fn live_packed_membership_rejects_invalid_arrays_and_unresolved_references() {
             "grant_provenance_refs[1]=babylon_meta.archive_provenance_intern_v1(campaign_id,'changed-frozen-provenance','changed')",
             "grant_ticks[1]=source_tick+1",
         ] {
-            let mut transaction = client.transaction().unwrap();
+            let mut transaction = client.transaction().expect("the test database opens a transaction");
             transaction.execute(
             &format!("UPDATE babylon_meta.archive_page_revision_v2 SET {assignment} WHERE campaign_id=$1"),
             &[target.campaign_id.as_uuid()],
-        ).unwrap();
+        ).expect("the test database applies the setup statement");
             // Direct SQL must withhold the body while retaining an identifiable
             // corrupt candidate. Rust post-fetch checks cannot provide this proof.
             assert_eq!(
@@ -61,7 +64,7 @@ fn live_packed_membership_rejects_invalid_arrays_and_unresolved_references() {
                 (0, 1),
                 "{assignment}"
             );
-            transaction.rollback().unwrap();
+            transaction.rollback().expect("the open transaction rolls back");
         }
         for mutation in [
         "UPDATE babylon_meta.archive_atom_v1 SET subject_id='99999' \
@@ -69,10 +72,10 @@ fn live_packed_membership_rejects_invalid_arrays_and_unresolved_references() {
         "UPDATE babylon_meta.archive_atom_v1 SET valid_tick=valid_tick+1 \
          WHERE atom_id=(SELECT atom_ids[1] FROM babylon_meta.archive_page_revision_v2 WHERE campaign_id=$1)",
     ] {
-        let mut transaction = client.transaction().unwrap();
-        assert_eq!(transaction.execute(mutation, &[target.campaign_id.as_uuid()]).unwrap(), 1);
+        let mut transaction = client.transaction().expect("the test database opens a transaction");
+        assert_eq!(transaction.execute(mutation, &[target.campaign_id.as_uuid()]).expect("the test database applies the setup statement"), 1);
         assert_eq!(disclosed_count(&mut transaction, &target), (0, 1), "{mutation}");
-        transaction.rollback().unwrap();
+        transaction.rollback().expect("the open transaction rolls back");
     }
         assert_eq!(disclosed_count(&mut client, &target), healthy);
         record_phase("array_and_reference_faults", &mut phase);
@@ -116,7 +119,7 @@ fn assert_invalid_arrays_rejected(client: &mut Client, campaign: CampaignId) {
      grant_ticks=array_append(grant_ticks,grant_ticks[1]), \
      grant_provenance_refs=array_append(grant_provenance_refs,grant_provenance_refs[1]),grant_count=grant_count+1",
     ] {
-        let mut transaction = client.transaction().unwrap();
+        let mut transaction = client.transaction().expect("the test database opens a transaction");
         let failure = transaction
         .execute(
             &format!("UPDATE babylon_meta.archive_page_revision_v2 SET {assignment} WHERE campaign_id=$1"),
@@ -128,7 +131,7 @@ fn assert_invalid_arrays_rejected(client: &mut Client, campaign: CampaignId) {
             Some(&postgres::error::SqlState::CHECK_VIOLATION),
             "{assignment}"
         );
-        transaction.rollback().unwrap();
+        transaction.rollback().expect("the open transaction rolls back");
     }
 }
 
@@ -144,12 +147,16 @@ fn disclosed_count(
     client: &mut impl postgres::GenericClient,
     target: &LiveWorkerTarget,
 ) -> (i64, i64) {
-    client.batch_execute("SET ROLE babylon_reader").unwrap();
+    client
+        .batch_execute("SET ROLE babylon_reader")
+        .expect("the test database applies the schema statements");
     let row = client.query_one(
         "SELECT (SELECT count(*) FROM public.v_archive_revision_known_v2 WHERE campaign_id=$1), \
          (SELECT count(*) FROM public.v_archive_revision_index_v2 WHERE campaign_id=$1)",
         &[target.campaign_id.as_uuid()],
-    ).unwrap();
-    client.batch_execute("RESET ROLE").unwrap();
+    ).expect("the seeded row is present exactly once");
+    client
+        .batch_execute("RESET ROLE")
+        .expect("the test database applies the schema statements");
     (row.get(0), row.get(1))
 }

@@ -13,7 +13,8 @@ fn identity() -> MaterialComponentIdentity {
     MaterialComponentIdentity::from_parts(
         b"resolver",
         b"environment",
-        &ReplaySessionId::try_from("fixture/component-identity").unwrap(),
+        &ReplaySessionId::try_from("fixture/component-identity")
+            .expect("the fixture value fits the target range"),
         ReplaySeed::new(7),
         &ContentDigest {
             defines_hash: [3; 32],
@@ -30,7 +31,9 @@ fn every_immutable_checkpoint_section_is_exact_and_mandatory() {
         world_register: Vec::new(),
         components: expected.sections.clone(),
     };
-    expected.validate_sections(&sections).unwrap();
+    expected
+        .validate_sections(&sections)
+        .expect("the authored fixture satisfies the rule");
     for component in 0..6 {
         let mut altered = crate::stored_tick::CheckpointSections {
             world_register: Vec::new(),
@@ -52,7 +55,8 @@ fn every_immutable_checkpoint_section_is_exact_and_mandatory() {
 #[test]
 fn empty_actions_bind_exact_session_tick_layout_digest_and_bytes() {
     let expected = identity();
-    let actions = OrderedPracticeActionBatch::empty(expected.session_id.clone(), 3).unwrap();
+    let actions = OrderedPracticeActionBatch::empty(expected.session_id.clone(), 3)
+        .expect("the empty authored batch constructs");
     expected
         .validate_actions(
             3,
@@ -61,12 +65,13 @@ fn empty_actions_bind_exact_session_tick_layout_digest_and_bytes() {
             actions.canonical_bytes(),
             None,
         )
-        .unwrap();
+        .expect("the authored actions pass validation");
     let foreign = OrderedPracticeActionBatch::empty(
-        ReplaySessionId::try_from("fixture/foreign-session").unwrap(),
+        ReplaySessionId::try_from("fixture/foreign-session")
+            .expect("the fixture value fits the target range"),
         3,
     )
-    .unwrap();
+    .expect("the empty authored batch constructs");
     for (tick, layout, digest, bytes) in [
         (
             4,
@@ -110,9 +115,11 @@ fn empty_actions_bind_exact_session_tick_layout_digest_and_bytes() {
 fn captured_foundation_and_live_session_have_identical_component_admission() {
     let foundation = MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let retained = MaterialComponentIdentity::from_foundation(foundation.graph_foundation());
-    let session = foundation.into_session().unwrap();
+    let session = foundation
+        .into_session()
+        .expect("the fixture opens a session");
     assert_eq!(
         retained,
         MaterialComponentIdentity::from_session(session.graph_session())
@@ -125,21 +132,22 @@ fn organizer_actions_require_the_exact_authorized_batch_on_restart() {
     let defines = MichiganDefines::parse(include_str!(
         "../../../../../../content/scenarios/michigan/defines.toml"
     ))
-    .unwrap();
+    .expect("the authored literal parses as the declared type");
     let config = crate::organizer_content::config(
         CampaignId::from_uuid(Uuid::from_u128(26163)),
         &defines.organizer,
         [7; 32],
     )
-    .unwrap();
-    let state = babylon_practice_contract::initial_organizer_state(&config).unwrap();
+    .expect("the fixture call `config` succeeds for the authored inputs");
+    let state = babylon_practice_contract::initial_organizer_state(&config)
+        .expect("the authored config admits an opening organizer state");
     let actions = babylon_practice_contract::organizer_action_batch(
         &config,
         &state,
         None,
         expected.session_id.clone(),
     )
-    .unwrap();
+    .expect("the authored action batch builds");
     assert!(!actions.is_empty());
     assert!(expected
         .validate_actions(
@@ -158,9 +166,11 @@ fn organizer_actions_require_the_exact_authorized_batch_on_restart() {
             actions.canonical_bytes(),
             Some(&actions),
         )
-        .unwrap();
+        .expect("the authored actions pass validation");
     let mut altered = actions.canonical_bytes().to_vec();
-    *altered.last_mut().unwrap() ^= 1;
+    *altered
+        .last_mut()
+        .expect("the fixture sequence is non-empty") ^= 1;
     assert!(expected
         .validate_actions(1, 1, actions.digest().as_bytes(), &altered, Some(&actions))
         .is_err());

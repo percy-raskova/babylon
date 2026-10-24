@@ -1235,14 +1235,15 @@ mod tests {
 
     #[test]
     fn an_unknown_field_is_a_loud_uncoded_error() {
-        let err = check("(sum imperial-rent)", &env()).unwrap_err();
+        let err =
+            check("(sum imperial-rent)", &env()).expect_err("the malformed source is refused");
         assert_eq!(err.code, None);
         assert!(err.message.contains("imperial-rent"));
     }
 
     #[test]
     fn an_unknown_operator_is_a_loud_uncoded_error() {
-        let err = check("(median wealth)", &env()).unwrap_err();
+        let err = check("(median wealth)", &env()).expect_err("the malformed source is refused");
         assert_eq!(err.code, None);
     }
 
@@ -1264,7 +1265,7 @@ mod tests {
                 "OrgKind",
                 &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         TypeEnv {
             fields: HashMap::from([
                 (
@@ -1345,7 +1346,8 @@ mod tests {
             "(select-max (nodes NodeType/ORGANIZATION) (field-of it organization/kind))",
         )
         .expect("must parse");
-        let err = super::check_selection_scores(&expr, &org_env(), &[]).unwrap_err();
+        let err = super::check_selection_scores(&expr, &org_env(), &[])
+            .expect_err("the malformed input is rejected by `check_selection_scores`");
         assert_eq!(err.code, Some(TypeCode::NonComparableScore));
         assert!(err.message.contains("E-TYPE-016"), "{}", err.message);
     }
@@ -1357,7 +1359,8 @@ mod tests {
     fn add_on_an_enum_declared_field_refuses_citing_d118() {
         let (expr, _) = crate::reader::read("(update-node self organization/kind (add 1))")
             .expect("must parse");
-        let err = super::check_no_arithmetic_on_enum_field(&expr, &org_env()).unwrap_err();
+        let err = super::check_no_arithmetic_on_enum_field(&expr, &org_env())
+            .expect_err("the malformed input is rejected by `check_no_arithmetic_on_enum_field`");
         assert_eq!(
             err.code, None,
             "D118 mints no error code — E-EVAL-042 already covers it"
@@ -1483,7 +1486,8 @@ mod tests {
     fn extensive_times_extensive_is_e_type_040_the_case_that_stays() {
         // (b): an area-of-an-area — the one case the old combined bullet
         // already named, and the only one this repair does NOT relicense.
-        let err = kind_of("(* wealth-b pop)").unwrap_err();
+        let err = kind_of("(* wealth-b pop)")
+            .expect_err("the fixture call `kind_of` fails for the authored inputs");
         assert_eq!(err.code, Some(TypeCode::KindMixing));
         assert!(err.message.contains("E-TYPE-040"), "{}", err.message);
     }
@@ -1495,7 +1499,8 @@ mod tests {
         // the `*`/`/` one.
         for op in ["+", "-"] {
             let source = format!("({op} ws pop)");
-            let err = kind_of(&source).unwrap_err();
+            let err = kind_of(&source)
+                .expect_err("the fixture call `kind_of` fails for the authored inputs");
             assert_eq!(err.code, Some(TypeCode::KindMixing), "{op}: {err:?}");
             assert!(err.message.contains("E-TYPE-040"), "{op}: {}", err.message);
         }
@@ -1504,7 +1509,8 @@ mod tests {
     #[test]
     fn if_branches_disagreeing_in_kind_is_e_type_040() {
         // (d): consciousness (intensive) vs. population (extensive).
-        let err = kind_of("(if #t cons pop)").unwrap_err();
+        let err = kind_of("(if #t cons pop)")
+            .expect_err("the fixture call `kind_of` fails for the authored inputs");
         assert_eq!(err.code, Some(TypeCode::KindMixing));
         assert!(err.message.contains("E-TYPE-040"), "{}", err.message);
     }
@@ -1589,7 +1595,8 @@ mod tests {
         // intensive-numerator-over-extensive-denominator refusal, and its
         // mirror image, must both still refuse after this ruling.
         for source in ["(/ ws wealth-b)", "(/ wealth-b ws)"] {
-            let err = kind_of(source).unwrap_err();
+            let err = kind_of(source)
+                .expect_err("the fixture call `kind_of` fails for the authored inputs");
             assert_eq!(err.code, Some(TypeCode::KindMixing), "{source}: {err:?}");
             assert!(
                 err.message.contains("E-TYPE-040"),
@@ -1614,7 +1621,7 @@ mod tests {
             Ok(Some(ExprKind::Extensive)),
             "must not silently become extensive: {result:?}"
         );
-        let err = result.unwrap_err();
+        let err = result.expect_err("the fixture call returns its expected result");
         assert_eq!(err.code, Some(TypeCode::KindMixing));
     }
 
@@ -1648,7 +1655,8 @@ mod tests {
         // walker, agnostic of `guard`'s own effect grammar, so this proves
         // the recursion without needing a full valid rule.
         let (expr, _) = crate::reader::read("(guard #t (+ ws pop))").expect("must parse");
-        let err = super::check_kind_mixing(&expr, &env(), &kind_bindings()).unwrap_err();
+        let err = super::check_kind_mixing(&expr, &env(), &kind_bindings())
+            .expect_err("the malformed input is rejected by `check_kind_mixing`");
         assert_eq!(err.code, Some(TypeCode::KindMixing));
     }
 

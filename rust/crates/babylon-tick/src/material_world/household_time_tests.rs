@@ -27,7 +27,8 @@ fn time_receipts(rows: usize) -> Vec<u8> {
 
 #[test]
 fn current_household_time_receipt_retains_exact_partition_and_unit() {
-    let receipts = material_world::decode_material_receipts(&time_receipts(1)).unwrap();
+    let receipts = material_world::decode_material_receipts(&time_receipts(1))
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(receipts.household_time.len(), 1);
     let row = &receipts.household_time[0];
     assert_eq!(

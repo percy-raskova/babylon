@@ -9,10 +9,18 @@ use std::collections::BTreeSet;
 #[test]
 fn county_network_keeps_direct_counterparts_and_local_isolates_but_not_second_hops() {
     let (session, mut frame, anchors) = tests::fixture();
-    let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+    let snapshot = frame
+        .0
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     let mut second_hop = snapshot.sites[1].clone();
     second_hop.id = "second-hop".into();
-    second_hop.location = "county:26161".parse().unwrap();
+    second_hop.location = "county:26161"
+        .parse()
+        .expect("the authored literal parses as the declared type");
     for input in &mut second_hop.processes[0].inputs {
         input.supplier_site_ids = vec!["b".into()];
     }
@@ -57,11 +65,19 @@ fn county_network_keeps_direct_counterparts_and_local_isolates_but_not_second_ho
 #[test]
 fn foreign_direct_counterpart_has_an_explicit_peer_and_no_county_geometry() {
     let (session, mut frame, anchors) = tests::fixture();
-    let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+    let snapshot = frame
+        .0
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     let mut foreign = snapshot.sites[1].clone();
     foreign.id = "canada".into();
     foreign.name = "Canadian equipment producer".into();
-    foreign.location = "foreign:canada".parse().unwrap();
+    foreign.location = "foreign:canada"
+        .parse()
+        .expect("the authored literal parses as the declared type");
     let mut imports = foreign.processes[0].inputs[0].clone();
     imports.supplier_site_ids = vec![foreign.id.clone()];
     snapshot.sites[0].processes[0].inputs.push(imports);
@@ -95,10 +111,10 @@ fn foreign_direct_counterpart_has_an_explicit_peer_and_no_county_geometry() {
     assert!(frame
         .0
         .as_ref()
-        .unwrap()
+        .expect("the fixture set the optional field before this read")
         .production
         .as_ref()
-        .unwrap()
+        .expect("the fixture set the optional field before this read")
         .routes
         .is_empty());
 }
@@ -106,12 +122,20 @@ fn foreign_direct_counterpart_has_an_explicit_peer_and_no_county_geometry() {
 #[test]
 fn household_service_needs_are_visible_without_fabricating_retail_orders() {
     let (session, mut frame, anchors) = tests::fixture();
-    let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+    let snapshot = frame
+        .0
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .production
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     snapshot.household_service_accounts.push(
         babylon_persistence::ProductionHouseholdServiceAccount {
             kind: ProductionHouseholdKind::Ordinary,
             demand_principal_id: "household".into(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             good_id: "care".into(),
             unit_id: "service-hour".into(),
             good: "Care".into(),
@@ -143,10 +167,10 @@ fn household_service_needs_are_visible_without_fabricating_retail_orders() {
     assert!(frame
         .0
         .as_ref()
-        .unwrap()
+        .expect("the fixture set the optional field before this read")
         .production
         .as_ref()
-        .unwrap()
+        .expect("the fixture set the optional field before this read")
         .final_demand_accounts
         .is_empty());
 }

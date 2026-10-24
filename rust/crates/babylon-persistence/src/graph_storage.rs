@@ -424,7 +424,8 @@ mod tests {
             ("a".into(), "q".into(), u64::MAX),
             ("A".into(), "q".into(), 1 << 63),
         ];
-        let p = pack(&nodes, &values, &strings, &tuples).unwrap();
+        let p = pack(&nodes, &values, &strings, &tuples)
+            .expect("the fixture rows pack into the bounded frame");
         assert_eq!(p.nodes, vec![vec![1, 2]]);
         let inverse: BTreeMap<_, _> = tuples.iter().map(|(key, id)| (*id, *key)).collect();
         let text: BTreeMap<_, _> = strings.iter().map(|(s, id)| (*id, s.clone())).collect();
@@ -446,7 +447,8 @@ mod tests {
         reversed.reverse();
         let mut reversed_values = values.clone();
         reversed_values.reverse();
-        let other = pack(&reversed, &reversed_values, &strings, &tuples).unwrap();
+        let other = pack(&reversed, &reversed_values, &strings, &tuples)
+            .expect("the fixture rows pack into the bounded frame");
         assert_eq!(other.nodes, p.nodes);
         assert_eq!(other.values, p.values);
     }

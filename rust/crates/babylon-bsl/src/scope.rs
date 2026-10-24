@@ -665,7 +665,7 @@ mod tests {
             ),
             (EnumKind::EdgeType, vec!["SOLIDARITY".to_owned()]),
         ])
-        .unwrap()
+        .expect("the constructor accepts the authored fixture arguments")
     }
 
     fn check(source: &str, subject: Option<&str>) -> Result<(), ScopeError> {
@@ -696,7 +696,8 @@ mod tests {
              (when (< claim 5)) \
              (effects (update-node self social-class/agitation (add 0.05i))))"
         );
-        let err = check(&source, Some("social-class")).unwrap_err();
+        let err =
+            check(&source, Some("social-class")).expect_err("the malformed source is refused");
         assert_eq!(err.spec_code(), "E-TYPE-010");
     }
 
@@ -720,7 +721,8 @@ mod tests {
                         (fold max (nodes NodeType/ORGANIZATION) claim)) 5)) \
              (effects (update-node self social-class/agitation (add 0.05i))))"
         );
-        let err = check(&source, Some("social-class")).unwrap_err();
+        let err =
+            check(&source, Some("social-class")).expect_err("the malformed source is refused");
         assert_eq!(err.spec_code(), "E-TYPE-013");
     }
 
@@ -734,7 +736,7 @@ mod tests {
         );
         assert_eq!(
             check(&source, Some("social-class"))
-                .unwrap_err()
+                .expect_err("the malformed source is refused")
                 .spec_code(),
             "E-TYPE-010"
         );
@@ -772,7 +774,7 @@ mod tests {
         );
         assert_eq!(
             check(&source, Some("social-class"))
-                .unwrap_err()
+                .expect_err("the malformed source is refused")
                 .spec_code(),
             "E-TYPE-010"
         );

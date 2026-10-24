@@ -12,7 +12,8 @@ use babylon_tick::material_replay::IdentifiedMaterialTick;
 use uuid::Uuid;
 
 fn row(key: u8, payload: Vec<u8>) -> CommittedTickRow {
-    CommittedTickRow::compose(vec![key], payload).unwrap()
+    CommittedTickRow::compose(vec![key], payload)
+        .expect("the fixture call `compose` succeeds for the authored inputs")
 }
 fn families() -> CommittedTickRowFamilies {
     CommittedTickRowFamilies {
@@ -34,7 +35,7 @@ fn identity(receipts: &[u8]) -> IdentifiedMaterialTick {
         bytes.extend_from_slice(&[value; 32]);
     }
     bytes.extend_from_slice(&content_digest::sha256_of(receipts));
-    IdentifiedMaterialTick::decode(&bytes).unwrap()
+    IdentifiedMaterialTick::decode(&bytes).expect("the committed canonical bytes decode")
 }
 fn campaign() -> CampaignId {
     CampaignId::from_uuid(Uuid::from_u128(0x1234))
@@ -52,7 +53,7 @@ fn streamed_envelope_matches_independent_v3_bytes_and_digest() {
         &register,
         &receipts,
     )
-    .unwrap();
+    .expect("the fixture call `compose` succeeds for the authored inputs");
     let attested = CommittedMaterialTickEnvelope::attest(
         campaign(),
         &identity,
@@ -60,7 +61,7 @@ fn streamed_envelope_matches_independent_v3_bytes_and_digest() {
         &register,
         &receipts,
     )
-    .unwrap();
+    .expect("the fixture call `attest` succeeds for the authored inputs");
     // Independently constructed by vector-construction.py: a new conformance
     // control, with no change to the existing format or governed baseline.
     assert_eq!(complete.canonical_bytes().len(), 262_399);
@@ -85,7 +86,7 @@ fn streamed_envelope_covers_buffer_boundaries_and_every_family() {
             &register,
             &receipts,
         )
-        .unwrap();
+        .expect("the fixture call `compose` succeeds for the authored inputs");
         let attested = CommittedMaterialTickEnvelope::attest(
             campaign(),
             &identity,
@@ -93,7 +94,7 @@ fn streamed_envelope_covers_buffer_boundaries_and_every_family() {
             &register,
             &receipts,
         )
-        .unwrap();
+        .expect("the fixture call `attest` succeeds for the authored inputs");
         assert_eq!(attested.digest(), complete.digest(), "length={length}");
         assert_eq!(attested.encoded_bytes(), complete.canonical_bytes().len());
     }
@@ -107,7 +108,7 @@ fn streamed_envelope_covers_buffer_boundaries_and_every_family() {
         &register,
         &receipts,
     )
-    .unwrap()
+    .expect("the fixture call `attest` succeeds for the authored inputs")
     .digest();
     for family in 0..8 {
         let mut families = families();
@@ -136,7 +137,7 @@ fn streamed_envelope_covers_buffer_boundaries_and_every_family() {
             &register,
             &receipts,
         )
-        .unwrap();
+        .expect("the fixture call `attest` succeeds for the authored inputs");
         assert_ne!(changed.digest(), expected, "family={family}");
     }
     assert_ne!(
@@ -147,14 +148,15 @@ fn streamed_envelope_covers_buffer_boundaries_and_every_family() {
             &register,
             &receipts,
         )
-        .unwrap()
+        .expect("the fixture call `attest` succeeds for the authored inputs")
         .digest(),
         expected
     );
     let mut alternate = identity.canonical_bytes().to_vec();
     let offset = b"babylon.material-tick-content.v3\0".len() + 4;
     alternate[offset..offset + 8].copy_from_slice(&8_u64.to_be_bytes());
-    let alternate = IdentifiedMaterialTick::decode(&alternate).unwrap();
+    let alternate =
+        IdentifiedMaterialTick::decode(&alternate).expect("the committed canonical bytes decode");
     assert_ne!(
         CommittedMaterialTickEnvelope::attest(
             campaign(),
@@ -163,7 +165,7 @@ fn streamed_envelope_covers_buffer_boundaries_and_every_family() {
             &register,
             &receipts,
         )
-        .unwrap()
+        .expect("the fixture call `attest` succeeds for the authored inputs")
         .digest(),
         expected
     );
@@ -180,8 +182,8 @@ fn streamed_envelope_covers_empty_optional_families() {
         archive_dirty_receipt: row(1, vec![]),
     };
     let identity = self::identity(&[]);
-    let complete =
-        CommittedMaterialTickEnvelope::compose(campaign(), &identity, empty, &[], &[]).unwrap();
+    let complete = CommittedMaterialTickEnvelope::compose(campaign(), &identity, empty, &[], &[])
+        .expect("the fixture call `compose` succeeds for the authored inputs");
     let empty = CommittedTickRowFamilies {
         graph: vec![],
         state: vec![],
@@ -190,8 +192,8 @@ fn streamed_envelope_covers_empty_optional_families() {
         checkpoint: vec![],
         archive_dirty_receipt: row(1, vec![]),
     };
-    let attested =
-        CommittedMaterialTickEnvelope::attest(campaign(), &identity, empty, &[], &[]).unwrap();
+    let attested = CommittedMaterialTickEnvelope::attest(campaign(), &identity, empty, &[], &[])
+        .expect("the fixture call `attest` succeeds for the authored inputs");
     assert_eq!(attested.digest(), complete.digest());
     assert_eq!(attested.encoded_bytes(), complete.canonical_bytes().len());
 }
@@ -240,7 +242,7 @@ fn streamed_envelope_retains_receipt_binding_and_row_order_refusals() {
             &register,
             &receipts,
         )
-        .unwrap_err();
+        .expect_err("the inconsistent sections are refused");
         let error = CommittedMaterialTickEnvelope::attest(
             campaign(),
             &identity,
@@ -248,7 +250,7 @@ fn streamed_envelope_retains_receipt_binding_and_row_order_refusals() {
             &register,
             &receipts,
         )
-        .unwrap_err();
+        .expect_err("the fixture call `attest` fails for the authored inputs");
         let (
             RustPersistenceRuntimeError::SemanticEnvelope(complete),
             RustPersistenceRuntimeError::SemanticEnvelope(error),
@@ -290,10 +292,10 @@ fn streamed_envelope_preserves_actual_family_body_ceiling_refusals() {
     let identity = identity(&[]);
     let complete =
         CommittedMaterialTickEnvelope::compose(campaign(), &identity, families(), &[], &[])
-            .unwrap_err();
+            .expect_err("the inconsistent sections are refused");
     let attested =
         CommittedMaterialTickEnvelope::attest(campaign(), &identity, families(), &[], &[])
-            .unwrap_err();
+            .expect_err("the fixture call `attest` fails for the authored inputs");
     let (
         RustPersistenceRuntimeError::SemanticEnvelope(complete),
         RustPersistenceRuntimeError::SemanticEnvelope(attested),
@@ -314,13 +316,21 @@ fn streamed_envelope_preserves_actual_family_body_ceiling_refusals() {
 
 #[test]
 fn streamed_envelope_refuses_incomplete_or_excess_framing() {
-    let mut short = BoundedSink::new(BufferedDigest::new().unwrap(), 3);
-    short.append(&[1, 2]).unwrap();
+    let mut short = BoundedSink::new(
+        BufferedDigest::new().expect("the constructor accepts the authored fixture arguments"),
+        3,
+    );
+    short
+        .append(&[1, 2])
+        .expect("the fixture call `append` succeeds for the authored inputs");
     assert!(matches!(
         short.finish(),
         Err(RustPersistenceRuntimeError::CampaignConflict)
     ));
-    let mut long = BoundedSink::new(BufferedDigest::new().unwrap(), 1);
+    let mut long = BoundedSink::new(
+        BufferedDigest::new().expect("the constructor accepts the authored fixture arguments"),
+        1,
+    );
     assert!(matches!(
         long.append(&[1, 2]),
         Err(RustPersistenceRuntimeError::CampaignConflict)
@@ -329,8 +339,13 @@ fn streamed_envelope_refuses_incomplete_or_excess_framing() {
         long.finish(),
         Err(RustPersistenceRuntimeError::CampaignConflict)
     ));
-    let mut overrun = BoundedSink::new(BufferedDigest::new().unwrap(), 1);
-    overrun.append(&[1]).unwrap();
+    let mut overrun = BoundedSink::new(
+        BufferedDigest::new().expect("the constructor accepts the authored fixture arguments"),
+        1,
+    );
+    overrun
+        .append(&[1])
+        .expect("the fixture call `append` succeeds for the authored inputs");
     assert!(matches!(
         overrun.append(&[2]),
         Err(RustPersistenceRuntimeError::CampaignConflict)
@@ -339,11 +354,20 @@ fn streamed_envelope_refuses_incomplete_or_excess_framing() {
         overrun.finish(),
         Err(RustPersistenceRuntimeError::CampaignConflict)
     ));
-    let mut exact = BoundedSink::new(BufferedDigest::new().unwrap(), 3);
-    exact.append(&[1]).unwrap();
-    exact.append(&[2, 3]).unwrap();
+    let mut exact = BoundedSink::new(
+        BufferedDigest::new().expect("the constructor accepts the authored fixture arguments"),
+        3,
+    );
+    exact
+        .append(&[1])
+        .expect("the fixture call `append` succeeds for the authored inputs");
+    exact
+        .append(&[2, 3])
+        .expect("the fixture call `append` succeeds for the authored inputs");
     assert_eq!(
-        exact.finish().unwrap(),
+        exact
+            .finish()
+            .expect("the fixture finishes the authored period"),
         content_digest::sha256_of(&[1, 2, 3])
     );
 }
@@ -352,13 +376,18 @@ fn streamed_envelope_refuses_incomplete_or_excess_framing() {
 fn streamed_envelope_chunk_partitions_preserve_concat_and_bound_scratch() {
     let bytes: Vec<u8> = (0_u8..=255).cycle().take(262_145).collect();
     for chunk_bytes in [1, 3, 63, 64, 65_535, 65_536, 65_537, 130_000, 262_145] {
-        let mut sink = BoundedSink::new(BufferedDigest::new().unwrap(), bytes.len());
+        let mut sink = BoundedSink::new(
+            BufferedDigest::new().expect("the constructor accepts the authored fixture arguments"),
+            bytes.len(),
+        );
         for chunk in bytes.chunks(chunk_bytes) {
-            sink.append(chunk).unwrap();
+            sink.append(chunk)
+                .expect("the fixture call `append` succeeds for the authored inputs");
             assert!(sink.inner.buffer.len() <= HASH_BUFFER_BYTES);
         }
         assert_eq!(
-            sink.finish().unwrap(),
+            sink.finish()
+                .expect("the fixture finishes the authored period"),
             content_digest::sha256_of(&bytes),
             "chunk_bytes={chunk_bytes}"
         );

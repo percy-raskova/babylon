@@ -327,7 +327,10 @@ impl<'a> EffectExecutor<'a> {
     ///
     /// # Errors
     /// Refuses a missing query, an empty body, or a failed query evaluation.
-    #[allow(clippy::type_complexity)]
+    #[allow(
+        clippy::type_complexity,
+        reason = "the type spells out the authored nested shape"
+    )]
     fn for_each_prelude<'e>(
         items: &'e [SExpr],
         env: &EvalEnv<'_>,
@@ -383,7 +386,10 @@ impl<'a> EffectExecutor<'a> {
         Ok(pending)
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "`collect_items` takes every authored field explicitly"
+    )]
     fn collect_items(
         &mut self,
         items: &[SExpr],
@@ -399,7 +405,10 @@ impl<'a> EffectExecutor<'a> {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "`collect_item` takes every authored field explicitly"
+    )]
     fn collect_item(
         &mut self,
         item: &SExpr,
@@ -1058,7 +1067,10 @@ impl<'a> EffectExecutor<'a> {
             Value::Real(r) => Ok(r),
             // i64 -> f64 is deterministic; exactness beyond 2^53 belongs to
             // the typed-attribute-storage gap named in the module doc.
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             Value::Int(n) => Ok(n as f64),
             // L-3 (#491 T3 review): two DIFFERENT reasons, two DIFFERENT
             // messages — a field genuinely declared `currency` reaching
@@ -1481,10 +1493,12 @@ mod tests {
     impl Fixture {
         fn new() -> Self {
             let mut graph = MemoryGraph::new();
-            let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+            let self_id = graph
+                .add_node("SOCIAL_CLASS")
+                .expect("the fixture adds a node with a registered kind");
             graph
                 .update_node(self_id, "social-class/agitation", 0.10)
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
             Self {
                 graph,
                 self_id,
@@ -1494,7 +1508,10 @@ mod tests {
 
         /// Execute an `(effects …)` source against the fixture, returning
         /// the collected event stream.
-        #[allow(clippy::type_complexity)]
+        #[allow(
+            clippy::type_complexity,
+            reason = "the type spells out the authored nested shape"
+        )]
         fn run(
             &mut self,
             effects_source: &str,
@@ -1582,11 +1599,11 @@ mod tests {
                 "(effects (update-node self social-class/agitation (add 0.05i)))",
                 &mut fuel,
             )
-            .unwrap();
+            .expect("the fixture run completes");
         let stored = fixture
             .graph
             .node_attribute(fixture.self_id, "social-class/agitation")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert!((stored - 0.15).abs() < 1e-12);
         assert_eq!(fuel, 59, "5 consumed — a conformance-vector quantity");
     }
@@ -1600,14 +1617,19 @@ mod tests {
                 "(effects (update-node self social-class/agitation (add 0.95i)))",
                 &mut fuel,
             )
-            .unwrap_err();
+            .expect_err("the fixture call `run` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::StoreRangeViolation));
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-020");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-020"
+        );
         // The failed write left the attribute untouched.
         let stored = fixture
             .graph
             .node_attribute(fixture.self_id, "social-class/agitation")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert!((stored - 0.10).abs() < 1e-12);
     }
 
@@ -1625,7 +1647,9 @@ mod tests {
     #[test]
     fn real_field_store_has_no_range_check() {
         let mut graph = MemoryGraph::new();
-        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let self_id = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         let types = TypeEnv {
             fields: HashMap::from([(
                 "social-class/balance".to_owned(),
@@ -1654,7 +1678,7 @@ mod tests {
         for value in [6_962.099_999_999_999_f64, -0.052_631_578_947_368_42_f64] {
             probe
                 .store_range_check("social-class/balance", value)
-                .unwrap();
+                .expect("the fixture call `store_range_check` succeeds for the authored inputs");
         }
         // End-to-end through `update-node`: the computed binary64 lands
         // bit-verbatim. `(+ 6962 0.1c)` is 6962.1000000000003637… — one
@@ -1688,10 +1712,12 @@ mod tests {
                     &mut sink,
                     &mut fuel,
                 )
-                .unwrap();
+                .expect(
+                    "the fixture call `collect_and_apply_fixture` succeeds for the authored inputs",
+                );
             let stored = graph
                 .node_attribute(self_id, "social-class/balance")
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
             assert_eq!(
                 stored.to_bits(),
                 expected.to_bits(),
@@ -1718,13 +1744,13 @@ mod tests {
                    (update-node self social-class/agitation (add 0.05i))))",
                 &mut fuel,
             )
-            .unwrap();
+            .expect("the fixture run completes");
         // guard(1) + cmp(1) + two literals(0) = 2; the verb never charged.
         assert_eq!(fuel, 62);
         let stored = fixture
             .graph
             .node_attribute(fixture.self_id, "social-class/agitation")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert!((stored - 0.10).abs() < 1e-12, "untaken effects never apply");
     }
 
@@ -1737,7 +1763,7 @@ mod tests {
                 "(effects (emit EventType/RUPTURE (severity 0.9c) (tick 52)))",
                 &mut fuel,
             )
-            .unwrap();
+            .expect("the fixture run completes");
         assert_eq!(
             events,
             vec![(
@@ -1762,7 +1788,7 @@ mod tests {
                 "(effects (update-node self social-class/head-count (set 100$)))",
                 &mut fuel,
             )
-            .unwrap_err();
+            .expect_err("the fixture call `run` fails for the authored inputs");
         assert!(
             err.message.contains("needs a currency-declared field"),
             "{err}"
@@ -1797,12 +1823,14 @@ mod tests {
         // participant and the engine's determinism hash is at risk.
         let mut unobserved = Fixture::new();
         let mut plain_fuel = 256;
-        unobserved.run(EVERY_VERB, &mut plain_fuel).unwrap();
+        unobserved
+            .run(EVERY_VERB, &mut plain_fuel)
+            .expect("the fixture run completes");
 
         let mut observed = Fixture::new();
         let mut observed_fuel = 256;
         let (result, _log) = observed.run_observed(EVERY_VERB, &mut observed_fuel);
-        result.unwrap();
+        result.expect("the fixture call returns its expected result");
 
         assert_eq!(
             snapshot(&unobserved.graph),
@@ -1862,7 +1890,7 @@ mod tests {
                 fixture
                     .graph
                     .node_attribute(fixture.self_id, "social-class/agitation")
-                    .unwrap()
+                    .expect("the fixture node carries the authored attribute")
                     .to_bits(),
                 0.10_f64.to_bits(),
                 "observe={observed}: the capacity check must precede mutation"
@@ -1879,7 +1907,7 @@ mod tests {
         let mut fixture = Fixture::new();
         let mut fuel = 256;
         let (result, log) = fixture.run_observed(EVERY_VERB, &mut fuel);
-        result.unwrap();
+        result.expect("the fixture call returns its expected result");
 
         let self_id = fixture.self_id;
         assert_eq!(
@@ -1965,7 +1993,9 @@ mod tests {
                 &mut sink,
                 &mut fuel,
             )
-            .unwrap_err();
+            .expect_err(
+                "the fixture call `collect_and_apply_fixture` fails for the authored inputs",
+            );
         assert_eq!(err.code, Some(EvalCode::NonFinite), "{source}");
         assert!(
             fixture
@@ -1983,10 +2013,12 @@ mod tests {
     #[test]
     fn apply_pending_write_canonicalizes_negative_zero() {
         let mut graph = MemoryGraph::new();
-        let id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let id = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(id, "social-class/agitation", 0.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let write = PendingWrite {
             target: WriteTarget::Node(id),
             field: "social-class/agitation".to_owned(),
@@ -1996,8 +2028,12 @@ mod tests {
         let types = types();
         let enums = enums();
         let mut applier = EffectExecutor::new(&types, &enums);
-        applier.apply_pending_write(&write, &mut graph).unwrap();
-        let stored = graph.node_attribute(id, "social-class/agitation").unwrap();
+        applier
+            .apply_pending_write(&write, &mut graph)
+            .expect("the fixture call `apply_pending_write` succeeds for the authored inputs");
+        let stored = graph
+            .node_attribute(id, "social-class/agitation")
+            .expect("the fixture node carries the authored attribute");
         assert_eq!(stored.to_bits(), 0.0_f64.to_bits(), "stored: {stored}");
     }
 
@@ -2006,7 +2042,7 @@ mod tests {
         let (mut graph, a, b) = edge_fixture();
         graph
             .update_edge("SOLIDARITY", a, b, "solidarity/tension", 0.0)
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         let write = PendingWrite {
             target: WriteTarget::Edge(EdgeKey {
                 source: a,
@@ -2020,10 +2056,12 @@ mod tests {
         let types = edge_types();
         let enums = enums();
         let mut applier = EffectExecutor::new(&types, &enums);
-        applier.apply_pending_write(&write, &mut graph).unwrap();
+        applier
+            .apply_pending_write(&write, &mut graph)
+            .expect("the fixture call `apply_pending_write` succeeds for the authored inputs");
         let stored = graph
             .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert_eq!(stored.to_bits(), 0.0_f64.to_bits(), "stored: {stored}");
     }
 
@@ -2041,7 +2079,9 @@ mod tests {
             &mut fuel,
         );
         assert_eq!(
-            result.unwrap_err().code,
+            result
+                .expect_err("the fixture call returns its expected result")
+                .code,
             Some(EvalCode::StoreRangeViolation)
         );
         assert_eq!(
@@ -2065,7 +2105,7 @@ mod tests {
                (update-node self social-class/agitation (add 0.05i))))",
             &mut fuel,
         );
-        result.unwrap();
+        result.expect("the fixture call returns its expected result");
         assert!(
             log.records.is_empty(),
             "the ordinal counts writes, not effect items considered"
@@ -2085,7 +2125,7 @@ mod tests {
                (update-node self social-class/head-count (set 250)))",
             &mut fuel,
         );
-        result.unwrap();
+        result.expect("the fixture call returns its expected result");
         let previous: Vec<_> = log
             .records
             .iter()
@@ -2104,7 +2144,10 @@ mod tests {
     // ---- Task 10: for-each in effect position (§2.8 chapter C6) ----
 
     /// Run fixture effects through the production immutable collect and ordered apply phases.
-    #[allow(clippy::type_complexity)]
+    #[allow(
+        clippy::type_complexity,
+        reason = "the type spells out the authored nested shape"
+    )]
     fn collect_then_apply(
         graph: &mut MemoryGraph,
         types: &TypeEnv,
@@ -2193,10 +2236,12 @@ mod tests {
         // path (`tick.rs::run_tick`'s two passes), not the abandoned
         // the removed immediate interpreter.
         let mut graph = MemoryGraph::new();
-        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let self_id = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(self_id, "social-class/agitation", 0.10)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let types = types();
         let mut fuel = 64;
         let events = collect_then_apply(
@@ -2212,7 +2257,7 @@ mod tests {
         assert!(events.is_empty());
         let stored = graph
             .node_attribute(self_id, "social-class/agitation")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (stored - 0.10).abs() < 1e-12,
             "an empty for-each applies NOTHING — the body never ran"
@@ -2224,9 +2269,15 @@ mod tests {
         // Driven through `collect_then_apply` (#519 fix round) — the
         // PRODUCTION path, on one shared graph.
         let mut graph = MemoryGraph::new();
-        let a = graph.add_node("SOCIAL_CLASS").unwrap();
-        let b = graph.add_node("SOCIAL_CLASS").unwrap();
-        let c = graph.add_node("SOCIAL_CLASS").unwrap();
+        let a = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let b = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let c = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         let types = types();
         let mut fuel = 256;
         let events = collect_then_apply(
@@ -2238,7 +2289,7 @@ mod tests {
                (emit EventType/RUPTURE (who it))))",
             &mut fuel,
         )
-        .unwrap();
+        .expect("the fixture applies the collected transitions");
         assert_eq!(
             events,
             vec![
@@ -2262,17 +2313,19 @@ mod tests {
     #[test]
     fn for_each_body_observes_prestate_before_an_earlier_write_in_the_same_list() {
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(subject, "social-class/agitation", 0.1)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let mut fuel = 256;
         let events = collect_then_apply(
             &mut graph, &types(), &enums(),
             HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
             "(effects (update-node self social-class/agitation (set 0.9i)) (for-each (nodes NodeType/SOCIAL_CLASS) (emit EventType/RUPTURE (agitation (field-of it social-class/agitation)))))",
             &mut fuel,
-        ).unwrap();
+        ).expect("the fixture applies the collected transitions");
         assert_eq!(
             events,
             vec![(
@@ -2283,7 +2336,7 @@ mod tests {
         assert_eq!(
             graph
                 .node_attribute(subject, "social-class/agitation")
-                .unwrap()
+                .expect("the fixture node carries the authored attribute")
                 .to_bits(),
             0.9_f64.to_bits()
         );
@@ -2294,10 +2347,18 @@ mod tests {
         // Driven through `collect_then_apply` (#519 fix round) — the
         // PRODUCTION path, on one shared graph.
         let mut graph = MemoryGraph::new();
-        let sc1 = graph.add_node("SOCIAL_CLASS").unwrap();
-        let sc2 = graph.add_node("SOCIAL_CLASS").unwrap();
-        let org1 = graph.add_node("ORGANIZATION").unwrap();
-        let org2 = graph.add_node("ORGANIZATION").unwrap();
+        let sc1 = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let sc2 = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let org1 = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        let org2 = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         let types = types();
         let mut fuel = 8192;
         let events = collect_then_apply(
@@ -2312,7 +2373,7 @@ mod tests {
                    (emit EventType/PAIR (outer outer-elem) (inner it)))))",
             &mut fuel,
         )
-        .unwrap();
+        .expect("the fixture applies the collected transitions");
         assert_eq!(
             events,
             vec![
@@ -2370,7 +2431,9 @@ mod tests {
     #[test]
     fn the_collect_path_refuses_a_shape_verb_naming_it() {
         let mut graph = MemoryGraph::new();
-        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let self_id = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         let types = types();
         let mut fuel = 64;
         let err = collect_then_apply(
@@ -2381,7 +2444,7 @@ mod tests {
             "(effects (add-node NodeType/SOCIAL_CLASS recruit))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert!(err.message.contains("add-node"), "{err}");
     }
 
@@ -2395,7 +2458,9 @@ mod tests {
     #[test]
     fn a_non_bool_guard_condition_is_a_loud_error_not_a_silent_skip() {
         let mut graph = MemoryGraph::new();
-        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let self_id = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         let types = types();
         let mut fuel = 64;
         let err = collect_then_apply(
@@ -2406,7 +2471,7 @@ mod tests {
             "(effects (guard 3 (emit event/rupture)))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert!(err.message.contains("expected Bool"), "{err}");
     }
 
@@ -2441,26 +2506,30 @@ mod tests {
     #[test]
     fn update_node_against_a_selection_result_writes_the_selected_node() {
         let mut live = MemoryGraph::new();
-        let low = live.add_node("ORGANIZATION").unwrap();
-        let high = live.add_node("ORGANIZATION").unwrap();
+        let low = live
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        let high = live
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         live.update_node(low, "organization/claim-strength", 0.2)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         live.update_node(high, "organization/claim-strength", 0.9)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let mut fuel = 256;
         collect_then_apply(&mut live, &organization_types(), &enums(), HashMap::new(),
             "(effects (update-node (select-max (nodes NodeType/ORGANIZATION) (field-of it organization/claim-strength)) organization/claim-strength (set 0.5i)))",
-            &mut fuel).unwrap();
+            &mut fuel).expect("the fixture applies the collected transitions");
         let selected = live
             .node_attribute(high, "organization/claim-strength")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (selected - 0.5).abs() < 1e-12,
             "the SELECTED (higher-scoring) node was written"
         );
         let untouched = live
             .node_attribute(low, "organization/claim-strength")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (untouched - 0.2).abs() < 1e-12,
             "the non-selected node was left alone"
@@ -2479,7 +2548,9 @@ mod tests {
         // PRODUCTION path (`collect_update_node`, not `update_node`'s
         // execute-path copy).
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         let types = TypeEnv {
             fields: HashMap::from([(
                 "territory/population".to_owned(),
@@ -2499,9 +2570,14 @@ mod tests {
             "(effects (update-node self territory/population (set 5)))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert_eq!(err.code, Some(EvalCode::AccessorTypeOrValueMismatch));
-        assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-033");
+        assert_eq!(
+            err.code
+                .expect("the asserted error carries a specification code")
+                .spec_code(),
+            "E-EVAL-033"
+        );
         assert!(
             graph
                 .node_attribute(subject, "territory/population")
@@ -2555,7 +2631,7 @@ mod tests {
                     "CIVIL_SOCIETY".to_owned(),
                 ],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let types = TypeEnv {
             fields: HashMap::from([(
                 "organization/kind".to_owned(),
@@ -2572,7 +2648,9 @@ mod tests {
     #[test]
     fn update_node_writes_an_enum_ref_and_stores_the_declared_ordinal() {
         let mut graph = MemoryGraph::new();
-        let id = graph.add_node("ORGANIZATION").unwrap();
+        let id = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         let (types, enums) = org_kind_types_and_enums();
         let mut fuel = 64;
         collect_then_apply(
@@ -2584,7 +2662,9 @@ mod tests {
             &mut fuel,
         )
         .expect("a matching enum-ref write must succeed");
-        let stored = graph.node_attribute(id, "organization/kind").unwrap();
+        let stored = graph
+            .node_attribute(id, "organization/kind")
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (stored - 2.0).abs() < 1e-12,
             "POLITICAL_FACTION is declaration-order ordinal 2, stored: {stored}"
@@ -2599,7 +2679,9 @@ mod tests {
         // cannot be checked once and for all at load (§3.7/§4.3's
         // two-site pattern).
         let mut graph = MemoryGraph::new();
-        let id = graph.add_node("ORGANIZATION").unwrap();
+        let id = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         let (types, enums) = org_kind_types_and_enums();
         let mut fuel = 64;
         let err = collect_then_apply(
@@ -2610,7 +2692,7 @@ mod tests {
             "(effects (update-node self organization/kind (set 2)))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
         assert_eq!(err.code.map(EvalCode::spec_code), Some("E-EVAL-042"));
     }
@@ -2631,7 +2713,9 @@ mod tests {
         // operand is not one of `grammar.rs`'s typed ENUM_REF_POSITIONS),
         // so this proves the runtime check is load-bearing on its own.
         let mut graph = MemoryGraph::new();
-        let id = graph.add_node("ORGANIZATION").unwrap();
+        let id = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         let (types, enums) = org_kind_types_and_enums();
         let mut fuel = 64;
         let err = collect_then_apply(
@@ -2642,7 +2726,7 @@ mod tests {
             "(effects (update-node self organization/kind (set NodeType/BUSINESS)))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
         assert!(
             err.message.contains("declared enum type is OrgKind"),
@@ -2658,7 +2742,9 @@ mod tests {
         // validates enum-ref MEMBERSHIP, only shape) — the registry lookup
         // at write time is what catches it.
         let mut graph = MemoryGraph::new();
-        let id = graph.add_node("ORGANIZATION").unwrap();
+        let id = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         let (types, enums) = org_kind_types_and_enums();
         let mut fuel = 64;
         let err = collect_then_apply(
@@ -2669,7 +2755,7 @@ mod tests {
             "(effects (update-node self organization/kind (set OrgKind/NOWHERE)))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
         assert!(err.message.contains("NOWHERE"), "{}", err.message);
     }
@@ -2694,9 +2780,13 @@ mod tests {
     #[test]
     fn add_on_an_enum_field_is_e_eval_042_at_the_collect_site() {
         let mut graph = MemoryGraph::new();
-        let id = graph.add_node("ORGANIZATION").unwrap();
+        let id = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         let (types, enums) = org_kind_types_and_enums();
-        graph.update_node(id, "organization/kind", 0.0).unwrap(); // STATE_APPARATUS
+        graph
+            .update_node(id, "organization/kind", 0.0)
+            .expect("the fixture node carries the authored attribute"); // STATE_APPARATUS
         let mut fuel = 64;
         let err = collect_only(
             &graph,
@@ -2706,13 +2796,15 @@ mod tests {
             "(effects (update-node self organization/kind (add OrgKind/BUSINESS)))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
         assert_eq!(err.code.map(EvalCode::spec_code), Some("E-EVAL-042"));
         // No PendingWrite was ever built, let alone applied — the graph is
         // observably untouched (never re-read `organization/kind` here on
         // purpose: this test's whole point is that apply NEVER RAN).
-        let stored = graph.node_attribute(id, "organization/kind").unwrap();
+        let stored = graph
+            .node_attribute(id, "organization/kind")
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (stored - 0.0).abs() < 1e-12,
             "the refused write must not have landed: {stored}"
@@ -2728,9 +2820,13 @@ mod tests {
         // the store into a next-tick read error at the wrong site" case
         // the fix round names.
         let mut graph = MemoryGraph::new();
-        let id = graph.add_node("ORGANIZATION").unwrap();
+        let id = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         let (types, enums) = org_kind_types_and_enums();
-        graph.update_node(id, "organization/kind", 0.0).unwrap(); // STATE_APPARATUS
+        graph
+            .update_node(id, "organization/kind", 0.0)
+            .expect("the fixture node carries the authored attribute"); // STATE_APPARATUS
         let mut fuel = 64;
         let err = collect_only(
             &graph,
@@ -2740,9 +2836,11 @@ mod tests {
             "(effects (update-node self organization/kind (sub OrgKind/BUSINESS)))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
-        let stored = graph.node_attribute(id, "organization/kind").unwrap();
+        let stored = graph
+            .node_attribute(id, "organization/kind")
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (stored - 0.0).abs() < 1e-12,
             "the refused write must never reach -1.0 (no such member): {stored}"
@@ -2752,9 +2850,13 @@ mod tests {
     #[test]
     fn scale_on_an_enum_field_is_e_eval_042_at_the_collect_site() {
         let mut graph = MemoryGraph::new();
-        let id = graph.add_node("ORGANIZATION").unwrap();
+        let id = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         let (types, enums) = org_kind_types_and_enums();
-        graph.update_node(id, "organization/kind", 0.0).unwrap();
+        graph
+            .update_node(id, "organization/kind", 0.0)
+            .expect("the fixture node carries the authored attribute");
         let mut fuel = 64;
         let err = collect_only(
             &graph,
@@ -2764,7 +2866,7 @@ mod tests {
             "(effects (update-node self organization/kind (scale OrgKind/BUSINESS)))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
     }
 
@@ -2776,9 +2878,13 @@ mod tests {
     #[test]
     fn apply_pending_write_refuses_arithmetic_on_an_enum_field_even_bypassing_collect() {
         let mut graph = MemoryGraph::new();
-        let id = graph.add_node("ORGANIZATION").unwrap();
+        let id = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         let (types, enums) = org_kind_types_and_enums();
-        graph.update_node(id, "organization/kind", 0.0).unwrap();
+        graph
+            .update_node(id, "organization/kind", 0.0)
+            .expect("the fixture node carries the authored attribute");
         let write = PendingWrite {
             target: WriteTarget::Node(id),
             field: "organization/kind".to_owned(),
@@ -2786,9 +2892,13 @@ mod tests {
             operand: WriteOperand::Real(1.0),
         };
         let mut applier = EffectExecutor::new(&types, &enums);
-        let err = applier.apply_pending_write(&write, &mut graph).unwrap_err();
+        let err = applier
+            .apply_pending_write(&write, &mut graph)
+            .expect_err("the fixture call `apply_pending_write` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
-        let stored = graph.node_attribute(id, "organization/kind").unwrap();
+        let stored = graph
+            .node_attribute(id, "organization/kind")
+            .expect("the fixture node carries the authored attribute");
         assert!((stored - 0.0).abs() < 1e-12);
     }
 
@@ -2798,7 +2908,9 @@ mod tests {
     #[test]
     fn set_on_an_enum_field_is_unaffected_by_the_arithmetic_guard() {
         let mut graph = MemoryGraph::new();
-        let id = graph.add_node("ORGANIZATION").unwrap();
+        let id = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         let (types, enums) = org_kind_types_and_enums();
         let mut fuel = 64;
         collect_then_apply(
@@ -2819,7 +2931,9 @@ mod tests {
         // branch is scoped to enum-declared fields only (`store field`
         // has no enum in `types` here at all).
         let mut graph = MemoryGraph::new();
-        let id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let id = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         let types = types();
         let enums = enums();
         let mut fuel = 64;
@@ -2831,7 +2945,7 @@ mod tests {
             "(effects (update-node self social-class/head-count (set OrgKind/BUSINESS)))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert!(
             err.message.contains("cannot store"),
             "the ORIGINAL non-enum catch-all message must be unchanged: {}",
@@ -2849,8 +2963,12 @@ mod tests {
     #[test]
     fn field_of_over_an_enum_field_still_refuses_as_an_add_operand() {
         let mut graph = MemoryGraph::new();
-        let id = graph.add_node("ORGANIZATION").unwrap();
-        graph.update_node(id, "organization/kind", 0.0).unwrap(); // STATE_APPARATUS
+        let id = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .update_node(id, "organization/kind", 0.0)
+            .expect("the fixture node carries the authored attribute"); // STATE_APPARATUS
         let (mut types, enums) = org_kind_types_and_enums();
         types.fields.insert(
             "organization/budget".to_owned(),
@@ -2859,7 +2977,9 @@ mod tests {
                 kind: FieldKind::Extensive,
             },
         );
-        graph.update_node(id, "organization/budget", 5.0).unwrap();
+        graph
+            .update_node(id, "organization/budget", 5.0)
+            .expect("the fixture node carries the authored attribute");
         let mut fuel = 64;
         let err = collect_only(
             &graph,
@@ -2870,7 +2990,7 @@ mod tests {
                         (add (field-of self organization/kind))))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert!(
             err.message.contains("cannot store"),
             "the ORIGINAL non-enum catch-all message must fire for a \
@@ -2896,9 +3016,15 @@ mod tests {
     fn field_of_copied_into_an_update_node_set_round_trips_same_type_and_refuses_cross_type() {
         // ---- same-type half ----
         let mut graph = MemoryGraph::new();
-        let source = graph.add_node("ORGANIZATION").unwrap();
-        let target = graph.add_node("ORGANIZATION").unwrap();
-        graph.update_node(source, "organization/kind", 2.0).unwrap(); // POLITICAL_FACTION, declaration-order ordinal 2
+        let source = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        let target = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .update_node(source, "organization/kind", 2.0)
+            .expect("the fixture node carries the authored attribute"); // POLITICAL_FACTION, declaration-order ordinal 2
         let (types, enums) = org_kind_types_and_enums();
         let mut fuel = 64;
         collect_then_apply(
@@ -2914,7 +3040,9 @@ mod tests {
             &mut fuel,
         )
         .expect("a same-type field-of copy into an enum field must succeed");
-        let stored = graph.node_attribute(target, "organization/kind").unwrap();
+        let stored = graph
+            .node_attribute(target, "organization/kind")
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (stored - 2.0).abs() < 1e-12,
             "the copy must land the SOURCE's ordinal, POLITICAL_FACTION=2: {stored}"
@@ -2923,15 +3051,19 @@ mod tests {
         // ---- cross-type half: a second enum-declared field of a
         // DIFFERENT declared type on the SAME node type ----
         let mut cross_graph = MemoryGraph::new();
-        let cross_source = cross_graph.add_node("ORGANIZATION").unwrap();
-        let cross_target = cross_graph.add_node("ORGANIZATION").unwrap();
+        let cross_source = cross_graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        let cross_target = cross_graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         cross_graph
             .update_node(cross_source, "organization/kind", 0.0)
-            .unwrap(); // STATE_APPARATUS
+            .expect("the fixture node carries the authored attribute"); // STATE_APPARATUS
         let (mut cross_types, mut cross_enums) = org_kind_types_and_enums();
         let rank_ty = cross_enums
             .declare("PartyRank", &["CADRE".to_owned(), "SYMPATHIZER".to_owned()])
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         cross_types.fields.insert(
             "organization/rank".to_owned(),
             FieldDecl {
@@ -2952,7 +3084,7 @@ mod tests {
                         (set (field-of source organization/kind))))",
             &mut fuel2,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation));
         assert!(
             err.message.contains("declared enum type is PartyRank"),
@@ -3098,9 +3230,15 @@ mod tests {
     /// `EdgeRef` binding (`e`) a rule's `it`/`<expr>` operand would carry.
     fn edge_fixture() -> (MemoryGraph, NodeId, NodeId) {
         let mut graph = MemoryGraph::new();
-        let a = graph.add_node("SOCIAL_CLASS").unwrap();
-        let b = graph.add_node("SOCIAL_CLASS").unwrap();
-        graph.add_edge("SOLIDARITY", a, b, 0.5).unwrap();
+        let a = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let b = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("SOLIDARITY", a, b, 0.5)
+            .expect("the fixture graph admits the authored edge");
         (graph, a, b)
     }
 
@@ -3135,7 +3273,7 @@ mod tests {
         .expect("update-edge on a declared edge field must serve");
         let stored = graph
             .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert!((stored - 0.7).abs() < 1e-12, "stored: {stored}");
     }
 
@@ -3159,7 +3297,7 @@ mod tests {
         .expect("the §2.10 worked shape must serve");
         let stored = graph
             .edge_attribute("SOLIDARITY", a, b, "solidarity/strength")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert!((stored - 0.25).abs() < 1e-12, "0.5 scaled by 0.5: {stored}");
         assert!(
             graph.all_edge_attributes().is_empty(),
@@ -3178,7 +3316,7 @@ mod tests {
         let (mut graph, a, b) = edge_fixture();
         graph
             .update_edge("SOLIDARITY", a, b, "solidarity/tension", 0.2)
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         let types = edge_types();
         let enums = enums();
         let mut fuel = 256;
@@ -3194,7 +3332,7 @@ mod tests {
         .expect("both contributions must land");
         let stored = graph
             .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert!(
             (stored - 0.4).abs() < 1e-12,
             "apply-time accumulation (D104): 0.2 + 0.1 + 0.1, stored: {stored}"
@@ -3222,7 +3360,7 @@ mod tests {
         .expect("in-order application");
         let stored = graph
             .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert!(
             (stored - 0.15).abs() < 1e-12,
             "set-then-scale, in order: 0.3 * 0.5, stored: {stored}"
@@ -3234,8 +3372,12 @@ mod tests {
     #[test]
     fn update_edge_on_a_missing_edge_is_e_eval_031() {
         let (mut graph, _a, _b) = edge_fixture();
-        let c = graph.add_node("SOCIAL_CLASS").unwrap();
-        let d = graph.add_node("SOCIAL_CLASS").unwrap();
+        let c = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let d = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         let types = edge_types();
         let enums = enums();
         let mut fuel = 128;
@@ -3247,7 +3389,7 @@ mod tests {
             "(effects (update-edge e solidarity/tension (set 0.7i)))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert_eq!(err.code, Some(EvalCode::ExistenceDiscipline), "{err}");
         assert!(graph.all_edge_attributes().is_empty());
     }
@@ -3268,7 +3410,7 @@ mod tests {
             "(effects (update-edge e tenancy/strength (set 0.7c)))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert_eq!(
             err.code,
             Some(EvalCode::AccessorTypeOrValueMismatch),
@@ -3293,7 +3435,7 @@ mod tests {
             "(effects (update-edge e solidarity/tension (set 2)))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert_eq!(err.code, Some(EvalCode::StoreRangeViolation), "{err}");
         assert!(
             graph
@@ -3332,7 +3474,7 @@ mod tests {
             "(effects (update-edge e solidarity/subsidy (set 5$)))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert!(
             err.message.contains("update-node")
                 && err.message.contains("set")
@@ -3361,7 +3503,7 @@ mod tests {
                     "MILITANT".to_owned(),
                 ],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let types = TypeEnv {
             fields: HashMap::from([
                 (
@@ -3393,7 +3535,7 @@ mod tests {
         .expect("enum set on an edge field must serve");
         let stored = graph
             .edge_attribute("SOLIDARITY", a, b, "solidarity/mode")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert!(
             (stored - 2.0).abs() < 1e-12,
             "MILITANT is declaration-order ordinal 2, stored: {stored}"
@@ -3408,11 +3550,11 @@ mod tests {
         let (mut graph, a, b) = edge_fixture();
         graph
             .update_edge("SOLIDARITY", a, b, "solidarity/mode", 0.0)
-            .unwrap(); // DORMANT
+            .expect("the fixture edge carries the authored attribute"); // DORMANT
         let mut enums = EnumRegistry::default();
         let mode = enums
             .declare("EdgeMode", &["DORMANT".to_owned(), "ACTIVE".to_owned()])
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let types = TypeEnv {
             fields: HashMap::from([(
                 "solidarity/mode".to_owned(),
@@ -3433,7 +3575,7 @@ mod tests {
             "(effects (update-edge e solidarity/mode (add EdgeMode/ACTIVE)))",
             &mut fuel,
         )
-        .unwrap_err();
+        .expect_err("the malformed batch is refused");
         assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation), "{err}");
         // Apply site, bypassing collect (the direct-PendingWrite probe the
         // node side's own test established).
@@ -3448,11 +3590,13 @@ mod tests {
             operand: WriteOperand::Real(1.0),
         };
         let mut applier = EffectExecutor::new(&types, &enums);
-        let err = applier.apply_pending_write(&write, &mut graph).unwrap_err();
+        let err = applier
+            .apply_pending_write(&write, &mut graph)
+            .expect_err("the fixture call `apply_pending_write` fails for the authored inputs");
         assert_eq!(err.code, Some(EvalCode::EnumWriteShapeViolation), "{err}");
         let stored = graph
             .edge_attribute("SOLIDARITY", a, b, "solidarity/mode")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert!(
             (stored - 0.0).abs() < 1e-12,
             "the refused write must not have landed: {stored}"
@@ -3463,9 +3607,15 @@ mod tests {
     /// `h` binding — the hyperedge half of [`edge_fixture`]'s pattern.
     fn hyperedge_fixture() -> (MemoryGraph, HyperedgeId) {
         let mut graph = MemoryGraph::new();
-        let a = graph.add_node("SOCIAL_CLASS").unwrap();
-        let b = graph.add_node("SOCIAL_CLASS").unwrap();
-        let cell = graph.add_hyperedge("COMMUNITY", &[a, b]).unwrap();
+        let a = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let b = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let cell = graph
+            .add_hyperedge("COMMUNITY", &[a, b])
+            .expect("the fixture graph admits the authored hyperedge");
         (graph, cell)
     }
 
@@ -3527,7 +3677,9 @@ mod tests {
                 )
                 .expect("the observed hyperedge update must apply");
         }
-        let stored = graph.hyperedge_attribute(cell, "community/heat").unwrap();
+        let stored = graph
+            .hyperedge_attribute(cell, "community/heat")
+            .expect("the fixture hyperedge carries the authored attribute");
         assert!((stored - 0.5).abs() < 1e-12, "set to 0.5, stored: {stored}");
         assert!(
             log.writes().iter().any(|w| matches!(
@@ -3554,7 +3706,9 @@ mod tests {
             &mut fuel,
         )
         .expect("update-hyperedge must serve on the collect path");
-        let stored = graph.hyperedge_attribute(cell, "community/heat").unwrap();
+        let stored = graph
+            .hyperedge_attribute(cell, "community/heat")
+            .expect("the fixture hyperedge carries the authored attribute");
         assert!(
             (stored - 0.75).abs() < 1e-12,
             "0.5 + 0.25 through collect-then-apply, stored: {stored}"
@@ -3569,7 +3723,7 @@ mod tests {
         let (mut graph, a, b) = edge_fixture();
         graph
             .update_edge("SOLIDARITY", a, b, "solidarity/tension", 0.7)
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         let types = edge_types();
         let enums = enums();
         let mut fuel = 128;
@@ -3584,7 +3738,7 @@ mod tests {
         .expect("sub must serve");
         let stored = graph
             .edge_attribute("SOLIDARITY", a, b, "solidarity/tension")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert!((stored - 0.5).abs() < 1e-12, "0.7 - 0.2, stored: {stored}");
     }
 }

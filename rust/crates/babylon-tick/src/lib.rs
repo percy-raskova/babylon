@@ -18,7 +18,10 @@
 // rarely-taken error branches is the right trade against boxing a field
 // §2.3 specifies unboxed, or `Box`-wrapping every wrapped error type for a
 // branch that is rarely taken.
-#![allow(clippy::result_large_err)]
+#![allow(
+    clippy::result_large_err,
+    reason = "the error carries the full authored refusal context"
+)]
 
 pub mod choice_receipt;
 

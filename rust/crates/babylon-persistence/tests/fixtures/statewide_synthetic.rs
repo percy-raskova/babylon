@@ -26,9 +26,10 @@ pub fn load() -> SyntheticFixture {
     GzDecoder::new(encoded.as_slice())
         .take(1_048_577)
         .read_to_end(&mut bytes)
-        .unwrap();
+        .expect("the fixture source is readable");
     assert!(bytes.len() <= 1_048_576);
-    let fixture: SyntheticFixture = serde_json::from_slice(&bytes).unwrap();
+    let fixture: SyntheticFixture =
+        serde_json::from_slice(&bytes).expect("the authored bytes match the declared schema");
     assert_eq!(
         fixture.scope,
         "synthetic-scale-only; not real infrastructure qualification"
@@ -50,7 +51,8 @@ pub fn load() -> SyntheticFixture {
 
 pub fn catalog() -> MichiganMaterialCatalog {
     let fixture = load();
-    let qualification = serde_json::to_vec(&fixture.qualification).unwrap();
+    let qualification = serde_json::to_vec(&fixture.qualification)
+        .expect("the value serializes to canonical JSON bytes");
     MichiganMaterialCatalog::from_statewide_qualification(
         CANONICAL_DEFINES,
         &qualification,
@@ -94,14 +96,18 @@ impl SyntheticSources {
         let mut fixture = load();
         let food = fixture.qualification["processes"]
             .as_array()
-            .unwrap()
+            .expect("the JSON fixture field is an array")
             .iter()
             .find(|row| row["family"] == "prepared_food")
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let process = format!(
             "{}-{}-prepared_food",
-            food["county_geoid"].as_str().unwrap(),
-            food["sector_code"].as_str().unwrap()
+            food["county_geoid"]
+                .as_str()
+                .expect("the JSON fixture field is a string"),
+            food["sector_code"]
+                .as_str()
+                .expect("the JSON fixture field is a string")
         );
         let defines = synthetic_defines(CANONICAL_DEFINES, &process);
         let defines_hash = hex_digest(defines.as_bytes());
@@ -120,14 +126,16 @@ impl SyntheticSources {
             "qualification_sha256": hex_digest(&qualification),
             "physical_network_sha256": hex_digest(&physical),
         });
-        let manifest_bytes = serde_json::to_vec(&manifest).unwrap();
+        let manifest_bytes =
+            serde_json::to_vec(&manifest).expect("the value serializes to canonical JSON bytes");
         for (name, bytes) in [
             ("defines.toml", defines.as_bytes()),
             ("statewide-qualification.json.gz", qualification.as_slice()),
             ("statewide-physical.json.gz", physical.as_slice()),
             ("statewide-sources.json", manifest_bytes.as_slice()),
         ] {
-            std::fs::write(self.path(name), bytes).unwrap();
+            std::fs::write(self.path(name), bytes)
+                .expect("the fixture sink accepts the authored bytes");
         }
     }
 }
@@ -147,7 +155,7 @@ fn hex_digest(bytes: &[u8]) -> String {
     use std::fmt::Write;
     let mut text = String::new();
     for byte in babylon_kernel::content_digest::sha256_of(bytes) {
-        write!(&mut text, "{byte:02x}").unwrap();
+        write!(&mut text, "{byte:02x}").expect("the in-memory formatter accepts the written text");
     }
     text
 }
@@ -158,13 +166,18 @@ fn gzip_json(value: &impl serde::Serialize) -> Vec<u8> {
         .mtime(0)
         .write(Vec::new(), Compression::default());
     writer
-        .write_all(&serde_json::to_vec(value).unwrap())
-        .unwrap();
-    writer.finish().unwrap()
+        .write_all(
+            &serde_json::to_vec(value).expect("the value serializes to canonical JSON bytes"),
+        )
+        .expect("the fixture sink accepts the authored bytes");
+    writer
+        .finish()
+        .expect("the fixture finishes the authored period")
 }
 
 fn synthetic_defines(canonical: &str, process: &str) -> String {
-    let mut defines: toml::Value = toml::from_str(canonical).unwrap();
+    let mut defines: toml::Value =
+        toml::from_str(canonical).expect("the authored JSON matches the declared schema");
     let experiment = toml::Value::Table(
         [
             (
@@ -192,35 +205,43 @@ fn synthetic_defines(canonical: &str, process: &str) -> String {
     // Other canonical values retain their parsed meaning; only formatting changes.
     defines["statewide"]
         .as_table_mut()
-        .unwrap()
+        .expect("the fixture call `as_table_mut` succeeds for the authored inputs")
         .insert("EXPERIMENT".to_owned(), experiment);
-    toml::to_string(&defines).unwrap()
+    toml::to_string(&defines).expect("the fixture value formats as text")
 }
 
 #[test]
 fn synthetic_experiment_replaces_an_existing_table_and_preserves_other_values() {
-    let mut before: toml::Value = toml::from_str(CANONICAL_DEFINES).unwrap();
-    before["statewide"].as_table_mut().unwrap().insert(
-        "EXPERIMENT".to_owned(),
-        toml::Value::Table(
-            [(
-                "FREIGHT_CAPACITY_KEY".to_owned(),
-                toml::Value::String("preexisting-real-network".to_owned()),
-            )]
-            .into_iter()
-            .collect(),
-        ),
-    );
-    let encoded = synthetic_defines(&toml::to_string(&before).unwrap(), "synthetic-food-process");
-    let mut after: toml::Value = toml::from_str(&encoded).unwrap();
-    let actual = after["statewide"]
-        .as_table_mut()
-        .unwrap()
-        .remove("EXPERIMENT")
-        .unwrap();
+    let mut before: toml::Value =
+        toml::from_str(CANONICAL_DEFINES).expect("the authored JSON matches the declared schema");
     before["statewide"]
         .as_table_mut()
-        .unwrap()
+        .expect("the fixture call `as_table_mut` succeeds for the authored inputs")
+        .insert(
+            "EXPERIMENT".to_owned(),
+            toml::Value::Table(
+                [(
+                    "FREIGHT_CAPACITY_KEY".to_owned(),
+                    toml::Value::String("preexisting-real-network".to_owned()),
+                )]
+                .into_iter()
+                .collect(),
+            ),
+        );
+    let encoded = synthetic_defines(
+        &toml::to_string(&before).expect("the fixture value formats as text"),
+        "synthetic-food-process",
+    );
+    let mut after: toml::Value =
+        toml::from_str(&encoded).expect("the authored JSON matches the declared schema");
+    let actual = after["statewide"]
+        .as_table_mut()
+        .expect("the fixture call `as_table_mut` succeeds for the authored inputs")
+        .remove("EXPERIMENT")
+        .expect("the fixture call `remove` succeeds for the authored inputs");
+    before["statewide"]
+        .as_table_mut()
+        .expect("the fixture call `as_table_mut` succeeds for the authored inputs")
         .remove("EXPERIMENT");
     assert_eq!(after, before, "all non-experiment canonical values survive");
     assert_eq!(

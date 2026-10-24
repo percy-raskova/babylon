@@ -139,7 +139,7 @@ fn constrained() -> MaterialCircuitState {
 }
 fn quantities(state: &MaterialCircuitState) -> Vec<u64> {
     babylon_material_circuit::advance_material_circuit(state)
-        .unwrap()
+        .expect("the authored material state advances one period")
         .state
         .orders
         .iter()
@@ -206,13 +206,15 @@ fn summed_resource_request_overflow_refuses_atomically() {
             grams_per_unit: u64::MAX,
         };
     }
-    let before = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&state).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes"),
         before
     );
 }

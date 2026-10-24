@@ -371,7 +371,10 @@ fn spawn_network_connections(
             // These integer keys only identify display segments, never infrastructure.
             let id = i64::try_from(index).expect("bounded disclosed network");
             batch.insert(
-                RoadSegment([[id, i64::try_from(part).unwrap()], [id, 3]]),
+                RoadSegment([
+                    [id, i64::try_from(part).expect("a segment index fits i64")],
+                    [id, 3],
+                ]),
                 [pair[0], pair[1]],
             );
         }
@@ -381,7 +384,13 @@ fn spawn_network_connections(
         for (part, wing) in [side, -side].into_iter().enumerate() {
             let id = i64::try_from(index).expect("bounded disclosed network");
             batch.insert(
-                RoadSegment([[id, 4 + i64::try_from(part).unwrap()], [id, 7]]),
+                RoadSegment([
+                    [
+                        id,
+                        4 + i64::try_from(part).expect("a segment index fits i64"),
+                    ],
+                    [id, 7],
+                ]),
                 [tip - direction * 4.0 + wing, tip],
             );
         }
@@ -624,7 +633,13 @@ mod tests {
 
     fn retail_fixture() -> (ObserverSession, ObserverFrame, CountyAnchors) {
         let (session, mut frame, anchors) = tests::fixture();
-        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+        let snapshot = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         snapshot.sites[1].roles = vec![ProductionSiteRole::Retail];
         snapshot.sites[1].sector_code = Some("44-45".into());
         let mut isolated = snapshot.sites[1].clone();
@@ -638,7 +653,9 @@ mod tests {
                 total_order_count: 1,
                 expired: 0,
                 demand_principal_id: "demand".into(),
-                location: "county:26099".parse().unwrap(),
+                location: "county:26099"
+                    .parse()
+                    .expect("the authored literal parses as the declared type"),
                 good_id: "steel".into(),
                 unit_id: "kg".into(),
                 good: "Steel".into(),
@@ -714,7 +731,13 @@ mod tests {
             .links
             .iter()
             .all(|link| matches!(&link.kind, NetworkLinkKind::Commodity { good, unit } if good == "steel" && unit == "kg")));
-        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+        let snapshot = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         snapshot.sites.reverse();
         snapshot.final_demand_accounts.reverse();
         let permuted = projection::project_network(
@@ -737,10 +760,10 @@ mod tests {
         frame
             .0
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .production
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .routes
             .is_empty()
     }
@@ -761,11 +784,21 @@ mod tests {
                 .available
             );
             match invalid {
-                "stale" => frame.0.as_mut().unwrap().resolve_tick = 2,
+                "stale" => {
+                    frame
+                        .0
+                        .as_mut()
+                        .expect("the fixture set the optional field before this borrow")
+                        .resolve_tick = 2;
+                }
                 "loading" => session.phase = SessionPhase::Loading,
                 "preview" => {
                     session.set_perspective(Perspective::PlayerKnowledge);
-                    frame.0.as_mut().unwrap().visibility = ObserverVisibility::KnownPreview;
+                    frame
+                        .0
+                        .as_mut()
+                        .expect("the fixture set the optional field before this borrow")
+                        .visibility = ObserverVisibility::KnownPreview;
                 }
                 _ => unreachable!(),
             }
@@ -786,11 +819,26 @@ mod tests {
     #[test]
     fn maintenance_network_discloses_service_endpoints_only_to_the_current_full_observer() {
         let (session, mut frame, anchors) = tests::fixture();
-        let source = frame.0.as_ref().unwrap().production.as_ref().unwrap();
+        let source = frame
+            .0
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .production
+            .as_ref()
+            .expect("the fixture set the optional field before this read");
         let snapshot = crate::maintenance_fixture::snapshot(source, 3, Some(1));
-        let provider = snapshot.sites.last().unwrap().id.clone();
+        let provider = snapshot
+            .sites
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .id
+            .clone();
         let consumer = snapshot.sites[0].id.clone();
-        frame.0.as_mut().unwrap().production = Some(snapshot);
+        frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production = Some(snapshot);
         let full = projection::project_network(
             &frame,
             &session,
@@ -820,7 +868,11 @@ mod tests {
             }),
         );
         assert!(!goods_only.nodes.contains_key(&NodeKey::Site(provider)));
-        frame.0.as_mut().unwrap().visibility = ObserverVisibility::KnownPreview;
+        frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .visibility = ObserverVisibility::KnownPreview;
         let hidden = projection::project_network(
             &frame,
             &session,

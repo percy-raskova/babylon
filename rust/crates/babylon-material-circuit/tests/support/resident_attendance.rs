@@ -27,7 +27,9 @@ fn mixed(second: LaborCompensation) -> MaterialCircuitState {
     let mut state = crate::opening();
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: other_household(),
-        location: "county:26099".parse().unwrap(),
+        location: "county:26099"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
     });
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         unreachable!()
@@ -37,7 +39,8 @@ fn mixed(second: LaborCompensation) -> MaterialCircuitState {
         id: AccountId::Household(other_household()),
         cash: crate::money(0),
     });
-    economy.book = MonetaryBook::from_snapshot(snapshot).unwrap();
+    economy.book =
+        MonetaryBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     economy.costs = HistoricalCostBook::open(
         &economy.book,
         economy.costs.snapshot().stocks,
@@ -45,7 +48,7 @@ fn mixed(second: LaborCompensation) -> MaterialCircuitState {
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     economy.employment = vec![
         EmploymentTerms {
             member_id: member(1),
@@ -80,7 +83,8 @@ fn mixed(second: LaborCompensation) -> MaterialCircuitState {
 #[test]
 fn two_resident_payees_receive_only_their_own_funded_attendance() {
     let state = mixed(LaborCompensation::Wage(crate::money(2)));
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(
         closed
             .wage_accruals
@@ -92,24 +96,26 @@ fn two_resident_payees_receive_only_their_own_funded_attendance() {
     assert_eq!(
         book(&closed.state)
             .cash(AccountId::Household(household()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         crate::money(18)
     );
     assert_eq!(
         book(&closed.state)
             .cash(AccountId::Household(other_household()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         crate::money(4)
     );
     assert_eq!(
         book(&closed.state)
             .cash(AccountId::Site(crate::store()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         crate::money(2)
     );
     assert_eq!(closed.member_labor_use.len(), 2);
     assert_eq!(
-        book(&closed.state).total_cash_and_reserves().unwrap(),
+        book(&closed.state)
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         crate::money(24)
     );
 }
@@ -125,8 +131,9 @@ fn owner_and_family_hours_do_real_work_without_wages_or_ownership_claims() {
             MaterialPurchase::LocalFinalDemand(crate::retail()),
             crate::money(4),
         )
-        .unwrap();
-        let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+        .expect("the fixture admits the authored purchase");
+        let closed = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
         assert_eq!(closed.local_fulfillments[0].quantity, 2);
         assert_eq!(closed.wage_accruals.len(), 1);
         assert_eq!(closed.wage_accruals[0].amount, crate::money(2));
@@ -134,7 +141,7 @@ fn owner_and_family_hours_do_real_work_without_wages_or_ownership_claims() {
             .income
             .iter()
             .find(|r| r.account == AccountId::Site(crate::store()))
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(account.statement.handling_expense, crate::money(1));
         assert_eq!(account.statement.idle_labor_expense, crate::money(1));
         assert_eq!(closed.member_labor_use[0].handling_hours, 1);
@@ -143,7 +150,7 @@ fn owner_and_family_hours_do_real_work_without_wages_or_ownership_claims() {
         assert_eq!(
             book(&closed.state)
                 .cash(AccountId::Household(other_household()))
-                .unwrap(),
+                .expect("the fixture book holds the payer account"),
             crate::money(0)
         );
         assert_eq!(closed.labor_use[0].non_wage_hours, 2);

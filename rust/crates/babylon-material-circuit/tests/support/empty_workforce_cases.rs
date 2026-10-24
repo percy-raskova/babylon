@@ -35,7 +35,10 @@ fn empty_workforce(mut state: MaterialCircuitState) -> MaterialCircuitState {
     };
     accounts.employment.clear();
     accounts.member_labor.clear();
-    let recurring = accounts.recurring.as_mut().unwrap();
+    let recurring = accounts
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     recurring.replenishment.clear();
     for row in &mut recurring.attendance {
         row.planned_hours = 0;
@@ -49,7 +52,8 @@ fn empty_workforce(mut state: MaterialCircuitState) -> MaterialCircuitState {
             row.cash = crate::money(4);
         }
     }
-    accounts.book = MonetaryBook::from_snapshot(snapshot).unwrap();
+    accounts.book =
+        MonetaryBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     accounts.costs = HistoricalCostBook::open(
         &accounts.book,
         accounts.costs.snapshot().stocks,
@@ -57,13 +61,17 @@ fn empty_workforce(mut state: MaterialCircuitState) -> MaterialCircuitState {
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     state
 }
 
 fn assert_zero_attendance(state: &MaterialCircuitState) {
     let accounts = crate::economy(state);
-    let rows = &accounts.recurring.as_ref().unwrap().attendance;
+    let rows = &accounts
+        .recurring
+        .as_ref()
+        .expect("the fixture set the optional field before this read")
+        .attendance;
     assert_eq!(rows.len(), 3);
     assert_eq!(
         rows.iter()
@@ -89,15 +97,19 @@ fn empty_workplaces_cannot_turn_stock_and_funded_demand_into_free_work_after_res
     let cash = crate::economy(&state)
         .book
         .total_cash_and_reserves()
-        .unwrap();
+        .expect("the fixture book totals without overflow");
     for period in 1..=3 {
         let before = state.clone();
-        let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
-        let restarted = babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap();
-        let result = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+        let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes");
+        let restarted = babylon_material_circuit::decode_material_circuit_state(&bytes)
+            .expect("the canonical material bytes decode");
+        let result = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
         assert_eq!(
             result,
-            babylon_material_circuit::advance_material_circuit(&restarted).unwrap()
+            babylon_material_circuit::advance_material_circuit(&restarted)
+                .expect("the authored material state advances one period")
         );
         assert_eq!(state, before);
         assert_eq!(result.state.period, period + 1);
@@ -115,14 +127,14 @@ fn empty_workplaces_cannot_turn_stock_and_funded_demand_into_free_work_after_res
             crate::economy(&result.state)
                 .book
                 .cash(AccountId::Household(crate::household()))
-                .unwrap(),
+                .expect("the fixture book holds the payer account"),
             crate::money(4)
         );
         assert_eq!(
             crate::economy(&result.state)
                 .book
                 .total_cash_and_reserves()
-                .unwrap(),
+                .expect("the fixture book totals without overflow"),
             cash
         );
         assert!(result
@@ -136,7 +148,7 @@ fn empty_workplaces_cannot_turn_stock_and_funded_demand_into_free_work_after_res
         crate::economy(&state)
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .household_stocks[0]
             .quantity,
         0
@@ -168,32 +180,39 @@ fn an_empty_shared_producer_and_merchant_can_request_work_without_inventing_peop
             crate::site(owner),
             crate::hours(),
             0,
-            StaffingPolicy::one_period(4).unwrap(),
+            StaffingPolicy::one_period(4).expect("the one-period fixture advances"),
             sources,
         )
-        .unwrap()
+        .expect("the authored fixture satisfies the constructor invariants")
     })
     .collect::<Vec<_>>();
     let staffing = StaffingState::try_new(
         1,
         bindings
             .iter()
-            .map(|b| StaffingPoolState::try_new(b.clone(), 0, 0, 0).unwrap())
+            .map(|b| {
+                StaffingPoolState::try_new(b.clone(), 0, 0, 0)
+                    .expect("the authored fixture satisfies the constructor invariants")
+            })
             .collect(),
     )
-    .unwrap();
-    let closed = babylon_material_circuit::close_material_period(&state).unwrap();
-    let requests = closed.staffing_requests(&bindings).unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
+    let closed = babylon_material_circuit::close_material_period(&state)
+        .expect("the material period closes");
+    let requests = closed
+        .staffing_requests(&bindings)
+        .expect("the fixture staffing requests are present");
     assert_eq!(requests.len(), 4);
     assert_eq!(
         requests
             .iter()
             .find(|r| r.work_source() == StaffingWorkSource::Production(process(1)))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .hours(),
         4
     );
-    let staffed = babylon_material_circuit::advance_staffing(&staffing, &requests).unwrap();
+    let staffed = babylon_material_circuit::advance_staffing(&staffing, &requests)
+        .expect("the fixture staffing advances");
     assert!(staffed
         .receipts()
         .iter()
@@ -201,7 +220,7 @@ fn an_empty_shared_producer_and_merchant_can_request_work_without_inventing_peop
     assert!(staffed.next_labor().iter().all(|r| r.available == 0));
     let result = closed
         .finish_with_workforce(staffed.next_labor().to_vec(), vec![])
-        .unwrap();
+        .expect("the fixture call `finish_with_workforce` succeeds for the authored inputs");
     assert_zero_attendance(&result.state);
     assert!(result.state.production_commitments.is_empty());
     assert!(result.member_labor_use.is_empty());
@@ -240,12 +259,17 @@ fn split_retail_members() -> MaterialCircuitState {
     let member = StaffingMemberId::from_bytes([77; 32]);
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: second,
-        location: "county:26163".parse().unwrap(),
+        location: "county:26163"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
     });
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
         unreachable!()
     };
-    let recurring = accounts.recurring.as_mut().unwrap();
+    let recurring = accounts
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     recurring.households[0].households = 1;
     recurring.households[0].persons = 3;
     recurring.households.push(HouseholdCohort {
@@ -295,12 +319,13 @@ fn split_retail_members() -> MaterialCircuitState {
         id: AccountId::Household(second),
         cash: crate::money(0),
     });
-    accounts.book = MonetaryBook::from_snapshot(snapshot).unwrap();
+    accounts.book =
+        MonetaryBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     let mut stock = accounts.costs.snapshot().stocks;
     stock
         .iter_mut()
         .find(|r| r.owner == AccountId::Household(crate::household()))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .amount = crate::money(24);
     stock.push(StockCarryingValue {
         owner: AccountId::Household(second),
@@ -308,8 +333,8 @@ fn split_retail_members() -> MaterialCircuitState {
         unit_id: crate::units(),
         amount: crate::money(8),
     });
-    accounts.costs =
-        HistoricalCostBook::open(&accounts.book, stock, vec![], vec![], vec![]).unwrap();
+    accounts.costs = HistoricalCostBook::open(&accounts.book, stock, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     state
 }
 
@@ -319,21 +344,24 @@ fn multiple_resident_members_share_one_workplace_plan_and_keep_their_own_wages()
     let opening_cash = crate::economy(&state)
         .book
         .total_cash_and_reserves()
-        .unwrap();
+        .expect("the fixture book totals without overflow");
     for period in 1..=2 {
-        let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
-        let result = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+        let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes");
+        let result = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
         assert_eq!(
             result,
             babylon_material_circuit::advance_material_circuit(
-                &babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap()
+                &babylon_material_circuit::decode_material_circuit_state(&bytes)
+                    .expect("the canonical material bytes decode")
             )
-            .unwrap()
+            .expect("the authored material state advances one period")
         );
         let rows = &crate::economy(&result.state)
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .attendance;
         assert_eq!(rows.len(), 3);
         assert_eq!(
@@ -376,7 +404,7 @@ fn multiple_resident_members_share_one_workplace_plan_and_keep_their_own_wages()
         let cohorts = &crate::economy(&result.state)
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .households;
         assert_eq!(cohorts.iter().map(|r| r.persons).sum::<u64>(), 4);
         assert_eq!(cohorts.iter().map(|r| r.households).sum::<u64>(), 2);
@@ -384,7 +412,7 @@ fn multiple_resident_members_share_one_workplace_plan_and_keep_their_own_wages()
             crate::economy(&result.state)
                 .book
                 .total_cash_and_reserves()
-                .unwrap(),
+                .expect("the fixture book totals without overflow"),
             opening_cash
         );
         state = result.state;

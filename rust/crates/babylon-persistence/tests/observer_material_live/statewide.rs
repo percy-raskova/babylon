@@ -21,8 +21,14 @@ mod synthetic;
 
 fn assert_projection(snapshot: &mut ObserverEconomySnapshot, runtime: &DurableMaterialRuntime) {
     assert_eq!(snapshot.resolve_tick, runtime.session().completed_tick());
-    assert!(snapshot.production_evidence_digest().unwrap().is_some());
-    let rows = snapshot.production.as_ref().unwrap();
+    assert!(snapshot
+        .production_evidence_digest()
+        .expect("the evidence body has a digest")
+        .is_some());
+    let rows = snapshot
+        .production
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(rows.sites.len(), 397);
     assert_eq!(
         rows.sites
@@ -45,7 +51,7 @@ fn assert_projection(snapshot: &mut ObserverEconomySnapshot, runtime: &DurableMa
     assert!(rows
         .road_source
         .as_ref()
-        .unwrap()
+        .expect("the fixture set the optional field before this read")
         .pbf_url
         .starts_with("synthetic://"));
     let mut pools = BTreeSet::new();
@@ -90,7 +96,7 @@ fn assert_final_orders(rows: &ProductionSnapshot, runtime: &DurableMaterialRunti
                 .final_demand_orders
                 .iter()
                 .find(|row| super::identity_hex(row.order_id.as_bytes()) == order.order_id)
-                .unwrap();
+                .expect("the fixture holds the searched element");
             assert_eq!(order.fulfilled, committed.fulfilled);
             assert_eq!(order.ordered, committed.ordered);
         }
@@ -99,7 +105,10 @@ fn assert_final_orders(rows: &ProductionSnapshot, runtime: &DurableMaterialRunti
 }
 
 fn assert_stock_accounts(rows: &ProductionSnapshot, period: u64) {
-    let balance = rows.material_balance.as_ref().unwrap();
+    let balance = rows
+        .material_balance
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(balance.period, period);
     let mut principals = BTreeSet::new();
     for row in &balance.rows {
@@ -119,7 +128,7 @@ fn assert_stock_accounts(rows: &ProductionSnapshot, period: u64) {
             .sites
             .iter()
             .find(|site| site.id == row.site_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let closing = site
             .inventory
             .iter()
@@ -136,13 +145,22 @@ fn assert_same_world(left: &DurableMaterialRuntime, right: &DurableMaterialRunti
         right.session().material().canonical_bytes()
     );
     assert_eq!(
-        left.session().current_world_hash().unwrap(),
-        right.session().current_world_hash().unwrap()
+        left.session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        right
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash")
     );
 }
 
 #[test]
 #[ignore = "requires the owned PostgreSQL harness; synthetic full-roster circulation proof"]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`statewide_synthetic_circulation_survives_sixteen_persisted_periods_and_held_history` keeps one authored boundary's fixture and assertions together"
+)]
 fn statewide_synthetic_circulation_survives_sixteen_persisted_periods_and_held_history() {
     let mut target = DisposableTarget::create();
     let start = Instant::now();
@@ -151,25 +169,29 @@ fn statewide_synthetic_circulation_survives_sixteen_persisted_periods_and_held_h
         &sources.path("defines.toml"),
         MichiganDeliveryPreset::StatewideBaseline,
     )
-    .unwrap();
+    .expect("the preset content loads");
     let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::StatewideBaseline)
         .create_foundation(&catalog)
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let foundation_digest = foundation.digest();
     let campaign = CampaignId::from_uuid(Uuid::from_u128(29_701));
-    let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
+    let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation)
+        .expect("the test database creates the fixture campaign");
     let reference_foundation =
         MichiganContentPreset::new_campaign(MichiganDeliveryPreset::StatewideBaseline)
             .create_foundation(&synthetic::catalog())
-            .unwrap();
-    let mut reference = reference_foundation.into_session().unwrap();
+            .expect("the authored catalog builds the foundation");
+    let mut reference = reference_foundation
+        .into_session()
+        .expect("the fixture opens a session");
     // Saved PostgreSQL authority must outlive every current input file.
     drop(sources);
-    super::install_reader_role(&target.writer).unwrap();
-    super::provision_observer_role(&target.writer).unwrap();
+    super::install_reader_role(&target.writer).expect("the test database installs the reader role");
+    super::provision_observer_role(&target.writer)
+        .expect("the test database provisions the observer role");
     let config = target.login("babylon_observer", "statewidescale");
-    let observer =
-        ObserverEconomyReader::connect(&config, ObserverVisibility::FullObserver).unwrap();
+    let observer = ObserverEconomyReader::connect(&config, ObserverVisibility::FullObserver)
+        .expect("the test database accepts the connection");
     let creation = start.elapsed();
     let mut held = Vec::new();
     let mut advance_time = Duration::ZERO;
@@ -186,8 +208,13 @@ fn statewide_synthetic_circulation_survives_sixteen_persisted_periods_and_held_h
                 reference.material().canonical_bytes()
             );
             assert_eq!(
-                runtime.session().current_world_hash().unwrap(),
-                reference.current_world_hash().unwrap()
+                runtime
+                    .session()
+                    .current_world_hash()
+                    .expect("the committed session publishes a world hash"),
+                reference
+                    .current_world_hash()
+                    .expect("the committed session publishes a world hash")
             );
         }
         let began = Instant::now();
@@ -202,18 +229,29 @@ fn statewide_synthetic_circulation_survives_sixteen_persisted_periods_and_held_h
         if [1, 2, 16].contains(&period) {
             let began = Instant::now();
             let reopened =
-                DurableMaterialRuntime::open(&target.writer, campaign, foundation_digest).unwrap();
+                DurableMaterialRuntime::open(&target.writer, campaign, foundation_digest)
+                    .expect("the fixture opens the authored source");
             resume_time += began.elapsed();
             assert_same_world(&runtime, &reopened);
             runtime = reopened;
         }
     }
     for snapshot in &held {
-        let mut reopened = observer.snapshot(campaign, snapshot.resolve_tick).unwrap();
-        assert!(reopened.production_evidence_digest().unwrap().is_some());
+        let mut reopened = observer
+            .snapshot(campaign, snapshot.resolve_tick)
+            .expect("the fixture captures a consistent snapshot");
+        assert!(reopened
+            .production_evidence_digest()
+            .expect("the evidence body has a digest")
+            .is_some());
         assert_eq!(reopened, *snapshot);
     }
-    let final_rows = held.last().unwrap().production.as_ref().unwrap();
+    let final_rows = held
+        .last()
+        .expect("the fixture sequence is non-empty")
+        .production
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert!(final_rows
         .final_demand_accounts
         .iter()
@@ -222,13 +260,24 @@ fn statewide_synthetic_circulation_survives_sixteen_persisted_periods_and_held_h
         .final_demand_accounts
         .iter()
         .any(|row| row.retail_stock_on_hand > 0));
-    assert_eq!(observer.campaigns().unwrap()[0].durable_tick, 16);
+    assert_eq!(
+        observer
+            .campaigns()
+            .expect("the fixture lists the authored campaigns")[0]
+            .durable_tick,
+        16
+    );
     let preview_config = target.login("babylon_reader", "statewidepreview");
-    let preview =
-        ObserverEconomyReader::connect(&preview_config, ObserverVisibility::KnownPreview).unwrap();
-    let mut restricted = preview.snapshot(campaign, 16).unwrap();
+    let preview = ObserverEconomyReader::connect(&preview_config, ObserverVisibility::KnownPreview)
+        .expect("the test database accepts the connection");
+    let mut restricted = preview
+        .snapshot(campaign, 16)
+        .expect("the fixture captures a consistent snapshot");
     assert!(restricted.production.is_none());
-    assert!(restricted.production_evidence_digest().unwrap().is_none());
+    assert!(restricted
+        .production_evidence_digest()
+        .expect("the evidence body has a digest")
+        .is_none());
     eprintln!("synthetic statewide PostgreSQL: creation={creation:?}, advance16_with_reference={advance_time:?}, projection17={projection_time:?}, resume3={resume_time:?}");
 }
 
@@ -240,11 +289,13 @@ fn advance_reference(reference: &mut MaterialReplaySession<HypergraphStore>) {
         reference.graph_session().session_identity().clone(),
         reference.completed_tick() + 1,
     )
-    .unwrap();
-    let prepared = reference.prepare_advance(&actions).unwrap();
+    .expect("the empty authored batch constructs");
+    let prepared = reference
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance");
     reference
         .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_| {
             Ok::<_, ()>(ReplayCommitDisposition::Committed)
         })
-        .unwrap();
+        .expect("the prepared period commits");
 }

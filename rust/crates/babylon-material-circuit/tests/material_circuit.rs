@@ -687,28 +687,32 @@ fn proportional_base_and_canonical_residual_are_row_order_independent() {
 
 #[test]
 fn arithmetic_refusal_does_not_publish_a_partial_state() {
-    let first = babylon_material_circuit::advance_material_circuit(&base_state()).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&base_state())
+        .expect("the authored material state advances one period");
     let mut state = first.state;
     state
         .inventory
         .iter_mut()
         .find(|row| row.site_id == site(FACTORY) && row.good_id == good(GRAIN))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity = u64::MAX;
-    let before = babylon_material_circuit::material_circuit_state_digest(&state).unwrap();
+    let before = babylon_material_circuit::material_circuit_state_digest(&state)
+        .expect("the material state has a digest");
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(
-        babylon_material_circuit::material_circuit_state_digest(&state).unwrap(),
+        babylon_material_circuit::material_circuit_state_digest(&state)
+            .expect("the material state has a digest"),
         before
     );
 }
 
 #[test]
 fn duplicate_dispatch_identity_is_rejected_even_when_arrival_periods_differ() {
-    let first = babylon_material_circuit::advance_material_circuit(&base_state()).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&base_state())
+        .expect("the authored material state advances one period");
     let mut state = first.state;
     let mut duplicate = state.freight[0].clone();
     duplicate.stage_arrival_period += 1;

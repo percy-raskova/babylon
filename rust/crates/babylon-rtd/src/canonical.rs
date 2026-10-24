@@ -149,11 +149,11 @@ pub fn parse_vector_corpus(payload: &[u8]) -> Result<Vec<RtdVectorCase>, RtdErro
     }
     let mut output = Vec::new();
     let mut case_ids = Vec::new();
-    for (line_index, line) in payload
+    let bounded_lines = payload
         .split_inclusive(|byte| *byte == b'\n')
         .take(257)
-        .enumerate()
-    {
+        .enumerate();
+    for (line_index, line) in bounded_lines {
         if line_index == MAX_VECTOR_LINES {
             return Err(RtdError::VectorLimit);
         }
@@ -426,7 +426,10 @@ fn write_optional_string(
 
 // The repository's fixed-loop rule requires the literal three-component bound;
 // an iterator rewrite would hide that proof from the static source check.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)]
 fn identity_key(identity: &TypedIdentity) -> Vec<u8> {
     let mut output = Vec::new();
     let components = [&identity.domain, &identity.authority, &identity.local_id];
@@ -908,7 +911,10 @@ pub fn projection_hash(draft: &RtdDossierDraft) -> Result<[u8; 32], RtdError> {
 }
 
 // Keep the SHA-256 width visible as a fixed source-level loop bound.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)]
 fn digest_hex(digest: &[u8; 32]) -> String {
     use std::fmt::Write;
     let mut output = String::with_capacity(64);

@@ -722,7 +722,9 @@ mod tests {
         ProductionSite {
             function: "manufacturing".into(),
             id: id.into(),
-            location: format!("county:{county}").parse().unwrap(),
+            location: format!("county:{county}")
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             name: id.into(),
             industry_code: Some("331".into()),
             observed_employment: None,
@@ -866,7 +868,10 @@ freight_order_definitions: Vec::new(),
 
         let mut snapshot = snapshot();
         snapshot.resolve_tick = 0;
-        let production = snapshot.production.as_mut().unwrap();
+        let production = snapshot
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         let mut second_process = production.sites[0].processes[0].clone();
         second_process.id = "another-process".into();
         second_process.output_good_id = "different-output".into();
@@ -919,7 +924,10 @@ freight_order_definitions: Vec::new(),
             LensUnavailable::CapabilityUnavailable
         );
         snapshot.visibility = ObserverVisibility::FullObserver;
-        let production = snapshot.production.as_mut().unwrap();
+        let production = snapshot
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         production
             .staffing_accounts
             .push(production.staffing_accounts[0].clone());
@@ -931,7 +939,11 @@ freight_order_definitions: Vec::new(),
     #[test]
     fn foundation_unavailable_and_committed_zero_are_distinct() {
         let mut snapshot = snapshot();
-        let site = &mut snapshot.production.as_mut().unwrap().sites[0];
+        let site = &mut snapshot
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .sites[0];
         site.processes[0].produced_batches = None;
         snapshot.resolve_tick = 0;
         let projected =
@@ -940,7 +952,13 @@ freight_order_definitions: Vec::new(),
             projected.county("26163"),
             CountyLensReading::Unavailable(LensUnavailable::NoProductionPeriod)
         );
-        snapshot.production.as_mut().unwrap().sites[0].processes[0].produced_batches = Some(0);
+        snapshot
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .sites[0]
+            .processes[0]
+            .produced_batches = Some(0);
         snapshot.resolve_tick = 1;
         assert_eq!(
             project_map_lens(Some(&snapshot), &lens(MaterialLensKind::ProducedThisPeriod))
@@ -959,12 +977,17 @@ freight_order_definitions: Vec::new(),
             projected.county("26163"),
             CountyLensReading::Unavailable(LensUnavailable::NotModeled)
         );
-        snapshot.production.as_mut().unwrap().freight.clear();
+        snapshot
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .freight
+            .clear();
         let projected = project_map_lens(Some(&snapshot), &selection);
         assert_eq!(projected.county("26099"), CountyLensReading::Available(0));
         assert_eq!(
             material_choices(&snapshot, MaterialLensKind::InboundInTransit)
-                .unwrap()
+                .expect("the fixture call `material_choices` succeeds for the authored inputs")
                 .len(),
             1
         );
@@ -973,7 +996,13 @@ freight_order_definitions: Vec::new(),
     #[test]
     fn multiplication_and_county_sum_overflow_refuse_the_whole_reading() {
         let mut snapshot = snapshot();
-        snapshot.production.as_mut().unwrap().sites[0].processes[0].output_per_batch = u64::MAX;
+        snapshot
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .sites[0]
+            .processes[0]
+            .output_per_batch = u64::MAX;
         assert_eq!(
             project_map_lens(Some(&snapshot), &lens(MaterialLensKind::ProducedThisPeriod))
                 .unavailable,
@@ -983,10 +1012,16 @@ freight_order_definitions: Vec::new(),
         snapshot
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .sites
             .push(site("overflow", "26163", 'a', u64::MAX));
-        snapshot.production.as_mut().unwrap().sites[0].inventory[0].quantity = 1;
+        snapshot
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .sites[0]
+            .inventory[0]
+            .quantity = 1;
         let result = project_map_lens(Some(&snapshot), &lens(MaterialLensKind::OnHand));
         assert_eq!(result.unavailable, LensUnavailable::Arithmetic);
         assert!(result.counties.is_empty());
@@ -995,7 +1030,12 @@ freight_order_definitions: Vec::new(),
     #[test]
     fn identities_are_required_even_when_labels_match() {
         let mut snapshot = snapshot();
-        snapshot.production.as_mut().unwrap().sites[0].processes[0]
+        snapshot
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .sites[0]
+            .processes[0]
             .output_good_id
             .clear();
         let result = project_map_lens(Some(&snapshot), &lens(MaterialLensKind::ProducedThisPeriod));
@@ -1006,7 +1046,12 @@ freight_order_definitions: Vec::new(),
     #[test]
     fn dangling_freight_destination_is_refused() {
         let mut snapshot = snapshot();
-        snapshot.production.as_mut().unwrap().freight[0].destination_site_id = "missing".into();
+        snapshot
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .freight[0]
+            .destination_site_id = "missing".into();
         assert_eq!(
             project_map_lens(Some(&snapshot), &lens(MaterialLensKind::InboundInTransit))
                 .unavailable,
@@ -1019,7 +1064,12 @@ freight_order_definitions: Vec::new(),
         let historical = snapshot();
         let mut live = historical.clone();
         live.resolve_tick = 2;
-        live.production.as_mut().unwrap().sites[0].processes[0].produced_batches = Some(7);
+        live.production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .sites[0]
+            .processes[0]
+            .produced_batches = Some(7);
         let selection = lens(MaterialLensKind::ProducedThisPeriod);
         assert_eq!(
             project_map_lens(Some(&historical), &selection).county("26163"),
@@ -1050,7 +1100,7 @@ freight_order_definitions: Vec::new(),
         selection.reconcile(Some(&snapshot), ScopeTransition::Unchanged);
         assert!(
             material_choices(&snapshot, MaterialLensKind::ProducedThisPeriod)
-                .unwrap()
+                .expect("the fixture call `material_choices` succeeds for the authored inputs")
                 .is_empty()
         );
         assert_eq!(

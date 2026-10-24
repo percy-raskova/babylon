@@ -116,7 +116,10 @@ fn atom_from_data(data: &Value) -> ArchiveAtom {
     .expect("vector atom mints")
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`atom_json` takes every authored field explicitly"
+)]
 fn atom_json(
     id: &str,
     subject_kind: &str,

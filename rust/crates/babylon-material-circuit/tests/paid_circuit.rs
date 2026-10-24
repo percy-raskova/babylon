@@ -96,7 +96,7 @@ fn opening() -> MaterialCircuitState {
                     cash: money(16),
                 },
             ])
-            .unwrap();
+            .expect("the fixture opens the authored source");
             MonetaryCircuit {
                 aid: AidBook::default(),
 
@@ -117,7 +117,7 @@ fn opening() -> MaterialCircuitState {
                     vec![],
                     vec![],
                 )
-                .unwrap(),
+                .expect("the fixture opens the authored source"),
                 book,
                 recurring: None,
                 member_labor: vec![MemberLaborCapacityRow {
@@ -214,7 +214,9 @@ fn opening() -> MaterialCircuitState {
         production_commitments: vec![],
         merchants: vec![MerchantHandling {
             site_id: store(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             role: MerchantRole::Retail,
             capacity_id: handling,
             labor_unit_id: hours(),
@@ -227,7 +229,9 @@ fn opening() -> MaterialCircuitState {
         }],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,
@@ -277,43 +281,51 @@ fn dispatch_keeps_escrow_and_restart_settles_only_actual_arrival() {
         MaterialPurchase::Delivery(delivery()),
         money(1),
     )
-    .unwrap();
+    .expect("the fixture admits the authored purchase");
     assert_eq!(reservation.debit.delta, money(-4));
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(closed.dispatches[0].quantity, 4);
     assert_eq!(
-        book(&closed.state).cash(AccountId::Site(source())).unwrap(),
+        book(&closed.state)
+            .cash(AccountId::Site(source()))
+            .expect("the fixture book holds the payer account"),
         money(0)
     );
     assert_eq!(
         book(&closed.state)
             .purchase(OutboundOrderId::Delivery(delivery().order_id))
-            .unwrap()
+            .expect("the fixture purchase is present")
             .reserved_amount()
-            .unwrap(),
+            .expect("the fixture reservation exists"),
         money(4)
     );
     assert_eq!(closed.labor_use[0].funded_hours, 4);
     assert_eq!(closed.labor_use[0].used_hours, 0);
     assert_eq!(closed.labor_use[0].paid_idle_hours, 4);
     let restored = babylon_material_circuit::decode_material_circuit_state(
-        &babylon_material_circuit::encode_material_circuit_state(&closed.state).unwrap(),
+        &babylon_material_circuit::encode_material_circuit_state(&closed.state)
+            .expect("the canonical material state encodes"),
     )
-    .unwrap();
-    let arrived = babylon_material_circuit::advance_material_circuit(&restored).unwrap();
+    .expect("the canonical material bytes decode");
+    let arrived = babylon_material_circuit::advance_material_circuit(&restored)
+        .expect("the authored material state advances one period");
     assert_eq!(
         arrived,
-        babylon_material_circuit::advance_material_circuit(&closed.state).unwrap()
+        babylon_material_circuit::advance_material_circuit(&closed.state)
+            .expect("the authored material state advances one period")
     );
     assert_eq!(arrived.arrivals[0].quantity, 4);
     assert_eq!(
         book(&arrived.state)
             .cash(AccountId::Site(source()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         money(4)
     );
     assert_eq!(
-        book(&arrived.state).total_cash_and_reserves().unwrap(),
+        book(&arrived.state)
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         money(24)
     );
 }
@@ -325,13 +337,14 @@ fn actual_local_handoff_pays_seller_and_reports_paid_idle_separately() {
         MaterialPurchase::LocalFinalDemand(retail()),
         money(4),
     )
-    .unwrap();
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    .expect("the fixture admits the authored purchase");
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     let buyer = closed
         .income
         .iter()
         .find(|row| row.account == AccountId::Household(household()))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(buyer.statement.final_demand_outlay, money(8));
     assert_eq!(buyer.statement.consumption_expense, money(0));
     assert_eq!(buyer.net_income, money(-4));
@@ -339,7 +352,7 @@ fn actual_local_handoff_pays_seller_and_reports_paid_idle_separately() {
         .income
         .iter()
         .find(|row| row.account == AccountId::Site(store()))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(retailer.statement.sales, money(8));
     assert_eq!(retailer.statement.handling_expense, money(2));
     assert_eq!(retailer.statement.idle_labor_expense, money(2));
@@ -350,17 +363,21 @@ fn actual_local_handoff_pays_seller_and_reports_paid_idle_separately() {
     assert_eq!(closed.labor_use[0].used_hours, 2);
     assert_eq!(closed.labor_use[0].paid_idle_hours, 2);
     assert_eq!(
-        book(&closed.state).cash(AccountId::Site(store())).unwrap(),
+        book(&closed.state)
+            .cash(AccountId::Site(store()))
+            .expect("the fixture book holds the payer account"),
         money(12)
     );
     assert_eq!(
         book(&closed.state)
             .cash(AccountId::Household(household()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         money(12)
     );
     assert_eq!(
-        book(&closed.state).total_cash_and_reserves().unwrap(),
+        book(&closed.state)
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         money(24)
     );
 }
@@ -384,13 +401,14 @@ fn missing_or_wrong_beneficiary_escrow_refuses_the_whole_material_close() {
         MaterialPurchase::Delivery(delivery()),
         money(1),
     )
-    .unwrap();
+    .expect("the fixture admits the authored purchase");
     let CircuitAccounting::Monetary(economy) = &mut wrong.accounting else {
         unreachable!()
     };
     let mut snapshot = economy.book.snapshot();
     snapshot.purchases[0].seller = AccountId::Household(household());
-    economy.book = MonetaryBook::from_snapshot(snapshot).unwrap();
+    economy.book =
+        MonetaryBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&wrong),
         Err(MaterialCircuitError::PurchaseInvariant)
@@ -415,15 +433,16 @@ fn purchase_admission_cannot_spend_the_same_cash_twice_or_leave_an_order_behind(
         MaterialPurchase::Delivery(delivery()),
         money(2),
     )
-    .unwrap();
-    let closed = babylon_material_circuit::advance_material_circuit(&funded).unwrap();
+    .expect("the fixture admits the authored purchase");
+    let closed = babylon_material_circuit::advance_material_circuit(&funded)
+        .expect("the authored material state advances one period");
     assert!(closed.wage_accruals.is_empty());
     assert_eq!(closed.labor_use[0].funded_hours, 0);
     assert_eq!(closed.labor_use[0].unfunded_hours, 4);
     assert_eq!(
         book(&closed.state)
             .cash(AccountId::Household(household()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         money(16)
     );
 }
@@ -437,23 +456,29 @@ fn freight_loss_refunds_buyer_and_never_becomes_seller_income() {
         MaterialPurchase::Delivery(delivery()),
         money(1),
     )
-    .unwrap();
-    let dispatched = babylon_material_circuit::advance_material_circuit(&state).unwrap();
-    let arrived = babylon_material_circuit::advance_material_circuit(&dispatched.state).unwrap();
+    .expect("the fixture admits the authored purchase");
+    let dispatched = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
+    let arrived = babylon_material_circuit::advance_material_circuit(&dispatched.state)
+        .expect("the authored material state advances one period");
     assert_eq!(arrived.losses[0].quantity, 2);
     assert_eq!(arrived.arrivals[0].quantity, 2);
     assert_eq!(
         book(&arrived.state)
             .cash(AccountId::Site(source()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         money(2)
     );
     assert_eq!(
-        book(&arrived.state).cash(AccountId::Site(store())).unwrap(),
+        book(&arrived.state)
+            .cash(AccountId::Site(store()))
+            .expect("the fixture book holds the payer account"),
         money(2)
     );
     assert_eq!(
-        book(&arrived.state).total_cash_and_reserves().unwrap(),
+        book(&arrived.state)
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         money(24)
     );
 }
@@ -484,10 +509,13 @@ fn previously_earned_wages_survive_restart_and_payment_does_not_accrue_them_agai
                 3,
                 money(1),
             )
-            .unwrap(),
+            .expect("the constructor accepts the authored fixture arguments"),
         )
-        .unwrap();
-    economy.book.accrue_shift(previous_shift).unwrap();
+        .expect("the fixture shift reservation fits");
+    economy
+        .book
+        .accrue_shift(previous_shift)
+        .expect("the fixture accrues the authored shift");
     let captured = economy.costs.snapshot();
     // Capture this continuation's existing wage claim and liability once.
     economy.costs = HistoricalCostBook::open(
@@ -497,21 +525,23 @@ fn previously_earned_wages_survive_restart_and_payment_does_not_accrue_them_agai
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     assert_eq!(
         economy
             .book
             .shift(previous_shift)
-            .unwrap()
+            .expect("the fixture call `shift` succeeds for the authored inputs")
             .outstanding_wages()
-            .unwrap(),
+            .expect("the fixture payroll carries its authored wages"),
         money(3)
     );
     let restored = babylon_material_circuit::decode_material_circuit_state(
-        &babylon_material_circuit::encode_material_circuit_state(&state).unwrap(),
+        &babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes"),
     )
-    .unwrap();
-    let closed = babylon_material_circuit::advance_material_circuit(&restored).unwrap();
+    .expect("the canonical material bytes decode");
+    let closed = babylon_material_circuit::advance_material_circuit(&restored)
+        .expect("the authored material state advances one period");
     assert_eq!(closed.wage_accruals.len(), 1);
     assert_eq!(closed.wage_accruals[0].period, 2);
     assert_eq!(closed.wage_accruals[0].amount, money(4));
@@ -526,12 +556,14 @@ fn previously_earned_wages_survive_restart_and_payment_does_not_accrue_them_agai
     assert_eq!(
         book(&closed.state)
             .cash(AccountId::Household(household()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         money(23)
     );
     assert!(book(&closed.state).snapshot().shifts.is_empty());
     assert_eq!(
-        book(&closed.state).total_cash_and_reserves().unwrap(),
+        book(&closed.state)
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         money(24)
     );
 }
@@ -543,14 +575,15 @@ fn goods_and_a_funded_buyer_do_not_substitute_for_employer_working_cash() {
         MaterialPurchase::Delivery(delivery()),
         money(2),
     )
-    .unwrap();
+    .expect("the fixture admits the authored purchase");
     let (state, _) = babylon_material_circuit::admit_material_purchase(
         &state,
         MaterialPurchase::LocalFinalDemand(retail()),
         money(4),
     )
-    .unwrap();
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    .expect("the fixture admits the authored purchase");
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert!(closed.local_fulfillments.is_empty());
     assert_eq!(closed.state.final_demand_orders[0].fulfilled, 0);
     assert_eq!(closed.labor_use[0].unfunded_hours, 4);
@@ -560,20 +593,22 @@ fn goods_and_a_funded_buyer_do_not_substitute_for_employer_working_cash() {
             .inventory
             .iter()
             .find(|row| row.site_id == store())
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .quantity,
         4
     );
     assert_eq!(
         book(&closed.state)
             .purchase(OutboundOrderId::LocalFinalDemand(retail().order_id))
-            .unwrap()
+            .expect("the fixture purchase is present")
             .reserved_amount()
-            .unwrap(),
+            .expect("the fixture reservation exists"),
         money(8)
     );
     assert_eq!(
-        book(&closed.state).total_cash_and_reserves().unwrap(),
+        book(&closed.state)
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         money(24)
     );
 }
@@ -601,7 +636,7 @@ fn a_failure_after_attendance_cannot_publish_wages_or_cash() {
     assert_eq!(
         book(&state)
             .cash(AccountId::Household(household()))
-            .unwrap(),
+            .expect("the fixture book holds the payer account"),
         money(16)
     );
 }
@@ -613,10 +648,11 @@ fn paid_delivery_cannot_reopen_as_an_unrealized_physical_quantity() {
         MaterialPurchase::Delivery(delivery()),
         money(1),
     )
-    .unwrap();
-    let dispatched = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    .expect("the fixture admits the authored purchase");
+    let dispatched = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     let mut arrived = babylon_material_circuit::advance_material_circuit(&dispatched.state)
-        .unwrap()
+        .expect("the authored material state advances one period")
         .state;
     assert_eq!(arrived.orders[0].realized, 4);
     arrived.orders[0].realized = 0;
@@ -647,7 +683,7 @@ fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     state.corridor_capacities[0].available_grams = 3;
     state.route_stages[0].loss_ppm = 333_334;
     let (state, _) = babylon_material_circuit::admit_material_purchase(
@@ -655,8 +691,9 @@ fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash
         MaterialPurchase::Delivery(delivery()),
         money(2),
     )
-    .unwrap();
-    let first = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    .expect("the fixture admits the authored purchase");
+    let first = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     let CircuitAccounting::Monetary(book) = &first.state.accounting else {
         panic!("paid control");
     };
@@ -667,16 +704,17 @@ fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash
             .stocks
             .iter()
             .find(|r| r.owner == AccountId::Site(source()))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .amount,
         money(2)
     );
-    let second = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("the authored material state advances one period");
     let row = second
         .income
         .iter()
         .find(|r| r.account == AccountId::Site(source()))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(row.statement.sales, money(4));
     assert_eq!(row.statement.cost_of_goods_sold, money(4));
     assert_eq!(row.statement.freight_loss_expense, money(1));
@@ -684,7 +722,12 @@ fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash
     let CircuitAccounting::Monetary(book) = &second.state.accounting else {
         panic!("paid control");
     };
-    assert_eq!(book.book.total_cash_and_reserves().unwrap(), money(24));
+    assert_eq!(
+        book.book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
+        money(24)
+    );
     assert!(book.costs.snapshot().freight.is_empty());
 }
 

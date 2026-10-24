@@ -298,10 +298,10 @@ fn current_foundation() -> MaterialRuntimeFoundation {
     let catalog = MichiganMaterialCatalog::from_defines_toml(include_str!(
         "../../../../content/scenarios/michigan/defines.toml"
     ))
-    .unwrap();
+    .expect("the authored input admits the derived value");
     MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
         .create_foundation(&catalog)
-        .unwrap()
+        .expect("the authored catalog builds the foundation")
 }
 
 fn county_subject() -> ArchiveSubject {
@@ -449,10 +449,19 @@ fn assert_archive_current_card(reader_dsn: &str, campaign: &str) -> Value {
     assert_eq!(card["scope"]["tick"], 2);
     assert_eq!(card["scope"]["campaign_id"], campaign);
     assert_eq!(
-        card["scope"]["tick_content_hash"].as_str().unwrap().len(),
+        card["scope"]["tick_content_hash"]
+            .as_str()
+            .expect("the JSON fixture field is a string")
+            .len(),
         64
     );
-    assert_eq!(card["page"]["content_sha256"].as_str().unwrap().len(), 64);
+    assert_eq!(
+        card["page"]["content_sha256"]
+            .as_str()
+            .expect("the JSON fixture field is a string")
+            .len(),
+        64
+    );
     assert_eq!(card["geoid"], "26163");
     assert_eq!(card["page"]["title"], "Wayne County");
     assert_eq!(card["durable_tick"], 2);
@@ -670,8 +679,10 @@ fn assert_quiet_sweep_refreshes_held_card(
     assert_eq!(held_settled.read.durable_tick, 3);
     assert_eq!(held_settled.read.scope.tick(), 3);
     assert_eq!(verified_tick(&held_settled.read), Some(3));
-    let before_page = dossier::retained_page(&held_before.read).unwrap();
-    let settled_page = dossier::retained_page(&held_settled.read).unwrap();
+    let before_page = dossier::retained_page(&held_before.read)
+        .expect("the fixture call `retained_page` succeeds for the authored inputs");
+    let settled_page = dossier::retained_page(&held_settled.read)
+        .expect("the fixture call `retained_page` succeeds for the authored inputs");
     assert_eq!(settled_page.content_source.tick(), 2);
     assert_eq!(settled_page.atoms, before_page.atoms);
     assert_eq!(settled_page.changes.changes, before_page.changes.changes);
@@ -709,7 +720,7 @@ fn assert_pending_held_card(held_app: &mut App) {
     assert_eq!(held_pending.read.scope.tick(), 3);
     assert_eq!(
         dossier::retained_page(&held_pending.read)
-            .unwrap()
+            .expect("the fixture call `retained_page` succeeds for the authored inputs")
             .content_source
             .tick(),
         2
@@ -776,7 +787,7 @@ fn live_dossier_cli_reads_through_the_confined_reader_and_survives_restart() {
     let held_before = collect_held_card(&mut held_app);
     assert_eq!(
         dossier::retained_page(&held_before.read)
-            .unwrap()
+            .expect("the fixture call `retained_page` succeeds for the authored inputs")
             .content_source
             .tick(),
         2

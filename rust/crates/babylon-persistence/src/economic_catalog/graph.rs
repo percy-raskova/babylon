@@ -384,13 +384,13 @@ mod organizer_seed_tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/michigan/defines.toml"
         )))
-        .unwrap();
+        .expect("the authored literal parses as the declared type");
         let mut config = crate::organizer_content::config(
             CampaignId::from_uuid(Uuid::from_u128(26163)),
             &defines.organizer,
             [7; 32],
         )
-        .unwrap();
+        .expect("the fixture call `config` succeeds for the authored inputs");
         let actors: OrganizerActors = [
             (1, "wayne-organizing-collective", 26163),
             (2, "wayne-workplace-committee", 26163),
@@ -400,7 +400,8 @@ mod organizer_seed_tests {
         ];
         let promises = [vec![1, 2], vec![3, 4], vec![5]];
         let mut names = BTreeMap::new();
-        let mut nodes = organization_nodes(&actors).unwrap();
+        let mut nodes = organization_nodes(&actors)
+            .expect("the fixture call `organization_nodes` succeeds for the authored inputs");
         for (participant, actors) in config.participants.iter_mut().zip(promises) {
             participant.commitments = actors
                 .into_iter()
@@ -419,7 +420,8 @@ mod organizer_seed_tests {
                 attributes: vec![],
             });
         }
-        let bodies = participant_bodies(&actors, &config, &names).unwrap();
+        let bodies = participant_bodies(&actors, &config, &names)
+            .expect("the fixture call `participant_bodies` succeeds for the authored inputs");
         assert_eq!(bodies.len(), 5);
         assert!(bodies.iter().all(|body| body.members.len() == 2));
         let occurrences = names
@@ -449,7 +451,8 @@ mod organizer_seed_tests {
             .iter()
             .all(|edge| edge.target != "wayne-local-aid-partners"
                 && edge.target != "cook-independent-solidarity-partners"));
-        let seed = GraphSeed::try_new(nodes, contacts, bodies).unwrap();
+        let seed = GraphSeed::try_new(nodes, contacts, bodies)
+            .expect("the authored fixture satisfies the constructor invariants");
         let mut store = HypergraphStore::new();
         let loaded = babylon_bsl::scenario_seed::load_scenario_with_seed(
             include_str!(concat!(
@@ -460,7 +463,7 @@ mod organizer_seed_tests {
             &seed,
             &mut store,
         )
-        .unwrap();
+        .expect("the authored scenario compiles with its seed");
         assert_eq!(loaded.id, crate::national_economy::NATIONAL_SCENARIO_ID);
         let missing = BTreeMap::new();
         assert!(matches!(

@@ -22,16 +22,22 @@ fn atlas() -> CountyAtlas {
         env!("CARGO_MANIFEST_DIR"),
         "/../../../assets/map/county_atlas.bin"
     )))
-    .unwrap()
+    .expect("the authored literal parses as the declared type")
 }
 fn domestic_counties() -> Vec<String> {
     let atlas = atlas();
     let counties: Vec<_> = (0..atlas.len())
-        .map(|i| atlas.county(i).unwrap().fips)
+        .map(|i| {
+            atlas
+                .county(i)
+                .expect("the fixture catalog holds the addressed county")
+                .fips
+        })
         .filter(|fips| !fips.starts_with("72"))
-        .map(|fips| CountyGeoid::try_from(fips).unwrap())
+        .map(|fips| CountyGeoid::try_from(fips).expect("the fixture value fits the target range"))
         .collect();
-    NationalCountyRoster::try_new(counties.clone()).unwrap();
+    NationalCountyRoster::try_new(counties.clone())
+        .expect("the authored fixture satisfies the constructor invariants");
     counties
         .into_iter()
         .map(|county| county.to_string())
@@ -129,7 +135,7 @@ fn campaign_switch_installs_known_geography_and_preserves_admitted_wayne_selecti
         .world()
         .resource::<CountyAtlas>()
         .index_of_fips("26163")
-        .unwrap();
+        .expect("the fixture call `index_of_fips` succeeds for the authored inputs");
     assert_eq!(app.world().resource::<SelectedCounty>().0, Some(wayne));
     app.world_mut().resource_mut::<HoveredCounty>().0 = Some(wayne);
     let campaign = CampaignId::from_uuid(Uuid::from_u128(2));
@@ -142,7 +148,11 @@ fn campaign_switch_installs_known_geography_and_preserves_admitted_wayne_selecti
         campaign,
         vec!["02013".into(), "15005".into(), "26163".into()],
     );
-    frame.0.as_mut().unwrap().visibility = ObserverVisibility::KnownPreview;
+    frame
+        .0
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .visibility = ObserverVisibility::KnownPreview;
     *app.world_mut().resource_mut::<ObserverFrame>() = frame;
     app.update();
     assert_eq!(
@@ -167,7 +177,11 @@ fn changed_geography_in_one_foundation_refuses_and_removes_the_old_scene() {
     let mut app = scene(vec!["26163".into()]);
     {
         let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
-        let counties = &mut frame.0.as_mut().unwrap().counties;
+        let counties = &mut frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .counties;
         let mut addition = counties[0].clone();
         addition.county_geoid = "26165".into();
         counties.push(addition);
@@ -184,7 +198,7 @@ fn changed_geography_in_one_foundation_refuses_and_removes_the_old_scene() {
         .resource::<ObserverSession>()
         .error
         .as_deref()
-        .unwrap()
+        .expect("the fixture set the optional value before this read")
         .contains("ChangedGeography"));
     app.update();
     assert!(slabs(&mut app).is_empty());

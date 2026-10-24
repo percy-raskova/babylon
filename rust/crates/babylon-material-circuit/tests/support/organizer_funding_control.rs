@@ -355,7 +355,7 @@ fn time() -> HouseholdTimeAccounting {
                 })
                 .collect(),
         )
-        .unwrap(),
+        .expect("the constructor accepts the authored fixture arguments"),
     )
 }
 #[allow(
@@ -363,7 +363,9 @@ fn time() -> HouseholdTimeAccounting {
     reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
 )]
 pub fn opening() -> MaterialCircuitState {
-    let location = "county:26163".parse().unwrap();
+    let location = "county:26163"
+        .parse()
+        .expect("the authored literal parses as the declared type");
     let inventory = [(MATERIALS, 16), (FOOD, 36)]
         .map(|(g, quantity)| InventoryRow {
             site_id: site(RETAILER),
@@ -390,7 +392,7 @@ pub fn opening() -> MaterialCircuitState {
             )
             .collect(),
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let stocks = inventory
         .iter()
         .map(|r| StockCarryingValue {
@@ -414,7 +416,8 @@ pub fn opening() -> MaterialCircuitState {
             }),
         )
         .collect();
-    let costs = HistoricalCostBook::open(&book, stocks, vec![], vec![], vec![]).unwrap();
+    let costs = HistoricalCostBook::open(&book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     let financial = FinancialInstitutions {
         locations: [organization(), public()]
             .map(|account| InstitutionLocation { account, location })
@@ -580,7 +583,7 @@ pub fn controlled_opening(mut state: MaterialCircuitState) -> MaterialCircuitSta
     economy_mut(&mut state)
         .recurring
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .attendance = attendance(period);
     state.production_commitments = production(period);
     state
@@ -588,7 +591,7 @@ pub fn controlled_opening(mut state: MaterialCircuitState) -> MaterialCircuitSta
 pub fn collection(period: u64) -> CollectionResolveInput {
     CollectionResolveInput {
         original_commitment_id: content_digest::sha256_of(&period.to_be_bytes()),
-        command_nonce: [u8::try_from(period).unwrap(); 16],
+        command_nonce: [u8::try_from(period).expect("the fixture value fits the target range"); 16],
         admitted_period: period - 1,
         resolve_period: period,
         mandate_id: [93; 32],
@@ -650,27 +653,33 @@ pub fn coordinate(transition: &mut MaterialCircuitTransition) {
         },
     );
     babylon_material_circuit::consume_household_contributions(&mut transition.state, 2, &uses)
-        .unwrap();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&transition.state).unwrap();
+        .expect("the fixture consumes the authored contributions");
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&transition.state)
+        .expect("the canonical material state encodes");
     babylon_material_circuit::consume_household_contributions(&mut transition.state, 2, &uses)
-        .unwrap();
+        .expect("the fixture consumes the authored contributions");
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&transition.state).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&transition.state)
+            .expect("the canonical material state encodes"),
         bytes
     );
 }
 pub fn cash(state: &MaterialCircuitState, account: AccountId) -> i128 {
-    economy(state).book.cash(account).unwrap().micro_units()
+    economy(state)
+        .book
+        .cash(account)
+        .expect("the fixture book holds the payer account")
+        .micro_units()
 }
 pub fn stock(state: &MaterialCircuitState, principal: FinalDemandPrincipalId, g: u8) -> u64 {
     economy(state)
         .recurring
         .as_ref()
-        .unwrap()
+        .expect("the fixture set the optional field before this read")
         .household_stocks
         .iter()
         .find(|r| r.principal_id == principal && r.good_id == good(g))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity
 }
 pub fn remaining(state: &MaterialCircuitState, principal: FinalDemandPrincipalId) -> u64 {
@@ -681,7 +690,7 @@ pub fn remaining(state: &MaterialCircuitState, principal: FinalDemandPrincipalId
         .receipts
         .iter()
         .find(|r| r.principal_id == principal)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .contribution_available_hours;
     available
         - time

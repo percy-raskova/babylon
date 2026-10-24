@@ -741,8 +741,10 @@ mod retailer_index_controls {
             site_id: SiteId::from_bytes([id; 32]),
             function: EconomicFunction::CapitalGoods,
             source_ownership: None,
-            location: EconomicLocation::domestic_county(CountyGeoid::try_from(county).unwrap())
-                .unwrap(),
+            location: EconomicLocation::domestic_county(
+                CountyGeoid::try_from(county).expect("the fixture value fits the target range"),
+            )
+            .expect("the fixture geoid names a domestic county"),
             employed,
             employee_persons: employed,
             force: employed,
@@ -763,10 +765,10 @@ mod retailer_index_controls {
                 site,
                 UnitId::from_bytes([3; 32]),
                 2,
-                StaffingPolicy::one_period(1).unwrap(),
+                StaffingPolicy::one_period(1).expect("the one-period fixture advances"),
                 vec![StaffingWorkSource::MerchantHandling(site)],
             )
-            .unwrap(),
+            .expect("the authored fixture satisfies the constructor invariants"),
             previous_unretained_hours: 0,
             members: vec![],
         }
@@ -803,7 +805,7 @@ mod retailer_index_controls {
             let original = pools
                 .iter()
                 .position(|pool| pool.pool.site_id() == row.pool.site_id())
-                .unwrap();
+                .expect("the fixture sequence holds the addressed position");
             assert_eq!(indices.staffing[&row.pool.site_id()], original);
         }
         let empty = RetailFallbackIndices::new(&BTreeMap::new(), &[]);

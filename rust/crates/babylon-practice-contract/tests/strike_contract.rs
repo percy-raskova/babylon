@@ -36,7 +36,7 @@ fn cases() -> Vec<Value> {
         .take(32)
         .map(|line| {
             assert!(line.len() <= 65_536);
-            serde_json::from_str(line).unwrap()
+            serde_json::from_str(line).expect("the authored JSON matches the declared schema")
         })
         .collect()
 }
@@ -45,7 +45,7 @@ fn case<'a>(cases: &'a [Value], case_id: &str) -> &'a Value {
     cases
         .iter()
         .find(|value| value["case_id"] == case_id)
-        .unwrap()
+        .expect("the fixture holds the searched element")
 }
 
 fn strike_intent() -> PracticeIntent {
@@ -66,7 +66,7 @@ fn strike_intent() -> PracticeIntent {
             babylon_practice_contract::practice_resource_allocation_contract_digest(
                 &PracticeResourceAllocationContract::conservation_first(),
             )
-            .unwrap(),
+            .expect("the fixture call `practice_resource_allocation_contract_digest` succeeds for the authored inputs"),
         parameters: Vec::new(),
         evidence_digests: Vec::new(),
     }
@@ -94,7 +94,9 @@ fn authoritative_context(
         campaign_id: authority.campaign_id,
         resolve_tick: intent.resolve_tick,
         authority_ledger_digest: babylon_practice_contract::input_authority_ledger_digest(&ledger)
-            .unwrap(),
+            .expect(
+                "the fixture call `input_authority_ledger_digest` succeeds for the authored inputs",
+            ),
         resource_allocation_contract_digest: intent.quoted_resource_contract_digest,
         content_digest: intent.quoted_content_digest,
         items: vec![ResolvedPracticeBatchItem {
@@ -116,7 +118,11 @@ fn language_neutral_strike_vectors_drive_every_rust_digest() {
 
     let manifest = case(&cases, "manifest");
     assert_eq!(
-        hex_bytes(manifest["data"]["schema_sha256"].as_str().unwrap()),
+        hex_bytes(
+            manifest["data"]["schema_sha256"]
+                .as_str()
+                .expect("the JSON fixture field is a string")
+        ),
         STRIKE_PROPOSAL_SOURCE_SHA256
     );
     assert_eq!(manifest["data"]["contract_bytes"], 48);
@@ -124,35 +130,49 @@ fn language_neutral_strike_vectors_drive_every_rust_digest() {
     assert_eq!(manifest["data"]["admission_example_bytes"], 286);
 
     let contract_case = case(&cases, "strike-contract");
-    let contract_bytes = hex_bytes(contract_case["data"]["canonical_hex"].as_str().unwrap());
-    let contract =
-        babylon_practice_contract::decode_strike_proposal_contract(&contract_bytes).unwrap();
+    let contract_bytes = hex_bytes(
+        contract_case["data"]["canonical_hex"]
+            .as_str()
+            .expect("the JSON fixture field is a string"),
+    );
+    let contract = babylon_practice_contract::decode_strike_proposal_contract(&contract_bytes)
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(
-        encode_strike_proposal_contract(&contract).unwrap(),
+        encode_strike_proposal_contract(&contract)
+            .expect("the fixture value encodes to its canonical bytes"),
         contract_bytes
     );
     assert_eq!(
-        strike_proposal_contract_digest(&contract).unwrap().to_vec(),
-        hex_bytes(contract_case["data"]["digest_hex"].as_str().unwrap())
+        strike_proposal_contract_digest(&contract).expect("the fixture call `strike_proposal_contract_digest` succeeds for the authored inputs").to_vec(),
+        hex_bytes(contract_case["data"]["digest_hex"].as_str().expect("the JSON fixture field is a string"))
     );
 
     let register_case = case(&cases, "labor-process-register");
-    let register_bytes = hex_bytes(register_case["data"]["canonical_hex"].as_str().unwrap());
-    let register =
-        babylon_practice_contract::decode_strike_labor_process_register(&register_bytes).unwrap();
+    let register_bytes = hex_bytes(
+        register_case["data"]["canonical_hex"]
+            .as_str()
+            .expect("the JSON fixture field is a string"),
+    );
+    let register = babylon_practice_contract::decode_strike_labor_process_register(&register_bytes)
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(
-        encode_strike_labor_process_register(&register).unwrap(),
+        encode_strike_labor_process_register(&register)
+            .expect("the fixture value encodes to its canonical bytes"),
         register_bytes
     );
     assert_eq!(
         strike_labor_process_register_digest(&register)
-            .unwrap()
+            .expect("the fixture call `strike_labor_process_register_digest` succeeds for the authored inputs")
             .to_vec(),
-        hex_bytes(register_case["data"]["digest_hex"].as_str().unwrap())
+        hex_bytes(register_case["data"]["digest_hex"].as_str().expect("the JSON fixture field is a string"))
     );
 
     let admission_case = case(&cases, "admitted-strike-proposal");
-    let admission_bytes = hex_bytes(admission_case["data"]["canonical_hex"].as_str().unwrap());
+    let admission_bytes = hex_bytes(
+        admission_case["data"]["canonical_hex"]
+            .as_str()
+            .expect("the JSON fixture field is a string"),
+    );
     let intent = strike_intent();
     let (ledger, batch) = authoritative_context(&intent);
     let admission = babylon_practice_contract::decode_admitted_strike_proposal(
@@ -163,16 +183,17 @@ fn language_neutral_strike_vectors_drive_every_rust_digest() {
         babylon_practice_contract::practice_proposal_key(&intent),
         &register,
     )
-    .unwrap();
+    .expect("the canonical bytes decode into the declared type");
     assert_eq!(
-        encode_admitted_strike_proposal(&contract, &admission).unwrap(),
+        encode_admitted_strike_proposal(&contract, &admission)
+            .expect("the fixture value encodes to its canonical bytes"),
         admission_bytes
     );
     assert_eq!(
         admitted_strike_proposal_digest(&contract, &admission)
-            .unwrap()
+            .expect("the fixture call `admitted_strike_proposal_digest` succeeds for the authored inputs")
             .to_vec(),
-        hex_bytes(admission_case["data"]["digest_hex"].as_str().unwrap())
+        hex_bytes(admission_case["data"]["digest_hex"].as_str().expect("the JSON fixture field is a string"))
     );
 }
 
@@ -182,9 +203,19 @@ fn language_neutral_invalid_contract_vectors_keep_exact_refusals() {
         .iter()
         .filter(|value| value["kind"] == "invalid_contract_wire")
     {
-        let payload = hex_bytes(value["data"]["payload_hex"].as_str().unwrap());
-        let code = u16::try_from(value["data"]["error"].as_u64().unwrap()).unwrap();
-        let expected = StrikeProposalError::try_from(code).unwrap();
+        let payload = hex_bytes(
+            value["data"]["payload_hex"]
+                .as_str()
+                .expect("the JSON fixture field is a string"),
+        );
+        let code = u16::try_from(
+            value["data"]["error"]
+                .as_u64()
+                .expect("the JSON fixture field is an unsigned integer"),
+        )
+        .expect("the fixture value fits the target range");
+        let expected =
+            StrikeProposalError::try_from(code).expect("the fixture value fits the target range");
         assert_eq!(
             babylon_practice_contract::decode_strike_proposal_contract(&payload),
             Err(expected),

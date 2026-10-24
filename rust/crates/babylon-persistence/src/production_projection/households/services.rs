@@ -170,12 +170,20 @@ mod tests {
         let CircuitAccounting::Monetary(economy) = &mut opening.accounting else {
             panic!("monetary control");
         };
-        let cohort = &mut economy.recurring.as_mut().unwrap().households[0];
+        let cohort = &mut economy
+            .recurring
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .households[0];
         cohort.kind = HouseholdKind::CollectiveResidence;
         cohort.households = 0;
-        let opening = MaterialWorldRegister::try_new(0, opening).unwrap();
-        let next = opening.prepare_next().unwrap();
-        let mut receipts = material_world::decode_material_receipts(next.receipt_bytes()).unwrap();
+        let opening = MaterialWorldRegister::try_new(0, opening)
+            .expect("the authored fixture satisfies the constructor invariants");
+        let next = opening
+            .prepare_next()
+            .expect("the fixture prepares the authored state");
+        let mut receipts = material_world::decode_material_receipts(next.receipt_bytes())
+            .expect("the canonical bytes decode into the declared type");
         let project = |receipts: &MaterialTickReceipts| {
             project_with_labels(
                 next.register().state(),
@@ -184,11 +192,14 @@ mod tests {
                 |_, _| Some(("care".into(), "service-hours".into())),
             )
         };
-        let rows = project(&receipts).unwrap();
+        let rows = project(&receipts).expect("the fixture projection accepts the authored state");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].kind, ProductionHouseholdKind::CollectiveResidence);
         assert_eq!((rows[0].person_count, rows[0].household_count), (1, 0));
-        let done = rows[0].completed.as_ref().unwrap();
+        let done = rows[0]
+            .completed
+            .as_ref()
+            .expect("the fixture set the optional field before this read");
         let actual = &receipts.household_services[0];
         assert_eq!(
             (done.required, done.performed, done.satisfied),

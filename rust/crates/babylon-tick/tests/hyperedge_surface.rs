@@ -123,7 +123,8 @@ fn update_hyperedge_refuses_a_qname_owned_by_another_type() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink)
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("the referent is a COMMUNITY hyperedge, not ECONOMIC_SECTOR"),
         "the referent check names both types: {err}"
@@ -150,7 +151,8 @@ fn a_hyperedge_owned_field_binding_names_no_subject_type() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink)
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("names no subject type"),
         "the subject-type error, not silent inertness: {err}"
@@ -175,7 +177,8 @@ fn update_hyperedge_refuses_a_wrong_typed_write_value() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink)
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("cannot store") && err.contains("community/heat"),
         "the write-value type refusal names the field: {err}"
@@ -214,7 +217,8 @@ fn field_of_an_enum_typed_hyperedge_field_refuses_arithmetic() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = babylon_tick::run_once_into(scenario, rule, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(scenario, rule, &mut graph, &mut sink)
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("no arithmetic is defined on"),
         "Enum<T> in arithmetic position refuses: {err}"

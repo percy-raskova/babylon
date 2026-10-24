@@ -246,12 +246,12 @@ pub(super) fn check_time(
         row.period,
         unit,
     )?;
-    for time in after
+    let donor_times = after
         .aid
         .iter()
         .filter(|p| p.donor_id == row.donor.as_bytes())
-        .filter_map(|p| p.time.as_ref())
-    {
+        .filter_map(|p| p.time.as_ref());
+    for time in donor_times {
         if time.period != row.period
             || time.labor_unit_id != unit
             || time.remaining_hours != remaining

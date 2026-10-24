@@ -32,21 +32,23 @@ fn preregistration(driver: Digest32) -> SfsPreregistration {
         digest(3),
         digest(7),
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 #[test]
 fn exact_contract_binds_an_opaque_handle() {
-    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER).unwrap();
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER)
+        .expect("the synthetic contract parses");
     let prereg = preregistration(contract.manifest_digest());
     assert!(bind_synthetic_driver(&prereg, &contract).is_ok());
 }
 
 #[test]
 fn source_predicate_and_preregistration_mutations_refuse() {
-    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER).unwrap();
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER)
+        .expect("the synthetic contract parses");
     let changed_predicate = String::from_utf8(DRIVER.to_vec())
-        .unwrap()
+        .expect("the fixture bytes came from a UTF-8 string")
         .replace("candidate-projection|2", "candidate-projection|3");
     assert!(matches!(
         babylon_evidence::parse_synthetic_driver_contract(changed_predicate.as_bytes()),
@@ -76,7 +78,8 @@ fn seven_row_schema_refuses_missing_extra_reordered_and_renamed_rows() {
         babylon_evidence::parse_synthetic_driver_contract(&vec![b'x'; 4_097]),
         Err(SyntheticDriverContractError::ManifestByteLimit { actual: 4_097 })
     );
-    let text = String::from_utf8(DRIVER.to_vec()).unwrap();
+    let text =
+        String::from_utf8(DRIVER.to_vec()).expect("the fixture bytes came from a UTF-8 string");
     let rows = text.lines().collect::<Vec<_>>();
     let missing = format!("{}\n", rows[..6].join("\n"));
     assert!(matches!(
@@ -104,7 +107,8 @@ fn seven_row_schema_refuses_missing_extra_reordered_and_renamed_rows() {
 
 #[test]
 fn rust_recomputes_both_driver_vector_preimages_and_digests() {
-    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER).unwrap();
+    let contract = babylon_evidence::parse_synthetic_driver_contract(DRIVER)
+        .expect("the synthetic contract parses");
     let rows = DRIVER_VECTORS.lines().collect::<Vec<_>>();
     assert_eq!(rows.len(), 2);
     for row in rows {
@@ -132,7 +136,13 @@ fn hex_bytes(value: &str) -> Vec<u8> {
     value
         .as_bytes()
         .chunks_exact(2)
-        .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+        .map(|pair| {
+            u8::from_str_radix(
+                std::str::from_utf8(pair).expect("the fixture bytes came from a UTF-8 string"),
+                16,
+            )
+            .expect("the authored digits parse as the declared type")
+        })
         .collect()
 }
 

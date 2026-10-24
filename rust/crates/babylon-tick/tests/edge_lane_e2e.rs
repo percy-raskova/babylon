@@ -39,8 +39,14 @@
 // Conformance fixtures exercise exact engine values, transcribe spec literals,
 // and build whole scenarios in one test. These pedantic lints would force
 // ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::unreadable_literal)]
-#![allow(clippy::float_cmp)]
+#![allow(
+    clippy::unreadable_literal,
+    reason = "the literal is an authored byte pattern"
+)]
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
 
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
@@ -92,7 +98,7 @@ fn shape_1_edges_fold_sums_every_solidarity_edge_in_the_graph() {
 
     let fold_total = graph
         .node_attribute(FOLD_REPORTER, "social-class/fold-total")
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     assert_eq!(
         fold_total, 0.796875,
         "0.125 + 0.03125 + 0.015625 + 0.0625 + 0.125 + 0.1875 + 0.25 = \
@@ -165,7 +171,7 @@ fn shape_2a_edge_between_resolves_and_reads_strength() {
 
     let fold_total = graph
         .node_attribute(PAIR_X, "social-class/fold-total")
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     assert_eq!(
         fold_total, 0.03125,
         "the strength seeded at (edge … pair-x pair-y 0.03125c), read back \
@@ -223,7 +229,7 @@ fn shape_3_self_anchored_neighbors_and_edge_between_sums_incoming_strength() {
 
     let fold_total = graph
         .node_attribute(HUB, "social-class/fold-total")
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     assert_eq!(
         fold_total, 0.375,
         "0.0625 + 0.125 + 0.1875 = 0.375 exactly — hub's three incoming \

@@ -126,8 +126,8 @@ fn a_ratio_over_its_declared_cap_fails_the_whole_tick_loudly() {
 ";
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
-    let err =
-        babylon_tick::run_once_into(OVER_CAP_SCENARIO, RULE, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(OVER_CAP_SCENARIO, RULE, &mut graph, &mut sink)
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("exceeds its own :cap"),
         "unexpected message: {err}"
@@ -231,7 +231,7 @@ fn a_modded_entropy_factor_below_its_floor_fails_the_whole_tick_loudly() {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
     let err = babylon_tick::run_once_into(BELOW_FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink)
-        .unwrap_err();
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("does not exceed its own :floor"),
         "unexpected message: {err}"
@@ -254,7 +254,7 @@ fn a_modded_entropy_factor_exactly_at_its_floor_fails_the_whole_tick_loudly() {
     let mut graph = MemoryGraph::new();
     let mut sink = CollectingSink::default();
     let err = babylon_tick::run_once_into(AT_FLOOR_SCENARIO, FLOOR_RULE, &mut graph, &mut sink)
-        .unwrap_err();
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("does not exceed its own :floor"),
         "unexpected message: {err}"

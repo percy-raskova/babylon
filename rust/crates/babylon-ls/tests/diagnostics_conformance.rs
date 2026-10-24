@@ -226,8 +226,11 @@ fn row_3_duplicate_intrinsic_is_form_tier_with_the_second_declaration_related() 
         .expect("ambiguous outcome carries relatedInformation");
     assert_eq!(related.len(), 2);
     let second = &related[1].location.range;
-    let second_start = usize::try_from(second.start.character).unwrap();
-    let second_form_start = rule_source.rfind("(intrinsic floor").unwrap();
+    let second_start =
+        usize::try_from(second.start.character).expect("the fixture value fits the target range");
+    let second_form_start = rule_source
+        .rfind("(intrinsic floor")
+        .expect("the fixture call `rfind` succeeds for the authored inputs");
     // `second_form_start` is the SECOND `(intrinsic floor ...)` form's own
     // opening paren; its `floor` atom starts 10 bytes later
     // ("(intrinsic ".len()).
@@ -332,8 +335,8 @@ note = "determinism row fixture"
     let first = pass::diagnose_bsl(&uri("rules/a.bsl"), "rules/a.bsl", &manifest, &source);
     let second = pass::diagnose_bsl(&uri("rules/a.bsl"), "rules/a.bsl", &manifest, &source);
     assert_eq!(
-        serde_json::to_string(&first).unwrap(),
-        serde_json::to_string(&second).unwrap()
+        serde_json::to_string(&first).expect("the fixture value formats as text"),
+        serde_json::to_string(&second).expect("the fixture value formats as text")
     );
     assert!(
         !first.is_empty(),
@@ -354,8 +357,8 @@ note = "determinism row fixture"
         &source,
     );
     assert_eq!(
-        serde_json::to_string(&first).unwrap(),
-        serde_json::to_string(&reversed).unwrap(),
+        serde_json::to_string(&first).expect("the fixture value formats as text"),
+        serde_json::to_string(&reversed).expect("the fixture value formats as text"),
         "reversing rule_srcs order must not change the serialized diagnostic array"
     );
 }

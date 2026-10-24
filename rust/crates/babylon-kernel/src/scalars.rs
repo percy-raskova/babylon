@@ -100,7 +100,8 @@ mod tests {
 
     #[test]
     fn probability_quantizes_on_construction() {
-        let p = Probability::new(0.123_456_789).unwrap();
+        let p = Probability::new(0.123_456_789)
+            .expect("the constructor accepts the authored fixture arguments");
         assert!((p.get() - 0.123_457).abs() < 1e-12);
     }
 

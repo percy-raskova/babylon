@@ -312,7 +312,7 @@ mod defines_tests {
         use super::super::RuntimeSessionPreset;
         let directory =
             std::env::temp_dir().join(format!("babylon-statewide-defines-{}", std::process::id()));
-        std::fs::create_dir(&directory).unwrap();
+        std::fs::create_dir(&directory).expect("the fixture directory is creatable");
         let path = directory.join("defines.toml");
         let manifest = directory.join("statewide-sources.json");
         std::fs::write(
@@ -322,7 +322,7 @@ mod defines_tests {
                 "/../../../content/scenarios/michigan/defines.toml"
             )),
         )
-        .unwrap();
+        .expect("the fixture sink accepts the authored bytes");
         for preset in [
             RuntimeSessionPreset::StatewideBaseline,
             RuntimeSessionPreset::StatewideFreightConstraint,
@@ -338,15 +338,15 @@ mod defines_tests {
                 new_foundation(preset, &path, campaign),
                 Err(RuntimeSessionErrorCode::DefinesMissing)
             ));
-            std::fs::write(&manifest, b"{}").unwrap();
+            std::fs::write(&manifest, b"{}").expect("the fixture sink accepts the authored bytes");
             assert!(matches!(
                 new_foundation(preset, &path, campaign),
                 Err(RuntimeSessionErrorCode::DefinesInvalid)
             ));
-            std::fs::remove_file(&manifest).unwrap();
+            std::fs::remove_file(&manifest).expect("the fixture file exists before removal");
         }
-        std::fs::remove_file(&path).unwrap();
-        std::fs::remove_dir(&directory).unwrap();
+        std::fs::remove_file(&path).expect("the fixture file exists before removal");
+        std::fs::remove_dir(&directory).expect("the fixture directory exists before removal");
     }
     #[test]
     fn michigan_new_captures_changed_parameters_and_refuses_missing_or_malformed_sources() {
@@ -362,8 +362,9 @@ mod defines_tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/michigan/defines.toml"
         ));
-        std::fs::write(&path, source).unwrap();
-        let first = new_foundation(preset, &path, campaign).unwrap();
+        std::fs::write(&path, source).expect("the fixture sink accepts the authored bytes");
+        let first = new_foundation(preset, &path, campaign)
+            .expect("the fixture call `new_foundation` succeeds for the authored inputs");
         std::fs::write(
             &path,
             source.replace(
@@ -371,19 +372,21 @@ mod defines_tests {
                 "WORK_HOURS_PER_PERSON_WEEK = 45",
             ),
         )
-        .unwrap();
-        let second = new_foundation(preset, &path, campaign).unwrap();
+        .expect("the fixture sink accepts the authored bytes");
+        let second = new_foundation(preset, &path, campaign)
+            .expect("the fixture call `new_foundation` succeeds for the authored inputs");
         assert_ne!(first.digest(), second.digest());
         assert_ne!(
             first.initial_register().canonical_bytes(),
             second.initial_register().canonical_bytes()
         );
-        std::fs::write(&path, "malformed = [").unwrap();
+        std::fs::write(&path, "malformed = [")
+            .expect("the fixture sink accepts the authored bytes");
         assert!(matches!(
             new_foundation(preset, &path, campaign),
             Err(RuntimeSessionErrorCode::DefinesMalformed)
         ));
-        std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(path).expect("the fixture file exists before removal");
     }
 
     #[test]

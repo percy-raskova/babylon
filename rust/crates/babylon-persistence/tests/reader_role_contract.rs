@@ -153,7 +153,7 @@ fn reader_error_taxonomy_is_closed_and_reader_scoped() {
 fn refusal(raw: &str) -> SemanticArchiveReaderError {
     SemanticArchiveReader::from_dsn(raw)
         .map(|_| ())
-        .unwrap_err()
+        .expect_err("the fixture call `map` fails for the authored inputs")
 }
 
 #[test]
@@ -197,7 +197,9 @@ fn from_dsn_admits_only_validated_loopback_targets() {
 fn from_env_reports_a_missing_reader_dsn() {
     std::env::remove_var(READER_DSN_ENV);
     assert_eq!(
-        SemanticArchiveReader::from_env().map(|_| ()).unwrap_err(),
+        SemanticArchiveReader::from_env()
+            .map(|_| ())
+            .expect_err("the fixture call `map` fails for the authored inputs"),
         SemanticArchiveReaderError::MissingEnv(READER_DSN_ENV)
     );
     std::env::set_var(READER_DSN_ENV, "postgresql://reader@127.0.0.1:5432/babylon");

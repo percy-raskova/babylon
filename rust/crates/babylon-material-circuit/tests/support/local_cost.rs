@@ -42,7 +42,7 @@ fn local_cost_economy() -> MonetaryCircuit {
         })
         .collect(),
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let costs = HistoricalCostBook::open(
         &book,
         [1, 2]
@@ -58,7 +58,7 @@ fn local_cost_economy() -> MonetaryCircuit {
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     MonetaryCircuit {
         aid: AidBook::default(),
 
@@ -172,20 +172,21 @@ fn local_cost_opening() -> MaterialCircuitState {
         MaterialPurchase::Delivery(order),
         crate::money(9),
     )
-    .unwrap()
+    .expect("the fixture admits the authored purchase")
     .0
 }
 
 #[test]
 fn historical_cost_deferred_local_acquisition_does_not_reprice_second_pass_sales() {
-    let closed = babylon_material_circuit::advance_material_circuit(&local_cost_opening()).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&local_cost_opening())
+        .expect("the authored material state advances one period");
     assert_eq!(closed.local_transfers.len(), 2);
     assert_eq!(closed.procurement[0].admitted_quantity, 1);
     let intermediary = closed
         .income
         .iter()
         .find(|row| row.account == AccountId::Site(crate::site(2)))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(intermediary.statement.sales, crate::money(2));
     assert_eq!(intermediary.statement.cost_of_goods_sold, crate::money(1));
     assert_eq!(intermediary.statement.handling_expense, crate::money(1));
@@ -196,7 +197,7 @@ fn historical_cost_deferred_local_acquisition_does_not_reprice_second_pass_sales
             .stocks
             .iter()
             .find(|row| row.owner == AccountId::Site(crate::site(2)))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .amount,
         crate::money(9)
     );
@@ -205,7 +206,7 @@ fn historical_cost_deferred_local_acquisition_does_not_reprice_second_pass_sales
             .stocks
             .iter()
             .find(|row| row.owner == AccountId::Site(crate::site(3)))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .amount,
         crate::money(2)
     );
@@ -215,7 +216,7 @@ fn historical_cost_deferred_local_acquisition_does_not_reprice_second_pass_sales
             .inventory
             .iter()
             .find(|row| row.site_id == crate::site(2))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .quantity,
         1
     );
@@ -223,7 +224,7 @@ fn historical_cost_deferred_local_acquisition_does_not_reprice_second_pass_sales
         crate::economy(&closed.state)
             .book
             .total_cash_and_reserves()
-            .unwrap(),
+            .expect("the fixture book totals without overflow"),
         crate::money(20)
     );
 }

@@ -15,47 +15,55 @@ use crate::production_projection::recurring_fixture as recurring_control;
 fn opening(preset: MichiganContentPreset) -> MaterialRuntimeFoundation {
     preset
         .create_foundation(&crate::test_support::catalog())
-        .unwrap()
+        .expect("the authored catalog builds the foundation")
 }
 fn admit_delta(lookup: &TypedLookup, delta: &[IdentityEntry]) -> TypedLookup {
     let mut entries = lookup.entries().to_vec();
     entries.extend_from_slice(delta);
-    TypedLookup::from_entries(entries).unwrap()
+    TypedLookup::from_entries(entries).expect("the authored entries admit the value")
 }
 #[test]
 fn current_tick_reconstructs_exact_canonical_register_without_current_input() {
     let foundation = opening(MichiganContentPreset::FourWeekStandard);
     let base = foundation.initial_register().canonical_bytes().to_vec();
-    let authority = OpeningRegister::from_canonical(&base).unwrap();
+    let authority =
+        OpeningRegister::from_canonical(&base).expect("the canonical bytes admit the value");
     let lookup = authority.lookup().clone();
-    let session = foundation.into_session().unwrap();
+    let session = foundation
+        .into_session()
+        .expect("the fixture opens a session");
     let actions =
         OrderedPracticeActionBatch::empty(session.graph_session().session_identity().clone(), 1)
-            .unwrap();
-    let candidate = session.prepare_advance(&actions).unwrap();
+            .expect("the empty authored batch constructs");
+    let candidate = session
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance");
     let current = candidate.material().register().canonical_bytes();
-    let admitted_current = MaterialWorldRegister::decode(current).unwrap();
-    let encoded =
-        register::encode_register_with_opening(&authority, &admitted_current, &lookup).unwrap();
+    let admitted_current =
+        MaterialWorldRegister::decode(current).expect("the committed canonical bytes decode");
+    let encoded = register::encode_register_with_opening(&authority, &admitted_current, &lookup)
+        .expect("the register encodes with its opening");
     let updated = admit_delta(&lookup, &encoded.lookup_delta);
     assert_eq!(
         decode_admitted(&authority, &encoded.package, &updated, [0; 32])
-            .unwrap()
+            .expect("the admitted canonical bytes decode")
             .canonical_bytes(),
         current
     );
     assert_eq!(
         encoded.package,
         register::encode_register_with_opening(&authority, &admitted_current, &lookup)
-            .unwrap()
+            .expect("the register encodes with its opening")
             .package
     );
     // Later receipt ownership must not change an earlier state prefix binding.
     let mut later = updated;
-    later.intern(IdentityKind::Contribution, [231; 32]).unwrap();
+    later
+        .intern(IdentityKind::Contribution, [231; 32])
+        .expect("the fixture interner admits the symbol");
     assert_eq!(
         decode_admitted(&authority, &encoded.package, &later, [0; 32])
-            .unwrap()
+            .expect("the admitted canonical bytes decode")
             .canonical_bytes(),
         current
     );
@@ -66,41 +74,51 @@ fn current_organizer_bytes_are_retained_instead_of_assuming_empty_trailer() {
     let defines = MichiganDefines::parse(include_str!(
         "../../../../../content/scenarios/michigan/defines.toml"
     ))
-    .unwrap();
+    .expect("the authored literal parses as the declared type");
     let register = foundation.initial_register().clone();
     let config = crate::organizer_content::config(
         CampaignId::from_uuid(Uuid::from_u128(719)),
         &defines.organizer,
         register.state().process_outputs[0].process_id.as_bytes(),
     )
-    .unwrap();
-    let organizer = babylon_practice_contract::initial_organizer_state(&config).unwrap();
-    let register = register.with_organizer(config, organizer).unwrap();
+    .expect("the fixture call `config` succeeds for the authored inputs");
+    let organizer = babylon_practice_contract::initial_organizer_state(&config)
+        .expect("the authored config admits an opening organizer state");
+    let register = register
+        .with_organizer(config, organizer)
+        .expect("the fixture builder accepts the authored options");
     let base = register.canonical_bytes();
     assert!(register.organizer_config().is_some());
-    let authority = OpeningRegister::from_canonical(base).unwrap();
+    let authority =
+        OpeningRegister::from_canonical(base).expect("the canonical bytes admit the value");
     let lookup = authority.lookup().clone();
-    let admitted_current = MaterialWorldRegister::decode(base).unwrap();
-    let encoded =
-        register::encode_register_with_opening(&authority, &admitted_current, &lookup).unwrap();
+    let admitted_current =
+        MaterialWorldRegister::decode(base).expect("the committed canonical bytes decode");
+    let encoded = register::encode_register_with_opening(&authority, &admitted_current, &lookup)
+        .expect("the register encodes with its opening");
     assert_eq!(
         decode_admitted(&authority, &encoded.package, &lookup, [0; 32])
-            .unwrap()
+            .expect("the admitted canonical bytes decode")
             .canonical_bytes(),
         base
     );
-    let trailer = schema::sections(base).unwrap().pop().unwrap();
+    let trailer = schema::sections(base)
+        .expect("the fixture call `sections` succeeds for the authored inputs")
+        .pop()
+        .expect("the fixture map holds the entry being removed");
     assert!(trailer.end - trailer.start > 1);
 }
 #[test]
 fn wrong_base_damaged_package_and_trailing_bytes_refuse() {
     let foundation = opening(MichiganContentPreset::FourWeekStandard);
     let base = foundation.initial_register().canonical_bytes();
-    let authority = OpeningRegister::from_canonical(base).unwrap();
+    let authority =
+        OpeningRegister::from_canonical(base).expect("the canonical bytes admit the value");
     let lookup = authority.lookup().clone();
-    let admitted_current = MaterialWorldRegister::decode(base).unwrap();
-    let encoded =
-        register::encode_register_with_opening(&authority, &admitted_current, &lookup).unwrap();
+    let admitted_current =
+        MaterialWorldRegister::decode(base).expect("the committed canonical bytes decode");
+    let encoded = register::encode_register_with_opening(&authority, &admitted_current, &lookup)
+        .expect("the register encodes with its opening");
     let mut damaged = encoded.package.clone();
     damaged[DOMAIN.len()] ^= 1;
     assert_eq!(
@@ -124,10 +142,19 @@ fn wrong_base_damaged_package_and_trailing_bytes_refuse() {
 fn typed_lookup_does_not_alias_equal_bytes_across_identity_domains() {
     let mut lookup = TypedLookup::default();
     let bytes = [0; 32];
-    let site = lookup.intern(IdentityKind::Site, bytes).unwrap();
-    let good = lookup.intern(IdentityKind::Good, bytes).unwrap();
+    let site = lookup
+        .intern(IdentityKind::Site, bytes)
+        .expect("the fixture interner admits the symbol");
+    let good = lookup
+        .intern(IdentityKind::Good, bytes)
+        .expect("the fixture interner admits the symbol");
     assert_ne!(site, good);
-    assert_eq!(lookup.intern(IdentityKind::Site, bytes).unwrap(), site);
+    assert_eq!(
+        lookup
+            .intern(IdentityKind::Site, bytes)
+            .expect("the fixture interner admits the symbol"),
+        site
+    );
     assert_eq!(
         lookup.resolve(site, IdentityKind::Good),
         Err(StorageError::IdentityKind)
@@ -136,7 +163,8 @@ fn typed_lookup_does_not_alias_equal_bytes_across_identity_domains() {
         lookup.resolve(u32::MAX, IdentityKind::Site),
         Err(StorageError::LookupIndex)
     );
-    let packed = register::encode_lookup(lookup.entries()).unwrap();
+    let packed = register::encode_lookup(lookup.entries())
+        .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(packed.len(), 70);
     assert_eq!(&packed[..4], &2_u32.to_be_bytes());
     assert_eq!(packed[4], IdentityKind::Site as u8);
@@ -168,23 +196,35 @@ fn account_and_equipment_variants_use_their_own_typed_domain() {
         raw.push(tag);
         raw.extend_from_slice(&[19; 32]);
         raw.extend_from_slice(&(-43_i128).to_be_bytes());
-        let shape = super::layout(24).unwrap();
+        let shape = super::layout(24).expect("the fixture layout builds");
         let mut lookup = TypedLookup::default();
-        let normalized = register::normalize(&raw, shape, &mut lookup, true).unwrap();
+        let normalized = register::normalize(&raw, shape, &mut lookup, true)
+            .expect("the fixture content normalizes");
         assert_eq!(lookup.entries()[0].kind, expected);
         assert_eq!(
-            expand(&normalized.bytes, 1, shape, &lookup, lookup.entries().len()).unwrap(),
+            expand(&normalized.bytes, 1, shape, &lookup, lookup.entries().len())
+                .expect("the fixture call `expand` succeeds for the authored inputs"),
             raw
         );
     }
-    let field = super::layout(43).unwrap().fields[0];
-    assert_eq!(kind(field, &[0]).unwrap(), IdentityKind::Installation);
-    assert_eq!(kind(field, &[1]).unwrap(), IdentityKind::EquipmentCohort);
+    let field = super::layout(43).expect("the fixture layout builds").fields[0];
+    assert_eq!(
+        kind(field, &[0]).expect("the fixture call `kind` succeeds for the authored inputs"),
+        IdentityKind::Installation
+    );
+    assert_eq!(
+        kind(field, &[1]).expect("the fixture call `kind` succeeds for the authored inputs"),
+        IdentityKind::EquipmentCohort
+    );
     assert_eq!(kind(field, &[2]), Err(StorageError::IdentityKind));
 }
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`xor_restores_exact_numeric_bytes_but_refuses_changed_identity_rows` keeps one authored boundary's fixture and assertions together"
+)]
 fn xor_restores_exact_numeric_bytes_but_refuses_changed_identity_rows() {
-    let shape = super::layout(10).unwrap();
+    let shape = super::layout(10).expect("the fixture layout builds");
     let mut old = 1_u32.to_be_bytes().to_vec();
     old.extend_from_slice(&[7; 32]);
     old.extend_from_slice(&[9; 32]);
@@ -193,8 +233,10 @@ fn xor_restores_exact_numeric_bytes_but_refuses_changed_identity_rows() {
     let mut current = old.clone();
     current[107] = 43;
     let mut lookup = TypedLookup::default();
-    let prior = register::normalize(&old, shape, &mut lookup, true).unwrap();
-    let next = register::normalize(&current, shape, &mut lookup, true).unwrap();
+    let prior = register::normalize(&old, shape, &mut lookup, true)
+        .expect("the fixture content normalizes");
+    let next = register::normalize(&current, shape, &mut lookup, true)
+        .expect("the fixture content normalizes");
     let xor = next
         .bytes
         .iter()
@@ -203,9 +245,15 @@ fn xor_restores_exact_numeric_bytes_but_refuses_changed_identity_rows() {
         .collect::<Vec<_>>();
     let block = register::compressed(
         3,
-        register::columns(&xor, 1, register::normalized_width(shape).unwrap()).unwrap(),
+        register::columns(
+            &xor,
+            1,
+            register::normalized_width(shape)
+                .expect("the fixture call `normalized_width` succeeds for the authored inputs"),
+        )
+        .expect("the fixture call `columns` succeeds for the authored inputs"),
     )
-    .unwrap();
+    .expect("the fixture call `compressed` succeeds for the authored inputs");
     let stored = StoredSection {
         id: 10,
         mode: 3,
@@ -229,12 +277,13 @@ fn xor_restores_exact_numeric_bytes_but_refuses_changed_identity_rows() {
             &lookup,
             lookup.entries().len()
         )
-        .unwrap(),
+        .expect("the fixture call `restore_section` succeeds for the authored inputs"),
         current
     );
     let mut changed_key = current.clone();
     changed_key[4] = 8;
-    let changed = register::normalize(&changed_key, shape, &mut lookup, true).unwrap();
+    let changed = register::normalize(&changed_key, shape, &mut lookup, true)
+        .expect("the fixture content normalizes");
     let xor = changed
         .bytes
         .iter()
@@ -243,9 +292,15 @@ fn xor_restores_exact_numeric_bytes_but_refuses_changed_identity_rows() {
         .collect::<Vec<_>>();
     let block = register::compressed(
         3,
-        register::columns(&xor, 1, register::normalized_width(shape).unwrap()).unwrap(),
+        register::columns(
+            &xor,
+            1,
+            register::normalized_width(shape)
+                .expect("the fixture call `normalized_width` succeeds for the authored inputs"),
+        )
+        .expect("the fixture call `columns` succeeds for the authored inputs"),
     )
-    .unwrap();
+    .expect("the fixture call `compressed` succeeds for the authored inputs");
     let changed_stored = StoredSection {
         id: 10,
         mode: 3,
@@ -280,25 +335,35 @@ fn xor_restores_exact_numeric_bytes_but_refuses_changed_identity_rows() {
 #[test]
 fn compiled_layouts_include_all_empty_family_identity_fields() {
     for (id, width) in [(41, 81), (71, 282), (72, 169)] {
-        assert_eq!(super::layout(id).unwrap().width, width);
+        assert_eq!(
+            super::layout(id).expect("the fixture layout builds").width,
+            width
+        );
     }
     let mut lookup = TypedLookup::default();
-    let mandate = lookup.intern(IdentityKind::AidMandate, [17; 32]).unwrap();
-    let order = lookup.intern(IdentityKind::Order, [17; 32]).unwrap();
+    let mandate = lookup
+        .intern(IdentityKind::AidMandate, [17; 32])
+        .expect("the fixture interner admits the symbol");
+    let order = lookup
+        .intern(IdentityKind::Order, [17; 32])
+        .expect("the fixture interner admits the symbol");
     assert_ne!(mandate, order);
     assert_eq!(
-        IdentityKind::from_tag(20).unwrap(),
+        IdentityKind::from_tag(20).expect("the authored tag names a known variant"),
         IdentityKind::AidMandate
     );
     assert_eq!(
-        lookup.resolve(mandate, IdentityKind::AidMandate).unwrap(),
+        lookup
+            .resolve(mandate, IdentityKind::AidMandate)
+            .expect("the fixture call `resolve` succeeds for the authored inputs"),
         [17; 32]
     );
     assert_eq!(
         lookup.resolve(mandate, IdentityKind::Order),
         Err(StorageError::IdentityKind)
     );
-    let encoded = register::encode_lookup(lookup.entries()).unwrap();
+    let encoded = register::encode_lookup(lookup.entries())
+        .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(encoded.len(), 70);
     assert_eq!(&encoded[..4], &2_u32.to_be_bytes());
     assert_eq!(encoded[4], 20);
@@ -306,7 +371,7 @@ fn compiled_layouts_include_all_empty_family_identity_fields() {
     assert_eq!(encoded[37], IdentityKind::Order as u8);
     assert_eq!(&encoded[38..70], [17; 32]);
     for id in [21, 26, 41, 50, 54, 61, 65, 67, 68, 71, 72] {
-        let shape = super::layout(id).unwrap();
+        let shape = super::layout(id).expect("the fixture layout builds");
         assert!(!shape.fields.is_empty());
         assert!(shape
             .fields
@@ -321,22 +386,25 @@ fn raw_byte_admission_refuses_malformed_opening_and_current_before_typed_encodin
     let bytes = foundation.initial_register().canonical_bytes();
     assert!(OpeningRegister::from_canonical(&bytes[..bytes.len() - 1]).is_err());
     assert!(MaterialWorldRegister::decode(&bytes[..bytes.len() - 1]).is_err());
-    let raw_opening = OpeningRegister::from_canonical(bytes).unwrap();
-    let typed_opening = OpeningRegister::from_opening(foundation.initial_register()).unwrap();
+    let raw_opening =
+        OpeningRegister::from_canonical(bytes).expect("the canonical bytes admit the value");
+    let typed_opening = OpeningRegister::from_opening(foundation.initial_register())
+        .expect("the opening register admits its sections");
     assert_eq!(
         raw_opening.lookup().entries(),
         typed_opening.lookup().entries()
     );
-    let current = MaterialWorldRegister::decode(bytes).unwrap();
+    let current =
+        MaterialWorldRegister::decode(bytes).expect("the committed canonical bytes decode");
     let raw_encoded =
         register::encode_register_with_opening(&raw_opening, &current, raw_opening.lookup())
-            .unwrap();
+            .expect("the register encodes with its opening");
     let typed_encoded = register::encode_register_with_opening(
         &typed_opening,
         foundation.initial_register(),
         typed_opening.lookup(),
     )
-    .unwrap();
+    .expect("the register encodes with its opening");
     assert_eq!(raw_encoded.package, typed_encoded.package);
 }
 
@@ -360,10 +428,13 @@ fn assert_aid_period_package(
     use crate::material_storage::{self, LookupAnchor};
     let current = candidate.material().register();
     let receipts = candidate.material().receipt_bytes();
-    let authority = OpeningRegister::from_canonical(opening).unwrap();
-    let encoded = material_storage::encode(current, receipts, &authority, previous_chain).unwrap();
+    let authority =
+        OpeningRegister::from_canonical(opening).expect("the canonical bytes admit the value");
+    let encoded = material_storage::encode(current, receipts, &authority, previous_chain)
+        .expect("the fixture value encodes canonically");
     // Independent inverse owns only the canonical immutable opening and stored packets.
-    let inverse = OpeningRegister::from_canonical(opening).unwrap();
+    let inverse =
+        OpeningRegister::from_canonical(opening).expect("the canonical bytes admit the value");
     let tick = current.completed_tick();
     let lookup = material_storage::read_period_lookup(
         &inverse,
@@ -371,7 +442,7 @@ fn assert_aid_period_package(
         &encoded.lookup_delta_bytes,
         LookupAnchor::Previous(previous_chain),
     )
-    .unwrap();
+    .expect("the committed lookup table reads");
     assert_eq!(lookup.chain, encoded.lookup_chain);
     assert_eq!(lookup.previous_chain, previous_chain);
     let restored = material_storage::decode(
@@ -382,32 +453,36 @@ fn assert_aid_period_package(
         &lookup.lookup,
         lookup.chain,
     )
-    .unwrap();
+    .expect("the committed canonical bytes decode");
     assert_eq!(restored.0, current.canonical_bytes());
     assert_eq!(restored.1, receipts);
     assert_eq!(
-        MaterialWorldRegister::decode(&restored.0).unwrap(),
+        MaterialWorldRegister::decode(&restored.0).expect("the committed canonical bytes decode"),
         *current
     );
     assert_eq!(
-        babylon_tick::material_world::decode_material_receipts(&restored.1).unwrap(),
-        babylon_tick::material_world::decode_material_receipts(receipts).unwrap()
+        babylon_tick::material_world::decode_material_receipts(&restored.1)
+            .expect("the canonical bytes decode into the declared type"),
+        babylon_tick::material_world::decode_material_receipts(receipts)
+            .expect("the canonical bytes decode into the declared type")
     );
-    let current_sections = schema::sections(&restored.0).unwrap();
+    let current_sections = schema::sections(&restored.0)
+        .expect("the fixture call `sections` succeeds for the authored inputs");
     assert_eq!(
         current_sections
             .iter()
             .find(|section| section.id == 70)
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .count,
         Some(1)
     );
     let organizer = current_sections
         .iter()
         .find(|section| section.id == 69)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert!(organizer.raw(&restored.0).len() > 1);
-    let saved = MaterialWorldRegister::decode(&restored.0).unwrap();
+    let saved =
+        MaterialWorldRegister::decode(&restored.0).expect("the committed canonical bytes decode");
     assert_eq!(saved.organizer_state(), current.organizer_state());
     // A valid packet cannot be transplanted to another predecessor attestation.
     assert!(matches!(
@@ -454,14 +529,16 @@ fn local_grant_canonical_state_and_complete_receipt_package_inverse() {
     let mut cfg = f::config();
     cfg.aid_bindings[0].coordination_hours = 1;
     let mut session = f::authored_session(
-        crate::michigan_dynamic_hex_foundation().unwrap(),
+        crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds"),
         cfg,
         false,
         false,
     );
     let opening = session.material().canonical_bytes().to_vec();
-    let authority = OpeningRegister::from_canonical(&opening).unwrap();
-    let chain = crate::material_storage::initial_lookup_chain(&authority).unwrap();
+    let authority =
+        OpeningRegister::from_canonical(&opening).expect("the canonical bytes admit the value");
+    let chain = crate::material_storage::initial_lookup_chain(&authority)
+        .expect("the opening register builds its first lookup chain");
     let accepted = f::commitment(&session, OrganizerChoice::LocalAid);
     let candidate = f::prepare(&session, Some(&accepted));
     assert_aid_period_package(&opening, &candidate, chain);
@@ -470,10 +547,10 @@ fn local_grant_canonical_state_and_complete_receipt_package_inverse() {
             .material()
             .register()
             .organizer_state()
-            .unwrap()
+            .expect("the fixture register carries organizer state")
             .aid_receipts
             .last()
-            .unwrap()
+            .expect("the fixture sequence is non-empty")
             .support,
         2,
         4,
@@ -484,7 +561,7 @@ fn local_grant_canonical_state_and_complete_receipt_package_inverse() {
     let receipts = babylon_tick::material_world::decode_material_receipts(
         candidate.material().receipt_bytes(),
     )
-    .unwrap();
+    .expect("the canonical bytes decode into the declared type");
     assert!(receipts.aid.iter().any(|row| row.outcome
         == babylon_material_circuit::AidOutcome::Granted
         && row.quantity == 2));
@@ -492,7 +569,7 @@ fn local_grant_canonical_state_and_complete_receipt_package_inverse() {
         .material()
         .register()
         .organizer_state()
-        .unwrap()
+        .expect("the fixture register carries organizer state")
         .pending_aid
         .is_empty());
     let mut sink = CollectingSink::default();
@@ -501,10 +578,10 @@ fn local_grant_canonical_state_and_complete_receipt_package_inverse() {
         session
             .material()
             .organizer_state()
-            .unwrap()
+            .expect("the fixture register carries organizer state")
             .aid_receipts
             .last()
-            .unwrap()
+            .expect("the fixture sequence is non-empty")
             .authorization
             .gift
             .commitment,
@@ -515,13 +592,14 @@ fn local_grant_canonical_state_and_complete_receipt_package_inverse() {
 fn assert_aid_dispatch(candidate: &Candidate, accepted: &OrganizerCommitment) -> OrderId {
     use babylon_material_circuit::AidOutcome;
     let first_state = candidate.material().register();
-    let first_sections = schema::sections(first_state.canonical_bytes()).unwrap();
+    let first_sections = schema::sections(first_state.canonical_bytes())
+        .expect("the fixture call `sections` succeeds for the authored inputs");
     for id in [71, 72] {
         assert_eq!(
             first_sections
                 .iter()
                 .find(|section| section.id == id)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .count,
             Some(1)
         );
@@ -529,10 +607,10 @@ fn assert_aid_dispatch(candidate: &Candidate, accepted: &OrganizerCommitment) ->
     assert_retained_aid_postings(
         &first_state
             .organizer_state()
-            .unwrap()
+            .expect("the fixture register carries organizer state")
             .aid_receipts
             .last()
-            .unwrap()
+            .expect("the fixture sequence is non-empty")
             .support,
         2,
         4,
@@ -540,13 +618,16 @@ fn assert_aid_dispatch(candidate: &Candidate, accepted: &OrganizerCommitment) ->
         0,
         0,
     );
-    let pending = &first_state.organizer_state().unwrap().pending_aid;
+    let pending = &first_state
+        .organizer_state()
+        .expect("the fixture register carries organizer state")
+        .pending_aid;
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].gift.commitment, *accepted);
     let first_receipts = babylon_tick::material_world::decode_material_receipts(
         candidate.material().receipt_bytes(),
     )
-    .unwrap();
+    .expect("the canonical bytes decode into the declared type");
     assert!(first_receipts
         .aid
         .iter()
@@ -555,10 +636,14 @@ fn assert_aid_dispatch(candidate: &Candidate, accepted: &OrganizerCommitment) ->
         .aid
         .iter()
         .find(|r| r.outcome == AidOutcome::Dispatched)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .commitment_id
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "`assert_aid_arrival` keeps one authored boundary's fixture and assertions together"
+)]
 fn assert_aid_arrival(
     candidate: &Candidate,
     accepted: &OrganizerCommitment,
@@ -573,7 +658,7 @@ fn assert_aid_arrival(
     let receipts = babylon_tick::material_world::decode_material_receipts(
         candidate.material().receipt_bytes(),
     )
-    .unwrap();
+    .expect("the canonical bytes decode into the declared type");
     let granted = receipts
         .aid
         .iter()
@@ -607,28 +692,39 @@ fn assert_aid_arrival(
     else {
         panic!("actual monetary gift")
     };
-    assert_eq!(economy.book.cash(payer).unwrap().micro_units(), refunded);
+    assert_eq!(
+        economy
+            .book
+            .cash(payer)
+            .expect("the fixture book holds the payer account")
+            .micro_units(),
+        refunded
+    );
     assert!(economy.aid.freight.is_empty());
     assert!(economy.book.snapshot().aid.is_empty());
-    let closed_sections =
-        schema::sections(candidate.material().register().canonical_bytes()).unwrap();
+    let closed_sections = schema::sections(candidate.material().register().canonical_bytes())
+        .expect("the fixture call `sections` succeeds for the authored inputs");
     for id in [71, 72] {
         assert_eq!(
             closed_sections
                 .iter()
                 .find(|section| section.id == id)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .count,
             Some(0)
         );
     }
-    let completed = candidate.material().register().organizer_state().unwrap();
+    let completed = candidate
+        .material()
+        .register()
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
     assert!(completed.pending_aid.is_empty());
     assert_eq!(
         completed
             .aid_receipts
             .last()
-            .unwrap()
+            .expect("the fixture sequence is non-empty")
             .authorization
             .gift
             .commitment,
@@ -638,14 +734,26 @@ fn assert_aid_arrival(
         completed
             .aid_receipts
             .last()
-            .unwrap()
+            .expect("the fixture sequence is non-empty")
             .authorization
             .dispatch_period,
         1
     );
-    assert_eq!(completed.aid_receipts.last().unwrap().practice.period, 2);
+    assert_eq!(
+        completed
+            .aid_receipts
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .practice
+            .period,
+        2
+    );
     assert_retained_aid_postings(
-        &completed.aid_receipts.last().unwrap().support,
+        &completed
+            .aid_receipts
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .support,
         0,
         0,
         0,
@@ -662,7 +770,7 @@ fn routed_aid_package_sequence(loss_ppm: u32, arrived: u64, refunded: i128) {
     cfg.aid_bindings[0].kind = OrganizerAidKind::Remote;
     cfg.aid_bindings[0].coordination_hours = 1;
     let mut session = f::authored_session_with_loss(
-        crate::michigan_dynamic_hex_foundation().unwrap(),
+        crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds"),
         cfg,
         false,
         true,
@@ -670,8 +778,10 @@ fn routed_aid_package_sequence(loss_ppm: u32, arrived: u64, refunded: i128) {
     );
     let opening = session.material().canonical_bytes().to_vec();
     let immutable = opening.clone();
-    let authority = OpeningRegister::from_canonical(&opening).unwrap();
-    let chain = crate::material_storage::initial_lookup_chain(&authority).unwrap();
+    let authority =
+        OpeningRegister::from_canonical(&opening).expect("the canonical bytes admit the value");
+    let chain = crate::material_storage::initial_lookup_chain(&authority)
+        .expect("the opening register builds its first lookup chain");
     let accepted = f::commitment(&session, OrganizerChoice::RemoteAid);
     let first = f::prepare(&session, Some(&accepted));
     let chain = assert_aid_period_package(&opening, &first, chain);
@@ -686,13 +796,13 @@ fn routed_aid_package_sequence(loss_ppm: u32, arrived: u64, refunded: i128) {
     assert_aid_period_package(&opening, &third, chain);
     let receipts =
         babylon_tick::material_world::decode_material_receipts(third.material().receipt_bytes())
-            .unwrap();
+            .expect("the canonical bytes decode into the declared type");
     assert!(receipts.aid.is_empty());
     assert!(third
         .material()
         .register()
         .organizer_state()
-        .unwrap()
+        .expect("the fixture register carries organizer state")
         .pending_aid
         .is_empty());
     assert_eq!(
@@ -700,7 +810,7 @@ fn routed_aid_package_sequence(loss_ppm: u32, arrived: u64, refunded: i128) {
             .material()
             .register()
             .organizer_state()
-            .unwrap()
+            .expect("the fixture register carries organizer state")
             .aid_receipts
             .len(),
         terminal_count
@@ -729,7 +839,7 @@ fn assert_retained_aid_postings(
     refunded: i128,
 ) {
     assert_eq!(
-        serde_json::to_value(support).unwrap()["material_postings"],
+        serde_json::to_value(support).expect("the value serializes to JSON")["material_postings"],
         serde_json::json!({
             "dispatched_quantity": dispatched, "fulfillment_hours": hours,
             "payer_cash_reserved_micros": reserved.to_string(),
@@ -761,36 +871,65 @@ fn prefix_section(id: u16, raw: &[u8], count: usize) -> Section {
     }
 }
 fn prefix_selected(old: &[u8], current: &[u8]) -> (Block, StoredSection, TypedLookup) {
-    let old_count = u32::from_be_bytes(old[..4].try_into().unwrap()) as usize;
-    let count = u32::from_be_bytes(current[..4].try_into().unwrap()) as usize;
+    let old_count = u32::from_be_bytes(
+        old[..4]
+            .try_into()
+            .expect("the fixture slice has the target length"),
+    ) as usize;
+    let count = u32::from_be_bytes(
+        current[..4]
+            .try_into()
+            .expect("the fixture slice has the target length"),
+    ) as usize;
     let old_section = prefix_section(10, old, old_count);
     let section = prefix_section(10, current, count);
     let mut lookup = TypedLookup::default();
-    register::normalize(old, super::layout(10).unwrap(), &mut lookup, true).unwrap();
-    let selected =
-        register::block(current, &section, Some((&old_section, old)), &mut lookup).unwrap();
+    register::normalize(
+        old,
+        super::layout(10).expect("the fixture layout builds"),
+        &mut lookup,
+        true,
+    )
+    .expect("the fixture content normalizes");
+    let selected = register::block(current, &section, Some((&old_section, old)), &mut lookup)
+        .expect("the fixture call `block` succeeds for the authored inputs");
     let mut wire = Vec::new();
-    register::append_block(&mut wire, current, &section, &selected).unwrap();
-    let stored = register::stored_section(&mut Cursor::new(&wire)).unwrap();
+    register::append_block(&mut wire, current, &section, &selected)
+        .expect("the fixture call `append_block` succeeds for the authored inputs");
+    let stored = register::stored_section(&mut Cursor::new(&wire))
+        .expect("the fixture call `stored_section` succeeds for the authored inputs");
     (selected, stored, lookup)
 }
 fn prefix_manual(old: &[u8], current: &[u8]) -> (StoredSection, TypedLookup) {
-    let shape = super::layout(10).unwrap();
-    let count = u32::from_be_bytes(current[..4].try_into().unwrap()) as usize;
+    let shape = super::layout(10).expect("the fixture layout builds");
+    let count = u32::from_be_bytes(
+        current[..4]
+            .try_into()
+            .expect("the fixture slice has the target length"),
+    ) as usize;
     let mut lookup = TypedLookup::default();
-    let previous = register::normalize(old, shape, &mut lookup, true).unwrap();
-    let next = register::normalize(current, shape, &mut lookup, true).unwrap();
+    let previous =
+        register::normalize(old, shape, &mut lookup, true).expect("the fixture content normalizes");
+    let next = register::normalize(current, shape, &mut lookup, true)
+        .expect("the fixture content normalizes");
     let delta = next
         .bytes
         .iter()
         .enumerate()
         .map(|(index, byte)| byte ^ previous.bytes.get(index).copied().unwrap_or(0))
         .collect::<Vec<_>>();
-    let body =
-        register::columns(&delta, count, register::normalized_width(shape).unwrap()).unwrap();
+    let body = register::columns(
+        &delta,
+        count,
+        register::normalized_width(shape)
+            .expect("the fixture call `normalized_width` succeeds for the authored inputs"),
+    )
+    .expect("the fixture call `columns` succeeds for the authored inputs");
     let body_length = body.len();
     let body_digest = register::digest(&body);
-    let encoded = register::compressed(4, body).unwrap().encoded;
+    let encoded = register::compressed(4, body)
+        .expect("the fixture call `compressed` succeeds for the authored inputs")
+        .encoded;
     (
         StoredSection {
             id: 10,
@@ -815,11 +954,22 @@ fn opening_prefix_producer_selects_smaller_frame_for_added_removed_and_rekeyed_r
     rekeyed[last..last + 32].copy_from_slice(&[244; 32]);
     for current in [added, removed, rekeyed] {
         let (selected, stored, mut lookup) = prefix_selected(&old, &current);
-        let count = stored.count.unwrap();
-        let full_rows =
-            register::normalize(&current, super::layout(10).unwrap(), &mut lookup, false).unwrap();
-        let full = register::compressed(2, register::columns(&full_rows.bytes, count, 20).unwrap())
-            .unwrap();
+        let count = stored
+            .count
+            .expect("the fixture section records its row count");
+        let full_rows = register::normalize(
+            &current,
+            super::layout(10).expect("the fixture layout builds"),
+            &mut lookup,
+            false,
+        )
+        .expect("the fixture content normalizes");
+        let full = register::compressed(
+            2,
+            register::columns(&full_rows.bytes, count, 20)
+                .expect("the fixture call `columns` succeeds for the authored inputs"),
+        )
+        .expect("the fixture call `compressed` succeeds for the authored inputs");
         assert_eq!(
             selected.mode, 4,
             "current full-row fallback loses the retained opening prefix"
@@ -833,7 +983,7 @@ fn opening_prefix_producer_selects_smaller_frame_for_added_removed_and_rekeyed_r
                 &lookup,
                 lookup.entries().len()
             )
-            .unwrap(),
+            .expect("the fixture call `restore_section` succeeds for the authored inputs"),
             current
         );
     }
@@ -855,7 +1005,7 @@ fn opening_prefix_keeps_full_frame_when_smaller_and_preserves_empty_and_missing_
             &lookup,
             lookup.entries().len()
         )
-        .unwrap(),
+        .expect("the fixture call `restore_section` succeeds for the authored inputs"),
         current
     );
     for (old, current) in [
@@ -868,13 +1018,17 @@ fn opening_prefix_keeps_full_frame_when_smaller_and_preserves_empty_and_missing_
     let mut lookup = TypedLookup::default();
     assert_eq!(
         register::block(&current, &section, None, &mut lookup)
-            .unwrap()
+            .expect("the fixture call `block` succeeds for the authored inputs")
             .mode,
         2
     );
     assert_eq!(prefix_selected(&old, &old).0.mode, 0);
 }
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`opening_prefix_inverse_checks_base_layout_counts_extents_and_typed_prefix` keeps one authored boundary's fixture and assertions together"
+)]
 fn opening_prefix_inverse_checks_base_layout_counts_extents_and_typed_prefix() {
     let old = prefix_inventory(256);
     let current = prefix_inventory(257);
@@ -887,7 +1041,7 @@ fn opening_prefix_inverse_checks_base_layout_counts_extents_and_typed_prefix() {
             &lookup,
             lookup.entries().len()
         )
-        .unwrap(),
+        .expect("the fixture call `restore_section` succeeds for the authored inputs"),
         current
     );
     assert_eq!(
@@ -936,7 +1090,7 @@ fn opening_prefix_inverse_checks_base_layout_counts_extents_and_typed_prefix() {
     );
     let mut wrong = lookup.entries().to_vec();
     wrong[0].kind = IdentityKind::Contribution;
-    let wrong = TypedLookup::from_entries(wrong).unwrap();
+    let wrong = TypedLookup::from_entries(wrong).expect("the authored entries admit the value");
     assert_eq!(
         restore_section(&stored, Some((&base, &old)), &wrong, wrong.entries().len()),
         Err(StorageError::LookupIndex)
@@ -952,7 +1106,12 @@ fn opening_prefix_inverse_checks_base_layout_counts_extents_and_typed_prefix() {
         Err(StorageError::Layout)
     );
     stored.body_length -= 1;
-    stored.count = Some(super::layout(10).unwrap().maximum + 1);
+    stored.count = Some(
+        super::layout(10)
+            .expect("the fixture layout builds")
+            .maximum
+            + 1,
+    );
     assert_eq!(
         restore_section(
             &stored,
@@ -991,9 +1150,10 @@ fn opening_prefix_single_frame_and_digest_cannot_hide_truncation_or_extra_bytes(
         Err(StorageError::Compression)
     );
     stored.encoded = encoded.clone();
-    stored
-        .encoded
-        .extend(storage_compression::compress_exact(&[], MAX_BYTES).unwrap());
+    stored.encoded.extend(
+        storage_compression::compress_exact(&[], MAX_BYTES)
+            .expect("the body fits the exact compressed bound"),
+    );
     assert_eq!(
         restore_section(
             &stored,
@@ -1018,7 +1178,8 @@ fn opening_prefix_single_frame_and_digest_cannot_hide_truncation_or_extra_bytes(
 // Author a complete physical package with one explicit prefix block. This does
 // not call typed encoding on invalid registers: decoder admission is the subject.
 fn prefix_package(opening: &OpeningRegister, current: &[u8], id: u16) -> (Vec<u8>, TypedLookup) {
-    let parsed = schema::sections(current).unwrap();
+    let parsed = schema::sections(current)
+        .expect("the fixture call `sections` succeeds for the authored inputs");
     let mut lookup = opening.lookup().clone();
     let mut blocks = Vec::new();
     for section in &parsed {
@@ -1026,12 +1187,14 @@ fn prefix_package(opening: &OpeningRegister, current: &[u8], id: u16) -> (Vec<u8
             .sections
             .iter()
             .find(|old| old.id == section.id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let old_raw = old.raw(opening.canonical_bytes());
         if section.id == id {
-            let shape = super::layout(id).unwrap();
-            let prior = register::normalize(old_raw, shape, &mut lookup, false).unwrap();
-            let next = register::normalize(section.raw(current), shape, &mut lookup, true).unwrap();
+            let shape = super::layout(id).expect("the fixture layout builds");
+            let prior = register::normalize(old_raw, shape, &mut lookup, false)
+                .expect("the fixture content normalizes");
+            let next = register::normalize(section.raw(current), shape, &mut lookup, true)
+                .expect("the fixture content normalizes");
             let delta = next
                 .bytes
                 .iter()
@@ -1043,16 +1206,21 @@ fn prefix_package(opening: &OpeningRegister, current: &[u8], id: u16) -> (Vec<u8
                     4,
                     register::columns(
                         &delta,
-                        section.count.unwrap(),
-                        register::normalized_width(shape).unwrap(),
+                        section
+                            .count
+                            .expect("the fixture section records its row count"),
+                        register::normalized_width(shape).expect(
+                            "the fixture call `normalized_width` succeeds for the authored inputs",
+                        ),
                     )
-                    .unwrap(),
+                    .expect("the fixture call `columns` succeeds for the authored inputs"),
                 )
-                .unwrap(),
+                .expect("the fixture call `compressed` succeeds for the authored inputs"),
             );
         } else {
             blocks.push(
-                register::block(current, section, Some((old, old_raw)), &mut lookup).unwrap(),
+                register::block(current, section, Some((old, old_raw)), &mut lookup)
+                    .expect("the fixture call `block` succeeds for the authored inputs"),
             );
         }
     }
@@ -1060,30 +1228,53 @@ fn prefix_package(opening: &OpeningRegister, current: &[u8], id: u16) -> (Vec<u8
     package.extend_from_slice(&opening.digest());
     package.extend_from_slice(&register::digest(current));
     package.extend_from_slice(&[0; 32]);
-    package.extend_from_slice(&u64::try_from(current.len()).unwrap().to_be_bytes());
-    package.extend_from_slice(&u32::try_from(lookup.entries().len()).unwrap().to_be_bytes());
-    package.extend_from_slice(&lookup.prefix_digest(lookup.entries().len()).unwrap());
-    package.extend_from_slice(&u16::try_from(parsed.len()).unwrap().to_be_bytes());
+    package.extend_from_slice(
+        &u64::try_from(current.len())
+            .expect("the fixture value fits the target range")
+            .to_be_bytes(),
+    );
+    package.extend_from_slice(
+        &u32::try_from(lookup.entries().len())
+            .expect("the fixture value fits the target range")
+            .to_be_bytes(),
+    );
+    package.extend_from_slice(
+        &lookup
+            .prefix_digest(lookup.entries().len())
+            .expect("the fixture call `prefix_digest` succeeds for the authored inputs"),
+    );
+    package.extend_from_slice(
+        &u16::try_from(parsed.len())
+            .expect("the fixture value fits the target range")
+            .to_be_bytes(),
+    );
     for (section, block) in parsed.iter().zip(blocks) {
-        register::append_block(&mut package, current, section, &block).unwrap();
+        register::append_block(&mut package, current, section, &block)
+            .expect("the fixture call `append_block` succeeds for the authored inputs");
     }
     (package, lookup)
 }
 #[test]
 fn opening_prefix_full_admission_rejects_rehashed_duplicate_and_out_of_order_rows() {
     let foundation = opening(MichiganContentPreset::FourWeekStandard);
-    let authority = OpeningRegister::from_opening(foundation.initial_register()).unwrap();
+    let authority = OpeningRegister::from_opening(foundation.initial_register())
+        .expect("the opening register admits its sections");
     let canonical = authority.canonical_bytes();
     let section = authority
         .sections
         .iter()
         .find(|section| section.id == 2)
-        .unwrap();
-    assert!(section.count.unwrap() >= 2);
+        .expect("the fixture holds the searched element");
+    assert!(
+        section
+            .count
+            .expect("the fixture section records its row count")
+            >= 2
+    );
     let (package, lookup) = prefix_package(&authority, canonical, 2);
     assert_eq!(
         decode_admitted(&authority, &package, &lookup, [0; 32])
-            .unwrap()
+            .expect("the admitted canonical bytes decode")
             .canonical_bytes(),
         canonical
     );
@@ -1094,7 +1285,7 @@ fn opening_prefix_full_admission_rejects_rehashed_duplicate_and_out_of_order_row
         [0; 32],
         foundation.initial_register(),
     )
-    .unwrap();
+    .expect("the canonical bytes decode into the declared type");
     for duplicate in [true, false] {
         let mut invalid = canonical.to_vec();
         let first = section.start + 4;
@@ -1143,13 +1334,14 @@ fn opening_prefix_full_admission_rejects_rehashed_duplicate_and_out_of_order_row
 #[test]
 fn previous_state_storage_domain_is_explicitly_unsupported() {
     let foundation = opening(MichiganContentPreset::FourWeekStandard);
-    let authority = OpeningRegister::from_opening(foundation.initial_register()).unwrap();
+    let authority = OpeningRegister::from_opening(foundation.initial_register())
+        .expect("the opening register admits its sections");
     let encoded = register::encode_register_with_opening(
         &authority,
         foundation.initial_register(),
         authority.lookup(),
     )
-    .unwrap();
+    .expect("the register encodes with its opening");
     let mut old = encoded.package;
     old[..DOMAIN.len()].copy_from_slice(b"babylon.state-storage.v3\0");
     assert_eq!(
@@ -1173,13 +1365,14 @@ fn opening_prefix_rehashed_references_still_refuse_future_and_wrong_identity_kin
             stored.body_digest,
             MAX_BYTES,
         )
-        .unwrap();
+        .expect("the compressed body decodes");
         // The added row has no opening bytes: its site reference is literal.
         for (column, byte) in index.to_be_bytes().iter().enumerate() {
             body[column * 9 + 8] = *byte;
         }
         stored.body_digest = register::digest(&body);
-        stored.encoded = storage_compression::compress_exact(&body, MAX_BYTES).unwrap();
+        stored.encoded = storage_compression::compress_exact(&body, MAX_BYTES)
+            .expect("the body fits the exact compressed bound");
         assert_eq!(
             restore_section(
                 &stored,
@@ -1214,11 +1407,13 @@ fn opening_prefix_equal_frame_keeps_full_columns() {
     current.extend_from_slice(&old[4..]);
     current.extend_from_slice(&[8; 32]);
     current.extend_from_slice(&[0; 16]);
-    let shape = super::layout(14).unwrap();
+    let shape = super::layout(14).expect("the fixture layout builds");
     let mut lookup = TypedLookup::default();
-    let previous = register::normalize(&old, shape, &mut lookup, true).unwrap();
+    let previous = register::normalize(&old, shape, &mut lookup, true)
+        .expect("the fixture content normalizes");
     assert!(previous.bytes.iter().all(|byte| *byte == 0));
-    let next = register::normalize(&current, shape, &mut lookup, true).unwrap();
+    let next = register::normalize(&current, shape, &mut lookup, true)
+        .expect("the fixture content normalizes");
     let delta = next
         .bytes
         .iter()
@@ -1232,7 +1427,7 @@ fn opening_prefix_equal_frame_keeps_full_columns() {
         Some((&prefix_section(14, &old, 1), &old)),
         &mut lookup,
     )
-    .unwrap();
+    .expect("the fixture call `block` succeeds for the authored inputs");
     assert_eq!(selected.mode, 2);
 }
 
@@ -1249,7 +1444,7 @@ fn offer_lookup() -> TypedLookup {
         })
         .to_vec(),
     )
-    .unwrap()
+    .expect("the authored entries admit the value")
 }
 fn offer_rows() -> Vec<u8> {
     let mut raw = 6_u32.to_be_bytes().to_vec();
@@ -1257,14 +1452,19 @@ fn offer_rows() -> Vec<u8> {
         for byte in [7, 9, 11] {
             raw.extend_from_slice(&[byte; 32]);
         }
-        raw.extend_from_slice(&(i128::try_from(ordinal).unwrap() - 3).to_be_bytes());
+        raw.extend_from_slice(
+            &(i128::try_from(ordinal).expect("the fixture value fits the target range") - 3)
+                .to_be_bytes(),
+        );
         raw.push(tag);
         for byte in 0..match tag {
             2 => 56,
             3 => 48,
             _ => 0,
         } {
-            raw.push(byte + u8::try_from(ordinal).unwrap());
+            raw.push(
+                byte + u8::try_from(ordinal).expect("the fixture value fits the target range"),
+            );
         }
     }
     raw
@@ -1273,18 +1473,20 @@ fn offer_rows() -> Vec<u8> {
 fn offer_storage_retains_all_variants_and_original_order() {
     let raw = offer_rows();
     let lookup = offer_lookup();
-    let body = offers::encode(&raw, 6, &lookup).unwrap();
+    let body = offers::encode(&raw, 6, &lookup).expect("the fixture value encodes canonically");
     assert_eq!(lookup.entries().len(), 3);
     assert_eq!(
-        offers::decode(&body, 6, raw.len(), &lookup, 3).unwrap(),
+        offers::decode(&body, 6, raw.len(), &lookup, 3)
+            .expect("the committed canonical bytes decode"),
         raw
     );
     let mut changed = raw.clone();
     changed[100] ^= 1;
     changed[120] ^= 1;
-    let body = offers::encode(&changed, 6, &lookup).unwrap();
+    let body = offers::encode(&changed, 6, &lookup).expect("the fixture value encodes canonically");
     assert_eq!(
-        offers::decode(&body, 6, changed.len(), &lookup, 3).unwrap(),
+        offers::decode(&body, 6, changed.len(), &lookup, 3)
+            .expect("the committed canonical bytes decode"),
         changed
     );
     assert_eq!(
@@ -1299,7 +1501,7 @@ fn offer_storage_retains_all_variants_and_original_order() {
         lookup.entries()[1],
         lookup.entries()[2],
     ])
-    .unwrap();
+    .expect("the authored entries admit the value");
     assert_eq!(
         offers::decode(&body, 6, changed.len(), &wrong, 3),
         Err(StorageError::IdentityKind)
@@ -1316,15 +1518,17 @@ fn offer_storage_retains_all_variants_and_original_order() {
     assert!(offers::encode(&raw, 5, &lookup).is_err());
     let mut lookup = lookup;
     let section = prefix_section(34, &raw, 6);
-    let selected = register::block(&raw, &section, Some((&section, &raw)), &mut lookup).unwrap();
+    let selected = register::block(&raw, &section, Some((&section, &raw)), &mut lookup)
+        .expect("the fixture call `block` succeeds for the authored inputs");
     assert_eq!(selected.mode, 0);
 }
 #[test]
 fn offer_mode_refuses_wrong_section_and_damaged_body_digest() {
     let raw = offer_rows();
     let lookup = offer_lookup();
-    let body = offers::encode(&raw, 6, &lookup).unwrap();
-    let encoded = register::compressed(5, body).unwrap();
+    let body = offers::encode(&raw, 6, &lookup).expect("the fixture value encodes canonically");
+    let encoded = register::compressed(5, body)
+        .expect("the fixture call `compressed` succeeds for the authored inputs");
     let mut stored = StoredSection {
         id: 34,
         mode: 5,
@@ -1335,7 +1539,11 @@ fn offer_mode_refuses_wrong_section_and_damaged_body_digest() {
         body_digest: encoded.body_digest,
         encoded: encoded.encoded,
     };
-    assert_eq!(restore_section(&stored, None, &lookup, 3).unwrap(), raw);
+    assert_eq!(
+        restore_section(&stored, None, &lookup, 3)
+            .expect("the fixture call `restore_section` succeeds for the authored inputs"),
+        raw
+    );
     stored.id = 33;
     assert_eq!(
         restore_section(&stored, None, &lookup, 3),
@@ -1360,23 +1568,26 @@ fn offer_selection_uses_frame_size_without_changing_existing_references() {
             bytes: [0; 32],
         })
         .to_vec();
-    let mut lookup = TypedLookup::from_entries(entries.clone()).unwrap();
-    let normalized = offers::encode(&raw, 1, &lookup).unwrap();
+    let mut lookup =
+        TypedLookup::from_entries(entries.clone()).expect("the authored entries admit the value");
+    let normalized =
+        offers::encode(&raw, 1, &lookup).expect("the fixture value encodes canonically");
     let normalized_size = storage_compression::compress_exact(&normalized, MAX_BYTES)
-        .unwrap()
+        .expect("the body fits the exact compressed bound")
         .len();
     let literal_size = storage_compression::compress_exact(&raw, MAX_BYTES)
-        .unwrap()
+        .expect("the body fits the exact compressed bound")
         .len();
-    let selected = register::block(&raw, &prefix_section(34, &raw, 1), None, &mut lookup).unwrap();
+    let selected = register::block(&raw, &prefix_section(34, &raw, 1), None, &mut lookup)
+        .expect("the fixture call `block` succeeds for the authored inputs");
     assert_eq!(
         selected.mode,
         if normalized_size < literal_size { 5 } else { 1 }
     );
     assert_eq!(lookup.entries(), entries);
     let empty = 0_u32.to_be_bytes();
-    let selected =
-        register::block(&empty, &prefix_section(34, &empty, 0), None, &mut lookup).unwrap();
+    let selected = register::block(&empty, &prefix_section(34, &empty, 0), None, &mut lookup)
+        .expect("the fixture call `block` succeeds for the authored inputs");
     assert_eq!(selected.mode, 1); // Equal frames retain the literal representation.
     assert_eq!(lookup.entries(), entries);
 }
@@ -1401,7 +1612,7 @@ fn offer_candidate_cannot_enlarge_lookup_to_shrink_only_its_frame() {
         None,
         &mut lookup,
     )
-    .unwrap();
+    .expect("the fixture call `block` succeeds for the authored inputs");
     assert!(
         lookup.entries().is_empty(),
         "offer candidate grew the shared lookup"
@@ -1411,10 +1622,13 @@ fn offer_candidate_cannot_enlarge_lookup_to_shrink_only_its_frame() {
 
 #[test]
 fn offer_mode_preserves_complete_canonical_admission_and_parent_binding() {
-    let register = MaterialWorldRegister::try_new(0, recurring_control::opening()).unwrap();
-    let authority = OpeningRegister::from_opening(&register).unwrap();
+    let register = MaterialWorldRegister::try_new(0, recurring_control::opening())
+        .expect("the authored fixture satisfies the constructor invariants");
+    let authority =
+        OpeningRegister::from_opening(&register).expect("the opening register admits its sections");
     let canonical = authority.canonical_bytes();
-    let parsed = schema::sections(canonical).unwrap();
+    let parsed = schema::sections(canonical)
+        .expect("the fixture call `sections` succeeds for the authored inputs");
     let mut lookup = authority.lookup().clone();
     let mut blocks = Vec::new();
     for section in &parsed {
@@ -1422,11 +1636,19 @@ fn offer_mode_preserves_complete_canonical_admission_and_parent_binding() {
         blocks.push(if section.id == 34 {
             register::compressed(
                 5,
-                offers::encode(raw, section.count.unwrap(), &lookup).unwrap(),
+                offers::encode(
+                    raw,
+                    section
+                        .count
+                        .expect("the fixture section records its row count"),
+                    &lookup,
+                )
+                .expect("the fixture value encodes canonically"),
             )
-            .unwrap()
+            .expect("the fixture call `compressed` succeeds for the authored inputs")
         } else {
-            register::block(canonical, section, Some((section, raw)), &mut lookup).unwrap()
+            register::block(canonical, section, Some((section, raw)), &mut lookup)
+                .expect("the fixture call `block` succeeds for the authored inputs")
         });
     }
     assert!(parsed.iter().any(|section| section.id == 34));
@@ -1434,16 +1656,33 @@ fn offer_mode_preserves_complete_canonical_admission_and_parent_binding() {
     package.extend_from_slice(&authority.digest());
     package.extend_from_slice(&register::digest(canonical));
     package.extend_from_slice(&[0; 32]);
-    package.extend_from_slice(&u64::try_from(canonical.len()).unwrap().to_be_bytes());
-    package.extend_from_slice(&u32::try_from(lookup.entries().len()).unwrap().to_be_bytes());
-    package.extend_from_slice(&lookup.prefix_digest(lookup.entries().len()).unwrap());
-    package.extend_from_slice(&u16::try_from(parsed.len()).unwrap().to_be_bytes());
+    package.extend_from_slice(
+        &u64::try_from(canonical.len())
+            .expect("the fixture value fits the target range")
+            .to_be_bytes(),
+    );
+    package.extend_from_slice(
+        &u32::try_from(lookup.entries().len())
+            .expect("the fixture value fits the target range")
+            .to_be_bytes(),
+    );
+    package.extend_from_slice(
+        &lookup
+            .prefix_digest(lookup.entries().len())
+            .expect("the fixture call `prefix_digest` succeeds for the authored inputs"),
+    );
+    package.extend_from_slice(
+        &u16::try_from(parsed.len())
+            .expect("the fixture value fits the target range")
+            .to_be_bytes(),
+    );
     for (section, block) in parsed.iter().zip(blocks) {
-        register::append_block(&mut package, canonical, section, &block).unwrap();
+        register::append_block(&mut package, canonical, section, &block)
+            .expect("the fixture call `append_block` succeeds for the authored inputs");
     }
     assert_eq!(
         decode_admitted(&authority, &package, &lookup, [0; 32])
-            .unwrap()
+            .expect("the admitted canonical bytes decode")
             .canonical_bytes(),
         canonical
     );

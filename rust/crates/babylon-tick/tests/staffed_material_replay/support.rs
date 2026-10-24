@@ -292,12 +292,14 @@ pub(crate) fn resident_member(pool: &StaffingPoolBinding) -> StaffingMemberNodeB
         StaffingMemberBinding::try_new(
             StaffingMemberId::from_bytes(pool.site_id().as_bytes()),
             FinalDemandPrincipalId::from_bytes([30; 32]),
-            "county:26163".parse().unwrap(),
+            "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             pool.labor_force(),
         )
-        .unwrap(),
+        .expect("the authored fixture satisfies the constructor invariants"),
     )
-    .unwrap()
+    .expect("the authored fixture satisfies the constructor invariants")
 }
 
 pub(crate) fn staffed_labor() -> StaffingComposition {
@@ -306,17 +308,17 @@ pub(crate) fn staffed_labor() -> StaffingComposition {
         site(1),
         unit(1),
         1,
-        StaffingPolicy::one_period(160).unwrap(),
+        StaffingPolicy::one_period(160).expect("the one-period fixture advances"),
         vec![StaffingWorkSource::Production(process())],
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     StaffingComposition::try_new(vec![StaffingNodeBinding::try_new(
         subject(),
         pool.clone(),
         vec![resident_member(&pool)],
     )
-    .unwrap()])
-    .unwrap()
+    .expect("the authored fixture satisfies the constructor invariants")])
+    .expect("the authored fixture satisfies the constructor invariants")
 }
 
 pub(crate) fn try_session_with_authored_rules(
@@ -331,27 +333,33 @@ pub(crate) fn try_session_with_material(
     labor: StaffingComposition,
     material: MaterialCircuitState,
 ) -> Result<Session, MaterialReplayError> {
-    let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap();
-    let (_, parsed) = rule_pipeline::split_content(rules).unwrap();
+    let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+        .expect("the Michigan hex foundation builds");
+    let (_, parsed) =
+        rule_pipeline::split_content(rules).expect("the authored content splits into its sections");
     let forms = parsed.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     let graph = ReplayTickSession::new(
         SCENARIO,
         None,
         rules,
         HypergraphStore::new(),
-        ReplaySessionId::try_from("staffing/replay-session").unwrap(),
+        ReplaySessionId::try_from("staffing/replay-session")
+            .expect("the fixture value fits the target range"),
         ReplaySeed::new(40),
         ContentDigest {
             defines_hash: [40; 32],
-            rules_hash: canonical_ast::rules_hash_of(&forms).unwrap(),
+            rules_hash: canonical_ast::rules_hash_of(&forms)
+                .expect("the rule set has a canonical hash"),
         },
         RefDigest::from_bytes(foundation.reference_bundle_digest()),
-        MaterialState::try_new(foundation).unwrap(),
+        MaterialState::try_new(foundation)
+            .expect("the authored fixture satisfies the constructor invariants"),
     )
     .map_err(MaterialReplayError::Graph)?;
     MaterialReplaySession::new(
         graph,
-        MaterialWorldRegister::try_new(0, material).unwrap(),
+        MaterialWorldRegister::try_new(0, material)
+            .expect("the authored fixture satisfies the constructor invariants"),
         content_digest::sha256_of(b"staffed-replay-fixture-foundation"),
         babylon_kernel::clock::CampaignDuration::Finite { final_period: 7 },
         labor,
@@ -359,7 +367,7 @@ pub(crate) fn try_session_with_material(
 }
 
 pub(crate) fn session(rules: &str) -> Session {
-    try_session(rules, staffed_labor()).unwrap()
+    try_session(rules, staffed_labor()).expect("the fixture opens a session")
 }
 
 pub(crate) fn paid_material() -> MaterialCircuitState {
@@ -372,7 +380,9 @@ pub(crate) fn paid_material() -> MaterialCircuitState {
     let household = FinalDemandPrincipalId::from_bytes([30; 32]);
     material.final_demand_principals.push(FinalDemandPrincipal {
         id: household,
-        location: "county:26163".parse().unwrap(),
+        location: "county:26163"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
     });
     let mut book = MonetaryBook::open(vec![
         CashAccount {
@@ -388,7 +398,7 @@ pub(crate) fn paid_material() -> MaterialCircuitState {
             cash: Currency::from_micro_units(0),
         },
     ])
-    .unwrap();
+    .expect("the fixture opens the authored source");
     for order in &material.orders {
         book.reserve_purchase(
             PurchaseEscrow::new(
@@ -398,9 +408,9 @@ pub(crate) fn paid_material() -> MaterialCircuitState {
                 order.ordered,
                 Currency::from_micro_units(2),
             )
-            .unwrap(),
+            .expect("the constructor accepts the authored fixture arguments"),
         )
-        .unwrap();
+        .expect("the fixture reserve admits the purchase");
     }
     material.accounting = CircuitAccounting::Monetary(Box::new({
         let book = book;
@@ -435,7 +445,7 @@ pub(crate) fn paid_material() -> MaterialCircuitState {
                 vec![],
                 vec![],
             )
-            .unwrap(),
+            .expect("the fixture opens the authored source"),
             book,
             recurring: None,
             employment: vec![EmploymentTerms {
@@ -455,7 +465,8 @@ pub(crate) fn paid_material() -> MaterialCircuitState {
 }
 
 pub(crate) fn paid_session() -> Session {
-    try_session_with_material(MATERIAL_CYCLE, staffed_labor(), paid_material()).unwrap()
+    try_session_with_material(MATERIAL_CYCLE, staffed_labor(), paid_material())
+        .expect("the fixture opens a session with material")
 }
 
 pub(crate) fn try_session(
@@ -512,7 +523,10 @@ pub(crate) fn source_order_cannot_change_material_execution_or_joint_identity() 
         format!("{MATERIAL_CYCLE}\n{WITNESS}"),
         format!("{WITNESS}\n{MATERIAL_CYCLE}"),
     ]
-    .map(|rules| try_session_with_authored_rules(&rules, staffed_labor()).unwrap());
+    .map(|rules| {
+        try_session_with_authored_rules(&rules, staffed_labor())
+            .expect("the fixture opens a session with authored rules")
+    });
     for _ in 0..4 {
         let [first, second] = &mut sessions;
         let left = prepare(first);
@@ -537,7 +551,8 @@ pub(crate) fn source_order_cannot_change_material_execution_or_joint_identity() 
 
 #[test]
 pub(crate) fn graph_diagnostic_refuses_material_execution_but_reports_its_fuel() {
-    let rows = babylon_tick::fuel_bound_report(SCENARIO, None, MATERIAL_CYCLE).unwrap();
+    let rows = babylon_tick::fuel_bound_report(SCENARIO, None, MATERIAL_CYCLE)
+        .expect("the fixture call `fuel_bound_report` succeeds for the authored inputs");
     assert_eq!(rows.len(), 1);
     assert_eq!((rows[0].declared, rows[0].computed), (1_000_000, 1_000_000));
     let error = babylon_tick::run_once(SCENARIO, MATERIAL_CYCLE)
@@ -553,8 +568,10 @@ pub(crate) fn prepare(session: &Session) -> Candidate {
         session.graph_session().session_identity().clone(),
         session.completed_tick() + 1,
     )
-    .unwrap();
-    session.prepare_advance(&actions).unwrap()
+    .expect("the empty authored batch constructs");
+    session
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance")
 }
 
 pub(crate) fn commit(
@@ -566,14 +583,14 @@ pub(crate) fn commit(
         .commit_prepared_and_publish(sink, candidate, |_| {
             Ok::<_, &'static str>(ReplayCommitDisposition::Committed)
         })
-        .unwrap()
+        .expect("the prepared period commits")
         .0
 }
 
 pub(crate) fn advance(session: &mut Session, sink: &mut CollectingSink) -> MaterialTickReceipts {
     let candidate = prepare(session);
-    let receipts =
-        material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    let receipts = material_world::decode_material_receipts(candidate.material().receipt_bytes())
+        .expect("the canonical bytes decode into the declared type");
     commit(session, sink, candidate);
     receipts
 }
@@ -587,7 +604,10 @@ pub(crate) fn assert_stock(session: &Session, field: &str, expected: f64) {
     });
     assert_eq!(nodes.len(), 1);
     assert_eq!(
-        graph.node_attribute(nodes[0], field).unwrap().to_bits(),
+        graph
+            .node_attribute(nodes[0], field)
+            .expect("the fixture node carries the authored attribute")
+            .to_bits(),
         expected.to_bits(),
         "{field}"
     );
@@ -605,12 +625,12 @@ pub(crate) fn staffing_field(candidate: &Candidate, name: &str) -> i64 {
     let event = events
         .iter()
         .find(|event| event.emitting_rule() == STAFFING_COMPOSITION_ID)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let (_, value) = event
         .fields()
         .iter()
         .find(|(field, _)| field == name)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let StableBslValue::Int(value) = value else {
         panic!("staffing receipt field {name} must be exact int");
     };
@@ -633,15 +653,28 @@ pub(crate) fn live(session: &Session, sink: &CollectingSink) -> LiveState {
     // These fixture rules change only social-class attributes. Compare the
     // complete live H3 owner to a separately constructed checked foundation;
     // it deliberately offers no unchecked Clone or arbitrary-state constructor.
-    let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap();
-    let graph_material = MaterialState::try_new(foundation).unwrap();
+    let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+        .expect("the Michigan hex foundation builds");
+    let graph_material = MaterialState::try_new(foundation)
+        .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(graph.material_state(), &graph_material);
     LiveState {
-        graph: graph.graph().encode_state().unwrap().as_bytes().to_vec(),
+        graph: graph
+            .graph()
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec(),
         graph_material,
-        registers: graph.world_registers().unwrap().canonical_bytes().to_vec(),
+        registers: graph
+            .world_registers()
+            .expect("the fixture call `world_registers` succeeds for the authored inputs")
+            .canonical_bytes()
+            .to_vec(),
         physical: session.material().canonical_bytes().to_vec(),
-        world_hash: session.current_world_hash().unwrap(),
+        world_hash: session
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
         tick: session.completed_tick(),
         events: sink.events.clone(),
     }
@@ -650,10 +683,10 @@ pub(crate) fn live(session: &Session, sink: &CollectingSink) -> LiveState {
 pub(crate) fn owned_checkpoint_rows(rows: &MaterialStateRows) -> MaterialStateRows {
     let owned = MaterialStateRows::try_from_rows(MaterialStateRowsInput {
         world_registers: rows.world_registers().rows().iter().map(|row| {
-            WorldRegisterRow::try_new(row.qname().to_owned(), row.value().clone()).unwrap()
+            WorldRegisterRow::try_new(row.qname().to_owned(), row.value().clone()).expect("the authored fixture satisfies the constructor invariants")
         }).collect(),
         territories: rows.territories().rows().iter().map(|row| {
-            TerritoryStateRow::try_new(row.territory_id().clone(), row.ordered_fields().to_vec()).unwrap()
+            TerritoryStateRow::try_new(row.territory_id().clone(), row.ordered_fields().to_vec()).expect("the authored fixture satisfies the constructor invariants")
         }).collect(),
         dynamic_hexes: rows.dynamic_hexes().rows().iter().map(|row| {
             let [c, v, s, k, biocapacity_stock, energy_stock, raw_material_stock,
@@ -661,15 +694,15 @@ pub(crate) fn owned_checkpoint_rows(rows: &MaterialStateRows) -> MaterialStateRo
             DynamicHexStateRow::try_new(row.cell_id(), MichiganDynamicHexValueBits {
                 c, v, s, k, biocapacity_stock, energy_stock, raw_material_stock,
                 internet_access_pct, surveillance_coupling,
-            }).unwrap()
+            }).expect("the authored fixture satisfies the constructor invariants")
         }).collect(),
         organizations: rows.organizations().rows().iter().map(|row| {
             OrganizationStateRow::try_new(
                 row.organization_id().clone(), row.organization_kind().clone(),
                 row.ordered_territory_ids().to_vec(), row.ordered_fields().to_vec(),
-            ).unwrap()
+            ).expect("the authored fixture satisfies the constructor invariants")
         }).collect(),
-    }).unwrap();
+    }).expect("the fixture input satisfies the fallible conversion");
     assert_eq!(owned.canonical_bytes(), rows.canonical_bytes());
     owned
 }
@@ -682,8 +715,8 @@ pub(crate) fn one_empty_period_holds_then_releases_and_real_arrival_rehires_for_
     assert_eq!(staffing_field(&first, "current-unretained-hours"), 0);
     assert_eq!(staffing_field(&first, "retained-hours"), 160);
     assert_eq!(staffing_field(&first, "separations"), 0);
-    let receipts =
-        material_world::decode_material_receipts(first.material().receipt_bytes()).unwrap();
+    let receipts = material_world::decode_material_receipts(first.material().receipt_bytes())
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(
         (
             receipts.dispatches[0].quantity,
@@ -706,8 +739,8 @@ pub(crate) fn one_empty_period_holds_then_releases_and_real_arrival_rehires_for_
     let arrival = prepare(&session);
     assert_eq!(staffing_field(&arrival, "current-unretained-hours"), 40);
     assert_eq!(staffing_field(&arrival, "hires"), 1);
-    let receipts =
-        material_world::decode_material_receipts(arrival.material().receipt_bytes()).unwrap();
+    let receipts = material_world::decode_material_receipts(arrival.material().receipt_bytes())
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(receipts.arrivals.len(), 1);
     assert_eq!(receipts.arrivals[0].quantity, 4);
     assert!(receipts.production.is_empty());
@@ -795,7 +828,10 @@ pub(crate) fn prepared_and_failed_commit_publish_nothing_and_retry_has_identical
     assert_eq!(identity, expected);
     assert_eq!(session.material(), &expected_physical);
     assert_eq!(
-        session.graph_session().stable_graph_state().unwrap(),
+        session
+            .graph_session()
+            .stable_graph_state()
+            .expect("the fixture graph has a stable state"),
         expected_graph
     );
     assert_eq!(session.completed_tick(), 2);
@@ -813,8 +849,8 @@ pub(crate) fn wage_and_dispatch_candidate_is_atomic_and_restarts_through_paid_ar
     let mut sink = CollectingSink::default();
     let before = live(&session, &sink);
     let candidate = prepare(&session);
-    let receipts =
-        material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    let receipts = material_world::decode_material_receipts(candidate.material().receipt_bytes())
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(receipts.wage_accruals.len(), 1);
     assert_eq!(
         receipts.wage_accruals[0].amount,
@@ -825,7 +861,7 @@ pub(crate) fn wage_and_dispatch_candidate_is_atomic_and_restarts_through_paid_ar
         .income
         .iter()
         .find(|row| row.account == AccountId::Site(site(1)))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         employer.statement.idle_labor_expense,
         Currency::from_micro_units(160)
@@ -835,7 +871,7 @@ pub(crate) fn wage_and_dispatch_candidate_is_atomic_and_restarts_through_paid_ar
         .income
         .iter()
         .find(|row| matches!(row.account, AccountId::Household(_)))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         household.statement.wage_income,
         Currency::from_micro_units(160)
@@ -868,9 +904,9 @@ pub(crate) fn wage_and_dispatch_candidate_is_atomic_and_restarts_through_paid_ar
             &graph,
             &graph_material,
             &registers,
-            MaterialWorldRegister::decode(&material).unwrap(),
+            MaterialWorldRegister::decode(&material).expect("the committed canonical bytes decode"),
         )
-        .unwrap();
+        .expect("the committed checkpoint restores");
     let mut restored_sink = CollectingSink::default();
     for _ in 2..=4 {
         let next = prepare(&session);
@@ -888,11 +924,17 @@ pub(crate) fn wage_and_dispatch_candidate_is_atomic_and_restarts_through_paid_ar
         panic!("paid circuit")
     };
     assert_eq!(
-        economy.book.cash(AccountId::Site(site(2))).unwrap(),
+        economy
+            .book
+            .cash(AccountId::Site(site(2)))
+            .expect("the fixture book holds the payer account"),
         Currency::from_micro_units(8)
     );
     assert_eq!(
-        economy.book.total_cash_and_reserves().unwrap(),
+        economy
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         Currency::from_micro_units(1000)
     );
 }
@@ -963,7 +1005,9 @@ pub(crate) fn successful_acknowledgement_publishes_stable_staffing_and_identity_
     let expected_event = report.report().committed_events[0].clone();
     commit(&mut session, &mut sink, candidate);
     assert_eq!(
-        sink.events.last().unwrap(),
+        sink.events
+            .last()
+            .expect("the fixture sequence is non-empty"),
         &(
             expected_event.event_type().to_owned(),
             expected_event.payload().to_vec(),
@@ -1011,7 +1055,7 @@ pub(crate) fn failing_later_rule_aborts_staffing_physical_close_events_and_both_
     let before = live(&session, &sink);
     let actions =
         OrderedPracticeActionBatch::empty(session.graph_session().session_identity().clone(), 3)
-            .unwrap();
+            .expect("the empty authored batch constructs");
     for _ in 0..2 {
         let result = session.prepare_advance(&actions);
         let Err(MaterialReplayError::Graph(ReplayTickError::Execution { message })) = result else {
@@ -1048,13 +1092,17 @@ pub(crate) fn same_version_checkpoint_restores_retention_and_replays_arrival_wit
             &graph,
             &graph_material,
             &registers,
-            MaterialWorldRegister::decode(&physical).unwrap(),
+            MaterialWorldRegister::decode(&physical).expect("the committed canonical bytes decode"),
         )
-        .unwrap();
+        .expect("the committed checkpoint restores");
     assert_people(&restored, 0.0, 1.0, 0.0);
     assert_eq!(
-        restored.current_world_hash().unwrap(),
-        uninterrupted.current_world_hash().unwrap()
+        restored
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        uninterrupted
+            .current_world_hash()
+            .expect("the committed session publishes a world hash")
     );
     let mut restored_sink = CollectingSink::default();
     let original_event_count = original_sink.events.len();
@@ -1079,8 +1127,14 @@ pub(crate) fn same_version_checkpoint_restores_retention_and_replays_arrival_wit
     }
     assert_eq!(restored.material(), uninterrupted.material());
     assert_eq!(
-        restored.graph_session().stable_graph_state().unwrap(),
-        uninterrupted.graph_session().stable_graph_state().unwrap()
+        restored
+            .graph_session()
+            .stable_graph_state()
+            .expect("the fixture graph has a stable state"),
+        uninterrupted
+            .graph_session()
+            .stable_graph_state()
+            .expect("the fixture graph has a stable state")
     );
     assert_eq!(
         restored_sink.events,
@@ -1161,8 +1215,8 @@ pub(crate) fn admitted_checkpoint_refusal_preserves_both_owners_and_valid_retry_
     let registers = graph.result_registers().canonical_bytes();
     let mut damaged_registers = registers.to_vec();
     damaged_registers[0] ^= 1;
-    let admitted =
-        MaterialWorldRegister::decode(candidate.material().register().canonical_bytes()).unwrap();
+    let admitted = MaterialWorldRegister::decode(candidate.material().register().canonical_bytes())
+        .expect("the committed canonical bytes decode");
     let mut resumed = session(WITNESS);
     let resumed_sink = CollectingSink::default();
     let before = live(&resumed, &resumed_sink);
@@ -1182,7 +1236,8 @@ pub(crate) fn admitted_checkpoint_refusal_preserves_both_owners_and_valid_retry_
     ));
     assert_eq!(live(&resumed, &resumed_sink), before);
 
-    let opening = MaterialWorldRegister::decode(resumed.material().canonical_bytes()).unwrap();
+    let opening = MaterialWorldRegister::decode(resumed.material().canonical_bytes())
+        .expect("the committed canonical bytes decode");
     assert!(matches!(
         resumed.restore_full_checkpoint(
             graph.result_stable_graph(),
@@ -1194,8 +1249,8 @@ pub(crate) fn admitted_checkpoint_refusal_preserves_both_owners_and_valid_retry_
     ));
     assert_eq!(live(&resumed, &resumed_sink), before);
 
-    let admitted =
-        MaterialWorldRegister::decode(candidate.material().register().canonical_bytes()).unwrap();
+    let admitted = MaterialWorldRegister::decode(candidate.material().register().canonical_bytes())
+        .expect("the committed canonical bytes decode");
     resumed
         .restore_full_checkpoint(
             graph.result_stable_graph(),
@@ -1203,9 +1258,11 @@ pub(crate) fn admitted_checkpoint_refusal_preserves_both_owners_and_valid_retry_
             registers,
             admitted,
         )
-        .unwrap();
+        .expect("the committed checkpoint restores");
     assert_eq!(
-        resumed.current_world_hash().unwrap(),
+        resumed
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
         candidate.identity().result_world_hash()
     );
     commit(&mut original, &mut original_sink, candidate);

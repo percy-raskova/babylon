@@ -116,7 +116,10 @@ fn discover_state(params: &InitializeParams) -> (Option<ContentSetManifest>, Opt
         .and_then(|folders| folders.first())
         .and_then(|folder| crate::uri::file_path_from_uri(&folder.uri))
         .or_else(|| {
-            #[allow(deprecated)]
+            #[allow(
+                deprecated,
+                reason = "the fixture exercises the retained deprecated entry point"
+            )]
             params
                 .root_uri
                 .as_ref()
@@ -672,7 +675,10 @@ fn handle_workspace_diagnostic(connection: &Connection, state: &mut ServerState,
     // `Uri`'s interior `Cell` is parse-laziness bookkeeping, not key
     // semantics: lsp-types defines `Eq`/`Hash` over `as_str()`, so it is a
     // sound, stable map key despite the lint's interior-mutability heuristics.
-    #[allow(clippy::mutable_key_type)]
+    #[allow(
+        clippy::mutable_key_type,
+        reason = "the key is an authored identity wrapper with stable ordering"
+    )]
     let previous: HashMap<Uri, String> = params
         .previous_result_ids
         .into_iter()
@@ -893,7 +899,7 @@ note = "LSP request fixture"
         ] {
             let uri = format!("file:///campaign/content/{name}")
                 .parse::<Uri>()
-                .unwrap();
+                .expect("the fixture world holds the addressed component");
             state.store.open(uri.clone(), 1, source.to_owned());
             assert!(
                 super::workspace_diagnostic_paths(&state, Path::new("/virtual"))

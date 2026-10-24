@@ -276,20 +276,23 @@ fn first_dirty_receipt(config: &Config, campaign_id: CampaignId) -> PendingArchi
 }
 
 fn place_page_rows(config: &Config, campaign_id: CampaignId) -> Vec<(String, i64, String)> {
-    let rows=config.connect(NoTls).unwrap().query("SELECT DISTINCT ON(subject_id) subject_id,effective_tick,source_tick FROM babylon_meta.archive_page_revision_v2 WHERE campaign_id=$1 AND subject_kind='place' ORDER BY subject_id,effective_tick DESC", &[campaign_id.as_uuid()]).unwrap();
+    let rows=config.connect(NoTls).expect("the test database accepts the connection").query("SELECT DISTINCT ON(subject_id) subject_id,effective_tick,source_tick FROM babylon_meta.archive_page_revision_v2 WHERE campaign_id=$1 AND subject_kind='place' ORDER BY subject_id,effective_tick DESC", &[campaign_id.as_uuid()]).expect("the seeded rows are readable");
     archive_reader::with_reader(config, |reader| {
         rows.iter()
             .map(|row| {
                 let id: String = row.get(0);
                 let tick: i64 = row.get(1);
                 let source: i64 = row.get(2);
-                let scope =
-                    archive_reader::scope_at(config, campaign_id, u64::try_from(tick).unwrap());
-                let subject =
-                    ArchivePageRef::try_new(ArchiveSubjectKind::Place, id.clone()).unwrap();
+                let scope = archive_reader::scope_at(
+                    config,
+                    campaign_id,
+                    u64::try_from(tick).expect("the fixture value fits the target range"),
+                );
+                let subject = ArchivePageRef::try_new(ArchiveSubjectKind::Place, id.clone())
+                    .expect("the authored fixture satisfies the constructor invariants");
                 let read = reader
                     .dossier_as_of(&scope, &subject, &ArchiveDossierBounds::default())
-                    .unwrap();
+                    .expect("the fixture dossier exists at the authored period");
                 let ArchiveDossierState::Ready { page, .. } = read.state else {
                     panic!("place ready");
                 };

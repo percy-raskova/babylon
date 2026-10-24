@@ -164,8 +164,8 @@ fn source<'a>(source_id: &'a str, source: &'a str) -> ContentRuleSource<'a> {
 
 #[test]
 fn named_source_analysis_retains_paths_and_resolved_kernel_projection_linkage() {
-    let analysis =
-        babylon_tick::analyze_content_set_sources(scenario(SCENARIO), &[], &sources()).unwrap();
+    let analysis = babylon_tick::analyze_content_set_sources(scenario(SCENARIO), &[], &sources())
+        .expect("the fixture call `analyze_content_set_sources` succeeds for the authored inputs");
     assert_eq!(analysis.rules.len(), 2);
     assert_eq!(
         analysis.rules[0].source_id,
@@ -206,7 +206,7 @@ fn paired_single_carrier_scenario_has_an_exact_recognizer_preimage_measure() {
         &sources(),
         "struggle/spark",
     )
-    .unwrap();
+    .expect("the fixture call `forecast_scenario_determined_event_likelihoods` succeeds for the authored inputs");
     assert_eq!(likelihoods.len(), 1);
     assert_eq!(likelihoods[0].event_type, "EXCESSIVE_FORCE");
     assert_eq!(likelihoods[0].favorable_outcomes, ["EXCESSIVE_FORCE"]);
@@ -222,7 +222,7 @@ fn paired_scenario_forecast_refuses_to_guess_between_multiple_carriers() {
         &sources(),
         "struggle/spark",
     )
-    .unwrap_err();
+    .expect_err("the fixture call `forecast_scenario_determined_event_likelihoods` fails for the authored inputs");
     assert!(
         matches!(error, ForecastError::NotExactlyEnumerable { .. }),
         "{error:?}"
@@ -264,7 +264,7 @@ fn forecast_executes_the_resolved_deterministic_prefix_before_enumerating_the_ke
         &prefixed,
         "struggle/spark",
     )
-    .unwrap();
+    .expect("the fixture call `forecast_scenario_determined_event_likelihoods` succeeds for the authored inputs");
     assert_eq!(likelihoods.len(), 1);
     assert_eq!(likelihoods[0].event_type, "EXCESSIVE_FORCE");
     assert_eq!(likelihoods[0].numerator, TICKET_DENOMINATOR / 4);
@@ -284,7 +284,7 @@ fn scenario_determined_forecast_refuses_a_calendar_dependent_prefix() {
         &prefixed,
         "struggle/spark",
     )
-    .unwrap_err();
+    .expect_err("the fixture call `forecast_scenario_determined_event_likelihoods` fails for the authored inputs");
     assert!(matches!(error, ForecastError::NotExactlyEnumerable { .. }));
     assert!(error.to_string().contains("forecast prefix"), "{error}");
     assert!(error.to_string().contains("forecast tick"), "{error}");
@@ -304,7 +304,7 @@ fn forecast_refuses_cross_sample_enumeration_after_an_earlier_finite_kernel() {
         &CROSS_SAMPLE_SLOTS,
         "struggle/spark",
     )
-    .unwrap_err();
+    .expect_err("the fixture call `forecast_scenario_determined_event_likelihoods_with_kernel_slots` fails for the authored inputs");
     assert!(
         matches!(error, ForecastError::NotExactlyEnumerable { .. }),
         "{error:?}"
@@ -331,8 +331,8 @@ fn resolved_nonadjacency_is_a_typed_rule_owned_probability_refusal() {
     };
     let mut separated = sources().to_vec();
     separated.push(obstruction);
-    let error =
-        babylon_tick::analyze_content_set_sources(scenario(SCENARIO), &[], &separated).unwrap_err();
+    let error = babylon_tick::analyze_content_set_sources(scenario(SCENARIO), &[], &separated)
+        .expect_err("the fixture call `analyze_content_set_sources` fails for the authored inputs");
     let PrepareError::Probability {
         rule_id: Some(rule_id),
         error: ProbabilityError::ProjectionNotAdjacent {

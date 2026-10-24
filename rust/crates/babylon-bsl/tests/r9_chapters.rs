@@ -268,7 +268,7 @@ mod c1_edge_and_hyperedge_attributes {
                 &v,
                 &super::enums(),
             )
-            .unwrap_err();
+            .expect_err("the malformed declaration is refused");
         assert_eq!(err.spec_code(), Some("E-LOAD-001"));
     }
 
@@ -284,7 +284,7 @@ mod c1_edge_and_hyperedge_attributes {
                 &v,
                 &super::enums(),
             )
-            .unwrap_err();
+            .expect_err("the malformed declaration is refused");
         assert_eq!(err.spec_code(), Some("E-LOAD-023"));
     }
 
@@ -296,7 +296,7 @@ mod c1_edge_and_hyperedge_attributes {
             (EnumKind::NodeType, vec!["TENANCY".to_owned()]),
             (EnumKind::EdgeType, vec!["TENANCY".to_owned()]),
         ])
-        .unwrap_err();
+        .expect_err("the fixture call `new` fails for the authored inputs");
         assert_eq!(err.spec_code(), "E-LOAD-032");
     }
 
@@ -311,14 +311,15 @@ mod c1_edge_and_hyperedge_attributes {
              (effects (update-node self social-class/agitation (add 0.05i)))",
         );
         let form = super::e(&source);
-        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
+        let decls =
+            babylon_bsl::bindings::parse_bindings(&form).expect("the authored bindings parse");
         let err = babylon_bsl::scope::check_foreign_field_scoping(
             &form,
             &decls,
             Some("social-class"),
             &super::vocabulary(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_foreign_field_scoping`");
         assert_eq!(err.spec_code(), "E-TYPE-013");
     }
 
@@ -329,7 +330,7 @@ mod c1_edge_and_hyperedge_attributes {
         for name in ["field-of", "fold", "the", "edge-between", "select-max"] {
             assert_eq!(
                 babylon_bsl::declarations::check_intrinsic_name(name)
-                    .unwrap_err()
+                    .expect_err("the malformed input is rejected by `check_intrinsic_name`")
                     .spec_code(),
                 Some("E-LOAD-024"),
                 "{name}"
@@ -426,7 +427,7 @@ mod c2_edge_mutation {
             ),
             &super::vocabulary(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_field_init_owners`");
         assert_eq!(err.spec_code(), "E-PARSE-041");
     }
 
@@ -437,7 +438,7 @@ mod c2_edge_mutation {
             &super::e("(add-edge EdgeType/SOLIDARITY a b :strength 0.5c (social-class/wealth 5$))"),
             &super::vocabulary(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_field_init_owners`");
         assert_eq!(err.spec_code(), "E-TYPE-014");
     }
 
@@ -447,7 +448,7 @@ mod c2_edge_mutation {
         let err = babylon_bsl::grammar::check_enum_ref_kinds(&super::e(
             "(edge-between NodeType/SOCIAL_CLASS a b)",
         ))
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_enum_ref_kinds`");
         assert_eq!(err.spec_code(), "E-TYPE-011");
     }
 
@@ -462,7 +463,8 @@ mod c2_edge_mutation {
   (edge EdgeType/SOLIDARITY core periphery 1)
   (edge EdgeType/SOLIDARITY core periphery 1))";
         let mut graph = MemoryGraph::default();
-        let err = babylon_bsl::scenario::load_scenario(source, &mut graph).unwrap_err();
+        let err = babylon_bsl::scenario::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-044"));
     }
 
@@ -478,7 +480,7 @@ mod c2_edge_mutation {
         let mut graph = MemoryGraph::default();
         assert_eq!(
             babylon_bsl::scenario::load_scenario(source, &mut graph)
-                .unwrap()
+                .expect("the authored scenario compiles")
                 .edge_count,
             2
         );
@@ -554,7 +556,7 @@ mod c3_graph_scope_carriers {
             &carrier_rule("(update-node (the NodeType/SOCIAL_CLASS) social-class/wealth (add 5$))"),
             &manifest(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_rule_against_manifest`");
         assert_eq!(err.spec_code(), Some("E-LOAD-043"));
     }
 
@@ -579,7 +581,7 @@ mod c3_graph_scope_carriers {
     fn the_against_an_edge_type_is_e_type_011() {
         let err =
             babylon_bsl::grammar::check_enum_ref_kinds(&super::e("(the EdgeType/SOLIDARITY)"))
-                .unwrap_err();
+                .expect_err("the malformed input is rejected by `check_enum_ref_kinds`");
         assert_eq!(err.spec_code(), "E-TYPE-011");
     }
 
@@ -592,7 +594,7 @@ mod c3_graph_scope_carriers {
             &carrier_rule("(update-node (the NodeType/SOVEREIGN) social-class/wealth (add 5$))"),
             &manifest(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_rule_against_manifest`");
         assert_eq!(err.spec_code(), Some("E-LOAD-045"));
     }
 
@@ -601,7 +603,8 @@ mod c3_graph_scope_carriers {
     /// without it.
     #[test]
     fn a_queried_type_with_no_manifest_row_is_e_load_045_in_the_bound_checker() {
-        let err = super::cost("(fold sum (nodes NodeType/SOVEREIGN) it)").unwrap_err();
+        let err = super::cost("(fold sum (nodes NodeType/SOVEREIGN) it)")
+            .expect_err("the fixture call `cost` fails for the authored inputs");
         assert_eq!(err.spec_code(), Some("E-LOAD-045"));
     }
 
@@ -638,14 +641,15 @@ mod c4_rule_domain {
              (when (< wealth 1000.5$)) \
              (effects (update-node self social-class/agitation (add 0.05i))))";
         let form = super::e(worked);
-        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
+        let decls =
+            babylon_bsl::bindings::parse_bindings(&form).expect("the authored bindings parse");
         assert_eq!(
             babylon_bsl::domain::resolve_domain(&form, &decls, &super::vocabulary()),
             Ok(RuleDomain::Node("social-class".to_owned()))
         );
         assert_eq!(
             babylon_bsl::canonical_ast::canonical_bytes(&form)
-                .unwrap()
+                .expect("the graph value exposes canonical bytes")
                 .len(),
             500,
             "§5.6's bytes retain the optional, absent <domain>"
@@ -659,7 +663,7 @@ mod c4_rule_domain {
             "(bindings (binding now :tick)) (when (< now 5)) \
              (effects (emit EventType/RUPTURE (t now)))",
         )
-        .unwrap_err();
+        .expect_err("the fixture call `domain_of` fails for the authored inputs");
         assert_eq!(err.spec_code(), Some("E-LOAD-004"));
     }
 
@@ -672,7 +676,7 @@ mod c4_rule_domain {
              (when (< wealth claim)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         )
-        .unwrap_err();
+        .expect_err("the fixture call `domain_of` fails for the authored inputs");
         assert_eq!(err.spec_code(), Some("E-LOAD-004"));
     }
 
@@ -687,7 +691,7 @@ mod c4_rule_domain {
              (when (< claim 5)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         )
-        .unwrap_err();
+        .expect_err("the fixture call `domain_of` fails for the authored inputs");
         assert_eq!(err.spec_code(), Some("E-TYPE-010"));
     }
 
@@ -714,7 +718,7 @@ mod c4_rule_domain {
             "(domain :graph) (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         )
-        .unwrap_err();
+        .expect_err("the fixture call `domain_of` fails for the authored inputs");
         assert_eq!(err.spec_code(), Some("E-TYPE-015"));
     }
 
@@ -727,7 +731,7 @@ mod c4_rule_domain {
              (when (< wealth 5)) \
              (effects (emit EventType/RUPTURE (x 1)))",
         )
-        .unwrap_err();
+        .expect_err("the fixture call `domain_of` fails for the authored inputs");
         assert_eq!(err.spec_code(), Some("E-TYPE-015"));
     }
 
@@ -738,7 +742,7 @@ mod c4_rule_domain {
             "(bindings (binding g :metric density :graph)) \
              (effects (emit EventType/RUPTURE (x 1)))",
         )))
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_graph_flag_placement`");
         assert_eq!(err.spec_code(), "E-PARSE-013");
     }
 
@@ -747,7 +751,7 @@ mod c4_rule_domain {
     fn a_domain_naming_an_edge_type_is_e_type_011() {
         let err =
             babylon_bsl::grammar::check_enum_ref_kinds(&super::e("(domain EdgeType/SOLIDARITY)"))
-                .unwrap_err();
+                .expect_err("the malformed input is rejected by `check_enum_ref_kinds`");
         assert_eq!(err.spec_code(), "E-TYPE-011");
     }
 
@@ -760,9 +764,9 @@ mod c4_rule_domain {
         let typed = babylon_bsl::canonical_ast::canonical_bytes(&super::e(
             "(domain NodeType/SOCIAL_CLASS)",
         ))
-        .unwrap();
-        let graph =
-            babylon_bsl::canonical_ast::canonical_bytes(&super::e("(domain :graph)")).unwrap();
+        .expect("the graph value exposes canonical bytes");
+        let graph = babylon_bsl::canonical_ast::canonical_bytes(&super::e("(domain :graph)"))
+            .expect("the graph value exposes canonical bytes");
         assert_ne!(typed, graph);
         // D20's flag shape, assembled from §5.1-§5.2 rather than compared
         // against `(domain :graph #t)` — `:graph` takes no operand (§1.6),
@@ -957,14 +961,14 @@ mod c7_computed_bindings {
                        (binding doubled :expr (+ claim claim))) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ));
-        let d = babylon_bsl::bindings::parse_bindings(&form).unwrap();
+        let d = babylon_bsl::bindings::parse_bindings(&form).expect("the authored bindings parse");
         let err = babylon_bsl::scope::check_foreign_field_scoping(
             &form,
             &d,
             Some("social-class"),
             &super::vocabulary(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_foreign_field_scoping`");
         assert_eq!(err.spec_code(), "E-TYPE-010");
     }
 }
@@ -1200,14 +1204,18 @@ mod c5_element_selection {
     #[test]
     fn select_max_and_select_min_execute_over_nodes_and_neighbors() {
         let mut graph = MemoryGraph::new();
-        let low = graph.add_node("ORGANIZATION").unwrap();
-        let high = graph.add_node("ORGANIZATION").unwrap();
+        let low = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        let high = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(low, "organization/claim-strength", 0.2)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         graph
             .update_node(high, "organization/claim-strength", 0.9)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let mut fuel = 1_000;
         let result = eval_expr(
             "(select-max (nodes NodeType/ORGANIZATION) \
@@ -1216,16 +1224,22 @@ mod c5_element_selection {
             HashMap::new(),
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored expression evaluates");
         assert_eq!(result, Value::NodeRef(high));
 
         // Over `neighbors`: `self` reaches both ORGANIZATION nodes via
         // SOLIDARITY; the NodeType annotation is the only filter and both
         // qualify, so the selection picks between them exactly as it did
         // over the bare `nodes` query above.
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
-        graph.add_edge("SOLIDARITY", subject, low, 1.0).unwrap();
-        graph.add_edge("SOLIDARITY", subject, high, 1.0).unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("SOLIDARITY", subject, low, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("SOLIDARITY", subject, high, 1.0)
+            .expect("the fixture graph admits the authored edge");
         let mut fuel2 = 1_000;
         let result2 = eval_expr(
             "(select-min (neighbors self EdgeType/SOLIDARITY :out NodeType/ORGANIZATION) \
@@ -1234,7 +1248,7 @@ mod c5_element_selection {
             HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
             &mut fuel2,
         )
-        .unwrap();
+        .expect("the authored expression evaluates");
         assert_eq!(result2, Value::NodeRef(low));
     }
 
@@ -1257,7 +1271,9 @@ mod c5_element_selection {
         // and this vector would pin the wrong error (Copilot harvest,
         // #520).
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         for (query, expected) in [
             (
                 "(hyperedges HyperedgeType/ECONOMIC_SECTOR)",
@@ -1279,7 +1295,7 @@ mod c5_element_selection {
                 HashMap::from([("self".to_owned(), Value::NodeRef(subject))]),
                 &mut fuel,
             )
-            .unwrap_err();
+            .expect_err("the fixture call `eval_expr` fails for the authored inputs");
             assert!(err.message.contains(expected), "{query}: {err}");
         }
     }
@@ -1290,14 +1306,18 @@ mod c5_element_selection {
     #[test]
     fn the_tie_vector_breaks_to_the_smaller_id_for_both_operators() {
         let mut graph = MemoryGraph::new();
-        let first = graph.add_node("ORGANIZATION").unwrap(); // id 0
-        let second = graph.add_node("ORGANIZATION").unwrap(); // id 1
+        let first = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind"); // id 0
+        let second = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind"); // id 1
         graph
             .update_node(first, "organization/claim-strength", 0.5)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         graph
             .update_node(second, "organization/claim-strength", 0.5)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         for op in ["select-max", "select-min"] {
             let mut fuel = 1_000;
             let result = eval_expr(
@@ -1309,7 +1329,7 @@ mod c5_element_selection {
                 HashMap::new(),
                 &mut fuel,
             )
-            .unwrap();
+            .expect("the authored expression evaluates");
             assert_eq!(
                 result,
                 Value::NodeRef(first),
@@ -1334,9 +1354,14 @@ mod c5_element_selection {
                 HashMap::new(),
                 &mut fuel,
             )
-            .unwrap_err();
+            .expect_err("the fixture call `eval_expr` fails for the authored inputs");
             assert_eq!(err.code, Some(EvalCode::EmptyAggregate), "{op}: {err}");
-            assert_eq!(err.code.unwrap().spec_code(), "E-EVAL-021");
+            assert_eq!(
+                err.code
+                    .expect("the asserted error carries a specification code")
+                    .spec_code(),
+                "E-EVAL-021"
+            );
         }
     }
 
@@ -1349,10 +1374,12 @@ mod c5_element_selection {
         let mut graph = MemoryGraph::new();
         let mut ids = Vec::new();
         for i in 0..4 {
-            let id = graph.add_node("ORGANIZATION").unwrap();
+            let id = graph
+                .add_node("ORGANIZATION")
+                .expect("the fixture adds a node with a registered kind");
             graph
                 .update_node(id, "organization/claim-strength", f64::from(i))
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
             ids.push(id);
         }
         let mut fuel = 1_000;
@@ -1363,8 +1390,11 @@ mod c5_element_selection {
             HashMap::new(),
             &mut fuel,
         )
-        .unwrap();
-        assert_eq!(result, Value::NodeRef(*ids.last().unwrap()));
+        .expect("the authored expression evaluates");
+        assert_eq!(
+            result,
+            Value::NodeRef(*ids.last().expect("the fixture sequence is non-empty"))
+        );
     }
 
     /// A selection result feeds BOTH consumers §2.7 names: `field-of` (a
@@ -1375,14 +1405,18 @@ mod c5_element_selection {
     #[test]
     fn a_selection_feeds_field_of_and_update_node() {
         let mut graph = MemoryGraph::new();
-        let low = graph.add_node("ORGANIZATION").unwrap();
-        let high = graph.add_node("ORGANIZATION").unwrap();
+        let low = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        let high = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(low, "organization/claim-strength", 0.2)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         graph
             .update_node(high, "organization/claim-strength", 0.9)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
 
         // field-of over the selection result — the §2.7 worked example's
         // read half.
@@ -1396,7 +1430,7 @@ mod c5_element_selection {
             HashMap::new(),
             &mut fuel,
         )
-        .unwrap();
+        .expect("the authored expression evaluates");
         assert_eq!(read_back, Value::Real(0.9));
 
         // update-node against the selection result — the write half,
@@ -1438,7 +1472,7 @@ mod c5_element_selection {
                 &mut sink,
                 &mut fuel2,
             )
-            .unwrap();
+            .expect("the fixture call `collect_effects` succeeds for the authored inputs");
         // Pass 2 uses a FRESH executor, exactly as `tick.rs::run_tick`
         // does — the apply half must not depend on any state the
         // collecting executor accumulated (Copilot harvest, #520).
@@ -1446,18 +1480,18 @@ mod c5_element_selection {
         for write in &pending {
             apply_executor
                 .apply_pending_write(write, &mut graph)
-                .unwrap();
+                .expect("the fixture call `apply_pending_write` succeeds for the authored inputs");
         }
         let selected = graph
             .node_attribute(high, "organization/claim-strength")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (selected - 0.5).abs() < 1e-12,
             "the SELECTED (higher-scoring) node was written"
         );
         let untouched = graph
             .node_attribute(low, "organization/claim-strength")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (untouched - 0.2).abs() < 1e-12,
             "the non-selected node was left alone"
@@ -1548,7 +1582,7 @@ mod c6_effect_position_iteration {
             &super::ceilings(),
             &IntrinsicCosts::default(),
         )
-        .unwrap_err();
+        .expect_err("the malformed rule is refused");
         assert_eq!(err.spec_code(), Some("E-LOAD-040"));
         // …and one MORE than the bound loads (§4.5's off-by-one: budget
         // `bound + 1`, because the meter must stay strictly positive).
@@ -1587,7 +1621,10 @@ mod c6_effect_position_iteration {
     /// object — the conformance-family mirror of `structural_verbs.rs`'s
     /// own `collect_then_apply` test helper, built from public API since
     /// this file is a separate integration-test crate.
-    #[allow(clippy::type_complexity)]
+    #[allow(
+        clippy::type_complexity,
+        reason = "the type spells out the authored nested shape"
+    )]
     fn collect_then_apply(
         graph: &mut MemoryGraph,
         bindings: HashMap<String, Value>,
@@ -1633,14 +1670,18 @@ mod c6_effect_position_iteration {
     #[test]
     fn for_each_over_nodes_applies_update_node_and_emit_per_element_in_order() {
         let mut graph = MemoryGraph::new();
-        let a = graph.add_node("SOCIAL_CLASS").unwrap();
-        let b = graph.add_node("SOCIAL_CLASS").unwrap();
+        let a = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let b = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(a, "social-class/agitation", 0.10)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         graph
             .update_node(b, "social-class/agitation", 0.20)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let mut fuel = 4_096;
         let events = collect_then_apply(
             &mut graph,
@@ -1650,7 +1691,7 @@ mod c6_effect_position_iteration {
                (emit EventType/RUPTURE (who it))))",
             &mut fuel,
         )
-        .unwrap();
+        .expect("the fixture applies the collected transitions");
         assert_eq!(
             events,
             vec![
@@ -1666,7 +1707,9 @@ mod c6_effect_position_iteration {
             "once per element, in §2.6 ascending-id iteration order"
         );
         for id in [a, b] {
-            let stored = graph.node_attribute(id, "social-class/agitation").unwrap();
+            let stored = graph
+                .node_attribute(id, "social-class/agitation")
+                .expect("the fixture node carries the authored attribute");
             assert!((stored - 0.5).abs() < 1e-12, "{id:?}");
         }
     }
@@ -1676,14 +1719,24 @@ mod c6_effect_position_iteration {
     #[test]
     fn for_each_over_neighbors_applies_update_node_per_element() {
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
-        let tenant = graph.add_node("SOCIAL_CLASS").unwrap();
-        let other = graph.add_node("ORGANIZATION").unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let tenant = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let other = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(tenant, "social-class/agitation", 0.10)
-            .unwrap();
-        graph.add_edge("SOLIDARITY", subject, tenant, 1.0).unwrap();
-        graph.add_edge("SOLIDARITY", subject, other, 1.0).unwrap();
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .add_edge("SOLIDARITY", subject, tenant, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("SOLIDARITY", subject, other, 1.0)
+            .expect("the fixture graph admits the authored edge");
         let mut fuel = 4_096;
         collect_then_apply(
             &mut graph,
@@ -1692,10 +1745,10 @@ mod c6_effect_position_iteration {
                (update-node it social-class/agitation (set 0.9i))))",
             &mut fuel,
         )
-        .unwrap();
+        .expect("the fixture applies the collected transitions");
         let stored = graph
             .node_attribute(tenant, "social-class/agitation")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (stored - 0.9).abs() < 1e-12,
             "the typed neighbor was written"
@@ -1709,10 +1762,12 @@ mod c6_effect_position_iteration {
     #[test]
     fn for_each_over_an_empty_query_applies_nothing_and_does_not_error() {
         let mut graph = MemoryGraph::new();
-        let self_id = graph.add_node("SOCIAL_CLASS").unwrap();
+        let self_id = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(self_id, "social-class/agitation", 0.10)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let mut fuel = 512;
         let events = collect_then_apply(
             &mut graph,
@@ -1725,7 +1780,7 @@ mod c6_effect_position_iteration {
         assert!(events.is_empty());
         let stored = graph
             .node_attribute(self_id, "social-class/agitation")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (stored - 0.10).abs() < 1e-12,
             "an empty for-each applies NOTHING — the body never ran"
@@ -1741,10 +1796,12 @@ mod c6_effect_position_iteration {
     #[test]
     fn for_each_reads_the_pre_state_not_an_earlier_verbs_effect_in_the_same_list() {
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(subject, "social-class/agitation", 0.10)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let mut fuel = 1_024;
         let events = collect_then_apply(
             &mut graph,
@@ -1755,7 +1812,7 @@ mod c6_effect_position_iteration {
                  (emit EventType/RUPTURE (agitation (field-of it social-class/agitation)))))",
             &mut fuel,
         )
-        .unwrap();
+        .expect("the fixture applies the collected transitions");
         assert_eq!(
             events,
             vec![(
@@ -1770,7 +1827,7 @@ mod c6_effect_position_iteration {
         // collect_effects returned and apply_pending_write ran.
         let stored = graph
             .node_attribute(subject, "social-class/agitation")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert!((stored - 0.90).abs() < 1e-12);
     }
 
@@ -1780,10 +1837,18 @@ mod c6_effect_position_iteration {
     #[test]
     fn nested_for_each_composes_and_executes() {
         let mut graph = MemoryGraph::new();
-        let sc1 = graph.add_node("SOCIAL_CLASS").unwrap();
-        let sc2 = graph.add_node("SOCIAL_CLASS").unwrap();
-        let org1 = graph.add_node("ORGANIZATION").unwrap();
-        let org2 = graph.add_node("ORGANIZATION").unwrap();
+        let sc1 = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let sc2 = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let org1 = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        let org2 = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         let mut fuel = 16_384;
         let events = collect_then_apply(
             &mut graph,
@@ -1794,7 +1859,7 @@ mod c6_effect_position_iteration {
                    (emit EventType/PAIR (outer outer) (inner it)))))",
             &mut fuel,
         )
-        .unwrap();
+        .expect("the fixture applies the collected transitions");
         assert_eq!(
             events,
             vec![
@@ -1872,7 +1937,7 @@ mod c8_typed_neighbours_and_naming {
         let err = babylon_bsl::grammar::check_arities_and_closed_sets(&super::e(
             "(neighbors self EdgeType/SOLIDARITY :out)",
         ))
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_arities_and_closed_sets`");
         assert_eq!(err.spec_code(), "E-PARSE-042");
         assert!(
             babylon_bsl::grammar::check_arities_and_closed_sets(&super::e(
@@ -1888,7 +1953,7 @@ mod c8_typed_neighbours_and_naming {
         let err = babylon_bsl::grammar::check_enum_ref_kinds(&super::e(
             "(neighbors self NodeType/SOCIAL_CLASS :out EdgeType/SOLIDARITY)",
         ))
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_enum_ref_kinds`");
         assert_eq!(err.spec_code(), "E-TYPE-011");
     }
 
@@ -1922,7 +1987,8 @@ mod c8_typed_neighbours_and_naming {
                                    NodeType/ORGANIZATION) claim) 5)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ));
-        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
+        let decls =
+            babylon_bsl::bindings::parse_bindings(&form).expect("the authored bindings parse");
         assert_eq!(
             babylon_bsl::scope::check_foreign_field_scoping(
                 &form,
@@ -1944,7 +2010,8 @@ mod c8_typed_neighbours_and_naming {
                 "(bindings) (when (exists (nodes NodeType/ORGANIZATION) :as {reserved} #t)) \
                  (effects (update-node self social-class/agitation (add 0.05i)))"
             )));
-            let err = babylon_bsl::scope::check_element_names(&form, &[]).unwrap_err();
+            let err = babylon_bsl::scope::check_element_names(&form, &[])
+                .expect_err("the malformed input is rejected by `check_element_names`");
             assert_eq!(err.spec_code(), "E-PARSE-022", "{reserved}");
         }
         let form = super::e(&super::rule(
@@ -1952,8 +2019,8 @@ mod c8_typed_neighbours_and_naming {
              (when (exists (hyperedges HyperedgeType/ECONOMIC_SECTOR) :as sector #t)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ));
-        let err =
-            babylon_bsl::scope::check_element_names(&form, &["sector".to_owned()]).unwrap_err();
+        let err = babylon_bsl::scope::check_element_names(&form, &["sector".to_owned()])
+            .expect_err("the malformed input is rejected by `check_element_names`");
         assert_eq!(err.spec_code(), "E-PARSE-030");
     }
 
@@ -1989,7 +2056,8 @@ mod c8_typed_neighbours_and_naming {
             "(bindings) (when (< it 5)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ));
-        let err = babylon_bsl::scope::check_element_names(&form, &[]).unwrap_err();
+        let err = babylon_bsl::scope::check_element_names(&form, &[])
+            .expect_err("the malformed input is rejected by `check_element_names`");
         assert_eq!(err.spec_code(), "E-TYPE-012");
     }
 
@@ -2033,10 +2101,18 @@ mod c8_typed_neighbours_and_naming {
     #[test]
     fn neighbors_multiplicity_vector_counts_each_qualifying_node_once() {
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
-        let other = graph.add_node("SOCIAL_CLASS").unwrap();
-        graph.add_edge("SOLIDARITY", subject, other, 1.0).unwrap();
-        graph.add_edge("SOLIDARITY", other, subject, 1.0).unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let other = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("SOLIDARITY", subject, other, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("SOLIDARITY", other, subject, 1.0)
+            .expect("the fixture graph admits the authored edge");
         let mut fuel = 1_000;
         let result = eval_expr(
             "(fold count (neighbors self EdgeType/SOLIDARITY :any NodeType/SOCIAL_CLASS) it)",
@@ -2054,11 +2130,21 @@ mod c8_typed_neighbours_and_naming {
     #[test]
     fn neighbors_filtering_vector_excludes_the_wrong_node_type() {
         let mut graph = MemoryGraph::new();
-        let subject = graph.add_node("SOCIAL_CLASS").unwrap();
-        let tenant = graph.add_node("SOCIAL_CLASS").unwrap();
-        let org = graph.add_node("ORGANIZATION").unwrap();
-        graph.add_edge("SOLIDARITY", tenant, subject, 1.0).unwrap();
-        graph.add_edge("SOLIDARITY", org, subject, 1.0).unwrap();
+        let subject = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let tenant = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_edge("SOLIDARITY", tenant, subject, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("SOLIDARITY", org, subject, 1.0)
+            .expect("the fixture graph admits the authored edge");
         let mut fuel = 1_000;
         let result = eval_expr(
             "(fold count (neighbors self EdgeType/SOLIDARITY :in NodeType/SOCIAL_CLASS) it)",
@@ -2081,19 +2167,31 @@ mod c8_typed_neighbours_and_naming {
     #[test]
     fn it_resolves_to_the_inner_element_and_the_as_name_to_the_outer() {
         let mut graph = MemoryGraph::new();
-        let outer_a = graph.add_node("SOCIAL_CLASS").unwrap();
-        let inner_a = graph.add_node("ORGANIZATION").unwrap();
+        let outer_a = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let inner_a = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(inner_a, "organization/claim-strength", 10.0)
-            .unwrap();
-        graph.add_edge("SOLIDARITY", outer_a, inner_a, 1.0).unwrap();
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .add_edge("SOLIDARITY", outer_a, inner_a, 1.0)
+            .expect("the fixture graph admits the authored edge");
 
-        let outer_b = graph.add_node("SOCIAL_CLASS").unwrap();
-        let inner_b = graph.add_node("ORGANIZATION").unwrap();
+        let outer_b = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let inner_b = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(inner_b, "organization/claim-strength", 20.0)
-            .unwrap();
-        graph.add_edge("SOLIDARITY", outer_b, inner_b, 1.0).unwrap();
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .add_edge("SOLIDARITY", outer_b, inner_b, 1.0)
+            .expect("the fixture graph admits the authored edge");
 
         let mut fuel = 10_000;
         // The outer fold names its element `:as outer`; the inner fold's
@@ -2161,11 +2259,15 @@ mod c9_metric_registration {
     fn a_graph_metric_binds_and_an_element_metric_is_accessed() {
         let r = registry();
         assert_eq!(
-            r.get("solidarity-density").unwrap().domain,
+            r.get("solidarity-density")
+                .expect("the fixture holds the addressed entry")
+                .domain,
             MetricDomain::Graph
         );
         assert_eq!(
-            r.get("betweenness-centrality").unwrap().domain,
+            r.get("betweenness-centrality")
+                .expect("the fixture holds the addressed entry")
+                .domain,
             MetricDomain::Element("organization".to_owned())
         );
         assert_eq!(
@@ -2223,11 +2325,16 @@ mod c9_metric_registration {
     #[test]
     fn kernel_disagreement_is_e_load_025() {
         let r = registry();
-        let mut registered = r.get("solidarity-density").unwrap().clone();
+        let mut registered = r
+            .get("solidarity-density")
+            .expect("the fixture holds the addressed entry")
+            .clone();
         registered.provider = "somewhere-else".to_owned();
         let kernel = HashMap::from([("solidarity-density".to_owned(), registered)]);
         assert_eq!(
-            r.check_against_kernel(&kernel).unwrap_err().spec_code(),
+            r.check_against_kernel(&kernel)
+                .expect_err("the malformed input is rejected by `check_against_kernel`")
+                .spec_code(),
             Some("E-LOAD-025")
         );
     }
@@ -2248,7 +2355,7 @@ mod c9_metric_registration {
                 &super::e("(mean solidarity-density)"),
                 &env
             )
-            .unwrap_err()
+            .expect_err("the fixture call `typecheck_aggregation` fails for the authored inputs")
             .code,
             Some(TypeCode::UnweightedMeanOfIntensive)
         );
@@ -2272,8 +2379,10 @@ mod c9_metric_registration {
     /// the two shapes are distinct bytes.
     #[test]
     fn both_domain_shapes_have_distinct_canonical_bytes() {
-        let graph = babylon_bsl::canonical_ast::canonical_bytes(&super::e(GRAPH)).unwrap();
-        let element = babylon_bsl::canonical_ast::canonical_bytes(&super::e(ELEMENT)).unwrap();
+        let graph = babylon_bsl::canonical_ast::canonical_bytes(&super::e(GRAPH))
+            .expect("the graph value exposes canonical bytes");
+        let element = babylon_bsl::canonical_ast::canonical_bytes(&super::e(ELEMENT))
+            .expect("the graph value exposes canonical bytes");
         assert_ne!(graph, element);
         assert!(!graph.is_empty() && !element.is_empty());
     }
@@ -2305,11 +2414,15 @@ mod c10_deliberate_absences {
     fn bound_is_not_a_predicate_and_neither_spelling_survives() {
         use babylon_bsl::reader::{LexCode, ReadErrorKind};
         assert_eq!(
-            babylon_bsl::reader::read("(bound? x)").unwrap_err().kind,
+            babylon_bsl::reader::read("(bound? x)")
+                .expect_err("the malformed read request is refused")
+                .kind,
             ReadErrorKind::Lex(LexCode::UnclassifiableToken)
         );
         assert_eq!(
-            cost("(bound x)").unwrap_err().spec_code(),
+            cost("(bound x)")
+                .expect_err("the fixture call `cost` fails for the authored inputs")
+                .spec_code(),
             Some("E-LOAD-021")
         );
     }
@@ -2321,7 +2434,7 @@ mod c10_deliberate_absences {
         let err = babylon_bsl::grammar::check_string_positions(&super::e(&super::rule(
             "(bindings) (effects (emit EventType/RUPTURE (why \"a description\")))",
         )))
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_string_positions`");
         assert_eq!(err.spec_code(), "E-PARSE-010");
         // …while `:material-basis`'s own string is untouched: it is a
         // rule-level option, not an expression.
@@ -2340,7 +2453,7 @@ mod c10_deliberate_absences {
         let err = babylon_bsl::grammar::check_arities_and_closed_sets(&super::e(
             "(update-node self social-class/agitation (unset))",
         ))
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_arities_and_closed_sets`");
         assert_eq!(err.spec_code(), "E-PARSE-015");
     }
 
@@ -2468,7 +2581,7 @@ mod c11_invariant_substrate {
         let err = Manifest::parse(&super::e(
             "(manifest m (ceiling HyperedgeType/COMMUNITY :ceiling 2 :max-members 3 :invariant))",
         ))
-        .unwrap_err();
+        .expect_err("the malformed input is refused");
         assert_eq!(err.spec_code(), Some("E-LOAD-042"));
     }
 
@@ -2486,7 +2599,8 @@ mod c11_invariant_substrate {
              (when (< wage 5$)) \
              (effects (update-node self territory/wage-bill (add 1$)))",
         ));
-        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
+        let decls =
+            babylon_bsl::bindings::parse_bindings(&form).expect("the authored bindings parse");
         let seeded = BindingVocabulary {
             fields: HashSet::from(["territory/wage-bill".to_owned()]),
             consts: HashSet::new(),
@@ -2497,7 +2611,9 @@ mod c11_invariant_substrate {
         // The same rule against a hydration that omits the series.
         let empty = BindingVocabulary::default();
         assert_eq!(
-            resolve_bindings(&decls, &empty).unwrap_err().spec_code(),
+            resolve_bindings(&decls, &empty)
+                .expect_err("`resolve_bindings` rejects the unresolvable reference")
+                .spec_code(),
             Some("E-LOAD-010")
         );
     }
@@ -2541,7 +2657,7 @@ mod c12_hyperedge_fields_and_identity {
         let err = babylon_bsl::grammar::check_arities_and_closed_sets(&super::e(
             "(update-hyperedge it economic-sector/output (unset))",
         ))
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_arities_and_closed_sets`");
         assert_eq!(err.spec_code(), "E-PARSE-015");
     }
 
@@ -2677,10 +2793,13 @@ mod c13_intrinsic_cap {
     /// the one part of gate 2 that can be made mechanical, and made so.
     #[test]
     fn sigmoid_is_e_load_024_not_merely_outside_the_cap() {
-        let err = babylon_bsl::declarations::check_intrinsic_name("sigmoid").unwrap_err();
+        let err = babylon_bsl::declarations::check_intrinsic_name("sigmoid")
+            .expect_err("the malformed input is rejected by `check_intrinsic_name`");
         assert_eq!(err.spec_code(), Some("E-LOAD-024"));
         assert_eq!(
-            check_intrinsic_cap("sigmoid").unwrap_err().spec_code(),
+            check_intrinsic_cap("sigmoid")
+                .expect_err("the malformed input is rejected by `check_intrinsic_cap`")
+                .spec_code(),
             Some("E-LOAD-024"),
             "the cap check runs the prohibition FIRST, so the stronger \
              refusal is the one reported"
@@ -2693,7 +2812,9 @@ mod c13_intrinsic_cap {
     #[test]
     fn a_call_to_an_undeclared_intrinsic_is_e_load_021() {
         assert_eq!(
-            super::cost("(tanh 0.5c)").unwrap_err().spec_code(),
+            super::cost("(tanh 0.5c)")
+                .expect_err("the fixture call `cost` fails for the authored inputs")
+                .spec_code(),
             Some("E-LOAD-021")
         );
     }
@@ -3011,14 +3132,15 @@ mod verification_repairs {
                                     NodeType/ORGANIZATION) 1) 5)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ));
-        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
+        let decls =
+            babylon_bsl::bindings::parse_bindings(&form).expect("the authored bindings parse");
         let err = babylon_bsl::scope::check_foreign_field_scoping(
             &form,
             &decls,
             Some("social-class"),
             &super::vocabulary(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_foreign_field_scoping`");
         assert_eq!(err.spec_code(), "E-TYPE-010");
     }
 
@@ -3037,7 +3159,8 @@ mod verification_repairs {
                                       NodeType/ORGANIZATION) 1)) 5)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ));
-        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
+        let decls =
+            babylon_bsl::bindings::parse_bindings(&form).expect("the authored bindings parse");
         assert_eq!(
             babylon_bsl::scope::check_foreign_field_scoping(
                 &form,
@@ -3097,9 +3220,16 @@ mod verification_repairs {
         for (tag, children, source) in cases {
             let bytes =
                 babylon_bsl::canonical_ast::canonical_bytes(&super::e(source)).expect(source);
-            let mut header = vec![0x02, u8::try_from(tag.len()).unwrap()];
+            let mut header = vec![
+                0x02,
+                u8::try_from(tag.len()).expect("the fixture value fits the target range"),
+            ];
             header.extend_from_slice(tag.as_bytes());
-            header.extend_from_slice(&u32::try_from(children).unwrap().to_be_bytes());
+            header.extend_from_slice(
+                &u32::try_from(children)
+                    .expect("the fixture value fits the target range")
+                    .to_be_bytes(),
+            );
             assert!(
                 bytes.starts_with(&header),
                 "{source}: expected tag {tag} with {children} children"
@@ -3146,7 +3276,8 @@ mod verification_repairs {
              (bindings (binding wealth :field social-class/wealth)) \
              (when (< wealth 1000.5$)) \
              (effects (update-node self social-class/agitation (add 0.05i))))");
-        let bytes = babylon_bsl::canonical_ast::canonical_bytes(&worked).unwrap();
+        let bytes = babylon_bsl::canonical_ast::canonical_bytes(&worked)
+            .expect("the graph value exposes canonical bytes");
         assert_eq!(bytes.len(), 500);
         let hex = |b: &[u8]| {
             use std::fmt::Write as _;
@@ -3160,7 +3291,7 @@ mod verification_repairs {
             "9b49c1e87a63ccb64dee96bd179c8ffecd3fe476c81a4f81771daac237156396"
         );
         assert_eq!(
-            hex(&rules_hash_of(&[worked]).unwrap()),
+            hex(&rules_hash_of(&[worked]).expect("the rule set has a canonical hash")),
             "bf2f15517d1b4d10e44af36983c76249b49d8fa2dc71e6d8c1d2607b37b2f20f"
         );
     }
@@ -3333,7 +3464,8 @@ mod reverification_repairs {
              (when (< (fold count (members-of home HyperedgeType/COMMUNITY) 1) 5)) \
              (effects (emit EventType/RUPTURE (x 1)))",
         ));
-        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
+        let decls =
+            babylon_bsl::bindings::parse_bindings(&form).expect("the authored bindings parse");
         assert_eq!(
             babylon_bsl::domain::resolve_domain(&form, &decls, &super::vocabulary()),
             Ok(RuleDomain::Node("social-class".to_owned())),
@@ -3353,7 +3485,8 @@ mod reverification_repairs {
              (when (< (fold sum (nodes NodeType/ORGANIZATION) claim) 5)) \
              (effects (emit EventType/RUPTURE (x 1)))",
         ));
-        let decls = babylon_bsl::bindings::parse_bindings(&form).unwrap();
+        let decls =
+            babylon_bsl::bindings::parse_bindings(&form).expect("the authored bindings parse");
         assert_eq!(
             babylon_bsl::domain::resolve_domain(&form, &decls, &super::vocabulary()),
             Ok(RuleDomain::Graph)
@@ -3416,7 +3549,7 @@ mod reverification_repairs {
                 &super::e("(mean social-class/agitation)"),
                 &env
             )
-            .unwrap_err()
+            .expect_err("the fixture call `typecheck_aggregation` fails for the authored inputs")
             .code,
             Some(TypeCode::UnweightedMeanOfIntensive)
         );

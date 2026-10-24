@@ -1093,7 +1093,8 @@ mod tests {
 
     #[test]
     fn a_missing_ceiling_is_a_loud_error_never_zero() {
-        let err = cost_of("(fold sum (nodes NodeType/TERRITORY) it)").unwrap_err();
+        let err = cost_of("(fold sum (nodes NodeType/TERRITORY) it)")
+            .expect_err("the fixture call `cost_of` fails for the authored inputs");
         assert_eq!(
             err,
             BoundError::MissingCeiling {
@@ -1110,7 +1111,8 @@ mod tests {
     #[test]
     fn members_of_without_max_members_is_e_load_042() {
         // HyperedgeType/CELL declares a :ceiling but no :max-members.
-        let err = cost_of("(fold sum (members-of h HyperedgeType/CELL) it)").unwrap_err();
+        let err = cost_of("(fold sum (members-of h HyperedgeType/CELL) it)")
+            .expect_err("the fixture call `cost_of` fails for the authored inputs");
         assert_eq!(
             err,
             BoundError::MissingMaxMembers {
@@ -1128,7 +1130,8 @@ mod tests {
 
     #[test]
     fn an_undeclared_intrinsic_call_is_e_load_021() {
-        let err = cost_of("(entropy wealth)").unwrap_err();
+        let err = cost_of("(entropy wealth)")
+            .expect_err("the fixture call `cost_of` fails for the authored inputs");
         assert_eq!(
             err,
             BoundError::UndeclaredIntrinsic {
@@ -1181,7 +1184,8 @@ mod tests {
     #[test]
     fn a_rule_over_its_declared_budget_is_e_load_040() {
         let starved = DEMO_RULE.replacen(":fuel 64", ":fuel 5", 1);
-        let err = check_rule(&e(&starved), &ceilings(), &intrinsics()).unwrap_err();
+        let err = check_rule(&e(&starved), &ceilings(), &intrinsics())
+            .expect_err("the malformed rule is refused");
         assert_eq!(
             err,
             BoundError::BoundExceeded {
@@ -1217,7 +1221,8 @@ mod tests {
                 (guard #t
                   (add-hyperedge HyperedgeType/PAIR h1 (members a b c)))))
         "#);
-        let err = check_rule(&rule, &ceilings(), &intrinsics()).unwrap_err();
+        let err = check_rule(&rule, &ceilings(), &intrinsics())
+            .expect_err("the malformed rule is refused");
         assert_eq!(
             err,
             BoundError::MemberListOverCeiling {
@@ -1250,7 +1255,8 @@ mod tests {
             HashMap::new(),
         );
         let expr = e("(fold sum (nodes NodeType/SOCIAL_CLASS) it)");
-        let bound = expr_cost(&expr, &ceilings, &intrinsics()).unwrap();
+        let bound = expr_cost(&expr, &ceilings, &intrinsics())
+            .expect("the fixture call `expr_cost` succeeds for the authored inputs");
         assert_eq!(bound, u64::MAX, "overflow saturates, never wraps");
     }
 }

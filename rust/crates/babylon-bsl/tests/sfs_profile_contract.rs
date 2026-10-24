@@ -51,7 +51,7 @@ const FORBIDDEN_INTRINSIC_HEX: &str =
 const FORBIDDEN_MANIFEST_HEX: &str =
     "e3e7d0c90b7302c441005a4cb482a1aff86c2e9178b06a514b2f9c6304aeca74";
 const AUDIT_SOURCE_MANIFEST_HEX: &str =
-    "256380c650643c99c24945a931dcaa45b4f16bad6f2dbc88c14190e9d1cc5fea";
+    "92b602aa99bf0bbd0bb4c1b337b491a1671c6a5fdbb18faac8290905f9099bfa";
 static READER_SCRATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
 const FIXTURE_DECLARATIONS: &str = r"(scenario synthetic-source/declarations
   (defvocabulary NodeType (SYNTHETIC_SOURCE ORGANIZATION))
@@ -68,7 +68,8 @@ fn hex_digest(value: &str) -> [u8; 32] {
     assert_eq!(value.len(), 64);
     let mut output = [0_u8; 32];
     for index in 0..32 {
-        output[index] = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16).unwrap();
+        output[index] = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16)
+            .expect("the authored digits parse as the declared type");
     }
     output
 }
@@ -76,7 +77,8 @@ fn hex_digest(value: &str) -> [u8; 32] {
 fn render_digest(value: &[u8; 32]) -> String {
     let mut output = String::with_capacity(64);
     for byte in value {
-        write!(&mut output, "{byte:02x}").unwrap();
+        write!(&mut output, "{byte:02x}")
+            .expect("the in-memory formatter accepts the written text");
     }
     output
 }
@@ -124,11 +126,15 @@ fn read_bounded(root: &Path, relative: &Path) -> Result<Vec<u8>, String> {
     if !metadata.is_file() || metadata.len() > MAX_FIXTURE_BYTES {
         return Err("fixture is not a bounded regular file".to_owned());
     }
-    let mut bytes = Vec::with_capacity(usize::try_from(metadata.len()).unwrap());
+    let mut bytes = Vec::with_capacity(
+        usize::try_from(metadata.len()).expect("the fixture value fits the target range"),
+    );
     file.take(MAX_FIXTURE_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
-    if u64::try_from(bytes.len()).unwrap() != metadata.len() {
+    if u64::try_from(bytes.len()).expect("the fixture value fits the target range")
+        != metadata.len()
+    {
         return Err("fixture changed during its bounded read".to_owned());
     }
     Ok(bytes)
@@ -139,13 +145,15 @@ fn strict_text(bytes: &[u8]) -> &str {
     assert!(!bytes.contains(&b'\r'));
     assert!(bytes.ends_with(b"\n"));
     assert!(!bytes.ends_with(b"\n\n"));
-    std::str::from_utf8(bytes).unwrap()
+    std::str::from_utf8(bytes).expect("the fixture bytes came from a UTF-8 string")
 }
 
 fn fixture_rule(relative: &str) -> SExpr {
-    let bytes = read_bounded(&fixture_root(), Path::new(relative)).unwrap();
+    let bytes =
+        read_bounded(&fixture_root(), Path::new(relative)).expect("the fixture source is readable");
     let source = strict_text(&bytes);
-    let (rule, consumed) = reader::read(source).unwrap();
+    let (rule, consumed) =
+        reader::read(source).expect("the fixture reader returns its authored facts");
     assert!(source[consumed..]
         .bytes()
         .all(|byte| byte.is_ascii_whitespace()));
@@ -153,11 +161,14 @@ fn fixture_rule(relative: &str) -> SExpr {
 }
 
 fn fixture_declarations() -> LoadedScenario {
-    scenario::load_scenario(FIXTURE_DECLARATIONS, &mut MemoryGraph::new()).unwrap()
+    scenario::load_scenario(FIXTURE_DECLARATIONS, &mut MemoryGraph::new())
+        .expect("the authored scenario compiles")
 }
 
 fn fixture_vocabulary() -> ClosedVocabulary {
-    fixture_declarations().vocabulary.unwrap()
+    fixture_declarations()
+        .vocabulary
+        .expect("the fixture declarations carry a vocabulary")
 }
 
 fn fixture_cardinality_ceilings() -> CardinalityCeilings {
@@ -170,7 +181,9 @@ fn fixture_cardinality_ceilings() -> CardinalityCeilings {
 fn assert_allowed_fixture_loads_through_declaration_and_type_gates() {
     let source = allowed_source();
     let declared = fixture_declarations();
-    let vocabulary = declared.vocabulary.unwrap();
+    let vocabulary = declared
+        .vocabulary
+        .expect("the fixture declarations carry a vocabulary");
     assert_eq!(
         vocabulary.members(EnumKind::NodeType),
         &["ORGANIZATION".to_owned(), "SYNTHETIC_SOURCE".to_owned()]
@@ -185,11 +198,13 @@ fn assert_allowed_fixture_loads_through_declaration_and_type_gates() {
     assert_eq!(
         vocabulary
             .owner_of_field("synthetic-source/quanta")
-            .unwrap(),
+            .expect("the fixture call `owner_of_field` succeeds for the authored inputs"),
         (EnumKind::NodeType, "SYNTHETIC_SOURCE")
     );
     let implicit = FieldRegistry::with_implicit_edge_strength(&vocabulary);
-    let strength = implicit.get("synthetic-link/strength").unwrap();
+    let strength = implicit
+        .get("synthetic-link/strength")
+        .expect("the fixture holds the addressed entry");
     assert_eq!(strength.decl.ty, babylon_bsl::types::BslType::Coefficient);
     assert_eq!(strength.decl.kind, babylon_bsl::types::FieldKind::Extensive);
     assert_eq!(strength.owner_kind, EnumKind::EdgeType);
@@ -233,7 +248,7 @@ fn assert_allowed_fixture_loads_through_declaration_and_type_gates() {
         vocabulary_registry: Some(&vocabulary),
         rule_file: "tests/fixtures/sfs_profile/allowed/scoped_mechanic.bsl",
     };
-    rule_pipeline::load_rule(&source, &context).unwrap();
+    rule_pipeline::load_rule(&source, &context).expect("the authored rule compiles");
 }
 
 fn forbidden_intrinsic_costs() -> IntrinsicCosts {
@@ -252,20 +267,22 @@ fn allowed_sites(rule: &SExpr) -> Vec<GovernedComparisonSite> {
             &[0, 11, 1, 1],
             SfsComparisonContext::ConservationRefusal,
         )
-        .unwrap(),
+        .expect("the authored input admits the derived value"),
         GovernedComparisonSite::from_rule_path(
             rule,
             &[0, 11, 1, 2],
             SfsComparisonContext::EligibilityNoEffect,
         )
-        .unwrap(),
+        .expect("the authored input admits the derived value"),
     ]
 }
 
 fn allowed_policy(rule: &SExpr) -> SfsAuditPolicy {
     SfsAuditPolicy::new(
         "synthetic-source/scoped-mechanic",
-        content_digest::sha256_of(&canonical_ast::canonical_bytes(rule).unwrap()),
+        content_digest::sha256_of(
+            &canonical_ast::canonical_bytes(rule).expect("the graph value exposes canonical bytes"),
+        ),
         31,
         ["synthetic-source/quanta"],
         ["synthetic-link/strength"],
@@ -279,7 +296,7 @@ fn allowed_policy(rule: &SExpr) -> SfsAuditPolicy {
         allowed_sites(rule),
         ["node:synthetic-source/quanta"],
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 #[test]
@@ -289,8 +306,9 @@ fn allowed_rule_equals_its_complete_opt_in_profile() {
     let vocabulary = fixture_vocabulary();
     let ceilings = fixture_cardinality_ceilings();
     let intrinsic_costs = IntrinsicCosts::default();
-    let canonical_digest =
-        content_digest::sha256_of(&canonical_ast::canonical_bytes(&rule).unwrap());
+    let canonical_digest = content_digest::sha256_of(
+        &canonical_ast::canonical_bytes(&rule).expect("the graph value exposes canonical bytes"),
+    );
     assert_eq!(canonical_digest, hex_digest(ALLOWED_AST_HEX));
     let sites = allowed_sites(&rule);
     assert_eq!(sites[0].site_digest(), &hex_digest(FIRST_SITE_HEX));
@@ -311,7 +329,7 @@ fn allowed_rule_equals_its_complete_opt_in_profile() {
         &intrinsic_costs,
         &policy,
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the rule");
     let footprint = audit.footprint();
     assert_eq!(footprint.rule_id(), "synthetic-source/scoped-mechanic");
     assert_eq!(footprint.source_digest(), &canonical_digest);
@@ -355,7 +373,8 @@ struct ManifestRow {
 }
 
 fn forbidden_manifest() -> (Vec<ManifestRow>, Vec<u8>) {
-    let bytes = read_bounded(&fixture_root(), Path::new("sfs_forbidden_manifest_v1.txt")).unwrap();
+    let bytes = read_bounded(&fixture_root(), Path::new("sfs_forbidden_manifest_v1.txt"))
+        .expect("the fixture source is readable");
     let text = strict_text(&bytes);
     let mut rows = Vec::new();
     let mut lines = text.lines();
@@ -390,7 +409,7 @@ fn source_manifest() -> (Vec<ManifestRow>, Vec<u8>) {
         &fixture_root(),
         Path::new("sfs_audit_source_manifest_v1.txt"),
     )
-    .unwrap();
+    .expect("the fixture source is readable");
     let text = strict_text(&bytes);
     let mut rows = Vec::new();
     let mut lines = text.lines();
@@ -430,10 +449,13 @@ fn audit_source_manifest_pins_two_bounded_exact_files_and_mutation_teeth() {
     assert_eq!(rows[1].relative, "sfs_profile.rs");
     let mut source_rows = rows.iter();
     for _index in 0..2 {
-        let row = source_rows.next().unwrap();
-        let bytes = read_bounded(&source_root(), Path::new(&row.relative)).unwrap();
+        let row = source_rows
+            .next()
+            .expect("the fixture iterator yields its authored rows");
+        let bytes = read_bounded(&source_root(), Path::new(&row.relative))
+            .expect("the fixture source is readable");
         strict_text(&bytes);
-        verify_source_row(row, &bytes).unwrap();
+        verify_source_row(row, &bytes).expect("the authored fixture satisfies the rule");
     }
     assert!(read_bounded(&source_root(), Path::new("../Cargo.toml")).is_err());
     let mut preimage = b"babylon.sfs-audit-source-manifest.v1\0".to_vec();
@@ -443,12 +465,13 @@ fn audit_source_manifest_pins_two_bounded_exact_files_and_mutation_teeth() {
         hex_digest(AUDIT_SOURCE_MANIFEST_HEX)
     );
 
-    let fuel_bytes = read_bounded(&source_root(), Path::new("fuel.rs")).unwrap();
+    let fuel_bytes =
+        read_bounded(&source_root(), Path::new("fuel.rs")).expect("the fixture source is readable");
     let needle = b"const MAX_SFS_IDENTITY_ROWS: usize = 64;";
     let position = fuel_bytes
         .windows(needle.len())
         .position(|window| window == needle)
-        .unwrap();
+        .expect("the fixture sequence holds the addressed position");
     let mut mutated = fuel_bytes.clone();
     mutated[position + needle.len() - 2] = b'5';
     assert_eq!(
@@ -479,7 +502,7 @@ impl ReaderScratch {
             std::process::id(),
             READER_SCRATCH_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
-        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&root).expect("the fixture directory is creatable");
         Self { root }
     }
 }
@@ -503,11 +526,13 @@ fn bounded_reader_accepts_262144_and_rejects_262145_bytes() {
     let scratch = ReaderScratch::new();
     let maximum = scratch.root.join("maximum.txt");
     let maximum_plus_one = scratch.root.join("maximum-plus-one.txt");
-    std::fs::write(&maximum, vec![b'x'; 262_144]).unwrap();
-    std::fs::write(&maximum_plus_one, vec![b'x'; 262_145]).unwrap();
+    std::fs::write(&maximum, vec![b'x'; 262_144])
+        .expect("the fixture sink accepts the authored bytes");
+    std::fs::write(&maximum_plus_one, vec![b'x'; 262_145])
+        .expect("the fixture sink accepts the authored bytes");
     assert_eq!(
         read_bounded(&scratch.root, Path::new("maximum.txt"))
-            .unwrap()
+            .expect("the fixture source is readable")
             .len(),
         262_144
     );
@@ -523,8 +548,9 @@ fn bounded_reader_rejects_a_direct_source_manifest_symlink() {
     let scratch = ReaderScratch::new();
     let target = scratch.root.join("manifest-target.txt");
     let link = scratch.root.join("sfs_audit_source_manifest_v1.txt");
-    std::fs::write(&target, b"fuel.rs|00\n").unwrap();
-    std::os::unix::fs::symlink(&target, &link).unwrap();
+    std::fs::write(&target, b"fuel.rs|00\n").expect("the fixture sink accepts the authored bytes");
+    std::os::unix::fs::symlink(&target, &link)
+        .expect("the fixture call `symlink` succeeds for the authored inputs");
     assert_eq!(
         read_bounded(&scratch.root, Path::new("sfs_audit_source_manifest_v1.txt")),
         Err("fixture path contains a symlink".to_owned())
@@ -566,7 +592,9 @@ fn policy_with_sets(
 ) -> SfsAuditPolicy {
     SfsAuditPolicy::new(
         forbidden_rule_id(&row.label),
-        content_digest::sha256_of(&canonical_ast::canonical_bytes(rule).unwrap()),
+        content_digest::sha256_of(
+            &canonical_ast::canonical_bytes(rule).expect("the graph value exposes canonical bytes"),
+        ),
         bound,
         field_reads,
         EMPTY,
@@ -577,7 +605,7 @@ fn policy_with_sets(
         sites,
         effects,
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn forbidden_policy(row: &ManifestRow, rule: &SExpr, bound: u64) -> SfsAuditPolicy {
@@ -713,12 +741,15 @@ fn assert_expected_error(row: &ManifestRow, error: &SfsProfileError) {
 
 fn exact_forbidden_file_set(rows: &[ManifestRow]) {
     let directory = fixture_root().join("forbidden");
-    let mut entries = std::fs::read_dir(&directory).unwrap();
+    let mut entries = std::fs::read_dir(&directory).expect("the fixture directory is readable");
     let mut actual = Vec::new();
     for _index in 0..MAX_FIXTURE_ROWS {
         let Some(entry) = entries.next() else { break };
-        let entry = entry.unwrap();
-        assert!(entry.file_type().unwrap().is_file());
+        let entry = entry.expect("the fixture table holds the addressed entry");
+        assert!(entry
+            .file_type()
+            .expect("the fixture call `file_type` succeeds for the authored inputs")
+            .is_file());
         actual.push(format!("forbidden/{}", entry.file_name().to_string_lossy()));
     }
     assert!(entries.next().is_none());
@@ -739,7 +770,10 @@ fn forbidden_corpus_exact() {
         let Some(row) = rows.get(index) else { break };
         let rule = fixture_rule(&row.relative);
         assert_eq!(
-            content_digest::sha256_of(&canonical_ast::canonical_bytes(&rule).unwrap()),
+            content_digest::sha256_of(
+                &canonical_ast::canonical_bytes(&rule)
+                    .expect("the graph value exposes canonical bytes")
+            ),
             hex_digest(&row.source_hex),
             "{}",
             row.label
@@ -749,11 +783,12 @@ fn forbidden_corpus_exact() {
             "forbidden-v1" => forbidden_intrinsic_costs(),
             other => panic!("unknown intrinsic table {other}"),
         };
-        let bound = bound_checker::check_rule(&rule, &ceilings, &costs).unwrap();
+        let bound = bound_checker::check_rule(&rule, &ceilings, &costs)
+            .expect("the authored rule passes the contract check");
         let policy = forbidden_policy(row, &rule, bound);
         let error =
             sfs_profile::validate_sfs_rule_profile(&rule, &vocabulary, &ceilings, &costs, &policy)
-                .unwrap_err();
+                .expect_err("the malformed input is rejected by `validate_sfs_rule_profile`");
         assert_expected_error(row, &error);
     }
     let mut preimage = b"babylon.sfs-forbidden-corpus-manifest.v1\0".to_vec();
@@ -763,7 +798,9 @@ fn forbidden_corpus_exact() {
         hex_digest(FORBIDDEN_MANIFEST_HEX)
     );
     assert_eq!(
-        forbidden_intrinsic_costs().sfs_identity_digest().unwrap(),
+        forbidden_intrinsic_costs()
+            .sfs_identity_digest()
+            .expect("the fixture call `sfs_identity_digest` succeeds for the authored inputs"),
         hex_digest(FORBIDDEN_INTRINSIC_HEX)
     );
 }
@@ -841,7 +878,8 @@ fn forbidden_binding_sources_choose_the_byte_least_entry() {
 fn fuel_table_identities_pin_literals_syntax_and_exact_row_bounds() {
     let base = fixture_cardinality_ceilings();
     assert_eq!(
-        base.sfs_identity_digest().unwrap(),
+        base.sfs_identity_digest()
+            .expect("the fixture call `sfs_identity_digest` succeeds for the authored inputs"),
         hex_digest(CARDINALITY_HEX)
     );
     let two_rows = CardinalityCeilings::new(
@@ -849,16 +887,22 @@ fn fuel_table_identities_pin_literals_syntax_and_exact_row_bounds() {
         HashMap::from([("HyperedgeType/SYNTHETIC_GROUP".to_owned(), 4)]),
     );
     assert_eq!(
-        two_rows.sfs_identity_digest().unwrap(),
+        two_rows
+            .sfs_identity_digest()
+            .expect("the fixture call `sfs_identity_digest` succeeds for the authored inputs"),
         hex_digest(CARDINALITY_TWO_ROW_HEX)
     );
     assert_eq!(
-        IntrinsicCosts::default().sfs_identity_digest().unwrap(),
+        IntrinsicCosts::default()
+            .sfs_identity_digest()
+            .expect("the fixture call `sfs_identity_digest` succeeds for the authored inputs"),
         hex_digest(EMPTY_INTRINSIC_HEX)
     );
     let unused = IntrinsicCosts::new(HashMap::from([("synthetic-unused".to_owned(), 7)]));
     assert_eq!(
-        unused.sfs_identity_digest().unwrap(),
+        unused
+            .sfs_identity_digest()
+            .expect("the fixture call `sfs_identity_digest` succeeds for the authored inputs"),
         hex_digest(UNUSED_INTRINSIC_HEX)
     );
 
@@ -866,7 +910,7 @@ fn fuel_table_identities_pin_literals_syntax_and_exact_row_bounds() {
     for index in 0..65 {
         sixty_five.insert(
             format!("synthetic-{index:02}"),
-            u64::try_from(index).unwrap(),
+            u64::try_from(index).expect("the fixture value fits the target range"),
         );
     }
     assert_eq!(
@@ -950,13 +994,13 @@ fn comparison_context_codes_and_duplicate_sites_are_closed() {
         &[0, 11, 1, 1],
         SfsComparisonContext::InputValidity,
     )
-    .unwrap();
+    .expect("the authored input admits the derived value");
     let duplicate = GovernedComparisonSite::from_rule_path(
         &rule,
         &[0, 11, 1, 1],
         SfsComparisonContext::DomainCeiling,
     )
-    .unwrap();
+    .expect("the authored input admits the derived value");
     assert_eq!(
         SfsAuditPolicy::new(
             "synthetic-source/scoped-mechanic",
@@ -1008,10 +1052,15 @@ fn comparison_sites(rule: &SExpr, count: usize) -> Vec<GovernedComparisonSite> {
         sites.push(
             GovernedComparisonSite::from_rule_path(
                 rule,
-                &[0, 11, 1, u32::try_from(index + 1).unwrap()],
+                &[
+                    0,
+                    11,
+                    1,
+                    u32::try_from(index + 1).expect("the fixture value fits the target range"),
+                ],
                 SfsComparisonContext::InputValidity,
             )
-            .unwrap(),
+            .expect("the authored input admits the derived value"),
         );
     }
     sites.sort_by(|left, right| left.site_digest().cmp(right.site_digest()));
@@ -1021,13 +1070,15 @@ fn comparison_sites(rule: &SExpr, count: usize) -> Vec<GovernedComparisonSite> {
 fn comparison_limit_policy(rule: &SExpr, sites: Vec<GovernedComparisonSite>) -> SfsAuditPolicy {
     SfsAuditPolicy::new(
         "synthetic-source/comparison-ceiling",
-        content_digest::sha256_of(&canonical_ast::canonical_bytes(rule).unwrap()),
+        content_digest::sha256_of(
+            &canonical_ast::canonical_bytes(rule).expect("the graph value exposes canonical bytes"),
+        ),
         bound_checker::check_rule(
             rule,
             &CardinalityCeilings::default(),
             &IntrinsicCosts::default(),
         )
-        .unwrap(),
+        .expect("the authored rule passes the contract check"),
         ["synthetic-source/quanta"],
         EMPTY,
         EMPTY,
@@ -1037,7 +1088,7 @@ fn comparison_limit_policy(rule: &SExpr, sites: Vec<GovernedComparisonSite>) -> 
         sites,
         ["node:synthetic-source/quanta"],
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 #[test]
@@ -1055,7 +1106,10 @@ fn comparison_scan_accepts_64_and_reports_the_byte_largest_65th_site() {
 
     let plus_one = comparison_rule(65);
     let mut governed = comparison_sites(&plus_one, 65);
-    let omitted = *governed.pop().unwrap().site_digest();
+    let omitted = *governed
+        .pop()
+        .expect("the fixture map holds the entry being removed")
+        .site_digest();
     let policy = comparison_limit_policy(&plus_one, governed);
     assert_eq!(
         sfs_profile::validate_sfs_rule_profile(
@@ -1072,7 +1126,10 @@ fn comparison_scan_accepts_64_and_reports_the_byte_largest_65th_site() {
     assert_eq!(
         SfsAuditPolicy::new(
             "synthetic-source/comparison-ceiling",
-            content_digest::sha256_of(&canonical_ast::canonical_bytes(&plus_one).unwrap()),
+            content_digest::sha256_of(
+                &canonical_ast::canonical_bytes(&plus_one)
+                    .expect("the graph value exposes canonical bytes")
+            ),
             1,
             EMPTY,
             EMPTY,
@@ -1101,16 +1158,20 @@ fn wide_rule(kind: &str) -> (SExpr, Vec<&'static str>) {
         for index in 0..65 {
             let field = static_string(format!("synthetic-source/read-{index:02}"));
             rows.push(field);
-            write!(&mut source, " (binding value-{index:02} :field {field})").unwrap();
+            write!(&mut source, " (binding value-{index:02} :field {field})")
+                .expect("the in-memory formatter accepts the written text");
         }
         source.push_str(")\n  (effects (update-node self synthetic-source/quanta (set 1))))");
     } else {
         source.push_str("  (bindings)\n  (effects");
         for index in 0..65 {
             let effect = static_string(format!("node:synthetic-source/effect-{index:02}"));
-            let field = effect.strip_prefix("node:").unwrap();
+            let field = effect
+                .strip_prefix("node:")
+                .expect("the fixture call `strip_prefix` succeeds for the authored inputs");
             rows.push(effect);
-            write!(&mut source, " (update-node self {field} (set 1))").unwrap();
+            write!(&mut source, " (update-node self {field} (set 1))")
+                .expect("the in-memory formatter accepts the written text");
         }
         source.push_str("))");
     }
@@ -1126,13 +1187,15 @@ fn wide_policy(rule: &SExpr, kind: &str, rows: &[&'static str]) -> SfsAuditPolic
     };
     SfsAuditPolicy::new(
         "synthetic-source/complete-scan",
-        content_digest::sha256_of(&canonical_ast::canonical_bytes(rule).unwrap()),
+        content_digest::sha256_of(
+            &canonical_ast::canonical_bytes(rule).expect("the graph value exposes canonical bytes"),
+        ),
         bound_checker::check_rule(
             rule,
             &CardinalityCeilings::default(),
             &IntrinsicCosts::default(),
         )
-        .unwrap(),
+        .expect("the authored rule passes the contract check"),
         field_reads,
         EMPTY,
         EMPTY,
@@ -1142,7 +1205,7 @@ fn wide_policy(rule: &SExpr, kind: &str, rows: &[&'static str]) -> SfsAuditPolic
         vec![],
         effects,
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 #[test]
@@ -1194,23 +1257,26 @@ fn separated_governed_thresholds_pass_but_a_nested_ladder_refuses() {
             &[0, 11, 1, 1],
             SfsComparisonContext::EligibilityNoEffect,
         )
-        .unwrap(),
+        .expect("the authored input admits the derived value"),
         GovernedComparisonSite::from_rule_path(
             &separated,
             &[0, 11, 1, 2],
             SfsComparisonContext::EligibilityNoEffect,
         )
-        .unwrap(),
+        .expect("the authored input admits the derived value"),
     ];
     let policy = SfsAuditPolicy::new(
         "synthetic-source/separated-thresholds",
-        content_digest::sha256_of(&canonical_ast::canonical_bytes(&separated).unwrap()),
+        content_digest::sha256_of(
+            &canonical_ast::canonical_bytes(&separated)
+                .expect("the graph value exposes canonical bytes"),
+        ),
         bound_checker::check_rule(
             &separated,
             &CardinalityCeilings::default(),
             &IntrinsicCosts::default(),
         )
-        .unwrap(),
+        .expect("the authored rule passes the contract check"),
         ["synthetic-source/quanta"],
         EMPTY,
         EMPTY,
@@ -1220,7 +1286,7 @@ fn separated_governed_thresholds_pass_but_a_nested_ladder_refuses() {
         sites.into(),
         ["node:synthetic-source/quanta"],
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     assert!(sfs_profile::validate_sfs_rule_profile(
         &separated,
         &fixture_vocabulary(),
@@ -1244,7 +1310,9 @@ fn separated_governed_thresholds_pass_but_a_nested_ladder_refuses() {
 }
 
 fn nested_comparison(depth: usize) -> SExpr {
-    let mut expression = reader::read("(> 1 0)").unwrap().0;
+    let mut expression = reader::read("(> 1 0)")
+        .expect("the fixture reader returns its authored facts")
+        .0;
     for index in 0..MAX_AST_WALK_DEPTH {
         if index == depth {
             break;
@@ -1354,12 +1422,14 @@ fn governed_form_paths_and_policy_sets_pin_maximum_plus_one_and_duplicates() {
 }
 
 fn allowed_source() -> String {
-    let bytes = read_bounded(&fixture_root(), Path::new("allowed/scoped_mechanic.bsl")).unwrap();
+    let bytes = read_bounded(&fixture_root(), Path::new("allowed/scoped_mechanic.bsl"))
+        .expect("the fixture source is readable");
     strict_text(&bytes).to_owned()
 }
 
 fn parsed_rule(source: &str) -> SExpr {
-    let (rule, consumed) = reader::read(source).unwrap();
+    let (rule, consumed) =
+        reader::read(source).expect("the fixture reader returns its authored facts");
     assert!(source[consumed..]
         .bytes()
         .all(|byte| byte.is_ascii_whitespace()));
@@ -1384,7 +1454,7 @@ fn formatting_only_preserves_identity() {
         &IntrinsicCosts::default(),
         &policy,
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the rule");
     assert_eq!(audit.footprint(), policy.expected_footprint());
 }
 
@@ -1405,7 +1475,7 @@ fn semantic_change_moves_identity() {
         &IntrinsicCosts::default(),
         &allowed_sites(&original),
     )
-    .unwrap();
+    .expect("the fixture call `audit_rule_footprint` succeeds for the authored inputs");
     let changed_audit = sfs_profile::audit_rule_footprint(
         &changed,
         &fixture_vocabulary(),
@@ -1413,7 +1483,7 @@ fn semantic_change_moves_identity() {
         &IntrinsicCosts::default(),
         &allowed_sites(&changed),
     )
-    .unwrap();
+    .expect("the fixture call `audit_rule_footprint` succeeds for the authored inputs");
     assert_ne!(original_audit.footprint(), changed_audit.footprint());
 }
 
@@ -1428,7 +1498,7 @@ fn sealed_audit_moves_when_equal_bound_inputs_or_declared_fuel_move() {
         &IntrinsicCosts::default(),
         &allowed_sites(&original),
     )
-    .unwrap();
+    .expect("the fixture call `audit_rule_footprint` succeeds for the authored inputs");
     let changed_fuel = parsed_rule(&source.replacen(":fuel 128", ":fuel 129", 1));
     let fuel_audit = sfs_profile::audit_rule_footprint(
         &changed_fuel,
@@ -1437,7 +1507,7 @@ fn sealed_audit_moves_when_equal_bound_inputs_or_declared_fuel_move() {
         &IntrinsicCosts::default(),
         &allowed_sites(&changed_fuel),
     )
-    .unwrap();
+    .expect("the fixture call `audit_rule_footprint` succeeds for the authored inputs");
     assert_eq!(fuel_audit.footprint().computed_bound(), 31);
     assert_eq!(fuel_audit.declared_fuel(), 129);
     assert_ne!(fuel_audit, original_audit);
@@ -1453,7 +1523,7 @@ fn sealed_audit_moves_when_equal_bound_inputs_or_declared_fuel_move() {
         &IntrinsicCosts::default(),
         &allowed_sites(&original),
     )
-    .unwrap();
+    .expect("the fixture call `audit_rule_footprint` succeeds for the authored inputs");
     assert_eq!(cardinality_audit.footprint().computed_bound(), 31);
     assert_ne!(
         cardinality_audit.cardinality_input_digest(),
@@ -1469,7 +1539,7 @@ fn sealed_audit_moves_when_equal_bound_inputs_or_declared_fuel_move() {
         &unused_cost,
         &allowed_sites(&original),
     )
-    .unwrap();
+    .expect("the fixture call `audit_rule_footprint` succeeds for the authored inputs");
     assert_eq!(intrinsic_audit.footprint().computed_bound(), 31);
     assert_ne!(
         intrinsic_audit.intrinsic_cost_input_digest(),
@@ -1500,7 +1570,7 @@ fn static_bound_and_source_mutations_fail_in_declared_precedence() {
         allowed_sites(&original),
         ["node:synthetic-source/quanta"],
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     assert_eq!(
         sfs_profile::validate_sfs_rule_profile(
             &original,
@@ -1654,7 +1724,10 @@ fn role_relabel_moves_identity_and_fails_profile() {
     );
     let restored = parsed_rule(&source);
     assert_eq!(
-        content_digest::sha256_of(&canonical_ast::canonical_bytes(&restored).unwrap()),
+        content_digest::sha256_of(
+            &canonical_ast::canonical_bytes(&restored)
+                .expect("the graph value exposes canonical bytes")
+        ),
         hex_digest(ALLOWED_AST_HEX)
     );
     assert!(sfs_profile::validate_sfs_rule_profile(

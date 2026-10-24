@@ -328,7 +328,7 @@ fn assert_persisted_projection_matches(transaction: &mut Transaction<'_>) {
         .expect("persisted H3 projection must query");
     assert_eq!(
         row.get::<_, i64>(0),
-        i64::try_from(VALID_VECTOR_COUNT).unwrap()
+        i64::try_from(VALID_VECTOR_COUNT).expect("the fixture value fits the target range")
     );
     assert_eq!(row.get::<_, i64>(1), 0);
 }
@@ -346,7 +346,7 @@ fn assert_post_drop_independence(client: &mut Client) {
     assert!(row.get::<_, bool>(1));
     assert_eq!(
         row.get::<_, i64>(2),
-        i64::try_from(VALID_VECTOR_COUNT).unwrap()
+        i64::try_from(VALID_VECTOR_COUNT).expect("the fixture value fits the target range")
     );
 }
 

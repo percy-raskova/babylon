@@ -468,35 +468,40 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../../content/scenarios/national/defines.toml"
         ));
-        let policy = NationalGamePolicy::from_captured_bytes(bytes).unwrap();
-        let counties = crate::national_counties::national_county_reference().unwrap();
-        let cohorts = crate::national_cohorts::national_cohort_reference().unwrap();
-        let residents =
-            crate::national_resident_workforce::national_resident_workforce_reference().unwrap();
-        let households = crate::national_households::national_household_reference().unwrap();
+        let policy = NationalGamePolicy::from_captured_bytes(bytes)
+            .expect("the captured bytes admit the value");
+        let counties = crate::national_counties::national_county_reference()
+            .expect("the county reference fixture loads");
+        let cohorts = crate::national_cohorts::national_cohort_reference()
+            .expect("the cohort reference fixture loads");
+        let residents = crate::national_resident_workforce::national_resident_workforce_reference()
+            .expect("the workforce reference fixture loads");
+        let households = crate::national_households::national_household_reference()
+            .expect("the household reference fixture loads");
         let budgets = crate::national_household_allocation::allocate_households(
             counties,
             households,
             residents,
             policy.households.private_owner_households_bps,
         )
-        .unwrap();
+        .expect("the fixture households fit the authored cohorts");
         let time =
             crate::national_household_time_allocation::allocate_household_time(counties, &budgets)
-                .unwrap();
+                .expect("the fixture household time fits the authored budget");
         let captured = crate::national_economy::build_national_opening(
             counties,
             cohorts,
             residents,
             households,
-            crate::world_reference::world_reference().unwrap(),
-            crate::national_transport::national_transport_reference().unwrap(),
+            crate::world_reference::world_reference().expect("the world reference fixture loads"),
+            crate::national_transport::national_transport_reference()
+                .expect("the transport reference fixture loads"),
             crate::national_economy::NationalOpeningPolicy {
                 policy: &policy,
                 source_hash: content_digest::sha256_of(bytes),
             },
         )
-        .unwrap();
+        .expect("the fixture call `build_national_opening` succeeds for the authored inputs");
         assert_eq!(captured.aid.children.len(), 3);
         assert_refined_children(&captured, &policy, &budgets, &time);
         assert_organization_and_route(&captured, &policy);
@@ -514,23 +519,23 @@ mod tests {
             };
             let source = budgets
                 .county(county.geoid())
-                .unwrap()
+                .expect("the fixture catalog holds the addressed county")
                 .budgets()
                 .iter()
                 .find(|b| b.key == child.budget)
-                .unwrap();
+                .expect("the fixture holds the searched element");
             let parent = captured
                 .opening
                 .households
                 .iter()
                 .find(|h| h.principal_id == child.parent)
-                .unwrap();
+                .expect("the fixture holds the searched element");
             let refined = captured
                 .opening
                 .households
                 .iter()
                 .find(|h| h.principal_id == child.principal)
-                .unwrap();
+                .expect("the fixture holds the searched element");
             assert_eq!(parent.persons + refined.persons, source.persons);
             assert_eq!(parent.households + refined.households, source.households);
             let grouped: Vec<_> = captured
@@ -550,11 +555,11 @@ mod tests {
             );
             let ages = time
                 .county(county.geoid())
-                .unwrap()
+                .expect("the fixture catalog holds the addressed county")
                 .budgets()
                 .iter()
                 .find(|a| a.key == child.budget)
-                .unwrap();
+                .expect("the fixture holds the searched element");
             // The captured whole age partitions are retained, not inferred from jobs.
             assert!(ages.inactive >= child.inactive);
             assert_eq!(
@@ -597,7 +602,7 @@ mod tests {
                     let price = policy.commodities[&need.key]
                         .price
                         .as_ref()
-                        .unwrap()
+                        .expect("the fixture set the optional field before this read")
                         .opening
                         .micro_units();
                     total.checked_add(
@@ -606,7 +611,7 @@ mod tests {
                             * i128::from(policy.working_capital_periods),
                     )
                 })
-                .unwrap();
+                .expect("the fixture input satisfies the fallible conversion");
             assert_eq!(
                 refined.opening_cash.micro_units() + policy.aid.organization_opening_cash_micros,
                 before
@@ -627,7 +632,7 @@ mod tests {
                 .institutional_cash
                 .iter()
                 .find(|a| a.id == payer)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .cash
                 .micro_units(),
             policy.aid.organization_opening_cash_micros

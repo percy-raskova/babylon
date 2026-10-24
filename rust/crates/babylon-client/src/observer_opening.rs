@@ -517,7 +517,7 @@ mod tests {
                     campaign_id: Uuid::from_u128(2).to_string(),
                 },
             )
-            .unwrap();
+            .expect("the fixture call `queue_campaign` succeeds for the authored inputs");
         world.insert_resource(session);
         world.insert_resource(Time::<()>::default());
         world.insert_resource(OpeningPresentation {
@@ -530,7 +530,9 @@ mod tests {
             ..default()
         });
         world.init_resource::<Messages<ProductionSkip>>();
-        world.run_system_once(advance).unwrap();
+        world
+            .run_system_once(advance)
+            .expect("the Bevy system completes one run");
         assert!(world.resource::<OpeningPresentation>().launch_pending);
         assert!(world.resource::<ObserverUiState>().menu_open);
     }
@@ -547,7 +549,9 @@ mod tests {
         world.init_resource::<Messages<ProductionSkip>>();
         world.init_resource::<Messages<ObserverCommand>>();
         world.write_message(ProductionSkip);
-        world.run_system_once(advance).unwrap();
+        world
+            .run_system_once(advance)
+            .expect("the Bevy system completes one run");
         assert_eq!(
             world.resource::<OpeningPresentation>().stage,
             OpeningStage::Title
@@ -570,19 +574,25 @@ mod tests {
             ..default()
         });
         world.init_resource::<Messages<ProductionSkip>>();
-        world.run_system_once(advance).unwrap();
+        world
+            .run_system_once(advance)
+            .expect("the Bevy system completes one run");
         assert_eq!(
             world.resource::<OpeningPresentation>().stage,
             OpeningStage::Title
         );
         world.resource_mut::<ObserverUiState>().menu_open = false;
-        world.run_system_once(advance).unwrap();
+        world
+            .run_system_once(advance)
+            .expect("the Bevy system completes one run");
         assert_eq!(
             world.resource::<OpeningPresentation>().stage,
             OpeningStage::Game
         );
         world.resource_mut::<ObserverUiState>().menu_open = true;
-        world.run_system_once(advance).unwrap();
+        world
+            .run_system_once(advance)
+            .expect("the Bevy system completes one run");
         assert_eq!(
             world.resource::<OpeningPresentation>().stage,
             OpeningStage::Game,

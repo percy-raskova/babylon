@@ -282,7 +282,10 @@ const INVESTIGATE_SEALED: &[SurfaceAction] = &[SurfaceAction::unavailable(
     "Investigation opens this page — unavailable until Gate 5.",
 )];
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`gameplay_surface` takes every authored field explicitly"
+)]
 const fn gameplay_surface(
     id: SurfaceId,
     decision_question: &'static str,

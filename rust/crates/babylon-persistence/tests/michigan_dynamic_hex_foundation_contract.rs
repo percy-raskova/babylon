@@ -55,7 +55,8 @@ fn digest(hex: &str) -> [u8; 32] {
     assert_eq!(hex.len(), 64);
     let mut output = [0_u8; 32];
     for (index, byte) in output.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16).unwrap();
+        *byte = u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16)
+            .expect("the authored digits parse as the declared type");
     }
     output
 }
@@ -75,11 +76,13 @@ fn value_input(bits: [u64; 9]) -> MichiganDynamicHexValueBits {
 }
 
 fn replay_content() -> ContentDigest {
-    let (_, rules) = rule_pipeline::split_content(REPLAY_RULE).unwrap();
+    let (_, rules) = rule_pipeline::split_content(REPLAY_RULE)
+        .expect("the authored content splits into its sections");
     let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
     ContentDigest {
         defines_hash: [0x71; 32],
-        rules_hash: canonical_ast::rules_hash_of(&forms).unwrap(),
+        rules_hash: canonical_ast::rules_hash_of(&forms)
+            .expect("the rule set has a canonical hash"),
     }
 }
 
@@ -128,10 +131,12 @@ fn tick_owned_foundation_cannot_be_minted_from_alternate_membership_or_values() 
         .expect("governed fixture must construct once");
 
     let mut alternate_membership = foundation.rows().to_vec();
-    let foreign_cell = H3CellId::try_from(0x0872_8308_28ff_ffff_u64).unwrap();
+    let foreign_cell = H3CellId::try_from(0x0872_8308_28ff_ffff_u64)
+        .expect("the fixture value fits the target range");
     let retained_values = *alternate_membership[0].values();
     alternate_membership[0] =
-        MichiganDynamicHexFoundationRow::try_new(foreign_cell, retained_values).unwrap();
+        MichiganDynamicHexFoundationRow::try_new(foreign_cell, retained_values)
+            .expect("the authored fixture satisfies the constructor invariants");
     alternate_membership.sort_unstable_by_key(|row| row.cell_id().as_u64());
     assert_eq!(
         MichiganDynamicHexFoundation::try_new(
@@ -146,9 +151,10 @@ fn tick_owned_foundation_cannot_be_minted_from_alternate_membership_or_values() 
     bits[0] = (f64::from_bits(bits[0]) + 1.0).to_bits();
     alternate_value[0] = MichiganDynamicHexFoundationRow::try_new(
         alternate_value[0].cell_id(),
-        MichiganDynamicHexValues::try_new(value_input(bits)).unwrap(),
+        MichiganDynamicHexValues::try_new(value_input(bits))
+            .expect("the authored fixture satisfies the constructor invariants"),
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(
         MichiganDynamicHexFoundation::try_new(
             alternate_value,
@@ -176,11 +182,15 @@ fn tick_owned_foundation_cannot_be_minted_from_alternate_membership_or_values() 
         })
     );
 
-    let foreign_parent = H3CellId::try_from(0x0872_8308_28ff_ffff_u64).unwrap();
-    let foreign_child = foreign_parent.immediate_children().unwrap().as_slice()[0];
+    let foreign_parent = H3CellId::try_from(0x0872_8308_28ff_ffff_u64)
+        .expect("the fixture value fits the target range");
+    let foreign_child = foreign_parent
+        .immediate_children()
+        .expect("the fixture call `immediate_children` succeeds for the authored inputs")
+        .as_slice()[0];
     let mut wrong_complete_set = foundation.r8_child_parent_rows().to_vec();
-    wrong_complete_set[0] =
-        MichiganH3R8ChildParent::try_new(foreign_child, foreign_parent).unwrap();
+    wrong_complete_set[0] = MichiganH3R8ChildParent::try_new(foreign_child, foreign_parent)
+        .expect("the authored fixture satisfies the constructor invariants");
     wrong_complete_set.sort_unstable_by_key(MichiganH3R8ChildParent::child_cell_id);
     assert!(matches!(
         MichiganDynamicHexFoundation::try_new(foundation.rows().to_vec(), wrong_complete_set),
@@ -236,7 +246,10 @@ fn dynamic_runtime_construction_is_private_to_material_state() {
 }
 
 fn assert_row(row: &MichiganDynamicHexFoundationRow, expected_cell: u64, expected_bits: [u64; 9]) {
-    assert_eq!(row.cell_id(), H3CellId::try_from(expected_cell).unwrap());
+    assert_eq!(
+        row.cell_id(),
+        H3CellId::try_from(expected_cell).expect("the fixture value fits the target range")
+    );
     assert_eq!(row.value_bits(), expected_bits);
 }
 
@@ -296,8 +309,10 @@ fn static_fixture_decodes_the_exact_three_archive_consensus() {
                 )
                 .is_ok()
     }));
-    let audited_child = H3CellId::try_from(0x0882_6648_001f_ffff_u64).unwrap();
-    let audited_parent = H3CellId::try_from(0x0872_6648_00ff_ffff_u64).unwrap();
+    let audited_child = H3CellId::try_from(0x0882_6648_001f_ffff_u64)
+        .expect("the fixture value fits the target range");
+    let audited_parent = H3CellId::try_from(0x0872_6648_00ff_ffff_u64)
+        .expect("the fixture value fits the target range");
     assert!(foundation.r8_child_parent_rows().iter().any(|row| {
         row.child_cell_id() == audited_child && row.parent_r7_cell_id() == audited_parent
     }));
@@ -373,10 +388,12 @@ fn exact_foundation_projects_through_a_real_replay_session() {
             foundation.rows()[index].value_bits(),
         )
     });
-    let material = MaterialState::try_new(&foundation).unwrap();
+    let material = MaterialState::try_new(&foundation)
+        .expect("the authored fixture satisfies the constructor invariants");
     drop(foundation);
     drop(artifact);
-    let replay_id = ReplaySessionId::try_from("per281/michigan-foundation").unwrap();
+    let replay_id = ReplaySessionId::try_from("per281/michigan-foundation")
+        .expect("the fixture value fits the target range");
     let mut session = ReplayTickSession::new(
         REPLAY_SCENARIO,
         None,
@@ -388,10 +405,13 @@ fn exact_foundation_projects_through_a_real_replay_session() {
         RefDigest::from_bytes(reference_digest),
         material,
     )
-    .unwrap();
-    let actions = OrderedPracticeActionBatch::empty(replay_id, 1).unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
+    let actions = OrderedPracticeActionBatch::empty(replay_id, 1)
+        .expect("the empty authored batch constructs");
     let mut sink = CollectingSink::default();
-    let report = session.advance(&mut sink, &actions).unwrap();
+    let report = session
+        .advance(&mut sink, &actions)
+        .expect("the fixture advances the authored period");
     let dynamic = report.material_state_rows().dynamic_hexes();
 
     assert_eq!(dynamic.source_count(), expected_rows);

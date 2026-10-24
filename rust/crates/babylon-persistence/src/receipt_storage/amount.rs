@@ -211,9 +211,14 @@ mod tests {
     #[test]
     fn dictionary_order_usage_and_exact_positive_values_are_required() {
         let rows = repeated_rows();
-        let packed = pack(&rows, 8).unwrap().unwrap();
+        let packed = pack(&rows, 8)
+            .expect("the fixture rows pack into the bounded frame")
+            .expect("the nested fixture result is present");
         assert_eq!(packed.dictionary_count, 2);
-        assert_eq!(unpack(&packed.columns, 8, 2).unwrap(), rows);
+        assert_eq!(
+            unpack(&packed.columns, 8, 2).expect("the framed bytes unpack"),
+            rows
+        );
         let dictionary = 8 * CONTEXT_WIDTH;
         for (second, expected) in [
             (1_i128, Error::AmountOrder),
@@ -247,6 +252,8 @@ mod tests {
         }
         assert_eq!(decoded_length(usize::MAX, u32::MAX), Err(Error::Arithmetic));
         assert_eq!(unpack(&[], 10, 2), Err(Error::Width));
-        assert!(pack(&[], 0).unwrap().is_none());
+        assert!(pack(&[], 0)
+            .expect("the fixture rows pack into the bounded frame")
+            .is_none());
     }
 }

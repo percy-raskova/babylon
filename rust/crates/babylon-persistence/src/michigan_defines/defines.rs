@@ -270,10 +270,11 @@ impl MichiganDefines {
                 ));
             }
         }
-        for rate in self.corridor.values().map(|v| v.units_per_week).chain([
+        let corridor_rates = self.corridor.values().map(|v| v.units_per_week).chain([
             self.shared_freight.ample_units_per_week,
             self.shared_freight.constrained_units_per_week,
-        ]) {
+        ]);
+        for rate in corridor_rates {
             if rate == 0 || rate.checked_mul(WEEKS_PER_TICK).is_none() {
                 return Err(Value(
                     "corridor capacities must be positive and fit period units",
@@ -373,14 +374,30 @@ mod tests {
     ));
     #[test]
     fn equivalent_toml_has_one_canonical_identity_and_stored_values_round_trip() {
-        let original = MichiganDefines::parse(SOURCE).unwrap();
-        let reformatted = MichiganDefines::parse(&format!("# author note\n\n{SOURCE}\n")).unwrap();
-        assert_eq!(original.encode().unwrap(), reformatted.encode().unwrap());
+        let original = MichiganDefines::parse(SOURCE)
+            .expect("the authored literal parses as the declared type");
+        let reformatted = MichiganDefines::parse(&format!("# author note\n\n{SOURCE}\n"))
+            .expect("the authored literal parses as the declared type");
         assert_eq!(
-            MichiganDefines::decode(&original.encode().unwrap()).unwrap(),
+            original
+                .encode()
+                .expect("the fixture value encodes canonically"),
+            reformatted
+                .encode()
+                .expect("the fixture value encodes canonically")
+        );
+        assert_eq!(
+            MichiganDefines::decode(
+                &original
+                    .encode()
+                    .expect("the fixture value encodes canonically")
+            )
+            .expect("the committed canonical bytes decode"),
             original
         );
-        let mut padded = original.encode().unwrap();
+        let mut padded = original
+            .encode()
+            .expect("the fixture value encodes canonically");
         padded.push(b' ');
         assert!(matches!(
             MichiganDefines::decode(&padded),
@@ -459,7 +476,8 @@ mod tests {
 
     #[test]
     fn statewide_physical_coefficients_and_source_classification_are_validated() {
-        let baseline = MichiganDefines::parse(SOURCE).unwrap();
+        let baseline = MichiganDefines::parse(SOURCE)
+            .expect("the authored literal parses as the declared type");
         assert_eq!(baseline.template.len(), 16);
         assert_eq!(baseline.commodity.len(), 23);
         assert_eq!(baseline.transport.road_travel_periods, 1);

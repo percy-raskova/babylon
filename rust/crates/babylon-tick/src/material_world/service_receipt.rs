@@ -342,10 +342,14 @@ mod tests {
             expired_cost: money(6),
         };
         let mut bytes = vec![];
-        encode_performance(std::slice::from_ref(&performance), 1, &mut bytes).unwrap();
-        encode_households(std::slice::from_ref(&household), 1, &mut bytes).unwrap();
-        encode_markets(std::slice::from_ref(&market), 1, &mut bytes).unwrap();
-        encode_outputs(std::slice::from_ref(&output), 1, &mut bytes).unwrap();
+        encode_performance(std::slice::from_ref(&performance), 1, &mut bytes)
+            .expect("the fixture value encodes to its canonical bytes");
+        encode_households(std::slice::from_ref(&household), 1, &mut bytes)
+            .expect("the fixture value encodes to its canonical bytes");
+        encode_markets(std::slice::from_ref(&market), 1, &mut bytes)
+            .expect("the fixture value encodes to its canonical bytes");
+        encode_outputs(std::slice::from_ref(&output), 1, &mut bytes)
+            .expect("the fixture value encodes to its canonical bytes");
         assert_eq!(
             bytes.len(),
             PERFORMANCE_BYTES + HOUSEHOLD_BYTES + MARKET_BYTES + OUTPUT_BYTES
@@ -354,10 +358,26 @@ mod tests {
             bytes: &bytes,
             position: 0,
         };
-        assert_eq!(decode_performance(&mut cursor, 1).unwrap(), performance);
-        assert_eq!(decode_household(&mut cursor, 1).unwrap(), household);
-        assert_eq!(decode_market(&mut cursor, 1).unwrap(), market);
-        assert_eq!(decode_output(&mut cursor, 1).unwrap(), output);
+        assert_eq!(
+            decode_performance(&mut cursor, 1)
+                .expect("the canonical bytes decode into the declared type"),
+            performance
+        );
+        assert_eq!(
+            decode_household(&mut cursor, 1)
+                .expect("the canonical bytes decode into the declared type"),
+            household
+        );
+        assert_eq!(
+            decode_market(&mut cursor, 1)
+                .expect("the canonical bytes decode into the declared type"),
+            market
+        );
+        assert_eq!(
+            decode_output(&mut cursor, 1)
+                .expect("the canonical bytes decode into the declared type"),
+            output
+        );
         assert_eq!(cursor.position, bytes.len());
     }
 }
@@ -414,8 +434,9 @@ mod engine_test {
                 cash: money(3),
             },
         ])
-        .unwrap();
-        let costs = HistoricalCostBook::open(&book, vec![], vec![], vec![], vec![]).unwrap();
+        .expect("the fixture opens the authored source");
+        let costs = HistoricalCostBook::open(&book, vec![], vec![], vec![], vec![])
+            .expect("the fixture opens the authored source");
         MaterialCircuitState {
             period: 1,
             capacity_supply: CapacitySupply::FiniteSchedule,
@@ -504,7 +525,9 @@ mod engine_test {
             handling_coefficients: vec![],
             final_demand_principals: vec![FinalDemandPrincipal {
                 id: person,
-                location: "county:26163".parse().unwrap(),
+                location: "county:26163"
+                    .parse()
+                    .expect("the authored literal parses as the declared type"),
             }],
             final_demand_orders: vec![],
             maintenance_binding: None,
@@ -528,10 +551,13 @@ mod engine_test {
             }),
             Currency::from_micro_units(2),
         )
-        .unwrap();
-        let result = babylon_material_circuit::advance_material_circuit(&state).unwrap();
-        let bytes = super::super::encode_material_receipts(1, &result).unwrap();
-        let decoded = super::super::decode_material_receipts(&bytes).unwrap();
+        .expect("the fixture admits the authored purchase");
+        let result = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
+        let bytes = super::super::encode_material_receipts(1, &result)
+            .expect("the fixture value encodes to its canonical bytes");
+        let decoded = super::super::decode_material_receipts(&bytes)
+            .expect("the canonical bytes decode into the declared type");
         assert_eq!(decoded.service_performance, result.service_performance);
         assert_eq!(decoded.service_outputs, result.service_outputs);
         assert_eq!(decoded.income, result.income);

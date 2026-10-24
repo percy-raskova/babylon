@@ -45,7 +45,10 @@ impl RenderMode {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 // Independent presentation controls define the scope of comparable samples.
-#[allow(clippy::struct_excessive_bools)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "the struct mirrors the authored flag schema"
+)]
 struct SamplingScope {
     mode: RenderMode,
     campaign: CampaignId,
@@ -151,7 +154,10 @@ impl FrameSampler {
 }
 
 // Bevy injects independent timing, view and window resources into the sampler.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`sample_frames` declares each Bevy parameter explicitly"
+)]
 fn sample_frames(
     time: Res<Time<Real>>,
     view: Res<PrimaryView>,

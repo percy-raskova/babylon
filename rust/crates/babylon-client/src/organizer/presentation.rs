@@ -837,12 +837,12 @@ pub(super) fn inspector(client: &OrganizerClient, period: u64) -> (String, Strin
                 .filter(|receipt| receipt.period <= period && receipt.actor_id == view.actor_id)
                 .count();
             let mut text = format!("RECENT COMMITTED PRACTICE HISTORY\nShowing {visible} recent receipt(s) of {} committed through period {}. Open Our practice Archive for older receipts at the inspected period.\nFactory output and maintenance recovery remain separate from organizational outcomes.\n\n", view.total_receipt_count, view.period);
-            for receipt in view
+            let visible_receipts = view
                 .receipts
                 .iter()
                 .filter(|receipt| receipt.period <= period && receipt.actor_id == view.actor_id)
-                .rev()
-            {
+                .rev();
+            for receipt in visible_receipts {
                 let _ = writeln!(text, "PERIOD {} · {}\n{} · {} organizer-hours spent\nPartner: {}\n{} evidence record(s). {}\n", receipt.period,
                     if receipt.standing_work { "Standing work" } else { choice(receipt.choice) }, outcome(receipt.outcome), receipt.hours_spent,
                     response(receipt.partner_response), receipt.observation_ids.len(),
@@ -1087,7 +1087,11 @@ mod tests {
         };
         use babylon_practice_contract::OrganizerTimeUse;
         let mut client = aid_history_client();
-        let actor_id = client.view.as_ref().unwrap().actor_id;
+        let actor_id = client
+            .view
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .actor_id;
         let row = &mut client.aid_resolutions[0];
         row.pending.kind = OrganizerAidKind::Remote;
         row.practice.choice = OrganizerChoice::RemoteAid;
@@ -1113,7 +1117,11 @@ mod tests {
             payer_cash_granted_micros: 9,
             payer_cash_refunded_micros: 3,
         };
-        client.view.as_mut().unwrap().period = 5;
+        client
+            .view
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .period = 5;
         client
     }
 
@@ -1492,7 +1500,10 @@ mod tests {
             let client = pending_remote_card_client(period);
             let text = client_approach(
                 &client,
-                client.view.as_ref().unwrap(),
+                client
+                    .view
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read"),
                 OrganizerChoice::RemoteAid,
             );
             assert!(
@@ -1528,7 +1539,10 @@ mod tests {
         missing.aid.clear();
         let text = client_approach(
             &missing,
-            missing.view.as_ref().unwrap(),
+            missing
+                .view
+                .as_ref()
+                .expect("the fixture set the optional field before this read"),
             OrganizerChoice::RemoteAid,
         );
         assert!(
@@ -1541,7 +1555,10 @@ mod tests {
         unrelated.pending_aid[0].mandate_id = [99; 32];
         let text = client_approach(
             &unrelated,
-            unrelated.view.as_ref().unwrap(),
+            unrelated
+                .view
+                .as_ref()
+                .expect("the fixture set the optional field before this read"),
             OrganizerChoice::RemoteAid,
         );
         assert!(text.contains("Recipient attribution unavailable"), "{text}");
@@ -1551,10 +1568,18 @@ mod tests {
         refused.aid[0].receiving_consent = OrganizerGiftConsent::Refuse;
         let mut option = aid_options().remove(1);
         option.receiving_consent = OrganizerGiftConsent::Refuse;
-        refused.view.as_mut().unwrap().aid_options.push(option);
+        refused
+            .view
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .aid_options
+            .push(option);
         let text = client_approach(
             &refused,
-            refused.view.as_ref().unwrap(),
+            refused
+                .view
+                .as_ref()
+                .expect("the fixture set the optional field before this read"),
             OrganizerChoice::RemoteAid,
         );
         assert!(
@@ -1626,8 +1651,17 @@ mod tests {
                 (OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost), 12),
                 (OrganizerChoice::Reinforce, 8),
             ] {
-                client.view.as_mut().unwrap().available_hours = 16;
-                client.commitment.as_mut().unwrap().command.choice = choice;
+                client
+                    .view
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .available_hours = 16;
+                client
+                    .commitment
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .command
+                    .choice = choice;
                 let practice = review(&client, false, false, false);
                 assert!(
                     practice.contains(&format!("{hours} of 16 organizer-hours committed")),
@@ -1715,8 +1749,14 @@ mod tests {
         );
         assert!(review.lines().count() <= 4, "{review}");
         let card = approach(
-            client.view.as_ref().unwrap(),
-            client.preview.unwrap().choice,
+            client
+                .view
+                .as_ref()
+                .expect("the fixture set the optional field before this read"),
+            client
+                .preview
+                .expect("the fixture client carries its preview")
+                .choice,
         );
         assert!(card.contains("No completed-period report"), "{card}");
     }
@@ -1732,8 +1772,14 @@ mod tests {
             "{review}"
         );
         let card = approach(
-            client.view.as_ref().unwrap(),
-            client.preview.unwrap().choice,
+            client
+                .view
+                .as_ref()
+                .expect("the fixture set the optional field before this read"),
+            client
+                .preview
+                .expect("the fixture client carries its preview")
+                .choice,
         );
         assert!(card.contains("Report requested: period 5"), "{card}");
         assert!(card.contains("Resolves period 6"), "{card}");
@@ -1862,7 +1908,11 @@ mod tests {
         assert!(!expired.contains("IN SCOPE"));
 
         // Renewal replaces the mutable row; do not hide it using the older period.
-        let agreement = &mut client.view.as_mut().unwrap().agreements[0];
+        let agreement = &mut client
+            .view
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .agreements[0];
         agreement.valid_from_period = 4;
         agreement.valid_through_period = 6;
         agreement.source_product_id = Some([7; 32]);
@@ -1870,8 +1920,13 @@ mod tests {
         assert!(renewed.contains("IN SCOPE AT CURRENT PERIOD"));
         assert!(renewed.contains("periods 4–6"));
         assert!(renewed.contains("current committed period"));
-        assert!(means(client.view.as_ref().unwrap())
-            .contains("CURRENT ORGANIZATION · committed period 5"));
+        assert!(means(
+            client
+                .view
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+        )
+        .contains("CURRENT ORGANIZATION · committed period 5"));
     }
 
     #[test]
@@ -1940,12 +1995,16 @@ mod tests {
         }
     }
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "`collection_dated_actual_refusal_is_actor_scoped_and_historical` keeps one authored boundary's fixture and assertions together"
+    )]
     fn collection_dated_actual_refusal_is_actor_scoped_and_historical() {
         use babylon_practice_contract::{
             OrganizerCollectionFact, OrganizerCollectionOutcome, OrganizerCollectionResolution,
         };
         let mut client = aid_history_client();
-        let view = client.view.clone().unwrap();
+        let view = client.view.clone().expect("the fixture value clones");
         let mut practice = client.aid_resolutions[0].practice.clone();
         practice.choice = OrganizerChoice::Collect;
         practice.outcome = OrganizerOutcome::CollectionRefused;
@@ -1992,14 +2051,27 @@ mod tests {
         client
             .view
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .receipts
             .push(row.practice.clone());
-        assert!(aftermath(&client, client.view.as_ref().unwrap(), 3)
-            .contains("Household consumption is unmet"));
-        assert!(
-            !aftermath(&client, client.view.as_ref().unwrap(), 2).contains("collected 0 currency")
-        );
+        assert!(aftermath(
+            &client,
+            client
+                .view
+                .as_ref()
+                .expect("the fixture set the optional field before this read"),
+            3
+        )
+        .contains("Household consumption is unmet"));
+        assert!(!aftermath(
+            &client,
+            client
+                .view
+                .as_ref()
+                .expect("the fixture set the optional field before this read"),
+            2
+        )
+        .contains("collected 0 currency"));
         let text = collection_history(&client, &view, 3);
         assert!(text.contains("original admission 2; actual resolution 3"));
         assert!(text.contains("collected 0 currency; 0 shared material hours"));
@@ -2038,9 +2110,11 @@ mod tests {
         let partial: OrganizerCollectionResolution = serde_json::from_str(include_str!(
             "../../tests/fixtures/organizer_partial_collection.json"
         ))
-        .unwrap();
+        .expect("the authored JSON matches the declared schema");
         let resolved_period = partial.fact.period;
-        let mut partial_view = aid_history_client().view.unwrap();
+        let mut partial_view = aid_history_client()
+            .view
+            .expect("the fixture client carries its view");
         partial_view.actor_id = partial.fact.actor_id;
         partial_view.period = resolved_period;
         partial_view.receipts = vec![partial.practice.clone()];

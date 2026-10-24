@@ -1008,16 +1008,18 @@ mod opening_controls {
     fn fixture() -> (CampaignId, EconomicContentHandle, ObserverMaterialCursor) {
         let foundation = MichiganContentPreset::FourWeekStandard
             .create_foundation(&crate::test_support::catalog())
-            .unwrap();
+            .expect("the authored catalog builds the foundation");
         let owner = EconomicContentHandle::new(
-            EconomicContentAdmission::from_foundation(foundation).unwrap(),
+            EconomicContentAdmission::from_foundation(foundation)
+                .expect("the foundation admits the derived value"),
         );
         let campaign = CampaignId::from_uuid(Uuid::from_u128(0x342_000));
         let cursor = ObserverMaterialCursor {
             campaign,
             admission: owner.downgrade(),
             admission_digest: owner.digest(),
-            history: MaterialHistory::new(&owner).unwrap(),
+            history: MaterialHistory::new(&owner)
+                .expect("the constructor accepts the authored fixture arguments"),
         };
         (campaign, owner, cursor)
     }
@@ -1032,7 +1034,7 @@ mod opening_controls {
                 assert_eq!(register.completed_tick(), 0);
                 register.digest()
             })
-            .unwrap();
+            .expect("the fixture builder accepts the authored options");
         assert_eq!(digest, owner.initial_register().digest());
         assert_eq!(owner.strong_count(), 1);
     }
@@ -1052,7 +1054,9 @@ mod opening_controls {
     #[test]
     fn opening_foundations_preserve_distinct_admitted_component_identities() {
         let (campaign, owner, cursor) = fixture();
-        let identity = cursor.opening_foundations(campaign).unwrap();
+        let identity = cursor
+            .opening_foundations(campaign)
+            .expect("the fixture call `opening_foundations` succeeds for the authored inputs");
         assert_eq!(identity.material_foundation_sha256, owner.digest());
         assert_eq!(identity.graph_foundation_sha256, owner.graph_digest);
         assert_ne!(

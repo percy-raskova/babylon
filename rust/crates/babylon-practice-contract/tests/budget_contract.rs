@@ -12,7 +12,13 @@ fn hex_bytes(value: &str) -> Vec<u8> {
     value
         .as_bytes()
         .chunks_exact(2)
-        .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+        .map(|pair| {
+            u8::from_str_radix(
+                std::str::from_utf8(pair).expect("the fixture bytes came from a UTF-8 string"),
+                16,
+            )
+            .expect("the authored digits parse as the declared type")
+        })
         .collect()
 }
 
@@ -37,18 +43,36 @@ fn retained_budget_bytes_and_refusals_match_the_independent_contract() {
     };
     let cases: Vec<Value> = VECTORS
         .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
+        .map(|line| {
+            serde_json::from_str(line).expect("the authored JSON matches the declared schema")
+        })
         .collect();
     let case = cases
         .iter()
         .find(|case| case["case_id"] == "budget-delta")
-        .unwrap();
-    let bytes = hex_bytes(case["data"]["canonical_hex"].as_str().unwrap());
-    assert_eq!(encode_budget_delta(&delta).unwrap(), bytes);
-    assert_eq!(decode_budget_delta(&bytes).unwrap(), delta);
+        .expect("the fixture holds the searched element");
+    let bytes = hex_bytes(
+        case["data"]["canonical_hex"]
+            .as_str()
+            .expect("the JSON fixture field is a string"),
+    );
     assert_eq!(
-        budget_delta_digest(&delta).unwrap().as_slice(),
-        hex_bytes(case["data"]["digest_hex"].as_str().unwrap())
+        encode_budget_delta(&delta).expect("the fixture value encodes to its canonical bytes"),
+        bytes
+    );
+    assert_eq!(
+        decode_budget_delta(&bytes).expect("the canonical bytes decode into the declared type"),
+        delta
+    );
+    assert_eq!(
+        budget_delta_digest(&delta)
+            .expect("the fixture call `budget_delta_digest` succeeds for the authored inputs")
+            .as_slice(),
+        hex_bytes(
+            case["data"]["digest_hex"]
+                .as_str()
+                .expect("the JSON fixture field is a string")
+        )
     );
     for end in 0..bytes.len() {
         assert!(decode_budget_delta(&bytes[..end]).is_err());
@@ -62,18 +86,25 @@ fn retained_budget_bytes_and_refusals_match_the_independent_contract() {
     let case = cases
         .iter()
         .find(|case| case["case_id"] == "budget-boolean")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
-        decode_budget_delta(&hex_bytes(case["data"]["payload_hex"].as_str().unwrap())),
+        decode_budget_delta(&hex_bytes(
+            case["data"]["payload_hex"]
+                .as_str()
+                .expect("the JSON fixture field is a string")
+        )),
         Err(PracticeContractError::PracticeBoolean)
     );
 }
 
 #[test]
 fn machine_verbs_exist_only_for_the_declared_material_mappings() {
-    let organize = babylon_practice_contract::practice_machine_verb(PracticeId::Organize).unwrap();
-    let agitate = babylon_practice_contract::practice_machine_verb(PracticeId::Agitate).unwrap();
-    let aid = babylon_practice_contract::practice_machine_verb(PracticeId::MutualAid).unwrap();
+    let organize = babylon_practice_contract::practice_machine_verb(PracticeId::Organize)
+        .expect("the fixture call `practice_machine_verb` succeeds for the authored inputs");
+    let agitate = babylon_practice_contract::practice_machine_verb(PracticeId::Agitate)
+        .expect("the fixture call `practice_machine_verb` succeeds for the authored inputs");
+    let aid = babylon_practice_contract::practice_machine_verb(PracticeId::MutualAid)
+        .expect("the fixture call `practice_machine_verb` succeeds for the authored inputs");
     assert_eq!(
         (organize.stem, organize.mode),
         (VerbStem::Mobilize, Some(VerbMode::Canvass))

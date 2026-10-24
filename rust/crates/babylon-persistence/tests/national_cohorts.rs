@@ -7,7 +7,8 @@ use babylon_persistence::national_cohorts::{
 
 #[test]
 fn every_source_member_is_preserved_with_explicit_admission() {
-    let reference = national_cohorts::national_cohort_reference().unwrap();
+    let reference =
+        national_cohorts::national_cohort_reference().expect("the cohort reference fixture loads");
     assert_eq!(reference.groups().len(), 59_058);
     assert_eq!(reference.admitted_cohorts().count(), 57_238);
     assert_eq!(
@@ -29,16 +30,22 @@ fn every_source_member_is_preserved_with_explicit_admission() {
     assert!(reference
         .admitted_cohorts()
         .all(|row| row.key().function.is_some()));
-    let kalawao = CountyGeoid::try_from("15005").unwrap();
-    assert!(reference.groups_in_county(kalawao).unwrap().is_empty());
+    let kalawao = CountyGeoid::try_from("15005").expect("the fixture value fits the target range");
     assert!(reference
-        .groups_in_county(CountyGeoid::try_from("26999").unwrap())
+        .groups_in_county(kalawao)
+        .expect("the fixture call `groups_in_county` succeeds for the authored inputs")
+        .is_empty());
+    assert!(reference
+        .groups_in_county(
+            CountyGeoid::try_from("26999").expect("the fixture value fits the target range")
+        )
         .is_err());
 }
 
 #[test]
 fn suppression_and_rounded_zero_remain_distinct() {
-    let reference = national_cohorts::national_cohort_reference().unwrap();
+    let reference =
+        national_cohorts::national_cohort_reference().expect("the cohort reference fixture loads");
     assert!(reference.admitted_cohorts().any(|row| {
         row.establishments().known_subtotal() == 0
             && (row.jobs().known_subtotal() > 0 || row.annual_payroll_usd().known_subtotal() > 0)
@@ -47,7 +54,7 @@ fn suppression_and_rounded_zero_remain_distinct() {
         .groups()
         .iter()
         .find(|row| row.jobs().complete_total().is_none())
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert!(partial.establishments().complete_total().is_some());
     assert!(partial.jobs().missing_members() > 0);
     assert_eq!(

@@ -295,7 +295,10 @@ impl Work {
         )
     }
 
-    #[allow(clippy::too_many_arguments)] // One candidate binds presentation and exact private identity.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "`finish` takes every authored field explicitly"
+    )] // One candidate binds presentation and exact private identity.
     fn finish(
         self,
         context: &ObservationContext,

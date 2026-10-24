@@ -77,28 +77,34 @@ fn staffing() -> StaffingState {
                 crate::site(owner),
                 crate::hours(),
                 persons,
-                StaffingPolicy::one_period(4).unwrap(),
+                StaffingPolicy::one_period(4).expect("the one-period fixture advances"),
                 vec![source],
             )
-            .unwrap();
-            StaffingPoolState::try_new(binding, persons, 0, persons * 4).unwrap()
+            .expect("the authored fixture satisfies the constructor invariants");
+            StaffingPoolState::try_new(binding, persons, 0, persons * 4)
+                .expect("the authored fixture satisfies the constructor invariants")
         })
         .collect();
-    StaffingState::try_new(1, pools).unwrap()
+    StaffingState::try_new(1, pools)
+        .expect("the authored fixture satisfies the constructor invariants")
 }
 
 fn staffed_close(
     state: &MaterialCircuitState,
     people: &StaffingState,
 ) -> (MaterialCircuitTransition, StaffingState) {
-    let closed = babylon_material_circuit::close_material_period(state).unwrap();
+    let closed =
+        babylon_material_circuit::close_material_period(state).expect("the material period closes");
     let bindings = people
         .pools()
         .iter()
         .map(|pool| pool.binding().clone())
         .collect::<Vec<_>>();
-    let requests = closed.staffing_requests(&bindings).unwrap();
-    let staffing = babylon_material_circuit::advance_staffing(people, &requests).unwrap();
+    let requests = closed
+        .staffing_requests(&bindings)
+        .expect("the fixture staffing requests are present");
+    let staffing = babylon_material_circuit::advance_staffing(people, &requests)
+        .expect("the fixture staffing advances");
     let member_hours = staffing
         .next_labor()
         .iter()
@@ -110,7 +116,7 @@ fn staffed_close(
         .collect();
     let result = closed
         .finish_with_workforce(staffing.next_labor().to_vec(), member_hours)
-        .unwrap();
+        .expect("the fixture call `finish_with_workforce` succeeds for the authored inputs");
     (result, staffing.state().clone())
 }
 
@@ -128,9 +134,11 @@ fn staffed_recurring_eighty_periods_and_restart_preserve_goods_money_and_capacit
     let mut fork = None;
     for period in 1..=80 {
         if period == 52 {
-            let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+            let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+                .expect("the canonical material state encodes");
             fork = Some((
-                babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap(),
+                babylon_material_circuit::decode_material_circuit_state(&bytes)
+                    .expect("the canonical material bytes decode"),
                 people.clone(),
             ));
         }
@@ -147,7 +155,7 @@ fn staffed_recurring_eighty_periods_and_restart_preserve_goods_money_and_capacit
             crate::economy(&closed.state)
                 .book
                 .total_cash_and_reserves()
-                .unwrap(),
+                .expect("the fixture book totals without overflow"),
             money(24)
         );
         let physical = closed
@@ -160,7 +168,7 @@ fn staffed_recurring_eighty_periods_and_restart_preserve_goods_money_and_capacit
             + crate::economy(&closed.state)
                 .recurring
                 .as_ref()
-                .unwrap()
+                .expect("the fixture set the optional field before this read")
                 .household_stocks[0]
                 .quantity;
         assert_eq!(physical + consumed, 416);
@@ -192,11 +200,13 @@ fn finite_controls_do_not_extrapolate_missing_capacity() {
     let mut state = crate::opening();
     state.capacities.retain(|row| row.period == 1);
     state.corridor_capacities.retain(|row| row.period == 1);
-    let first = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert!(first.state.capacities.is_empty());
     assert!(first.state.corridor_capacities.is_empty());
     assert!(first.state.production_commitments.is_empty());
-    let second = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("the authored material state advances one period");
     assert!(second.dispatches.is_empty());
     assert_eq!(second.household_demand[0].fulfilled_quantity, 0);
 }
@@ -300,16 +310,21 @@ fn freight_opening() -> MaterialCircuitState {
 
 #[test]
 fn future_departures_remain_reserved_after_total_loss_and_checkpoint_restart() {
-    let first = babylon_material_circuit::advance_material_circuit(&freight_opening()).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&freight_opening())
+        .expect("the authored material state advances one period");
     assert_eq!(first.dispatches[0].quantity, 7);
     let mut state = first.state;
     add_order(&mut state, 4, 8);
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
-    let restarted = babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap();
-    let second = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
+    let restarted = babylon_material_circuit::decode_material_circuit_state(&bytes)
+        .expect("the canonical material bytes decode");
+    let second = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(
         second,
-        babylon_material_circuit::advance_material_circuit(&restarted).unwrap()
+        babylon_material_circuit::advance_material_circuit(&restarted)
+            .expect("the authored material state advances one period")
     );
     assert_eq!(second.dispatches[0].quantity, 3);
     let mut state = second.state;
@@ -319,12 +334,13 @@ fn future_departures_remain_reserved_after_total_loss_and_checkpoint_restart() {
             .corridor_capacities
             .iter()
             .find(|r| r.corridor_id == crate::corridor(2))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .available_grams,
         0
     );
     add_order(&mut state, 3, 1);
-    let third = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let third = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(second.losses.iter().map(|r| r.quantity).sum::<u64>(), 7);
     assert!(third.losses.is_empty());
     assert!(!third
@@ -353,7 +369,7 @@ fn future_departures_remain_reserved_after_total_loss_and_checkpoint_restart() {
             .dispatches
             .iter()
             .find(|row| row.order_id == OrderId::from_bytes([4; 32]))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .quantity,
         5
     );
@@ -363,7 +379,7 @@ fn future_departures_remain_reserved_after_total_loss_and_checkpoint_restart() {
             .corridor_capacities
             .iter()
             .find(|r| r.corridor_id == crate::corridor(2))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .available_grams,
         5
     );
@@ -372,9 +388,11 @@ fn future_departures_remain_reserved_after_total_loss_and_checkpoint_restart() {
 #[test]
 fn rolling_wire_refuses_obsolete_noncanonical_and_invalid_bookings() {
     let state = rolling(crate::opening());
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap(),
+        babylon_material_circuit::decode_material_circuit_state(&bytes)
+            .expect("the canonical material bytes decode"),
         state
     );
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
@@ -389,7 +407,12 @@ fn rolling_wire_refuses_obsolete_noncanonical_and_invalid_bookings() {
     };
     let payload_len = 2
         + 12
-        + rows.processes.capacities(state.period).unwrap().len() * 72
+        + rows
+            .processes
+            .capacities(state.period)
+            .expect("the fixture carries its authored capacities")
+            .len()
+            * 72
         + rows.shared.len() * 40;
     let mode = bytes.len() - payload_len - 8; // Two empty service row counts follow capacity.
     let mut invalid = bytes.clone();
@@ -450,7 +473,7 @@ fn rolling_wire_refuses_obsolete_noncanonical_and_invalid_bookings() {
     let mut excessive = bytes.clone();
     excessive[mode + 1..mode + 5].copy_from_slice(
         &u32::try_from(MAX_MATERIAL_CIRCUIT_ROWS + 1)
-            .unwrap()
+            .expect("the fixture value fits the target range")
             .to_be_bytes(),
     );
     assert_eq!(
@@ -466,13 +489,15 @@ fn date_overflow_and_late_planning_failure_publish_no_capacity_or_money_changes(
     for row in &mut state.corridor_capacities {
         row.period = state.period;
     }
-    let before = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&state).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes"),
         before
     );
 
@@ -492,7 +517,8 @@ fn date_overflow_and_late_planning_failure_publish_no_capacity_or_money_changes(
         stage_index: 1,
         corridor_id: crate::corridor(1),
     });
-    let before = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     // Payroll, retail settlement and a newly reserved future departure precede
     // overflow of dispatched_quantity + output_buffer in production planning.
     assert_eq!(
@@ -500,7 +526,8 @@ fn date_overflow_and_late_planning_failure_publish_no_capacity_or_money_changes(
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&state).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes"),
         before
     );
 }

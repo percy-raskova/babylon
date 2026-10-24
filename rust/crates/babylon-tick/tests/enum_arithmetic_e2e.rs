@@ -58,7 +58,8 @@ fn enum_op_rule(op: &str) -> String {
 
 #[test]
 fn add_on_a_seeded_enum_field_is_a_loud_load_time_refusal() {
-    let err = babylon_tick::run_once(ORG_SCENARIO, &enum_op_rule("add")).unwrap_err();
+    let err = babylon_tick::run_once(ORG_SCENARIO, &enum_op_rule("add"))
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("D118"),
         "add on an enum field must refuse at load (D118), not silently \
@@ -78,7 +79,8 @@ fn sub_on_a_seeded_enum_field_is_a_loud_load_time_refusal() {
     // member, and no range check on an enum field catches it at the store
     // boundary (§3.3's unit-interval check does not cover BslType::Enum).
     // D118 refuses this BEFORE the rule ever loads, let alone runs.
-    let err = babylon_tick::run_once(ORG_SCENARIO, &enum_op_rule("sub")).unwrap_err();
+    let err = babylon_tick::run_once(ORG_SCENARIO, &enum_op_rule("sub"))
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("D118"),
         "sub on an enum field must refuse at load (D118), before it could \
@@ -89,7 +91,8 @@ fn sub_on_a_seeded_enum_field_is_a_loud_load_time_refusal() {
 
 #[test]
 fn scale_on_a_seeded_enum_field_is_a_loud_load_time_refusal() {
-    let err = babylon_tick::run_once(ORG_SCENARIO, &enum_op_rule("scale")).unwrap_err();
+    let err = babylon_tick::run_once(ORG_SCENARIO, &enum_op_rule("scale"))
+        .expect_err("the malformed tick is refused");
     assert!(err.contains("D118"), "{err}");
     assert!(err.contains("rejected"), "{err}");
 }

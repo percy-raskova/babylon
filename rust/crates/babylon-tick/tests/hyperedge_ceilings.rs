@@ -113,8 +113,8 @@ fn the_measured_e_load_040_bound_matches_the_fold_shape() {
     assert!(underfunded.contains(":fuel 1"));
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err =
-        babylon_tick::run_once_into(SCENARIO, &underfunded, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(SCENARIO, &underfunded, &mut graph, &mut sink)
+        .expect_err("the malformed tick is refused");
     let bound = err
         .split("static bound ")
         .nth(1)

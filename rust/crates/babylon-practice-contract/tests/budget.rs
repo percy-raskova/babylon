@@ -64,7 +64,7 @@ fn transition_derives_cost_count_credit_and_snapshot() {
         &[edge(7, 101, 1.0), edge(7, 102, 1.0)],
         terms(),
     )
-    .unwrap();
+    .expect("the fixture call `compute_budget_delta` succeeds for the authored inputs");
     assert_eq!(delta.schema_version, 1);
     assert_eq!(delta.tick, 11);
     assert_eq!(delta.actor_node_id, 7);
@@ -95,7 +95,7 @@ fn every_practice_cost_and_none_zero_cost_are_exhaustive() {
             &[],
             terms(),
         )
-        .unwrap();
+        .expect("the fixture call `compute_budget_delta` succeeds for the authored inputs");
         assert_eq!(delta.governed_cost, expected);
         assert_eq!(delta.budget_after, 3 - expected);
     }
@@ -148,7 +148,7 @@ fn ceiling_binds_only_after_valid_checked_addition() {
         &[edge(7, 101, 1.0)],
         capped_terms,
     )
-    .unwrap();
+    .expect("the fixture call `compute_budget_delta` succeeds for the authored inputs");
     assert!(delta.ceiling_bound);
     assert_eq!(delta.budget_after, 3);
 }
@@ -229,7 +229,7 @@ fn footprint_strength_refusals_and_maximum_are_exact() {
         &maximum,
         terms(),
     )
-    .unwrap();
+    .expect("the fixture call `compute_budget_delta` succeeds for the authored inputs");
     assert_eq!(delta.footprint_count, 256);
     assert_eq!(delta.raw_credit, 256);
 }

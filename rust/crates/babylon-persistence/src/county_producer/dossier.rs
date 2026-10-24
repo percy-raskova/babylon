@@ -1000,11 +1000,11 @@ pub fn county_committed_signals(
     fields: &CommittedTerritoryFields,
 ) -> Result<Vec<CountySignal>, SemanticArchiveError> {
     let mut signals = Vec::new();
-    for ((key, label), value) in QCEW_ECONOMICS_FIELD_KEYS
+    let qcew_rows = QCEW_ECONOMICS_FIELD_KEYS
         .into_iter()
         .zip(QCEW_LABELS)
-        .zip(fields.qcew)
-    {
+        .zip(fields.qcew);
+    for ((key, label), value) in qcew_rows {
         if let Some(value) = value {
             signals.push(CountySignal::try_new(
                 key.to_owned(),

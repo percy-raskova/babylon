@@ -1006,7 +1006,10 @@ impl ArchiveAtom {
     /// Refuses a malformed subject, key, citation, or tick; refuses a
     /// non-finite `f64` value with [`SemanticArchiveError::NonFiniteValue`]
     /// so refusal vectors can name it (R1).
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "`try_new` takes every authored field explicitly"
+    )]
     pub fn try_new(
         campaign_id: CampaignId,
         subject: ArchiveAtomSubject,
@@ -1165,7 +1168,10 @@ impl ArchiveAtomMint {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`canonical_atom_id` takes every authored field explicitly"
+)]
 fn canonical_atom_id(
     campaign_id: &Uuid,
     subject: &ArchiveAtomSubject,
@@ -1901,29 +1907,44 @@ mod tests {
     fn public_qcew_page() -> (CampaignId, ArchivePageInput, ArchiveKnowledge) {
         let campaign = CampaignId::from_uuid(Uuid::from_u128(319));
         let county = crate::michigan_economy::michigan_economy()
-            .unwrap()
+            .expect("the Michigan economy fixture builds")
             .counties()
             .iter()
             .find(|county| county.county_geoid == "26163")
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let fields = CommittedTerritoryFields::try_from_qcew([
-            Some(i64::try_from(county.annual_avg_estabs_count).unwrap()),
-            Some(i64::try_from(county.annual_avg_emplvl).unwrap()),
-            Some(i64::try_from(county.total_annual_wages).unwrap()),
-            Some(i64::try_from(county.annual_avg_wkly_wage).unwrap()),
+            Some(
+                i64::try_from(county.annual_avg_estabs_count)
+                    .expect("the fixture value fits the target range"),
+            ),
+            Some(
+                i64::try_from(county.annual_avg_emplvl)
+                    .expect("the fixture value fits the target range"),
+            ),
+            Some(
+                i64::try_from(county.total_annual_wages)
+                    .expect("the fixture value fits the target range"),
+            ),
+            Some(
+                i64::try_from(county.annual_avg_wkly_wage)
+                    .expect("the fixture value fits the target range"),
+            ),
         ])
-        .unwrap();
+        .expect("the fixture input satisfies the fallible conversion");
         let plan = CountyPagePlan::try_new(
             county.county_geoid.clone(),
             "county-26163".to_owned(),
             "Wayne County".to_owned(),
-            crate::county_committed_signals(&fields).unwrap(),
+            crate::county_committed_signals(&fields).expect(
+                "the fixture call `county_committed_signals` succeeds for the authored inputs",
+            ),
             Vec::new(),
         )
-        .unwrap();
-        let page = crate::county_page_input(&plan, 1, [1; 32]).unwrap();
+        .expect("the authored fixture satisfies the constructor invariants");
+        let page = crate::county_page_input(&plan, 1, [1; 32])
+            .expect("the fixture call `county_page_input` succeeds for the authored inputs");
         let grants = crate::foundation_grant_rows()
-            .unwrap()
+            .expect("the fixture call `foundation_grant_rows` succeeds for the authored inputs")
             .into_iter()
             .filter(|row| {
                 row.subject().kind() == ArchiveAtomSubjectKind::County
@@ -1936,16 +1957,22 @@ mod tests {
                     0,
                     row.citation().clone(),
                 )
-                .unwrap()
+                .expect("the authored fixture satisfies the constructor invariants")
             })
             .collect();
-        (campaign, page, ArchiveKnowledge::try_new(grants).unwrap())
+        (
+            campaign,
+            page,
+            ArchiveKnowledge::try_new(grants)
+                .expect("the authored fixture satisfies the constructor invariants"),
+        )
     }
 
     #[test]
     fn pinned_public_qcew_atoms_retain_observed_classification() {
         let (campaign, page, grants) = public_qcew_page();
-        let atoms = mint_page_atoms(campaign, 1, &page, &grants).unwrap();
+        let atoms = mint_page_atoms(campaign, 1, &page, &grants)
+            .expect("the fixture call `mint_page_atoms` succeeds for the authored inputs");
         let qcew: Vec<_> = atoms
             .iter()
             .filter(|atom| atom.signal_key() != "subject")
@@ -1977,15 +2004,19 @@ mod tests {
                             changed.subject.page_ref().clone(),
                             signal.grant_key().to_owned(),
                         ))
-                        .unwrap()
+                        .expect("the fixture holds the addressed entry")
                         .citation
                         .source_id = "uncited-local-claim".to_owned();
                 }
                 _ => unreachable!(),
             }
             let key = signal.grant_key().to_owned();
-            let atoms = mint_page_atoms(campaign, 1, &changed, &changed_grants).unwrap();
-            let atom = atoms.iter().find(|atom| atom.signal_key() == key).unwrap();
+            let atoms = mint_page_atoms(campaign, 1, &changed, &changed_grants)
+                .expect("the fixture call `mint_page_atoms` succeeds for the authored inputs");
+            let atom = atoms
+                .iter()
+                .find(|atom| atom.signal_key() == key)
+                .expect("the fixture holds the searched element");
             assert_eq!(
                 atom.evidence_class(),
                 ArchiveEvidenceClass::Derived,

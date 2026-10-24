@@ -21,29 +21,29 @@ fn shared_opening(meal_order: u64, capacity: u64) -> MaterialCircuitState {
     let catalog = crate::test_support::catalog();
     let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
         .create_foundation(&catalog)
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let mut state = foundation.initial_register().state().clone();
     let sheet = catalog
         .routes()
         .iter()
         .find(|route| route.good_key == "sheet")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let meal = catalog
         .routes()
         .iter()
         .find(|route| route.good_key == "meal")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let shared = state
         .route_stage_capacities
         .iter()
         .find(|leg| leg.route_id == sheet.id())
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .corridor_id;
     let obsolete = state
         .route_stage_capacities
         .iter()
         .find(|leg| leg.route_id == meal.id())
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .corridor_id;
     for leg in &mut state.route_stage_capacities {
         if leg.route_id == meal.id() {
@@ -62,13 +62,13 @@ fn shared_opening(meal_order: u64, capacity: u64) -> MaterialCircuitState {
         .orders
         .iter_mut()
         .find(|order| order.order_id == meal.order_id())
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .ordered = meal_order;
     state
         .backlog
         .iter_mut()
         .find(|row| row.order_id == meal.order_id())
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity = meal_order;
     state
 }
@@ -80,12 +80,16 @@ fn committed_pair(
     MaterialCircuitState,
     MaterialTickReceipts,
 ) {
-    let opening = MaterialWorldRegister::try_new(0, state).unwrap();
-    let next = opening.prepare_next().unwrap();
+    let opening = MaterialWorldRegister::try_new(0, state)
+        .expect("the authored fixture satisfies the constructor invariants");
+    let next = opening
+        .prepare_next()
+        .expect("the fixture prepares the authored state");
     (
         opening.state().clone(),
         next.register().state().clone(),
-        material_world::decode_material_receipts(next.receipt_bytes()).unwrap(),
+        material_world::decode_material_receipts(next.receipt_bytes())
+            .expect("the canonical bytes decode into the declared type"),
     )
 }
 
@@ -114,7 +118,7 @@ fn assert_shared_reservation(
             &definitions
                 .iter()
                 .find(|row| &row.id == reference)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .order
         })
         .collect();
@@ -124,12 +128,12 @@ fn assert_shared_reservation(
             .routes()
             .iter()
             .find(|row| row.good_key == good)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let order_id = michigan_economy::digest_hex(&route.order_id().as_bytes());
         let order = projected_orders
             .iter()
             .find(|row| row.order_id == order_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(order.dispatched, quantity);
         assert_eq!(order.grams_per_unit, 1_000);
         assert_eq!(dispatches.get(&order_id), Some(&quantity));
@@ -143,14 +147,14 @@ fn assert_shared_reservation(
         .try_fold(0_u64, |total, row| {
             total.checked_add(row.dispatched.checked_mul(row.grams_per_unit)?)
         })
-        .unwrap();
+        .expect("the fixture input satisfies the fallible conversion");
     assert_eq!(reservation.newly_reserved_grams, reserved);
     assert_eq!(
         reservation.opening_available_grams,
         reservation
             .newly_reserved_grams
             .checked_add(reservation.remaining_available_grams)
-            .unwrap()
+            .expect("the fixture arithmetic stays in range")
     );
     assert_eq!(
         (
@@ -176,7 +180,7 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
             Some(&opening),
             Some(&receipt),
         )
-        .unwrap();
+        .expect("the fixture projection accepts the authored input");
         assert_eq!(
             accounts.len(),
             2,
@@ -185,8 +189,11 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
         let account = accounts
             .iter()
             .find(|row| row.route_ids.len() == 2)
-            .unwrap();
-        let completed = account.completed.as_ref().unwrap();
+            .expect("the fixture holds the searched element");
+        let completed = account
+            .completed
+            .as_ref()
+            .expect("the fixture set the optional field before this read");
         assert_eq!(completed.period, 1);
         assert_eq!(completed.reservations.len(), 1);
         let reservation = &completed.reservations[0];
@@ -214,7 +221,7 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
                 Some(&permuted_opening),
                 Some(&permuted_receipt)
             )
-            .unwrap()
+            .expect("the fixture projection accepts the authored input")
         );
     }
 }
@@ -228,13 +235,13 @@ fn foundation_sharing_is_known_but_completed_zero_is_not_invented() {
         None,
         None,
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     assert!(accounts.iter().all(|row| row.completed.is_none()));
     assert_eq!(
         accounts
             .iter()
             .find(|row| row.route_ids.len() == 2)
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .next_opening_available_grams,
         160_000
     );
@@ -245,14 +252,14 @@ fn foundation_sharing_is_known_but_completed_zero_is_not_invented() {
         Some(&opening),
         Some(&receipt),
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     let completed = accounts
         .iter()
         .find(|row| row.route_ids.len() == 2)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .completed
         .as_ref()
-        .unwrap();
+        .expect("the fixture set the optional field before this read");
     assert_eq!(completed.reservations[0].newly_reserved_grams, 0);
     assert!(completed.reservations[0]
         .orders
@@ -260,7 +267,7 @@ fn foundation_sharing_is_known_but_completed_zero_is_not_invented() {
         .all(|reference| definitions
             .iter()
             .find(|d| &d.id == reference)
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .order
             .dispatched
             == 0));
@@ -319,6 +326,10 @@ fn missing_duplicate_and_excess_receipts_or_capacity_refuse() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`reservations_for_later_legs_debit_the_future_period_without_claiming_arrival` keeps one authored boundary's fixture and assertions together"
+)]
 fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival() {
     let mut state = shared_opening(200, 160);
     let catalog = crate::test_support::catalog();
@@ -326,12 +337,12 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
         .routes()
         .iter()
         .find(|route| route.good_key == "sheet")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let first = state
         .route_stages
         .iter_mut()
         .find(|leg| leg.route_id == sheet.id())
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let destination = first.to_node_id;
     let intermediate = LogisticsNodeId::from_bytes([73; 32]);
     first.to_node_id = intermediate;
@@ -347,7 +358,7 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
         .route_stage_capacities
         .iter()
         .find(|row| row.route_id == sheet.id())
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .corridor_id;
     state.route_stage_capacities.push(RouteStageCapacity {
         route_id: sheet.id(),
@@ -362,11 +373,11 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
         Some(&opening),
         Some(&receipt),
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     let shared = accounts
         .iter()
         .find(|row| row.route_ids.len() == 2)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (
             shared.next_opening_period,
@@ -374,7 +385,10 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
         ),
         (2, 40_000)
     );
-    let completed = shared.completed.as_ref().unwrap();
+    let completed = shared
+        .completed
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(completed.period, 1);
     assert_eq!(
         completed
@@ -389,8 +403,11 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
         vec![(1, 160_000, 0), (2, 120_000, 40_000)]
     );
     assert!(receipt.arrivals.is_empty());
-    let mut stages = super::super::routes::stage_index(&next).unwrap();
-    let legs = stages.remove(&sheet.id()).unwrap();
+    let mut stages = super::super::routes::stage_index(&next)
+        .expect("the fixture call `stage_index` succeeds for the authored inputs");
+    let legs = stages
+        .remove(&sheet.id())
+        .expect("the fixture call `remove` succeeds for the authored inputs");
     assert_eq!(
         legs.iter().map(|leg| leg.stage_index).collect::<Vec<_>>(),
         [0, 1]
@@ -404,7 +421,7 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
             row.period == 2
                 && michigan_economy::digest_hex(&row.corridor_id.as_bytes()) == shared.corridor_id
         })
-        .unwrap();
+        .expect("the fixture holds the searched element");
     capacity.available_grams += 1;
     assert_eq!(
         projection::project_freight_capacity_accounts(
@@ -429,17 +446,18 @@ fn rolling_capacity_reconciles_future_bookings_and_refuses_unexplained_budget_ch
             Some(&receipt),
         )
     };
-    let (accounts, _definitions) = project(&next).unwrap();
+    let (accounts, _definitions) =
+        project(&next).expect("the fixture projection accepts the authored state");
     let shared = accounts
         .iter()
         .find(|row| row.route_ids.len() == 2)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(shared.next_opening_available_grams, 160_000);
     assert_eq!(
         shared
             .completed
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .reservations
             .iter()
             .map(|row| (row.reservation_period, row.newly_reserved_grams))
@@ -481,13 +499,13 @@ fn rolling_two_stage_opening() -> MaterialCircuitState {
         .routes()
         .iter()
         .find(|row| row.good_key == "sheet")
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .id();
     let first = state
         .route_stages
         .iter_mut()
         .find(|row| row.route_id == route)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let destination = first.to_node_id;
     first.to_node_id = LogisticsNodeId::from_bytes([73; 32]);
     first.travel_periods = 2;
@@ -504,7 +522,7 @@ fn rolling_two_stage_opening() -> MaterialCircuitState {
         .route_stage_capacities
         .iter()
         .find(|row| row.route_id == route)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .corridor_id;
     state.route_stage_capacities.push(RouteStageCapacity {
         route_id: route,
@@ -544,7 +562,9 @@ fn multileg_projection_encodes_each_exact_order_fact_once() {
         match value {
             Value::Object(row) => {
                 if row.contains_key("order_id") {
-                    facts.push(serde_json::to_string(value).unwrap());
+                    facts.push(
+                        serde_json::to_string(value).expect("the fixture value formats as text"),
+                    );
                 }
                 for child in row.values() {
                     collect(child, facts);
@@ -564,12 +584,12 @@ fn multileg_projection_encodes_each_exact_order_fact_once() {
         .routes()
         .iter()
         .find(|r| r.good_key == "sheet")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let first = state
         .route_stages
         .iter_mut()
         .find(|leg| leg.route_id == sheet.id())
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let destination = first.to_node_id;
     let intermediate = LogisticsNodeId::from_bytes([73; 32]);
     first.to_node_id = intermediate;
@@ -585,7 +605,7 @@ fn multileg_projection_encodes_each_exact_order_fact_once() {
         .route_stage_capacities
         .iter()
         .find(|r| r.route_id == sheet.id())
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .corridor_id;
     state.route_stage_capacities.push(RouteStageCapacity {
         route_id: sheet.id(),
@@ -600,8 +620,8 @@ fn multileg_projection_encodes_each_exact_order_fact_once() {
         Some(&opening),
         Some(&receipt),
     )
-    .unwrap();
-    let disclosure = serde_json::to_value(&projection).unwrap();
+    .expect("the fixture projection accepts the authored input");
+    let disclosure = serde_json::to_value(&projection).expect("the value serializes to JSON");
     let mut facts = Vec::new();
     collect(&disclosure, &mut facts);
     let unique: BTreeSet<_> = facts.iter().collect();

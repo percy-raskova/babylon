@@ -21,7 +21,8 @@ fn scenario() -> ContentRuleSource<'static> {
 
 #[test]
 fn pilot_loads_as_one_adjacent_typed_kernel_projection_pair() {
-    let analysis = babylon_tick::analyze_content_set_sources(scenario(), &[], &sources()).unwrap();
+    let analysis = babylon_tick::analyze_content_set_sources(scenario(), &[], &sources())
+        .expect("the fixture call `analyze_content_set_sources` succeeds for the authored inputs");
     assert_eq!(analysis.rules.len(), 2);
     assert_eq!(analysis.rules[0].rule_id, "struggle/spark-mechanic");
     assert_eq!(analysis.rules[1].rule_id, "struggle/spark-recognizer");
@@ -42,7 +43,7 @@ fn pilot_likelihood_is_the_exact_recognizer_preimage_not_authored_payload() {
         },
         1,
     )
-    .unwrap();
+    .expect("the fixture call `forecast_event_likelihoods` succeeds for the authored inputs");
     assert_eq!(likelihoods.len(), 1);
     assert_eq!(likelihoods[0].event_type, "EXCESSIVE_FORCE");
     assert_eq!(likelihoods[0].favorable_outcomes, ["EXCESSIVE_FORCE"]);

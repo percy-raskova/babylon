@@ -196,16 +196,19 @@ fn representative_cohort_refuses_every_untrusted_or_drifted_source_shape() {
     );
 
     let mut wrong_resolution = source.clone();
-    wrong_resolution[0] = H3CellId::from_str("842a107ffffffff").unwrap();
+    wrong_resolution[0] = H3CellId::from_str("842a107ffffffff")
+        .expect("the authored JSON matches the declared schema");
     assert_eq!(
         h3_reference_cohort::build_representative_h3_cohort(artifact_digest(), &wrong_resolution),
         Err(H3ReferenceCohortError::UnexpectedSourceResolution {
-            cell: H3CellId::from_str("842a107ffffffff").unwrap(),
+            cell: H3CellId::from_str("842a107ffffffff")
+                .expect("the authored JSON matches the declared schema"),
             actual: 4,
         })
     );
 
-    let impostor = H3CellId::from_str("85283473fffffff").unwrap();
+    let impostor = H3CellId::from_str("85283473fffffff")
+        .expect("the authored JSON matches the declared schema");
     assert!(!source.contains(&impostor));
     let mut wrong_set = source.clone();
     wrong_set[0] = impostor;
@@ -249,7 +252,8 @@ fn digest(text: &str) -> RefDigest {
     let mut bytes = [0_u8; 32];
     for (index, byte) in bytes.iter_mut().enumerate().take(32) {
         let offset = index * 2;
-        *byte = u8::from_str_radix(&text[offset..offset + 2], 16).unwrap();
+        *byte = u8::from_str_radix(&text[offset..offset + 2], 16)
+            .expect("the authored digits parse as the declared type");
     }
     RefDigest::from_bytes(bytes)
 }

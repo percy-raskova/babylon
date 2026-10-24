@@ -18,7 +18,10 @@
 // Conformance fixtures exercise exact engine values, transcribe spec literals,
 // and build whole scenarios in one test. These pedantic lints would force
 // ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::float_cmp)]
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
 
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::memory::MemoryGraph;
@@ -113,7 +116,8 @@ fn declaring_an_uncapped_intrinsic_refuses_the_whole_load() {
 (rule vitality/floor-e2e-count-deaths
   :role mechanic :evidence derived :material-basis "x" :fuel 8 (when #t))
 "#;
-    let err = babylon_tick::run_once(SCENARIO, TANH_RULE).unwrap_err();
+    let err =
+        babylon_tick::run_once(SCENARIO, TANH_RULE).expect_err("the malformed tick is refused");
     assert!(
         err.contains("declarable intrinsic set"),
         "unexpected message: {err}"
@@ -130,7 +134,8 @@ fn a_mismatched_declared_signature_refuses_the_whole_load() {
 (rule vitality/floor-e2e-count-deaths
   :role mechanic :evidence derived :material-basis "x" :fuel 8 (when #t))
 "#;
-    let err = babylon_tick::run_once(SCENARIO, WRONG_SIGNATURE_RULE).unwrap_err();
+    let err = babylon_tick::run_once(SCENARIO, WRONG_SIGNATURE_RULE)
+        .expect_err("the malformed tick is refused");
     assert!(err.contains("E-LOAD-020"), "unexpected message: {err}");
 }
 
@@ -144,7 +149,8 @@ fn a_duplicate_intrinsic_declaration_refuses_the_whole_load() {
 (rule vitality/floor-e2e-count-deaths
   :role mechanic :evidence derived :material-basis "x" :fuel 8 (when #t))
 "#;
-    let err = babylon_tick::run_once(SCENARIO, DUPLICATE_RULE).unwrap_err();
+    let err = babylon_tick::run_once(SCENARIO, DUPLICATE_RULE)
+        .expect_err("the malformed tick is refused");
     assert!(err.contains("E-LOAD-001"), "unexpected message: {err}");
 }
 

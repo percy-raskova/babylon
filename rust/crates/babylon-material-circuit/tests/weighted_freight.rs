@@ -125,14 +125,15 @@ fn competition() -> MaterialCircuitState {
 fn native_panel_and_mass_orders_compete_for_one_sixty_gram_budget() {
     // Ten 10-gram panels and one hundred 1-gram units each request 100 grams.
     let opening = competition();
-    let result = babylon_material_circuit::advance_material_circuit(&opening).unwrap();
+    let result = babylon_material_circuit::advance_material_circuit(&opening)
+        .expect("the authored material state advances one period");
     let quantities: Vec<_> = result.dispatches.iter().map(|row| row.quantity).collect();
     assert_eq!(quantities, [3, 30]);
 }
 
 fn dispatched(state: &MaterialCircuitState) -> Vec<u64> {
     babylon_material_circuit::advance_material_circuit(state)
-        .unwrap()
+        .expect("the authored material state advances one period")
         .dispatches
         .iter()
         .map(|row| row.quantity)
@@ -152,7 +153,8 @@ fn simultaneous_bottleneck_residual_serves_other_feasible_requests() {
         period: 1,
         available_grams: 25,
     });
-    let result = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let result = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     let quantities: Vec<_> = result.dispatches.iter().map(|row| row.quantity).collect();
     assert_eq!(quantities, [2, 40]);
     assert_eq!(60 - quantities[0] * 10 - quantities[1], 0);
@@ -215,14 +217,16 @@ fn many_capacity_memberships_share_one_stage_and_one_arrival() {
             });
         }
     }
-    let first = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(first.state.route_stages.len(), 2);
     assert_eq!(first.dispatches.len(), 2);
     assert!(first
         .dispatches
         .iter()
         .all(|row| row.final_arrival_period == 2));
-    let second = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("the authored material state advances one period");
     assert_eq!(
         second
             .arrivals
@@ -261,15 +265,18 @@ fn future_stage_capacity_is_reserved_once_and_current_stage_loss_is_attributed()
         period: 2,
         available_grams: 60,
     });
-    let first = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(first.state.corridor_capacities[0].available_grams, 30);
-    let second = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("the authored material state advances one period");
     assert_eq!(second.losses.len(), 1);
     assert_eq!(second.losses[0].route_id, RouteId::from_bytes([1; 32]));
     assert_eq!(second.losses[0].stage_index, 0);
     assert_eq!(second.losses[0].quantity, 1);
     assert_eq!(second.arrivals.len(), 1);
-    let third = babylon_material_circuit::advance_material_circuit(&second.state).unwrap();
+    let third = babylon_material_circuit::advance_material_circuit(&second.state)
+        .expect("the authored material state advances one period");
     assert!(third
         .arrivals
         .iter()
@@ -316,7 +323,7 @@ fn duplicate_or_missing_mass_and_stage_capacity_identity_is_refused() {
     changed = original;
     changed.corridor_capacities.clear();
     assert!(babylon_material_circuit::advance_material_circuit(&changed)
-        .unwrap()
+        .expect("the authored material state advances one period")
         .dispatches
         .is_empty());
 }
@@ -324,8 +331,10 @@ fn duplicate_or_missing_mass_and_stage_capacity_identity_is_refused() {
 #[test]
 fn row_permutations_and_wire_roundtrip_preserve_complete_continuation() {
     let state = competition();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
-    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
+    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes)
+        .expect("the canonical material bytes decode");
     let mut reversed = state.clone();
     reversed.site_logistics_nodes.reverse();
     reversed.supplier_routes.reverse();
@@ -337,7 +346,8 @@ fn row_permutations_and_wire_roundtrip_preserve_complete_continuation() {
     reversed.backlog.reverse();
     reversed.corridor_capacities.reverse();
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&reversed).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&reversed)
+            .expect("the canonical material state encodes"),
         bytes
     );
     assert_eq!(
@@ -354,7 +364,7 @@ fn row_permutations_and_wire_roundtrip_preserve_complete_continuation() {
         babylon_material_circuit::MATERIAL_CIRCUIT_SOURCE_SHA256
     );
     assert_eq!(
-        material_circuit_state_digest(&state).unwrap(),
+        material_circuit_state_digest(&state).expect("the material state has a digest"),
         babylon_kernel::content_digest::sha256_of(&bytes)
     );
     let mut trailing = bytes.clone();
@@ -407,7 +417,10 @@ fn overflowing_mass_request_sum_and_period_refuse_without_mutating_opening() {
 fn successor_refusal_registry_includes_accounting_and_rejects_unknown_codes() {
     for value in 1_u16..=26 {
         assert_eq!(
-            u16::from(MaterialCircuitError::try_from(value).unwrap()),
+            u16::from(
+                MaterialCircuitError::try_from(value)
+                    .expect("the fixture value fits the target range")
+            ),
             value
         );
     }

@@ -31,7 +31,11 @@ const RESOURCE_PROCESSES: usize = 32_769;
 
 fn identity(index: usize) -> [u8; 32] {
     let mut bytes = [0; 32];
-    bytes[24..].copy_from_slice(&u64::try_from(index).unwrap().to_be_bytes());
+    bytes[24..].copy_from_slice(
+        &u64::try_from(index)
+            .expect("the fixture value fits the target range")
+            .to_be_bytes(),
+    );
     bytes
 }
 
@@ -105,7 +109,8 @@ fn source_ownership_case() -> (MaterialCircuitState, StaffingState) {
     let mut sources = [Vec::new(), Vec::new()];
     for index in 0..FORMER_FAMILY_LIMIT {
         let pool = usize::from(index >= FORMER_FAMILY_LIMIT / 2);
-        let owner = crate::site(u8::try_from(pool + 1).unwrap());
+        let owner =
+            crate::site(u8::try_from(pool + 1).expect("the fixture value fits the target range"));
         let batches = u64::from(index == 0 || index == FORMER_FAMILY_LIMIT - 1);
         append_process(&mut state, index, owner, &[crate::good(1)], batches);
         sources[pool].push(StaffingWorkSource::Production(ProcessId::from_bytes(
@@ -115,7 +120,8 @@ fn source_ownership_case() -> (MaterialCircuitState, StaffingState) {
     sources[1].push(StaffingWorkSource::MerchantHandling(crate::site(2)));
     let mut pools = Vec::new();
     for (index, sources) in sources.into_iter().enumerate() {
-        let owner = crate::site(u8::try_from(index + 1).unwrap());
+        let owner =
+            crate::site(u8::try_from(index + 1).expect("the fixture value fits the target range"));
         state.inventory.push(stock_at(owner, crate::good(1), 1));
         state.labor.push(labor_at(owner, 1, 0));
         state.site_logistics_nodes.push(SiteLogisticsNode {
@@ -127,15 +133,20 @@ fn source_ownership_case() -> (MaterialCircuitState, StaffingState) {
             owner,
             crate::unit(1),
             1,
-            StaffingPolicy::one_period(1).unwrap(),
+            StaffingPolicy::one_period(1).expect("the one-period fixture advances"),
             sources,
         )
-        .unwrap();
-        pools.push(StaffingPoolState::try_new(binding, 0, 1, 0).unwrap());
+        .expect("the authored fixture satisfies the constructor invariants");
+        pools.push(
+            StaffingPoolState::try_new(binding, 0, 1, 0)
+                .expect("the authored fixture satisfies the constructor invariants"),
+        );
     }
     state.merchants.push(MerchantHandling {
         site_id: crate::site(2),
-        location: "county:26163".parse().unwrap(),
+        location: "county:26163"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
         role: MerchantRole::Retail,
         capacity_id: CorridorId::from_bytes([17; 32]),
         labor_unit_id: crate::unit(1),
@@ -153,7 +164,11 @@ fn source_ownership_case() -> (MaterialCircuitState, StaffingState) {
         period: 1,
         available_grams: 0,
     });
-    (state, StaffingState::try_new(1, pools).unwrap())
+    (
+        state,
+        StaffingState::try_new(1, pools)
+            .expect("the authored fixture satisfies the constructor invariants"),
+    )
 }
 
 #[test]
@@ -181,7 +196,7 @@ fn staffing_requests_above_former_global_bound_preserve_sources_and_people() {
     assert!(bindings
         .iter()
         .all(|b| b.work_sources().len() <= MAX_MATERIAL_CIRCUIT_ROWS));
-    let closed = crate::close_material_period(&state).unwrap();
+    let closed = crate::close_material_period(&state).expect("the material period closes");
     let requests = closed
         .staffing_requests(&bindings)
         .expect("the complete source union fits its independent global bound");
@@ -200,7 +215,8 @@ fn staffing_requests_above_former_global_bound_preserve_sources_and_people() {
         );
         assert_eq!((request.period(), request.hours()), (1, hours));
     }
-    let staffing = crate::advance_staffing(&people, &requests).unwrap();
+    let staffing =
+        crate::advance_staffing(&people, &requests).expect("the fixture staffing advances");
     assert_eq!(staffing.state().pools().len(), 2);
     assert_eq!(staffing.receipts().len(), 2);
     assert!(staffing.receipts().iter().all(|r| r.hires() == 1));
@@ -220,7 +236,7 @@ fn staffing_requests_above_former_global_bound_preserve_sources_and_people() {
         .all(|p| (p.employed(), p.reserve()) == (0, 1)));
     let actual = closed
         .finish_with_labor(staffing.next_labor().to_vec())
-        .unwrap();
+        .expect("the fixture completes with labor");
     assert_eq!(
         actual
             .state
@@ -287,7 +303,7 @@ fn planning_above_former_combined_bound_honors_late_input_and_labor_scarcity() {
     assert!(state.process_outputs.len() <= MAX_MATERIAL_CIRCUIT_ROWS);
     assert!(state.capacities.len() <= MAX_MATERIAL_CIRCUIT_ROWS);
     assert!(state.labor.len() <= MAX_MATERIAL_CIRCUIT_ROWS);
-    let closed = crate::close_material_period(&state).unwrap();
+    let closed = crate::close_material_period(&state).expect("the material period closes");
     assert_eq!(closed.inventory(), state.inventory);
     let actual = closed
         .finish_with_labor(next_labor.clone())

@@ -36,8 +36,9 @@ fn recapture_cash(state: &mut MaterialCircuitState, accounts: Vec<CashAccount>) 
         panic!("paid fixture")
     };
     let stocks = e.costs.snapshot().stocks;
-    e.book = MonetaryBook::open(accounts).unwrap();
-    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![]).unwrap();
+    e.book = MonetaryBook::open(accounts).expect("the fixture opens the authored source");
+    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
 }
 
 fn zero_food(state: &mut MaterialCircuitState) {
@@ -49,14 +50,19 @@ fn zero_food(state: &mut MaterialCircuitState) {
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         unreachable!()
     };
-    e.recurring.as_mut().unwrap().household_stocks[0].quantity = 0;
+    e.recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .household_stocks[0]
+        .quantity = 0;
     let mut costs = e.costs.snapshot();
     costs
         .stocks
         .iter_mut()
         .filter(|r| r.good_id == crate::good(2))
         .for_each(|r| r.amount = crate::money(0));
-    e.costs = HistoricalCostBook::from_snapshot(costs).unwrap();
+    e.costs =
+        HistoricalCostBook::from_snapshot(costs).expect("the snapshot admits the derived value");
 }
 fn input_cut(state: &mut MaterialCircuitState) {
     state.inventory.iter_mut().for_each(|r| r.quantity = 0);
@@ -68,7 +74,8 @@ fn input_cut(state: &mut MaterialCircuitState) {
         .stocks
         .iter_mut()
         .for_each(|r| r.amount = crate::money(0));
-    e.costs = HistoricalCostBook::from_snapshot(costs).unwrap();
+    e.costs =
+        HistoricalCostBook::from_snapshot(costs).expect("the snapshot admits the derived value");
 }
 fn labor_cut(state: &mut MaterialCircuitState) {
     state
@@ -138,7 +145,10 @@ fn observe_food(closed: &MaterialCircuitTransition, period: u64, facts: &mut Foo
         .filter(|r| r.process_id == crate::process(2))
         .map(|r| r.produced_batches)
         .sum::<u64>();
-    facts.produced = facts.produced.checked_add(amount).unwrap();
+    facts.produced = facts
+        .produced
+        .checked_add(amount)
+        .expect("the fixture arithmetic stays in range");
     if period == 1 {
         let admitted = closed
             .procurement
@@ -148,7 +158,7 @@ fn observe_food(closed: &MaterialCircuitTransition, period: u64, facts: &mut Foo
                     && r.good_id == crate::good(2)
                     && r.unit_id == crate::units()
             })
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(
             admitted.admitted_quantity, 4,
             "fixture must isolate physical/work constraint"
@@ -190,7 +200,8 @@ fn food_trajectory(mut state: MaterialCircuitState) -> FoodTrajectory {
         produced: 0,
     };
     for period in 1..=3 {
-        let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+        let closed = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
         observe_food(&closed, period, &mut facts);
         consumed = consumed
             .checked_add(
@@ -200,15 +211,17 @@ fn food_trajectory(mut state: MaterialCircuitState) -> FoodTrajectory {
                     .map(|r| r.consumed_quantity)
                     .sum::<u64>(),
             )
-            .unwrap();
+            .expect("the fixture arithmetic stays in range");
         integrated_controls::assert_conservation(&closed.state, consumed, physical, 100);
         let restored = babylon_material_circuit::decode_material_circuit_state(
-            &babylon_material_circuit::encode_material_circuit_state(&state).unwrap(),
+            &babylon_material_circuit::encode_material_circuit_state(&state)
+                .expect("the canonical material state encodes"),
         )
-        .unwrap();
+        .expect("the canonical material bytes decode");
         assert_eq!(
             closed,
-            babylon_material_circuit::advance_material_circuit(&restored).unwrap()
+            babylon_material_circuit::advance_material_circuit(&restored)
+                .expect("the authored material state advances one period")
         );
         if period == 1 {
             assert_eq!(state, original);
@@ -254,7 +267,10 @@ fn foreign_need(state: &mut MaterialCircuitState, enabled: bool) {
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         unreachable!()
     };
-    let recurring = e.recurring.as_mut().unwrap();
+    let recurring = e
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     recurring.households.push(HouseholdCohort {
         principal_id: foreign_household(),
         kind: HouseholdKind::Ordinary,
@@ -296,13 +312,13 @@ fn domestic_competition(enabled: bool) -> MaterialCircuitState {
         .merchants
         .iter_mut()
         .find(|r| r.site_id == crate::site(2))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .role = MerchantRole::Retail;
     state
         .inventory
         .iter_mut()
         .find(|r| r.site_id == crate::site(2) && r.good_id == crate::good(2))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity = 2;
     foreign_need(&mut state, enabled);
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
@@ -320,8 +336,9 @@ fn domestic_competition(enabled: bool) -> MaterialCircuitState {
         unit_id: crate::units(),
         amount: crate::money(0),
     });
-    e.book = MonetaryBook::open(accounts).unwrap();
-    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![]).unwrap();
+    e.book = MonetaryBook::open(accounts).expect("the fixture opens the authored source");
+    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     state
 }
 
@@ -338,13 +355,15 @@ fn direction_dispatch(closed: &MaterialCircuitTransition, identity: u8) -> u64 {
 fn counterpart_domestic_paid_need_competes_with_finite_import_supply() {
     let absent = domestic_competition(false);
     let present = domestic_competition(true);
-    let low = babylon_material_circuit::advance_material_circuit(&absent).unwrap();
-    let high = babylon_material_circuit::advance_material_circuit(&present).unwrap();
+    let low = babylon_material_circuit::advance_material_circuit(&absent)
+        .expect("the authored material state advances one period");
+    let high = babylon_material_circuit::advance_material_circuit(&present)
+        .expect("the authored material state advances one period");
     let local = high
         .household_demand
         .iter()
         .find(|r| r.principal_id == foreign_household())
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (local.good_id, local.unit_id, local.admitted_quantity),
         (crate::good(2), crate::units(), 2)
@@ -358,7 +377,7 @@ fn counterpart_domestic_paid_need_competes_with_finite_import_supply() {
         .household_consumption
         .iter()
         .find(|r| r.principal_id == foreign_household())
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (consumption.consumed_quantity, consumption.unmet_quantity),
         (2, 0)
@@ -366,7 +385,8 @@ fn counterpart_domestic_paid_need_competes_with_finite_import_supply() {
     // Existing household orders close before newly admitted replenishment dispatch.
     // The counterpart consumes both finite units; no partial shared-pass grant is implied.
     for (first, expected_import) in [(low, 2_u64), (high, 0_u64)] {
-        let second = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
+        let second = babylon_material_circuit::advance_material_circuit(&first.state)
+            .expect("the authored material state advances one period");
         let mut delivered = [0; 2];
         let mut paid = [0; 2];
         integrated_controls::record_trade_settlement(
@@ -382,22 +402,24 @@ fn counterpart_domestic_paid_need_competes_with_finite_import_supply() {
             .iter()
             .map(|r| r.consumed_quantity)
             .try_fold(0_u64, u64::checked_add)
-            .unwrap();
+            .expect("the fixture input satisfies the fallible conversion");
         let all_consumed = second
             .household_consumption
             .iter()
             .map(|r| r.consumed_quantity)
             .try_fold(first_consumed, u64::checked_add)
-            .unwrap();
+            .expect("the fixture input satisfies the fallible conversion");
         integrated_controls::assert_conservation(&first.state, first_consumed, 14, 202);
         integrated_controls::assert_conservation(&second.state, all_consumed, 14, 202);
         let reopened = babylon_material_circuit::decode_material_circuit_state(
-            &babylon_material_circuit::encode_material_circuit_state(&first.state).unwrap(),
+            &babylon_material_circuit::encode_material_circuit_state(&first.state)
+                .expect("the canonical material state encodes"),
         )
-        .unwrap();
+        .expect("the canonical material bytes decode");
         assert_eq!(
             second,
-            babylon_material_circuit::advance_material_circuit(&reopened).unwrap()
+            babylon_material_circuit::advance_material_circuit(&reopened)
+                .expect("the authored material state advances one period")
         );
     }
 }
@@ -410,15 +432,17 @@ fn counterpart_procurement_budget_cut_keeps_import_handling_funded() {
         .replenishment
         .iter_mut()
         .find(|r| r.buyer_site_id == crate::site(2) && r.good_id == crate::good(1))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .cash_floor = crate::money(100);
-    let baseline = babylon_material_circuit::advance_material_circuit(&funded).unwrap();
-    let cut = babylon_material_circuit::advance_material_circuit(&protected).unwrap();
+    let baseline = babylon_material_circuit::advance_material_circuit(&funded)
+        .expect("the authored material state advances one period");
+    let cut = babylon_material_circuit::advance_material_circuit(&protected)
+        .expect("the authored material state advances one period");
     let admission = cut
         .procurement
         .iter()
         .find(|r| r.buyer_site_id == crate::site(2) && r.good_id == crate::good(1))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (admission.desired_quantity, admission.admitted_quantity),
         (2, 0)
@@ -436,14 +460,18 @@ fn counterpart_procurement_budget_cut_keeps_import_handling_funded() {
         .any(|r| r.order_id == admission.order_id));
     assert!(!cut.money_transfers.iter().any(|r| matches!(r.purpose,
         MoneyTransferPurpose::PurchaseReservation(OutboundOrderId::Delivery(id)) if id == admission.order_id)));
-    let second = babylon_material_circuit::advance_material_circuit(&cut.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&cut.state)
+        .expect("the authored material state advances one period");
     let mut delivered = [0; 2];
     let mut paid = [0; 2];
     integrated_controls::record_trade_settlement(&cut.state, &second, &mut delivered, &mut paid);
     assert_eq!(delivered, [0, 2]);
     assert_eq!(paid, [0, 2]);
     assert_eq!(
-        economy(&cut.state).book.total_cash_and_reserves().unwrap(),
+        economy(&cut.state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         crate::money(200)
     );
 }
@@ -467,8 +495,10 @@ fn gateway(available: u64) -> MaterialCircuitState {
 
 #[test]
 fn severed_shared_gateway_blocks_both_funded_trade_directions() {
-    let baseline = babylon_material_circuit::advance_material_circuit(&gateway(4)).unwrap();
-    let cut = babylon_material_circuit::advance_material_circuit(&gateway(0)).unwrap();
+    let baseline = babylon_material_circuit::advance_material_circuit(&gateway(4))
+        .expect("the authored material state advances one period");
+    let cut = babylon_material_circuit::advance_material_circuit(&gateway(0))
+        .expect("the authored material state advances one period");
     assert_eq!(
         (
             direction_dispatch(&baseline, 1),
@@ -479,7 +509,8 @@ fn severed_shared_gateway_blocks_both_funded_trade_directions() {
     assert!(cut.dispatches.is_empty() && cut.state.freight.is_empty());
     assert_eq!(cut.state.orders.len(), 2);
     assert!(cut.state.orders.iter().all(|r| r.shipped == 0));
-    let second = babylon_material_circuit::advance_material_circuit(&cut.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&cut.state)
+        .expect("the authored material state advances one period");
     assert!(
         second.arrivals.is_empty()
             && second.deliveries.is_empty()
@@ -493,15 +524,17 @@ fn severed_shared_gateway_blocks_both_funded_trade_directions() {
         economy(&second.state)
             .book
             .total_cash_and_reserves()
-            .unwrap(),
+            .expect("the fixture book totals without overflow"),
         crate::money(200)
     );
     let reopened = babylon_material_circuit::decode_material_circuit_state(
-        &babylon_material_circuit::encode_material_circuit_state(&cut.state).unwrap(),
+        &babylon_material_circuit::encode_material_circuit_state(&cut.state)
+            .expect("the canonical material state encodes"),
     )
-    .unwrap();
+    .expect("the canonical material bytes decode");
     assert_eq!(
         second,
-        babylon_material_circuit::advance_material_circuit(&reopened).unwrap()
+        babylon_material_circuit::advance_material_circuit(&reopened)
+            .expect("the authored material state advances one period")
     );
 }

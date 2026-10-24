@@ -1018,11 +1018,11 @@ fn request_groups(
     capacities: &BTreeMap<CapacityKey, &PracticeResourceCapacity>,
 ) -> Result<BTreeMap<CapacityKey, Vec<usize>>, PracticeResourceError> {
     let mut output: BTreeMap<CapacityKey, Vec<usize>> = BTreeMap::new();
-    for (index, request) in requests
+    let bounded_requests = requests
         .iter()
         .take(MAX_PRACTICE_RESOURCE_REQUESTS + 1)
-        .enumerate()
-    {
+        .enumerate();
+    for (index, request) in bounded_requests {
         let key = request_key(request);
         if !capacities.contains_key(&key) {
             return Err(PracticeResourceError::ResourceCapacityMissing);

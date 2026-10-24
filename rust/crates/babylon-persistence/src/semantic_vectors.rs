@@ -283,7 +283,10 @@ fn execute_valid_scalar(
     )
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`execute_valid_row` keeps one authored sequence in a single place"
+)]
 fn execute_valid_row<'a>(
     id: &str,
     object: &'a Map<String, Value>,
@@ -723,7 +726,10 @@ fn execute_empty_proof(
     compare_digest(id, &encoded, string(object, "expected_sha256")?)
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`execute_refusal` keeps one authored sequence in a single place"
+)]
 fn execute_refusal(
     id: &str,
     object: &Map<String, Value>,

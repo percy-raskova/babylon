@@ -103,7 +103,8 @@ fn sustained_depletion_and_historical_profiles_close_replay_and_conservation() {
 fn hex_decode(s: &str) -> [u8; 32] {
     let mut a = [0; 32];
     for (i, b) in a.iter_mut().enumerate() {
-        *b = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).unwrap();
+        *b = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16)
+            .expect("the authored digits parse as the declared type");
     }
     a
 }

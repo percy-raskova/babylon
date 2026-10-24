@@ -178,13 +178,13 @@ fn candidates(
         }
     }
     if additions.iter().any(|entry| entry.kind == K::FreightLot) {
-        for (index, entry) in opening
+        let enumerated_entries = opening
             .lookup()
             .entries()
             .iter()
             .chain(additions)
-            .enumerate()
-        {
+            .enumerate();
+        for (index, entry) in enumerated_entries {
             if entry.kind == K::Order {
                 let reference = u32::try_from(index).map_err(|_| failure(Error::Reference))?;
                 values
@@ -364,7 +364,7 @@ pub(super) fn decode(
 #[cfg(test)]
 fn monetary_fixture() -> Session {
     crate::organizer_aid_fixture::authored_session(
-        crate::michigan_dynamic_hex_foundation().unwrap(),
+        crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds"),
         crate::organizer_aid_fixture::config(),
         false,
         false,
@@ -377,7 +377,8 @@ mod tests {
     use crate::state_storage::StorageError as StateError;
     fn opening() -> OpeningRegister {
         let session = monetary_fixture();
-        OpeningRegister::from_opening(session.material()).unwrap()
+        OpeningRegister::from_opening(session.material())
+            .expect("the opening register admits its sections")
     }
     #[test]
     fn opening_row_accessor_refuses_variable_sections_wrong_kinds_and_bounds() {
@@ -390,7 +391,11 @@ mod tests {
             opening.recipe_row_identity(2, 0, 0, K::Unit),
             Err(StateError::IdentityKind)
         );
-        let count = opening.section(2).unwrap().1.unwrap();
+        let count = opening
+            .section(2)
+            .expect("the fixture call `section` succeeds for the authored inputs")
+            .1
+            .expect("the fixture value `1` is present before this read");
         assert_eq!(
             opening.recipe_row_identity(2, count, 0, K::Site),
             Err(StateError::LookupIndex)
@@ -403,7 +408,8 @@ mod tests {
     #[test]
     fn shift_tuple_matches_the_current_engine_constructor_without_recomputing_pay() {
         let session = monetary_fixture();
-        let opening = OpeningRegister::from_opening(session.material()).unwrap();
+        let opening = OpeningRegister::from_opening(session.material())
+            .expect("the opening register admits its sections");
         let babylon_material_circuit::CircuitAccounting::Monetary(economy) =
             &session.material().state().accounting
         else {
@@ -411,7 +417,8 @@ mod tests {
         };
         let expected = babylon_material_circuit::member_shift_id(7, &economy.employment[0]);
         assert_eq!(
-            row_value(&opening, SHIFT, 0, 7).unwrap(),
+            row_value(&opening, SHIFT, 0, 7)
+                .expect("the fixture call `row_value` succeeds for the authored inputs"),
             IdentityEntry {
                 kind: K::Shift,
                 bytes: expected.as_bytes()
@@ -430,7 +437,8 @@ mod tests {
     #[test]
     fn closed_dependencies_refuse_cycles_wrong_kind_rows_periods_and_trailing_bytes() {
         let opening = opening();
-        let seed_count = u32::try_from(opening.lookup().entries().len()).unwrap();
+        let seed_count = u32::try_from(opening.lookup().entries().len())
+            .expect("the fixture value fits the target range");
         assert_eq!(
             decode(&opening, 2, &body(FREIGHT, seed_count, 2), 1),
             Err(failure(Error::Kind))
@@ -460,12 +468,16 @@ mod tests {
             .entries()
             .iter()
             .position(|e| e.kind != K::Order)
-            .unwrap();
+            .expect("the fixture sequence holds the addressed position");
         assert_eq!(
             decode(
                 &opening,
                 2,
-                &body(FREIGHT, u32::try_from(wrong).unwrap(), 2),
+                &body(
+                    FREIGHT,
+                    u32::try_from(wrong).expect("the fixture value fits the target range"),
+                    2
+                ),
                 1,
             ),
             Err(failure(Error::Kind))
@@ -491,20 +503,28 @@ mod freight_controls {
     #[test]
     fn ordinary_freight_can_reference_forward_order_without_a_previous_table() {
         let session = monetary_fixture();
-        let opening = OpeningRegister::from_opening(session.material()).unwrap();
+        let opening = OpeningRegister::from_opening(session.material())
+            .expect("the opening register admits its sections");
         let order = IdentityEntry {
             kind: K::Order,
             bytes: [249; 32],
         };
         let lot = freight(order.bytes, 3);
         let table = [lot, order];
-        let bytes = encode(&opening, 3, &table).unwrap();
+        let bytes = encode(&opening, 3, &table).expect("the fixture value encodes canonically");
         assert_eq!(bytes.len(), 4 + 13 + 33);
         assert_eq!(bytes[4], FREIGHT);
         assert_eq!(
-            u32::from_be_bytes(bytes[5..9].try_into().unwrap()) as usize,
+            u32::from_be_bytes(
+                bytes[5..9]
+                    .try_into()
+                    .expect("the fixture slice has the target length")
+            ) as usize,
             opening.lookup().entries().len() + 1
         );
-        assert_eq!(decode(&opening, 3, &bytes, 2).unwrap(), table);
+        assert_eq!(
+            decode(&opening, 3, &bytes, 2).expect("the committed canonical bytes decode"),
+            table
+        );
     }
 }

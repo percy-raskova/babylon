@@ -258,7 +258,10 @@ fn counts(recipe: &Value, field: &str) -> Vec<usize> {
         .expect("bound recipe counts")
         .iter()
         .take(32)
-        .map(|value| usize::try_from(value.as_u64().expect("bound recipe count")).unwrap())
+        .map(|value| {
+            usize::try_from(value.as_u64().expect("bound recipe count"))
+                .expect("the fixture value fits the target range")
+        })
         .collect()
 }
 
@@ -396,11 +399,11 @@ fn resolver_fact_units(recipe: &Value) -> Result<(), StableIdentityError> {
         text(recipe, "node_name_pattern"),
     );
     let mut hyperedge_names = HashMap::new();
-    for (index, member_count) in counts(recipe, "hyperedge_member_rows")
+    let bounded_counts = counts(recipe, "hyperedge_member_rows")
         .into_iter()
         .take(32)
-        .enumerate()
-    {
+        .enumerate();
+    for (index, member_count) in bounded_counts {
         let members: Vec<_> = (0..65_534)
             .take(member_count)
             .map(|member| NodeId(u64::try_from(member).expect("synthetic member ordinal fits u64")))
@@ -438,7 +441,9 @@ fn resolver_manifest_nodes(recipe: &Value) -> Result<(), StableIdentityError> {
     let resolver =
         StableElementResolver::seal(&graph, text(recipe, "scenario"), &names, &HashMap::new())?;
     assert_eq!(
-        resolver.node_key(final_node).unwrap(),
+        resolver
+            .node_key(final_node)
+            .expect("the fixture node has a key"),
         &StableElementKey::Node {
             scenario: text(recipe, "scenario").to_owned(),
             local_name: names[&final_node].clone(),

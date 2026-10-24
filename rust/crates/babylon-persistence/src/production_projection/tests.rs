@@ -16,13 +16,17 @@ use history::OrderHistory;
 use std::collections::BTreeSet;
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`projection_uses_exact_committed_state_and_refuses_future_history` keeps one authored boundary's fixture and assertions together"
+)]
 fn projection_uses_exact_committed_state_and_refuses_future_history() {
     let preset = MichiganDeliveryPreset::Standard;
     let session = MichiganContentPreset::new_campaign(preset)
         .create_foundation(&crate::test_support::catalog())
-        .unwrap()
+        .expect("the authored catalog builds the foundation")
         .into_session()
-        .unwrap();
+        .expect("the fixture opens a session");
     let opening = session.material().clone();
     let initial = projection::project_material_observation(
         &crate::test_support::catalog(),
@@ -31,7 +35,7 @@ fn projection_uses_exact_committed_state_and_refuses_future_history() {
         None,
         &[],
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     assert!(initial.provenance[0].starts_with("Designed finite 16-period economic circuit"));
     assert!(initial.freight.is_empty());
     assert!(initial.events.is_empty());
@@ -48,10 +52,13 @@ fn projection_uses_exact_committed_state_and_refuses_future_history() {
     }));
     let actions =
         OrderedPracticeActionBatch::empty(session.graph_session().session_identity().clone(), 1)
-            .unwrap();
-    let prepared = session.prepare_advance(&actions).unwrap();
+            .expect("the empty authored batch constructs");
+    let prepared = session
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance");
     let next = prepared.material();
-    let receipt = material_world::decode_material_receipts(next.receipt_bytes()).unwrap();
+    let receipt = material_world::decode_material_receipts(next.receipt_bytes())
+        .expect("the canonical bytes decode into the declared type");
     let history = vec![(
         opening.clone(),
         receipt,
@@ -64,12 +71,12 @@ fn projection_uses_exact_committed_state_and_refuses_future_history() {
         Some(&opening),
         &history,
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     let starved = snapshot
         .sites
         .iter()
         .find(|site| site.industry_code.as_deref() == Some("332"))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(starved.processes[0].planned_batches, Some(0));
     assert_eq!(starved.processes[0].produced_batches, Some(0));
     assert!(!history[0]
@@ -127,21 +134,23 @@ fn projection_provenance_uses_the_saved_campaign_horizon() {
         "DURATION = { kind = \"continuous\" }",
         "DURATION = { kind = \"finite\", final_period = 8 }",
     ))
-    .unwrap();
+    .expect("the authored input admits the derived value");
     let foundation = MichiganContentPreset::FourWeekStandard
         .create_foundation(&catalog)
-        .unwrap();
-    let capture = CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
-    let decoded =
-        CapturedEconomicCatalog::decode(capture.canonical_bytes(), capture.digest()).unwrap();
+        .expect("the authored catalog builds the foundation");
+    let capture = CapturedEconomicCatalog::from_michigan(&catalog)
+        .expect("the Michigan fixture content loads");
+    let decoded = CapturedEconomicCatalog::decode(capture.canonical_bytes(), capture.digest())
+        .expect("the committed canonical bytes decode");
     let snapshot = projection::project_economic_current(
         decoded.view(),
         foundation.initial_register(),
         None,
         None,
-        &OrderHistory::from_opening(foundation.initial_register().state()).unwrap(),
+        &OrderHistory::from_opening(foundation.initial_register().state())
+            .expect("the opening register admits its sections"),
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     assert_eq!(
         snapshot.duration,
         babylon_kernel::clock::CampaignDuration::Finite { final_period: 8 }
@@ -152,9 +161,9 @@ fn projection_provenance_uses_the_saved_campaign_horizon() {
 fn period_three(preset: MichiganDeliveryPreset) -> ProductionSnapshot {
     let mut session = MichiganContentPreset::new_campaign(preset)
         .create_foundation(&crate::test_support::catalog())
-        .unwrap()
+        .expect("the authored catalog builds the foundation")
         .into_session()
-        .unwrap();
+        .expect("the fixture opens a session");
     let mut history = Vec::new();
     let mut opening = None;
     for tick in 1..=3 {
@@ -162,11 +171,14 @@ fn period_three(preset: MichiganDeliveryPreset) -> ProductionSnapshot {
             session.graph_session().session_identity().clone(),
             tick,
         )
-        .unwrap();
-        let next = session.prepare_advance(&actions).unwrap();
+        .expect("the empty authored batch constructs");
+        let next = session
+            .prepare_advance(&actions)
+            .expect("the session prepares the authored advance");
         history.push((
             session.material().clone(),
-            material_world::decode_material_receipts(next.material().receipt_bytes()).unwrap(),
+            material_world::decode_material_receipts(next.material().receipt_bytes())
+                .expect("the canonical bytes decode into the declared type"),
             content_digest::sha256_of(next.material().receipt_bytes()),
         ));
         opening = Some(session.material().clone());
@@ -174,16 +186,18 @@ fn period_three(preset: MichiganDeliveryPreset) -> ProductionSnapshot {
             .commit_prepared_and_publish(&mut CollectingSink::default(), next, |_| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
-            .unwrap();
+            .expect("the prepared period commits");
     }
     projection::project_material_observation(
-        &crate::test_support::catalog().with_preset(preset).unwrap(),
+        &crate::test_support::catalog()
+            .with_preset(preset)
+            .expect("the fixture builder accepts the authored options"),
         preset,
         session.material(),
         opening.as_ref(),
         &history,
     )
-    .unwrap()
+    .expect("the fixture projection accepts the authored input")
 }
 
 #[test]
@@ -195,7 +209,7 @@ fn physical_projection_preserves_good_identity_and_delivery_delay_causality() {
             .sites
             .iter()
             .find(|site| site.is_in_county("26099"))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .processes[0]
             .produced_batches
     };
@@ -216,7 +230,7 @@ fn physical_projection_preserves_good_identity_and_delivery_delay_causality() {
                 .sites
                 .iter()
                 .find(|other| other.id == site.id)
-                .unwrap()
+                .expect("the fixture holds the searched element")
         );
     }
     for route in &standard.routes {
@@ -224,12 +238,12 @@ fn physical_projection_preserves_good_identity_and_delivery_delay_causality() {
             .sites
             .iter()
             .find(|site| site.id == route.supplier_site_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let buyer = standard
             .sites
             .iter()
             .find(|site| site.id == route.buyer_site_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert!(supplier
             .processes
             .iter()
@@ -257,9 +271,15 @@ fn delivery_delay_changes_staffed_time_budgets_and_preserves_unaffected_food() {
             .labor_accounts
             .iter()
             .find(|row| row.site_id == account.site_id && row.unit_id == account.unit_id)
-            .unwrap();
-        let a = account.completed.as_ref().unwrap();
-        let b = twin.completed.as_ref().unwrap();
+            .expect("the fixture holds the searched element");
+        let a = account
+            .completed
+            .as_ref()
+            .expect("the fixture set the optional field before this read");
+        let b = twin
+            .completed
+            .as_ref()
+            .expect("the fixture set the optional field before this read");
         assert_eq!(a.period, 3);
         assert_eq!(a.used.checked_add(a.unused), Some(a.opening));
         assert_eq!(b.used.checked_add(b.unused), Some(b.opening));
@@ -267,7 +287,7 @@ fn delivery_delay_changes_staffed_time_budgets_and_preserves_unaffected_food() {
             .sites
             .iter()
             .find(|site| site.id == account.site_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         if site.industry_code.as_deref() == Some("332") {
             // Four workers × 40 hours × four weeks supply 640 hours;
             // the 32 panel batches each consume 20 hours in period 3.
@@ -285,7 +305,8 @@ fn delivery_delay_changes_staffed_time_budgets_and_preserves_unaffected_food() {
 #[test]
 fn native_route_projection_keeps_every_relation_and_shares_exact_stage_definitions() {
     let snapshot = period_three(MichiganDeliveryPreset::Standard);
-    let index = PhysicalRouteIndex::try_new(&snapshot).unwrap();
+    let index = PhysicalRouteIndex::try_new(&snapshot)
+        .expect("the authored fixture satisfies the constructor invariants");
     let unique: BTreeSet<_> = snapshot
         .routes
         .iter()
@@ -294,7 +315,9 @@ fn native_route_projection_keeps_every_relation_and_shares_exact_stage_definitio
     assert_eq!(snapshot.physical_routes.len(), unique.len());
     assert!(!snapshot.routes.is_empty());
     for relation in &snapshot.routes {
-        let definition = index.get(relation).unwrap();
+        let definition = index
+            .get(relation)
+            .expect("the fixture holds the addressed entry");
         assert_eq!(definition.id, relation.physical_route_id);
         assert_eq!(
             definition.travel_periods,
@@ -306,14 +329,22 @@ fn native_route_projection_keeps_every_relation_and_shares_exact_stage_definitio
         );
         assert_eq!(
             relation.backlog,
-            relation.ordered.checked_sub(relation.shipped).unwrap()
+            relation
+                .ordered
+                .checked_sub(relation.shipped)
+                .expect("the fixture arithmetic stays in range")
         );
         for other in snapshot
             .routes
             .iter()
             .filter(|row| row.physical_route_id == relation.physical_route_id)
         {
-            assert!(std::ptr::eq(definition, index.get(other).unwrap()));
+            assert!(std::ptr::eq(
+                definition,
+                index
+                    .get(other)
+                    .expect("the fixture holds the addressed entry")
+            ));
         }
     }
 }
@@ -323,16 +354,18 @@ fn shared_physical_definitions_equal_actual_closed_material_route_rows() {
     let preset = MichiganDeliveryPreset::Standard;
     let session = MichiganContentPreset::new_campaign(preset)
         .create_foundation(&crate::test_support::catalog())
-        .unwrap()
+        .expect("the authored catalog builds the foundation")
         .into_session()
-        .unwrap();
+        .expect("the fixture opens a session");
     let actions =
         OrderedPracticeActionBatch::empty(session.graph_session().session_identity().clone(), 1)
-            .unwrap();
+            .expect("the empty authored batch constructs");
     let opening = session.material().clone();
-    let next = session.prepare_advance(&actions).unwrap();
-    let receipts =
-        material_world::decode_material_receipts(next.material().receipt_bytes()).unwrap();
+    let next = session
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance");
+    let receipts = material_world::decode_material_receipts(next.material().receipt_bytes())
+        .expect("the canonical bytes decode into the declared type");
     let history = vec![(
         opening.clone(),
         receipts,
@@ -345,8 +378,9 @@ fn shared_physical_definitions_equal_actual_closed_material_route_rows() {
         Some(&opening),
         &history,
     )
-    .unwrap();
-    let index = PhysicalRouteIndex::try_new(&snapshot).unwrap();
+    .expect("the fixture projection accepts the authored input");
+    let index = PhysicalRouteIndex::try_new(&snapshot)
+        .expect("the authored fixture satisfies the constructor invariants");
     let actual = next.material().register().state();
     assert_eq!(snapshot.routes.len(), actual.supplier_routes.len());
     for supplier in &actual.supplier_routes {
@@ -362,8 +396,10 @@ fn shared_physical_definitions_equal_actual_closed_material_route_rows() {
                         supplier.unit_id,
                     ))
             })
-            .unwrap();
-        let definition = index.get(relation).unwrap();
+            .expect("the fixture holds the searched element");
+        let definition = index
+            .get(relation)
+            .expect("the fixture holds the addressed entry");
         let expected: Vec<_> = actual
             .route_stages
             .iter()
@@ -375,7 +411,7 @@ fn shared_physical_definitions_equal_actual_closed_material_route_rows() {
                 .stages
                 .iter()
                 .find(|row| row.stage_index == stage.stage_index)
-                .unwrap();
+                .expect("the fixture holds the searched element");
             assert_eq!(projected.travel_periods, u64::from(stage.travel_periods));
             let mut capacities: Vec<_> = actual
                 .route_stage_capacities

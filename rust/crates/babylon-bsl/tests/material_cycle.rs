@@ -42,7 +42,8 @@ fn load(source: &str) -> Result<LoadedRule, LoadError> {
             intrinsics: &IntrinsicCosts::default(),
             systems: &HashSet::from(["metabolism".to_owned(), "vitality".to_owned()]),
             vocabulary_registry: Some(
-                &ClosedVocabulary::new([(EnumKind::EventType, vec!["PROBE".to_owned()])]).unwrap(),
+                &ClosedVocabulary::new([(EnumKind::EventType, vec!["PROBE".to_owned()])])
+                    .expect("the constructor accepts the authored fixture arguments"),
             ),
             rule_file: "material/period.bsl",
         },
@@ -64,7 +65,8 @@ fn material_cycle_loads_without_graph_bindings_or_domain_and_charges_full_invoca
 
 #[test]
 fn material_cycle_rejects_partial_fuel_instead_of_discounting_the_native_operation() {
-    let error = load(&RULE.replace(":fuel 1000000", ":fuel 999999")).unwrap_err();
+    let error = load(&RULE.replace(":fuel 1000000", ":fuel 999999"))
+        .expect_err("the fixture call `load` fails for the authored inputs");
     assert_eq!(error.spec_code(), Some("E-LOAD-040"));
 }
 
@@ -94,18 +96,22 @@ fn material_cycle_rejects_any_extra_body_or_nested_invocation() {
 
 #[test]
 fn material_cycle_has_an_explicit_mechanic_only_effect_footprint() {
-    let (rule, _) = babylon_bsl::reader::read(RULE).unwrap();
+    let (rule, _) =
+        babylon_bsl::reader::read(RULE).expect("the fixture reader returns its authored facts");
     assert_eq!(
-        effect_footprint(&rule).unwrap(),
+        effect_footprint(&rule)
+            .expect("the fixture call `effect_footprint` succeeds for the authored inputs"),
         [EffectSignature::MaterialCycle]
     );
-    let contract = causal_contract::parse_rule_contract(&rule).unwrap();
+    let contract =
+        causal_contract::parse_rule_contract(&rule).expect("the authored rule contract parses");
     assert!(authorize_rule_effects(&rule, &contract).is_ok());
     for role in ["recognizer", "external-event", "intent"] {
         let source = RULE
             .replace("material/period", "campaign/custom-period")
             .replace(":role mechanic", &format!(":role {role}"));
-        let error = load(&source).unwrap_err();
+        let error =
+            load(&source).expect_err("the fixture call `load` fails for the authored inputs");
         assert!(
             matches!(
                 error,
@@ -121,7 +127,8 @@ fn material_cycle_has_an_explicit_mechanic_only_effect_footprint() {
 
 #[test]
 fn material_cycle_cannot_escape_to_intrinsic_expression_dispatch() {
-    let (expression, _) = babylon_bsl::reader::read("(material-cycle)").unwrap();
+    let (expression, _) = babylon_bsl::reader::read("(material-cycle)")
+        .expect("the fixture reader returns its authored facts");
     let mut fuel = 1_000_000;
     let error = babylon_bsl::evaluator::evaluate(
         &expression,
@@ -137,7 +144,7 @@ fn material_cycle_cannot_escape_to_intrinsic_expression_dispatch() {
         &EmptyIntrinsicHost,
         &mut fuel,
     )
-    .unwrap_err();
+    .expect_err("the fixture call `evaluate` fails for the authored inputs");
     assert!(error.message.contains("material runtime host"), "{error}");
     assert_eq!(fuel, 1_000_000);
 }
@@ -152,7 +159,8 @@ fn material_cycle_payload_label_is_data_but_payload_value_invocations_are_refuse
     assert_eq!(loaded.execution, RuleExecution::Graph);
     assert_eq!(loaded.static_bound, 3);
     assert_eq!(
-        effect_footprint(&loaded.rule).unwrap(),
+        effect_footprint(&loaded.rule)
+            .expect("the fixture call `effect_footprint` succeeds for the authored inputs"),
         [EffectSignature::Event("EventType/PROBE".to_owned())]
     );
     for payload in [
@@ -173,7 +181,7 @@ fn material_cycle_payload_label_is_data_but_payload_value_invocations_are_refuse
 
 #[test]
 fn material_cycle_synthetic_audit_explicitly_refuses_uninspected_native_body() {
-    let loaded = load(RULE).unwrap();
+    let loaded = load(RULE).expect("the fixture artifact loads");
     assert_eq!(
         babylon_bsl::sfs_profile::audit_rule_footprint(
             &loaded.rule,
@@ -182,7 +190,7 @@ fn material_cycle_synthetic_audit_explicitly_refuses_uninspected_native_body() {
             &IntrinsicCosts::default(),
             &[],
         )
-        .unwrap_err(),
+        .expect_err("the fixture call `audit_rule_footprint` fails for the authored inputs"),
         babylon_bsl::sfs_profile::SfsProfileError::NativeMaterialCycleUnsupported
     );
 }
@@ -219,7 +227,7 @@ fn material_cycle_graph_evaluator_refuses_without_host_even_with_zero_subjects()
     let mut graph = MemoryGraph::new();
     let resolver =
         StableElementResolver::seal(&graph, "material/fixture", &HashMap::new(), &HashMap::new())
-            .unwrap();
+            .expect("the fixture seals the prepared period");
     let mut sink = CollectingSink::default();
     let error = tick::run_tick(
         &loaded,
@@ -235,13 +243,14 @@ fn material_cycle_graph_evaluator_refuses_without_host_even_with_zero_subjects()
         &DefinesEnv::new(),
         1,
         RngSeedContext {
-            session: &ReplaySessionId::try_from("material-cycle-loading").unwrap(),
+            session: &ReplaySessionId::try_from("material-cycle-loading")
+                .expect("the fixture value fits the target range"),
             seed: ReplaySeed::new(0),
         },
         &resolver,
         Some(&ClosedVocabulary::default()),
     )
-    .unwrap_err();
+    .expect_err("the fixture run completes");
     assert!(error.message.contains("material runtime host"), "{error}");
     assert!(sink.events.is_empty());
 }

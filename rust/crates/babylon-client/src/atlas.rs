@@ -268,7 +268,10 @@ impl CountyAtlas {
     // functions without reducing it. Same precedent as
     // `babylon-bsl::scenario::load_scenario_inner`'s
     // `#[allow(clippy::too_many_lines)]`.
-    #[allow(clippy::too_many_lines)]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "`parse` keeps one authored sequence in a single place"
+    )]
     pub fn parse(bytes: &[u8]) -> Result<Self, AtlasError> {
         // --- Header ---
         let magic = slice(bytes, 0, 8)?;
@@ -383,7 +386,10 @@ impl CountyAtlas {
             // are f32, so this narrowing is the deliberate, one-time
             // handoff into the renderer's coordinate type, not a
             // computation that itself risks precision loss.
-            #[allow(clippy::cast_possible_truncation)]
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "the display value is range-checked before the f32 narrowing"
+            )]
             vertices.push(Vec2::new(wx as f32, wy as f32));
         }
 
@@ -469,7 +475,10 @@ impl CountyAtlas {
                 let wy = origin_y + f64::from(gy) * scale;
                 // Same deliberate f64->f32 handoff into Bevy's coordinate
                 // type as the vertex-array conversion above.
-                #[allow(clippy::cast_possible_truncation)]
+                #[allow(
+                    clippy::cast_possible_truncation,
+                    reason = "the display value is range-checked before the f32 narrowing"
+                )]
                 Vec2::new(wx as f32, wy as f32)
             };
             let bbox = Bbox {
@@ -650,7 +659,10 @@ mod tests {
             // own binding: an `#[allow]` on a macro-invocation statement
             // (`assert!`) is ignored by rustc, only a `let`/item attribute
             // actually scopes the lint.
-            #[allow(clippy::cast_possible_truncation)]
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "the display value is range-checked before the f32 narrowing"
+            )]
             let index_u32 = index as u32;
             assert!(
                 back.contains(&index_u32),
@@ -679,7 +691,7 @@ mod tests {
         let mut bytes = ATLAS_BYTES[..ATLAS_BYTES.len() - 16].to_vec();
         recompute_hash(&mut bytes);
         assert_eq!(
-            CountyAtlas::parse(&bytes).unwrap_err(),
+            CountyAtlas::parse(&bytes).expect_err("the malformed input is refused"),
             AtlasError::Truncated
         );
     }
@@ -689,7 +701,7 @@ mod tests {
         let mut bytes = ATLAS_BYTES.to_vec();
         bytes[0] = b'X';
         assert_eq!(
-            CountyAtlas::parse(&bytes).unwrap_err(),
+            CountyAtlas::parse(&bytes).expect_err("the malformed input is refused"),
             AtlasError::BadMagic
         );
     }
@@ -702,7 +714,7 @@ mod tests {
         // trip HashMismatch.
         bytes[8..12].copy_from_slice(&99u32.to_le_bytes());
         assert_eq!(
-            CountyAtlas::parse(&bytes).unwrap_err(),
+            CountyAtlas::parse(&bytes).expect_err("the malformed input is refused"),
             AtlasError::BadVersion
         );
     }
@@ -712,7 +724,7 @@ mod tests {
         let mut bytes = ATLAS_BYTES.to_vec();
         bytes[200_000] ^= 0xff;
         assert_eq!(
-            CountyAtlas::parse(&bytes).unwrap_err(),
+            CountyAtlas::parse(&bytes).expect_err("the malformed input is refused"),
             AtlasError::HashMismatch
         );
     }
@@ -725,7 +737,7 @@ mod tests {
         bytes[134..138].copy_from_slice(&4_000_000u32.to_le_bytes());
         recompute_hash(&mut bytes);
         assert_eq!(
-            CountyAtlas::parse(&bytes).unwrap_err(),
+            CountyAtlas::parse(&bytes).expect_err("the malformed input is refused"),
             AtlasError::RingRangeOutOfBounds
         );
     }
@@ -739,7 +751,7 @@ mod tests {
         bytes[ring_table_off + 4..ring_table_off + 8].copy_from_slice(&4_000_000u32.to_le_bytes());
         recompute_hash(&mut bytes);
         assert_eq!(
-            CountyAtlas::parse(&bytes).unwrap_err(),
+            CountyAtlas::parse(&bytes).expect_err("the malformed input is refused"),
             AtlasError::VertexRangeOutOfBounds
         );
     }
@@ -753,7 +765,7 @@ mod tests {
         bytes[entry2..entry2 + 4].copy_from_slice(&1u32.to_le_bytes());
         recompute_hash(&mut bytes);
         assert_eq!(
-            CountyAtlas::parse(&bytes).unwrap_err(),
+            CountyAtlas::parse(&bytes).expect_err("the malformed input is refused"),
             AtlasError::CsrOffsetsBackwards
         );
     }
@@ -771,7 +783,7 @@ mod tests {
         bytes[last_entry..last_entry + 4].copy_from_slice(&4_000_000u32.to_le_bytes());
         recompute_hash(&mut bytes);
         assert_eq!(
-            CountyAtlas::parse(&bytes).unwrap_err(),
+            CountyAtlas::parse(&bytes).expect_err("the malformed input is refused"),
             AtlasError::CsrTotalMismatch
         );
     }
@@ -787,7 +799,7 @@ mod tests {
         bytes[csr_neighbors_off..csr_neighbors_off + 4].copy_from_slice(&999_999u32.to_le_bytes());
         recompute_hash(&mut bytes);
         assert_eq!(
-            CountyAtlas::parse(&bytes).unwrap_err(),
+            CountyAtlas::parse(&bytes).expect_err("the malformed input is refused"),
             AtlasError::CsrNeighborOutOfRange
         );
     }
@@ -808,7 +820,7 @@ mod tests {
         bytes[newline_pos] = b' ';
         recompute_hash(&mut bytes);
         assert_eq!(
-            CountyAtlas::parse(&bytes).unwrap_err(),
+            CountyAtlas::parse(&bytes).expect_err("the malformed input is refused"),
             AtlasError::NameCountMismatch
         );
     }
@@ -825,7 +837,7 @@ mod tests {
         bytes[128] = 0xff;
         recompute_hash(&mut bytes);
         assert_eq!(
-            CountyAtlas::parse(&bytes).unwrap_err(),
+            CountyAtlas::parse(&bytes).expect_err("the malformed input is refused"),
             AtlasError::FipsNotUtf8
         );
     }

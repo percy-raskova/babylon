@@ -132,7 +132,10 @@ fn practice_machine_verbs_match_declared_modes() {
             });
         assert_eq!(machine_member, expected_member);
         if let Some(member) = machine_member {
-            let verb_mode = loaded.enums.resolve("VerbMode").unwrap();
+            let verb_mode = loaded
+                .enums
+                .resolve("VerbMode")
+                .expect("the fixture call `resolve` succeeds for the authored inputs");
             assert!(loaded.enums.ordinal(verb_mode, member).is_some());
         }
     }
@@ -168,7 +171,9 @@ fn prelude_identity_vector_matches_bytes_and_digest() {
     assert_eq!(identity_count, 1);
     let identity = identity.expect("one prelude identity vector");
     assert_eq!(
-        identity["data"]["raw_hex"].as_str().unwrap(),
+        identity["data"]["raw_hex"]
+            .as_str()
+            .expect("the JSON fixture field is a string"),
         raw_hex(PRACTICE_PRELUDE.as_bytes())
     );
     let digest = babylon_tick::hex(&content_digest::sha256_of(PRACTICE_PRELUDE.as_bytes()));
@@ -176,7 +181,12 @@ fn prelude_identity_vector_matches_bytes_and_digest() {
         digest,
         "3fe86a1f60114b56a6141ec31a61f824119cadf74be7dd1788e5a166492fdcc4"
     );
-    assert_eq!(identity["data"]["digest_hex"].as_str().unwrap(), digest);
+    assert_eq!(
+        identity["data"]["digest_hex"]
+            .as_str()
+            .expect("the JSON fixture field is a string"),
+        digest
+    );
 }
 
 #[test]
@@ -257,17 +267,20 @@ fn prelude_composition_is_ordered_and_bounded() {
     let first = "(defenum A (ONE))\n";
     let second = "(defenum B (TWO))\n";
     assert_eq!(
-        compose_declaration_preludes(&[first, second]).unwrap(),
+        compose_declaration_preludes(&[first, second]).expect("the authored sections compose"),
         format!("{first}{second}")
     );
-    assert_eq!(compose_declaration_preludes(&["\n"]).unwrap(), "\n");
+    assert_eq!(
+        compose_declaration_preludes(&["\n"]).expect("the authored sections compose"),
+        "\n"
+    );
     assert!(compose_declaration_preludes(&["\n"; 17]).is_err());
     assert!(compose_declaration_preludes(&[&"x".repeat(262_145)]).is_err());
     let max_source = format!("{}\n", "x".repeat(262_143));
     assert_eq!(max_source.len(), 262_144);
     assert_eq!(
         compose_declaration_preludes(&[&max_source, &max_source, &max_source, &max_source])
-            .unwrap()
+            .expect("the authored sections compose")
             .len(),
         1_048_576
     );
@@ -341,7 +354,10 @@ fn mismatch_mutations_do_not_satisfy_the_registry_contract() {
         "(defenum VerbMode (CANVASS AGITATE MUTUAL_AID))",
     );
     let loaded = load_contract(&pseudo_mode, PRACTICE_SCENARIO);
-    let verb_mode = loaded.enums.resolve("VerbMode").unwrap();
+    let verb_mode = loaded
+        .enums
+        .resolve("VerbMode")
+        .expect("the fixture call `resolve` succeeds for the authored inputs");
     assert_ne!(loaded.enums.member_count(verb_mode), 2);
 
     let duplicate = format!(

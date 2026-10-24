@@ -140,7 +140,10 @@ impl NetworkSector {
 }
 
 // These are independent presentation preferences and disclosures, not transport phases.
-#[allow(clippy::struct_excessive_bools)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "the struct mirrors the authored flag schema"
+)]
 #[derive(Resource)]
 pub struct ObserverUiState {
     pub lens: MapLens,
@@ -2283,7 +2286,7 @@ pub(crate) mod tests {
 
         app.world_mut()
             .get_mut::<Window>(window)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .resolution
             .set(1920.0, 1080.0);
         app.update();
@@ -2304,7 +2307,7 @@ pub(crate) mod tests {
 
         app.world_mut()
             .get_mut::<Window>(window)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .resolution
             .set(1366.0, 768.0);
         app.update();
@@ -2352,21 +2355,39 @@ pub(crate) mod tests {
             ))
             .id();
         app.update();
-        assert_eq!(app.world().get::<TextFont>(body).unwrap().font, fonts.body);
         assert_eq!(
-            app.world().get::<TextFont>(display).unwrap().font,
+            app.world()
+                .get::<TextFont>(body)
+                .expect("the fixture world holds the addressed component")
+                .font,
+            fonts.body
+        );
+        assert_eq!(
+            app.world()
+                .get::<TextFont>(display)
+                .expect("the fixture world holds the addressed component")
+                .font,
             fonts.display
         );
         assert_eq!(
-            app.world().get::<TextFont>(display).unwrap().weight,
+            app.world()
+                .get::<TextFont>(display)
+                .expect("the fixture world holds the addressed component")
+                .weight,
             FontWeight::SEMIBOLD
         );
         assert_eq!(
-            app.world().get::<TextFont>(exact).unwrap().font,
+            app.world()
+                .get::<TextFont>(exact)
+                .expect("the fixture world holds the addressed component")
+                .font,
             Handle::<Font>::default()
         );
         assert_eq!(
-            app.world().get::<TextFont>(exact).unwrap().weight,
+            app.world()
+                .get::<TextFont>(exact)
+                .expect("the fixture world holds the addressed component")
+                .weight,
             FontWeight::BOLD,
             "choosing an exact-value face must preserve evidence emphasis"
         );
@@ -2385,26 +2406,38 @@ pub(crate) mod tests {
         let subject = world
             .query_filtered::<Entity, With<ObserverInspector>>()
             .single(world)
-            .unwrap();
+            .expect("the fixture holds exactly one matching row");
         let readings = world
             .query_filtered::<Entity, With<EconomicReadings>>()
             .single(world)
-            .unwrap();
+            .expect("the fixture holds exactly one matching row");
         assert!(matches!(
             world.get::<ObserverRegion>(subject),
             Some(ObserverRegion::Context)
         ));
         assert_eq!(
-            world.get::<Node>(subject).unwrap().flex_direction,
+            world
+                .get::<Node>(subject)
+                .expect("the fixture world holds the addressed component")
+                .flex_direction,
             FlexDirection::Column
         );
-        assert_eq!(world.get::<Node>(readings).unwrap().display, Display::None);
+        assert_eq!(
+            world
+                .get::<Node>(readings)
+                .expect("the fixture world holds the addressed component")
+                .display,
+            Display::None
+        );
         world
             .resource_mut::<ObserverUiState>()
             .economic_details_open = true;
         app.update();
         assert_eq!(
-            app.world().get::<Node>(readings).unwrap().display,
+            app.world()
+                .get::<Node>(readings)
+                .expect("the fixture world holds the addressed component")
+                .display,
             Display::Flex
         );
         app.world_mut()
@@ -2412,7 +2445,10 @@ pub(crate) mod tests {
             .economic_details_open = false;
         app.update();
         assert_eq!(
-            app.world().get::<Node>(readings).unwrap().display,
+            app.world()
+                .get::<Node>(readings)
+                .expect("the fixture world holds the addressed component")
+                .display,
             Display::None
         );
         assert!(app.world().get::<ObserverInspector>(subject).is_some());
@@ -2466,10 +2502,12 @@ pub(crate) mod tests {
         use babylon_persistence::{ArchivePageRef, ArchiveSubjectKind};
 
         let campaign = CampaignId::from_uuid(Uuid::from_u128(1));
-        let scope = ArchiveReadScope::committed(campaign, 3, [3; 32]).unwrap();
+        let scope = ArchiveReadScope::committed(campaign, 3, [3; 32])
+            .expect("the fixture observation carries the committed value");
         let mut read = ArchiveDossierRead {
             scope,
-            subject: ArchivePageRef::try_new(ArchiveSubjectKind::County, "26163".into()).unwrap(),
+            subject: ArchivePageRef::try_new(ArchiveSubjectKind::County, "26163".into())
+                .expect("the authored fixture satisfies the constructor invariants"),
             durable_tick: 16,
             processed_tick: 16,
             state: ArchiveDossierState::Pending {
@@ -2492,7 +2530,8 @@ pub(crate) mod tests {
             page: ArchiveDossierPage {
                 revision_id: [1; 32],
                 effective_tick: 1,
-                content_source: ArchiveReadScope::committed(campaign, 1, [1; 32]).unwrap(),
+                content_source: ArchiveReadScope::committed(campaign, 1, [1; 32])
+                    .expect("the fixture observation carries the committed value"),
                 title: "Wayne County".into(),
                 question: "What changed?".into(),
                 signals: Vec::new(),
@@ -2538,7 +2577,7 @@ pub(crate) mod tests {
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../../assets/map/county_atlas.bin"
             )))
-            .unwrap(),
+            .expect("the authored literal parses as the declared type"),
         )
         .insert_resource(ObserverUiState {
             menu_open,
@@ -2615,7 +2654,7 @@ pub(crate) mod tests {
         assert!(
             app.world()
                 .get::<ObserverFocusTarget>(target)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .available
         );
         focus_key(&mut app, window, KeyCode::Enter);
@@ -2667,7 +2706,7 @@ pub(crate) mod tests {
         assert!(
             !app.world()
                 .get::<ObserverFocusTarget>(target)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .available
         );
     }
@@ -2679,7 +2718,7 @@ pub(crate) mod tests {
         let (mut app, window, _) = focused_shell(false, ObserverCommand::Relationships);
         app.world_mut()
             .run_system_once(|mut commands: Commands| spawn_drawers(&mut commands))
-            .unwrap();
+            .expect("the Bevy system completes one run");
         app.world_mut().resource_mut::<ObserverUiState>().disclosure =
             Some(ObserverDisclosure::Lens);
         // The minimal shell disables Paint. Run the real drawer painter so
@@ -2692,7 +2731,7 @@ pub(crate) mod tests {
                 .query::<(&ControlDrawer, &Node)>()
                 .iter(app.world())
                 .find(|(drawer, _)| drawer.0 == ObserverDisclosure::Lens)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .1
                 .display,
             Display::Flex
@@ -2712,14 +2751,18 @@ pub(crate) mod tests {
         let target = targets
             .iter()
             .find(|(label, _)| label == "Captured roads")
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .1;
-        let command = app.world().get::<ObserverButton>(target).unwrap().command;
+        let command = app
+            .world()
+            .get::<ObserverButton>(target)
+            .expect("the fixture world holds the addressed component")
+            .command;
         assert!(app.world().get::<TabIndex>(target).is_some());
         assert!(
             app.world()
                 .get::<ObserverFocusTarget>(target)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .available
         );
         app.world_mut().resource_mut::<InputFocus>().0 = Some(target);
@@ -2745,7 +2788,7 @@ pub(crate) mod tests {
         assert!(
             !app.world()
                 .get::<ObserverFocusTarget>(target)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .available
         );
     }
@@ -2861,7 +2904,13 @@ pub(crate) mod tests {
             assert_eq!(changes.len(), nodes.len());
             for node in nodes {
                 assert!(changes.contains(&node));
-                assert_eq!(app.world().get::<Node>(node).unwrap().display, display);
+                assert_eq!(
+                    app.world()
+                        .get::<Node>(node)
+                        .expect("the fixture world holds the addressed component")
+                        .display,
+                    display
+                );
             }
             app.update();
             assert!(app.world().resource::<ChangedButtonNodes>().0.is_empty());
@@ -2875,7 +2924,10 @@ pub(crate) mod tests {
         app.update();
         assert!(app.world().resource::<ChangedButtonNodes>().0.is_empty());
         assert_eq!(
-            app.world().get::<Text>(nodes[2]).unwrap().0,
+            app.world()
+                .get::<Text>(nodes[2])
+                .expect("the fixture world holds the addressed component")
+                .0,
             "Finishing period."
         );
     }

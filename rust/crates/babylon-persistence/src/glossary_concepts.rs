@@ -41,7 +41,10 @@ struct RawGlossaryConcept {
     term: String,
     display_label: String,
     definition: String,
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "the authored field is filled by serde rather than Rust code"
+    )]
     evidence_class: String,
     citation: RawGlossaryCitation,
 }

@@ -9,12 +9,21 @@ use std::collections::BTreeMap;
 
 #[test]
 fn national_source_keeps_every_county_and_explicit_island_access() {
-    let source = national_transport::national_transport_reference().unwrap();
+    let source = national_transport::national_transport_reference()
+        .expect("the transport reference fixture loads");
     assert_eq!(source.county_access().len(), 3144);
     assert_eq!(source.period_days(), 28);
-    let kalawao =
-        EconomicLocation::domestic_county(CountyGeoid::try_from("15005").unwrap()).unwrap();
-    assert_eq!(source.location_node(kalawao).unwrap().id(), "county:15005");
+    let kalawao = EconomicLocation::domestic_county(
+        CountyGeoid::try_from("15005").expect("the fixture value fits the target range"),
+    )
+    .expect("the fixture geoid names a domestic county");
+    assert_eq!(
+        source
+            .location_node(kalawao)
+            .expect("the fixture call `location_node` succeeds for the authored inputs")
+            .id(),
+        "county:15005"
+    );
     for counterpart in ForeignCounterpart::ALL {
         assert!(source
             .location_node(EconomicLocation::Foreign(counterpart))
@@ -49,7 +58,8 @@ fn native_capture_refuses_changed_and_oversized_bytes() {
 
 #[test]
 fn source_modes_keep_distinct_county_zone_allocations() {
-    let source = national_transport::national_transport_reference().unwrap();
+    let source = national_transport::national_transport_reference()
+        .expect("the transport reference fixture loads");
     let access: BTreeMap<_, _> = source
         .county_access()
         .iter()

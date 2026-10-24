@@ -39,7 +39,7 @@ fn financial_session() -> Session {
         id: AccountId::Public(treasury),
         cash: money(0),
     });
-    e.book = MonetaryBook::from_snapshot(book).unwrap();
+    e.book = MonetaryBook::from_snapshot(book).expect("the snapshot admits the derived value");
     e.costs = HistoricalCostBook::open(
         &e.book,
         e.costs.snapshot().stocks,
@@ -51,11 +51,13 @@ fn financial_session() -> Session {
         }],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     e.financial = FinancialInstitutions {
         locations: vec![InstitutionLocation {
             account: AccountId::Public(treasury),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
         }],
         ownership: vec![OwnershipClaim {
             issuer_site_id: site(2),
@@ -95,7 +97,8 @@ fn financial_session() -> Session {
             amount: money(5),
         }],
     };
-    crate::try_session_with_material(MATERIAL_CYCLE, crate::staffed_labor(), state).unwrap()
+    crate::try_session_with_material(MATERIAL_CYCLE, crate::staffed_labor(), state)
+        .expect("the fixture opens a session with material")
 }
 #[test]
 fn public_ownership_receipts_survive_failed_commit_and_staffed_checkpoint_replay() {
@@ -103,7 +106,8 @@ fn public_ownership_receipts_survive_failed_commit_and_staffed_checkpoint_replay
     let mut sink = CollectingSink::default();
     let before = crate::live(&session, &sink);
     let candidate = crate::prepare(&session);
-    let receipts = crate::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    let receipts = crate::decode_material_receipts(candidate.material().receipt_bytes())
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(receipts.taxes[0].collected, money(40));
     assert_eq!(receipts.public_budgets[0].unfunded, money(10));
     let identity = *candidate.identity();
@@ -130,9 +134,9 @@ fn public_ownership_receipts_survive_failed_commit_and_staffed_checkpoint_replay
             &graph,
             &graph_material,
             &registers,
-            MaterialWorldRegister::decode(&material).unwrap(),
+            MaterialWorldRegister::decode(&material).expect("the committed canonical bytes decode"),
         )
-        .unwrap();
+        .expect("the committed checkpoint restores");
     let mut restored_sink = CollectingSink::default();
     let mut contributed = 0;
     let mut distributed = 0;
@@ -144,7 +148,8 @@ fn public_ownership_receipts_survive_failed_commit_and_staffed_checkpoint_replay
             next.material().receipt_bytes(),
             replay.material().receipt_bytes()
         );
-        let r = crate::decode_material_receipts(next.material().receipt_bytes()).unwrap();
+        let r = crate::decode_material_receipts(next.material().receipt_bytes())
+            .expect("the canonical bytes decode into the declared type");
         contributed += r
             .contributions
             .iter()
@@ -164,5 +169,10 @@ fn public_ownership_receipts_survive_failed_commit_and_staffed_checkpoint_replay
     let CircuitAccounting::Monetary(e) = &session.material().state().accounting else {
         panic!("paid")
     };
-    assert_eq!(e.book.total_cash_and_reserves().unwrap(), money(1000));
+    assert_eq!(
+        e.book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
+        money(1000)
+    );
 }

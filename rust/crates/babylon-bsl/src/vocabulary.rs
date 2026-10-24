@@ -446,22 +446,27 @@ mod tests {
     fn a_field_owner_may_be_a_node_edge_or_hyperedge_type() {
         let v = vocabulary();
         assert_eq!(
-            v.owner_of_field("social-class/wealth").unwrap(),
+            v.owner_of_field("social-class/wealth")
+                .expect("the fixture call `owner_of_field` succeeds for the authored inputs"),
             (EnumKind::NodeType, "SOCIAL_CLASS")
         );
         assert_eq!(
-            v.owner_of_field("solidarity/strength").unwrap(),
+            v.owner_of_field("solidarity/strength")
+                .expect("the fixture call `owner_of_field` succeeds for the authored inputs"),
             (EnumKind::EdgeType, "SOLIDARITY")
         );
         assert_eq!(
-            v.owner_of_field("economic-sector/output").unwrap(),
+            v.owner_of_field("economic-sector/output")
+                .expect("the fixture call `owner_of_field` succeeds for the authored inputs"),
             (EnumKind::HyperedgeType, "ECONOMIC_SECTOR")
         );
     }
 
     #[test]
     fn an_unregistered_first_segment_is_e_load_023() {
-        let err = vocabulary().owner_of_field("imperium/rent").unwrap_err();
+        let err = vocabulary()
+            .owner_of_field("imperium/rent")
+            .expect_err("the fixture call `owner_of_field` fails for the authored inputs");
         assert_eq!(
             err,
             VocabularyError::UnknownFieldOwner {
@@ -475,7 +480,9 @@ mod tests {
     fn an_event_type_owns_no_fields() {
         // EventType is registered for `emit`'s kind check but is outside the
         // field-owner rendering namespace (§2.9 names three kinds).
-        let err = vocabulary().owner_of_field("rupture/severity").unwrap_err();
+        let err = vocabulary()
+            .owner_of_field("rupture/severity")
+            .expect_err("the fixture call `owner_of_field` fails for the authored inputs");
         assert_eq!(err.spec_code(), "E-LOAD-023");
     }
 
@@ -485,7 +492,7 @@ mod tests {
             (EnumKind::NodeType, vec!["TENANCY".to_owned()]),
             (EnumKind::EdgeType, vec!["TENANCY".to_owned()]),
         ])
-        .unwrap_err();
+        .expect_err("the fixture call `new` fails for the authored inputs");
         assert_eq!(err.spec_code(), "E-LOAD-032");
         assert!(matches!(err, VocabularyError::RenderingCollision { .. }));
     }
@@ -496,7 +503,7 @@ mod tests {
             (EnumKind::NodeType, vec!["COMMUNITY".to_owned()]),
             (EnumKind::HyperedgeType, vec!["COMMUNITY".to_owned()]),
         ])
-        .unwrap_err();
+        .expect_err("the fixture call `new` fails for the authored inputs");
         assert_eq!(err.spec_code(), "E-LOAD-032");
     }
 
@@ -513,11 +520,11 @@ mod tests {
 
     #[test]
     fn a_member_whose_rendering_is_not_a_symbol_is_e_load_033() {
-        let err =
-            ClosedVocabulary::new([(EnumKind::NodeType, vec!["_LEADING".to_owned()])]).unwrap_err();
+        let err = ClosedVocabulary::new([(EnumKind::NodeType, vec!["_LEADING".to_owned()])])
+            .expect_err("the fixture call `new` fails for the authored inputs");
         assert_eq!(err.spec_code(), "E-LOAD-033");
         let err = ClosedVocabulary::new([(EnumKind::NodeType, vec!["3RD_PARTY".to_owned()])])
-            .unwrap_err();
+            .expect_err("the fixture call `new` fails for the authored inputs");
         assert_eq!(err.spec_code(), "E-LOAD-033");
     }
 
@@ -530,13 +537,13 @@ mod tests {
         );
         assert_eq!(
             v.check_enum_ref("NodeType", "NOWHERE")
-                .unwrap_err()
+                .expect_err("the unknown enum reference is refused")
                 .spec_code(),
             "E-LOAD-031"
         );
         assert_eq!(
             v.check_enum_ref("DoctrineTag", "X")
-                .unwrap_err()
+                .expect_err("the unknown enum reference is refused")
                 .spec_code(),
             "E-LOAD-030"
         );
@@ -565,7 +572,7 @@ mod tests {
         assert_eq!(
             partial
                 .check_enum_ref("NodeType", "NOWHERE")
-                .unwrap_err()
+                .expect_err("the unknown enum reference is refused")
                 .spec_code(),
             "E-LOAD-031"
         );
@@ -579,7 +586,7 @@ mod tests {
         let v = vocabulary();
         let msg = v
             .check_enum_ref("NodeType", "NOWHERE")
-            .unwrap_err()
+            .expect_err("the unknown enum reference is refused")
             .to_string();
         assert!(msg.contains("NodeType/NOWHERE"), "{msg}");
         assert!(msg.contains("SOCIAL_CLASS"), "{msg}");
@@ -592,10 +599,10 @@ mod tests {
             EnumKind::NodeType,
             (0..20).map(|i| format!("MEMBER_{i}")).collect(),
         )])
-        .unwrap();
+        .expect("the constructor accepts the authored fixture arguments");
         let msg = long
             .check_enum_ref("NodeType", "NOWHERE")
-            .unwrap_err()
+            .expect_err("the unknown enum reference is refused")
             .to_string();
         assert!(
             msg.contains("more"),
@@ -608,7 +615,7 @@ mod tests {
         let v = vocabulary();
         let msg = v
             .check_enum_ref("DoctrineTag", "X")
-            .unwrap_err()
+            .expect_err("the unknown enum reference is refused")
             .to_string();
         assert!(msg.contains("DoctrineTag/X"), "{msg}");
     }

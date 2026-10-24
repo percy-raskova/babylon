@@ -291,7 +291,11 @@ mod tests {
 
     fn key(index: usize) -> StockKey {
         let mut identity = [0; 32];
-        identity[24..].copy_from_slice(&u64::try_from(index).unwrap().to_be_bytes());
+        identity[24..].copy_from_slice(
+            &u64::try_from(index)
+                .expect("the fixture value fits the target range")
+                .to_be_bytes(),
+        );
         (
             AccountId::Site(SiteId::from_bytes([1; 32])),
             GoodId::from_bytes(identity),
@@ -304,8 +308,9 @@ mod tests {
             id: key(0).0,
             cash: super::zero(),
         }])
-        .unwrap();
-        HistoricalCostBook::open(&money, vec![], vec![], vec![], vec![]).unwrap()
+        .expect("the fixture opens the authored source");
+        HistoricalCostBook::open(&money, vec![], vec![], vec![], vec![])
+            .expect("the fixture opens the authored source")
     }
 
     #[test]
@@ -318,13 +323,13 @@ mod tests {
             key(MAX_WORKING_CARRYING_STOCKS - 1),
             Currency::from_micro_units(7),
         )
-        .unwrap();
+        .expect("the fixture stock account admits the credit");
         assert_eq!(book.stocks.len(), 393_216);
         book.credit_stock(
             key(MAX_WORKING_CARRYING_STOCKS - 1),
             Currency::from_micro_units(3),
         )
-        .unwrap();
+        .expect("the fixture stock account admits the credit");
         assert_eq!(
             book.stocks[&key(MAX_WORKING_CARRYING_STOCKS - 1)],
             Currency::from_micro_units(10)
@@ -348,11 +353,12 @@ mod tests {
             .map(|i| (key(i), super::zero()))
             .collect();
         assert_eq!(
-            HistoricalCostBook::from_snapshot(book.snapshot()).unwrap(),
+            HistoricalCostBook::from_snapshot(book.snapshot())
+                .expect("the snapshot admits the derived value"),
             book
         );
         book.credit_stock(key(MAX_CARRYING_STOCKS), super::zero())
-            .unwrap();
+            .expect("the fixture stock account admits the credit");
         assert_eq!(
             HistoricalCostBook::from_snapshot(book.snapshot()),
             Err(MaterialCircuitError::RowLimit)

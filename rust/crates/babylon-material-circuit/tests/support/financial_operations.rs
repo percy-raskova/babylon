@@ -156,7 +156,7 @@ fn configure_service_money(
         e.costs.snapshot().equity,
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     e.recurring = Some(Box::new(RecurringEconomy {
         service_inputs: vec![],
         households: vec![HouseholdCohort {
@@ -207,7 +207,10 @@ fn configure_service_money(
     }));
 }
 fn income(t: &MaterialCircuitTransition, account: AccountId) -> &IncomeReceipt {
-    t.income.iter().find(|r| r.account == account).unwrap()
+    t.income
+        .iter()
+        .find(|r| r.account == account)
+        .expect("the fixture holds the searched element")
 }
 #[test]
 fn operating_income_tax_and_foreign_owner_payout_match_independent_journal() {
@@ -226,12 +229,16 @@ fn operating_income_tax_and_foreign_owner_payout_match_independent_journal() {
         period_cap: crate::money(100),
         cash_floor: crate::money(0),
     });
-    let t = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let t = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     let issuer = income(&t, AccountId::Site(crate::site()));
     assert_eq!(issuer.statement.sales, crate::money(15));
     assert_eq!(issuer.statement.cost_of_goods_sold, crate::money(6));
     assert_eq!(
-        issuer.statement.operating_income().unwrap(),
+        issuer
+            .statement
+            .operating_income()
+            .expect("the fixture book balances"),
         crate::money(9)
     );
     assert_eq!(issuer.statement.tax_expense, crate::money(2));
@@ -266,7 +273,10 @@ fn operating_income_tax_and_foreign_owner_payout_match_independent_journal() {
         (AccountId::Public(crate::treasury()), 2),
     ] {
         assert_eq!(
-            economy(&t.state).book.cash(id).unwrap(),
+            economy(&t.state)
+                .book
+                .cash(id)
+                .expect("the fixture book holds the payer account"),
             crate::money(expected)
         );
     }
@@ -279,7 +289,10 @@ fn operating_income_tax_and_foreign_owner_payout_match_independent_journal() {
         2
     );
     assert_eq!(
-        economy(&t.state).book.total_cash_and_reserves().unwrap(),
+        economy(&t.state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         crate::money(15)
     );
 }
@@ -299,7 +312,8 @@ fn public_provider_funding_reaches_actual_work_and_service_and_withdrawal_severs
         priority: 0,
         amount_per_period: crate::money(2),
     });
-    let funded = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let funded = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(funded.production[0].produced_batches, 1);
     assert_eq!(funded.household_services[0].satisfied_quantity, 1);
     assert_eq!(
@@ -309,7 +323,8 @@ fn public_provider_funding_reaches_actual_work_and_service_and_withdrawal_severs
         crate::money(2)
     );
     crate::economy_mut(&mut state).financial.public_budgets[0].period_cap = crate::money(0);
-    let withdrawn = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let withdrawn = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(withdrawn.production[0].produced_batches, 0);
     assert_eq!(withdrawn.household_services[0].unmet_quantity, 1);
     assert_eq!(withdrawn.public_budgets[0].unfunded, crate::money(2));
@@ -317,7 +332,7 @@ fn public_provider_funding_reaches_actual_work_and_service_and_withdrawal_severs
         economy(&withdrawn.state)
             .book
             .total_cash_and_reserves()
-            .unwrap(),
+            .expect("the fixture book totals without overflow"),
         crate::money(15)
     );
 }
@@ -334,7 +349,8 @@ fn tax_shortfall_records_current_uncollected_amount_without_minting_debt() {
             rate_bps: 10000,
             cash_floor: crate::money(14),
         });
-    let t = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let t = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(t.taxes[0].assessed, crate::money(9));
     assert_eq!(t.taxes[0].collected, crate::money(1));
     assert_eq!(t.taxes[0].uncollected, crate::money(8));
@@ -352,7 +368,10 @@ fn tax_shortfall_records_current_uncollected_amount_without_minting_debt() {
     );
     assert!(economy(&t.state).book.snapshot().shifts.is_empty());
     assert_eq!(
-        economy(&t.state).book.total_cash_and_reserves().unwrap(),
+        economy(&t.state)
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         crate::money(15)
     );
 }
@@ -366,21 +385,22 @@ fn late_financial_overflow_leaves_all_opening_cash_and_equity_unchanged() {
         .accounts
         .iter_mut()
         .find(|r| r.account == crate::owner(2))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .opening_capital = crate::money(i128::MAX);
     values
         .accounts
         .iter_mut()
         .find(|r| r.account == AccountId::Site(crate::site()))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .contributed_capital = crate::money(i128::MAX);
     values
         .accounts
         .iter_mut()
         .find(|r| r.account == AccountId::Site(crate::site()))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .retained_earnings = crate::money(-i128::MAX);
-    e.costs = HistoricalCostBook::from_snapshot(values).unwrap();
+    e.costs =
+        HistoricalCostBook::from_snapshot(values).expect("the snapshot admits the derived value");
     e.financial.contributions.push(CapitalContributionOrder {
         id: ContributionId::from_bytes([2; 32]),
         due_period: 1,
@@ -388,13 +408,15 @@ fn late_financial_overflow_leaves_all_opening_cash_and_equity_unchanged() {
         issuer_site_id: crate::site(),
         amount: crate::money(1),
     });
-    let before = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&state).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes"),
         before
     );
 }

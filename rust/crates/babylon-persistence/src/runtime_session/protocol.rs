@@ -296,7 +296,8 @@ mod selection_tests {
 
     #[test]
     fn national_selection_has_no_michigan_fallback_or_open_override() {
-        let preset: RuntimeSessionPreset = serde_json::from_str("\"national-world\"").unwrap();
+        let preset: RuntimeSessionPreset = serde_json::from_str("\"national-world\"")
+            .expect("the authored JSON matches the declared schema");
         assert_eq!(preset, RuntimeSessionPreset::NationalWorld);
         assert_eq!(preset.delivery(), None);
         assert_eq!(
@@ -327,8 +328,9 @@ fn advance_progress_current_wire_is_closed_and_versioned() {
     let response: RuntimeSessionResponse =
         serde_json::from_str(valid).expect("current actual progress wire");
     assert_eq!(
-        serde_json::to_value(response).unwrap(),
-        serde_json::from_str::<serde_json::Value>(valid).unwrap()
+        serde_json::to_value(response).expect("the value serializes to JSON"),
+        serde_json::from_str::<serde_json::Value>(valid)
+            .expect("the fixture world holds the addressed component")
     );
     assert!(serde_json::from_str::<RuntimeSessionResponse>(
         &valid.replace("preparing_commitments", "invented_stage")

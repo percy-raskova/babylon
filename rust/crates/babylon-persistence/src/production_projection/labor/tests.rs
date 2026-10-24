@@ -102,19 +102,24 @@ fn committed_pair(
     MaterialCircuitState,
     MaterialTickReceipts,
 ) {
-    let opening = MaterialWorldRegister::try_new(0, state).unwrap();
-    let next = opening.prepare_next().unwrap();
+    let opening = MaterialWorldRegister::try_new(0, state)
+        .expect("the authored fixture satisfies the constructor invariants");
+    let next = opening
+        .prepare_next()
+        .expect("the fixture prepares the authored state");
     (
         opening.state().clone(),
         next.register().state().clone(),
-        material_world::decode_material_receipts(next.receipt_bytes()).unwrap(),
+        material_world::decode_material_receipts(next.receipt_bytes())
+            .expect("the canonical bytes decode into the declared type"),
     )
 }
 
 #[test]
 fn shared_principal_is_counted_once_and_time_closes_from_actual_receipts() {
     let (opening, next, receipt) = committed_pair(shared_opening());
-    let rows = projection::project_labor_accounts(&next, Some(&opening), Some(&receipt)).unwrap();
+    let rows = projection::project_labor_accounts(&next, Some(&opening), Some(&receipt))
+        .expect("the fixture projection accepts the authored input");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].next_opening_period, 2);
     assert_eq!(rows[0].next_opening_available, 30);
@@ -138,7 +143,8 @@ fn shared_principal_is_counted_once_and_time_closes_from_actual_receipts() {
     reversed.production.reverse();
     assert_eq!(
         rows,
-        projection::project_labor_accounts(&next, Some(&opening), Some(&reversed)).unwrap()
+        projection::project_labor_accounts(&next, Some(&opening), Some(&reversed))
+            .expect("the fixture projection accepts the authored input")
     );
     assert_eq!(
         opening.labor[0].available, 12,
@@ -156,13 +162,18 @@ fn exact_unit_principals_remain_separate_at_the_same_site() {
     budget.available = 6;
     state.labor.push(budget);
     let (opening, next, receipt) = committed_pair(state);
-    let rows = projection::project_labor_accounts(&next, Some(&opening), Some(&receipt)).unwrap();
+    let rows = projection::project_labor_accounts(&next, Some(&opening), Some(&receipt))
+        .expect("the fixture projection accepts the authored input");
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0].site_id, rows[1].site_id);
     assert_ne!(rows[0].unit_id, rows[1].unit_id);
     let accounts: Vec<_> = rows
         .iter()
-        .map(|row| row.completed.as_ref().unwrap())
+        .map(|row| {
+            row.completed
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+        })
         .collect();
     assert_eq!(
         (accounts[0].opening, accounts[0].used, accounts[0].unused),
@@ -188,7 +199,8 @@ fn multiplication_and_shared_sum_overflow_refuse_without_mutating_inputs() {
             &opening,
             &receipt,
             None,
-            &budgets(&opening).unwrap(),
+            &budgets(&opening)
+                .expect("the fixture call `budgets` succeeds for the authored inputs"),
             &super::super::equipment::EquipmentFacts::default()
         ),
         Err(ProductionProjectionError::Arithmetic)
@@ -209,7 +221,8 @@ fn multiplication_and_shared_sum_overflow_refuse_without_mutating_inputs() {
             &opening,
             &receipt,
             None,
-            &budgets(&opening).unwrap(),
+            &budgets(&opening)
+                .expect("the fixture call `budgets` succeeds for the authored inputs"),
             &super::super::equipment::EquipmentFacts::default()
         ),
         Err(ProductionProjectionError::Arithmetic)
@@ -325,12 +338,19 @@ fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_hand
     }
     opening.capacities.extend(future);
     let (opening, next, receipt) = committed_pair(opening);
-    let rows = projection::project_labor_accounts(&next, Some(&opening), Some(&receipt)).unwrap();
+    let rows = projection::project_labor_accounts(&next, Some(&opening), Some(&receipt))
+        .expect("the fixture projection accepts the authored input");
     let provider = rows
         .iter()
         .find(|row| row.site_id == michigan_economy::digest_hex(&provider.as_bytes()))
-        .unwrap();
-    let completed = serde_json::to_value(provider.completed.as_ref().unwrap()).unwrap();
+        .expect("the fixture holds the searched element");
+    let completed = serde_json::to_value(
+        provider
+            .completed
+            .as_ref()
+            .expect("the fixture set the optional field before this read"),
+    )
+    .expect("the value serializes to JSON");
     assert_eq!(completed["maintenance_needed"], 4);
     assert_eq!(completed["maintenance_used"], 4);
     assert_eq!(completed["used"], 4);
@@ -346,33 +366,45 @@ fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_hand
 fn monetary_attendance_cannot_relabel_actual_production_as_idle_or_handling() {
     let (opening, next, receipt) =
         committed_pair(crate::production_projection::recurring_fixture::opening());
-    projection::project_labor_accounts(&next, Some(&opening), Some(&receipt)).unwrap();
+    projection::project_labor_accounts(&next, Some(&opening), Some(&receipt))
+        .expect("the fixture projection accepts the authored input");
     for as_idle in [true, false] {
         let mut changed = receipt.clone();
         let member = changed
             .member_labor_use
             .iter_mut()
             .find(|row| row.production_hours > 0)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let key = (member.site_id, member.unit_id);
         let rate = member.compensation.wage_rate();
         member.production_hours -= 1;
-        member.production_wages = member.production_wages.checked_sub(rate).unwrap();
+        member.production_wages = member
+            .production_wages
+            .checked_sub(rate)
+            .expect("the fixture arithmetic stays in range");
         if as_idle {
             member.idle_hours += 1;
-            member.idle_wages = member.idle_wages.checked_add(rate).unwrap();
+            member.idle_wages = member
+                .idle_wages
+                .checked_add(rate)
+                .expect("the fixture arithmetic stays in range");
             let aggregate = changed
                 .labor_use
                 .iter_mut()
                 .find(|row| (row.site_id, row.unit_id) == key)
-                .unwrap();
+                .expect("the fixture holds the searched element");
             aggregate.used_hours -= 1;
             aggregate.paid_idle_hours += 1;
         } else {
             member.handling_hours += 1;
-            member.handling_wages = member.handling_wages.checked_add(rate).unwrap();
+            member.handling_wages = member
+                .handling_wages
+                .checked_add(rate)
+                .expect("the fixture arithmetic stays in range");
         }
-        member.validate().unwrap();
+        member
+            .validate()
+            .expect("the authored fixture passes validation");
         assert_eq!(
             projection::project_labor_accounts(&next, Some(&opening), Some(&changed)),
             Err(ProductionProjectionError::History)

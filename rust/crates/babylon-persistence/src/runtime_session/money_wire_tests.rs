@@ -91,11 +91,13 @@ fn tagged_organizer_money_roundtrips_exact_full_i128() {
         (i128::MIN, i128::MAX, -i128::from(u64::MAX) - 1),
     ] {
         let expected = reply(payer, gift, price);
-        let encoded = serde_json::to_vec(&expected).unwrap();
+        let encoded =
+            serde_json::to_vec(&expected).expect("the value serializes to canonical JSON bytes");
         let decoded: RuntimeSessionResponse = serde_json::from_slice(&encoded)
             .expect("actual internally tagged reply preserves typed money");
         assert_eq!(decoded, expected);
-        let wire: Value = serde_json::from_slice(&encoded).unwrap();
+        let wire: Value =
+            serde_json::from_slice(&encoded).expect("the authored bytes match the declared schema");
         let aid = &wire["snapshot"]["aid"][0];
         assert_eq!(aid["payer_cash"], payer.to_string());
         assert_eq!(aid["gift_cash_per_unit"], gift.to_string());
@@ -105,7 +107,7 @@ fn tagged_organizer_money_roundtrips_exact_full_i128() {
 
 #[test]
 fn tagged_organizer_money_refuses_noncanonical_numeric_and_overflow_values() {
-    let valid = serde_json::to_value(reply(42, 3, 7)).unwrap();
+    let valid = serde_json::to_value(reply(42, 3, 7)).expect("the value serializes to JSON");
     let bad = [
         serde_json::json!(42),
         serde_json::json!(1.5),
@@ -135,7 +137,8 @@ fn tagged_organizer_money_refuses_noncanonical_numeric_and_overflow_values() {
             }
             assert!(
                 serde_json::from_slice::<RuntimeSessionResponse>(
-                    &serde_json::to_vec(&changed).unwrap()
+                    &serde_json::to_vec(&changed)
+                        .expect("the value serializes to canonical JSON bytes")
                 )
                 .is_err(),
                 "refuse {field}={value}"
@@ -163,12 +166,13 @@ fn collection_snapshot_requires_evidence_and_exact_cash_strings() {
         collection_hours: 2,
         organization_cash_micros: i128::MAX,
     });
-    let wire = serde_json::to_value(&expected).unwrap();
+    let wire = serde_json::to_value(&expected).expect("the value serializes to JSON");
     assert_eq!(
         wire["snapshot"]["collection"]["maximum_cash_micros"],
         i128::MAX.to_string()
     );
-    let decoded: RuntimeSessionResponse = serde_json::from_value(wire.clone()).unwrap();
+    let decoded: RuntimeSessionResponse =
+        serde_json::from_value(wire.clone()).expect("the JSON value matches the declared type");
     assert_eq!(decoded, expected);
     for bad in [
         serde_json::json!(400_000),
@@ -183,7 +187,10 @@ fn collection_snapshot_requires_evidence_and_exact_cash_strings() {
     }
     for field in ["collection", "collection_resolutions"] {
         let mut missing = wire.clone();
-        missing["snapshot"].as_object_mut().unwrap().remove(field);
+        missing["snapshot"]
+            .as_object_mut()
+            .expect("the JSON fixture field is an object")
+            .remove(field);
         assert!(
             serde_json::from_value::<RuntimeSessionResponse>(missing).is_err(),
             "{field}"
@@ -198,7 +205,7 @@ fn collection_snapshot_requires_evidence_and_exact_cash_strings() {
         let mut missing = wire.clone();
         missing["snapshot"]["collection"]
             .as_object_mut()
-            .unwrap()
+            .expect("the JSON fixture field is an object")
             .remove(field);
         assert!(
             serde_json::from_value::<RuntimeSessionResponse>(missing).is_err(),

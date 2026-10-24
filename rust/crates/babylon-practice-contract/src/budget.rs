@@ -24,7 +24,11 @@ pub fn read_action_budget(storage: f64) -> Result<u32, PracticeContractError> {
     if storage > f64::from(u32::MAX) {
         return Err(PracticeContractError::PracticeBudgetRange);
     }
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the bounded fixture index is range-checked before narrowing; the value is non-negative before the unsigned cast"
+    )]
     let value = storage as u32;
     if storage.to_bits() != f64::from(value).to_bits() {
         return Err(PracticeContractError::PracticeBudgetRoundtrip);
@@ -106,7 +110,10 @@ fn validate_footprint(
 ///
 /// Returns an exact footprint, insufficient-budget, or arithmetic refusal.
 // The language-neutral contract fixes `terms` as a by-value record argument.
-#[allow(clippy::needless_pass_by_value)]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "the callee consumes the value it owns"
+)]
 pub fn compute_budget_delta(
     tick: u64,
     actor_node_id: u64,

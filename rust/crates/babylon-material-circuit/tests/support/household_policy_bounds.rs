@@ -42,7 +42,11 @@ const POLICY_LIMIT: usize = 131_072;
 
 fn identity(n: usize) -> [u8; 32] {
     let mut id = [0; 32];
-    id[24..].copy_from_slice(&u64::try_from(n).unwrap().to_be_bytes());
+    id[24..].copy_from_slice(
+        &u64::try_from(n)
+            .expect("the fixture value fits the target range")
+            .to_be_bytes(),
+    );
     id
 }
 fn resident(n: usize) -> FinalDemandPrincipalId {
@@ -80,8 +84,9 @@ fn empty_accounts(sites: usize, households: usize, publics: usize) -> MaterialCi
         })
         .collect(),
     )
-    .unwrap();
-    e.costs = HistoricalCostBook::open(&e.book, vec![], vec![], vec![], vec![]).unwrap();
+    .expect("the fixture opens the authored source");
+    e.costs = HistoricalCostBook::open(&e.book, vec![], vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     e.financial = FinancialInstitutions::empty();
     e.financial.locations = (0..publics)
         .map(|n| InstitutionLocation {
@@ -97,14 +102,15 @@ fn canonical_roundtrip(state: &MaterialCircuitState) -> MaterialCircuitState {
     let restored = babylon_material_circuit::decode_material_circuit_state(&bytes)
         .expect("all encoded rows must decode");
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&restored).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&restored)
+            .expect("the canonical material state encodes"),
         bytes
     );
     assert_eq!(
         crate::economy(&restored)
             .book
             .total_cash_and_reserves()
-            .unwrap(),
+            .expect("the fixture book totals without overflow"),
         crate::money(0)
     );
     assert!(crate::economy(&restored).employment.is_empty());
@@ -214,7 +220,10 @@ fn declare_services(
 fn household_policy_bound_preserves_every_need_and_purchase_and_checks_the_tail() {
     let state = service_needs();
     let restored = canonical_roundtrip(&state);
-    let rows = crate::economy(&restored).recurring.as_ref().unwrap();
+    let rows = crate::economy(&restored)
+        .recurring
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(rows.household_needs.len(), POLICY_LIMIT);
     assert_eq!(rows.household_purchases.len(), POLICY_LIMIT);
     assert_eq!(
@@ -222,7 +231,10 @@ fn household_policy_bound_preserves_every_need_and_purchase_and_checks_the_tail(
         32_768
     );
     assert_eq!(
-        rows.household_needs.last().unwrap().principal_id,
+        rows.household_needs
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .principal_id,
         resident(32_767)
     );
     for purchases in [false, true] {
@@ -230,7 +242,7 @@ fn household_policy_bound_preserves_every_need_and_purchase_and_checks_the_tail(
         let r = crate::economy_mut(&mut duplicate)
             .recurring
             .as_mut()
-            .unwrap();
+            .expect("the fixture set the optional field before this borrow");
         if purchases {
             r.household_purchases[POLICY_LIMIT - 1] = r.household_purchases[0].clone();
         } else {
@@ -241,7 +253,10 @@ fn household_policy_bound_preserves_every_need_and_purchase_and_checks_the_tail(
             Err(MaterialCircuitError::DuplicateRow)
         );
         let mut excess = restored.clone();
-        let r = crate::economy_mut(&mut excess).recurring.as_mut().unwrap();
+        let r = crate::economy_mut(&mut excess)
+            .recurring
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         if purchases {
             r.household_purchases.push(r.household_purchases[0].clone());
         } else {

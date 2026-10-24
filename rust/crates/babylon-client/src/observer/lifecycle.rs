@@ -382,7 +382,12 @@ mod tests {
             let mut state = ObserverSession::new(campaign);
             state.connected_fixture();
             if exhausted_epoch {
-                state.lifecycle.scope.as_mut().unwrap().epoch = u64::MAX;
+                state
+                    .lifecycle
+                    .scope
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .epoch = u64::MAX;
             } else {
                 state.generation = u64::MAX;
             }
@@ -391,10 +396,12 @@ mod tests {
                 .queue_campaign(RuntimeSessionTarget::Open {
                     campaign_id: campaign.as_uuid().to_string(),
                 })
-                .unwrap();
+                .expect("the fixture call `queue_campaign` succeeds for the authored inputs");
             let RuntimeSessionRequest::Switch {
                 request_id, scope, ..
-            } = state.pending_switch_request().unwrap()
+            } = state.pending_switch_request().expect(
+                "the fixture call `pending_switch_request` succeeds for the authored inputs",
+            )
             else {
                 panic!("switch request");
             };
@@ -418,7 +425,7 @@ mod tests {
             .queue_campaign(RuntimeSessionTarget::Open {
                 campaign_id: state.campaign.as_uuid().to_string(),
             })
-            .unwrap();
+            .expect("the fixture call `queue_campaign` succeeds for the authored inputs");
         assert!(state.pending_switch_request().is_none());
         assert!(state.runtime_disconnected());
         assert!(!state.switch_send_due());

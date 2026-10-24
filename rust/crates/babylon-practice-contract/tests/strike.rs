@@ -77,7 +77,9 @@ fn authoritative_context(
         campaign_id: authority.campaign_id,
         resolve_tick: intent.resolve_tick,
         authority_ledger_digest: babylon_practice_contract::input_authority_ledger_digest(&ledger)
-            .unwrap(),
+            .expect(
+                "the fixture call `input_authority_ledger_digest` succeeds for the authored inputs",
+            ),
         resource_allocation_contract_digest: intent.quoted_resource_contract_digest,
         content_digest: intent.quoted_content_digest,
         items: vec![ResolvedPracticeBatchItem {
@@ -277,14 +279,15 @@ fn contract_register_and_admission_round_trip_exact_bytes() {
     let contract = StrikeProposalContract::materially_connected_workers();
     let intent = strike_intent(101);
     let register = register(101);
-    let admission = admit(&intent, &register).unwrap();
+    let admission = admit(&intent, &register).expect("the fixture admits the authored value");
 
-    let contract_bytes =
-        babylon_practice_contract::encode_strike_proposal_contract(&contract).unwrap();
-    let register_bytes =
-        babylon_practice_contract::encode_strike_labor_process_register(&register).unwrap();
+    let contract_bytes = babylon_practice_contract::encode_strike_proposal_contract(&contract)
+        .expect("the fixture value encodes to its canonical bytes");
+    let register_bytes = babylon_practice_contract::encode_strike_labor_process_register(&register)
+        .expect("the fixture value encodes to its canonical bytes");
     let admission_bytes =
-        babylon_practice_contract::encode_admitted_strike_proposal(&contract, &admission).unwrap();
+        babylon_practice_contract::encode_admitted_strike_proposal(&contract, &admission)
+            .expect("the fixture value encodes to its canonical bytes");
     let (ledger, batch, proposal_key) = authoritative_context(&intent);
 
     assert_eq!(contract_bytes.len(), 48);
@@ -311,14 +314,16 @@ fn contract_register_and_admission_round_trip_exact_bytes() {
     );
     assert_eq!(
         admission.labor_process_register_digest(),
-        strike_labor_process_register_digest(&register).unwrap()
+        strike_labor_process_register_digest(&register).expect("the fixture call `strike_labor_process_register_digest` succeeds for the authored inputs")
     );
     assert_eq!(
         admitted_strike_proposal_digest(
             &StrikeProposalContract::materially_connected_workers(),
             &admission,
         )
-        .unwrap(),
+        .expect(
+            "the fixture call `admitted_strike_proposal_digest` succeeds for the authored inputs"
+        ),
         babylon_kernel::content_digest::sha256_of(&admission_bytes)
     );
 }
@@ -335,11 +340,14 @@ fn contract_bytes_have_an_independent_literal_layout() {
     expected.extend_from_slice(&65_536_u32.to_be_bytes());
 
     assert_eq!(
-        babylon_practice_contract::encode_strike_proposal_contract(&contract).unwrap(),
+        babylon_practice_contract::encode_strike_proposal_contract(&contract)
+            .expect("the fixture value encodes to its canonical bytes"),
         expected
     );
     assert_eq!(
-        strike_proposal_contract_digest(&contract).unwrap(),
+        strike_proposal_contract_digest(&contract).expect(
+            "the fixture call `strike_proposal_contract_digest` succeeds for the authored inputs"
+        ),
         babylon_kernel::content_digest::sha256_of(&expected)
     );
 }
@@ -349,9 +357,10 @@ fn forged_admission_cannot_omit_an_affected_worker_cohort() {
     let contract = StrikeProposalContract::materially_connected_workers();
     let intent = strike_intent(101);
     let register = register(101);
-    let admission = admit(&intent, &register).unwrap();
+    let admission = admit(&intent, &register).expect("the fixture admits the authored value");
     let mut payload =
-        babylon_practice_contract::encode_admitted_strike_proposal(&contract, &admission).unwrap();
+        babylon_practice_contract::encode_admitted_strike_proposal(&contract, &admission)
+            .expect("the fixture value encodes to its canonical bytes");
     let (ledger, batch, proposal_key) = authoritative_context(&intent);
     let row_count_offset = ADMITTED_STRIKE_PROPOSAL_DOMAIN_BYTES.len() + 1 + 2 + 32 + 32 + 32 + 82;
     payload[row_count_offset..row_count_offset + 4].copy_from_slice(&1_u32.to_be_bytes());
@@ -377,9 +386,10 @@ fn forged_admission_cannot_substitute_an_affected_worker_cohort() {
     let contract = StrikeProposalContract::materially_connected_workers();
     let intent = strike_intent(101);
     let register = register(101);
-    let admission = admit(&intent, &register).unwrap();
+    let admission = admit(&intent, &register).expect("the fixture admits the authored value");
     let mut payload =
-        babylon_practice_contract::encode_admitted_strike_proposal(&contract, &admission).unwrap();
+        babylon_practice_contract::encode_admitted_strike_proposal(&contract, &admission)
+            .expect("the fixture value encodes to its canonical bytes");
     let (ledger, batch, proposal_key) = authoritative_context(&intent);
     let first_row_offset =
         ADMITTED_STRIKE_PROPOSAL_DOMAIN_BYTES.len() + 1 + 2 + 32 + 32 + 32 + 82 + 4;
@@ -405,9 +415,9 @@ fn admission_decoder_refuses_a_non_strike_proposal_key_kind() {
     let contract = StrikeProposalContract::materially_connected_workers();
     let intent = strike_intent(101);
     let register = register(101);
-    let admission = admit(&intent, &register).unwrap();
-    let payload =
-        babylon_practice_contract::encode_admitted_strike_proposal(&contract, &admission).unwrap();
+    let admission = admit(&intent, &register).expect("the fixture admits the authored value");
+    let payload = babylon_practice_contract::encode_admitted_strike_proposal(&contract, &admission)
+        .expect("the fixture value encodes to its canonical bytes");
     let (ledger, batch, proposal_key) = authoritative_context(&intent);
     let proposal_key_offset = ADMITTED_STRIKE_PROPOSAL_DOMAIN_BYTES.len() + 1 + 2 + 32 + 32 + 32;
     let practice_offset = proposal_key_offset + 8 + 16 + 8;
@@ -558,7 +568,8 @@ fn domains_and_all_error_codes_remain_closed() {
         b"babylon.admitted-strike-proposal.v2"
     );
     for code in 1_u16..=23 {
-        let error = StrikeProposalError::try_from(code).unwrap();
+        let error =
+            StrikeProposalError::try_from(code).expect("the fixture value fits the target range");
         assert_eq!(u16::from(error), code);
     }
     assert!(StrikeProposalError::try_from(0).is_err());

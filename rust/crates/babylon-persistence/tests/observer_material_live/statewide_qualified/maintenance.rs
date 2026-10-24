@@ -65,7 +65,10 @@ fn actual_maintenance_sources_survive_four_persisted_three_period_campaigns() {
     .into_iter()
     .enumerate()
     {
-        qualify(case, u128::try_from(index).unwrap());
+        qualify(
+            case,
+            u128::try_from(index).expect("the fixture value fits the target range"),
+        );
     }
 }
 
@@ -77,31 +80,42 @@ fn qualify(case: Case, index: u128) {
     );
     assert_admitted_source_and_design(&catalog, case);
     let preset = MichiganContentPreset::new_campaign(case.preset);
-    let foundation = preset.create_foundation(&catalog).unwrap();
+    let foundation = preset
+        .create_foundation(&catalog)
+        .expect("the authored catalog builds the foundation");
     let foundation_digest = foundation.digest();
-    let twin = preset.create_foundation(&catalog).unwrap();
+    let twin = preset
+        .create_foundation(&catalog)
+        .expect("the authored catalog builds the foundation");
     super::assert_same_foundation_bytes(&foundation, &twin);
-    let mut reference = twin.into_session().unwrap();
+    let mut reference = twin.into_session().expect("the fixture opens a session");
     let mut measured = Measurements {
         captured_bytes: foundation
             .graph_foundation()
             .content_bundle()
             .canonical_bytes()
             .len(),
-        foundation_bytes: foundation.canonical_len().unwrap(),
+        foundation_bytes: foundation
+            .canonical_len()
+            .expect("the fixture call `canonical_len` succeeds for the authored inputs"),
         ..Measurements::default()
     };
     assert!(measured.captured_bytes < MAX_MICHIGAN_SOURCE_BYTES);
     assert!(measured.foundation_bytes < MAX_MATERIAL_FOUNDATION_BYTES);
     let mut target = DisposableTarget::create();
     let campaign = CampaignId::from_uuid(Uuid::from_u128(30_100 + index));
-    let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
-    super::install_reader_role(&target.writer).unwrap();
-    super::provision_observer_role(&target.writer).unwrap();
+    let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation)
+        .expect("the test database creates the fixture campaign");
+    super::install_reader_role(&target.writer).expect("the test database installs the reader role");
+    super::provision_observer_role(&target.writer)
+        .expect("the test database provisions the observer role");
     let config = target.login("babylon_observer", "actualmaintenance");
-    let observer =
-        ObserverEconomyReader::connect(&config, ObserverVisibility::FullObserver).unwrap();
-    let mut sql = target.writer.connect(NoTls).unwrap();
+    let observer = ObserverEconomyReader::connect(&config, ObserverVisibility::FullObserver)
+        .expect("the test database accepts the connection");
+    let mut sql = target
+        .writer
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     measured.create_with_reference = began.elapsed();
     let mut held = Vec::new();
     let rows = super::observe(
@@ -188,7 +202,7 @@ fn assert_persisted_totals(
             "SELECT count(*) FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid",
             &[campaign.as_uuid()],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .get(0);
     assert_eq!(commits, 3);
     assert!(measured.maximum_family_rows < 65_536);
@@ -215,7 +229,9 @@ fn assert_admitted_source_and_design(catalog: &MichiganMaterialCatalog, case: Ca
         ),
         (233, 166, 233)
     );
-    let physical = catalog.physical_network().unwrap();
+    let physical = catalog
+        .physical_network()
+        .expect("the fixture call `physical_network` succeeds for the authored inputs");
     assert!(physical.source.pbf_url.starts_with("https://"));
     assert_eq!(physical.terminals.len(), 83);
     assert!(!physical.edges.is_empty());
@@ -227,13 +243,15 @@ fn assert_admitted_source_and_design(catalog: &MichiganMaterialCatalog, case: Ca
         .pools
         .iter()
         .find(|pool| pool.site_key == PROVIDER)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert!(crew.maintenance && !crew.merchant_handling && crew.process_keys.is_empty());
     assert_eq!(
         (crew.employed, crew.reserve),
         (case.opening_employed, 1 - case.opening_employed)
     );
-    let maintenance = catalog.maintenance().unwrap();
+    let maintenance = catalog
+        .maintenance()
+        .expect("the fixture call `maintenance` succeeds for the authored inputs");
     assert_eq!(maintenance.provider_site_key, PROVIDER);
     assert_eq!(maintenance.consumer_process_key, CONSUMER);
     assert_eq!(maintenance.opening_spare_parts, case.opening_parts);
@@ -251,13 +269,13 @@ fn assert_admitted_source_and_design(catalog: &MichiganMaterialCatalog, case: Ca
         .processes()
         .iter()
         .find(|row| row.key == CONSUMER)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         consumer
             .inputs
             .iter()
             .find(|row| row.good_key == "metal_stock")
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .opening_quantity,
         2560
     );
@@ -265,14 +283,16 @@ fn assert_admitted_source_and_design(catalog: &MichiganMaterialCatalog, case: Ca
         .routes()
         .iter()
         .find(|row| row.key == "26163-metal-parts-maintenance-replenishment")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(replenishment.ordered_quantity, 256);
     assert_eq!(replenishment.buyer_site_key, PROVIDER);
     assert_eq!(replenishment.supplier_site_key, consumer.site_key);
 }
 
 fn assert_provider_source(catalog: &MichiganMaterialCatalog) {
-    let provider = catalog.site(PROVIDER).unwrap();
+    let provider = catalog
+        .site(PROVIDER)
+        .expect("the fixture catalog holds the addressed site");
     assert_eq!(
         (
             provider.county_geoid.as_str(),
@@ -282,7 +302,9 @@ fn assert_provider_source(catalog: &MichiganMaterialCatalog) {
         ("26163", "81", "811310")
     );
     assert_eq!(provider.role, MichiganSiteRole::Maintenance);
-    let observed = catalog.industry_for_site(provider).unwrap();
+    let observed = catalog
+        .industry_for_site(provider)
+        .expect("the fixture call `industry_for_site` succeeds for the authored inputs");
     assert_eq!(catalog.source_evidence_class(), EvidenceClass::Observed);
     assert_eq!(observed.source_sha256, INDUSTRY_SOURCE_SHA256);
     assert_eq!(observed.annual_avg_estabs_count, 122);
@@ -300,7 +322,10 @@ fn assert_provider_source(catalog: &MichiganMaterialCatalog) {
 }
 
 fn assert_foundation(rows: &ProductionSnapshot, catalog: &MichiganMaterialCatalog, case: Case) {
-    let account = rows.maintenance_account.as_ref().unwrap();
+    let account = rows
+        .maintenance_account
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert!(account.completed.is_none());
     assert_eq!(
         (account.next_service_period, account.next_service_batches),
@@ -318,19 +343,25 @@ fn assert_foundation(rows: &ProductionSnapshot, catalog: &MichiganMaterialCatalo
         .sites
         .iter()
         .find(|site| site.id == account.provider_site_id)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert!(provider.roles.contains(&ProductionSiteRole::Maintenance));
     assert!(provider.processes.is_empty());
     assert_eq!(provider.observed_employment, Some(1480));
     assert_eq!(
         provider.id,
-        super::identity_hex(catalog.site(PROVIDER).unwrap().id().as_bytes())
+        super::identity_hex(
+            catalog
+                .site(PROVIDER)
+                .expect("the fixture catalog holds the addressed site")
+                .id()
+                .as_bytes()
+        )
     );
     let crew = rows
         .staffing_accounts
         .iter()
         .find(|row| row.site_id == provider.id)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (crew.employed, crew.reserve, crew.labor_force),
         (case.opening_employed, 1 - case.opening_employed, 1)
@@ -351,7 +382,10 @@ fn assert_completed(
     case: Case,
     period: u64,
 ) {
-    let account = rows.maintenance_account.as_ref().unwrap();
+    let account = rows
+        .maintenance_account
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(
         account.provider_site_id,
         super::identity_hex(receipt.binding.provider_site_id.as_bytes())
@@ -429,11 +463,14 @@ fn assert_period_witness(output: u64, receipt: &MaintenanceReceipt, case: Case, 
 }
 
 fn assert_provider_accounts(rows: &ProductionSnapshot, receipt: &MaintenanceReceipt, period: u64) {
-    let account = rows.maintenance_account.as_ref().unwrap();
+    let account = rows
+        .maintenance_account
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     let stock = rows
         .material_balance
         .as_ref()
-        .unwrap()
+        .expect("the fixture set the optional field before this read")
         .rows
         .iter()
         .find(|row| {
@@ -441,7 +478,7 @@ fn assert_provider_accounts(rows: &ProductionSnapshot, receipt: &MaintenanceRece
                 && row.good_id == account.spare_good_id
                 && row.unit_id == account.spare_unit_id
         })
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(stock.opening, receipt.opening_spare_parts);
     assert_eq!(stock.arrivals, receipt.arrived_spare_parts);
     assert_eq!(stock.maintenance_consumed, receipt.consumed_spare_parts);
@@ -469,10 +506,10 @@ fn assert_provider_accounts(rows: &ProductionSnapshot, receipt: &MaintenanceRece
         .labor_accounts
         .iter()
         .find(|row| row.site_id == account.provider_site_id)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .completed
         .as_ref()
-        .unwrap();
+        .expect("the fixture set the optional field before this read");
     assert_eq!(
         (
             labor.opening,
@@ -493,7 +530,7 @@ fn assert_provider_accounts(rows: &ProductionSnapshot, receipt: &MaintenanceRece
             .staffing_accounts
             .iter()
             .find(|row| row.site_id == account.provider_site_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(
             (crew.employed, crew.reserve, crew.next_opening_hours),
             (1, 0, 160)
@@ -504,13 +541,21 @@ fn assert_provider_accounts(rows: &ProductionSnapshot, receipt: &MaintenanceRece
 fn assert_commit_refusal_preserves_candidate(reference: &mut Session) {
     // Reuse the public commit callback seam from tests/material_runtime.rs;
     // this proves candidate publication atomicity, not an injected SQL failure.
-    let graph = reference.graph_session().graph().state_hash().unwrap();
+    let graph = reference
+        .graph_session()
+        .graph()
+        .state_hash()
+        .expect("the fixture graph hashes its state");
     let register = reference.material().canonical_bytes().to_vec();
-    let world = reference.current_world_hash().unwrap();
+    let world = reference
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
     let actions =
         OrderedPracticeActionBatch::empty(reference.graph_session().session_identity().clone(), 1)
-            .unwrap();
-    let candidate = reference.prepare_advance(&actions).unwrap();
+            .expect("the empty authored batch constructs");
+    let candidate = reference
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance");
     let bytes = candidate.material().receipt_bytes().to_vec();
     let digest = candidate.identity().tick_content_hash();
     let mut sink = CollectingSink::default();
@@ -524,12 +569,23 @@ fn assert_commit_refusal_preserves_candidate(reference: &mut Session) {
     assert_eq!(reference.completed_tick(), 0);
     assert_eq!(reference.material().canonical_bytes(), register);
     assert_eq!(
-        reference.graph_session().graph().state_hash().unwrap(),
+        reference
+            .graph_session()
+            .graph()
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
         graph
     );
-    assert_eq!(reference.current_world_hash().unwrap(), world);
+    assert_eq!(
+        reference
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        world
+    );
     assert!(sink.events.is_empty());
-    let retry = reference.prepare_advance(&actions).unwrap();
+    let retry = reference
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance");
     assert_eq!(retry.identity().tick_content_hash(), digest);
     assert_eq!(retry.material().receipt_bytes(), bytes);
 }
@@ -548,21 +604,26 @@ fn assert_sql_marker_refusal(
         .graph_session()
         .graph()
         .state_hash()
-        .unwrap();
+        .expect("the fixture graph hashes its state");
     let material = runtime.session().material().canonical_bytes().to_vec();
-    let world = runtime.session().current_world_hash().unwrap();
+    let world = runtime
+        .session()
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
     let actions = OrderedPracticeActionBatch::empty(
         runtime.session().graph_session().session_identity().clone(),
         1,
     )
-    .unwrap();
+    .expect("the empty authored batch constructs");
     let mut sink = CollectingSink::default();
-    let mut blocker = owner.transaction().unwrap();
+    let mut blocker = owner
+        .transaction()
+        .expect("the test database opens a transaction");
     blocker
         .batch_execute("LOCK TABLE babylon_state.tick_commit IN SHARE MODE")
-        .unwrap();
+        .expect("the test database applies the schema statements");
     let refused = runtime.advance_and_commit(&mut sink, &actions);
-    blocker.rollback().unwrap();
+    blocker.rollback().expect("the open transaction rolls back");
     let error = refused.expect_err("the final marker INSERT must honor the writer lock timeout");
     let MaterialRuntimeError::DatabaseLockRefused(error) = error else {
         panic!("expected late marker SQL lock refusal, got {error:?}");
@@ -580,7 +641,13 @@ fn assert_sql_marker_refusal(
     );
     assert_eq!(runtime.session().completed_tick(), 0);
     assert_eq!(runtime.session().graph_session().completed_tick(), 0);
-    assert_eq!(runtime.session().current_world_hash().unwrap(), world);
+    assert_eq!(
+        runtime
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        world
+    );
     assert_eq!(runtime.session().material().canonical_bytes(), material);
     assert_eq!(
         runtime
@@ -588,7 +655,7 @@ fn assert_sql_marker_refusal(
             .graph_session()
             .graph()
             .state_hash()
-            .unwrap(),
+            .expect("the fixture graph hashes its state"),
         graph
     );
     assert!(runtime.tail().is_none());
@@ -609,7 +676,7 @@ fn assert_no_maintenance_tick_rows(owner: &mut Client, campaign: CampaignId) {
         "event_key_lookup_v1",
         "territory_definition_v1",
     ] {
-        let count:i64=owner.query_one(&format!("SELECT count(*) FROM babylon_state.{table} WHERE campaign_id=$1::uuid AND first_tick>0"), &[campaign.as_uuid()]).unwrap().get(0);
+        let count:i64=owner.query_one(&format!("SELECT count(*) FROM babylon_state.{table} WHERE campaign_id=$1::uuid AND first_tick>0"), &[campaign.as_uuid()]).expect("the seeded row is present exactly once").get(0);
         assert_eq!(
             count, 0,
             "failed maintenance must roll back lookup additions: {table}"
@@ -618,7 +685,7 @@ fn assert_no_maintenance_tick_rows(owner: &mut Client, campaign: CampaignId) {
     let fields: i64 = owner.query_one(
         "SELECT count(*) FROM babylon_state.territory_definition_field_v1 f JOIN babylon_state.territory_definition_v1 d USING(campaign_id,definition_id) WHERE d.campaign_id=$1 AND d.first_tick>0",
         &[campaign.as_uuid()],
-    ).unwrap().get(0);
+    ).expect("the seeded row is present exactly once").get(0);
     assert_eq!(
         fields, 0,
         "failed maintenance must roll back new territory fieldsets"
@@ -662,7 +729,7 @@ fn assert_no_maintenance_tick_rows(owner: &mut Client, campaign: CampaignId) {
         let count: i64 = owner.query_one(
             &format!("SELECT count(*) FROM babylon_state.{table} WHERE campaign_id=$1::uuid AND resolve_tick>0"),
             &[campaign.as_uuid()],
-        ).unwrap().get(0);
+        ).expect("the seeded row is present exactly once").get(0);
         assert_eq!(count, 0, "maintenance pre-marker rollback {table}");
     }
     let catalog_tick: i64 = owner
@@ -670,7 +737,7 @@ fn assert_no_maintenance_tick_rows(owner: &mut Client, campaign: CampaignId) {
             "SELECT last_tick FROM babylon_meta.campaign WHERE campaign_id=$1::uuid",
             &[campaign.as_uuid()],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .get(0);
     assert_eq!(catalog_tick, 0);
 }

@@ -59,16 +59,23 @@ fn closed_inputs_refuse_unknown_fields_dates_horizons_and_cross_profile_interven
     ] {
         let input = spec(profile);
         assert_eq!(
-            SimulationExperimentV1::parse(&input.canonical_bytes().unwrap()).unwrap(),
+            SimulationExperimentV1::parse(
+                &input
+                    .canonical_bytes()
+                    .expect("the graph value exposes canonical bytes")
+            )
+            .expect("the authored literal parses as the declared type"),
             input
         );
         let mut bad = input.clone();
         bad.horizon += 1;
         assert_eq!(bad.validate(), Err(ExperimentError::Horizon));
-        let mut value = serde_json::to_value(input).unwrap();
+        let mut value = serde_json::to_value(input).expect("the value serializes to JSON");
         value["arbitrary_override"] = serde_json::json!(42);
         assert_eq!(
-            SimulationExperimentV1::parse(&serde_json::to_vec(&value).unwrap()),
+            SimulationExperimentV1::parse(
+                &serde_json::to_vec(&value).expect("the value serializes to canonical JSON bytes")
+            ),
             Err(ExperimentError::Input)
         );
     }
@@ -87,32 +94,40 @@ fn closed_inputs_refuse_unknown_fields_dates_horizons_and_cross_profile_interven
 #[test]
 fn continuous_player_duration_is_distinct_from_finite_diagnostic_bundles() {
     let source = include_str!("../../../../../content/scenarios/michigan/defines.toml");
-    let live = MichiganMaterialCatalog::from_defines_toml(source).unwrap();
+    let live = MichiganMaterialCatalog::from_defines_toml(source)
+        .expect("the authored input admits the derived value");
     assert_eq!(
         live.duration(),
         babylon_kernel::clock::CampaignDuration::Continuous
     );
     let catalog = spec(ExperimentProfile::Sustained)
         .regional_catalog()
-        .unwrap();
+        .expect("the regional catalog fixture loads");
     assert_eq!(catalog.duration().final_period(), Some(130));
     assert!(
         crate::michigan_content::MichiganContentPreset::FourWeekStandard
             .create_foundation(&catalog)
             .is_err()
     );
-    let captured = CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
-    let restored =
-        CapturedEconomicCatalog::decode(captured.canonical_bytes(), captured.digest()).unwrap();
+    let captured = CapturedEconomicCatalog::from_michigan(&catalog)
+        .expect("the Michigan fixture content loads");
+    let restored = CapturedEconomicCatalog::decode(captured.canonical_bytes(), captured.digest())
+        .expect("the committed canonical bytes decode");
     assert_eq!(restored.view().duration.final_period(), Some(130));
-    let material = restored.opening().compile().unwrap().state;
+    let material = restored
+        .opening()
+        .compile()
+        .expect("the authored scenario compiles")
+        .state;
     assert!(material.capacities.iter().any(|row| row.period == 130));
     assert!(!material.capacities.iter().any(|row| row.period > 130));
 }
 #[test]
 fn historical_jobs_initialize_only_the_named_five_workforce_accounts() {
     let input = spec(ExperimentProfile::HistoricalEmployment);
-    let catalog = input.regional_catalog().unwrap();
+    let catalog = input
+        .regional_catalog()
+        .expect("the regional catalog fixture loads");
     assert!(!catalog.graph_scenario_source().contains("qcew"));
     for (key, jobs, hours) in [
         ("sheet-rolling", 4464, 100),
@@ -126,32 +141,47 @@ fn historical_jobs_initialize_only_the_named_five_workforce_accounts() {
             .pools
             .iter()
             .find(|p| p.key == key)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(pool.employed, jobs);
         assert_eq!(pool.reserve, 0);
-        let process = catalog.processes().iter().find(|p| p.key == key).unwrap();
+        let process = catalog
+            .processes()
+            .iter()
+            .find(|p| p.key == key)
+            .expect("the fixture holds the searched element");
         assert_eq!(process.capacity_batches_per_period, (jobs * 40 / hours) * 4);
         assert_eq!(
             process.opening_planned_batches,
             process.capacity_batches_per_period
         );
     }
-    let f = input.create_foundation().unwrap();
+    let f = input
+        .create_foundation()
+        .expect("the authored catalog builds the foundation");
     assert_eq!(
         f.reconstruct_captured()
-            .unwrap()
+            .expect("the fixture call `reconstruct_captured` succeeds for the authored inputs")
             .export_canonical_bytes()
-            .unwrap(),
-        f.export_canonical_bytes().unwrap()
+            .expect("the content exports its canonical bytes"),
+        f.export_canonical_bytes()
+            .expect("the content exports its canonical bytes")
     );
     let mut changed = input;
     changed.seed = 320;
-    assert_ne!(changed.create_foundation().unwrap().digest(), f.digest());
+    assert_ne!(
+        changed
+            .create_foundation()
+            .expect("the authored catalog builds the foundation")
+            .digest(),
+        f.digest()
+    );
 }
 #[test]
 fn freight_is_a_real_foreign_inventory_boundary_with_bound_orders_and_no_county_claim() {
     let input = spec(ExperimentProfile::HistoricalFreight);
-    let f = input.create_foundation().unwrap();
+    let f = input
+        .create_foundation()
+        .expect("the authored catalog builds the foundation");
     let state = f.initial_register().state();
     assert!(state.process_outputs.is_empty());
     assert!(f.labor().bindings().is_empty());
@@ -170,11 +200,16 @@ fn freight_is_a_real_foreign_inventory_boundary_with_bound_orders_and_no_county_
             .content_bundle()
             .scenario_source_bytes(),
     )
-    .unwrap();
+    .expect("the fixture bytes came from a UTF-8 string");
     assert!(scenario.contains("canadian-inventory-boundary"));
     assert!(scenario.contains("detroit-port-3801-entry"));
     assert!(!scenario.contains("county"));
-    assert_eq!(f.reconstruct_captured().unwrap().digest(), f.digest());
+    assert_eq!(
+        f.reconstruct_captured()
+            .expect("the fixture call `reconstruct_captured` succeeds for the authored inputs")
+            .digest(),
+        f.digest()
+    );
     let mut contaminated = state.clone();
     contaminated
         .labor
@@ -191,10 +226,19 @@ fn freight_is_a_real_foreign_inventory_boundary_with_bound_orders_and_no_county_
 }
 #[test]
 fn gregorian_reporting_crosses_leap_days_and_years() {
-    assert_eq!(report::date_after("2019-12-31", 60).unwrap(), "2020-02-29");
-    assert_eq!(report::date_after("2020-02-29", 1).unwrap(), "2020-03-01");
     assert_eq!(
-        report::date_after("2010-01-01", 131 * 28).unwrap(),
+        report::date_after("2019-12-31", 60)
+            .expect("the fixture call `date_after` succeeds for the authored inputs"),
+        "2020-02-29"
+    );
+    assert_eq!(
+        report::date_after("2020-02-29", 1)
+            .expect("the fixture call `date_after` succeeds for the authored inputs"),
+        "2020-03-01"
+    );
+    assert_eq!(
+        report::date_after("2010-01-01", 131 * 28)
+            .expect("the fixture call `date_after` succeeds for the authored inputs"),
         "2020-01-17"
     );
     assert!(report::date_after("2019-02-29", 1).is_err());

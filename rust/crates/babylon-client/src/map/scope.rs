@@ -189,7 +189,7 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../../assets/map/county_atlas.bin"
         )))
-        .unwrap()
+        .expect("the authored literal parses as the declared type")
     }
     fn rows(ids: &[&str]) -> Vec<ObserverCountyEconomy> {
         ids.iter()
@@ -230,7 +230,8 @@ mod tests {
     #[test]
     fn keyboard_selection_wraps_only_within_the_installed_scope() {
         let atlas = atlas();
-        let counties = admit_counties(&atlas, &rows(&["02013", "15005"])).unwrap();
+        let counties = admit_counties(&atlas, &rows(&["02013", "15005"]))
+            .expect("the fixture admits the authored counties");
         let scope = CountyMapScope {
             counties: counties.clone(),
             ..default()
@@ -238,7 +239,11 @@ mod tests {
         assert_eq!(scope.adjacent(None, true), Some(counties[0]));
         assert_eq!(scope.adjacent(Some(counties[0]), false), Some(counties[1]));
         assert_eq!(scope.adjacent(Some(counties[1]), true), Some(counties[0]));
-        assert!(!scope.contains(atlas.index_of_fips("26163").unwrap()));
+        assert!(!scope.contains(
+            atlas
+                .index_of_fips("26163")
+                .expect("the fixture call `index_of_fips` succeeds for the authored inputs")
+        ));
         assert_eq!(CountyMapScope::default().adjacent(None, true), None);
     }
 }

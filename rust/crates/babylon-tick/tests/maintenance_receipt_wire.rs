@@ -58,9 +58,12 @@ fn current_maintenance_receipts_admit_completed_and_zero_job_closes() {
         [1, 16, 8, 8, 16, 16, 0, 60, 60, 160, 16, 16, 160, 2, 16],
     ];
     for quantities in values {
-        let decoded = material_world::decode_material_receipts(&receipt(quantities)).unwrap();
+        let decoded = material_world::decode_material_receipts(&receipt(quantities))
+            .expect("the canonical bytes decode into the declared type");
         assert_eq!(decoded.resolve_tick, 1);
-        let row = decoded.maintenance.unwrap();
+        let row = decoded
+            .maintenance
+            .expect("the fixture receipt carries its maintenance section");
         assert_eq!(row.binding.provider_site_id.as_bytes(), [1; 32]);
         assert_eq!(row.binding.consumer_process_id.as_bytes(), [2; 32]);
         assert_eq!(row.binding.spare_good_id.as_bytes(), [3; 32]);
@@ -151,18 +154,18 @@ fn maintenance_receipts_refuse_duplicate_truncated_trailing_and_overflow_rows() 
 fn maintenance_receipts_distinguish_unrestricted_request_from_capacity_and_ceil_jobs() {
     let capped = receipt([1, 16, 16, 0, 20, 20, 256, 0, 256, 160, 16, 16, 160, 2, 16]);
     let row = material_world::decode_material_receipts(&capped)
-        .unwrap()
+        .expect("the canonical bytes decode into the declared type")
         .maintenance
-        .unwrap();
+        .expect("the fixture receipt carries its maintenance section");
     assert_eq!((row.requested_jobs, row.completed_jobs), (20, 16));
     let rounded = receipt_with_coefficients(
         [1, 10, 2, 8],
         [1, 16, 16, 0, 17, 9, 256, 0, 256, 160, 8, 8, 80, 2, 16],
     );
     let row = material_world::decode_material_receipts(&rounded)
-        .unwrap()
+        .expect("the canonical bytes decode into the declared type")
         .maintenance
-        .unwrap();
+        .expect("the fixture receipt carries its maintenance section");
     assert_eq!(
         (
             row.requested_jobs,
@@ -180,13 +183,13 @@ fn absent_maintenance_is_distinct_from_a_bound_completed_zero_close() {
     replace_u64(&mut absent, ROW_START - 8, 0);
     append_remaining_families(&mut absent);
     assert!(material_world::decode_material_receipts(&absent)
-        .unwrap()
+        .expect("the canonical bytes decode into the declared type")
         .maintenance
         .is_none());
     let zero = receipt([1, 16, 16, 0, 16, 16, 0, 0, 0, 0, 0, 0, 0, 2, 0]);
     let row = material_world::decode_material_receipts(&zero)
-        .unwrap()
+        .expect("the canonical bytes decode into the declared type")
         .maintenance
-        .unwrap();
+        .expect("the fixture receipt carries its maintenance section");
     assert_eq!((row.requested_jobs, row.completed_jobs), (16, 0));
 }

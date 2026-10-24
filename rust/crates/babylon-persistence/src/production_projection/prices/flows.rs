@@ -207,12 +207,12 @@ impl Flows {
             .filter(|(key, quantity)| **quantity > 0 && !quoted.contains(key))
             .map(|(key, _)| key.0)
             .collect();
-        for site in actual
+        let involved_sites = actual
             .keys()
             .chain(amounts.keys())
             .copied()
-            .collect::<BTreeSet<_>>()
-        {
+            .collect::<BTreeSet<_>>();
+        for site in involved_sites {
             let claimed = amounts.get(&site).copied().unwrap_or(0);
             let total = actual.get(&site).copied().unwrap_or(0);
             // A site's unquoted commodities may legitimately own the remaining wages.

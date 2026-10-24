@@ -52,12 +52,17 @@ fn lifecycle(
         },
         |_, sink| {
             let current = current.borrow();
-            let state = current.as_ref().unwrap();
-            *state.sink.lock().unwrap() = Some(sink);
+            let state = current
+                .as_ref()
+                .expect("the fixture set the optional field before this read");
+            *state
+                .sink
+                .lock()
+                .expect("the fixture lock is never poisoned") = Some(sink);
             Ok(support::driver(state))
         },
     )
-    .unwrap();
+    .expect("the fixture call `serve` succeeds for the authored inputs");
     assert!(admissions.is_empty());
     if let Some(state) = current.into_inner() {
         assert!(state.joined.load(Ordering::SeqCst));
@@ -99,7 +104,7 @@ fn hello_and_switching_are_written_before_fallible_target_admission() {
             panic!("failed admission cannot start an Archive driver")
         },
     )
-    .unwrap();
+    .expect("the fixture call `serve` succeeds for the authored inputs");
     assert!(matches!(
         support::wire_responses(&output).as_slice(),
         [
@@ -229,14 +234,14 @@ fn repeated_campaign_epochs_retire_each_driver_and_refuse_old_commands() {
     let ack = rows
         .iter()
         .position(|row| matches!(row, RuntimeSessionResponse::Committed { .. }))
-        .unwrap();
+        .expect("the fixture sequence holds the addressed position");
     let next = rows
         .iter()
         .position(|row| matches!(row, RuntimeSessionResponse::Switching { request_id: 3, .. }))
-        .unwrap();
+        .expect("the fixture sequence holds the addressed position");
     assert!(ack < next);
     assert!(
-        matches!(rows.last().unwrap(), RuntimeSessionResponse::Stopped { scope: actual, .. } if *actual == support::scope(3, A))
+        matches!(rows.last().expect("the fixture sequence is non-empty"), RuntimeSessionResponse::Stopped { scope: actual, .. } if *actual == support::scope(3, A))
     );
 }
 
@@ -251,10 +256,10 @@ fn late_archive_events_cannot_enter_a_reopened_campaign_epoch() {
         for old in [support::scope(1, A), support::scope(2, B)] {
             coordinator
                 .archive_event(&old, &support::progress(Some(8), 0, 0))
-                .unwrap();
+                .expect("the fixture archives the authored event");
             coordinator
                 .archive_event(&old, &ArchiveDriverEvent::Stopped)
-                .unwrap();
+                .expect("the fixture archives the authored event");
             coordinator
                 .archive_event(
                     &old,
@@ -266,11 +271,11 @@ fn late_archive_events_cannot_enter_a_reopened_campaign_epoch() {
                         retrying: false,
                     },
                 )
-                .unwrap();
+                .expect("the fixture archives the authored event");
         }
         coordinator
             .archive_event(&support::scope(3, A), &support::progress(None, 0, 0))
-            .unwrap();
+            .expect("the fixture archives the authored event");
     }
     assert!(matches!(support::wire_responses(&output).as_slice(), [
         RuntimeSessionResponse::ArchiveProgress { scope: actual, .. }
@@ -305,7 +310,7 @@ fn invalid_targets_and_exhausted_epochs_refuse_without_admission() {
                     &sender,
                     &mut factories,
                 )
-                .unwrap();
+                .expect("the fixture call `request` succeeds for the authored inputs");
             assert_eq!(coordinator.scope, current);
             assert!(coordinator.active.is_none());
         }
@@ -326,12 +331,21 @@ fn wire_targets_are_explicit_and_closed() {
             campaign_id: A.into(),
         },
     ] {
-        let bytes = serde_json::to_vec(&target).unwrap();
+        let bytes =
+            serde_json::to_vec(&target).expect("the value serializes to canonical JSON bytes");
         assert_eq!(
-            serde_json::from_slice::<RuntimeSessionTarget>(&bytes).unwrap(),
+            serde_json::from_slice::<RuntimeSessionTarget>(&bytes)
+                .expect("the fixture world holds the addressed component"),
             target
         );
-        assert_eq!(target.campaign().unwrap().as_uuid().to_string(), A);
+        assert_eq!(
+            target
+                .campaign()
+                .expect("the fixture call `campaign` succeeds for the authored inputs")
+                .as_uuid()
+                .to_string(),
+            A
+        );
     }
     for json in [
         r#"{"type":"new","campaign_id":"00000000-0000-0000-0000-000000000001"}"#,
@@ -340,10 +354,11 @@ fn wire_targets_are_explicit_and_closed() {
     ] {
         assert!(serde_json::from_str::<RuntimeSessionTarget>(json).is_err());
     }
-    let mut request = serde_json::to_value(support::advance()).unwrap();
+    let mut request =
+        serde_json::to_value(support::advance()).expect("the value serializes to JSON");
     request
         .as_object_mut()
-        .unwrap()
+        .expect("the JSON fixture field is an object")
         .insert("actions".into(), serde_json::json!([1]));
     assert!(serde_json::from_value::<RuntimeSessionRequest>(request).is_err());
 }
@@ -501,7 +516,11 @@ fn reused_or_lower_ids_cannot_advance_refresh_or_stop_a_current_scope() {
         vec![Ok(backend)],
     );
     assert_eq!(state.tick.load(Ordering::SeqCst), 1);
-    assert!(state.refreshes.lock().unwrap().is_empty());
+    assert!(state
+        .refreshes
+        .lock()
+        .expect("the fixture lock is never poisoned")
+        .is_empty());
     let errors: Vec<_> = rows
         .iter()
         .filter_map(|row| match row {

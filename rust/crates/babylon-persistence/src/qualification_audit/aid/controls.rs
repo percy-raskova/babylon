@@ -18,7 +18,8 @@ use fixture::Session;
 use uuid::Uuid;
 
 fn snapshot(session: &Session) -> OrganizerSnapshot {
-    audit::material_disclosure(session.material(), session.duration()).unwrap()
+    audit::material_disclosure(session.material(), session.duration())
+        .expect("the fixture call `material_disclosure` succeeds for the authored inputs")
 }
 fn start(
     routed: bool,
@@ -41,7 +42,8 @@ fn start(
         OrganizerAidKind::Local
     };
     let session = fixture::authored_session(
-        crate::michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        crate::michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("the Michigan hex foundation builds"),
         config,
         no_time,
         routed,
@@ -54,13 +56,21 @@ fn start(
     };
     let commitment = fixture::commitment(&session, choice);
     let preview = babylon_practice_contract::preview_organizer(
-        session.material().organizer_config().unwrap(),
-        session.material().organizer_state().unwrap(),
+        session
+            .material()
+            .organizer_config()
+            .expect("the fixture register carries organizer config"),
+        session
+            .material()
+            .organizer_state()
+            .expect("the fixture register carries organizer state"),
         &commitment.command,
     )
-    .unwrap();
+    .expect("the organizer preview builds");
     let mut audit = Audit::default();
-    audit.open(session.material(), &before).unwrap();
+    audit
+        .open(session.material(), &before)
+        .expect("the fixture opens the authored source");
     (session, audit, before, preview, commitment)
 }
 fn advance(
@@ -70,7 +80,8 @@ fn advance(
     let candidate = fixture::prepare(session, accepted);
     let identity = *candidate.identity();
     let receipts = MaterialReceiptHandle::new(
-        material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap(),
+        material_world::decode_material_receipts(candidate.material().receipt_bytes())
+            .expect("the canonical bytes decode into the declared type"),
     );
     fixture::commit(session, &mut CollectingSink::default(), candidate);
     let CircuitAccounting::Monetary(economy) = &session.material().state().accounting else {
@@ -82,7 +93,11 @@ fn advance(
     (
         CommittedMaterialReceipts {
             campaign_id: CampaignId::from_uuid(Uuid::from_bytes(
-                session.material().organizer_config().unwrap().campaign_id,
+                session
+                    .material()
+                    .organizer_config()
+                    .expect("the fixture register carries organizer config")
+                    .campaign_id,
             )),
             identity,
             material_register_bytes: session.material().canonical_bytes().len(),
@@ -123,12 +138,19 @@ fn real_configured_aid_separates_consumption_from_independent_participation() {
     ] {
         let (mut session, mut audit, before, preview, commitment) =
             start(false, no_time, policy, hours);
-        let accepted = Accepted::capture(&commitment, &preview, &before).unwrap();
-        audit.accept(accepted.clone()).unwrap();
-        audit.accept(accepted).unwrap();
+        let accepted = Accepted::capture(&commitment, &preview, &before)
+            .expect("the fixture captures the authored state");
+        audit
+            .accept(accepted.clone())
+            .expect("the fixture call `accept` succeeds for the authored inputs");
+        audit
+            .accept(accepted)
+            .expect("the fixture call `accept` succeeds for the authored inputs");
         assert_eq!(audit.report()["accepted_original_commands"], 1);
         let (admitted, after) = advance(&mut session, Some(&commitment));
-        let fact = audit.read(&admitted, session.material(), &after).unwrap();
+        let fact = audit
+            .read(&admitted, session.material(), &after)
+            .expect("the fixture reader returns its authored facts");
         assert_eq!(after.aid_resolutions[0].practice.outcome, outcome);
         assert!(fact
             .selected_aid
@@ -148,16 +170,23 @@ fn original_remote_offer_survives_arrival_without_repeated_dispatch_charges() {
     let (mut session, mut audit, before, preview, commitment) =
         start(true, false, OrganizerPartnerPolicy::Participate, 5);
     audit
-        .accept(Accepted::capture(&commitment, &preview, &before).unwrap())
-        .unwrap();
+        .accept(
+            Accepted::capture(&commitment, &preview, &before)
+                .expect("the fixture captures the authored state"),
+        )
+        .expect("the fixture call `accept` succeeds for the authored inputs");
     let (first, after) = advance(&mut session, Some(&commitment));
-    audit.read(&first, session.material(), &after).unwrap();
+    audit
+        .read(&first, session.material(), &after)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(
         after.aid_resolutions[0].practice.outcome,
         OrganizerOutcome::AidAwaitingSupport
     );
     let (second, after) = advance(&mut session, None);
-    let fact = audit.read(&second, session.material(), &after).unwrap();
+    let fact = audit
+        .read(&second, session.material(), &after)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(
         after.aid_resolutions[0].practice.outcome,
         OrganizerOutcome::AidPracticeCompleted
@@ -179,7 +208,8 @@ fn another_campaign_cannot_replace_the_opening_or_advance_an_empty_prefix() {
     let mut cfg = fixture::config();
     cfg.campaign_id = [99; 16];
     let mut other = fixture::authored_session(
-        crate::michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        crate::michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("the Michigan hex foundation builds"),
         cfg,
         false,
         false,
@@ -191,12 +221,21 @@ fn another_campaign_cannot_replace_the_opening_or_advance_an_empty_prefix() {
     let (admitted, after) = advance(&mut other, None);
     assert!(admitted.receipts.aid.is_empty());
     assert_eq!(
-        audit.read(&admitted, other.material(), &after).unwrap_err(),
+        audit
+            .read(&admitted, other.material(), &after)
+            .expect_err("the malformed read request is refused"),
         Refusal::Identity
     );
     assert_eq!(audit.report(), original);
     assert_eq!(audit.opening, opening);
-    assert_eq!(audit.opening.as_ref().unwrap().1, before);
+    assert_eq!(
+        audit
+            .opening
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .1,
+        before
+    );
 }
 
 #[test]
@@ -209,7 +248,12 @@ fn changed_dynamic_original_offer_is_refused_before_admission() {
         match change {
             0 => row.payer_cash += 1,
             1 => row.donor_stock += 1,
-            2 => row.ordinary_offer.as_mut().unwrap().unit_price += 1,
+            2 => {
+                row.ordinary_offer
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .unit_price += 1;
+            }
             _ => {
                 if let crate::runtime_session::OrganizerAidTransportPreview::Routed {
                     stages, ..
@@ -221,7 +265,10 @@ fn changed_dynamic_original_offer_is_refused_before_admission() {
         }
         let mut candidate = audit.clone();
         assert_eq!(
-            candidate.accept(Accepted::capture(&commitment, &preview, &changed).unwrap()),
+            candidate.accept(
+                Accepted::capture(&commitment, &preview, &changed)
+                    .expect("the fixture captures the authored state")
+            ),
             Err(Refusal::OriginalOffer)
         );
         assert_eq!(candidate.report()["accepted_original_commands"], 0);
@@ -237,13 +284,16 @@ fn late_refusal_does_not_publish_a_partial_aid_fold() {
     assert_eq!(
         audit
             .read(&admitted, session.material(), &after)
-            .unwrap_err(),
+            .expect_err("the malformed read request is refused"),
         Refusal::OriginalOffer
     );
     assert_eq!(audit.report(), original);
     audit
-        .accept(Accepted::capture(&commitment, &preview, &before).unwrap())
-        .unwrap();
+        .accept(
+            Accepted::capture(&commitment, &preview, &before)
+                .expect("the fixture captures the authored state"),
+        )
+        .expect("the fixture call `accept` succeeds for the authored inputs");
     let original = audit.report();
     let mut crossed = admitted.clone();
     crossed.household_contributions[0]
@@ -252,16 +302,18 @@ fn late_refusal_does_not_publish_a_partial_aid_fold() {
     assert_eq!(
         audit
             .read(&crossed, session.material(), &after)
-            .unwrap_err(),
+            .expect_err("the malformed read request is refused"),
         Refusal::Time
     );
     assert_eq!(audit.report(), original);
-    audit.read(&admitted, session.material(), &after).unwrap();
+    audit
+        .read(&admitted, session.material(), &after)
+        .expect("the fixture reader returns its authored facts");
     let original = audit.report();
     assert_eq!(
         audit
             .read(&admitted, session.material(), &after)
-            .unwrap_err(),
+            .expect_err("the malformed read request is refused"),
         Refusal::Period
     );
     assert_eq!(audit.report(), original);

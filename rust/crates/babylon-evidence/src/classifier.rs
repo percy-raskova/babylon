@@ -304,7 +304,10 @@ fn normalize_zero(value: f64) -> f64 {
     }
 }
 
-#[allow(clippy::needless_range_loop)] // The literal bound is part of the classifier contract.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // The literal bound is part of the classifier contract.
 fn masses_have_identical_bits(masses: &[f64; 157], count: usize) -> bool {
     let expected_bits = masses[0].to_bits();
     for index in 0..157 {
@@ -318,7 +321,10 @@ fn masses_have_identical_bits(masses: &[f64; 157], count: usize) -> bool {
     true
 }
 
-#[allow(clippy::needless_range_loop)] // The literal bound is part of the classifier contract.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // The literal bound is part of the classifier contract.
 fn deltas_are_nonnegative(deltas: &[f64; 156], count: usize) -> bool {
     for index in 0..156 {
         if index >= count {
@@ -358,7 +364,10 @@ fn late_deltas_are_zero(deltas: &[f64; 156], width: usize) -> bool {
     true
 }
 
-#[allow(clippy::needless_range_loop)] // The literal bound is part of the classifier contract.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // The literal bound is part of the classifier contract.
 fn deltas_have_identical_positive_bits(deltas: &[f64; 156], count: usize) -> bool {
     let expected_bits = deltas[0].to_bits();
     if deltas[0] <= 0.0 {
@@ -375,7 +384,10 @@ fn deltas_have_identical_positive_bits(deltas: &[f64; 156], count: usize) -> boo
     true
 }
 
-#[allow(clippy::needless_range_loop)] // The literal bound is part of the classifier contract.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // The literal bound is part of the classifier contract.
 fn all_separations_retain_sign(separations: &[f64; 53], count: usize) -> bool {
     let first = separations[0];
     if first.to_bits() == 0 {

@@ -162,7 +162,7 @@ fn run_one_tick() -> (MemoryGraph, usize, usize) {
         &loaded_scenario.node_content_ids,
         &HashMap::new(),
     )
-    .unwrap();
+    .expect("the fixture seals the prepared period");
     let outcome = tick::run_tick(
         &loaded,
         &r.types,
@@ -221,8 +221,12 @@ fn the_same_content_over_the_same_world_hashes_identically() {
     let (first, _, _) = run_one_tick();
     let (second, _, _) = run_one_tick();
     assert_eq!(
-        first.state_hash().unwrap(),
-        second.state_hash().unwrap(),
+        first
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        second
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
         "two identical runs must produce identical state"
     );
 }
@@ -234,14 +238,18 @@ fn the_tick_actually_changed_the_world() {
     // a run_tick that returned Ok and executed no effect would pass every
     // other test in this file.
     let mut before = MemoryGraph::new();
-    scenario::load_scenario(SCENARIO, &mut before).unwrap();
-    let untouched = before.state_hash().unwrap();
+    scenario::load_scenario(SCENARIO, &mut before).expect("the authored scenario compiles");
+    let untouched = before
+        .state_hash()
+        .expect("the fixture graph hashes its state");
 
     let (after, _, fired) = run_one_tick();
     assert_eq!(fired, 1);
     assert_ne!(
         untouched,
-        after.state_hash().unwrap(),
+        after
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
         "a tick that fired an effect must move the state hash"
     );
 }
@@ -266,7 +274,7 @@ fn a_changed_scenario_changes_the_hash() {
 ",
         &mut richer,
     )
-    .unwrap();
+    .expect("the authored scenario compiles");
 
     let ctx = LoadContext {
         vocabulary: &r.vocabulary,
@@ -279,7 +287,8 @@ fn a_changed_scenario_changes_the_hash() {
         vocabulary_registry: None,
         rule_file: "economics/fundamental-theorem.bsl",
     };
-    let loaded = rule_pipeline::load_rule(FUNDAMENTAL_THEOREM, &ctx).unwrap();
+    let loaded =
+        rule_pipeline::load_rule(FUNDAMENTAL_THEOREM, &ctx).expect("the authored rule compiles");
     let mut sink = CollectingSink::default();
     let resolver = StableElementResolver::seal(
         &richer,
@@ -287,7 +296,7 @@ fn a_changed_scenario_changes_the_hash() {
         &loaded_scenario.node_content_ids,
         &HashMap::new(),
     )
-    .unwrap();
+    .expect("the fixture seals the prepared period");
     tick::run_tick(
         &loaded,
         &r.types,
@@ -305,12 +314,16 @@ fn a_changed_scenario_changes_the_hash() {
         &resolver,
         None,
     )
-    .unwrap();
+    .expect("the fixture run completes");
 
     let (baseline, _, _) = run_one_tick();
     assert_ne!(
-        baseline.state_hash().unwrap(),
-        richer.state_hash().unwrap(),
+        baseline
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        richer
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
         "one more unit of wages is a different world and must hash differently"
     );
 }
@@ -414,7 +427,7 @@ fn run_expr_tick(rule: &str) -> Result<(MemoryGraph, usize), String> {
         &loaded_scenario.node_content_ids,
         &HashMap::new(),
     )
-    .unwrap();
+    .expect("the fixture seals the prepared period");
     let outcome = tick::run_tick(
         &loaded,
         &r.types,
@@ -442,15 +455,17 @@ fn run_expr_tick(rule: &str) -> Result<(MemoryGraph, usize), String> {
 fn a_expr_binding_drives_a_real_tick() {
     let before = {
         let mut g = MemoryGraph::new();
-        scenario::load_scenario(EXPR_SCENARIO, &mut g).unwrap();
-        g.state_hash().unwrap()
+        scenario::load_scenario(EXPR_SCENARIO, &mut g).expect("the authored scenario compiles");
+        g.state_hash().expect("the fixture graph hashes its state")
     };
     let (graph, fired) = run_expr_tick(EXPR_RULE).expect("the :expr rule must run");
     assert_eq!(
         fired, 1,
         "only `periphery` (wealth 20) has `drained < 0`; `core` (900) does not"
     );
-    let after = graph.state_hash().unwrap();
+    let after = graph
+        .state_hash()
+        .expect("the fixture graph hashes its state");
     assert_ne!(
         before, after,
         "a tick that fired must move state — a rule that returns Ok and \
@@ -460,7 +475,11 @@ fn a_expr_binding_drives_a_real_tick() {
     let subjects = graph.nodes("SOCIAL_CLASS");
     let agitations: Vec<f64> = subjects
         .iter()
-        .map(|id| graph.node_attribute(*id, "social-class/agitation").unwrap())
+        .map(|id| {
+            graph
+                .node_attribute(*id, "social-class/agitation")
+                .expect("the fixture node carries the authored attribute")
+        })
         .collect();
     assert_eq!(agitations, vec![0.0, 1.0]);
 }
@@ -468,10 +487,13 @@ fn a_expr_binding_drives_a_real_tick() {
 /// Determinism (§III.7): the same content over the same world twice.
 #[test]
 fn a_expr_driven_tick_is_deterministic() {
-    let (a, fired_a) = run_expr_tick(EXPR_RULE).unwrap();
-    let (b, fired_b) = run_expr_tick(EXPR_RULE).unwrap();
+    let (a, fired_a) = run_expr_tick(EXPR_RULE).expect("the fixture run completes");
+    let (b, fired_b) = run_expr_tick(EXPR_RULE).expect("the fixture run completes");
     assert_eq!(fired_a, fired_b);
-    assert_eq!(a.state_hash().unwrap(), b.state_hash().unwrap());
+    assert_eq!(
+        a.state_hash().expect("the fixture graph hashes its state"),
+        b.state_hash().expect("the fixture graph hashes its state")
+    );
 }
 
 /// §2.5's calendar seam, served rather than refused: the driver knows its
@@ -502,7 +524,11 @@ fn the_servable_calendar_sources_run() {
     let agitations: Vec<f64> = graph
         .nodes("SOCIAL_CLASS")
         .iter()
-        .map(|id| graph.node_attribute(*id, "social-class/agitation").unwrap())
+        .map(|id| {
+            graph
+                .node_attribute(*id, "social-class/agitation")
+                .expect("the fixture node carries the authored attribute")
+        })
         .collect();
     assert_eq!(agitations, vec![1.0, 1.0]);
 }

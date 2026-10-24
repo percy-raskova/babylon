@@ -275,7 +275,10 @@ pub fn project_stored_field_value(
             {
                 return Err(IdentityCodecError::NonCanonicalStoredInt { bits });
             }
-            #[allow(clippy::cast_possible_truncation)]
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "the bounded fixture index is range-checked before narrowing"
+            )]
             let value = value as i64;
             Ok(StableBslValue::Int(value))
         }
@@ -288,7 +291,11 @@ pub fn project_stored_field_value(
             {
                 return Err(IdentityCodecError::InvalidStoredEnumOrdinal { bits });
             }
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            #[allow(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "the bounded fixture index is range-checked before narrowing; the value is non-negative before the unsigned cast"
+            )]
             let ordinal = value as u32;
             let declaration = enums
                 .declaration(*enum_type)
@@ -1196,7 +1203,7 @@ mod tests {
                 "TerritoryType",
                 &["CORE".to_owned(), "PERIPHERY".to_owned()],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let declared = field(BslType::Enum(territory_type));
         assert_eq!(
             project_stored_field_value(&declared, Some(1.0_f64.to_bits()), None, &enums,),

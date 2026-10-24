@@ -372,7 +372,8 @@ mod collection_history_tests {
     use fixture::Session;
 
     fn partial_collection_session() -> Session {
-        let foundation = crate::michigan_dynamic_hex_foundation().unwrap();
+        let foundation =
+            crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds");
         let base = fixture::authored_session(foundation, fixture::config(), false, false);
         let mut material = base.material().state().clone();
         let CircuitAccounting::Monetary(economy) = &mut material.accounting else {
@@ -382,7 +383,10 @@ mod collection_history_tests {
         let AccountId::Organization(organization) = payer else {
             panic!("existing captured organizational payer");
         };
-        let total = economy.book.total_cash_and_reserves().unwrap();
+        let total = economy
+            .book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow");
         // Conserved Designed opening allocation: the existing payer's six
         // micros become donor savings. Actual close alone produces the gift.
         economy
@@ -393,8 +397,14 @@ mod collection_history_tests {
                 fixture::money(6),
                 CashTransferPurpose::PublicTransfer,
             )
-            .unwrap();
-        assert_eq!(economy.book.total_cash_and_reserves().unwrap(), total);
+            .expect("the fixture transfer stays funded");
+        assert_eq!(
+            economy
+                .book
+                .total_cash_and_reserves()
+                .expect("the fixture book totals without overflow"),
+            total
+        );
         let costs = economy.costs.snapshot();
         economy.costs = HistoricalCostBook::open(
             &economy.book,
@@ -403,8 +413,11 @@ mod collection_history_tests {
             costs.equity,
             costs.equipment,
         )
-        .unwrap();
-        let recurring = economy.recurring.as_mut().unwrap();
+        .expect("the fixture opens the authored source");
+        let recurring = economy
+            .recurring
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         recurring.household_purchases[0].target_closing_stock = 4;
         recurring.household_purchases[0].enabled = false;
         for row in &mut recurring.attendance {
@@ -437,17 +450,21 @@ mod collection_history_tests {
             material,
             config,
         )
-        .unwrap()
+        .expect("the fixture opens a session")
     }
 
     fn current_view(register: &MaterialWorldRegister) -> OrganizerView {
-        let config = register.organizer_config().unwrap();
+        let config = register
+            .organizer_config()
+            .expect("the fixture register carries organizer config");
         babylon_practice_contract::organizer_view(
             config,
-            register.organizer_state().unwrap(),
+            register
+                .organizer_state()
+                .expect("the fixture register carries organizer state"),
             config.controlled_actor_id,
         )
-        .unwrap()
+        .expect("the fixture call `organizer_view` succeeds for the authored inputs")
     }
 
     #[test]
@@ -460,7 +477,7 @@ mod collection_history_tests {
         let original = session
             .material()
             .organizer_state()
-            .unwrap()
+            .expect("the fixture register carries organizer state")
             .collection_receipts[0]
             .clone();
         assert_eq!(original.fact.requested_cash_micros, 8);
@@ -473,16 +490,22 @@ mod collection_history_tests {
         assert_eq!(original.fact.original_commitment_id, accepted.commitment_id);
         assert_eq!(
             collection_history(
-                session.material().organizer_state().unwrap(),
+                session
+                    .material()
+                    .organizer_state()
+                    .expect("the fixture register carries organizer state"),
                 &current_view(session.material()),
             ),
             vec![original.clone()],
         );
         let later = fixture::prepare(&session, None);
         fixture::commit(&mut session, &mut sink, later);
-        let reopened = MaterialWorldRegister::decode(session.material().canonical_bytes()).unwrap();
+        let reopened = MaterialWorldRegister::decode(session.material().canonical_bytes())
+            .expect("the committed canonical bytes decode");
         assert_eq!(reopened, *session.material());
-        let state = reopened.organizer_state().unwrap();
+        let state = reopened
+            .organizer_state()
+            .expect("the fixture register carries organizer state");
         let view = current_view(&reopened);
         assert_eq!(view.period, 2);
         assert!(view
@@ -505,8 +528,11 @@ mod collection_history_tests {
         let first = fixture::prepare(&session, Some(&accepted));
         let mut sink = CollectingSink::default();
         fixture::commit(&mut session, &mut sink, first);
-        let reopened = MaterialWorldRegister::decode(session.material().canonical_bytes()).unwrap();
-        let state = reopened.organizer_state().unwrap();
+        let reopened = MaterialWorldRegister::decode(session.material().canonical_bytes())
+            .expect("the committed canonical bytes decode");
+        let state = reopened
+            .organizer_state()
+            .expect("the fixture register carries organizer state");
         assert_eq!(state.collection_receipts.len(), 1);
         assert!(collection_history(state, &opening_view).is_empty());
         // Restrict only the presentation window, never the canonical successful

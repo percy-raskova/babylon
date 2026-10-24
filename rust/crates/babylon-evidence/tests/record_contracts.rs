@@ -55,9 +55,10 @@ fn changed_digest(
 
 fn run_identity(mutation: Option<RunIdentityField>) -> RunIdentity {
     let session = if mutation == Some(RunIdentityField::Session) {
-        SessionId::new("mutated-session").unwrap()
+        SessionId::new("mutated-session")
+            .expect("the constructor accepts the authored fixture arguments")
     } else {
-        SessionId::new("r").unwrap()
+        SessionId::new("r").expect("the constructor accepts the authored fixture arguments")
     };
     let rng = if mutation == Some(RunIdentityField::RngAlgorithmId) {
         "rng-mutated"
@@ -89,7 +90,7 @@ fn run_identity(mutation: Option<RunIdentityField>) -> RunIdentity {
         rng,
         graph,
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn run_with_strings(
@@ -164,13 +165,17 @@ fn literal_trace_envelope() -> Vec<u8> {
 }
 
 fn sample(tick: u64, aggregate: f64) -> SfsSample {
-    SfsSample::new(tick, digest(20), digest(21), digest(22), aggregate).unwrap()
+    SfsSample::new(tick, digest(20), digest(21), digest(22), aggregate)
+        .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn continuing_samples(start_tick: u64) -> Vec<SfsSample> {
     let masses = [0.0, 1.0, 2.0, 5.0, 8.0, 10.0, 11.0];
     let mut samples = Vec::with_capacity(7);
-    #[allow(clippy::needless_range_loop)] // The literal ceiling is statically auditable.
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "the loop index is the authored row ordinal"
+    )] // The literal ceiling is statically auditable.
     for offset in 0..7 {
         let tick_offset = u64::try_from(offset).expect("seven offsets fit u64");
         samples.push(sample(start_tick + tick_offset, masses[offset]));
@@ -235,10 +240,15 @@ fn run_identity_encodes_all_eighteen_fields_in_exact_order() {
     let run = run_identity(None);
     let expected = literal_envelope(RunIdentity::DOMAIN, &expected_run_payload());
     assert_eq!(
-        babylon_evidence::canonical_envelope(&run).unwrap(),
+        babylon_evidence::canonical_envelope(&run)
+            .expect("the record exposes its canonical envelope"),
         expected
     );
-    assert_eq!(decode_envelope::<RunIdentity>(&expected).unwrap(), run);
+    assert_eq!(
+        decode_envelope::<RunIdentity>(&expected)
+            .expect("the fixture world holds the addressed component"),
+        run
+    );
     assert_eq!(run.host_component_manifest_digest(), digest(5));
     assert_eq!(run.governed_footprint_manifest_digest(), digest(9));
     assert_eq!(run.sfs_proof_profile_digest(), digest(10));
@@ -266,22 +276,26 @@ fn run_identity_encodes_all_eighteen_fields_in_exact_order() {
         RunIdentityField::RngAlgorithmId,
         RunIdentityField::GraphContractId,
     ];
-    let baseline_bytes = babylon_evidence::canonical_envelope(&run).unwrap();
-    let baseline_digest = babylon_evidence::record_digest(&run).unwrap();
+    let baseline_bytes = babylon_evidence::canonical_envelope(&run)
+        .expect("the record exposes its canonical envelope");
+    let baseline_digest =
+        babylon_evidence::record_digest(&run).expect("the record has a canonical digest");
     for field in fields {
         let mutated = run_identity(Some(field));
         assert_eq!(run.differing_fields(&mutated), vec![field]);
         assert_ne!(
-            babylon_evidence::canonical_envelope(&mutated).unwrap(),
+            babylon_evidence::canonical_envelope(&mutated)
+                .expect("the record exposes its canonical envelope"),
             baseline_bytes
         );
         assert_ne!(
-            babylon_evidence::record_digest(&mutated).unwrap(),
+            babylon_evidence::record_digest(&mutated).expect("the record has a canonical digest"),
             baseline_digest
         );
     }
     let all_different = RunIdentity::new(
-        SessionId::new("all-mutated").unwrap(),
+        SessionId::new("all-mutated")
+            .expect("the constructor accepts the authored fixture arguments"),
         digest(65),
         digest(66),
         digest(67),
@@ -300,48 +314,77 @@ fn run_identity_encodes_all_eighteen_fields_in_exact_order() {
         "rng-all-mutated",
         "graph-all-mutated",
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     assert_eq!(run.differing_fields(&all_different), fields.to_vec());
 }
 
 #[test]
 fn run_identity_session_and_ascii_id_bounds_are_closed() {
-    let one = run_with_strings(SessionId::new("s").unwrap(), "r", "g").unwrap();
+    let one = run_with_strings(
+        SessionId::new("s").expect("the constructor accepts the authored fixture arguments"),
+        "r",
+        "g",
+    )
+    .expect("the fixture run completes");
     assert_eq!(
-        decode_envelope::<RunIdentity>(&babylon_evidence::canonical_envelope(&one).unwrap())
-            .unwrap(),
+        decode_envelope::<RunIdentity>(
+            &babylon_evidence::canonical_envelope(&one)
+                .expect("the record exposes its canonical envelope")
+        )
+        .expect("the fixture world holds the addressed component"),
         one
     );
     let maximum = run_with_strings(
-        SessionId::new("s".repeat(256)).unwrap(),
+        SessionId::new("s".repeat(256))
+            .expect("the constructor accepts the authored fixture arguments"),
         &"r".repeat(64),
         &"g".repeat(64),
     )
-    .unwrap();
-    let maximum_bytes = babylon_evidence::canonical_envelope(&maximum).unwrap();
+    .expect("the fixture run completes");
+    let maximum_bytes = babylon_evidence::canonical_envelope(&maximum)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(payload_length::<RunIdentity>(&maximum_bytes), 870);
     assert_eq!(
-        decode_envelope::<RunIdentity>(&maximum_bytes).unwrap(),
+        decode_envelope::<RunIdentity>(&maximum_bytes)
+            .expect("the fixture world holds the addressed component"),
         maximum
     );
     assert_eq!(
-        run_with_strings(SessionId::new("s".repeat(257)).unwrap(), "r", "g"),
+        run_with_strings(
+            SessionId::new("s".repeat(257))
+                .expect("the constructor accepts the authored fixture arguments"),
+            "r",
+            "g"
+        ),
         Err(SfsRecordError::InvalidSessionLength { actual: 257 })
     );
     assert_eq!(
-        run_with_strings(SessionId::new("cafe\u{301}").unwrap(), "r", "g"),
+        run_with_strings(
+            SessionId::new("cafe\u{301}")
+                .expect("the constructor accepts the authored fixture arguments"),
+            "r",
+            "g"
+        ),
         Err(SfsRecordError::Wire(SfsWireError::NonNfc {
             field: "session"
         }))
     );
     assert_eq!(
-        run_with_strings(SessionId::new("s").unwrap(), "", "g"),
+        run_with_strings(
+            SessionId::new("s").expect("the constructor accepts the authored fixture arguments"),
+            "",
+            "g"
+        ),
         Err(SfsRecordError::Wire(SfsWireError::StringEmpty {
             field: "rng_algorithm_id"
         }))
     );
     assert_eq!(
-        run_with_strings(SessionId::new("s").unwrap(), &"r".repeat(65), "g"),
+        run_with_strings(
+            SessionId::new("s").expect("the constructor accepts the authored fixture arguments"),
+            &"r".repeat(65),
+            "g"
+        ),
         Err(SfsRecordError::Wire(SfsWireError::StringTooLong {
             field: "rng_algorithm_id",
             limit: 64,
@@ -349,7 +392,11 @@ fn run_identity_session_and_ascii_id_bounds_are_closed() {
         }))
     );
     assert_eq!(
-        run_with_strings(SessionId::new("s").unwrap(), "r", "gráph"),
+        run_with_strings(
+            SessionId::new("s").expect("the constructor accepts the authored fixture arguments"),
+            "r",
+            "gráph"
+        ),
         Err(SfsRecordError::Wire(SfsWireError::NonAscii {
             field: "graph_contract_id"
         }))
@@ -367,10 +414,15 @@ fn sample_wire_is_fixed_and_aggregate_validation_is_exact() {
     payload.extend_from_slice(&0_u64.to_be_bytes());
     let expected = literal_envelope(SfsSample::DOMAIN, &payload);
     assert_eq!(
-        babylon_evidence::canonical_envelope(&value).unwrap(),
+        babylon_evidence::canonical_envelope(&value)
+            .expect("the record exposes its canonical envelope"),
         expected
     );
-    assert_eq!(decode_envelope::<SfsSample>(&expected).unwrap(), value);
+    assert_eq!(
+        decode_envelope::<SfsSample>(&expected)
+            .expect("the fixture world holds the addressed component"),
+        value
+    );
     assert_eq!(
         SfsSample::new(0, digest(1), digest(2), digest(3), -1.0),
         Err(SfsRecordError::Wire(SfsWireError::Negative {
@@ -389,10 +441,16 @@ fn sample_wire_is_fixed_and_aggregate_validation_is_exact() {
 
 #[test]
 fn trace_requires_exact_window_count_start_and_consecutive_ticks() {
-    let valid = SfsTrace::new(digest(40), digest(41), 42, 10, 2, continuing_samples(10)).unwrap();
-    let encoded = babylon_evidence::canonical_envelope(&valid).unwrap();
+    let valid = SfsTrace::new(digest(40), digest(41), 42, 10, 2, continuing_samples(10))
+        .expect("the constructor accepts the authored fixture arguments");
+    let encoded = babylon_evidence::canonical_envelope(&valid)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(encoded.last(), Some(&(2_u8)));
-    assert_eq!(decode_envelope::<SfsTrace>(&encoded).unwrap(), valid);
+    assert_eq!(
+        decode_envelope::<SfsTrace>(&encoded)
+            .expect("the fixture world holds the addressed component"),
+        valid
+    );
     assert_eq!(valid.run_identity_digest(), digest(40));
     assert_eq!(
         SfsTrace::new(digest(1), digest(2), 3, 10, 1, continuing_samples(10)),
@@ -440,21 +498,31 @@ fn trace_requires_exact_window_count_start_and_consecutive_ticks() {
 
 #[test]
 fn trace_wire_is_one_complete_literal_envelope_with_nested_sample_envelopes() {
-    let trace = SfsTrace::new(digest(40), digest(41), 42, 10, 2, continuing_samples(10)).unwrap();
+    let trace = SfsTrace::new(digest(40), digest(41), 42, 10, 2, continuing_samples(10))
+        .expect("the constructor accepts the authored fixture arguments");
     let expected = literal_trace_envelope();
     assert_eq!(
-        babylon_evidence::canonical_envelope(&trace).unwrap(),
+        babylon_evidence::canonical_envelope(&trace)
+            .expect("the record exposes its canonical envelope"),
         expected
     );
-    assert_eq!(decode_envelope::<SfsTrace>(&expected).unwrap(), trace);
+    assert_eq!(
+        decode_envelope::<SfsTrace>(&expected)
+            .expect("the fixture world holds the addressed component"),
+        trace
+    );
 }
 
 #[test]
 fn trace_decode_refusal_precedence_pins_interval_and_classification() {
-    let trace = SfsTrace::new(digest(40), digest(41), 42, 10, 2, continuing_samples(10)).unwrap();
-    let encoded = babylon_evidence::canonical_envelope(&trace).unwrap();
+    let trace = SfsTrace::new(digest(40), digest(41), 42, 10, 2, continuing_samples(10))
+        .expect("the constructor accepts the authored fixture arguments");
+    let encoded = babylon_evidence::canonical_envelope(&trace)
+        .expect("the record exposes its canonical envelope");
     let mut invalid_code = encoded.clone();
-    *invalid_code.last_mut().unwrap() = 6;
+    *invalid_code
+        .last_mut()
+        .expect("the fixture sequence is non-empty") = 6;
     assert_eq!(
         decode_envelope::<SfsTrace>(&invalid_code),
         Err(SfsRecordError::Wire(SfsWireError::InvalidCode {
@@ -463,7 +531,9 @@ fn trace_decode_refusal_precedence_pins_interval_and_classification() {
         }))
     );
     let mut wrong_valid_class = encoded.clone();
-    *wrong_valid_class.last_mut().unwrap() = 0;
+    *wrong_valid_class
+        .last_mut()
+        .expect("the fixture sequence is non-empty") = 0;
     assert_eq!(
         decode_envelope::<SfsTrace>(&wrong_valid_class),
         Err(SfsRecordError::ClassificationMismatch {
@@ -486,10 +556,16 @@ fn trace_maximum_of_157_complete_sample_envelopes_round_trips() {
     for tick in 0..157 {
         samples.push(sample(tick, 0.0));
     }
-    let trace = SfsTrace::new(digest(1), digest(2), 3, 0, 52, samples).unwrap();
-    let envelope = babylon_evidence::canonical_envelope(&trace).unwrap();
+    let trace = SfsTrace::new(digest(1), digest(2), 3, 0, 52, samples)
+        .expect("the constructor accepts the authored fixture arguments");
+    let envelope = babylon_evidence::canonical_envelope(&trace)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(payload_length::<SfsTrace>(&envelope), 22_067);
-    assert_eq!(decode_envelope::<SfsTrace>(&envelope).unwrap(), trace);
+    assert_eq!(
+        decode_envelope::<SfsTrace>(&envelope)
+            .expect("the fixture world holds the addressed component"),
+        trace
+    );
 }
 
 #[test]
@@ -534,16 +610,19 @@ fn candidate_schedule_sorts_exact_rows_and_rejects_duplicates_or_bad_ids() {
         } else {
             digest(5)
         };
-    let schedule = PracticeCandidateSchedule::new(vec![later, same_tick_b, same_tick_a]).unwrap();
+    let schedule = PracticeCandidateSchedule::new(vec![later, same_tick_b, same_tick_a])
+        .expect("the constructor accepts the authored fixture arguments");
     assert_eq!(schedule.rows()[0].attempt_tick(), 1);
     assert_eq!(
         schedule.rows()[0].practice_intent_digest(),
         expected_first_intent
     );
     assert_eq!(schedule.rows()[2].attempt_tick(), 2);
-    let round_trip = babylon_evidence::canonical_envelope(&schedule).unwrap();
+    let round_trip = babylon_evidence::canonical_envelope(&schedule)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(
-        decode_envelope::<PracticeCandidateSchedule>(&round_trip).unwrap(),
+        decode_envelope::<PracticeCandidateSchedule>(&round_trip)
+            .expect("the fixture world holds the addressed component"),
         schedule
     );
     let duplicate = candidate(1, 3, 4);
@@ -555,7 +634,8 @@ fn candidate_schedule_sorts_exact_rows_and_rejects_duplicates_or_bad_ids() {
     );
 
     let one = candidate(7, 8, 9);
-    let one_schedule = PracticeCandidateSchedule::new(vec![one.clone()]).unwrap();
+    let one_schedule = PracticeCandidateSchedule::new(vec![one.clone()])
+        .expect("the constructor accepts the authored fixture arguments");
     let mut expected_payload = Vec::new();
     expected_payload.extend_from_slice(&1_u32.to_be_bytes());
     expected_payload.extend_from_slice(
@@ -566,7 +646,8 @@ fn candidate_schedule_sorts_exact_rows_and_rejects_duplicates_or_bad_ids() {
     expected_payload.extend_from_slice(digest(9).as_bytes());
     let expected = literal_envelope(PracticeCandidateSchedule::DOMAIN, &expected_payload);
     assert_eq!(
-        babylon_evidence::canonical_envelope(&one_schedule).unwrap(),
+        babylon_evidence::canonical_envelope(&one_schedule)
+            .expect("the record exposes its canonical envelope"),
         expected
     );
     let mut bad_id = expected;
@@ -618,10 +699,13 @@ fn preregistration_derives_start_and_closes_codes_and_accessors() {
         PracticeId::Damage,
         PracticeId::CapitalStrike,
     ] {
-        let value = preregistration(10, 2, practice).unwrap();
-        let bytes = babylon_evidence::canonical_envelope(&value).unwrap();
+        let value = preregistration(10, 2, practice)
+            .expect("the fixture call `preregistration` succeeds for the authored inputs");
+        let bytes = babylon_evidence::canonical_envelope(&value)
+            .expect("the record exposes its canonical envelope");
         assert_eq!(
-            decode_envelope::<SfsPreregistration>(&bytes).unwrap(),
+            decode_envelope::<SfsPreregistration>(&bytes)
+                .expect("the fixture world holds the addressed component"),
             value
         );
         assert_eq!(value.practice_candidate_schedule_digest(), digest(31));
@@ -637,7 +721,8 @@ fn preregistration_derives_start_and_closes_codes_and_accessors() {
         assert_eq!(value.resource_contract_digest(), digest(40));
         assert_eq!(value.parameter_bytes_digest(), digest(37));
     }
-    let exact = preregistration(10, 2, PracticeId::Organize).unwrap();
+    let exact = preregistration(10, 2, PracticeId::Organize)
+        .expect("the fixture call `preregistration` succeeds for the authored inputs");
     let mut payload = Vec::new();
     payload.extend_from_slice(&10_u64.to_be_bytes());
     payload.extend_from_slice(&11_u64.to_be_bytes());
@@ -653,7 +738,8 @@ fn preregistration_derives_start_and_closes_codes_and_accessors() {
     payload.extend_from_slice(digest(40).as_bytes());
     payload.extend_from_slice(digest(37).as_bytes());
     assert_eq!(
-        babylon_evidence::canonical_envelope(&exact).unwrap(),
+        babylon_evidence::canonical_envelope(&exact)
+            .expect("the record exposes its canonical envelope"),
         literal_envelope(SfsPreregistration::DOMAIN, &payload)
     );
     assert_eq!(
@@ -670,8 +756,10 @@ fn preregistration_derives_start_and_closes_codes_and_accessors() {
 
 #[test]
 fn preregistration_decode_rejects_stored_start_policy_cadence_and_practice_code() {
-    let value = preregistration(10, 2, PracticeId::Organize).unwrap();
-    let encoded = babylon_evidence::canonical_envelope(&value).unwrap();
+    let value = preregistration(10, 2, PracticeId::Organize)
+        .expect("the fixture call `preregistration` succeeds for the authored inputs");
+    let encoded = babylon_evidence::canonical_envelope(&value)
+        .expect("the record exposes its canonical envelope");
     let payload = payload_start::<SfsPreregistration>();
     let mut wrong_start = encoded.clone();
     wrong_start[payload + 8..payload + 16].copy_from_slice(&99_u64.to_be_bytes());
@@ -717,25 +805,32 @@ fn attempt_ledger_sorts_keeps_rejections_and_projects_exact_candidates() {
         PracticeDisposition::Accepted,
         digest(64),
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     let rejected = PracticeAttemptRow::new(
         rejected_candidate.clone(),
         PracticeDisposition::Rejected,
         digest(65),
     )
-    .unwrap();
-    let ledger = PracticeAttemptLedger::new(digest(66), vec![accepted, rejected]).unwrap();
-    let projected = ledger.project_candidates().unwrap();
-    let expected =
-        PracticeCandidateSchedule::new(vec![accepted_candidate, rejected_candidate]).unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
+    let ledger = PracticeAttemptLedger::new(digest(66), vec![accepted, rejected])
+        .expect("the constructor accepts the authored fixture arguments");
+    let projected = ledger
+        .project_candidates()
+        .expect("the fixture projection accepts the authored input");
+    let expected = PracticeCandidateSchedule::new(vec![accepted_candidate, rejected_candidate])
+        .expect("the constructor accepts the authored fixture arguments");
     assert_eq!(
-        babylon_evidence::canonical_envelope(&projected).unwrap(),
-        babylon_evidence::canonical_envelope(&expected).unwrap()
+        babylon_evidence::canonical_envelope(&projected)
+            .expect("the record exposes its canonical envelope"),
+        babylon_evidence::canonical_envelope(&expected)
+            .expect("the record exposes its canonical envelope")
     );
     assert_eq!(projected.rows().len(), 2);
-    let bytes = babylon_evidence::canonical_envelope(&ledger).unwrap();
+    let bytes = babylon_evidence::canonical_envelope(&ledger)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(
-        decode_envelope::<PracticeAttemptLedger>(&bytes).unwrap(),
+        decode_envelope::<PracticeAttemptLedger>(&bytes)
+            .expect("the fixture world holds the addressed component"),
         ledger
     );
     assert_eq!(PracticeDisposition::Accepted.code(), 0);
@@ -754,8 +849,8 @@ fn attempt_rows_reject_zero_duplicate_unknown_and_mismatched_identity() {
         ),
         Err(SfsRecordError::ZeroDispositionDigest)
     );
-    let row =
-        PracticeAttemptRow::new(candidate_row, PracticeDisposition::Accepted, digest(4)).unwrap();
+    let row = PracticeAttemptRow::new(candidate_row, PracticeDisposition::Accepted, digest(4))
+        .expect("the constructor accepts the authored fixture arguments");
     assert_eq!(
         PracticeAttemptLedger::new(digest(5), vec![row.clone(), row]),
         Err(SfsRecordError::Wire(SfsWireError::DuplicateEntry {
@@ -764,9 +859,11 @@ fn attempt_rows_reject_zero_duplicate_unknown_and_mismatched_identity() {
     );
 
     let row = PracticeAttemptRow::new(candidate(1, 2, 3), PracticeDisposition::Accepted, digest(4))
-        .unwrap();
-    let ledger = PracticeAttemptLedger::new(digest(5), vec![row]).unwrap();
-    let encoded = babylon_evidence::canonical_envelope(&ledger).unwrap();
+        .expect("the constructor accepts the authored fixture arguments");
+    let ledger = PracticeAttemptLedger::new(digest(5), vec![row])
+        .expect("the constructor accepts the authored fixture arguments");
+    let encoded = babylon_evidence::canonical_envelope(&ledger)
+        .expect("the record exposes its canonical envelope");
     let mut expected_payload = Vec::new();
     expected_payload.extend_from_slice(digest(5).as_bytes());
     expected_payload.extend_from_slice(&1_u32.to_be_bytes());
@@ -842,7 +939,7 @@ fn row_count_maximum_succeeds_and_plus_one_refuses_before_sorting() {
         let row = candidate(index, 70, 71);
         attempts.push(
             PracticeAttemptRow::new(row.clone(), PracticeDisposition::Accepted, digest(72))
-                .unwrap(),
+                .expect("the constructor accepts the authored fixture arguments"),
         );
         candidates.push(row);
     }
@@ -864,14 +961,18 @@ fn row_count_maximum_succeeds_and_plus_one_refuses_before_sorting() {
     );
     candidates.pop();
     attempts.pop();
-    let schedule = PracticeCandidateSchedule::new(candidates).unwrap();
-    let schedule_bytes = babylon_evidence::canonical_envelope(&schedule).unwrap();
+    let schedule = PracticeCandidateSchedule::new(candidates)
+        .expect("the constructor accepts the authored fixture arguments");
+    let schedule_bytes = babylon_evidence::canonical_envelope(&schedule)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(
         payload_length::<PracticeCandidateSchedule>(&schedule_bytes),
         6_815_644
     );
-    let ledger = PracticeAttemptLedger::new(digest(73), attempts).unwrap();
-    let ledger_bytes = babylon_evidence::canonical_envelope(&ledger).unwrap();
+    let ledger = PracticeAttemptLedger::new(digest(73), attempts)
+        .expect("the constructor accepts the authored fixture arguments");
+    let ledger_bytes = babylon_evidence::canonical_envelope(&ledger)
+        .expect("the record exposes its canonical envelope");
     assert_eq!(
         payload_length::<PracticeAttemptLedger>(&ledger_bytes),
         8_978_331

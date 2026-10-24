@@ -723,7 +723,10 @@ impl DurableMaterialRuntime {
     /// Observe genuine stage starts without changing detached preparation or durable publication.
     /// # Errors
     /// Returns the same admission, material and persistence refusals as `advance_and_commit`.
-    #[allow(clippy::too_many_lines)]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "`advance_and_commit_with_progress` keeps one authored sequence in a single place"
+    )]
     pub fn advance_and_commit_with_progress(
         &mut self,
         sink: &mut CollectingSink,
@@ -2166,7 +2169,9 @@ mod writer_bounds_tests {
             .dbname("campaigns")
             .connect_timeout(Duration::from_secs(3600))
             .tcp_user_timeout(Duration::from_secs(3600));
-        let bounded = bounded_material_writer_config(&caller).unwrap();
+        let bounded = bounded_material_writer_config(&caller).expect(
+            "the fixture call `bounded_material_writer_config` succeeds for the authored inputs",
+        );
         assert_eq!(bounded.get_user(), caller.get_user());
         assert_eq!(bounded.get_dbname(), caller.get_dbname());
         assert_eq!(
@@ -2179,7 +2184,8 @@ mod writer_bounds_tests {
         );
         assert_eq!(bounded.get_options(), Some(WRITER_STARTUP_OPTIONS));
         assert_eq!(caller.get_options(), None);
-        crate::postgres_catalog::validate_connection_target(&caller).unwrap();
+        crate::postgres_catalog::validate_connection_target(&caller)
+            .expect("the authored fixture satisfies the rule");
         assert!(!WRITER_STARTUP_OPTIONS.contains("default_transaction_read_only=on"));
         assert!(WRITER_STARTUP_OPTIONS.contains("-c jit=off"));
     }
@@ -2224,7 +2230,9 @@ mod writer_bounds_tests {
             .expect("explicit bootstrapped local runtime target")
             .parse()
             .expect("runtime connection configuration");
-        let bounded = bounded_material_writer_config(&raw).unwrap();
+        let bounded = bounded_material_writer_config(&raw).expect(
+            "the fixture call `bounded_material_writer_config` succeeds for the authored inputs",
+        );
         let mut client = bounded.connect(NoTls).expect("bounded writer connection");
         let mut transaction = client
             .build_transaction()
@@ -2256,9 +2264,11 @@ mod writer_bounds_tests {
 pub(crate) fn foundation_session_shares_the_exact_opening_canonical_allocation() {
     let foundation = MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let opening = foundation.initial_register().shared_canonical_bytes();
-    let session = foundation.into_session().unwrap();
+    let session = foundation
+        .into_session()
+        .expect("the fixture opens a session");
     let shared = session.material().shared_canonical_bytes();
     assert!(
         opening.shares_allocation(&shared),

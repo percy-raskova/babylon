@@ -59,11 +59,15 @@ fn household_service_need_uses_the_selected_basis_at_admission_and_consumption()
         let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
             panic!("the control must pay for actual services");
         };
-        let rows = economy.recurring.as_mut().unwrap();
+        let rows = economy
+            .recurring
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         rows.households[0].persons = 4;
         rows.household_needs[0].basis = basis;
         rows.household_purchases[0].maximum_purchase = 4;
-        let close = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+        let close = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
         let receipt = &close.household_services[0];
         assert_eq!(receipt.required_quantity, expected);
         assert_eq!(
@@ -75,7 +79,7 @@ fn household_service_need_uses_the_selected_basis_at_admission_and_consumption()
             .service_performance
             .iter()
             .find(|row| row.buyer == AccountId::Household(crate::household()))
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(request.requested_quantity, expected);
     }
 }
@@ -208,8 +212,8 @@ pub(super) fn recurring(mut state: MaterialCircuitState) -> MaterialCircuitState
 }
 #[test]
 fn service_household_satisfaction_has_no_pantry_or_retailer_requirement() {
-    let closed =
-        babylon_material_circuit::advance_material_circuit(&recurring(crate::opening())).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&recurring(crate::opening()))
+        .expect("the authored material state advances one period");
     assert!(closed.household_consumption.is_empty());
     assert!(closed.household_demand.is_empty());
     assert_eq!(closed.household_services.len(), 1);
@@ -226,13 +230,18 @@ fn service_household_satisfaction_has_no_pantry_or_retailer_requirement() {
     let CircuitAccounting::Monetary(e) = &closed.state.accounting else {
         panic!()
     };
-    assert!(e.recurring.as_ref().unwrap().household_stocks.is_empty());
+    assert!(e
+        .recurring
+        .as_ref()
+        .expect("the fixture set the optional field before this read")
+        .household_stocks
+        .is_empty());
     assert_eq!(
         closed
             .income
             .iter()
             .find(|r| r.account == AccountId::Household(crate::household()))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .statement
             .consumption_expense,
         crate::money(4)
@@ -241,7 +250,8 @@ fn service_household_satisfaction_has_no_pantry_or_retailer_requirement() {
 #[test]
 fn service_quotes_distinguish_funded_unmet_cost_pressure_and_spare_capacity() {
     let base = recurring(crate::opening());
-    let spare = babylon_material_circuit::advance_material_circuit(&base).unwrap();
+    let spare = babylon_material_circuit::advance_material_circuit(&base)
+        .expect("the authored material state advances one period");
     let u = &spare.service_markets[0];
     assert_eq!(
         (
@@ -261,7 +271,8 @@ fn service_quotes_distinguish_funded_unmet_cost_pressure_and_spare_capacity() {
     );
     let mut scarce = base.clone();
     scarce.inventory[0].quantity = 2;
-    let closed = babylon_material_circuit::advance_material_circuit(&scarce).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&scarce)
+        .expect("the authored material state advances one period");
     let u = &closed.service_markets[0];
     assert!(u.admitted_quantity > u.performed_quantity);
     assert_eq!(
@@ -273,7 +284,8 @@ fn service_quotes_distinguish_funded_unmet_cost_pressure_and_spare_capacity() {
         panic!()
     };
     e.employment[0].compensation = LaborCompensation::Wage(crate::money(3));
-    let closed = babylon_material_circuit::advance_material_circuit(&costly).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&costly)
+        .expect("the authored material state advances one period");
     let u = &closed.service_markets[0];
     assert_eq!(
         (u.direct_cost, u.next_price, u.reason),
@@ -301,25 +313,34 @@ fn future_service_reserve_retains_accepted_quote_through_current_price_change_an
         }),
         crate::money(2),
     )
-    .unwrap();
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    .expect("the fixture admits the authored purchase");
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     let CircuitAccounting::Monetary(e) = &closed.state.accounting else {
         panic!()
     };
     assert_eq!(
         e.book
             .purchase(OutboundOrderId::Service(id))
-            .unwrap()
+            .expect("the fixture purchase is present")
             .unit_price,
         crate::money(2)
     );
     assert_eq!(
-        e.recurring.as_ref().unwrap().offers[0].unit_price,
+        e.recurring
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .offers[0]
+            .unit_price,
         crate::money(1)
     );
     assert_eq!(closed.state.service_orders.len(), 1);
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&closed.state).unwrap();
-    assert_eq!(decode_material_circuit_state(&bytes).unwrap(), closed.state);
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&closed.state)
+        .expect("the canonical material state encodes");
+    assert_eq!(
+        decode_material_circuit_state(&bytes).expect("the canonical material bytes decode"),
+        closed.state
+    );
 }
 #[test]
 fn purchased_unused_service_is_expensed_and_unsold_provider_capacity_does_not_work() {
@@ -328,12 +349,13 @@ fn purchased_unused_service_is_expensed_and_unsold_provider_capacity_does_not_wo
     state
         .production_commitments
         .retain(|r| r.process_id != crate::process(3));
-    let closed = babylon_material_circuit::advance_material_circuit(&crate::funded(state)).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&crate::funded(state))
+        .expect("the authored material state advances one period");
     let f = closed
         .income
         .iter()
         .find(|r| r.account == AccountId::Site(crate::site(3)))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(f.statement.unused_service_expense, crate::money(5));
     assert_eq!(f.statement.idle_labor_expense, crate::money(1));
     assert!(closed
@@ -341,7 +363,8 @@ fn purchased_unused_service_is_expensed_and_unsold_provider_capacity_does_not_wo
         .iter()
         .filter(|r| r.buyer == AccountId::Site(crate::site(3)))
         .all(|r| r.used_quantity == 0 && r.unused_quantity == 1));
-    let closed = babylon_material_circuit::advance_material_circuit(&crate::opening()).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&crate::opening())
+        .expect("the authored material state advances one period");
     assert!(closed.production.iter().all(|r| r.produced_batches == 0));
     assert!(closed.labor_use.iter().all(|r| r.used_hours == 0));
     assert!(closed
@@ -352,7 +375,8 @@ fn purchased_unused_service_is_expensed_and_unsold_provider_capacity_does_not_wo
 #[test]
 fn service_wire_refuses_old_version_and_late_planning_overflow_is_atomic() {
     let mut state = recurring(crate::opening());
-    let before = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     let mut old = before.clone();
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     old[version..version + 2].copy_from_slice(&8_u16.to_be_bytes());
@@ -363,7 +387,11 @@ fn service_wire_refuses_old_version_and_late_planning_overflow_is_atomic() {
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         panic!()
     };
-    e.recurring.as_mut().unwrap().production[2].output_buffer = u64::MAX;
+    e.recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .production[2]
+        .output_buffer = u64::MAX;
     state.supplier_routes.push(SupplierRoute {
         buyer_site_id: crate::site(1),
         supplier_site_id: crate::site(3),
@@ -389,16 +417,18 @@ fn service_wire_refuses_old_version_and_late_planning_overflow_is_atomic() {
         }),
         crate::money(1),
     )
-    .unwrap()
+    .expect("the fixture admits the authored purchase")
     .0;
     // The goods planner overflows only after service work and settlement have run detached.
-    let before = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&state).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes"),
         before
     );
 }
@@ -409,7 +439,8 @@ fn current_production_withdrawal_removes_b2b_service_requests() {
     state
         .production_commitments
         .retain(|r| r.process_id != crate::process(3));
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     let firm_requests: Vec<_> = closed
         .service_performance
         .iter()
@@ -455,9 +486,10 @@ fn utility_and_goods_stages_share_the_same_site_labor_residual() {
         .stocks
         .iter_mut()
         .find(|r| r.good_id == crate::good(3))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .owner = AccountId::Site(crate::site(1));
-    e.costs = HistoricalCostBook::from_snapshot(captured).unwrap();
+    e.costs =
+        HistoricalCostBook::from_snapshot(captured).expect("the snapshot admits the derived value");
     sync_member_hours(&mut state);
     for (id, provider, buyer, commodity, price) in [(11, 1, 2, 1, 1), (12, 2, 1, 2, 2)] {
         state = babylon_material_circuit::admit_material_purchase(
@@ -473,16 +505,17 @@ fn utility_and_goods_stages_share_the_same_site_labor_residual() {
             }),
             crate::money(price),
         )
-        .unwrap()
+        .expect("the fixture admits the authored purchase")
         .0;
     }
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(
         closed
             .production
             .iter()
             .find(|r| r.process_id == crate::process(1))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .produced_batches,
         1
     );
@@ -491,7 +524,7 @@ fn utility_and_goods_stages_share_the_same_site_labor_residual() {
             .production
             .iter()
             .find(|r| r.process_id == crate::process(3))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .produced_batches,
         0
     );
@@ -500,19 +533,20 @@ fn utility_and_goods_stages_share_the_same_site_labor_residual() {
             .labor_use
             .iter()
             .find(|r| r.site_id == crate::site(1))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .used_hours,
         1
     );
     state.labor[0].available = 2;
     sync_member_hours(&mut state);
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(
         closed
             .production
             .iter()
             .find(|r| r.process_id == crate::process(3))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .produced_batches,
         1
     );
@@ -529,9 +563,10 @@ fn batch_opening(mut state: MaterialCircuitState) -> MaterialCircuitState {
     stocks
         .iter_mut()
         .find(|r| r.good_id == crate::good(4))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .amount = crate::money(9);
-    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![]).unwrap();
+    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     if let Some(r) = &mut e.recurring {
         r.household_purchases[0].enabled = false;
         r.attendance[0].planned_hours = 1;
@@ -547,7 +582,7 @@ fn service_batches_expire_unallocated_output_at_exact_remaining_cost() {
     let closed = babylon_material_circuit::advance_material_circuit(&crate::funded(batch_opening(
         crate::opening(),
     )))
-    .unwrap();
+    .expect("the authored material state advances one period");
     assert_eq!(closed.production[0].produced_batches, 1);
     let output = &closed.service_outputs[0];
     assert_eq!(
@@ -564,7 +599,7 @@ fn service_batches_expire_unallocated_output_at_exact_remaining_cost() {
         .income
         .iter()
         .find(|r| r.account == AccountId::Site(crate::site(1)))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (
             u.statement.sales,
@@ -585,15 +620,19 @@ fn service_batches_expire_unallocated_output_at_exact_remaining_cost() {
         .iter()
         .all(|r| r.good_id != crate::good(1) && r.good_id != crate::good(2)));
     assert!(closed.state.freight.is_empty());
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&closed.state).unwrap();
-    assert_eq!(decode_material_circuit_state(&bytes).unwrap(), closed.state);
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&closed.state)
+        .expect("the canonical material state encodes");
+    assert_eq!(
+        decode_material_circuit_state(&bytes).expect("the canonical material bytes decode"),
+        closed.state
+    );
 }
 #[test]
 fn service_quote_cost_evidence_includes_unallocated_batch_output() {
     let closed = babylon_material_circuit::advance_material_circuit(&batch_opening(recurring(
         crate::opening(),
     )))
-    .unwrap();
+    .expect("the authored material state advances one period");
     let u = &closed.service_markets[0];
     assert_eq!(
         (u.performed_quantity, u.direct_cost, u.next_price, u.reason),
@@ -635,7 +674,8 @@ fn same_stage_peer_acquisition_cannot_mix_into_unsold_provider_cost() {
         unit_id: crate::unit(4),
         amount: crate::money(19),
     });
-    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![]).unwrap();
+    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     state.service_connections = (1..=2)
         .map(|provider| ServiceConnection {
             provider_site_id: crate::site(provider),
@@ -658,10 +698,11 @@ fn same_stage_peer_acquisition_cannot_mix_into_unsold_provider_cost() {
             }),
             crate::money(price),
         )
-        .unwrap()
+        .expect("the fixture admits the authored purchase")
         .0;
     }
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(
         closed
             .service_outputs
@@ -678,7 +719,7 @@ fn same_stage_peer_acquisition_cannot_mix_into_unsold_provider_cost() {
             .income
             .iter()
             .find(|r| r.account == AccountId::Site(crate::site(owner)))
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(
             (r.statement.unused_service_expense, r.net_income),
             (crate::money(expense), crate::money(income))
@@ -724,8 +765,9 @@ fn prebooked_services_cover_recurring_need_before_any_new_purchase() {
             }),
             crate::money(1),
         )
-        .unwrap();
-        let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+        .expect("the fixture admits the authored purchase");
+        let closed = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
         let rows: Vec<_> = closed
             .service_performance
             .iter()
@@ -737,13 +779,19 @@ fn prebooked_services_cover_recurring_need_before_any_new_purchase() {
             rows.iter().map(|r| r.admitted_quantity).sum::<u64>(),
             if buyer == 2 { 2 } else { 1 }
         );
-        let old = rows.iter().find(|r| r.order_id == prebooked_id).unwrap();
+        let old = rows
+            .iter()
+            .find(|r| r.order_id == prebooked_id)
+            .expect("the fixture holds the searched element");
         assert_eq!(
             (old.admitted_quantity, old.unit_price),
             (1, crate::money(1))
         );
         if buyer == 2 {
-            let topup = rows.iter().find(|r| r.order_id != prebooked_id).unwrap();
+            let topup = rows
+                .iter()
+                .find(|r| r.order_id != prebooked_id)
+                .expect("the fixture holds the searched element");
             assert_eq!(
                 (topup.admitted_quantity, topup.unit_price),
                 (1, crate::money(2))
@@ -762,16 +810,16 @@ fn prebooked_household_service_retains_its_price_and_is_not_purchased_twice() {
     accounts
         .iter_mut()
         .find(|r| r.id == AccountId::Site(crate::site(3)))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .cash = crate::money(8);
     accounts
         .iter_mut()
         .find(|r| r.id == AccountId::Household(crate::household()))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .cash = crate::money(2);
-    e.book = MonetaryBook::open(accounts).unwrap();
+    e.book = MonetaryBook::open(accounts).expect("the fixture opens the authored source");
     e.costs = HistoricalCostBook::open(&e.book, e.costs.snapshot().stocks, vec![], vec![], vec![])
-        .unwrap();
+        .expect("the fixture opens the authored source");
     let id = babylon_material_circuit::recurring_service_order_id(
         1,
         AccountId::Household(crate::household()),
@@ -792,8 +840,9 @@ fn prebooked_household_service_retains_its_price_and_is_not_purchased_twice() {
         }),
         crate::money(1),
     )
-    .unwrap();
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    .expect("the fixture admits the authored purchase");
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     let rows: Vec<_> = closed
         .service_performance
         .iter()
@@ -801,7 +850,10 @@ fn prebooked_household_service_retains_its_price_and_is_not_purchased_twice() {
         .collect();
     assert_eq!(rows.iter().map(|r| r.admitted_quantity).sum::<u64>(), 1);
     assert_eq!(
-        rows.iter().find(|r| r.order_id == id).unwrap().unit_price,
+        rows.iter()
+            .find(|r| r.order_id == id)
+            .expect("the fixture holds the searched element")
+            .unit_price,
         crate::money(1)
     );
     assert_eq!(closed.household_services[0].satisfied_quantity, 1);
@@ -810,7 +862,7 @@ fn prebooked_household_service_retains_its_price_and_is_not_purchased_twice() {
             .income
             .iter()
             .find(|r| r.account == AccountId::Household(crate::household()))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .statement
             .consumption_expense,
         crate::money(1)

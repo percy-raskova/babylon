@@ -451,7 +451,7 @@ mod tests {
         let err = Manifest::parse(&e(
             "(manifest m (ceiling HyperedgeType/COMMUNITY :ceiling 200))",
         ))
-        .unwrap_err();
+        .expect_err("the malformed input is refused");
         assert_eq!(err.spec_code(), Some("E-LOAD-042"));
     }
 
@@ -460,7 +460,7 @@ mod tests {
         let err = Manifest::parse(&e(
             "(manifest m (ceiling NodeType/POLITY :ceiling 1 :max-members 3))",
         ))
-        .unwrap_err();
+        .expect_err("the malformed input is refused");
         assert_eq!(err.spec_code(), Some("E-LOAD-042"));
     }
 
@@ -469,7 +469,7 @@ mod tests {
         let err = Manifest::parse(&e(
             "(manifest m (ceiling HyperedgeType/COMMUNITY :ceiling 2 :max-members 3 :invariant))",
         ))
-        .unwrap_err();
+        .expect_err("the malformed input is refused");
         assert_eq!(err.spec_code(), Some("E-LOAD-042"));
     }
 
@@ -504,7 +504,7 @@ mod tests {
             &rule("(update-node (the NodeType/SOCIAL_CLASS) social-class/wealth (add 5$))"),
             &manifest(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_rule_against_manifest`");
         assert_eq!(err.spec_code(), Some("E-LOAD-043"));
     }
 
@@ -525,14 +525,14 @@ mod tests {
             &rule("(update-node (the NodeType/SOVEREIGN) social-class/wealth (add 5$))"),
             &manifest(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_rule_against_manifest`");
         assert_eq!(err.spec_code(), Some("E-LOAD-045"));
         // …and a queried type, likewise.
         let err = super::check_rule_against_manifest(
             &rule("(guard (exists (nodes NodeType/SOVEREIGN)) (remove-node self))"),
             &manifest(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_rule_against_manifest`");
         assert_eq!(err.spec_code(), Some("E-LOAD-045"));
     }
 }

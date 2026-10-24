@@ -391,7 +391,8 @@ mod tests {
 
     #[test]
     fn the_spec_worked_example_reproduces_byte_for_byte() {
-        let bytes = super::canonical_bytes(&demo_rule()).unwrap();
+        let bytes =
+            super::canonical_bytes(&demo_rule()).expect("the graph value exposes canonical bytes");
         assert_eq!(bytes.len(), 500, "§5.6 pins exactly 500 canonical bytes");
         assert_eq!(hex(&bytes), PINNED_HEX);
     }
@@ -399,13 +400,15 @@ mod tests {
     #[test]
     fn the_spec_worked_example_digests_reproduce() {
         use sha2::{Digest, Sha256};
-        let bytes = super::canonical_bytes(&demo_rule()).unwrap();
+        let bytes =
+            super::canonical_bytes(&demo_rule()).expect("the graph value exposes canonical bytes");
         let single = Sha256::digest(&bytes);
         assert_eq!(
             hex(&single),
             "9b49c1e87a63ccb64dee96bd179c8ffecd3fe476c81a4f81771daac237156396"
         );
-        let rules_hash = super::rules_hash_of(&[demo_rule()]).unwrap();
+        let rules_hash =
+            super::rules_hash_of(&[demo_rule()]).expect("the rule set has a canonical hash");
         assert_eq!(
             hex(&rules_hash),
             "bf2f15517d1b4d10e44af36983c76249b49d8fa2dc71e6d8c1d2607b37b2f20f"
@@ -419,10 +422,11 @@ mod tests {
          (bindings (binding wealth :field social-class/wealth)) \
          (when (< wealth 1000.5$)) ; inline comment\n \
          (effects (update-node self social-class/agitation (add 0.05i))))";
-        let (expr, _) = crate::reader::read(reformatted).unwrap();
+        let (expr, _) = crate::reader::read(reformatted)
+            .expect("the fixture reader returns its authored facts");
         assert_eq!(
-            super::canonical_bytes(&expr).unwrap(),
-            super::canonical_bytes(&demo_rule()).unwrap()
+            super::canonical_bytes(&expr).expect("the graph value exposes canonical bytes"),
+            super::canonical_bytes(&demo_rule()).expect("the graph value exposes canonical bytes")
         );
     }
 
@@ -439,10 +443,11 @@ mod tests {
             swapped, DEMO_RULE,
             "the swap must actually rewrite the source"
         );
-        let (expr, _) = crate::reader::read(&swapped).unwrap();
+        let (expr, _) =
+            crate::reader::read(&swapped).expect("the fixture reader returns its authored facts");
         assert_eq!(
-            super::canonical_bytes(&expr).unwrap(),
-            super::canonical_bytes(&demo_rule()).unwrap()
+            super::canonical_bytes(&expr).expect("the graph value exposes canonical bytes"),
+            super::canonical_bytes(&demo_rule()).expect("the graph value exposes canonical bytes")
         );
     }
 
@@ -464,11 +469,13 @@ mod tests {
     /// a fuel change — never a formatting edit.
     #[test]
     fn positional_operand_order_is_not_a_formatting_concern() {
-        let (ab, _) = crate::reader::read("(and a b)").unwrap();
-        let (ba, _) = crate::reader::read("(and b a)").unwrap();
+        let (ab, _) = crate::reader::read("(and a b)")
+            .expect("the fixture reader returns its authored facts");
+        let (ba, _) = crate::reader::read("(and b a)")
+            .expect("the fixture reader returns its authored facts");
         assert_ne!(
-            super::canonical_bytes(&ab).unwrap(),
-            super::canonical_bytes(&ba).unwrap(),
+            super::canonical_bytes(&ab).expect("the graph value exposes canonical bytes"),
+            super::canonical_bytes(&ba).expect("the graph value exposes canonical bytes"),
             "(and a b) and (and b a) must canonicalise to DIFFERENT bytes — \
              positional order is data, not formatting"
         );
@@ -481,11 +488,18 @@ mod tests {
     #[test]
     fn a_ratio_literal_encodes_with_its_own_kind_tag_additively() {
         assert_eq!(
-            super::canonical_bytes(&demo_rule()).unwrap().len(),
+            super::canonical_bytes(&demo_rule())
+                .expect("the graph value exposes canonical bytes")
+                .len(),
             500,
             "the golden program must be unmoved before this row is trusted"
         );
-        let bytes = super::canonical_bytes(&crate::reader::read("2.5r").unwrap().0).unwrap();
+        let bytes = super::canonical_bytes(
+            &crate::reader::read("2.5r")
+                .expect("the fixture reader returns its authored facts")
+                .0,
+        )
+        .expect("the graph value exposes canonical bytes");
         let mut expected = Vec::new();
         push_atom(&mut expected, b"ratio", &{
             let mut payload = 25i128.to_be_bytes().to_vec();
@@ -498,22 +512,30 @@ mod tests {
     #[test]
     fn ratio_literal_canonicalization_reaches_the_bytes() {
         // §1.5: 2.50r ≡ 2.5r — identical bytes, same law as p/i/c/$.
-        let a = crate::reader::read("(x 2.50r)").unwrap().0;
-        let b = crate::reader::read("(x 2.5r)").unwrap().0;
+        let a = crate::reader::read("(x 2.50r)")
+            .expect("the fixture reader returns its authored facts")
+            .0;
+        let b = crate::reader::read("(x 2.5r)")
+            .expect("the fixture reader returns its authored facts")
+            .0;
         assert_eq!(
-            super::canonical_bytes(&a).unwrap(),
-            super::canonical_bytes(&b).unwrap()
+            super::canonical_bytes(&a).expect("the graph value exposes canonical bytes"),
+            super::canonical_bytes(&b).expect("the graph value exposes canonical bytes")
         );
     }
 
     #[test]
     fn literal_canonicalization_reaches_the_bytes() {
         // §5.4: 0.50c ≡ 0.5c and 1000.5$ ≡ 1000.500$ — identical bytes.
-        let a = crate::reader::read("(x 0.50c 1000.5$)").unwrap().0;
-        let b = crate::reader::read("(x 0.5c 1000.500$)").unwrap().0;
+        let a = crate::reader::read("(x 0.50c 1000.5$)")
+            .expect("the fixture reader returns its authored facts")
+            .0;
+        let b = crate::reader::read("(x 0.5c 1000.500$)")
+            .expect("the fixture reader returns its authored facts")
+            .0;
         assert_eq!(
-            super::canonical_bytes(&a).unwrap(),
-            super::canonical_bytes(&b).unwrap()
+            super::canonical_bytes(&a).expect("the graph value exposes canonical bytes"),
+            super::canonical_bytes(&b).expect("the graph value exposes canonical bytes")
         );
     }
 
@@ -529,9 +551,12 @@ mod tests {
     /// exactly the adjacency heuristic `FLAG_KEYWORDS` removed.
     #[test]
     fn a_flag_keyword_encodes_as_a_bool_true_option() {
-        let bytes =
-            super::canonical_bytes(&crate::reader::read("(binding x :optional)").unwrap().0)
-                .unwrap();
+        let bytes = super::canonical_bytes(
+            &crate::reader::read("(binding x :optional)")
+                .expect("the fixture reader returns its authored facts")
+                .0,
+        )
+        .expect("the graph value exposes canonical bytes");
         let mut expected = Vec::new();
         push_form(&mut expected, b"binding", 2);
         push_atom(&mut expected, b"sym", b"x");
@@ -548,10 +573,10 @@ mod tests {
     fn a_positional_operand_after_a_flag_is_not_swallowed() {
         let bytes = super::canonical_bytes(
             &crate::reader::read("(neighbors self EdgeType/SOLIDARITY :out NodeType/SOCIAL_CLASS)")
-                .unwrap()
+                .expect("the fixture reader returns its authored facts")
                 .0,
         )
-        .unwrap();
+        .expect("the graph value exposes canonical bytes");
         let mut expected = Vec::new();
         push_form(&mut expected, b"neighbors", 4);
         push_atom(&mut expected, b"sym", b"self");
@@ -568,9 +593,12 @@ mod tests {
     /// quietly re-reads it as a flag.
     #[test]
     fn a_valued_keyword_with_no_operand_is_a_loud_cas_error() {
-        assert!(
-            super::canonical_bytes(&crate::reader::read("(binding x :field)").unwrap().0).is_err()
-        );
+        assert!(super::canonical_bytes(
+            &crate::reader::read("(binding x :field)")
+                .expect("the fixture reader returns its authored facts")
+                .0
+        )
+        .is_err());
     }
 
     /// §2.11's `metric` form places its positional `<domain>` AFTER the
@@ -584,7 +612,9 @@ mod tests {
     #[test]
     fn a_metric_declarations_positional_domain_precedes_its_options() {
         assert_eq!(
-            super::canonical_bytes(&demo_rule()).unwrap().len(),
+            super::canonical_bytes(&demo_rule())
+                .expect("the graph value exposes canonical bytes")
+                .len(),
             500,
             "the golden program must be unmoved before this row is trusted"
         );
@@ -593,10 +623,10 @@ mod tests {
                 "(metric betweenness-centrality :type coefficient :kind intensive \
                  (domain NodeType/ORGANIZATION) :provider topology-scores)",
             )
-            .unwrap()
+            .expect("the fixture reader returns its authored facts")
             .0,
         )
-        .unwrap();
+        .expect("the graph value exposes canonical bytes");
         let mut expected = Vec::new();
         push_form(&mut expected, b"metric", 5);
         // group 1 — the two positionals, in §2.11's grammar order
@@ -622,7 +652,12 @@ mod tests {
     /// encodes it correctly, and this row is the proof.
     #[test]
     fn a_floor_call_encodes_as_an_ordinary_generic_form() {
-        let bytes = super::canonical_bytes(&crate::reader::read("(floor x)").unwrap().0).unwrap();
+        let bytes = super::canonical_bytes(
+            &crate::reader::read("(floor x)")
+                .expect("the fixture reader returns its authored facts")
+                .0,
+        )
+        .expect("the graph value exposes canonical bytes");
         let mut expected = Vec::new();
         push_form(&mut expected, b"floor", 1);
         push_atom(&mut expected, b"sym", b"x");
@@ -646,10 +681,10 @@ mod tests {
     fn an_intrinsic_declaration_for_floor_encodes_generically() {
         let bytes = super::canonical_bytes(
             &crate::reader::read("(intrinsic floor :params (real) :returns int :cost 5)")
-                .unwrap()
+                .expect("the fixture reader returns its authored facts")
                 .0,
         )
-        .unwrap();
+        .expect("the graph value exposes canonical bytes");
         let mut expected = Vec::new();
         push_form(&mut expected, b"intrinsic", 4);
         push_atom(&mut expected, b"sym", b"floor");
@@ -669,16 +704,20 @@ mod tests {
 
     fn push_form(out: &mut Vec<u8>, tag: &[u8], nchildren: u32) {
         out.push(0x02);
-        out.push(u8::try_from(tag.len()).unwrap());
+        out.push(u8::try_from(tag.len()).expect("the fixture value fits the target range"));
         out.extend_from_slice(tag);
         out.extend_from_slice(&nchildren.to_be_bytes());
     }
 
     fn push_atom(out: &mut Vec<u8>, kind: &[u8], payload: &[u8]) {
         out.push(0x01);
-        out.push(u8::try_from(kind.len()).unwrap());
+        out.push(u8::try_from(kind.len()).expect("the fixture value fits the target range"));
         out.extend_from_slice(kind);
-        out.extend_from_slice(&u32::try_from(payload.len()).unwrap().to_be_bytes());
+        out.extend_from_slice(
+            &u32::try_from(payload.len())
+                .expect("the fixture value fits the target range")
+                .to_be_bytes(),
+        );
         out.extend_from_slice(payload);
     }
 
@@ -688,7 +727,7 @@ mod tests {
         // ContentDigest test pins independently (cross-crate agreement on
         // the mandatory-rules_hash contract).
         assert_eq!(
-            hex(&super::rules_hash_of(&[]).unwrap()),
+            hex(&super::rules_hash_of(&[]).expect("the rule set has a canonical hash")),
             "a665e6b115dd56fd3e0c89be631e6eda8e9666b822e0bd7026bf0822c4bbc68f"
         );
     }
@@ -696,30 +735,39 @@ mod tests {
     #[test]
     fn rules_hash_sorts_by_rule_id_not_input_order() {
         let a = crate::reader::read("(rule aa/first :fuel 1 (when #t))")
-            .unwrap()
+            .expect("the fixture reader returns its authored facts")
             .0;
         let b = crate::reader::read("(rule zz/last :fuel 1 (when #t))")
-            .unwrap()
+            .expect("the fixture reader returns its authored facts")
             .0;
         assert_eq!(
-            super::rules_hash_of(&[a.clone(), b.clone()]).unwrap(),
-            super::rules_hash_of(&[b, a]).unwrap()
+            super::rules_hash_of(&[a.clone(), b.clone()])
+                .expect("the rule set has a canonical hash"),
+            super::rules_hash_of(&[b, a]).expect("the rule set has a canonical hash")
         );
     }
 
     #[test]
     fn unencodable_nodes_fail_loudly_never_stringify() {
         // An operator outside head position (§5.4's no-fallback law).
-        let stray_op = crate::reader::read("(x <)").unwrap().0;
+        let stray_op = crate::reader::read("(x <)")
+            .expect("the fixture reader returns its authored facts")
+            .0;
         assert!(super::canonical_bytes(&stray_op).is_err());
         // A form headed by a non-symbol.
-        let headless = crate::reader::read("((a) b)").unwrap().0;
+        let headless = crate::reader::read("((a) b)")
+            .expect("the fixture reader returns its authored facts")
+            .0;
         assert!(super::canonical_bytes(&headless).is_err());
         // An empty form.
-        let empty = crate::reader::read("()").unwrap().0;
+        let empty = crate::reader::read("()")
+            .expect("the fixture reader returns its authored facts")
+            .0;
         assert!(super::canonical_bytes(&empty).is_err());
         // rules_hash over a non-rule form.
-        let not_a_rule = crate::reader::read("(deffield x :type int)").unwrap().0;
+        let not_a_rule = crate::reader::read("(deffield x :type int)")
+            .expect("the fixture reader returns its authored facts")
+            .0;
         assert!(super::rules_hash_of(&[not_a_rule]).is_err());
     }
 
@@ -728,7 +776,8 @@ mod tests {
         // §5.2: "unambiguously parseable back to the AST" — decode the
         // canonical bytes with an independent test-only decoder, re-encode
         // the decoded tree verbatim, and require byte identity.
-        let bytes = super::canonical_bytes(&demo_rule()).unwrap();
+        let bytes =
+            super::canonical_bytes(&demo_rule()).expect("the graph value exposes canonical bytes");
         let (node, consumed) = decode(&bytes);
         assert_eq!(consumed, bytes.len(), "decoder must consume every byte");
         assert_eq!(reencode(&node), bytes);
@@ -739,7 +788,7 @@ mod tests {
         let forms = crate::reader::read_all(
             b"(rule b/two :fuel 1 (when #t))\n(rule a/one :fuel 1 (when #t))",
         )
-        .unwrap();
+        .expect("the fixture source is readable");
         assert!(super::rules_hash_of(&forms).is_ok());
     }
 
@@ -782,9 +831,12 @@ mod tests {
     /// `test/corpus/declarations.txt:144`).
     #[test]
     fn the_enum_atom_kind_round_trips_both_payload_shapes_without_confusion() {
-        let enum_ref_bytes =
-            super::canonical_bytes(&crate::reader::read("NodeType/SOCIAL_CLASS").unwrap().0)
-                .unwrap();
+        let enum_ref_bytes = super::canonical_bytes(
+            &crate::reader::read("NodeType/SOCIAL_CLASS")
+                .expect("the fixture reader returns its authored facts")
+                .0,
+        )
+        .expect("the graph value exposes canonical bytes");
         let (node, consumed) = decode(&enum_ref_bytes);
         assert_eq!(consumed, enum_ref_bytes.len());
         let CasNode::Atom { kind, payload } = &node else {
@@ -800,8 +852,12 @@ mod tests {
             "an <enum-ref> payload (one '/') must decode as EnumRef, never BareUpperIdent"
         );
 
-        let bare_type_bytes =
-            super::canonical_bytes(&crate::reader::read("OrgKind").unwrap().0).unwrap();
+        let bare_type_bytes = super::canonical_bytes(
+            &crate::reader::read("OrgKind")
+                .expect("the fixture reader returns its authored facts")
+                .0,
+        )
+        .expect("the graph value exposes canonical bytes");
         let (node, consumed) = decode(&bare_type_bytes);
         assert_eq!(consumed, bare_type_bytes.len());
         let CasNode::Atom { kind, payload } = &node else {
@@ -815,8 +871,12 @@ mod tests {
              BareUpperIdent, never EnumRef"
         );
 
-        let bare_member_bytes =
-            super::canonical_bytes(&crate::reader::read("STATE_APPARATUS").unwrap().0).unwrap();
+        let bare_member_bytes = super::canonical_bytes(
+            &crate::reader::read("STATE_APPARATUS")
+                .expect("the fixture reader returns its authored facts")
+                .0,
+        )
+        .expect("the graph value exposes canonical bytes");
         let (node, consumed) = decode(&bare_member_bytes);
         assert_eq!(consumed, bare_member_bytes.len());
         let CasNode::Atom { kind, payload } = &node else {
@@ -848,7 +908,11 @@ mod tests {
         let name_len = usize::from(bytes[1]);
         let name = bytes[2..2 + name_len].to_vec();
         let mut pos = 2 + name_len;
-        let count = u32::from_be_bytes(bytes[pos..pos + 4].try_into().unwrap()) as usize;
+        let count = u32::from_be_bytes(
+            bytes[pos..pos + 4]
+                .try_into()
+                .expect("the fixture slice has the target length"),
+        ) as usize;
         pos += 4;
         match node_type {
             0x01 => {
@@ -885,16 +949,26 @@ mod tests {
         match node {
             CasNode::Atom { kind, payload } => {
                 out.push(0x01);
-                out.push(u8::try_from(kind.len()).unwrap());
+                out.push(
+                    u8::try_from(kind.len()).expect("the fixture value fits the target range"),
+                );
                 out.extend_from_slice(kind);
-                out.extend_from_slice(&u32::try_from(payload.len()).unwrap().to_be_bytes());
+                out.extend_from_slice(
+                    &u32::try_from(payload.len())
+                        .expect("the fixture value fits the target range")
+                        .to_be_bytes(),
+                );
                 out.extend_from_slice(payload);
             }
             CasNode::Form { tag, children } => {
                 out.push(0x02);
-                out.push(u8::try_from(tag.len()).unwrap());
+                out.push(u8::try_from(tag.len()).expect("the fixture value fits the target range"));
                 out.extend_from_slice(tag);
-                out.extend_from_slice(&u32::try_from(children.len()).unwrap().to_be_bytes());
+                out.extend_from_slice(
+                    &u32::try_from(children.len())
+                        .expect("the fixture value fits the target range")
+                        .to_be_bytes(),
+                );
                 for child in children {
                     out.extend_from_slice(&reencode(child));
                 }

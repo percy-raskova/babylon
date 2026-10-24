@@ -53,7 +53,8 @@ fn mass_literals_are_exact_unsigned_nanounits() {
 
 #[test]
 fn quantize_mass_is_the_only_dynamic_numeric_crossing() {
-    let (expr, _) = reader::read("(quantize-mass 0.5c)").unwrap();
+    let (expr, _) = reader::read("(quantize-mass 0.5c)")
+        .expect("the fixture reader returns its authored facts");
     let costs = IntrinsicCosts::default();
     let env = EvalEnv {
         bindings: HashMap::new(),
@@ -66,7 +67,8 @@ fn quantize_mass_is_the_only_dynamic_numeric_crossing() {
     };
     let mut fuel = 100;
     assert_eq!(
-        evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel).unwrap(),
+        evaluate(&expr, &env, &EmptyIntrinsicHost, &mut fuel)
+            .expect("the authored expression evaluates"),
         Value::Mass(Mass::from_nanounits(500_000_000))
     );
 }
@@ -76,13 +78,13 @@ fn mass_addition_and_subtraction_are_exact_and_checked() {
     assert_eq!(
         Mass::from_nanounits(2)
             .checked_add(Mass::from_nanounits(3))
-            .unwrap(),
+            .expect("the fixture arithmetic stays in range"),
         Mass::from_nanounits(5)
     );
     assert_eq!(
         Mass::from_nanounits(5)
             .checked_sub(Mass::from_nanounits(3))
-            .unwrap(),
+            .expect("the fixture arithmetic stays in range"),
         Mass::from_nanounits(2)
     );
     assert_eq!(
@@ -121,12 +123,19 @@ fn quantize_mass_refuses_negative_nonfinite_and_overflowing_inputs() {
 #[test]
 fn largest_remainder_allocation_uses_enum_order_for_ties() {
     let equal = Mass::from_nanounits(1);
-    let allocation = probability::allocate_tickets(&[equal, equal, equal]).unwrap();
+    let allocation = probability::allocate_tickets(&[equal, equal, equal])
+        .expect("the fixture ticket allocation fits the authored budget");
     let q = TICKET_DENOMINATOR / 3;
     assert_eq!(allocation[0].count, q + 1);
     assert_eq!(allocation[1].count, q);
     assert_eq!(allocation[2].count, q);
-    assert_eq!(allocation.last().unwrap().end, TICKET_DENOMINATOR);
+    assert_eq!(
+        allocation
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .end,
+        TICKET_DENOMINATOR
+    );
 }
 
 #[test]
@@ -144,7 +153,7 @@ fn spark_enums() -> EnumRegistry {
             "SparkOutcome",
             &["EXCESSIVE_FORCE".to_owned(), "NO_INCIDENT".to_owned()],
         )
-        .unwrap();
+        .expect("the scenario declares the authored entity");
     enums
 }
 
@@ -163,7 +172,7 @@ fn kernel_rule(branches: &str) -> SExpr {
          (bindings) (effects \
            (choose :sample struggle/spark :slot 0 {branches})))"
     ))
-    .unwrap()
+    .expect("the fixture reader returns its authored facts")
     .0
 }
 
@@ -212,7 +221,7 @@ fn canonical_choose_compiles_once_to_enum_ordered_ir() {
         &HashMap::new(),
         &HashSet::new(),
     )
-    .unwrap();
+    .expect("the authored probability rule compiles");
     assert_eq!(compiled.facts.mass_literals.len(), 2);
     let kernel = compiled.kernel.expect("choose compiled");
     assert!(compiled.projection.is_none());
@@ -229,7 +238,7 @@ fn canonical_choose_compiles_once_to_enum_ordered_ir() {
             &CardinalityCeilings::default(),
             &IntrinsicCosts::default(),
         )
-        .unwrap(),
+        .expect("the authored rule passes the kernel check"),
         FINITE_KERNEL_DRAW_BASE
     );
 }
@@ -247,7 +256,8 @@ fn multi_top_form_kernel_paths_retain_the_original_source_coordinate_space() {
     (choose :sample struggle/spark :slot 0
       (branch SparkOutcome/EXCESSIVE_FORCE :mass 1m (effects))
       (branch SparkOutcome/NO_INCIDENT :mass 3m (effects)))))"#;
-    let (_, mut split) = rule_pipeline::split_content(source).unwrap();
+    let (_, mut split) = rule_pipeline::split_content(source)
+        .expect("the authored content splits into its sections");
     let second = split.pop().expect("second rule is retained");
     assert_eq!(second.rule_id, "demo/spark");
     assert_eq!(second.root_path, vec![2]);
@@ -285,19 +295,28 @@ fn multi_top_form_kernel_paths_retain_the_original_source_coordinate_space() {
         vocabulary_registry: None,
         rule_file: "demo/multi.bsl",
     };
-    let loaded = rule_pipeline::load_rule_form(second.form, second.root_path, &context).unwrap();
+    let loaded = rule_pipeline::load_rule_form(second.form, second.root_path, &context)
+        .expect("the authored rule form compiles");
     assert_eq!(loaded.root_path, vec![2]);
     let kernel = loaded.kernel.expect("second rule choose compiles");
     assert!(kernel.form_path.starts_with(&[2]));
-    let (_, spans) = reader::read_all_spanned(source.as_bytes()).unwrap();
-    let choose_head = spans.span_of(&kernel.head_path).unwrap();
+    let (_, spans) =
+        reader::read_all_spanned(source.as_bytes()).expect("the fixture source is readable");
+    let choose_head = spans
+        .span_of(&kernel.head_path)
+        .expect("the fixture source contains the addressed token");
     assert_eq!(&source[choose_head.start..choose_head.end], "choose");
-    let slot = spans.span_of(&kernel.slot_path).unwrap();
+    let slot = spans
+        .span_of(&kernel.slot_path)
+        .expect("the fixture source contains the addressed token");
     assert_eq!(&source[slot.start..slot.end], "0");
 
     let invalid_source = source.replacen(":mass 1m", ":mass 0.5c", 1);
-    let (_, mut split) = rule_pipeline::split_content(&invalid_source).unwrap();
-    let invalid_second = split.pop().unwrap();
+    let (_, mut split) = rule_pipeline::split_content(&invalid_source)
+        .expect("the authored content splits into its sections");
+    let invalid_second = split
+        .pop()
+        .expect("the fixture map holds the entry being removed");
     let error =
         rule_pipeline::load_rule_form(invalid_second.form, invalid_second.root_path, &context)
             .expect_err("ordinary Real cannot enter a Mass slot");
@@ -305,8 +324,11 @@ fn multi_top_form_kernel_paths_retain_the_original_source_coordinate_space() {
         panic!("expected typed probability path, got {error:?}");
     };
     assert!(form_path.starts_with(&[2]));
-    let (_, spans) = reader::read_all_spanned(invalid_source.as_bytes()).unwrap();
-    let mass_span = spans.span_of(&form_path).unwrap();
+    let (_, spans) = reader::read_all_spanned(invalid_source.as_bytes())
+        .expect("the fixture source is readable");
+    let mass_span = spans
+        .span_of(&form_path)
+        .expect("the fixture source contains the addressed token");
     assert_eq!(&invalid_source[mass_span.start..mass_span.end], "0.5c");
 }
 
@@ -324,7 +346,7 @@ fn choose_requires_exact_enum_exhaustiveness_and_direct_placement() {
         &[],
         &HashMap::new(),
     )
-    .unwrap_err();
+    .expect_err("the malformed probability rule is refused");
     assert!(error.to_string().contains("declaration order"));
 
     let missing = kernel_rule("(branch SparkOutcome/EXCESSIVE_FORCE :mass 1m (effects))");
@@ -336,7 +358,7 @@ fn choose_requires_exact_enum_exhaustiveness_and_direct_placement() {
         &[],
         &HashMap::new(),
     )
-    .unwrap_err()
+    .expect_err("the malformed probability rule is refused")
     .to_string()
     .contains("exhaust"));
 
@@ -351,7 +373,7 @@ fn choose_requires_exact_enum_exhaustiveness_and_direct_placement() {
         &[],
         &HashMap::new(),
     )
-    .unwrap_err()
+    .expect_err("the malformed probability rule is refused")
     .to_string()
     .contains("only a Mechanic"));
 
@@ -363,7 +385,7 @@ fn choose_requires_exact_enum_exhaustiveness_and_direct_placement() {
              (branch SparkOutcome/EXCESSIVE_FORCE :mass 1m (effects)) \
              (branch SparkOutcome/NO_INCIDENT :mass 1m (effects))))))",
     )
-    .unwrap()
+    .expect("the fixture reader returns its authored facts")
     .0;
     assert!(compile_rule_probability(
         &nested,
@@ -373,7 +395,7 @@ fn choose_requires_exact_enum_exhaustiveness_and_direct_placement() {
         &[],
         &HashMap::new(),
     )
-    .unwrap_err()
+    .expect_err("the malformed probability rule is refused")
     .to_string()
     .contains("direct child"));
 
@@ -398,7 +420,7 @@ fn choose_requires_exact_enum_exhaustiveness_and_direct_placement() {
             &[],
             &HashMap::new(),
         )
-        .unwrap_err();
+        .expect_err("the malformed probability rule is refused");
         assert!(error.to_string().contains(expected), "{error}");
     }
 }
@@ -458,8 +480,8 @@ fn kernel_fuel_charges_every_mass_and_only_the_maximum_branch_body() {
         &[],
         &HashMap::new(),
     )
-    .unwrap();
-    let kernel = kernel.unwrap();
+    .expect("the authored probability rule compiles");
+    let kernel = kernel.expect("the compiled fixture carries its kernel");
     assert_eq!(
         kernel.branches[1].static_mass,
         Some(Mass::from_nanounits(750_000_000)),
@@ -470,7 +492,10 @@ fn kernel_fuel_charges_every_mass_and_only_the_maximum_branch_body() {
     let mass_cost: u64 = kernel
         .branches
         .iter()
-        .map(|branch| bound_checker::expr_cost(&branch.mass, &ceilings, &intrinsics).unwrap())
+        .map(|branch| {
+            bound_checker::expr_cost(&branch.mass, &ceilings, &intrinsics)
+                .expect("the fixture call `expr_cost` succeeds for the authored inputs")
+        })
         .sum();
     let body_costs: Vec<u64> = kernel
         .branches
@@ -479,14 +504,18 @@ fn kernel_fuel_charges_every_mass_and_only_the_maximum_branch_body() {
             branch
                 .effects
                 .iter()
-                .map(|effect| bound_checker::expr_cost(effect, &ceilings, &intrinsics).unwrap())
+                .map(|effect| {
+                    bound_checker::expr_cost(effect, &ceilings, &intrinsics)
+                        .expect("the fixture call `expr_cost` succeeds for the authored inputs")
+                })
                 .sum()
         })
         .collect();
     assert_ne!(body_costs[0], body_costs[1]);
     let expected = FINITE_KERNEL_DRAW_BASE + mass_cost + body_costs[0].max(body_costs[1]);
     assert_eq!(
-        check_rule_with_kernel(&rule, Some(&kernel), &ceilings, &intrinsics).unwrap(),
+        check_rule_with_kernel(&rule, Some(&kernel), &ceilings, &intrinsics)
+            .expect("the authored rule passes the kernel check"),
         expected
     );
     assert_ne!(
@@ -516,12 +545,16 @@ fn a_non_mass_constant_or_expr_binding_cannot_enter_branch_mass() {
         &[binding],
         &ordinary,
     )
-    .unwrap_err();
+    .expect_err("the malformed probability rule is refused");
     assert!(error.to_string().contains("static Mass type"));
 
     let ordinary_expr = BindingDecl {
         name: "weight".to_owned(),
-        source: BindSource::Expr(reader::read("0.5c").unwrap().0),
+        source: BindSource::Expr(
+            reader::read("0.5c")
+                .expect("the fixture reader returns its authored facts")
+                .0,
+        ),
         optional: false,
         default: None,
     };
@@ -533,7 +566,7 @@ fn a_non_mass_constant_or_expr_binding_cannot_enter_branch_mass() {
         &[ordinary_expr],
         &HashMap::new(),
     )
-    .unwrap_err();
+    .expect_err("the malformed probability rule is refused");
     assert!(error.to_string().contains("static Mass type"));
 }
 
@@ -557,8 +590,10 @@ fn quantize_mass_requires_an_ordinary_numeric_operand_at_load() {
         ),
         rule_with_bindings("(binding spark-mass :expr (quantize-mass (quantize-mass 0.5c)))"),
     ] {
-        let rule = reader::read(&invalid).unwrap().0;
-        let bindings = bindings::parse_bindings(&rule).unwrap();
+        let rule = reader::read(&invalid)
+            .expect("the fixture reader returns its authored facts")
+            .0;
+        let bindings = bindings::parse_bindings(&rule).expect("the authored bindings parse");
         let error = compile_rule_probability(
             &rule,
             &[0],
@@ -567,13 +602,15 @@ fn quantize_mass_requires_an_ordinary_numeric_operand_at_load() {
             &bindings,
             &HashMap::new(),
         )
-        .unwrap_err();
+        .expect_err("the malformed probability rule is refused");
         assert!(error.to_string().contains("statically Int/Real-lane"));
     }
 
     let valid = rule_with_bindings("(binding spark-mass :expr (quantize-mass (* 0.5c 2)))");
-    let rule = reader::read(&valid).unwrap().0;
-    let bindings = bindings::parse_bindings(&rule).unwrap();
+    let rule = reader::read(&valid)
+        .expect("the fixture reader returns its authored facts")
+        .0;
+    let bindings = bindings::parse_bindings(&rule).expect("the authored bindings parse");
     assert!(compile_rule_probability(
         &rule,
         &[0],
@@ -607,8 +644,10 @@ fn quantize_mass_refuses_int_division_at_load() {
                (branch SparkOutcome/EXCESSIVE_FORCE :mass spark-mass (effects)) \
                (branch SparkOutcome/NO_INCIDENT :mass 1m (effects)))))"
         );
-        let rule = reader::read(&source).unwrap().0;
-        let bindings = bindings::parse_bindings(&rule).unwrap();
+        let rule = reader::read(&source)
+            .expect("the fixture reader returns its authored facts")
+            .0;
+        let bindings = bindings::parse_bindings(&rule).expect("the authored bindings parse");
         let error = compile_rule_probability(
             &rule,
             &[0],
@@ -622,19 +661,25 @@ fn quantize_mass_refuses_int_division_at_load() {
             panic!("expected a located quantize-mass refusal, got {error:?}");
         };
         assert!(message.contains("statically Int/Real-lane"), "{message}");
-        let (_, spans) = reader::read_all_spanned(source.as_bytes()).unwrap();
-        let span = spans.span_of(&form_path).unwrap();
+        let (_, spans) =
+            reader::read_all_spanned(source.as_bytes()).expect("the fixture source is readable");
+        let span = spans
+            .span_of(&form_path)
+            .expect("the fixture source contains the addressed token");
         assert_eq!(&source[span.start..span.end], division);
     }
 }
 
 #[test]
-#[allow(clippy::too_many_lines)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`quantize_mass_uses_declared_types_for_fields_metrics_and_accessors` keeps one authored sequence in a single place"
+)]
 fn quantize_mass_uses_declared_types_for_fields_metrics_and_accessors() {
     let mut enums = spark_enums();
     let flag_type = enums
         .declare("Flag", &["OFF".to_owned(), "ON".to_owned()])
-        .unwrap();
+        .expect("the scenario declares the authored entity");
     let types = TypeEnv {
         fields: HashMap::from([
             (
@@ -683,7 +728,7 @@ fn quantize_mass_uses_declared_types_for_fields_metrics_and_accessors() {
                (branch SparkOutcome/EXCESSIVE_FORCE :mass spark-mass (effects)) \
                (branch SparkOutcome/NO_INCIDENT :mass 1m (effects)))))"
         ))
-        .unwrap()
+        .expect("the fixture reader returns its authored facts")
         .0;
         let bindings = [
             BindingDecl {
@@ -695,7 +740,9 @@ fn quantize_mass_uses_declared_types_for_fields_metrics_and_accessors() {
             BindingDecl {
                 name: "spark-mass".to_owned(),
                 source: BindSource::Expr(
-                    reader::read(&format!("(quantize-mass {name})")).unwrap().0,
+                    reader::read(&format!("(quantize-mass {name})"))
+                        .expect("the fixture reader returns its authored facts")
+                        .0,
                 ),
                 optional: false,
                 default: None,
@@ -711,7 +758,7 @@ fn quantize_mass_uses_declared_types_for_fields_metrics_and_accessors() {
             &HashMap::new(),
             &HashSet::new(),
         )
-        .unwrap_err();
+        .expect_err("the malformed probability rule is refused");
         assert!(error.to_string().contains("statically Int/Real-lane"));
     }
 
@@ -731,8 +778,10 @@ fn quantize_mass_uses_declared_types_for_fields_metrics_and_accessors() {
                (branch SparkOutcome/EXCESSIVE_FORCE :mass spark-mass (effects)) \
                (branch SparkOutcome/NO_INCIDENT :mass 1m (effects)))))"
         );
-        let rule = reader::read(&source).unwrap().0;
-        let bindings = bindings::parse_bindings(&rule).unwrap();
+        let rule = reader::read(&source)
+            .expect("the fixture reader returns its authored facts")
+            .0;
+        let bindings = bindings::parse_bindings(&rule).expect("the authored bindings parse");
         let error = probability::compile_rule_probability(
             &rule,
             &[0],
@@ -743,12 +792,15 @@ fn quantize_mass_uses_declared_types_for_fields_metrics_and_accessors() {
             &HashMap::new(),
             &HashSet::new(),
         )
-        .unwrap_err();
+        .expect_err("the malformed probability rule is refused");
         let ProbabilityError::InvalidForm { form_path, .. } = error else {
             panic!("expected a located type refusal, got {error:?}");
         };
-        let (_, spans) = reader::read_all_spanned(source.as_bytes()).unwrap();
-        let span = spans.span_of(&form_path).unwrap();
+        let (_, spans) =
+            reader::read_all_spanned(source.as_bytes()).expect("the fixture source is readable");
+        let span = spans
+            .span_of(&form_path)
+            .expect("the fixture source contains the addressed token");
         assert_eq!(&source[span.start..span.end], operand);
     }
 }
@@ -761,8 +813,10 @@ fn a_mass_binding_declaration_name_is_not_mistaken_for_a_value_use() {
         (effects (choose :sample struggle/spark :slot 0 \
           (branch SparkOutcome/EXCESSIVE_FORCE :mass spark-mass (effects)) \
           (branch SparkOutcome/NO_INCIDENT :mass 3m (effects)))))";
-    let rule = reader::read(source).unwrap().0;
-    let bindings = bindings::parse_bindings(&rule).unwrap();
+    let rule = reader::read(source)
+        .expect("the fixture reader returns its authored facts")
+        .0;
+    let bindings = bindings::parse_bindings(&rule).expect("the authored bindings parse");
     assert!(compile_rule_probability(
         &rule,
         &[0],
@@ -774,8 +828,10 @@ fn a_mass_binding_declaration_name_is_not_mistaken_for_a_value_use() {
     .is_ok());
 
     let illegal_use = source.replace("(effects (choose", "(when spark-mass) (effects (choose");
-    let rule = reader::read(&illegal_use).unwrap().0;
-    let bindings = bindings::parse_bindings(&rule).unwrap();
+    let rule = reader::read(&illegal_use)
+        .expect("the fixture reader returns its authored facts")
+        .0;
+    let bindings = bindings::parse_bindings(&rule).expect("the authored bindings parse");
     let error = compile_rule_probability(
         &rule,
         &[0],
@@ -784,7 +840,7 @@ fn a_mass_binding_declaration_name_is_not_mistaken_for_a_value_use() {
         &bindings,
         &HashMap::new(),
     )
-    .unwrap_err();
+    .expect_err("the malformed probability rule is refused");
     assert!(error
         .to_string()
         .contains("legal only in another Mass binding or branch :mass expression"));
@@ -831,10 +887,10 @@ fn content_set_linking_refuses_duplicate_samples_and_nonadjacent_projections() {
         (effects (choose :sample struggle/spark :slot 0 \
           (branch SparkOutcome/EXCESSIVE_FORCE :mass 1m (effects)) \
           (branch SparkOutcome/NO_INCIDENT :mass 1m (effects)))))";
-    let first =
-        rule_pipeline::load_rule(&source.replace("demo/ID", "demo/first"), &context).unwrap();
-    let second =
-        rule_pipeline::load_rule(&source.replace("demo/ID", "demo/second"), &context).unwrap();
+    let first = rule_pipeline::load_rule(&source.replace("demo/ID", "demo/first"), &context)
+        .expect("the authored rule compiles");
+    let second = rule_pipeline::load_rule(&source.replace("demo/ID", "demo/second"), &context)
+        .expect("the authored rule compiles");
     assert!(matches!(
         probability::validate_probability_content_set(&[first, second]),
         Err(ProbabilityError::DuplicateSample { .. })
@@ -842,6 +898,10 @@ fn content_set_linking_refuses_duplicate_samples_and_nonadjacent_projections() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`kernels_and_projections_require_a_stable_subject_carrier_at_load` keeps one authored boundary's fixture and assertions together"
+)]
 fn kernels_and_projections_require_a_stable_subject_carrier_at_load() {
     let fields = HashMap::from([
         (
@@ -937,8 +997,11 @@ fn kernels_and_projections_require_a_stable_subject_carrier_at_load() {
         };
         assert!(message.contains(expected), "{message}");
         assert!(message.contains(carrier_detail), "{message}");
-        let (_, spans) = reader::read_all_spanned(source.as_bytes()).unwrap();
-        let span = spans.span_of(&form_path).unwrap();
+        let (_, spans) =
+            reader::read_all_spanned(source.as_bytes()).expect("the fixture source is readable");
+        let span = spans
+            .span_of(&form_path)
+            .expect("the fixture source contains the addressed token");
         assert_eq!(&source[span.start..span.end], "struggle/spark");
     }
 }
@@ -948,8 +1011,11 @@ fn assert_carrier_locality_refusal(error: ProbabilityError, source: &str) {
         panic!("expected a located carrier-locality refusal, got {error:?}");
     };
     assert!(message.contains("carrier-local"), "{message}");
-    let (_, spans) = reader::read_all_spanned(source.as_bytes()).unwrap();
-    let span = spans.span_of(&form_path).unwrap();
+    let (_, spans) =
+        reader::read_all_spanned(source.as_bytes()).expect("the fixture source is readable");
+    let span = spans
+        .span_of(&form_path)
+        .expect("the fixture source contains the addressed token");
     assert_eq!(&source[span.start..span.end], "(the NodeType/SOCIAL_CLASS)");
 }
 
@@ -967,7 +1033,10 @@ fn assert_compiled_locality_survives_raw_rule_mutation(
 }
 
 #[test]
-#[allow(clippy::too_many_lines)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`adjacent_projection_requires_the_kernel_subject_carrier_at_its_sample_path` keeps one authored sequence in a single place"
+)]
 fn adjacent_projection_requires_the_kernel_subject_carrier_at_its_sample_path() {
     let fields = HashMap::from([
         (
@@ -1025,28 +1094,35 @@ fn adjacent_projection_requires_the_kernel_subject_carrier_at_its_sample_path() 
         :material-basis \"organization observation\" :fuel 64 \
         (bindings (binding current :field organization/value)) \
         (effects (emit EventType/EXCESSIVE_FORCE)))";
-    let kernel = rule_pipeline::load_rule(kernel_source, &context).unwrap();
-    let projection = rule_pipeline::load_rule(projection_source, &context).unwrap();
+    let kernel =
+        rule_pipeline::load_rule(kernel_source, &context).expect("the authored rule compiles");
+    let projection =
+        rule_pipeline::load_rule(projection_source, &context).expect("the authored rule compiles");
     assert_eq!(kernel.probability_carrier.as_deref(), Some("SOCIAL_CLASS"));
     assert_eq!(
         projection.probability_carrier.as_deref(),
         Some("ORGANIZATION")
     );
-    let error =
-        probability::validate_probability_content_set(&[kernel.clone(), projection]).unwrap_err();
+    let error = probability::validate_probability_content_set(&[kernel.clone(), projection])
+        .expect_err("the malformed input is rejected by `validate_probability_content_set`");
     let ProbabilityError::SubjectCarrierMismatch(details) = error else {
         panic!("expected a typed carrier mismatch, got {error:?}");
     };
     assert_eq!(details.sample, "struggle/spark");
     assert_eq!(details.kernel_carrier, "SOCIAL_CLASS");
     assert_eq!(details.projection_carrier, "ORGANIZATION");
-    let (_, spans) = reader::read_all_spanned(projection_source.as_bytes()).unwrap();
-    let span = spans.span_of(&details.form_path).unwrap();
+    let (_, spans) = reader::read_all_spanned(projection_source.as_bytes())
+        .expect("the fixture source is readable");
+    let span = spans
+        .span_of(&details.form_path)
+        .expect("the fixture source contains the addressed token");
     assert_eq!(&projection_source[span.start..span.end], "struggle/spark");
 
     let matching_source = projection_source.replace("organization/value", "social-class/value");
-    let matching = rule_pipeline::load_rule(&matching_source, &context).unwrap();
-    probability::validate_probability_content_set(&[kernel.clone(), matching.clone()]).unwrap();
+    let matching =
+        rule_pipeline::load_rule(&matching_source, &context).expect("the authored rule compiles");
+    probability::validate_probability_content_set(&[kernel.clone(), matching.clone()])
+        .expect("the authored fixture satisfies the rule");
 
     let cross_carrier_source = "(rule struggle/spark-mechanic :role mechanic \
         :evidence designed :material-basis \"joint singleton carrier\" :fuel 64 \
@@ -1074,8 +1150,11 @@ fn adjacent_projection_requires_the_kernel_subject_carrier_at_its_sample_path() 
           (branch SparkOutcome/EXCESSIVE_FORCE :mass 1m \
             (effects (update-membership self self (set social-class/value 1)))) \
           (branch SparkOutcome/NO_INCIDENT :mass 1m (effects)))))";
-    let membership_rule = reader::read(membership_source).unwrap().0;
-    let membership_bindings = bindings::parse_bindings(&membership_rule).unwrap();
+    let membership_rule = reader::read(membership_source)
+        .expect("the fixture reader returns its authored facts")
+        .0;
+    let membership_bindings =
+        bindings::parse_bindings(&membership_rule).expect("the authored bindings parse");
     let membership_probability = probability::compile_rule_probability(
         &membership_rule,
         &[0],
@@ -1102,8 +1181,11 @@ fn adjacent_projection_requires_the_kernel_subject_carrier_at_its_sample_path() 
         message.contains("shared or graph-shape writes"),
         "{message}"
     );
-    let (_, spans) = reader::read_all_spanned(membership_source.as_bytes()).unwrap();
-    let span = spans.span_of(&form_path).unwrap();
+    let (_, spans) = reader::read_all_spanned(membership_source.as_bytes())
+        .expect("the fixture source is readable");
+    let span = spans
+        .span_of(&form_path)
+        .expect("the fixture source contains the addressed token");
     assert_eq!(
         &membership_source[span.start..span.end],
         "update-membership"
@@ -1128,7 +1210,7 @@ fn a_finite_projection_refuses_graph_global_metric_bindings_at_load() {
           (node subject NodeType/SOCIAL_CLASS (social-class/value 0)))",
         &mut graph,
     )
-    .unwrap();
+    .expect("the authored scenario compiles");
     let types = TypeEnv {
         fields: scenario.fields.clone(),
         exemptions: &[],
@@ -1214,10 +1296,11 @@ fn loader_analysis_retains_mass_literals_in_bindings_scenarios_and_named_prelude
         :material-basis \"transient exact mass\" :fuel 64 \
         (bindings (binding weight :expr 1.25m)) \
         (effects (guard #f (emit EventType/X))))";
-    let mut loaded_rule = load_mass_probe(rule_source).unwrap();
+    let mut loaded_rule = load_mass_probe(rule_source).expect("the fixture artifact loads");
     let retained_facts = loaded_rule.probability_facts.clone();
     loaded_rule.rule = SExpr::Atom(Atom::Bool(false));
-    let rule_analysis = probability::analyze_content_set(&[loaded_rule]).unwrap();
+    let rule_analysis = probability::analyze_content_set(&[loaded_rule])
+        .expect("the fixture call `analyze_content_set` succeeds for the authored inputs");
     assert_eq!(rule_analysis.rules[0].nodes, retained_facts.nodes);
     assert_eq!(
         rule_analysis.rules[0].mass_literals,
@@ -1228,10 +1311,11 @@ fn loader_analysis_retains_mass_literals_in_bindings_scenarios_and_named_prelude
         rule_analysis.rules[0].mass_literals[0].mass,
         Mass::from_nanounits(1_250_000_000)
     );
-    let (_, rule_spans) = reader::read_all_spanned(rule_source.as_bytes()).unwrap();
+    let (_, rule_spans) =
+        reader::read_all_spanned(rule_source.as_bytes()).expect("the fixture source is readable");
     let span = rule_spans
         .span_of(&rule_analysis.rules[0].mass_literals[0].form_path)
-        .unwrap();
+        .expect("the fixture source contains the addressed token");
     assert_eq!(&rule_source[span.start..span.end], "1.25m");
 
     let prelude_source = "(defconst demo/prelude-mass 2m)\n";
@@ -1246,7 +1330,7 @@ fn loader_analysis_retains_mass_literals_in_bindings_scenarios_and_named_prelude
         }],
         &mut graph,
     )
-    .unwrap();
+    .expect("the authored scenario compiles with its preludes");
     let [scenario, prelude] = loaded.mass_declarations.as_slice() else {
         panic!("one scenario and one prelude Mass declaration must be retained")
     };
@@ -1257,8 +1341,11 @@ fn loader_analysis_retains_mass_literals_in_bindings_scenarios_and_named_prelude
     assert_eq!(scenario.qname, "demo/scenario-mass");
     assert_eq!(scenario.mass, Mass::from_nanounits(3_000_000_000));
     for (source, declaration) in [(prelude_source, prelude), (scenario_source, scenario)] {
-        let (_, spans) = reader::read_all_spanned(source.as_bytes()).unwrap();
-        let span = spans.span_of(&declaration.form_path).unwrap();
+        let (_, spans) =
+            reader::read_all_spanned(source.as_bytes()).expect("the fixture source is readable");
+        let span = spans
+            .span_of(&declaration.form_path)
+            .expect("the fixture source contains the addressed token");
         assert!(source[span.start..span.end].ends_with('m'));
     }
 }
@@ -1277,7 +1364,8 @@ fn loader_refuses_mass_in_payload_write_comparison_fold_and_scalar_contexts_at_i
         let LoadError::Probability(ProbabilityError::InvalidForm { form_path, .. }) = error else {
             panic!("expected a probability-path refusal, got {error:?}");
         };
-        let (_, spans) = reader::read_all_spanned(source.as_bytes()).unwrap();
+        let (_, spans) =
+            reader::read_all_spanned(source.as_bytes()).expect("the fixture source is readable");
         let span = spans
             .span_of(&form_path)
             .expect("diagnostic path maps to source");
@@ -1313,7 +1401,10 @@ fn projection_probability_analysis_treats_payload_labels_as_data_and_values_as_e
 }
 
 #[test]
-#[allow(clippy::too_many_lines)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`authored_probability_event_payloads_refuse_literals_fields_exprs_and_consts` keeps one authored sequence in a single place"
+)]
 fn authored_probability_event_payloads_refuse_literals_fields_exprs_and_consts() {
     let literal_source = "(rule demo/literal :role recognizer :evidence derived \
         :material-basis \"event likelihood is derived\" :fuel 64 \
@@ -1326,8 +1417,11 @@ fn authored_probability_event_payloads_refuse_literals_fields_exprs_and_consts()
         panic!("expected a located Probability refusal, got {literal_error:?}");
     };
     assert!(message.contains("event likelihood is derived"));
-    let (_, spans) = reader::read_all_spanned(literal_source.as_bytes()).unwrap();
-    let span = spans.span_of(&form_path).unwrap();
+    let (_, spans) = reader::read_all_spanned(literal_source.as_bytes())
+        .expect("the fixture source is readable");
+    let span = spans
+        .span_of(&form_path)
+        .expect("the fixture source contains the addressed token");
     assert_eq!(&literal_source[span.start..span.end], "0.5p");
 
     let mut graph = MemoryGraph::new();
@@ -1339,7 +1433,7 @@ fn authored_probability_event_payloads_refuse_literals_fields_exprs_and_consts()
           (node subject NodeType/SOCIAL_CLASS (social-class/likelihood 0.5p)))",
         &mut graph,
     )
-    .unwrap();
+    .expect("the authored scenario compiles");
     let types = TypeEnv {
         fields: scenario.fields.clone(),
         exemptions: &[],
@@ -1388,8 +1482,11 @@ fn authored_probability_event_payloads_refuse_literals_fields_exprs_and_consts()
         let LoadError::Probability(ProbabilityError::InvalidForm { form_path, .. }) = error else {
             panic!("expected a located Probability refusal, got {error:?}");
         };
-        let (_, spans) = reader::read_all_spanned(source.as_bytes()).unwrap();
-        let span = spans.span_of(&form_path).unwrap();
+        let (_, spans) =
+            reader::read_all_spanned(source.as_bytes()).expect("the fixture source is readable");
+        let span = spans
+            .span_of(&form_path)
+            .expect("the fixture source contains the addressed token");
         assert_eq!(&source[span.start..span.end], value);
     }
 
@@ -1433,7 +1530,7 @@ fn mass_cannot_be_declared_as_a_stored_field_or_metric() {
     let (metric, _) = reader::read(
         "(metric mass-score :type mass :kind intensive (domain :graph) :provider demo)",
     )
-    .unwrap();
+    .expect("the fixture reader returns its authored facts");
     let metric_error = MetricRegistry::default()
         .declare(&metric)
         .expect_err("Mass must not be a metric type");
@@ -1456,8 +1553,8 @@ fn exact_pushforward_retains_zero_one_and_multiple_favorable_preimages() {
         &[],
         &HashMap::new(),
     )
-    .unwrap();
-    let kernel = kernel.unwrap();
+    .expect("the authored probability rule compiles");
+    let kernel = kernel.expect("the compiled fixture carries its kernel");
     let projection_rule = reader::read(
         r#"(rule demo/projection :role recognizer :evidence derived
   :projects-kernel struggle/spark
@@ -1468,7 +1565,7 @@ fn exact_pushforward_retains_zero_one_and_multiple_favorable_preimages() {
     (emit EventType/ONE)
     (emit EventType/MULTIPLE)))"#,
     )
-    .unwrap()
+    .expect("the fixture reader returns its authored facts")
     .0;
     let (_, projection) = compile_rule_probability(
         &projection_rule,
@@ -1478,8 +1575,8 @@ fn exact_pushforward_retains_zero_one_and_multiple_favorable_preimages() {
         &[],
         &HashMap::new(),
     )
-    .unwrap();
-    let projection = projection.unwrap();
+    .expect("the authored probability rule compiles");
+    let projection = projection.expect("the fixture carries its projection");
     let likelihoods = probability::forecast_event_likelihoods(
         &kernel,
         &projection,
@@ -1495,7 +1592,7 @@ fn exact_pushforward_retains_zero_one_and_multiple_favorable_preimages() {
             },
         ],
     )
-    .unwrap();
+    .expect("the fixture call `forecast_event_likelihoods` succeeds for the authored inputs");
     let by_event: HashMap<_, _> = likelihoods
         .into_iter()
         .map(|likelihood| (likelihood.event_type.clone(), likelihood))
@@ -1524,7 +1621,8 @@ fn detached_forecast_applies_each_real_branch_and_runs_the_adjacent_recognizer()
   (node subject NodeType/SOCIAL_CLASS (social-class/value 0)))
 ";
     let mut graph = MemoryGraph::new();
-    let scenario = scenario::load_scenario(scenario_source, &mut graph).unwrap();
+    let scenario = scenario::load_scenario(scenario_source, &mut graph)
+        .expect("the authored scenario compiles");
     let types = TypeEnv {
         fields: scenario.fields.clone(),
         exemptions: &[],
@@ -1553,7 +1651,7 @@ fn detached_forecast_applies_each_real_branch_and_runs_the_adjacent_recognizer()
                 rule_file: file,
             },
         )
-        .unwrap()
+        .expect("the authored rule compiles")
     };
     let mechanic = load(
         r#"(rule demo/spark :role mechanic :evidence designed
@@ -1594,7 +1692,7 @@ fn detached_forecast_applies_each_real_branch_and_runs_the_adjacent_recognizer()
             tick: 1,
         },
     )
-    .unwrap();
+    .expect("the fixture call `forecast_event_likelihoods` succeeds for the authored inputs");
     assert_eq!(likelihoods.len(), 1);
     assert_eq!(likelihoods[0].event_type, "CONTROL_RATIO_CRISIS");
     assert_eq!(likelihoods[0].favorable_outcomes, ["EXCESSIVE_FORCE"]);
@@ -1602,7 +1700,7 @@ fn detached_forecast_applies_each_real_branch_and_runs_the_adjacent_recognizer()
     assert_eq!(
         graph
             .node_attribute(subject, "social-class/value")
-            .unwrap()
+            .expect("the fixture node carries the authored attribute")
             .to_bits(),
         0.0_f64.to_bits()
     );
@@ -1617,7 +1715,8 @@ fn runtime_never_evaluates_an_unselected_branch_body() {
   (node subject NodeType/SOCIAL_CLASS (social-class/value 0)))
 ";
     let mut graph = MemoryGraph::new();
-    let scenario = scenario::load_scenario(scenario_source, &mut graph).unwrap();
+    let scenario = scenario::load_scenario(scenario_source, &mut graph)
+        .expect("the authored scenario compiles");
     let types = TypeEnv {
         fields: scenario.fields.clone(),
         exemptions: &[],
@@ -1653,15 +1752,16 @@ fn runtime_never_evaluates_an_unselected_branch_body() {
             rule_file: "demo/lazy-choice.bsl",
         },
     )
-    .unwrap();
+    .expect("the authored rule compiles");
     let resolver = StableElementResolver::seal(
         &graph,
         "demo/lazy",
         &scenario.node_content_ids,
         &scenario.hyperedge_content_ids,
     )
-    .unwrap();
-    let session = ReplaySessionId::try_from("demo/lazy-runtime").unwrap();
+    .expect("the fixture seals the prepared period");
+    let session = ReplaySessionId::try_from("demo/lazy-runtime")
+        .expect("the fixture value fits the target range");
     let mut sink = CollectingSink::default();
     let mut writes = CollectingWriteLog::new();
     let outcome = tick::run_tick_observed(
@@ -1689,7 +1789,7 @@ fn runtime_never_evaluates_an_unselected_branch_body() {
     assert_eq!(
         graph
             .node_attribute(subject, "social-class/value")
-            .unwrap()
+            .expect("the fixture node carries the authored attribute")
             .to_bits(),
         1.0_f64.to_bits()
     );

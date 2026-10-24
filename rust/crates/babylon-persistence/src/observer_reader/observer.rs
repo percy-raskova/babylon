@@ -998,13 +998,17 @@ mod tests {
     use super::*;
     #[test]
     fn material_headers_bind_the_matching_graph_and_graph_only_is_separate() {
-        let (graph, scenario) = graph_only_observer_identity().unwrap();
+        let (graph, scenario) = graph_only_observer_identity().expect(
+            "the fixture call `graph_only_observer_identity` succeeds for the authored inputs",
+        );
         assert!(validate_observer_graph(None, &graph, &scenario).is_ok());
         for preset in MICHIGAN_CONTENT_PRESETS
             .into_iter()
             .filter(|preset| !preset.delivery().is_statewide())
         {
-            let entry = preset.admitted(&crate::test_support::catalog()).unwrap();
+            let entry = preset
+                .admitted(&crate::test_support::catalog())
+                .expect("the fixture admits the authored value");
             assert!(validate_observer_graph(
                 Some(&entry),
                 &entry.graph_digest,
@@ -1018,7 +1022,9 @@ mod tests {
                 .into_iter()
                 .filter(|preset| !preset.delivery().is_statewide())
             {
-                let other = other.admitted(&crate::test_support::catalog()).unwrap();
+                let other = other
+                    .admitted(&crate::test_support::catalog())
+                    .expect("the fixture admits the authored value");
                 assert_eq!(
                     validate_observer_graph(
                         Some(&entry),
@@ -1033,7 +1039,9 @@ mod tests {
     }
     #[test]
     fn foundation_grants_mask_individual_fields_before_values_exist() {
-        let baseline = &michigan_economy::michigan_economy().unwrap().counties()[0];
+        let baseline = &michigan_economy::michigan_economy()
+            .expect("the Michigan economy fixture builds")
+            .counties()[0];
         let row = project_county(
             baseline,
             0,
@@ -1041,7 +1049,7 @@ mod tests {
             [None; 4],
             [true, false, true, false],
         )
-        .unwrap();
+        .expect("the fixture projection accepts the authored input");
         assert_eq!(row.annual_avg_estabs_count, Some(214));
         assert_eq!(row.annual_avg_emplvl, None);
         assert_eq!(row.total_annual_wages, Some(62_042_985));
@@ -1049,7 +1057,9 @@ mod tests {
     }
     #[test]
     fn committed_values_never_fallback_to_baseline_or_turn_missing_into_zero() {
-        let baseline = &michigan_economy::michigan_economy().unwrap().counties()[0];
+        let baseline = &michigan_economy::michigan_economy()
+            .expect("the Michigan economy fixture builds")
+            .counties()[0];
         assert_eq!(
             project_county(
                 baseline,
@@ -1077,13 +1087,15 @@ mod tests {
             [Some(1), None, Some(3), None],
             [true, false, true, false],
         )
-        .unwrap();
+        .expect("the fixture projection accepts the authored input");
         assert_eq!(row.annual_avg_estabs_count, Some(1));
         assert_eq!(row.annual_avg_emplvl, None);
     }
     #[test]
     fn leaked_ungiven_value_is_refused_even_if_ui_would_hide_it() {
-        let baseline = &michigan_economy::michigan_economy().unwrap().counties()[0];
+        let baseline = &michigan_economy::michigan_economy()
+            .expect("the Michigan economy fixture builds")
+            .counties()[0];
         assert_eq!(
             project_county(
                 baseline,

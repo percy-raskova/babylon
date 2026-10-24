@@ -1193,7 +1193,11 @@ fn classify_ratio(
     // it here rather than letting the loader's "the reader should have
     // refused this" path claim otherwise. Exactly 0.0000005 rounds UP to
     // the first grid point and stays legal.
-    if scale >= 7 && 2 * unscaled < 10_i128.pow(u32::try_from(scale).unwrap() - 6) {
+    if scale >= 7
+        && 2 * unscaled
+            < 10_i128
+                .pow(u32::try_from(scale).expect("the decimal loop leaves scale non-negative") - 6)
+    {
         return Err(lex_error(
             LexCode::NonPositiveRatio,
             "r literal quantizes to zero on the kernel's 1e-6 grid — \
@@ -1340,12 +1344,14 @@ mod tests {
     #[test]
     fn read_returns_the_resume_position() {
         let source = "(a) (b)";
-        let (first, resume) = super::read(source).unwrap();
+        let (first, resume) =
+            super::read(source).expect("the fixture reader returns its authored facts");
         assert_eq!(
             first,
             SExpr::List(vec![SExpr::Atom(Atom::Symbol("a".into()))])
         );
-        let (second, _) = super::read(&source[resume..]).unwrap();
+        let (second, _) =
+            super::read(&source[resume..]).expect("the fixture reader returns its authored facts");
         assert_eq!(
             second,
             SExpr::List(vec![SExpr::Atom(Atom::Symbol("b".into()))])
@@ -1354,7 +1360,8 @@ mod tests {
 
     #[test]
     fn read_all_reads_every_top_level_form() {
-        let forms = super::read_all(b"(a) ; comment\n(b 1)").unwrap();
+        let forms =
+            super::read_all(b"(a) ; comment\n(b 1)").expect("the fixture source is readable");
         assert_eq!(forms.len(), 2);
     }
 
@@ -1362,13 +1369,15 @@ mod tests {
 
     #[test]
     fn invalid_utf8_is_e_lex_001() {
-        let err = super::read_all(&[0xff, 0xfe, b'(', b')']).unwrap_err();
+        let err = super::read_all(&[0xff, 0xfe, b'(', b')'])
+            .expect_err("the reader rejects the malformed source");
         assert_eq!(err.kind, ReadErrorKind::Lex(LexCode::InvalidUtf8OrBom));
     }
 
     #[test]
     fn a_bom_at_offset_zero_is_discarded() {
-        let forms = super::read_all("\u{feff}(a)".as_bytes()).unwrap();
+        let forms =
+            super::read_all("\u{feff}(a)".as_bytes()).expect("the fixture source is readable");
         assert_eq!(forms.len(), 1);
     }
 
@@ -1377,8 +1386,10 @@ mod tests {
     /// diagnostic by its 3 bytes.
     #[test]
     fn error_positions_count_a_stripped_bom() {
-        let plain = super::read_all(b"(a) \x01").unwrap_err();
-        let bommed = super::read_all("\u{feff}(a) \u{01}".as_bytes()).unwrap_err();
+        let plain =
+            super::read_all(b"(a) \x01").expect_err("the reader rejects the malformed source");
+        let bommed = super::read_all("\u{feff}(a) \u{01}".as_bytes())
+            .expect_err("the reader rejects the malformed source");
         assert_eq!(bommed.kind, plain.kind);
         assert_eq!(
             bommed.position,

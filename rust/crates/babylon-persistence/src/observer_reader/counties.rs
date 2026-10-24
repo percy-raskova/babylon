@@ -148,14 +148,15 @@ mod tests {
     use super::*;
     #[test]
     fn absent_workplace_evidence_stays_absent_for_a_real_resident_county() {
-        let geoid = CountyGeoid::try_from("15005").unwrap();
+        let geoid =
+            CountyGeoid::try_from("15005").expect("the fixture value fits the target range");
         let county = project(
             geoid,
             ObserverVisibility::FullObserver,
             [None; 4],
             [true; 4],
         )
-        .unwrap();
+        .expect("the fixture projection accepts the authored state");
         assert_eq!(county.county_geoid, "15005");
         assert_eq!(county.annual_avg_emplvl, None);
         assert_eq!(county.total_annual_wages, None);
@@ -163,12 +164,12 @@ mod tests {
     #[test]
     fn known_preview_masks_source_fields_without_inventing_zero() {
         let county = project(
-            CountyGeoid::try_from("26163").unwrap(),
+            CountyGeoid::try_from("26163").expect("the fixture value fits the target range"),
             ObserverVisibility::KnownPreview,
             [Some(12), Some(44), None, Some(300)],
             [true, false, true, false],
         )
-        .unwrap();
+        .expect("the fixture projection accepts the authored state");
         assert_eq!(county.annual_avg_estabs_count, Some(12));
         assert_eq!(county.annual_avg_emplvl, None);
         assert_eq!(county.total_annual_wages, None);

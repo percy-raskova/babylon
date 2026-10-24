@@ -14,14 +14,15 @@ fn control_import_preserves_exact_goods_orders_and_staffing() {
         MichiganDeliveryPreset::SharedFreightConstrained,
     ] {
         let catalog = MichiganMaterialCatalog::from_defines_toml(text)
-            .unwrap()
+            .expect("the authored input admits the derived value")
             .with_preset(preset)
-            .unwrap();
-        let opening = economic_catalog::import_michigan_opening(&catalog).unwrap();
+            .expect("the fixture builder accepts the authored options");
+        let opening = economic_catalog::import_michigan_opening(&catalog)
+            .expect("the fixture call `import_michigan_opening` succeeds for the authored inputs");
         assert_eq!(opening.accounting, CatalogAccounting::PhysicalControl);
         assert!(opening.households.is_empty());
         assert!(opening.employment.is_empty());
-        let compiled = opening.compile().unwrap();
+        let compiled = opening.compile().expect("the authored scenario compiles");
         assert_eq!(
             compiled.state.process_outputs.len(),
             catalog.processes().len()
@@ -54,18 +55,20 @@ fn source_only_control_capture_round_trips_without_a_derived_material_blob() {
     let control = MichiganMaterialCatalog::from_defines_toml(include_str!(
         "../../../../content/scenarios/michigan/defines.toml"
     ))
-    .unwrap();
-    let captured = CapturedEconomicCatalog::from_michigan(&control).unwrap();
+    .expect("the authored input admits the derived value");
+    let captured = CapturedEconomicCatalog::from_michigan(&control)
+        .expect("the Michigan fixture content loads");
     let detail = captured
         .source(SourceArtifactKind::MichiganSpatialProducts)
-        .unwrap();
+        .expect("the fixture call `source` succeeds for the authored inputs");
     assert_eq!(detail.len(), 2_325_740);
     assert!(captured
         .source(SourceArtifactKind::MichiganDynamicHexes)
         .is_some());
     let raw = captured.canonical_bytes().to_vec();
     let digest = captured.digest();
-    let reopened = CapturedEconomicCatalog::decode(&raw, digest).unwrap();
+    let reopened = CapturedEconomicCatalog::decode(&raw, digest)
+        .expect("the committed canonical bytes decode");
     assert_eq!(reopened.opening(), captured.opening());
     let babylon_persistence::economic_catalog::EconomicSourceView::MichiganControl {
         catalog, ..
@@ -73,18 +76,21 @@ fn source_only_control_capture_round_trips_without_a_derived_material_blob() {
     else {
         panic!("captured Michigan control source required");
     };
-    let recaptured = CapturedEconomicCatalog::from_michigan(catalog).unwrap();
+    let recaptured = CapturedEconomicCatalog::from_michigan(catalog)
+        .expect("the Michigan fixture content loads");
     assert_eq!(recaptured.canonical_bytes(), raw);
 
     assert_eq!(
         reopened.source(SourceArtifactKind::MichiganDefines),
         Some(include_bytes!("../../../../content/scenarios/michigan/defines.toml").as_slice())
     );
-    let bundle = FoundationContentBundle::from_economic_catalog(reopened).unwrap();
+    let bundle = FoundationContentBundle::from_economic_catalog(reopened)
+        .expect("the authored input admits the derived value");
     assert_eq!(bundle.kind(), FoundationContentKind::EconomicCatalog);
     assert_eq!(bundle.reference_digest().as_bytes(), &digest);
     assert_eq!(
-        FoundationContentBundle::decode(bundle.canonical_bytes()).unwrap(),
+        FoundationContentBundle::decode(bundle.canonical_bytes())
+            .expect("the committed canonical bytes decode"),
         bundle
     );
     let mut unknown = raw;
@@ -104,33 +110,48 @@ fn captured_control_restarts_and_advances_through_the_same_three_period_circuit(
     let control = MichiganMaterialCatalog::from_defines_toml(include_str!(
         "../../../../content/scenarios/michigan/defines.toml"
     ))
-    .unwrap();
+    .expect("the authored input admits the derived value");
     let original = CapturedEconomicCatalog::from_michigan(&control)
-        .unwrap()
+        .expect("the Michigan fixture content loads")
         .create_foundation(
-            ReplaySessionId::try_from("captured-control").unwrap(),
+            ReplaySessionId::try_from("captured-control")
+                .expect("the fixture value fits the target range"),
             ReplaySeed::new(319),
         )
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let restored = MaterialRuntimeFoundation::decode(
-        &original.export_canonical_bytes().unwrap(),
+        &original
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes"),
         original.digest(),
     )
-    .unwrap();
+    .expect("the committed canonical bytes decode");
     assert_eq!(
-        original.export_canonical_bytes().unwrap(),
-        restored.export_canonical_bytes().unwrap()
+        original
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes"),
+        restored
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes")
     );
-    let mut direct = original.into_session().unwrap();
-    let mut restart = restored.into_session().unwrap();
+    let mut direct = original
+        .into_session()
+        .expect("the fixture opens a session");
+    let mut restart = restored
+        .into_session()
+        .expect("the fixture opens a session");
     for period in 1..=3 {
         let actions = OrderedPracticeActionBatch::empty(
             direct.graph_session().session_identity().clone(),
             period,
         )
-        .unwrap();
-        let left = direct.prepare_advance(&actions).unwrap();
-        let right = restart.prepare_advance(&actions).unwrap();
+        .expect("the empty authored batch constructs");
+        let left = direct
+            .prepare_advance(&actions)
+            .expect("the session prepares the authored advance");
+        let right = restart
+            .prepare_advance(&actions)
+            .expect("the session prepares the authored advance");
         assert_eq!(left.identity(), right.identity());
         assert_eq!(
             left.material().register().canonical_bytes(),
@@ -144,11 +165,11 @@ fn captured_control_restarts_and_advances_through_the_same_three_period_circuit(
             .commit_prepared_and_publish(&mut CollectingSink::default(), left, |_| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
-            .unwrap();
+            .expect("the prepared period commits");
         restart
             .commit_prepared_and_publish(&mut CollectingSink::default(), right, |_| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
-            .unwrap();
+            .expect("the prepared period commits");
     }
 }

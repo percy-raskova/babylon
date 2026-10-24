@@ -29,7 +29,10 @@ impl Digest32 {
 
     /// Returns the lowercase 64-character hexadecimal representation.
     #[must_use]
-    #[allow(clippy::needless_range_loop)] // The literal bound is part of the digest contract.
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "the loop index is the authored row ordinal"
+    )] // The literal bound is part of the digest contract.
     pub fn to_hex(&self) -> String {
         use std::fmt::Write as _;
 

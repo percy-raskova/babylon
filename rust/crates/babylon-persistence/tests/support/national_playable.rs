@@ -42,10 +42,11 @@ use uuid::Uuid;
 
 fn accounting_reader() -> ObserverEconomyReader {
     let config: Config = std::env::var("BABYLON_NATIONAL_STORAGE_OBSERVER_DSN")
-        .unwrap()
+        .expect("the fixture variable is bound")
         .parse()
-        .unwrap();
-    ObserverEconomyReader::connect(&config, ObserverVisibility::FullObserver).unwrap()
+        .expect("the authored literal parses as the declared type");
+    ObserverEconomyReader::connect(&config, ObserverVisibility::FullObserver)
+        .expect("the test database accepts the connection")
 }
 
 #[path = "national_offer_controls.rs"]
@@ -62,10 +63,18 @@ struct Session {
     archive_verified_tick: u64,
 }
 impl Session {
+    #[allow(
+        clippy::too_many_lines,
+        reason = "`start` keeps one authored boundary's fixture and assertions together"
+    )]
     fn start(config: &Config, campaign: CampaignId, new: bool) -> Self {
         let (local, remote) = UnixStream::pair().expect("bounded local runtime pipe");
-        let input = local.try_clone().unwrap();
-        let source = remote.try_clone().unwrap();
+        let input = local
+            .try_clone()
+            .expect("the fixture input satisfies the fallible conversion");
+        let source = remote
+            .try_clone()
+            .expect("the fixture input satisfies the fallible conversion");
         let config = config.clone();
         let defines = PathBuf::from("/dev/null");
         let worker = thread::spawn(move || {
@@ -126,7 +135,14 @@ impl Session {
         };
         assert_eq!(request_id, id);
         assert_eq!(previous_scope, session.scope);
-        assert_eq!(scope.epoch, session.scope.epoch.checked_add(1).unwrap());
+        assert_eq!(
+            scope.epoch,
+            session
+                .scope
+                .epoch
+                .checked_add(1)
+                .expect("the fixture arithmetic stays in range")
+        );
         assert_eq!(
             scope.campaign_id.as_deref(),
             Some(campaign.as_uuid().to_string().as_str())
@@ -156,22 +172,29 @@ impl Session {
     }
     fn id(&mut self) -> u64 {
         let id = self.next_id;
-        self.next_id = id.checked_add(1).unwrap();
+        self.next_id = id
+            .checked_add(1)
+            .expect("the fixture arithmetic stays in range");
         id
     }
     fn send(&mut self, request: &RuntimeSessionRequest) {
-        let bytes = serde_json::to_vec(request).unwrap();
+        let bytes =
+            serde_json::to_vec(request).expect("the value serializes to canonical JSON bytes");
         assert!(bytes.len() < RUNTIME_SESSION_MAX_LINE_BYTES);
-        self.input.write_all(&bytes).unwrap();
-        self.input.write_all(b"\n").unwrap();
-        self.input.flush().unwrap();
+        self.input
+            .write_all(&bytes)
+            .expect("the fixture sink accepts the authored bytes");
+        self.input
+            .write_all(b"\n")
+            .expect("the fixture sink accepts the authored bytes");
+        self.input.flush().expect("the fixture sink flushes");
     }
     fn read(&mut self) -> RuntimeSessionResponse {
         let mut line = String::new();
         let maximum = u64::try_from(RUNTIME_SESSION_MAX_LINE_BYTES)
-            .unwrap()
+            .expect("the fixture value fits the target range")
             .checked_add(1)
-            .unwrap();
+            .expect("the fixture arithmetic stays in range");
         let count = Read::by_ref(&mut self.output)
             .take(maximum)
             .read_line(&mut line)
@@ -285,7 +308,11 @@ impl Session {
         }
         assert_eq!(
             preview.resolves_period,
-            snapshot.view.period.checked_add(1).unwrap()
+            snapshot
+                .view
+                .period
+                .checked_add(1)
+                .expect("the fixture arithmetic stays in range")
         );
         let mut accepted = None;
         for _ in 0..2 {
@@ -309,7 +336,7 @@ impl Session {
             }
             accepted = Some(commitment);
         }
-        let accepted = accepted.unwrap();
+        let accepted = accepted.expect("the fixture audit returns the accepted value");
         self.reject_nonce_conflict(command, &accepted);
         (Some(accepted), preview)
     }
@@ -326,7 +353,11 @@ impl Session {
     }
     fn advance(&mut self) -> Instant {
         let id = self.id();
-        let next = self.tail.resolve_tick.checked_add(1).unwrap();
+        let next = self
+            .tail
+            .resolve_tick
+            .checked_add(1)
+            .expect("the fixture arithmetic stays in range");
         self.send(&RuntimeSessionRequest::Advance {
             protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
             request_id: id,
@@ -370,7 +401,7 @@ impl Session {
             self.output
                 .get_mut()
                 .set_read_timeout(Some(remaining))
-                .unwrap();
+                .expect("the fixture connection accepts the timeout");
             match self.read() {
                 RuntimeSessionResponse::ArchiveProgress {
                     scope,
@@ -392,7 +423,10 @@ impl Session {
                 response => panic!("unexpected response during Archive catch-up: {response:?}"),
             }
         }
-        self.output.get_mut().set_read_timeout(None).unwrap();
+        self.output
+            .get_mut()
+            .set_read_timeout(None)
+            .expect("the fixture connection accepts the timeout");
     }
     fn stop(mut self) {
         let id = self.id();
@@ -470,9 +504,10 @@ fn standing_control_submission_retains_exact_command_envelope() {
         campaign_id: Some(Uuid::from_bytes(command.campaign_id).to_string()),
     };
     let request = organizer_submission(17, scope.clone(), command.clone());
-    let decoded =
-        serde_json::from_slice::<RuntimeSessionRequest>(&serde_json::to_vec(&request).unwrap())
-            .unwrap();
+    let decoded = serde_json::from_slice::<RuntimeSessionRequest>(
+        &serde_json::to_vec(&request).expect("the value serializes to canonical JSON bytes"),
+    )
+    .expect("the fixture world holds the addressed component");
     let RuntimeSessionRequest::ConfigureOrganizerStanding {
         protocol_version,
         request_id,
@@ -499,8 +534,10 @@ struct PeriodEvidence {
     positive_consequence: bool,
 }
 fn identity_rows(config: &Config, campaign: CampaignId) -> Vec<(i64, String, String)> {
-    let mut client = config.connect(NoTls).unwrap();
-    client.query("SELECT resolve_tick,encode(tick_content_hash,'hex'),encode(envelope_digest,'hex') FROM babylon_state.tick_commit WHERE campaign_id=$1 ORDER BY resolve_tick",&[campaign.as_uuid()]).unwrap()
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
+    client.query("SELECT resolve_tick,encode(tick_content_hash,'hex'),encode(envelope_digest,'hex') FROM babylon_state.tick_commit WHERE campaign_id=$1 ORDER BY resolve_tick",&[campaign.as_uuid()]).expect("the seeded rows are readable")
         .iter().map(|r|(r.get(0),r.get(1),r.get(2))).collect()
 }
 fn verify_offers(snapshot: &OrganizerSnapshot) {
@@ -532,7 +569,11 @@ fn verify_offer(snapshot: &OrganizerSnapshot, kind: OrganizerAidKind) {
         snapshot.aid.iter().filter(|row| row.kind == kind).count(),
         1
     );
-    let preview = snapshot.aid.iter().find(|p| p.kind == kind).unwrap();
+    let preview = snapshot
+        .aid
+        .iter()
+        .find(|p| p.kind == kind)
+        .expect("the fixture holds the searched element");
     let pending: Vec<_> = snapshot
         .pending_aid
         .iter()
@@ -543,10 +584,14 @@ fn verify_offer(snapshot: &OrganizerSnapshot, kind: OrganizerAidKind) {
         "one original commitment per pending kind"
     );
     if let Some(pending) = pending.first() {
-        assert_eq!(pending.mandate_id, preview.mandate_id);
+        assert_eq!(
+            pending.mandate_id, preview.mandate_id,
+            "pending mandate must repeat the captured preview mandate"
+        );
         assert_eq!(
             (pending.good_id, pending.unit_id),
-            (preview.good_id, preview.unit_id)
+            (preview.good_id, preview.unit_id),
+            "pending goods must repeat the captured preview goods"
         );
         assert_ne!(pending.original_commitment_id, [0; 32]);
         assert!(pending.admitted_period < pending.dispatch_period);
@@ -626,10 +671,10 @@ fn verify_dispatch(after: &OrganizerSnapshot, commitment: Option<&OrganizerCommi
 fn snapshot_digest(snapshot: &OrganizerSnapshot) -> String {
     use sha2::{Digest, Sha256};
     use std::fmt::Write as _;
-    let bytes = serde_json::to_vec(snapshot).unwrap();
+    let bytes = serde_json::to_vec(snapshot).expect("the value serializes to canonical JSON bytes");
     let mut digest = String::with_capacity(64);
     for byte in Sha256::digest(bytes) {
-        write!(digest, "{byte:02x}").unwrap();
+        write!(digest, "{byte:02x}").expect("the in-memory formatter accepts the written text");
     }
     digest
 }
@@ -699,8 +744,11 @@ impl QualificationAccounting {
             return false;
         }
         self.aid
-            .accept(Accepted::capture(commitment, preview, before).unwrap())
-            .unwrap();
+            .accept(
+                Accepted::capture(commitment, preview, before)
+                    .expect("the fixture captures the authored state"),
+            )
+            .expect("the fixture call `accept` succeeds for the authored inputs");
         true
     }
 
@@ -717,9 +765,9 @@ impl QualificationAccounting {
         let register = self
             .production_cursor
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .current_register()
-            .unwrap();
+            .expect("the fixture call `current_register` succeeds for the authored inputs");
         assert_eq!(register.completed_tick(), tick);
         assert_eq!(
             babylon_tick::material_world::nominal_material_world_hash(
@@ -733,7 +781,9 @@ impl QualificationAccounting {
             let audit =
                 national_production_renewal::Audit::seed(register.state(), tick, register.digest())
                     .expect("renewal seed agrees with authenticated material state");
-            let evidence = audit.evidence().unwrap();
+            let evidence = audit
+                .evidence()
+                .expect("the fixture call `evidence` succeeds for the authored inputs");
             self.production_renewal = Some(audit);
             evidence
         } else {
@@ -743,7 +793,7 @@ impl QualificationAccounting {
                 .read(&observation.accounting.receipts)
                 .expect("renewal custody bounds agree with authenticated receipts")
         };
-        let mut fact = serde_json::to_value(evidence).unwrap();
+        let mut fact = serde_json::to_value(evidence).expect("the value serializes to JSON");
         fact["through_tick_content_hash"] = serde_json::json!(national_boundary_evidence::hex(
             identity.tick_content_hash().as_bytes()
         ));
@@ -759,7 +809,7 @@ impl QualificationAccounting {
                 .read(&observation.accounting.receipts)
                 .expect("independent economic accounting agrees with committed receipts"),
         )
-        .unwrap();
+        .expect("the value serializes to JSON");
         let identity = &observation.accounting.identity;
         fact["tick_content_hash"] = serde_json::json!(national_boundary_evidence::hex(
             identity.tick_content_hash().as_bytes()
@@ -781,16 +831,19 @@ impl<'a> QualificationRun<'a> {
         let reader = accounting_reader();
         let opening = reader
             .snapshot_with_cursor(self.campaign, 0, &mut accounting.production_cursor)
-            .unwrap();
+            .expect("the fixture snapshot carries its cursor");
         assert_eq!(opening.foundation_digest, session.foundation);
         assert_eq!(opening.resolve_tick, 0);
-        let cursor = accounting.production_cursor.as_ref().unwrap();
+        let cursor = accounting
+            .production_cursor
+            .as_ref()
+            .expect("the fixture set the optional field before this read");
         cursor
             .with_opening_register(self.campaign, |register| {
                 accounting.aid.open(register, before)
             })
-            .unwrap()
-            .unwrap();
+            .expect("the fixture builder accepts the authored options")
+            .expect("the nested fixture result is present");
     }
     fn start(config: &'a Config, campaign: CampaignId, periods: u64, started: Instant) -> Self {
         let limits = national_boundary_evidence::limits();
@@ -886,7 +939,11 @@ impl<'a> QualificationRun<'a> {
             self.config,
             self.campaign,
             tick,
-            session.tail.tick_content_hash.as_deref().unwrap(),
+            session
+                .tail
+                .tick_content_hash
+                .as_deref()
+                .expect("the fixture set the optional value before this read"),
         );
         let elapsed = acknowledged.elapsed();
         assert!(
@@ -903,6 +960,10 @@ impl<'a> QualificationRun<'a> {
         )
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "`accounted_boundary` keeps one authored boundary's fixture and assertions together"
+    )]
     fn accounted_boundary(
         &self,
         session: &Session,
@@ -923,7 +984,7 @@ impl<'a> QualificationRun<'a> {
                     tick,
                     &mut accounting.production_cursor,
                 )
-                .unwrap()
+                .expect("the fixture call `committed_material_observation_with_cursor` succeeds for the authored inputs")
         };
         let elapsed = started.elapsed();
         assert!(
@@ -948,12 +1009,12 @@ impl<'a> QualificationRun<'a> {
                 accounting
                     .production_cursor
                     .as_ref()
-                    .unwrap()
+                    .expect("the fixture set the optional field before this read")
                     .current_register()
-                    .unwrap(),
+                    .expect("the fixture call `current_register` succeeds for the authored inputs"),
                 after,
             )
-            .unwrap();
+            .expect("the fixture reader returns its authored facts");
         let admitted = observation.accounting.identity;
         write_progress(
             self.campaign,
@@ -973,7 +1034,12 @@ impl<'a> QualificationRun<'a> {
             .trade
             .read(
                 &observation.accounting.receipts,
-                &observation.snapshot.production.as_ref().unwrap().sites,
+                &observation
+                    .snapshot
+                    .production
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read")
+                    .sites,
             )
             .expect("independent funded trade accounting agrees with committed receipts");
         trade_fact["tick_content_hash"] = serde_json::json!(session.tail.tick_content_hash);
@@ -1083,7 +1149,10 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
         boundaries.push(boundary.proof);
         super::snapshot(&format!("tick-{tick:02}"), campaign);
         let hashes = identity_rows(config, campaign);
-        assert_eq!(hashes.len(), usize::try_from(tick).unwrap());
+        assert_eq!(
+            hashes.len(),
+            usize::try_from(tick).expect("the fixture value fits the target range")
+        );
         let (reopened, timing) = recover(config, campaign, session, &after, &hashes);
         session = reopened;
         cold_reopens.push(timing);
@@ -1092,7 +1161,7 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
             tick,
             "reopened",
             run_started,
-            &serde_json::json!({"tail":session.tail,"foundation_sha256":foundation,"cold_reopen_elapsed_ns":cold_reopens.last().unwrap().elapsed_ns}),
+            &serde_json::json!({"tail":session.tail,"foundation_sha256":foundation,"cold_reopen_elapsed_ns":cold_reopens.last().expect("the fixture sequence is non-empty").elapsed_ns}),
         );
         continuations.push(serde_json::json!({"period":tick,"tail":session.tail,
             "organizer_snapshot_sha256":snapshot_digest(&after),"latest_marker":hashes.last(),"nominal_world_hash":world}));
@@ -1114,7 +1183,7 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
     write_report(
         "national-playable-qualification.json",
         &serde_json::json!({"version":6,"capture_mode":"playable-aid","policy_sha256":run.limits.policy_sha256,
-        "campaign":campaign.as_uuid().to_string(),"foundation_sha256":foundation,"county_geoids":county_geoids.unwrap(),"requested_periods":periods,"aid_periods":evidence,"continuations":continuations,"boundaries":boundaries,
+        "campaign":campaign.as_uuid().to_string(),"foundation_sha256":foundation,"county_geoids":county_geoids.expect("the fixture value `county_geoids` is present before this read"),"requested_periods":periods,"aid_periods":evidence,"continuations":continuations,"boundaries":boundaries,
         "canonical_protocol_recovery":"passed","positive_aid_consequences":if remote&&local {"passed"} else {"incomplete"},
         "remote_consumed":remote,"local_consumed":local,"independent_finite_aid_practice":accounting.aid.practice_report(),"native_window_evidence":"not_run",
         "independent_account_posting_audit":accounting.aid.report(),"independent_trade_accounting":accounting.trade.report(),"independent_economic_accounting":accounting.economic.summary(),"independent_production_renewal":accounting.production_renewal_evidence}),
@@ -1145,12 +1214,14 @@ fn write_progress(
 }
 
 fn write_report(name: &str, report: &Value) {
-    let directory = PathBuf::from(std::env::var("BABYLON_STORAGE_REPORT_DIRECTORY").unwrap());
+    let directory = PathBuf::from(
+        std::env::var("BABYLON_STORAGE_REPORT_DIRECTORY").expect("the fixture variable is bound"),
+    );
     assert!(directory.is_absolute() && directory.is_dir());
     let target = directory.join(name);
     assert!(!target.exists(), "never replace evidence");
     let temporary = directory.join(format!("{name}.partial"));
-    let bytes = serde_json::to_vec(report).unwrap();
+    let bytes = serde_json::to_vec(report).expect("the value serializes to canonical JSON bytes");
     assert!(
         bytes.len() <= 4_000_000,
         "bounded qualification metadata includes 325 compact accounting boundaries"
@@ -1159,11 +1230,17 @@ fn write_report(name: &str, report: &Value) {
         .write(true)
         .create_new(true)
         .open(&temporary)
-        .unwrap();
-    file.write_all(&bytes).unwrap();
-    file.write_all(b"\n").unwrap();
-    file.sync_all().unwrap();
+        .expect("the fixture opens the authored source");
+    file.write_all(&bytes)
+        .expect("the fixture sink accepts the authored bytes");
+    file.write_all(b"\n")
+        .expect("the fixture sink accepts the authored bytes");
+    file.sync_all().expect("the fixture file syncs");
     drop(file);
-    std::fs::rename(temporary, target).unwrap();
-    File::open(directory).unwrap().sync_all().unwrap();
+    std::fs::rename(temporary, target)
+        .expect("the fixture call `rename` succeeds for the authored inputs");
+    File::open(directory)
+        .expect("the fixture opens the authored source")
+        .sync_all()
+        .expect("the fixture file syncs");
 }

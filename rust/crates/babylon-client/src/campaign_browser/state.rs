@@ -921,14 +921,14 @@ pub(crate) fn comparison_cohort_ids<'a>(
             cohort_ids.insert(neighbor.id.as_str());
         }
     } else {
-        for id in current
+        let first_site_ids = current
             .sites
             .iter()
             .map(|site| site.id.as_str())
             .collect::<BTreeSet<_>>()
             .into_iter()
-            .take(6)
-        {
+            .take(6);
+        for id in first_site_ids {
             cohort_ids.insert(id);
         }
     }
@@ -1439,7 +1439,9 @@ mod tests {
                 sites: vec![ProductionSite {
                     function: "manufacturing".into(),
                     id: site_id.clone(),
-                    location: "county:26163".parse().unwrap(),
+                    location: "county:26163"
+                        .parse()
+                        .expect("the authored literal parses as the declared type"),
                     name: "Wayne manufacturing cohort".into(),
                     industry_code: Some("331".into()),
                     observed_employment: Some(20),
@@ -1537,7 +1539,11 @@ mod tests {
 
     fn painted_comparison(app: &mut App, text: Entity) -> String {
         app.update();
-        app.world().get::<Text>(text).unwrap().0.clone()
+        app.world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0
+            .clone()
     }
 
     fn select_comparison_section(app: &mut App, label: &str) {
@@ -1581,7 +1587,14 @@ mod tests {
         navigation.selected_site = Some("panels".into());
         app.insert_resource(navigation);
         let reading = painted_comparison(&mut app, text);
-        assert!(reading.find("panels | NAICS").unwrap() < reading.find("steel | NAICS").unwrap());
+        assert!(
+            reading
+                .find("panels | NAICS")
+                .expect("the fixture holds the searched element")
+                < reading
+                    .find("steel | NAICS")
+                    .expect("the fixture holds the searched element")
+        );
         assert!(reading.contains("Comparing 2 disclosed cohorts"));
         assert!(!reading.contains("mill | NAICS"));
         assert!(!reading.contains("MODELED CAMPAIGN TOTALS"));
@@ -1603,10 +1616,10 @@ mod tests {
             let process = &mut browser
                 .comparison
                 .as_mut()
-                .unwrap()
+                .expect("the fixture set the optional field before this borrow")
                 .production
                 .as_mut()
-                .unwrap()
+                .expect("the fixture set the optional field before this borrow")
                 .sites[0]
                 .processes[0];
             process.produced_batches = Some(8);
@@ -1655,11 +1668,18 @@ mod tests {
         let mut scrolls = app
             .world_mut()
             .query_filtered::<&mut ScrollPosition, With<ComparisonReadingBody>>();
-        scrolls.single_mut(app.world_mut()).unwrap().y = 500.0;
+        scrolls
+            .single_mut(app.world_mut())
+            .expect("the fixture holds exactly one matching row")
+            .y = 500.0;
         select_comparison_section(&mut app, "Shared freight");
         let reading = painted_comparison(&mut app, text);
         assert_eq!(
-            scrolls.single(app.world()).unwrap().y.to_bits(),
+            scrolls
+                .single(app.world())
+                .expect("the fixture holds exactly one matching row")
+                .y
+                .to_bits(),
             0.0_f32.to_bits()
         );
         assert!(reading.contains("Designed regional freight pool"));
@@ -1680,7 +1700,7 @@ mod tests {
                 .resource::<ObserverFrame>()
                 .0
                 .as_ref()
-                .unwrap()
+                .expect("the fixture set the optional field before this read")
                 .resolve_tick,
             1
         );
@@ -1689,7 +1709,7 @@ mod tests {
                 .resource::<CampaignBrowserState>()
                 .comparison
                 .as_ref()
-                .unwrap()
+                .expect("the fixture set the optional field before this read")
                 .resolve_tick,
             1
         );
@@ -1704,7 +1724,10 @@ mod tests {
                 assert!(!painted_comparison(&mut app, text).is_empty());
                 {
                     let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
-                    let compared = browser.comparison.as_mut().unwrap();
+                    let compared = browser
+                        .comparison
+                        .as_mut()
+                        .expect("the fixture set the optional field before this borrow");
                     match mismatch {
                         "period" => compared.resolve_tick = 0,
                         "perspective" => compared.visibility = ObserverVisibility::KnownPreview,
@@ -1738,15 +1761,24 @@ mod tests {
         let mut panels = app
             .world_mut()
             .query_filtered::<(Entity, &Node), With<ComparisonPanel>>();
-        let (panel, node) = panels.single(app.world()).unwrap();
+        let (panel, node) = panels
+            .single(app.world())
+            .expect("the fixture holds exactly one matching row");
         assert_ne!(node.overflow.y, OverflowAxis::Scroll);
         let mut readings = app
             .world_mut()
             .query_filtered::<&ChildOf, With<ComparisonText>>();
-        let body = readings.single(app.world()).unwrap().parent();
+        let body = readings
+            .single(app.world())
+            .expect("the fixture holds exactly one matching row")
+            .parent();
         assert_ne!(body, panel);
         assert_eq!(
-            app.world().get::<Node>(body).unwrap().overflow.y,
+            app.world()
+                .get::<Node>(body)
+                .expect("the fixture world holds the addressed component")
+                .overflow
+                .y,
             OverflowAxis::Scroll
         );
         let mut buttons = app
@@ -1759,10 +1791,18 @@ mod tests {
             while ancestor != panel {
                 assert_ne!(ancestor, body);
                 assert_ne!(
-                    app.world().get::<Node>(ancestor).unwrap().overflow.y,
+                    app.world()
+                        .get::<Node>(ancestor)
+                        .expect("the fixture world holds the addressed component")
+                        .overflow
+                        .y,
                     OverflowAxis::Scroll
                 );
-                ancestor = app.world().get::<ChildOf>(ancestor).unwrap().parent();
+                ancestor = app
+                    .world()
+                    .get::<ChildOf>(ancestor)
+                    .expect("the fixture world holds the addressed component")
+                    .parent();
             }
         }
         let mut texts = app.world_mut().query::<&Text>();
@@ -1839,8 +1879,14 @@ mod tests {
 
     fn comparison_layout_rect(world: &World, entity: Entity) -> Rect {
         Rect::from_center_size(
-            world.get::<UiGlobalTransform>(entity).unwrap().translation,
-            world.get::<ComputedNode>(entity).unwrap().size(),
+            world
+                .get::<UiGlobalTransform>(entity)
+                .expect("the fixture world holds the addressed component")
+                .translation,
+            world
+                .get::<ComputedNode>(entity)
+                .expect("the fixture world holds the addressed component")
+                .size(),
         )
     }
 
@@ -1851,8 +1897,14 @@ mod tests {
             let mut readings = app
                 .world_mut()
                 .query_filtered::<Entity, With<ComparisonText>>();
-            let reading = readings.single(app.world()).unwrap();
-            let body = app.world().get::<ChildOf>(reading).unwrap().parent();
+            let reading = readings
+                .single(app.world())
+                .expect("the fixture holds exactly one matching row");
+            let body = app
+                .world()
+                .get::<ChildOf>(reading)
+                .expect("the fixture world holds the addressed component")
+                .parent();
             let viewport = comparison_layout_rect(app.world(), body);
             let full_reading = comparison_layout_rect(app.world(), reading);
             assert!(viewport.height() > 100.0);
@@ -1870,7 +1922,10 @@ mod tests {
                 .map(|entity| (entity, comparison_layout_rect(app.world(), entity)))
                 .collect::<Vec<_>>();
             for offset in [viewport.height(), full_reading.height() - viewport.height()] {
-                app.world_mut().get_mut::<ScrollPosition>(body).unwrap().y = offset;
+                app.world_mut()
+                    .get_mut::<ScrollPosition>(body)
+                    .expect("the fixture world holds the addressed component")
+                    .y = offset;
                 app.update();
                 let scrolled_reading = comparison_layout_rect(app.world(), reading);
                 assert!(scrolled_reading.min.y < full_reading.min.y);
@@ -1895,20 +1950,20 @@ mod tests {
                 .resource_mut::<ObserverFrame>()
                 .0
                 .as_mut()
-                .unwrap()
+                .expect("the fixture set the optional field before this borrow")
                 .production
                 .as_mut()
-                .unwrap(),
+                .expect("the fixture set the optional field before this borrow"),
         );
         edit(
             app.world_mut()
                 .resource_mut::<CampaignBrowserState>()
                 .comparison
                 .as_mut()
-                .unwrap()
+                .expect("the fixture set the optional field before this borrow")
                 .production
                 .as_mut()
-                .unwrap(),
+                .expect("the fixture set the optional field before this borrow"),
         );
     }
 
@@ -1943,7 +1998,9 @@ mod tests {
                         total_order_count: 1,
                         expired: 0,
                         demand_principal_id: format!("demand-{unit}"),
-                        location: "county:26163".parse().unwrap(),
+                        location: "county:26163"
+                            .parse()
+                            .expect("the authored literal parses as the declared type"),
                         good_id: "4".repeat(64),
                         unit_id: unit_id.repeat(64),
                         good: "Steel".into(),
@@ -2002,10 +2059,10 @@ mod tests {
             .resource_mut::<CampaignBrowserState>()
             .comparison
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .staffing_accounts
             .reverse();
         let reading = painted_comparison(&mut app, text);
@@ -2041,17 +2098,19 @@ mod tests {
                 let snapshot = browser
                     .comparison
                     .as_mut()
-                    .unwrap()
+                    .expect("the fixture set the optional field before this borrow")
                     .production
                     .as_mut()
-                    .unwrap();
+                    .expect("the fixture set the optional field before this borrow");
                 match mismatch {
                     "duplicate workforce" => snapshot
                         .staffing_accounts
                         .push(snapshot.staffing_accounts[0].clone()),
                     "duplicate owner" => snapshot.sites.push(snapshot.sites[0].clone()),
                     "owner coverage" => {
-                        snapshot.sites[0].location = "county:26001".parse().unwrap();
+                        snapshot.sites[0].location = "county:26001"
+                            .parse()
+                            .expect("the authored literal parses as the declared type");
                     }
                     "missing workforce" => snapshot.staffing_accounts.clear(),
                     "bad balance" => snapshot.staffing_accounts[0].reserve = 100,
@@ -2101,10 +2160,14 @@ mod tests {
         let (mut app, text) = retail_comparison_app(2);
         edit_comparison_production(&mut app, |snapshot| {
             for site in &mut snapshot.sites {
-                site.location = "foreign:canada".parse().unwrap();
+                site.location = "foreign:canada"
+                    .parse()
+                    .expect("the authored literal parses as the declared type");
             }
             for household in &mut snapshot.final_demand_accounts {
-                household.location = "foreign:canada".parse().unwrap();
+                household.location = "foreign:canada"
+                    .parse()
+                    .expect("the authored literal parses as the declared type");
             }
         });
         let reading = painted_comparison(&mut app, text);
@@ -2147,10 +2210,10 @@ mod tests {
                 let snapshot = browser
                     .comparison
                     .as_mut()
-                    .unwrap()
+                    .expect("the fixture set the optional field before this borrow")
                     .production
                     .as_mut()
-                    .unwrap();
+                    .expect("the fixture set the optional field before this borrow");
                 match mismatch {
                     "missing stock" => {
                         snapshot.sites[1].inventory.remove(0);
@@ -2223,17 +2286,27 @@ mod tests {
                 let rows = &mut browser
                     .comparison
                     .as_mut()
-                    .unwrap()
+                    .expect("the fixture set the optional field before this borrow")
                     .production
                     .as_mut()
-                    .unwrap()
+                    .expect("the fixture set the optional field before this borrow")
                     .final_demand_accounts;
                 match mismatch {
                     "resident" => rows[0].demand_principal_id = "different-resident".into(),
-                    "county" => rows[0].location = "county:26001".parse().unwrap(),
+                    "county" => {
+                        rows[0].location = "county:26001"
+                            .parse()
+                            .expect("the authored literal parses as the declared type");
+                    }
                     "duplicate" => rows.push(rows[0].clone()),
                     "missing" => rows[0].completed = None,
-                    "receipt period" => rows[0].completed.as_mut().unwrap().period = 1,
+                    "receipt period" => {
+                        rows[0]
+                            .completed
+                            .as_mut()
+                            .expect("the fixture set the optional field before this borrow")
+                            .period = 1;
+                    }
                     "retailer" => rows[0].retailer_site_ids = vec!["withheld".into()],
                     _ => unreachable!(),
                 }
@@ -2268,10 +2341,10 @@ mod tests {
             let rows = &mut browser
                 .comparison
                 .as_mut()
-                .unwrap()
+                .expect("the fixture set the optional field before this borrow")
                 .production
                 .as_mut()
-                .unwrap()
+                .expect("the fixture set the optional field before this borrow")
                 .final_demand_accounts;
             for row in rows {
                 row.orders[0]
@@ -2342,10 +2415,10 @@ mod tests {
             .resource::<ObserverFrame>()
             .0
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .production
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .staffing_accounts[0]
             .clone();
         extra.pool_id = "6".repeat(64);
@@ -2354,10 +2427,10 @@ mod tests {
             .resource_mut::<ObserverFrame>()
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .staffing_accounts
             .insert(0, extra.clone());
         {
@@ -2365,10 +2438,10 @@ mod tests {
             let compared = browser
                 .comparison
                 .as_mut()
-                .unwrap()
+                .expect("the fixture set the optional field before this borrow")
                 .production
                 .as_mut()
-                .unwrap();
+                .expect("the fixture set the optional field before this borrow");
             compared.sites[0].name = "A renamed cohort".into();
             compared.staffing_accounts[0].subject.local_name = "A renamed workforce".into();
             compared.staffing_accounts.push(extra);
@@ -2388,10 +2461,10 @@ mod tests {
                 let accounts = &mut browser
                     .comparison
                     .as_mut()
-                    .unwrap()
+                    .expect("the fixture set the optional field before this borrow")
                     .production
                     .as_mut()
-                    .unwrap()
+                    .expect("the fixture set the optional field before this borrow")
                     .staffing_accounts;
                 match mismatch {
                     "pool" => accounts[0].pool_id = "9".repeat(64),
@@ -2427,14 +2500,14 @@ mod tests {
             let receipt = frame
                 .0
                 .as_mut()
-                .unwrap()
+                .expect("the fixture set the optional field before this borrow")
                 .production
                 .as_mut()
-                .unwrap()
+                .expect("the fixture set the optional field before this borrow")
                 .staffing_accounts[0]
                 .completed
                 .as_mut()
-                .unwrap();
+                .expect("the fixture set the optional field before this borrow");
             receipt.hires = 0;
             receipt.opening_employed = 6;
             receipt.opening_reserve = 4;
@@ -2444,14 +2517,14 @@ mod tests {
             let receipt = browser
                 .comparison
                 .as_mut()
-                .unwrap()
+                .expect("the fixture set the optional field before this borrow")
                 .production
                 .as_mut()
-                .unwrap()
+                .expect("the fixture set the optional field before this borrow")
                 .staffing_accounts[0]
                 .completed
                 .as_mut()
-                .unwrap();
+                .expect("the fixture set the optional field before this borrow");
             receipt.separations = 0;
             receipt.opening_employed = 4;
             receipt.opening_reserve = 6;
@@ -2467,14 +2540,20 @@ mod tests {
                 let account = &mut browser
                     .comparison
                     .as_mut()
-                    .unwrap()
+                    .expect("the fixture set the optional field before this borrow")
                     .production
                     .as_mut()
-                    .unwrap()
+                    .expect("the fixture set the optional field before this borrow")
                     .staffing_accounts[0];
                 match mismatch {
                     "missing receipt" => account.completed = None,
-                    "receipt period" => account.completed.as_mut().unwrap().period = 1,
+                    "receipt period" => {
+                        account
+                            .completed
+                            .as_mut()
+                            .expect("the fixture set the optional field before this borrow")
+                            .period = 1;
+                    }
                     "account period" => account.next_opening_period = 2,
                     _ => unreachable!(),
                 }
@@ -2507,7 +2586,7 @@ mod tests {
                         .resource_mut::<ObserverFrame>()
                         .0
                         .as_mut()
-                        .unwrap()
+                        .expect("the fixture set the optional field before this borrow")
                         .resolve_tick = 1;
                 }
                 "session perspective" => {
@@ -2520,7 +2599,10 @@ mod tests {
                     if mismatch == "same campaign" {
                         browser.comparison_target = Some(CampaignId::from_uuid(Uuid::from_u128(1)));
                     }
-                    let compared = browser.comparison.as_mut().unwrap();
+                    let compared = browser
+                        .comparison
+                        .as_mut()
+                        .expect("the fixture set the optional field before this borrow");
                     match mismatch {
                         "campaign" => compared.campaign_id = Uuid::from_u128(3).to_string(),
                         "same campaign" => {
@@ -2629,10 +2711,11 @@ mod tests {
         let environment = EnvVarGuard::lock("XDG_STATE_HOME");
         let directory =
             std::env::temp_dir().join(format!("babylon-detached-handoff-{}", Uuid::new_v4()));
-        environment.set(directory.to_str().unwrap());
-        let path = preference_path().unwrap();
+        environment.set(directory.to_str().expect("the fixture path is UTF-8"));
+        let path = preference_path()
+            .expect("the fixture call `preference_path` succeeds for the authored inputs");
         let original = CampaignId::from_uuid(Uuid::from_u128(1));
-        write_preference(&path, original, 0).unwrap();
+        write_preference(&path, original, 0).expect("the fixture sink accepts the authored bytes");
         let (mut app, _) = catalog_handoff_app(false);
         app.world_mut()
             .resource_mut::<Messages<CampaignBrowserCommand>>()
@@ -2643,15 +2726,23 @@ mod tests {
             "Opening a saved campaign closed a standalone window"
         );
         assert_eq!(
-            fs::read_to_string(&path).unwrap(),
+            fs::read_to_string(&path).expect("the fixture source is readable"),
             format!("{}\n", original.as_uuid())
         );
-        assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
+        assert_eq!(
+            fs::read_dir(
+                path.parent()
+                    .expect("the fixture call `parent` succeeds for the authored inputs")
+            )
+            .expect("the fixture directory is readable")
+            .count(),
+            1
+        );
         assert_eq!(
             app.world().resource::<CampaignBrowserState>().status,
             "This window has no launcher connection. Close it and start Babylon through its launcher."
         );
-        fs::remove_dir_all(directory).unwrap();
+        fs::remove_dir_all(directory).expect("the fixture directory exists before removal");
     }
 
     #[test]
@@ -2659,7 +2750,7 @@ mod tests {
         let environment = EnvVarGuard::lock("XDG_STATE_HOME");
         let directory =
             std::env::temp_dir().join(format!("babylon-connected-handoff-{}", Uuid::new_v4()));
-        environment.set(directory.to_str().unwrap());
+        environment.set(directory.to_str().expect("the fixture path is UTF-8"));
         let (mut app, selected) = catalog_handoff_app(true);
         app.world_mut()
             .resource_mut::<Messages<CampaignBrowserCommand>>()
@@ -2670,14 +2761,16 @@ mod tests {
             .world_mut()
             .resource_mut::<ObserverSession>()
             .pending_switch_request()
-            .unwrap();
+            .expect("the fixture call `pending_switch_request` succeeds for the authored inputs");
         assert!(
             matches!(request, babylon_persistence::runtime_session::RuntimeSessionRequest::Switch {
             target: babylon_persistence::runtime_session::RuntimeSessionTarget::Open { campaign_id }, ..
         } if campaign_id == selected.as_uuid().to_string())
         );
         assert!(
-            !preference_path().unwrap().exists(),
+            !preference_path()
+                .expect("the fixture call `preference_path` succeeds for the authored inputs")
+                .exists(),
             "An unadmitted target became the saved continuation"
         );
     }
@@ -2687,12 +2780,12 @@ mod tests {
         let environment = EnvVarGuard::lock("XDG_STATE_HOME");
         let directory =
             std::env::temp_dir().join(format!("babylon-connecting-handoff-{}", Uuid::new_v4()));
-        environment.set(directory.to_str().unwrap());
+        environment.set(directory.to_str().expect("the fixture path is UTF-8"));
         let (mut catalog, _) = catalog_handoff_app(false);
         let browser = catalog
             .world_mut()
             .remove_resource::<CampaignBrowserState>()
-            .unwrap();
+            .expect("the fixture world holds the addressed component");
         let (mut app, requests, responses) = crate::observer_io::tests::quit_app();
         let campaign = app.world().resource::<ObserverSession>().campaign;
         app.insert_resource(ObserverSession::new(campaign))
@@ -2709,7 +2802,7 @@ mod tests {
         let admitted_target =
             crate::observer_io::tests::refuse_initial_switch(&mut app, &requests, &responses);
         if directory.exists() {
-            fs::remove_dir_all(directory).unwrap();
+            fs::remove_dir_all(directory).expect("the fixture directory exists before removal");
         }
 
         assert!(
@@ -2780,7 +2873,7 @@ mod tests {
         assert!(
             app.world()
                 .get::<ObserverFocusTarget>(compare)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .available
         );
 
@@ -2805,11 +2898,13 @@ mod tests {
         assert!(
             !app.world()
                 .get::<ObserverFocusTarget>(compare)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .available
         );
         assert_eq!(
-            *app.world().get::<BorderColor>(compare).unwrap(),
+            *app.world()
+                .get::<BorderColor>(compare)
+                .expect("the fixture world holds the addressed component"),
             BorderColor::all(theme::GRAY)
         );
     }
@@ -2819,13 +2914,15 @@ mod tests {
         let environment = EnvVarGuard::lock("XDG_STATE_HOME");
         let directory =
             std::env::temp_dir().join(format!("babylon-pending-handoff-{}", Uuid::new_v4()));
-        environment.set(directory.to_str().unwrap());
+        environment.set(directory.to_str().expect("the fixture path is UTF-8"));
         for (keyboard, failed) in [(false, false), (true, false), (true, true)] {
             let (mut app, selected) = ready_catalog_handoff_app();
             let active = app.world().resource::<ObserverSession>().campaign;
             let context = app.world().resource::<ObserverSession>().context();
-            let path = preference_path().unwrap();
-            write_preference(&path, active, 0).unwrap();
+            let path = preference_path()
+                .expect("the fixture call `preference_path` succeeds for the authored inputs");
+            write_preference(&path, active, 0)
+                .expect("the fixture sink accepts the authored bytes");
             app.add_observer(keyboard_button);
             let mut target = ObserverFocusTarget::action(Some(context.clone()));
             target.available = true;
@@ -2835,7 +2932,9 @@ mod tests {
                 .id();
             let request = {
                 let mut session = app.world_mut().resource_mut::<ObserverSession>();
-                let request = session.begin_advance().unwrap();
+                let request = session
+                    .begin_advance()
+                    .expect("the session begins the authored advance");
                 if failed {
                     session.fail("Commit acknowledgement lost".into());
                 }
@@ -2863,10 +2962,18 @@ mod tests {
             assert_eq!(session.campaign, active);
             assert_eq!(session.durable_tick, 3);
             assert_eq!(
-                fs::read_to_string(&path).unwrap(),
+                fs::read_to_string(&path).expect("the fixture source is readable"),
                 format!("{}\n", active.as_uuid())
             );
-            assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
+            assert_eq!(
+                fs::read_dir(
+                    path.parent()
+                        .expect("the fixture call `parent` succeeds for the authored inputs")
+                )
+                .expect("the fixture directory is readable")
+                .count(),
+                1
+            );
             assert_eq!(
                 app.world().resource::<CampaignBrowserState>().status,
                 "Opening the selected campaign..."
@@ -2889,18 +2996,20 @@ mod tests {
                 .world_mut()
                 .resource_mut::<ObserverSession>()
                 .pending_switch_request()
-                .unwrap();
+                .expect(
+                    "the fixture call `pending_switch_request` succeeds for the authored inputs",
+                );
             assert!(
                 matches!(request, babylon_persistence::runtime_session::RuntimeSessionRequest::Switch {
                 target: babylon_persistence::runtime_session::RuntimeSessionTarget::Open { campaign_id }, ..
             } if campaign_id == selected.as_uuid().to_string())
             );
             assert_eq!(
-                fs::read_to_string(&path).unwrap(),
+                fs::read_to_string(&path).expect("the fixture source is readable"),
                 format!("{}\n", active.as_uuid())
             );
         }
-        fs::remove_dir_all(directory).unwrap();
+        fs::remove_dir_all(directory).expect("the fixture directory exists before removal");
     }
 
     #[test]
@@ -2922,30 +3031,36 @@ mod tests {
         assert!(
             app.world()
                 .get::<ObserverFocusTarget>(button)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .available
         );
         assert_eq!(
-            *app.world().get::<BorderColor>(button).unwrap(),
+            *app.world()
+                .get::<BorderColor>(button)
+                .expect("the fixture world holds the addressed component"),
             BorderColor::all(theme::YELLOW)
         );
         app.world_mut()
             .resource_mut::<ObserverSession>()
             .begin_advance()
-            .unwrap();
+            .expect("the session begins the authored advance");
         app.update();
         assert!(
             app.world()
                 .get::<ObserverFocusTarget>(button)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .available
         );
         assert_eq!(
-            *app.world().get::<BorderColor>(button).unwrap(),
+            *app.world()
+                .get::<BorderColor>(button)
+                .expect("the fixture world holds the addressed component"),
             BorderColor::all(theme::YELLOW)
         );
         assert_eq!(
-            *app.world().get::<Interaction>(button).unwrap(),
+            *app.world()
+                .get::<Interaction>(button)
+                .expect("the fixture world holds the addressed component"),
             Interaction::Hovered
         );
     }
@@ -2995,7 +3110,7 @@ mod tests {
         let current = app.world().resource::<ObserverSession>().context();
         app.world_mut()
             .get_mut::<ObserverFocusTarget>(button)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .context = Some(current.clone());
         app.world_mut().resource_mut::<ObserverUiState>().menu_open = false;
         app.world_mut().trigger(ObserverKeyboardActivate {
@@ -3044,8 +3159,10 @@ mod tests {
 
     #[test]
     fn comparison_scope_rejects_changed_perspective_period_campaign_and_generation() {
-        let first = parse_campaign("81b979ee-a9c1-48fd-8835-06cbfe594675").unwrap();
-        let other = parse_campaign("fc7d28a0-a29a-49ea-bf3b-ef07ee163cd4").unwrap();
+        let first = parse_campaign("81b979ee-a9c1-48fd-8835-06cbfe594675")
+            .expect("the authored campaign parses");
+        let other = parse_campaign("fc7d28a0-a29a-49ea-bf3b-ef07ee163cd4")
+            .expect("the authored campaign parses");
         let mut session = ObserverSession::new(first);
         let mut browser = CampaignBrowserState::default();
         browser.invalidate(session.context(), &mut ObserverUiState::default());
@@ -3140,7 +3257,12 @@ mod tests {
             .resource_mut::<Messages<CampaignBrowserCommand>>()
             .write(CampaignBrowserCommand::Next);
         app.update();
-        assert!(app.world().get::<Text>(text).unwrap().0.contains("Freight"));
+        assert!(app
+            .world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0
+            .contains("Freight"));
         (app, text)
     }
 
@@ -3156,7 +3278,11 @@ mod tests {
                 (50, "Freight"),
             ],
         );
-        let reading = &app.world().get::<Text>(text).unwrap().0;
+        let reading = &app
+            .world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0;
         assert!(
             reading.contains("Freight"),
             "refresh substituted a different campaign: {reading}"
@@ -3176,12 +3302,21 @@ mod tests {
                 browser.invalidate(context, &mut world.resource_mut::<ObserverUiState>());
             });
         app.update();
-        assert!(app.world().get::<Text>(text).unwrap().0.is_empty());
+        assert!(app
+            .world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0
+            .is_empty());
         deliver_selection_catalog(
             &mut app,
             &[(10, "Active"), (30, "Parts shortage"), (50, "Freight")],
         );
-        let reading = &app.world().get::<Text>(text).unwrap().0;
+        let reading = &app
+            .world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0;
         assert!(
             reading.contains("Freight"),
             "period change substituted a different campaign: {reading}"
@@ -3192,7 +3327,11 @@ mod tests {
     fn catalog_missing_selected_save_disables_actions_without_substituting_another_campaign() {
         let (mut app, text) = selected_freight_catalog_app();
         deliver_selection_catalog(&mut app, &[(10, "Active"), (30, "Parts shortage")]);
-        let reading = &app.world().get::<Text>(text).unwrap().0;
+        let reading = &app
+            .world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0;
         assert!(
             reading.contains("Selected campaign unavailable"),
             "removed selection silently changed: {reading}"
@@ -3207,11 +3346,16 @@ mod tests {
             .resource_mut::<Messages<CampaignBrowserCommand>>()
             .write(CampaignBrowserCommand::Next);
         app.update();
-        assert!(app.world().get::<Text>(text).unwrap().0.contains("Active"));
+        assert!(app
+            .world()
+            .get::<Text>(text)
+            .expect("the fixture world holds the addressed component")
+            .0
+            .contains("Active"));
         assert!(!app
             .world()
             .get::<Text>(text)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .0
             .contains("unavailable"));
     }
@@ -3227,8 +3371,10 @@ mod tests {
             }
         }
 
-        let campaign = parse_campaign("81b979ee-a9c1-48fd-8835-06cbfe594675").unwrap();
-        let other = parse_campaign("fc7d28a0-a29a-49ea-bf3b-ef07ee163cd4").unwrap();
+        let campaign = parse_campaign("81b979ee-a9c1-48fd-8835-06cbfe594675")
+            .expect("the authored campaign parses");
+        let other = parse_campaign("fc7d28a0-a29a-49ea-bf3b-ef07ee163cd4")
+            .expect("the authored campaign parses");
         let session = ObserverSession::new(campaign);
         let scope = BrowserScope {
             active: session.context(),
@@ -3279,19 +3425,26 @@ mod tests {
             "babylon-campaign-preference-{}",
             std::process::id()
         ));
-        fs::create_dir(&root).unwrap();
+        fs::create_dir(&root).expect("the fixture directory is creatable");
         let path = root.join("observer-campaign");
-        let first = parse_campaign("81b979ee-a9c1-48fd-8835-06cbfe594675").unwrap();
-        let next = parse_campaign("fc7d28a0-a29a-49ea-bf3b-ef07ee163cd4").unwrap();
-        write_preference(&path, first, 0).unwrap();
-        write_preference(&path, next, 1).unwrap();
+        let first = parse_campaign("81b979ee-a9c1-48fd-8835-06cbfe594675")
+            .expect("the authored campaign parses");
+        let next = parse_campaign("fc7d28a0-a29a-49ea-bf3b-ef07ee163cd4")
+            .expect("the authored campaign parses");
+        write_preference(&path, first, 0).expect("the fixture sink accepts the authored bytes");
+        write_preference(&path, next, 1).expect("the fixture sink accepts the authored bytes");
         assert_eq!(
-            fs::read_to_string(&path).unwrap(),
+            fs::read_to_string(&path).expect("the fixture source is readable"),
             format!("{}\n", next.as_uuid())
         );
-        assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
-        fs::remove_file(path).unwrap();
-        fs::remove_dir(root).unwrap();
+        assert_eq!(
+            fs::read_dir(&root)
+                .expect("the fixture directory is readable")
+                .count(),
+            1
+        );
+        fs::remove_file(path).expect("the fixture file exists before removal");
+        fs::remove_dir(root).expect("the fixture directory exists before removal");
         assert!(parse_campaign("not-a-campaign").is_err());
         assert!(parse_campaign("00000000-0000-0000-0000-000000000000").is_err());
     }
@@ -3300,12 +3453,18 @@ mod tests {
         let mut active = staffing_snapshot(CampaignId::from_uuid(Uuid::from_u128(1)), 1, 5, 0, 0);
         let mut other = staffing_snapshot(CampaignId::from_uuid(Uuid::from_u128(2)), 1, 5, 0, 0);
         active.production = Some(crate::maintenance_fixture::snapshot(
-            active.production.as_ref().unwrap(),
+            active
+                .production
+                .as_ref()
+                .expect("the fixture set the optional field before this read"),
             1,
             Some(4),
         ));
         other.production = Some(crate::maintenance_fixture::snapshot(
-            other.production.as_ref().unwrap(),
+            other
+                .production
+                .as_ref()
+                .expect("the fixture set the optional field before this read"),
             1,
             Some(2),
         ));
@@ -3328,10 +3487,11 @@ mod tests {
         );
         assert!(reading.contains("up to 80 / 40 kg"), "{reading}");
         assert!(!reading.contains("Merchant owner / handling and distribution"));
-        let mut mismatched = serde_json::to_value(&other).unwrap();
+        let mut mismatched = serde_json::to_value(&other).expect("the value serializes to JSON");
         mismatched["production"]["maintenance_account"]["spare_unit_id"] =
             serde_json::json!("7".repeat(64));
-        let mismatched = serde_json::from_value(mismatched).unwrap();
+        let mismatched =
+            serde_json::from_value(mismatched).expect("the JSON value matches the declared type");
         assert!(read(&mismatched).contains("Compatible maintenance account unavailable"));
         other.resolve_tick = 2;
         assert!(!read(&other).contains("jobs completed"));

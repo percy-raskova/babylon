@@ -391,8 +391,10 @@ mod tests {
     fn read(state: ArchiveDossierState) -> ArchiveDossierRead {
         let campaign = CampaignId::from_uuid(Uuid::nil());
         ArchiveDossierRead {
-            scope: ArchiveReadScope::committed(campaign, 3, [0xab; 32]).unwrap(),
-            subject: county_subject("26163").unwrap(),
+            scope: ArchiveReadScope::committed(campaign, 3, [0xab; 32])
+                .expect("the fixture observation carries the committed value"),
+            subject: county_subject("26163")
+                .expect("the fixture call `county_subject` succeeds for the authored inputs"),
             durable_tick: 8,
             processed_tick: 8,
             state,
@@ -401,11 +403,13 @@ mod tests {
     fn page() -> ArchiveDossierPage {
         let campaign = CampaignId::from_uuid(Uuid::nil());
         let citation =
-            ArchiveCitation::try_new("original-source".into(), "original/locator".into()).unwrap();
+            ArchiveCitation::try_new("original-source".into(), "original/locator".into())
+                .expect("the authored fixture satisfies the constructor invariants");
         ArchiveDossierPage {
             revision_id: [1; 32],
             effective_tick: 2,
-            content_source: ArchiveReadScope::committed(campaign, 1, [0xaa; 32]).unwrap(),
+            content_source: ArchiveReadScope::committed(campaign, 1, [0xaa; 32])
+                .expect("the fixture observation carries the committed value"),
             title: "Retained title".into(),
             question: "Original question?".into(),
             signals: vec![ArchiveSignal::try_new(
@@ -414,7 +418,7 @@ mod tests {
                 "Original display value".into(),
                 citation.clone(),
             )
-            .unwrap()],
+            .expect("the authored fixture satisfies the constructor invariants")],
             markdown: "Original narrative bytes".into(),
             content_sha256: [2; 32],
             citations: vec![citation],
@@ -470,7 +474,7 @@ mod tests {
     fn exact_scope_requires_the_selected_hash_and_cannot_fabricate_foundation() {
         let campaign = CampaignId::from_uuid(Uuid::nil());
         assert!(observation_scope(campaign, 0, None)
-            .unwrap()
+            .expect("the fixture call `observation_scope` succeeds for the authored inputs")
             .tick_content_hash()
             .is_none());
         assert!(observation_scope(campaign, 0, Some(&"a".repeat(64))).is_err());
@@ -483,7 +487,7 @@ mod tests {
         }
         assert_eq!(
             observation_scope(campaign, 3, Some(&"ab".repeat(32)))
-                .unwrap()
+                .expect("the fixture call `observation_scope` succeeds for the authored inputs")
                 .tick_content_hash(),
             Some([0xab; 32])
         );
@@ -492,15 +496,17 @@ mod tests {
     fn removal_and_numeric_zero_have_different_json_evidence() {
         let atom = ArchiveAtom::try_new(
             CampaignId::from_uuid(Uuid::nil()),
-            ArchiveAtomSubject::try_new(ArchiveAtomSubjectKind::County, "26163".into()).unwrap(),
+            ArchiveAtomSubject::try_new(ArchiveAtomSubjectKind::County, "26163".into())
+                .expect("the authored fixture satisfies the constructor invariants"),
             "jobs".into(),
             "jobs".into(),
             ArchiveEvidenceClass::Observed,
             &ArchiveAtomValue::U64(0),
-            ArchiveCitation::try_new("source".into(), "locator".into()).unwrap(),
+            ArchiveCitation::try_new("source".into(), "locator".into())
+                .expect("the authored fixture satisfies the constructor invariants"),
             2,
         )
-        .unwrap();
+        .expect("the authored fixture satisfies the constructor invariants");
         let mut change = ArchiveAtomChange {
             publication_tick: 3,
             signal_key: "jobs".into(),

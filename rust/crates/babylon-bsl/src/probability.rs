@@ -734,7 +734,10 @@ fn declared_numeric_type(types: &TypeEnv, name: &str) -> bool {
         .is_some_and(|declaration| bsl_type_is_quantizable(&declaration.ty))
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`ordinary_numeric_expression_is_typed` keeps one authored sequence in a single place"
+)]
 fn ordinary_numeric_expression_is_typed(
     expr: &SExpr,
     types: &TypeEnv,
@@ -1138,7 +1141,10 @@ enum StaticNumeric {
 }
 
 impl StaticNumeric {
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "the authored integer magnitudes are exact in f64"
+    )]
     fn as_f64(self) -> f64 {
         match self {
             Self::Int(value) => value as f64,
@@ -1156,7 +1162,10 @@ fn static_numeric_expression(
     match expr {
         SExpr::Atom(Atom::Int(value)) => Some(StaticNumeric::Int(*value)),
         SExpr::Atom(Atom::Scaled(value)) if value.kind != ScaledKind::Ratio => {
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let numeric = value.unscaled as f64 / 10f64.powi(i32::from(value.scale));
             Some(StaticNumeric::Real(numeric))
         }
@@ -1748,7 +1757,8 @@ fn parse_choose(
 #[allow(
     clippy::implicit_hasher,
     clippy::too_many_arguments,
-    clippy::too_many_lines
+    clippy::too_many_lines,
+    reason = "`compile_rule_probability` takes every authored field explicitly, keeps one authored sequence in a single place, and fixes the standard hasher"
 )]
 pub fn compile_rule_probability(
     rule: &SExpr,
@@ -2119,7 +2129,10 @@ pub fn evaluate_kernel_masses(
 ///
 /// Returns [`ProbabilityError`] when schedule linkage, exact static
 /// allocation, or a retained source path violates the loaded contract.
-#[allow(clippy::too_many_lines)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`analyze_content_set` keeps one authored sequence in a single place"
+)]
 pub fn analyze_content_set(rules: &[LoadedRule]) -> Result<ContentSetAnalysis, ProbabilityError> {
     validate_probability_content_set(rules)?;
 
@@ -2225,8 +2238,8 @@ pub fn forecast_event_likelihoods(
         .cloned()
         .map(|event_type| (event_type, (Vec::new(), 0)))
         .collect();
-    for ((branch, projection), interval) in kernel.branches.iter().zip(projections).zip(&allocation)
-    {
+    let branches_with_allocations = kernel.branches.iter().zip(projections).zip(&allocation);
+    for ((branch, projection), interval) in branches_with_allocations {
         let mut unique = BTreeSet::new();
         for event_type in &projection.event_types {
             if unique.insert(event_type.as_str()) {
@@ -2384,7 +2397,10 @@ fn push_stable_identity(
 ///
 /// Returns [`ProbabilityError`] when the evaluated masses do not match the
 /// kernel, cannot be allocated exactly, or stable identity encoding fails.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`realize_kernel` takes every authored field explicitly"
+)]
 pub fn realize_kernel(
     identity: &KernelInstanceIdentity,
     kernel: &FiniteKernel,
@@ -2560,13 +2576,23 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "the authored integer magnitudes are exact in f64"
+    )]
     fn quantize_mass_rounds_the_exact_binary64_rational_with_ties_to_even() {
         // These are exact binary fractions whose products by 10^9 are exact
         // half-integers. 976562 is even; 2929687 is odd.
-        assert_eq!(Mass::quantize(1.0 / 1_024.0).unwrap().nanounits(), 976_562);
         assert_eq!(
-            Mass::quantize(3.0 / 1_024.0).unwrap().nanounits(),
+            Mass::quantize(1.0 / 1_024.0)
+                .expect("the fixture call `quantize` succeeds for the authored inputs")
+                .nanounits(),
+            976_562
+        );
+        assert_eq!(
+            Mass::quantize(3.0 / 1_024.0)
+                .expect("the fixture call `quantize` succeeds for the authored inputs")
+                .nanounits(),
             2_929_688
         );
 
@@ -2575,12 +2601,25 @@ mod tests {
         let half_nanounit = 0.5 / MASS_NANOUNITS_PER_UNIT as f64;
         let below = f64::from_bits(half_nanounit.to_bits() - 1);
         let above = f64::from_bits(half_nanounit.to_bits() + 1);
-        assert_eq!(Mass::quantize(below).unwrap().nanounits(), 0);
-        assert_eq!(Mass::quantize(above).unwrap().nanounits(), 1);
+        assert_eq!(
+            Mass::quantize(below)
+                .expect("the fixture call `quantize` succeeds for the authored inputs")
+                .nanounits(),
+            0
+        );
+        assert_eq!(
+            Mass::quantize(above)
+                .expect("the fixture call `quantize` succeeds for the authored inputs")
+                .nanounits(),
+            1
+        );
     }
 
     #[test]
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "the authored integer magnitudes are exact in f64"
+    )]
     fn quantize_mass_checks_the_last_representable_binary64_values_near_u64_overflow() {
         let first_obvious_overflow = TICKET_DENOMINATOR as f64 / MASS_NANOUNITS_PER_UNIT as f64;
         let previous = f64::from_bits(first_obvious_overflow.to_bits() - 1);
@@ -2617,7 +2656,7 @@ mod tests {
         let mut enums = EnumRegistry::default();
         enums
             .declare("Outcome", &["LEFT".to_owned(), "RIGHT".to_owned()])
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let rule = crate::reader::read(
             "(rule demo/kernel :role mechanic :evidence designed \
              :material-basis \"digest contract\" :fuel 64 (bindings) \
@@ -2625,7 +2664,7 @@ mod tests {
                (branch Outcome/LEFT :mass 1m (effects)) \
                (branch Outcome/RIGHT :mass 1m (effects)))))",
         )
-        .unwrap()
+        .expect("the fixture reader returns its authored facts")
         .0;
         let contract = RuleContract {
             rule_id: "demo/kernel".to_owned(),
@@ -2645,8 +2684,10 @@ mod tests {
             &HashMap::new(),
             &HashSet::new(),
         )
-        .unwrap();
-        let kernel = compiled.kernel.unwrap();
+        .expect("the authored probability rule compiles");
+        let kernel = compiled
+            .kernel
+            .expect("the compiled fixture carries its kernel");
         let identity = KernelInstanceIdentity {
             replay_session: b"demo/replay".to_vec(),
             replay_seed: 7_i64.to_be_bytes(),
@@ -2659,17 +2700,22 @@ mod tests {
             active_elements: Vec::new(),
         };
         let masses = [Mass::from_nanounits(1), Mass::from_nanounits(1)];
-        let left = realize_kernel(&identity, &kernel, &masses, 0).unwrap();
-        let right = realize_kernel(&identity, &kernel, &masses, u64::MAX).unwrap();
+        let left = realize_kernel(&identity, &kernel, &masses, 0)
+            .expect("the fixture call `realize_kernel` succeeds for the authored inputs");
+        let right = realize_kernel(&identity, &kernel, &masses, u64::MAX)
+            .expect("the fixture call `realize_kernel` succeeds for the authored inputs");
         assert_ne!(left.selected_outcome, right.selected_outcome);
         assert_eq!(left.allocation_digest, right.allocation_digest);
         assert_eq!(left.instance_digest, right.instance_digest);
-        validate_kernel_realization(&left, &identity).unwrap();
-        validate_kernel_realization(&right, &identity).unwrap();
+        validate_kernel_realization(&left, &identity)
+            .expect("the authored fixture satisfies the rule");
+        validate_kernel_realization(&right, &identity)
+            .expect("the authored fixture satisfies the rule");
 
         let mut other_tick = identity.clone();
         other_tick.tick = 2;
-        let changed = realize_kernel(&other_tick, &kernel, &masses, 0).unwrap();
+        let changed = realize_kernel(&other_tick, &kernel, &masses, 0)
+            .expect("the fixture call `realize_kernel` succeeds for the authored inputs");
         assert_ne!(left.instance_digest, changed.instance_digest);
     }
 }

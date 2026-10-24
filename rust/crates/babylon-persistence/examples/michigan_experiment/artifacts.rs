@@ -318,7 +318,10 @@ mod tests {
     use serde_json::Value;
     #[test]
     fn byte_bound_includes_final_newline_and_refuses_overflow() {
-        assert_eq!(encode(&"abc", 6).unwrap(), b"\"abc\"\n");
+        assert_eq!(
+            encode(&"abc", 6).expect("the fixture value encodes canonically"),
+            b"\"abc\"\n"
+        );
         assert!(encode(&"abc", 5).is_err());
         let mut output = BoundedBytes {
             bytes: vec![1, 2],
@@ -331,7 +334,9 @@ mod tests {
     fn expired_deadline_and_cancellation_need_no_sleep() {
         let (sender, receiver) = mpsc::channel();
         assert!(timed_out(&receiver, Duration::ZERO));
-        sender.send(()).unwrap();
+        sender
+            .send(())
+            .expect("the receiver stays alive for the send");
         assert!(!timed_out(&receiver, Duration::ZERO));
     }
     #[test]
@@ -340,42 +345,65 @@ mod tests {
             "babylon-experiment-artifacts-{}",
             std::process::id()
         ));
-        let mut output = Output::create(&path).unwrap();
+        let mut output =
+            Output::create(&path).expect("the test database creates the fixture campaign");
         assert!(Output::create(&path).is_err());
-        output.write_json("summary.json", &1).unwrap();
+        output
+            .write_json("summary.json", &1)
+            .expect("the fixture sink accepts the authored bytes");
         assert!(output.write_json("summary.json", &2).is_err());
-        assert_eq!(fs::read(path.join("summary.json")).unwrap(), b"1\n");
-        fs::remove_file(path.join("summary.json")).unwrap();
-        fs::remove_dir(path).unwrap();
+        assert_eq!(
+            fs::read(path.join("summary.json"))
+                .expect("the fixture reader returns its authored facts"),
+            b"1\n"
+        );
+        fs::remove_file(path.join("summary.json")).expect("the fixture file exists before removal");
+        fs::remove_dir(path).expect("the fixture directory exists before removal");
     }
 
     #[test]
     fn period_limit_preserves_failure_budget_and_partial_evidence() {
         let path =
             std::env::temp_dir().join(format!("babylon-experiment-bound-{}", std::process::id()));
-        let mut output = Output::create(&path).unwrap();
+        let mut output =
+            Output::create(&path).expect("the test database creates the fixture campaign");
         for period in 1..=64 {
-            output.append_period(&period).unwrap();
+            output
+                .append_period(&period)
+                .expect("the fixture call `append_period` succeeds for the authored inputs");
         }
-        let previous = fs::read(path.join("periods.jsonl")).unwrap();
+        let previous = fs::read(path.join("periods.jsonl"))
+            .expect("the fixture reader returns its authored facts");
         assert!(output.append_period(&65).is_err());
-        assert_eq!(fs::read(path.join("periods.jsonl")).unwrap(), previous);
         assert_eq!(
-            output.checksums().unwrap()["periods.jsonl"],
-            digest_file(&path.join("periods.jsonl")).unwrap()
+            fs::read(path.join("periods.jsonl"))
+                .expect("the fixture reader returns its authored facts"),
+            previous
+        );
+        assert_eq!(
+            output
+                .checksums()
+                .expect("the fixture call `checksums` succeeds for the authored inputs")
+                ["periods.jsonl"],
+            digest_file(&path.join("periods.jsonl"))
+                .expect("the fixture file has a canonical digest")
         );
         let failure = Progress {
             case: Some("delayed-320".into()),
             last_completed_period: 16,
         };
-        write_failure(&path, &failure, "bounded refusal").unwrap();
-        let bytes = fs::read(path.join("failure.json")).unwrap();
+        write_failure(&path, &failure, "bounded refusal")
+            .expect("the fixture sink accepts the authored bytes");
+        let bytes = fs::read(path.join("failure.json"))
+            .expect("the fixture reader returns its authored facts");
         assert!(bytes.len() <= FAILURE_RESERVE);
-        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        let value: Value =
+            serde_json::from_slice(&bytes).expect("the authored bytes match the declared schema");
         assert_eq!(value["progress"]["case"], "delayed-320");
         assert_eq!(value["progress"]["last_completed_period"], 16);
-        fs::remove_file(path.join("periods.jsonl")).unwrap();
-        fs::remove_file(path.join("failure.json")).unwrap();
-        fs::remove_dir(path).unwrap();
+        fs::remove_file(path.join("periods.jsonl"))
+            .expect("the fixture file exists before removal");
+        fs::remove_file(path.join("failure.json")).expect("the fixture file exists before removal");
+        fs::remove_dir(path).expect("the fixture directory exists before removal");
     }
 }

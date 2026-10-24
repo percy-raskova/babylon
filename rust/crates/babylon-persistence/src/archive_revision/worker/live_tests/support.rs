@@ -1009,13 +1009,17 @@ pub(in crate::archive_revision::worker) fn live_foundation_grants_seed_at_campai
 
     // Exact retry: insert-if-absent reconciles every row to the same census.
     let report = {
-        let mut transaction = client.transaction().unwrap();
+        let mut transaction = client
+            .transaction()
+            .expect("the test database opens a transaction");
         transaction
             .batch_execute("SET LOCAL search_path=pg_catalog; SET LOCAL quote_all_identifiers=off")
-            .unwrap();
+            .expect("the test database applies the schema statements");
         let report = crate::seed_foundation_grants(&mut transaction, target.campaign_id)
             .expect("the exact foundation retry reconciles");
-        transaction.commit().unwrap();
+        transaction
+            .commit()
+            .expect("the fixture transaction commits");
         report
     };
     assert_eq!(report.counties(), 83);
@@ -1045,13 +1049,17 @@ pub(in crate::archive_revision::worker) fn live_foundation_grants_seed_at_campai
         )
         .expect("divergence update applies");
     let refusal = {
-        let mut transaction = client.transaction().unwrap();
+        let mut transaction = client
+            .transaction()
+            .expect("the test database opens a transaction");
         transaction
             .batch_execute("SET LOCAL search_path=pg_catalog; SET LOCAL quote_all_identifiers=off")
-            .unwrap();
+            .expect("the test database applies the schema statements");
         let refusal = crate::seed_foundation_grants(&mut transaction, target.campaign_id)
             .expect_err("a drifted grant row must refuse the foundation retry");
-        transaction.commit().unwrap();
+        transaction
+            .commit()
+            .expect("the fixture transaction commits");
         refusal
     };
     assert_eq!(

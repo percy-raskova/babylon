@@ -59,26 +59,34 @@ mod live_tests {
         campaign: CampaignId,
         base: &[u8],
     ) -> Vec<u8> {
-        let opening = crate::material_storage::seed(base).unwrap();
-        let mut chain = crate::material_storage::initial_lookup_chain(&opening).unwrap();
+        let opening =
+            crate::material_storage::seed(base).expect("the fixture seeds the authored rows");
+        let mut chain = crate::material_storage::initial_lookup_chain(&opening)
+            .expect("the opening register builds its first lookup chain");
         let mut loaded = None;
-        let rows=owner.query("SELECT resolve_tick,lookup_delta_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick<=2 ORDER BY resolve_tick",&[campaign.as_uuid()]).unwrap();
+        let rows=owner.query("SELECT resolve_tick,lookup_delta_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick<=2 ORDER BY resolve_tick",&[campaign.as_uuid()]).expect("the seeded rows are readable");
         assert_eq!(rows.len(), 2);
         for (index, row) in rows.iter().enumerate() {
-            assert_eq!(row.get::<_, i64>(0), i64::try_from(index + 1).unwrap());
+            assert_eq!(
+                row.get::<_, i64>(0),
+                i64::try_from(index + 1).expect("the fixture value fits the target range")
+            );
             loaded = Some(
                 crate::material_storage::read_period_lookup(
                     &opening,
-                    u64::try_from(index + 1).unwrap(),
+                    u64::try_from(index + 1).expect("the fixture value fits the target range"),
                     row.get::<_, &[u8]>(1),
                     LookupAnchor::Previous(chain),
                 )
-                .unwrap(),
+                .expect("the committed lookup table reads"),
             );
-            chain = loaded.as_ref().unwrap().chain;
+            chain = loaded
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .chain;
         }
-        let lookup = loaded.unwrap();
-        let row=owner.query_one("SELECT register_storage_bytes,receipt_storage_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid()]).unwrap();
+        let lookup = loaded.expect("the fixture carries the loaded value");
+        let row=owner.query_one("SELECT register_storage_bytes,receipt_storage_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid()]).expect("the seeded row is present exactly once");
         let (register, mut receipts) = crate::material_storage::decode(
             &opening,
             2,
@@ -87,26 +95,29 @@ mod live_tests {
             &lookup.lookup,
             lookup.chain,
         )
-        .unwrap();
+        .expect("the committed canonical bytes decode");
         let original_digest = content_digest::sha256_of(&receipts);
-        let decoded = babylon_tick::material_world::decode_material_receipts(&receipts).unwrap();
+        let decoded = babylon_tick::material_world::decode_material_receipts(&receipts)
+            .expect("the canonical bytes decode into the declared type");
         // Family1 retains exact planned batches; increasing the first plan keeps
         // produced<=planned and all physical quantities/identity joins admissible.
         let planned = decoded
             .production
             .first()
-            .unwrap()
+            .expect("the fixture sequence is non-empty")
             .planned_batches
             .checked_add(1)
-            .unwrap();
+            .expect("the fixture arithmetic stays in range");
         let offset = b"babylon.material-tick-receipts.v16\0".len() + 4 + 8 + 1 + 8 + 32 + 32;
         receipts[offset..offset + 8].copy_from_slice(&planned.to_be_bytes());
         assert_ne!(content_digest::sha256_of(&receipts), original_digest);
-        babylon_tick::material_world::decode_material_receipts(&receipts).unwrap();
-        let register = MaterialWorldRegister::decode(&register).unwrap();
+        babylon_tick::material_world::decode_material_receipts(&receipts)
+            .expect("the canonical bytes decode into the declared type");
+        let register =
+            MaterialWorldRegister::decode(&register).expect("the committed canonical bytes decode");
         let encoded =
             crate::material_storage::encode(&register, &receipts, &opening, lookup.previous_chain)
-                .unwrap();
+                .expect("the fixture value encodes canonically");
         assert_eq!(encoded.lookup.entries(), lookup.lookup.entries());
         assert_eq!(
             crate::material_storage::decode(
@@ -117,7 +128,7 @@ mod live_tests {
                 &encoded.lookup,
                 encoded.lookup_chain,
             )
-            .unwrap()
+            .expect("the committed canonical bytes decode")
             .1,
             receipts
         );
@@ -138,50 +149,62 @@ mod live_tests {
         let catalog = MichiganMaterialCatalog::from_defines_toml(include_str!(
             "../../../../content/scenarios/michigan/defines.toml"
         ))
-        .unwrap();
+        .expect("the authored input admits the derived value");
         let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
             .create_foundation(&catalog)
-            .unwrap();
+            .expect("the authored catalog builds the foundation");
         let digest = foundation.digest();
         let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0033_0c01_1055));
-        let mut runtime = DurableMaterialRuntime::create(&config, campaign, foundation).unwrap();
+        let mut runtime = DurableMaterialRuntime::create(&config, campaign, foundation)
+            .expect("the test database creates the fixture campaign");
         let before = runtime.session().material().canonical_bytes().to_vec();
         let mut sink = CollectingSink::default();
         let actions = OrderedPracticeActionBatch::empty(
             runtime.session().graph_session().session_identity().clone(),
             1,
         )
-        .unwrap();
+        .expect("the empty authored batch constructs");
         COMMIT_FAULT.with(|slot| slot.set(Some(CommitFault::BeforeCommit)));
         assert!(runtime.advance_and_commit(&mut sink, &actions).is_err());
         assert_eq!(runtime.session().completed_tick(), 0);
         assert_eq!(runtime.session().material().canonical_bytes(), before);
         assert!(runtime.diagnostic_receipt().is_none());
         assert!(sink.events.is_empty());
-        let mut owner = config.connect(NoTls).unwrap();
+        let mut owner = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         let count: i64 = owner
             .query_one(
                 "SELECT count(*) FROM babylon_state.tick_commit WHERE campaign_id=$1::uuid",
                 &[campaign.as_uuid()],
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get(0);
         assert_eq!(count, 0);
         // Retry the exact action after rollback, then lose the next COMMIT acknowledgement.
-        runtime.advance_and_commit(&mut sink, &actions).unwrap();
-        let mut stale = DurableMaterialRuntime::open(&config, campaign, digest).unwrap();
+        runtime
+            .advance_and_commit(&mut sink, &actions)
+            .expect("the prepared tick advances and commits");
+        let mut stale = DurableMaterialRuntime::open(&config, campaign, digest)
+            .expect("the fixture opens the authored source");
         let actions = OrderedPracticeActionBatch::empty(
             runtime.session().graph_session().session_identity().clone(),
             2,
         )
-        .unwrap();
+        .expect("the empty authored batch constructs");
         COMMIT_FAULT.with(|slot| slot.set(Some(CommitFault::AfterCommit)));
-        let identity = runtime.advance_and_commit(&mut sink, &actions).unwrap();
+        let identity = runtime
+            .advance_and_commit(&mut sink, &actions)
+            .expect("the prepared tick advances and commits");
         assert_eq!(
-            runtime.diagnostic_receipt().unwrap().commit_disposition(),
+            runtime
+                .diagnostic_receipt()
+                .expect("the fixture call `diagnostic_receipt` succeeds for the authored inputs")
+                .commit_disposition(),
             ReplayCommitDisposition::ReconciledAfterAmbiguousCommit
         );
-        let reopened = DurableMaterialRuntime::open(&config, campaign, digest).unwrap();
+        let reopened = DurableMaterialRuntime::open(&config, campaign, digest)
+            .expect("the fixture opens the authored source");
         assert_eq!(reopened.tail(), Some(&identity));
         assert_eq!(
             reopened.session().material().canonical_bytes(),
@@ -192,23 +215,23 @@ mod live_tests {
                 "SELECT count(*) FROM babylon_state.tick_commit WHERE campaign_id=$1::uuid",
                 &[campaign.as_uuid()],
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get(0);
         assert_eq!(count, 2);
-        let original:Vec<u8>=owner.query_one("SELECT receipt_storage_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid()]).unwrap().get(0);
+        let original:Vec<u8>=owner.query_one("SELECT receipt_storage_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid()]).expect("the seeded row is present exactly once").get(0);
         let corrupt = valid_changed_material_receipt(&mut owner, campaign, &before);
-        owner.execute("UPDATE babylon_state.material_tick_v3 SET receipt_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&corrupt]).unwrap();
+        owner.execute("UPDATE babylon_state.material_tick_v3 SET receipt_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&corrupt]).expect("the test database applies the setup statement");
         let mut refused_sink = CollectingSink::default();
         assert!(stale
             .advance_and_commit(&mut refused_sink, &actions)
             .is_err());
         assert_eq!(stale.session().completed_tick(), 1);
         assert!(refused_sink.events.is_empty());
-        owner.execute("UPDATE babylon_state.material_tick_v3 SET receipt_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2", &[campaign.as_uuid(), &original]).unwrap();
+        owner.execute("UPDATE babylon_state.material_tick_v3 SET receipt_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2", &[campaign.as_uuid(), &original]).expect("the test database applies the setup statement");
         assert_eq!(
             stale
                 .advance_and_commit(&mut refused_sink, &actions)
-                .unwrap(),
+                .expect("the prepared tick advances and commits"),
             identity
         );
         drop(owner);
@@ -220,6 +243,10 @@ mod live_tests {
 
     #[test]
     #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "`live_bsl_csv_copy_preserves_numeric_extremes_nulls_and_stable_keys` keeps one authored boundary's fixture and assertions together"
+    )]
     fn live_bsl_csv_copy_preserves_numeric_extremes_nulls_and_stable_keys() {
         use babylon_graph::stable_element::StableElementKey;
         let base = validated_base_config();
@@ -264,8 +291,12 @@ mod live_tests {
                 target_local_name: "target".to_owned(),
             }),
         ];
-        let mut client = config.connect(NoTls).unwrap();
-        let mut tx = client.transaction().unwrap();
+        let mut client = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
+        let mut tx = client
+            .transaction()
+            .expect("the test database opens a transaction");
         let mut writer = tx.copy_in(
             "COPY babylon_state.organization_state_v1 \
              (campaign_id,resolve_tick,organization_id,organization_kind_tag,organization_kind_int, \
@@ -273,7 +304,7 @@ mod live_tests {
               organization_kind_ratio_min_bits,organization_kind_ratio_max_bits,organization_kind_bool, \
               organization_kind_enum_type,organization_kind_enum_member,organization_kind_stable_key) \
              FROM STDIN WITH (FORMAT csv)",
-        ).unwrap();
+        ).expect("the fixture call `copy_in` succeeds for the authored inputs");
         for (index, value) in values.iter().enumerate() {
             let id = session::bytea_copy_text(&index.to_be_bytes());
             session::write_bsl_csv_row(
@@ -282,9 +313,10 @@ mod live_tests {
                 value,
                 "copy value proof",
             )
-            .unwrap();
+            .expect("the fixture sink accepts the authored bytes");
         }
-        session::finish_csv_copy(writer, values.len(), "finish value proof").unwrap();
+        session::finish_csv_copy(writer, values.len(), "finish value proof")
+            .expect("the fixture call `finish_csv_copy` succeeds for the authored inputs");
         for (index, value) in values.iter().enumerate() {
             let row = tx.query_one(
                 "SELECT organization_kind_tag,organization_kind_int,organization_kind_currency::text, \
@@ -292,8 +324,9 @@ mod live_tests {
                  organization_kind_ratio_max_bits,organization_kind_bool,organization_kind_enum_type, \
                  organization_kind_enum_member,organization_kind_stable_key \
                  FROM babylon_state.organization_state_v1 WHERE organization_id=$1", &[&&index.to_be_bytes()[..]],
-            ).unwrap();
-            let expected = BslSqlValue::from_stable(value).unwrap();
+            ).expect("the seeded row is present exactly once");
+            let expected = BslSqlValue::from_stable(value)
+                .expect("the authored input admits the derived value");
             assert_eq!(row.get::<_, i16>(0), expected.tag);
             assert_eq!(row.get::<_, Option<i64>>(1), expected.int_value);
             assert_eq!(row.get::<_, Option<String>>(2), expected.currency_value);
@@ -306,13 +339,13 @@ mod live_tests {
             assert_eq!(row.get::<_, Option<String>>(9), expected.enum_member);
             assert_eq!(row.get::<_, Option<Vec<u8>>>(10), expected.stable_key);
         }
-        tx.rollback().unwrap();
+        tx.rollback().expect("the open transaction rolls back");
         let count: i64 = client
             .query_one(
                 "SELECT count(*) FROM babylon_state.organization_state_v1",
                 &[],
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get(0);
         assert_eq!(
             count, 0,
@@ -322,7 +355,8 @@ mod live_tests {
     }
     fn event_control_config() -> Config {
         let mut config = validated_base_config();
-        let database = std::env::var("BABYLON_EVENT_COPY_DATABASE").unwrap();
+        let database =
+            std::env::var("BABYLON_EVENT_COPY_DATABASE").expect("the fixture variable is bound");
         assert!(database.starts_with("per337_event_continuity_"));
         config.dbname(&database);
         config
@@ -334,12 +368,12 @@ mod live_tests {
     ) -> crate::material_runtime::DurableMaterialRuntime {
         let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
             .create_foundation(&crate::test_support::catalog())
-            .unwrap();
+            .expect("the authored catalog builds the foundation");
         let campaign = CampaignId::from_uuid(Uuid::from_u128(
             (u128::from(std::process::id()) << 64) | suffix,
         ));
         crate::material_runtime::DurableMaterialRuntime::create(config, campaign, foundation)
-            .unwrap()
+            .expect("the test database creates the fixture campaign")
     }
 
     const EVENT_RAW_TABLES: [&str; 10] = [
@@ -366,7 +400,7 @@ mod live_tests {
                         ),
                         &[campaign.as_uuid()],
                     )
-                    .unwrap()
+                    .expect("the seeded row is present exactly once")
                     .get(0)
             })
             .collect()
@@ -384,7 +418,7 @@ mod live_tests {
                 "ordinal,position"
             };
             client.query_one(&format!("SELECT coalesce(jsonb_agg(to_jsonb(e) ORDER BY {ordering}),'[]'::jsonb)::text FROM {} e WHERE campaign_id=$1", relations[index]),
-                &[campaign.as_uuid()]).unwrap().get(0)
+                &[campaign.as_uuid()]).expect("the seeded row is present exactly once").get(0)
         })
     }
 
@@ -396,7 +430,7 @@ mod live_tests {
             campaign_id uuid,resolve_tick bigint,ordinal bigint,position bigint,field_name text COLLATE pg_catalog.\"C\",value_tag smallint,int_value bigint,
             currency_value numeric(39,0),real_bits bigint,ratio_bits bigint,ratio_min_bits bigint,ratio_max_bits bigint,bool_value boolean,
             enum_type text COLLATE pg_catalog.\"C\",enum_member text COLLATE pg_catalog.\"C\",stable_key bytea
-        ) ON COMMIT DROP").unwrap();
+        ) ON COMMIT DROP").expect("the test database applies the schema statements");
     }
 
     #[test]
@@ -409,16 +443,24 @@ mod live_tests {
             runtime.session().graph_session().session_identity().clone(),
             1,
         )
-        .unwrap();
-        let mut client = config.connect(NoTls).unwrap();
+        .expect("the empty authored batch constructs");
+        let mut client = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         let before = event_raw_counts(&mut client, campaign);
         let expected = {
-            let candidate = runtime.session().prepare_advance(&actions).unwrap();
+            let candidate = runtime
+                .session()
+                .prepare_advance(&actions)
+                .expect("the session prepares the authored advance");
             let report = candidate.graph_report();
             assert!(!report.successful_event_batch().events().is_empty());
-            let mut reference = client.transaction().unwrap();
+            let mut reference = client
+                .transaction()
+                .expect("the test database opens a transaction");
             event_reference_tables(&mut reference);
-            insert_event_rows_reference(&mut reference, campaign, 1, report).unwrap();
+            insert_event_rows_reference(&mut reference, campaign, 1, report)
+                .expect("the test database accepts the authored row");
             let expected = event_snapshot(
                 &mut reference,
                 campaign,
@@ -427,10 +469,16 @@ mod live_tests {
                     "pg_temp.event_field_reference",
                 ],
             );
-            reference.rollback().unwrap();
-            let mut copied = client.transaction().unwrap();
-            session::insert_choice_receipt_rows(&mut copied, campaign, 1, report).unwrap();
-            session::insert_typed_event_rows(&mut copied, campaign, 1, report).unwrap();
+            reference
+                .rollback()
+                .expect("the open transaction rolls back");
+            let mut copied = client
+                .transaction()
+                .expect("the test database opens a transaction");
+            session::insert_choice_receipt_rows(&mut copied, campaign, 1, report)
+                .expect("the test database accepts the authored row");
+            session::insert_typed_event_rows(&mut copied, campaign, 1, report)
+                .expect("the test database accepts the authored row");
             assert_eq!(
                 event_snapshot(
                     &mut copied,
@@ -453,12 +501,14 @@ mod live_tests {
                 ),
                 ["[]".to_owned(), "[]".to_owned()]
             );
-            copied.rollback().unwrap();
+            copied.rollback().expect("the open transaction rolls back");
             expected
         };
         assert_eq!(event_raw_counts(&mut client, campaign), before);
         let mut sink = CollectingSink::default();
-        runtime.advance_and_commit(&mut sink, &actions).unwrap();
+        runtime
+            .advance_and_commit(&mut sink, &actions)
+            .expect("the prepared tick advances and commits");
         assert_eq!(runtime.session().completed_tick(), 1);
         assert_eq!(
             event_snapshot(
@@ -484,19 +534,19 @@ mod live_tests {
                 "SELECT count(*) FROM babylon_state.event_text_lookup_v1 WHERE campaign_id=$1",
                 &[campaign.as_uuid()],
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get(0);
-        client.execute("INSERT INTO babylon_state.event_text_lookup_v1(campaign_id,text_id,first_tick,value) VALUES($1,$2,1,'continuity-proof'),($1,$3,1,'proof')", &[campaign.as_uuid(),&text_id,&(text_id+1)]).unwrap();
+        client.execute("INSERT INTO babylon_state.event_text_lookup_v1(campaign_id,text_id,first_tick,value) VALUES($1,$2,1,'continuity-proof'),($1,$3,1,'proof')", &[campaign.as_uuid(),&text_id,&(text_id+1)]).expect("the test database applies the setup statement");
         let fields = i64::from(field_position.is_some());
         client
             .execute(
                 "INSERT INTO babylon_state.event_manifest_v1 VALUES($1,1,1,$2,1,$2)",
                 &[campaign.as_uuid(), &fields],
             )
-            .unwrap();
-        client.execute("INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,0,ARRAY[$2::bigint],ARRAY[$3::bigint],ARRAY[$3::bigint],ARRAY[NULL::bigint])", &[campaign.as_uuid(),&event_ordinal,&text_id]).unwrap();
+            .expect("the test database applies the setup statement");
+        client.execute("INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,0,ARRAY[$2::bigint],ARRAY[$3::bigint],ARRAY[$3::bigint],ARRAY[NULL::bigint])", &[campaign.as_uuid(),&event_ordinal,&text_id]).expect("the test database applies the setup statement");
         if let Some(position) = field_position {
-            client.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values) VALUES($1,1,0,1,ARRAY[$2::bigint],ARRAY[$3::bigint],ARRAY[$4::bigint],ARRAY[7::bigint])", &[campaign.as_uuid(),&event_ordinal,&position,&(text_id+1)]).unwrap();
+            client.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values) VALUES($1,1,0,1,ARRAY[$2::bigint],ARRAY[$3::bigint],ARRAY[$4::bigint],ARRAY[7::bigint])", &[campaign.as_uuid(),&event_ordinal,&position,&(text_id+1)]).expect("the test database applies the setup statement");
         }
     }
 
@@ -507,20 +557,20 @@ mod live_tests {
                 "INSERT INTO babylon_state.territory_tick_manifest_v1 (campaign_id,resolve_tick,territory_count) VALUES($1,1,0)",
                 &[campaign.as_uuid()],
             )
-            .unwrap();
-        client.execute("INSERT INTO babylon_state.material_tick_v3(campaign_id,resolve_tick,identity_bytes,register_storage_bytes,receipt_storage_bytes,lookup_delta_bytes) VALUES($1,1,$2,$2,$2,$2)", &[campaign.as_uuid(),&&[1_u8;32][..]]).unwrap();
+            .expect("the test database applies the setup statement");
+        client.execute("INSERT INTO babylon_state.material_tick_v3(campaign_id,resolve_tick,identity_bytes,register_storage_bytes,receipt_storage_bytes,lookup_delta_bytes) VALUES($1,1,$2,$2,$2,$2)", &[campaign.as_uuid(),&&[1_u8;32][..]]).expect("the test database applies the setup statement");
         client
             .execute(
                 "INSERT INTO babylon_state.graph_node_manifest_v1 VALUES($1,1,0,0,0,0)",
                 &[campaign.as_uuid()],
             )
-            .unwrap();
+            .expect("the test database applies the setup statement");
         client
             .execute(
                 "INSERT INTO babylon_state.tick_commit VALUES($1,1,3,$2,$2)",
                 &[campaign.as_uuid(), &&[1_u8; 32][..]],
             )
-            .unwrap();
+            .expect("the test database applies the setup statement");
     }
 
     #[test]
@@ -529,37 +579,48 @@ mod live_tests {
         let config = event_control_config();
         let mut runtime = event_control_runtime(&config, 0x337_ce11);
         let campaign = runtime.campaign_id();
-        let mut client = config.connect(NoTls).unwrap();
+        let mut client = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         let before = event_raw_counts(&mut client, campaign);
         for (ordinal, position) in [(1, Some(0)), (0, Some(1))] {
-            let mut tx = client.transaction().unwrap();
+            let mut tx = client
+                .transaction()
+                .expect("the test database opens a transaction");
             insert_event_fixture(&mut tx, campaign, ordinal, position);
             insert_event_test_marker(&mut tx, campaign);
-            let error = tx.commit().unwrap_err();
+            let error = tx
+                .commit()
+                .expect_err("the fixture call `commit` fails for the authored inputs");
             assert_eq!(
-                error.as_db_error().unwrap().message(),
+                error
+                    .as_db_error()
+                    .expect("the runtime error is a database error")
+                    .message(),
                 "event_storage_parent_field_choice_or_order"
             );
             assert_eq!(event_raw_counts(&mut client, campaign), before);
         }
         // The SQL-only empty-field parent is checked, then rolled back; its
         // placeholder material bytes never become a durable engine publication.
-        let mut valid = client.transaction().unwrap();
+        let mut valid = client
+            .transaction()
+            .expect("the test database opens a transaction");
         insert_event_fixture(&mut valid, campaign, 0, None);
         insert_event_test_marker(&mut valid, campaign);
         valid
             .batch_execute("SET CONSTRAINTS ALL IMMEDIATE")
-            .unwrap();
-        valid.rollback().unwrap();
+            .expect("the test database applies the schema statements");
+        valid.rollback().expect("the open transaction rolls back");
         assert_eq!(event_raw_counts(&mut client, campaign), before);
         let actions = OrderedPracticeActionBatch::empty(
             runtime.session().graph_session().session_identity().clone(),
             1,
         )
-        .unwrap();
+        .expect("the empty authored batch constructs");
         runtime
             .advance_and_commit(&mut CollectingSink::default(), &actions)
-            .unwrap();
+            .expect("the prepared tick advances and commits");
         assert_event_raw_history_immutable(&mut client, campaign);
     }
 
@@ -567,27 +628,39 @@ mod live_tests {
         let before = event_raw_counts(client, campaign);
         for relation in &EVENT_RAW_TABLES[..5] {
             for operation in ["UPDATE", "DELETE"] {
-                let mut tx = client.transaction().unwrap();
+                let mut tx = client
+                    .transaction()
+                    .expect("the test database opens a transaction");
                 let sql = if operation == "UPDATE" {
                     format!("UPDATE babylon_state.{relation} SET campaign_id=campaign_id WHERE campaign_id=$1")
                 } else {
                     format!("DELETE FROM babylon_state.{relation} WHERE campaign_id=$1")
                 };
-                let error = tx.execute(&sql, &[campaign.as_uuid()]).unwrap_err();
+                let error = tx
+                    .execute(&sql, &[campaign.as_uuid()])
+                    .expect_err("the test database refuses the invalid statement");
                 assert_eq!(
-                    error.as_db_error().unwrap().message(),
+                    error
+                        .as_db_error()
+                        .expect("the runtime error is a database error")
+                        .message(),
                     "event_storage_append_only"
                 );
-                tx.rollback().unwrap();
+                tx.rollback().expect("the open transaction rolls back");
             }
         }
-        let mut tx = client.transaction().unwrap();
-        let error=tx.execute("INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,999999,ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[NULL::bigint])", &[campaign.as_uuid()]).unwrap_err();
+        let mut tx = client
+            .transaction()
+            .expect("the test database opens a transaction");
+        let error=tx.execute("INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,999999,ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[NULL::bigint])", &[campaign.as_uuid()]).expect_err("the test database refuses the invalid statement");
         assert_eq!(
-            error.as_db_error().unwrap().message(),
+            error
+                .as_db_error()
+                .expect("the runtime error is a database error")
+                .message(),
             "tick_event_v2_refused_marked_history_mutation"
         );
-        tx.rollback().unwrap();
+        tx.rollback().expect("the open transaction rolls back");
         assert_eq!(event_raw_counts(client, campaign), before);
     }
 
@@ -597,7 +670,9 @@ mod live_tests {
         let config = event_control_config();
         let runtime = event_control_runtime(&config, 0x337_a221);
         let campaign = runtime.campaign_id();
-        let mut client = config.connect(NoTls).unwrap();
+        let mut client = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         let before = event_raw_counts(&mut client, campaign);
         for statement in [
             "INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,0,ARRAY[0::bigint],'{}'::bigint[],ARRAY[$2::bigint],ARRAY[NULL::bigint])",
@@ -606,10 +681,10 @@ mod live_tests {
             "INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values) VALUES($1,1,0,1,ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[$2::bigint],ARRAY[NULL::bigint])",
             "INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values,currency_values) VALUES($1,1,0,1,ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[$2::bigint],ARRAY[7::bigint],ARRAY[7::numeric])",
         ] {
-            let mut tx=client.transaction().unwrap();
-            let error=tx.execute(statement,&[campaign.as_uuid(),&0_i64]).unwrap_err();
+            let mut tx=client.transaction().expect("the test database opens a transaction");
+            let error=tx.execute(statement,&[campaign.as_uuid(),&0_i64]).expect_err("the test database refuses the invalid statement");
             assert_eq!(error.code(),Some(&postgres::error::SqlState::CHECK_VIOLATION));
-            tx.rollback().unwrap();
+            tx.rollback().expect("the open transaction rolls back");
             assert_eq!(event_raw_counts(&mut client,campaign),before);
         }
     }
@@ -620,7 +695,9 @@ mod live_tests {
         let config = event_control_config();
         let runtime = event_control_runtime(&config, 0x337_a222);
         let campaign = runtime.campaign_id();
-        let mut client = config.connect(NoTls).unwrap();
+        let mut client = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         let before = event_raw_counts(&mut client, campaign);
         for (chunk, choice, field_ordinal, expected) in [
             (1, None, 0, "event_storage_parent_chunk_count_or_gap"),
@@ -632,25 +709,35 @@ mod live_tests {
             ),
             (0, None, 1, "event_storage_parent_field_choice_or_order"),
         ] {
-            let mut tx = client.transaction().unwrap();
+            let mut tx = client
+                .transaction()
+                .expect("the test database opens a transaction");
             let text_id: i64 = tx
                 .query_one(
                     "SELECT count(*) FROM babylon_state.event_text_lookup_v1 WHERE campaign_id=$1",
                     &[campaign.as_uuid()],
                 )
-                .unwrap()
+                .expect("the seeded row is present exactly once")
                 .get(0);
-            tx.execute("INSERT INTO babylon_state.event_text_lookup_v1(campaign_id,text_id,first_tick,value) VALUES($1,$2,1,'guard-proof')", &[campaign.as_uuid(),&text_id]).unwrap();
+            tx.execute("INSERT INTO babylon_state.event_text_lookup_v1(campaign_id,text_id,first_tick,value) VALUES($1,$2,1,'guard-proof')", &[campaign.as_uuid(),&text_id]).expect("the test database applies the setup statement");
             tx.execute(
                 "INSERT INTO babylon_state.event_manifest_v1 VALUES($1,1,1,1,1,1)",
                 &[campaign.as_uuid()],
             )
-            .unwrap();
-            tx.execute("INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,$2,ARRAY[0::bigint],ARRAY[$3::bigint],ARRAY[$3::bigint],ARRAY[$4::bigint])", &[campaign.as_uuid(),&i64::from(chunk),&text_id,&choice]).unwrap();
-            tx.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values) VALUES($1,1,0,1,ARRAY[$2::bigint],ARRAY[0::bigint],ARRAY[$3::bigint],ARRAY[7::bigint])", &[campaign.as_uuid(),&i64::from(field_ordinal),&text_id]).unwrap();
+            .expect("the test database applies the setup statement");
+            tx.execute("INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,$2,ARRAY[0::bigint],ARRAY[$3::bigint],ARRAY[$3::bigint],ARRAY[$4::bigint])", &[campaign.as_uuid(),&i64::from(chunk),&text_id,&choice]).expect("the test database applies the setup statement");
+            tx.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values) VALUES($1,1,0,1,ARRAY[$2::bigint],ARRAY[0::bigint],ARRAY[$3::bigint],ARRAY[7::bigint])", &[campaign.as_uuid(),&i64::from(field_ordinal),&text_id]).expect("the test database applies the setup statement");
             insert_event_test_marker(&mut tx, campaign);
-            let error = tx.commit().unwrap_err();
-            assert_eq!(error.as_db_error().unwrap().message(), expected);
+            let error = tx
+                .commit()
+                .expect_err("the fixture call `commit` fails for the authored inputs");
+            assert_eq!(
+                error
+                    .as_db_error()
+                    .expect("the runtime error is a database error")
+                    .message(),
+                expected
+            );
             assert_eq!(event_raw_counts(&mut client, campaign), before);
         }
     }

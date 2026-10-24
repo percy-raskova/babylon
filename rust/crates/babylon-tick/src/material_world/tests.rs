@@ -41,7 +41,8 @@ fn local_handoff_receipts() -> Vec<u8> {
 #[test]
 fn committed_receipts_admit_explicit_merchant_handling_and_local_fulfillment() {
     use babylon_material_circuit::{OrderId, OutboundOrderId};
-    let receipt = material_world::decode_material_receipts(&local_handoff_receipts()).unwrap();
+    let receipt = material_world::decode_material_receipts(&local_handoff_receipts())
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(receipt.resolve_tick, 1);
     assert!(receipt.dispatches.is_empty());
     assert!(receipt.arrivals.is_empty());
@@ -110,7 +111,8 @@ fn local_transfer_receipts_preserve_both_owners_without_freight() {
     }
     bytes.extend_from_slice(&3_u64.to_be_bytes());
     bytes.extend_from_slice(&tail);
-    let receipts = material_world::decode_material_receipts(&bytes).unwrap();
+    let receipts = material_world::decode_material_receipts(&bytes)
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(receipts.local_transfers.len(), 1);
     let transfer = &receipts.local_transfers[0];
     assert_eq!(transfer.supplier_site_id, SiteId::from_bytes([7; 32]));
@@ -163,11 +165,13 @@ fn monetary_receipt_encoding_preserves_exact_cash_and_execution_order() {
         bytes.extend_from_slice(&if tag == 11 { 3_u64 } else { 0 }.to_be_bytes());
         if tag == 11 {
             for row in &rows {
-                monetary_receipt::encode_transfer(row, &mut bytes).unwrap();
+                monetary_receipt::encode_transfer(row, &mut bytes)
+                    .expect("the fixture value encodes to its canonical bytes");
             }
         }
     }
-    let decoded = material_world::decode_material_receipts(&bytes).unwrap();
+    let decoded = material_world::decode_material_receipts(&bytes)
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(decoded.money_transfers, rows);
     let mut invalid = rows[0].clone();
     invalid.credit.delta = Currency::from_micro_units(1);
@@ -254,7 +258,8 @@ fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
             unpaid_idle_hours: 0,
         })
         .collect();
-    monetary_receipt::validate_order(&wages, &labor).unwrap();
+    monetary_receipt::validate_order(&wages, &labor)
+        .expect("the authored fixture satisfies the rule");
     let mut bytes = RECEIPT_DOMAIN.to_vec();
     bytes.extend_from_slice(&18_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
@@ -270,19 +275,23 @@ fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
         );
         if tag == 12 {
             for row in &wages {
-                monetary_receipt::encode_accrual(row, 7, &mut bytes).unwrap();
+                monetary_receipt::encode_accrual(row, 7, &mut bytes)
+                    .expect("the fixture value encodes to its canonical bytes");
             }
         } else if tag == 13 {
             for row in &labor {
-                monetary_receipt::encode_labor(row, 7, &mut bytes).unwrap();
+                monetary_receipt::encode_labor(row, 7, &mut bytes)
+                    .expect("the fixture value encodes to its canonical bytes");
             }
         } else if tag == 29 {
             for row in &members {
-                workforce_receipt::encode_attendance(row, 7, &mut bytes).unwrap();
+                workforce_receipt::encode_attendance(row, 7, &mut bytes)
+                    .expect("the fixture value encodes to its canonical bytes");
             }
         }
     }
-    let decoded = material_world::decode_material_receipts(&bytes).unwrap();
+    let decoded = material_world::decode_material_receipts(&bytes)
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(decoded.wage_accruals, wages);
     assert_eq!(decoded.labor_use, labor);
     assert_eq!(decoded.member_labor_use, members);
@@ -298,8 +307,8 @@ fn attendance_receipt_encoding_roundtrips_without_sorting_hashed_shift_ids() {
 #[test]
 fn register_byte_budget_is_one_gb_and_receipts_keep_their_independent_cap() {
     const ONE_GB: usize = 1_000_000_000;
-    let admitted =
-        material_world::bounded_bytes(ONE_GB, MAX_MATERIAL_WORLD_REGISTER_BYTES).unwrap();
+    let admitted = material_world::bounded_bytes(ONE_GB, MAX_MATERIAL_WORLD_REGISTER_BYTES)
+        .expect("the fixture call `bounded_bytes` succeeds for the authored inputs");
     assert!(admitted.is_empty());
     assert!(admitted.capacity() >= ONE_GB);
     assert_eq!(

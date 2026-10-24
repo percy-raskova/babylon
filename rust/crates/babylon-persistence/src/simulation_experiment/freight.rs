@@ -139,7 +139,10 @@ impl CapturedFreight {
         }
         Ok(())
     }
-    #[allow(clippy::too_many_lines)] // Keep the complete closed inventory boundary visible together.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "`state` keeps one authored sequence in a single place"
+    )] // Keep the complete closed inventory boundary visible together.
     fn state(&self) -> Result<MaterialCircuitState> {
         self.validate()?;
         let source = source_id();

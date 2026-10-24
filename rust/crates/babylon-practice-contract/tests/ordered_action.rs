@@ -91,7 +91,9 @@ fn batch(items: Vec<ResolvedPracticeBatchItem>) -> ResolvedPracticeBatch {
         campaign_id: CampaignId::from_bytes([0x10; 16]),
         resolve_tick: 11,
         authority_ledger_digest:
-            babylon_practice_contract::input_authority_ledger_digest(&ledger()).unwrap(),
+            babylon_practice_contract::input_authority_ledger_digest(&ledger()).expect(
+                "the fixture call `input_authority_ledger_digest` succeeds for the authored inputs",
+            ),
         resource_allocation_contract_digest: [0x40; 32],
         content_digest: [0x30; 32],
         items,
@@ -114,23 +116,26 @@ fn action_id_preimage_is_exact_and_excludes_the_ordinal() {
 
     assert_eq!(expected.len(), 76);
     assert_eq!(
-        encode_practice_action_id_preimage(&replay, &value).unwrap(),
+        encode_practice_action_id_preimage(&replay, &value)
+            .expect("the fixture value encodes to its canonical bytes"),
         expected
     );
     assert_eq!(
-        practice_action_id(&replay, &value).unwrap().as_bytes(),
+        practice_action_id(&replay, &value)
+            .expect("the fixture call `practice_action_id` succeeds for the authored inputs")
+            .as_bytes(),
         &hex_digest("955c45b85e469ccdfcbee405d6899fc00d0c6bb882daa32e6f2bfa072fe181a6")
     );
     assert_eq!(
         encode_practice_action_id_preimage(&session("!"), &value)
-            .unwrap()
+            .expect("the fixture value encodes to its canonical bytes")
             .len(),
         69
     );
     let maximum_session = "Z".repeat(256);
     assert_eq!(
         encode_practice_action_id_preimage(&session(&maximum_session), &value)
-            .unwrap()
+            .expect("the fixture value encodes to its canonical bytes")
             .len(),
         324
     );
@@ -140,13 +145,13 @@ fn action_id_preimage_is_exact_and_excludes_the_ordinal() {
         &batch(vec![item(0x70)]),
         &ledger(),
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored state");
     let lower_inserted = OrderedPracticeActionBatch::project(
         session("replay-A"),
         &batch(vec![item(0x60), item(0x70)]),
         &ledger(),
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored state");
     assert_eq!(original_only.items()[0].canonical_input_ordinal(), 0);
     assert_eq!(lower_inserted.items()[0].canonical_input_ordinal(), 0);
     assert_eq!(lower_inserted.items()[1].canonical_input_ordinal(), 1);
@@ -158,7 +163,8 @@ fn action_id_preimage_is_exact_and_excludes_the_ordinal() {
 
 #[test]
 fn exact_empty_batch_binds_session_and_tick() {
-    let value = OrderedPracticeActionBatch::empty(session("replay-A"), 11).unwrap();
+    let value = OrderedPracticeActionBatch::empty(session("replay-A"), 11)
+        .expect("the empty authored batch constructs");
     let expected = hex_bytes(concat!(
         "626162796c6f6e2e6f7264657265642d70726163746963652d616374696f6e2d62617463682e7631",
         "00",
@@ -180,8 +186,10 @@ fn exact_empty_batch_binds_session_and_tick() {
     assert!(value.items().is_empty());
     assert!(value.is_empty());
 
-    let other_session = OrderedPracticeActionBatch::empty(session("replay-B"), 11).unwrap();
-    let other_tick = OrderedPracticeActionBatch::empty(session("replay-A"), 12).unwrap();
+    let other_session = OrderedPracticeActionBatch::empty(session("replay-B"), 11)
+        .expect("the empty authored batch constructs");
+    let other_tick = OrderedPracticeActionBatch::empty(session("replay-A"), 12)
+        .expect("the empty authored batch constructs");
     assert_ne!(value.digest(), other_session.digest());
     assert_ne!(value.digest(), other_tick.digest());
 }
@@ -189,8 +197,8 @@ fn exact_empty_batch_binds_session_and_tick() {
 #[test]
 fn projector_assigns_contiguous_ordinals_and_exact_canonical_bytes() {
     let source = batch(vec![item(0x60)]);
-    let value =
-        OrderedPracticeActionBatch::project(session("replay-A"), &source, &ledger()).unwrap();
+    let value = OrderedPracticeActionBatch::project(session("replay-A"), &source, &ledger())
+        .expect("the fixture projection accepts the authored state");
     let expected = hex_bytes(concat!(
         "626162796c6f6e2e6f7264657265642d70726163746963652d616374696f6e2d62617463682e7631",
         "00",

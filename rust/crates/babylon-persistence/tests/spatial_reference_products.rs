@@ -45,7 +45,9 @@ fn checked_bundle_has_exact_governed_products_and_counts() {
 #[test]
 fn checked_bundle_preserves_measure_and_absence_law() {
     let cohort = cohort();
-    let bundle = spatial_reference_products::michigan_spatial_reference_products(&cohort).unwrap();
+    let bundle = spatial_reference_products::michigan_spatial_reference_products(&cohort).expect(
+        "the fixture call `michigan_spatial_reference_products` succeeds for the authored inputs",
+    );
 
     assert_eq!(
         bundle

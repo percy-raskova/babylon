@@ -284,7 +284,7 @@ fn prepared_tick_owns_full_checkpoint_rows_and_exact_archive_receipt() {
     assert_eq!(checkpoint.row_count(), 9);
     assert_eq!(
         checkpoint.source_tick(),
-        CommittedResolveTick::try_from(1).unwrap()
+        CommittedResolveTick::try_from(1).expect("the fixture value fits the target range")
     );
     let archive: &ArchiveDirtyReceipt = prepared.archive_dirty_receipt();
     assert_eq!(archive.tick_content_hash(), report.tick_content_hash());
@@ -308,6 +308,10 @@ fn prepared_tick_owns_full_checkpoint_rows_and_exact_archive_receipt() {
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`restart_root_is_one_exact_nine_section_full_checkpoint` keeps one authored boundary's fixture and assertions together"
+)]
 fn restart_root_is_one_exact_nine_section_full_checkpoint() {
     let (mut session, session_id, _, _, _, _) = fixture();
     let report = first_report(&mut session, &session_id);
@@ -366,21 +370,24 @@ fn restart_root_is_one_exact_nine_section_full_checkpoint() {
         reference_digest.as_bytes(),
         report.material_state_rows().canonical_bytes(),
     ];
-    for ((section, row), exact_bytes) in checkpoint
+    let checkpoint_sections = checkpoint
         .sections()
         .iter()
         .zip(checkpoint.rows())
-        .zip(exact_section_bytes)
-    {
+        .zip(exact_section_bytes);
+    for ((section, row), exact_bytes) in checkpoint_sections {
         assert_eq!(section.sha256(), content_digest::sha256_of(exact_bytes));
         let exact_start = row.payload().len() - exact_bytes.len();
         assert_eq!(row.payload()[exact_start - 5], 1);
         let encoded_len = u32::from_be_bytes(
             row.payload()[exact_start - 4..exact_start]
                 .try_into()
-                .unwrap(),
+                .expect("the fixture slice has the target length"),
         );
-        assert_eq!(usize::try_from(encoded_len).unwrap(), exact_bytes.len());
+        assert_eq!(
+            usize::try_from(encoded_len).expect("the fixture value fits the target range"),
+            exact_bytes.len()
+        );
         assert_eq!(&row.payload()[exact_start..], exact_bytes);
         assert_eq!(
             section.sha256(),

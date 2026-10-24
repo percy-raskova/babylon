@@ -240,13 +240,17 @@ fn assert_projection(row: &Value, plan: &CountyPagePlan, grants: &CountyGrantInd
     for (signal, expected) in projection.signals().iter().zip(&expected_visible) {
         assert_eq!(
             signal.label(),
-            expected["label"].as_str().unwrap(),
+            expected["label"]
+                .as_str()
+                .expect("the JSON fixture field is a string"),
             "{}",
             row["id"]
         );
         assert_eq!(
             signal.value(),
-            expected["value"].as_str().unwrap(),
+            expected["value"]
+                .as_str()
+                .expect("the JSON fixture field is a string"),
             "{}",
             row["id"]
         );
@@ -258,7 +262,9 @@ fn assert_projection(row: &Value, plan: &CountyPagePlan, grants: &CountyGrantInd
         );
         assert_eq!(
             signal.provenance_name(),
-            data["territory_local_name"].as_str().unwrap(),
+            data["territory_local_name"]
+                .as_str()
+                .expect("the JSON fixture field is a string"),
             "{}",
             row["id"]
         );
@@ -276,7 +282,9 @@ fn assert_projection(row: &Value, plan: &CountyPagePlan, grants: &CountyGrantInd
     for ((geoid, known_name), expected) in projection.places().iter().zip(&expected_places) {
         assert_eq!(
             geoid,
-            expected["place_geoid"].as_str().unwrap(),
+            expected["place_geoid"]
+                .as_str()
+                .expect("the JSON fixture field is a string"),
             "{}",
             row["id"]
         );

@@ -29,18 +29,23 @@ fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/national/defines.toml"
     )))
-    .unwrap();
-    let counties = national_counties::national_county_reference().unwrap();
-    let cohorts = national_cohorts::national_cohort_reference().unwrap();
-    let residents = national_resident_workforce::national_resident_workforce_reference().unwrap();
-    let world = world_reference::world_reference().unwrap();
-    let transport = national_transport::national_transport_reference().unwrap();
+    .expect("the authored literal parses as the declared type");
+    let counties =
+        national_counties::national_county_reference().expect("the county reference fixture loads");
+    let cohorts =
+        national_cohorts::national_cohort_reference().expect("the cohort reference fixture loads");
+    let residents = national_resident_workforce::national_resident_workforce_reference()
+        .expect("the workforce reference fixture loads");
+    let world = world_reference::world_reference().expect("the world reference fixture loads");
+    let transport = national_transport::national_transport_reference()
+        .expect("the transport reference fixture loads");
     let start = Instant::now();
     let opening = national_economy::build_national_opening(
         counties,
         cohorts,
         residents,
-        babylon_persistence::national_households::national_household_reference().unwrap(),
+        babylon_persistence::national_households::national_household_reference()
+            .expect("the household reference fixture loads"),
         world,
         transport,
         babylon_persistence::national_economy::NationalOpeningPolicy {
@@ -51,7 +56,7 @@ fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts(
             ))),
         },
     )
-    .unwrap();
+    .expect("the fixture call `build_national_opening` succeeds for the authored inputs");
     let aid = opening.aid;
     let opening = opening.opening;
     assert_eq!(opening.policies.aid.mandates, aid.mandates);
@@ -245,7 +250,9 @@ fn assert_unique_principals(opening: &EconomicOpening, policy: &NationalGamePoli
 fn assert_missing_retail_fallback(opening: &EconomicOpening) {
     // This real county has no captured QCEW distribution cohort. Retail work
     // must reuse its four already-accounted sites and finite workforce.
-    let kalawao: EconomicLocation = "county:15005".parse().unwrap();
+    let kalawao: EconomicLocation = "county:15005"
+        .parse()
+        .expect("the authored literal parses as the declared type");
     let kalawao_sites: Vec<_> = opening
         .sites
         .iter()
@@ -267,10 +274,10 @@ fn assert_missing_retail_fallback(opening: &EconomicOpening) {
                 == kalawao_sites
                     .iter()
                     .find(|s| s.merchant.is_some())
-                    .unwrap()
+                    .expect("the fixture holds the searched element")
                     .site_id
         })
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert!(kalawao_pool.pool.work_sources().len() >= 2);
     assert!(
         kalawao_pool
@@ -298,7 +305,7 @@ fn census(opening: &EconomicOpening) {
         opening.institutions.ownership.len(), opening.institutions.taxes.len(), opening.institutions.public_allocations.len());
     eprintln!("opening census: sites={} households={} staffing_pools={} staffing_members={} stocks={} inputs={} offers={} procurement={} service_inputs={} connections={} supplier_routes={} stages={} memberships={} cash_accounts={}",
         opening.sites.len(),opening.households.len(),opening.staffing.len(),opening.staffing.iter().map(|s|s.members.len()).sum::<usize>(),
-        opening.sites.iter().map(|s|s.opening_stock.len()).sum::<usize>(),opening.sites.iter().map(|s|s.processes.iter().map(|p| opening.recipes.iter().find(|r|r.id==p.recipe).unwrap().inputs.len()).sum::<usize>()).sum::<usize>(),
+        opening.sites.iter().map(|s|s.opening_stock.len()).sum::<usize>(),opening.sites.iter().map(|s|s.processes.iter().map(|p| opening.recipes.iter().find(|r|r.id==p.recipe).expect("the fixture holds the searched element").inputs.len()).sum::<usize>()).sum::<usize>(),
         opening.policies.offers.len(),opening.policies.replenishment.len(),opening.policies.service_inputs.len(),opening.policies.service_connections.len(),
         opening.logistics.supplier_routes.len(),opening.logistics.route_stages.len(),opening.logistics.memberships.len(),
         opening.sites.len()+opening.households.len()+opening.institutional_cash.len());

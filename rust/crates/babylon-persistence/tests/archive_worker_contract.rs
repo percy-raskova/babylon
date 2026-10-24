@@ -289,7 +289,7 @@ fn paged_sweep_model_enforces_the_consume_cap_across_keyset_pages() {
     );
     assert_eq!(
         model.plans().len(),
-        usize::try_from(model.scanned()).unwrap()
+        usize::try_from(model.scanned()).expect("the fixture value fits the target range")
     );
     assert_eq!(model.plans()[255], ArchiveReceiptPlan::Consume);
     assert_eq!(model.plans().len(), 256, "the remainder stays pending");

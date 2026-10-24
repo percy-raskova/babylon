@@ -14,7 +14,7 @@ const ZERO_DIGEST: &str = "00000000000000000000000000000000000000000000000000000
 
 fn expected_census() -> CatalogCensus {
     postgres_catalog::parse_catalog_census(include_str!("../src/fixtures/fresh_schema_census.txt"))
-        .unwrap()
+        .expect("the authored census catalog parses")
 }
 
 #[test]
@@ -96,7 +96,8 @@ fn census_fixture_parser_rejects_invalid_kind_identifier_digest_and_bounds() {
 fn census_parser_and_comparison_enforce_row_bounds_without_unbounded_collect() {
     let mut oversized = String::new();
     for index in 0..=MAX_CATALOG_CENSUS_ROWS {
-        writeln!(oversized, "relation|public|name_{index:04}|{ZERO_DIGEST}").unwrap();
+        writeln!(oversized, "relation|public|name_{index:04}|{ZERO_DIGEST}")
+            .expect("the in-memory formatter accepts the written text");
     }
     assert!(matches!(
         postgres_catalog::parse_catalog_census(&oversized),
@@ -278,8 +279,9 @@ fn connection_target_requires_one_literal_local_endpoint() {
 
 fn entry(kind: CatalogObjectKind, schema: &str, name: &str, digit: char) -> CatalogCensusEntry {
     CatalogCensusEntry::new(
-        CatalogObjectKey::new(kind, schema, name).unwrap(),
+        CatalogObjectKey::new(kind, schema, name)
+            .expect("the constructor accepts the authored fixture arguments"),
         digit.to_string().repeat(64).as_str(),
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }

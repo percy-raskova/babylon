@@ -12,13 +12,21 @@ fn bounded_rows(family: u8) -> Vec<Vec<u8>> {
                 row
             } else {
                 let mut row = crate::distribution(0, 1, 0);
-                row[81..89].copy_from_slice(&u64::try_from(LIMIT).unwrap().to_be_bytes());
+                row[81..89].copy_from_slice(
+                    &u64::try_from(LIMIT)
+                        .expect("the fixture value fits the target range")
+                        .to_be_bytes(),
+                );
                 row[89..].fill(0);
                 row
             };
             let start = if family == 25 { 9 } else { 41 };
             row[start..start + 32].fill(0);
-            row[start + 24..start + 32].copy_from_slice(&u64::try_from(n).unwrap().to_be_bytes());
+            row[start + 24..start + 32].copy_from_slice(
+                &u64::try_from(n)
+                    .expect("the fixture value fits the target range")
+                    .to_be_bytes(),
+            );
             row
         })
         .collect()
@@ -27,13 +35,28 @@ fn assert_financial_bound(family: u8) {
     let rows = bounded_rows(family);
     let decoded =
         material_world::decode_material_receipts(&crate::envelope(&[(family, rows.clone())]))
-            .unwrap();
+            .expect("the canonical bytes decode into the declared type");
     if family == 25 {
         assert_eq!(decoded.taxes.len(), LIMIT);
-        assert_eq!(decoded.taxes.last().unwrap().collected.micro_units(), 0);
+        assert_eq!(
+            decoded
+                .taxes
+                .last()
+                .expect("the fixture sequence is non-empty")
+                .collected
+                .micro_units(),
+            0
+        );
     } else {
         assert_eq!(decoded.distributions.len(), LIMIT);
-        assert_eq!(decoded.distributions.last().unwrap().total_shares, 131_072);
+        assert_eq!(
+            decoded
+                .distributions
+                .last()
+                .expect("the fixture sequence is non-empty")
+                .total_shares,
+            131_072
+        );
     }
     let mut duplicate = rows.clone();
     let first_row = duplicate[0].clone();

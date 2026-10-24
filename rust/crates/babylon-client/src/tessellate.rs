@@ -23,7 +23,11 @@
 // finding) can tighten these to checked `u32::try_from` conversions later;
 // that is a systemic sweep across this file's ~19 sites, not a defect any
 // one of them carries alone.
-#![allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    reason = "the display value is range-checked before the f32 narrowing; the value stays inside the signed range"
+)]
 
 use crate::atlas::{CountyAtlas, Ring};
 use earcut::Earcut;

@@ -334,11 +334,11 @@ pub fn parse_catalog_census(text: &str) -> Result<CatalogCensus, CatalogCensusPa
     let mut entries = Vec::new();
     let mut keys = BTreeSet::new();
     let mut previous_key: Option<CatalogObjectKey> = None;
-    for (line_index, line) in text
+    let bounded_lines = text
         .lines()
         .enumerate()
-        .take(MAX_CATALOG_CENSUS_FIXTURE_LINES + 1)
-    {
+        .take(MAX_CATALOG_CENSUS_FIXTURE_LINES + 1);
+    for (line_index, line) in bounded_lines {
         check_fixture_line_bound(line_index)?;
         if line.is_empty() || line.starts_with('#') {
             continue;

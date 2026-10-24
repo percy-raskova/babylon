@@ -133,7 +133,10 @@ impl Audit {
             if remaining == 0 {
                 self.pending.remove(&id);
             } else {
-                self.pending.get_mut(&id).unwrap().remaining = remaining;
+                self.pending
+                    .get_mut(&id)
+                    .expect("every changed order is still held by pending or admitted")
+                    .remaining = remaining;
             }
         }
         self.imports = next_imports;
@@ -370,7 +373,8 @@ fn reconcile(
     let mut imports = Totals::default();
     let mut exports = Totals::default();
     for (id, movement) in movements {
-        let order = terms(pending, admitted, id).unwrap();
+        let order = terms(pending, admitted, id)
+            .expect("movements only names orders that pending or admitted holds");
         let reservation = if admitted.contains_key(id) {
             value(order.remaining, order.price)?
         } else {
@@ -439,9 +443,14 @@ fn production(
 #[must_use]
 pub fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;
-    let mut result = String::with_capacity(bytes.len().checked_mul(2).unwrap());
+    let mut result = String::with_capacity(
+        bytes
+            .len()
+            .checked_mul(2)
+            .expect("the hex length fits the host address space"),
+    );
     for byte in bytes {
-        write!(&mut result, "{byte:02x}").unwrap();
+        write!(&mut result, "{byte:02x}").expect("writing to a String cannot fail");
     }
     result
 }

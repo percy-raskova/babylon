@@ -37,7 +37,7 @@ fn enqueue(app: &mut App, target: RuntimeSessionTarget) {
     app.world_mut()
         .resource_mut::<ObserverSession>()
         .queue_campaign(target)
-        .unwrap();
+        .expect("the fixture call `queue_campaign` succeeds for the authored inputs");
     app.update();
 }
 
@@ -53,7 +53,9 @@ fn take_switch(requests: &Receiver<RuntimeSessionRequest>) -> Switch {
         scope: previous,
         target,
         ..
-    } = requests.try_recv().unwrap()
+    } = requests
+        .try_recv()
+        .expect("the producer sends before this receive")
     else {
         panic!("expected one campaign switch");
     };
@@ -76,7 +78,7 @@ fn switching(app: &mut App, responses: &Replies, switch: &Switch) {
             previous_scope: switch.previous.clone(),
             scope: switch.scope.clone(),
         }))
-        .unwrap();
+        .expect("the receiver stays alive for the send");
     app.update();
 }
 
@@ -93,7 +95,7 @@ fn admitted(app: &mut App, responses: &Replies, switch: &Switch, period: u64) {
                 tick_content_hash: None,
             },
         }))
-        .unwrap();
+        .expect("the receiver stays alive for the send");
     app.update();
 }
 
@@ -105,7 +107,7 @@ fn refused(app: &mut App, responses: &Replies, switch: &Switch) {
             code: RuntimeSessionErrorCode::CampaignAbsent,
             tail: None,
         }))
-        .unwrap();
+        .expect("the receiver stays alive for the send");
     app.update();
 }
 
@@ -118,12 +120,15 @@ fn command(app: &mut App, command: ObserverCommand) {
 
 fn initial() -> (App, Receiver<RuntimeSessionRequest>, Replies) {
     let (mut app, requests, responses) = tests::quit_app();
-    app.insert_resource(ObserverSession::with_initial_target(open(1)).unwrap())
-        .insert_resource(DossierCampaignId(campaign(1)))
-        .init_resource::<ActiveCountyDossier>()
-        .init_resource::<DossierFetchState>()
-        .init_resource::<DossierPageView>()
-        .init_resource::<PendingObservation>();
+    app.insert_resource(
+        ObserverSession::with_initial_target(open(1))
+            .expect("the fixture builder accepts the authored options"),
+    )
+    .insert_resource(DossierCampaignId(campaign(1)))
+    .init_resource::<ActiveCountyDossier>()
+    .init_resource::<DossierFetchState>()
+    .init_resource::<DossierPageView>()
+    .init_resource::<PendingObservation>();
     (app, requests, responses)
 }
 
@@ -133,7 +138,7 @@ fn hello(app: &mut App, responses: &Replies) {
             protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
             scope: RuntimeSessionScope::default(),
         }))
-        .unwrap();
+        .expect("the receiver stays alive for the send");
     app.update();
 }
 
@@ -173,8 +178,8 @@ fn lifecycle_delayed_hello_and_ready_keep_window_and_save_only_admitted_target()
     );
     assert!(!path.exists());
     admitted(&mut app, &responses, &switch, 0);
-    let saved = std::fs::read_to_string(&path).unwrap();
-    std::fs::remove_dir_all(directory).unwrap();
+    let saved = std::fs::read_to_string(&path).expect("the fixture source is readable");
+    std::fs::remove_dir_all(directory).expect("the fixture directory exists before removal");
     assert_eq!(saved, format!("{}\n", campaign(2).as_uuid()));
     assert!(app.world().get::<Window>(window).is_some());
     assert!(app.world().resource::<Messages<AppExit>>().is_empty());
@@ -197,7 +202,9 @@ fn lifecycle_quit_before_hello_cancels_initial_switch_and_stops_at_epoch_zero() 
     hello(&mut app, &responses);
     let RuntimeSessionRequest::Stop {
         request_id, scope, ..
-    } = requests.try_recv().unwrap()
+    } = requests
+        .try_recv()
+        .expect("the producer sends before this receive")
     else {
         panic!("Quit must replace initial Switch");
     };
@@ -205,7 +212,7 @@ fn lifecycle_quit_before_hello_cancels_initial_switch_and_stops_at_epoch_zero() 
     assert_eq!(scope, RuntimeSessionScope::default());
     responses
         .send(Ok(RuntimeSessionResponse::Stopped { request_id, scope }))
-        .unwrap();
+        .expect("the receiver stays alive for the send");
     app.update();
     assert!(requests.try_recv().is_err());
     assert_eq!(app.world().resource::<Messages<AppExit>>().len(), 1);
@@ -229,7 +236,9 @@ fn lifecycle_quit_during_admission_retains_latest_scope_and_discards_queued_targ
         }
         let RuntimeSessionRequest::Stop {
             request_id, scope, ..
-        } = requests.try_recv().unwrap()
+        } = requests
+            .try_recv()
+            .expect("the producer sends before this receive")
         else {
             panic!("Quit must settle the latest accepted scope");
         };
@@ -238,7 +247,7 @@ fn lifecycle_quit_during_admission_retains_latest_scope_and_discards_queued_targ
         assert!(app.world().resource::<Messages<AppExit>>().is_empty());
         responses
             .send(Ok(RuntimeSessionResponse::Stopped { request_id, scope }))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         app.update();
         assert_eq!(app.world().resource::<Messages<AppExit>>().len(), 1);
         assert!(requests.try_recv().is_err());
@@ -258,7 +267,9 @@ fn lifecycle_switch_waits_for_commit_ack_then_clears_scoped_observations() {
     command(&mut app, ObserverCommand::Step);
     let RuntimeSessionRequest::Advance {
         request_id, scope, ..
-    } = requests.try_recv().unwrap()
+    } = requests
+        .try_recv()
+        .expect("the producer sends before this receive")
     else {
         panic!("one period advance");
     };
@@ -274,7 +285,7 @@ fn lifecycle_switch_waits_for_commit_ack_then_clears_scoped_observations() {
                 tick_content_hash: None,
             },
         }))
-        .unwrap();
+        .expect("the receiver stays alive for the send");
     app.update();
     let switch = take_switch(&requests);
     assert_eq!(switch.request_id, request_id + 1);
@@ -302,7 +313,10 @@ fn lifecycle_failed_b_then_return_to_a_rejects_old_epoch_and_async_a_results() {
 fn return_to_a_rejects_stale_results(failed_b: bool) {
     let (mut app, requests, responses) = tests::quit_app();
     let state = app.world().resource::<ObserverSession>();
-    let old_scope = state.runtime_scope().unwrap().clone();
+    let old_scope = state
+        .runtime_scope()
+        .expect("the fixture runtime scope exists")
+        .clone();
     let old_context = state.context();
     let old_snapshot = tests::snapshot_with_event(state, "production", 3);
     enqueue(&mut app, open(2));
@@ -360,7 +374,9 @@ fn return_to_a_rejects_stale_results(failed_b: bool) {
             verified_tick: 3,
         },
     ] {
-        responses.send(Ok(stale)).unwrap();
+        responses
+            .send(Ok(stale))
+            .expect("the receiver stays alive for the send");
     }
     app.update();
     assert_eq!(app.world().resource::<ObserverSession>().context(), current);
@@ -450,7 +466,9 @@ fn lifecycle_request_ids_remain_unique_across_switch_advance_and_stop() {
         scope,
         expected_tail,
         ..
-    } = requests.try_recv().unwrap()
+    } = requests
+        .try_recv()
+        .expect("the producer sends before this receive")
     else {
         panic!("period advance");
     };
@@ -466,14 +484,16 @@ fn lifecycle_request_ids_remain_unique_across_switch_advance_and_stop() {
                 tick_content_hash: Some("1".repeat(64)),
             },
         }))
-        .unwrap();
+        .expect("the receiver stays alive for the send");
     app.update();
     command(&mut app, ObserverCommand::Quit);
     let RuntimeSessionRequest::Stop {
         request_id: stop_id,
         scope: stop_scope,
         ..
-    } = requests.try_recv().unwrap()
+    } = requests
+        .try_recv()
+        .expect("the producer sends before this receive")
     else {
         panic!("terminal Stop");
     };
@@ -484,7 +504,7 @@ fn lifecycle_request_ids_remain_unique_across_switch_advance_and_stop() {
             request_id: stop_id,
             scope: stop_scope,
         }))
-        .unwrap();
+        .expect("the receiver stays alive for the send");
     app.update();
     assert_eq!(app.world().resource::<Messages<AppExit>>().len(), 1);
 }
@@ -505,14 +525,18 @@ fn lifecycle_pipe_death_retains_sent_new_identity_without_resend_or_fact_adoptio
     assert_eq!(switch.scope.campaign_id.as_deref(), Some(target.as_str()));
     responses
         .send(Err("Runtime pipe closed before Switching".into()))
-        .unwrap();
+        .expect("the receiver stays alive for the send");
     app.update();
     let state = app.world().resource::<ObserverSession>();
     assert!(state.runtime_disconnected());
     assert_eq!(state.uncertain_campaign_id(), Some(target.as_str()));
     assert_eq!(state.context(), original);
     assert_eq!(state.runtime_scope(), Some(&switch.previous));
-    assert!(state.error.as_ref().unwrap().contains(&target));
+    assert!(state
+        .error
+        .as_ref()
+        .expect("the fixture set the optional field before this read")
+        .contains(&target));
     assert!(crate::observer_controls::turn_presentation(state)
         .status
         .contains(&target));
@@ -547,7 +571,7 @@ fn lifecycle_admission_refusals_explain_the_available_campaign_choice() {
                 code,
                 tail: None,
             }))
-            .unwrap();
+            .expect("the receiver stays alive for the send");
         app.update();
         let state = app.world().resource::<ObserverSession>();
         assert_eq!(state.error.as_deref(), Some(expected));
@@ -575,7 +599,7 @@ fn national_admission_leaves_the_old_wayne_workspace_and_waits_for_its_own_obser
                 campaign_id: campaign(2).as_uuid().to_string(),
                 preset: RuntimeSessionPreset::NationalWorld,
             })
-            .unwrap();
+            .expect("the fixture call `queue_campaign` succeeds for the authored inputs");
     }
     hello(&mut app, &responses);
     let switch = take_switch(&requests);

@@ -799,7 +799,11 @@ mod tests {
             crate::hex(&schedule.digest()),
             "3cb992b960112948023e5fcfa1335f2a6e6270628f27fe758186bc9c4d6b2487"
         );
-        assert_eq!(schedule_digest().unwrap(), schedule.digest());
+        assert_eq!(
+            schedule_digest()
+                .expect("the fixture call `schedule_digest` succeeds for the authored inputs"),
+            schedule.digest()
+        );
     }
 
     #[test]
@@ -823,7 +827,7 @@ mod tests {
     fn default_homes_put_decomposition_before_control_ratio() {
         let input = vec![rule("control-ratio/z", ""), rule("decomposition/a", "")];
         assert_eq!(
-            ids(&compile(&input).unwrap()),
+            ids(&compile(&input).expect("the authored scenario compiles")),
             ["decomposition/a", "control-ratio/z"]
         );
     }
@@ -834,13 +838,19 @@ mod tests {
             rule("vitality/z", ""),
             rule("mods/a", "(anchor :before survival)"),
         ];
-        assert_eq!(ids(&compile(&input).unwrap()), ["vitality/z", "mods/a"]);
+        assert_eq!(
+            ids(&compile(&input).expect("the authored scenario compiles")),
+            ["vitality/z", "mods/a"]
+        );
     }
 
     #[test]
     fn one_position_ties_by_rule_id_bytes() {
         let input = vec![rule("vitality/z", ""), rule("vitality/a", "")];
-        assert_eq!(ids(&compile(&input).unwrap()), ["vitality/a", "vitality/z"]);
+        assert_eq!(
+            ids(&compile(&input).expect("the authored scenario compiles")),
+            ["vitality/a", "vitality/z"]
+        );
     }
 
     #[test]
@@ -854,7 +864,7 @@ mod tests {
         for order in [[0, 1, 2, 3], [3, 2, 1, 0], [1, 3, 0, 2]] {
             let forms = order.map(|index| rows[index].clone());
             assert_eq!(
-                ids(&compile(&forms).unwrap()),
+                ids(&compile(&forms).expect("the authored scenario compiles")),
                 ["metabolism/z", "material/period", "zz/witness", "ooda/a"]
             );
         }
@@ -887,11 +897,15 @@ mod tests {
         let input = vec![rule("vitality/a", ""), rule("vitality/z", "")];
         let plan = compile(&input).expect("the source plan compiles");
 
-        let short = plan.ranked_rules(&input[..1]).unwrap_err();
+        let short = plan
+            .ranked_rules(&input[..1])
+            .expect_err("the fixture call `ranked_rules` fails for the authored inputs");
         assert!(matches!(short, ScheduleError::Plan { rule_id: None, .. }));
 
         let duplicate = vec![input[0].clone(), input[0].clone()];
-        let duplicate_error = plan.ranked_rules(&duplicate).unwrap_err();
+        let duplicate_error = plan
+            .ranked_rules(&duplicate)
+            .expect_err("the fixture call `ranked_rules` fails for the authored inputs");
         assert!(matches!(
             duplicate_error,
             ScheduleError::Plan {
@@ -901,7 +915,9 @@ mod tests {
         ));
 
         let replacement = vec![input[0].clone(), rule("vitality/x", "")];
-        let identity_error = plan.ranked_rules(&replacement).unwrap_err();
+        let identity_error = plan
+            .ranked_rules(&replacement)
+            .expect_err("the fixture call `ranked_rules` fails for the authored inputs");
         assert!(matches!(
             identity_error,
             ScheduleError::Plan {
@@ -920,7 +936,7 @@ mod tests {
                 system: "ooda".to_owned(),
             }),
         )
-        .unwrap();
+        .expect("the fixture call `execution_key` succeeds for the authored inputs");
         let before = execution_key(
             "mods/a",
             Some(&AnchorDecl {
@@ -928,7 +944,7 @@ mod tests {
                 system: "faction-influence".to_owned(),
             }),
         )
-        .unwrap();
+        .expect("the fixture call `execution_key` succeeds for the authored inputs");
         assert_eq!(after, before);
     }
 
@@ -936,8 +952,8 @@ mod tests {
     fn source_permutations_compile_to_the_same_order() {
         let a = rule("vitality/z", "");
         let b = rule("mods/a", "(anchor :before survival)");
-        let forward = compile(&[a.clone(), b.clone()]).unwrap();
-        let reversed = compile(&[b, a]).unwrap();
+        let forward = compile(&[a.clone(), b.clone()]).expect("the authored scenario compiles");
+        let reversed = compile(&[b, a]).expect("the authored scenario compiles");
         assert_eq!(forward, reversed);
     }
 
@@ -945,8 +961,10 @@ mod tests {
     fn invalid_source_permutations_name_the_same_byte_least_rule() {
         let a = rule("mods/a-illegal", "(anchor :after vitality)");
         let z = rule("mods/z-illegal", "(anchor :before metabolism)");
-        let forward = compile(&[z.clone(), a.clone()]).unwrap_err();
-        let reversed = compile(&[a, z]).unwrap_err();
+        let forward = compile(&[z.clone(), a.clone()])
+            .expect_err("the fixture call `compile` fails for the authored inputs");
+        let reversed =
+            compile(&[a, z]).expect_err("the fixture call `compile` fails for the authored inputs");
 
         assert_eq!(forward, reversed);
         assert!(matches!(
@@ -983,7 +1001,8 @@ mod tests {
             .expect("the pre-base boundary is legal");
         compile(&[rule("mods/after-base", "(anchor :after metabolism)")])
             .expect("the post-base boundary is legal");
-        let error = compile(&[rule("mods/interior", "(anchor :after vitality)")]).unwrap_err();
+        let error = compile(&[rule("mods/interior", "(anchor :after vitality)")])
+            .expect_err("the fixture call `compile` fails for the authored inputs");
         assert!(matches!(
             error,
             ScheduleError::MaterialBaseInterleave { .. }

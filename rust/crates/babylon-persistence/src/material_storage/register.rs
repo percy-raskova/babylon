@@ -507,15 +507,21 @@ mod typed_decode_controls {
     #[test]
     fn actual_collection_restarts_through_owned_and_borrowed_storage_with_exact_original_join() {
         use babylon_material_circuit::CircuitAccounting;
-        let foundation = crate::michigan_dynamic_hex_foundation().unwrap();
+        let foundation =
+            crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds");
         let base = fixture::authored_session(foundation, fixture::config(), false, false);
         let mut state = base.material().state().clone();
         let CircuitAccounting::Monetary(e) = &mut state.accounting else {
             unreachable!()
         };
-        e.recurring.as_mut().unwrap().household_purchases[0].target_closing_stock = 4;
+        e.recurring
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .household_purchases[0]
+            .target_closing_stock = 4;
         let aid = &e.aid.mandates[0];
-        let mut cfg = serde_json::to_value(fixture::config()).unwrap();
+        let mut cfg =
+            serde_json::to_value(fixture::config()).expect("the value serializes to JSON");
         let babylon_material_circuit::AccountId::Organization(payer) = aid.payer else {
             unreachable!()
         };
@@ -535,23 +541,30 @@ mod typed_decode_controls {
                 fixture::PRACTICE
             ),
             state,
-            serde_json::from_value(cfg).unwrap(),
+            serde_json::from_value(cfg).expect("the JSON value matches the declared type"),
         )
-        .unwrap();
-        let opening = OpeningRegister::from_opening(session.material()).unwrap();
-        let chain = initial_lookup_chain(&opening).unwrap();
-        let accepted = fixture::commitment(&session, serde_json::from_str("\"collect\"").unwrap());
+        .expect("the fixture opens a session");
+        let opening = OpeningRegister::from_opening(session.material())
+            .expect("the opening register admits its sections");
+        let chain = initial_lookup_chain(&opening)
+            .expect("the opening register builds its first lookup chain");
+        let accepted = fixture::commitment(
+            &session,
+            serde_json::from_str("\"collect\"")
+                .expect("the authored JSON matches the declared schema"),
+        );
         let candidate = fixture::prepare(&session, Some(&accepted));
         let current = candidate.material().register();
         let bytes = candidate.material().receipt_bytes();
-        let encoded = encode(current, bytes, &opening, chain).unwrap();
+        let encoded =
+            encode(current, bytes, &opening, chain).expect("the fixture value encodes canonically");
         let loaded = read_period_lookup(
             &opening,
             1,
             &encoded.lookup_delta_bytes,
             LookupAnchor::Previous(chain),
         )
-        .unwrap();
+        .expect("the committed lookup table reads");
         for witness in [None, Some(current)] {
             let actual = decode_typed_with_witness(
                 &opening,
@@ -565,7 +578,7 @@ mod typed_decode_controls {
                     receipt: None,
                 },
             )
-            .unwrap();
+            .expect("the canonical bytes decode into the declared type");
             assert_eq!(actual.register.as_ref(), current);
             assert_eq!(actual.register.canonical_bytes(), current.canonical_bytes());
             assert_eq!(actual.receipt_bytes, bytes);
@@ -584,13 +597,15 @@ mod typed_decode_controls {
     #[test]
     fn borrowed_register_witness_requires_exact_package_and_keeps_owned_fallback() {
         let session = fixture::authored_session(
-            crate::michigan_dynamic_hex_foundation().unwrap(),
+            crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds"),
             fixture::config(),
             false,
             false,
         );
-        let opening = OpeningRegister::from_opening(session.material()).unwrap();
-        let chain = initial_lookup_chain(&opening).unwrap();
+        let opening = OpeningRegister::from_opening(session.material())
+            .expect("the opening register admits its sections");
+        let chain = initial_lookup_chain(&opening)
+            .expect("the opening register builds its first lookup chain");
         let accepted = fixture::commitment(&session, OrganizerChoice::LocalAid);
         let candidate = fixture::prepare(&session, Some(&accepted));
         let current = candidate.material().register();
@@ -600,14 +615,14 @@ mod typed_decode_controls {
             &opening,
             chain,
         )
-        .unwrap();
+        .expect("the fixture value encodes canonically");
         let loaded = read_period_lookup(
             &opening,
             1,
             &encoded.lookup_delta_bytes,
             LookupAnchor::Previous(chain),
         )
-        .unwrap();
+        .expect("the committed lookup table reads");
         let decode = |package: &[u8], witness| {
             decode_typed_with_witness(
                 &opening,
@@ -622,7 +637,8 @@ mod typed_decode_controls {
                 },
             )
         };
-        let borrowed = decode(&encoded.register_storage_bytes, Some(current)).unwrap();
+        let borrowed = decode(&encoded.register_storage_bytes, Some(current))
+            .expect("the committed canonical bytes decode");
         assert!(matches!(borrowed.register, Cow::Borrowed(_)));
         assert!(std::ptr::eq(borrowed.register.as_ref(), current));
         assert_eq!(
@@ -637,7 +653,8 @@ mod typed_decode_controls {
             "authenticated immutable register bytes must reuse their admitted owner"
         );
         assert!(!borrowed.receipts.aid.is_empty());
-        let owned = decode(&encoded.register_storage_bytes, None).unwrap();
+        let owned = decode(&encoded.register_storage_bytes, None)
+            .expect("the committed canonical bytes decode");
         assert!(matches!(owned.register, Cow::Owned(_)));
         assert_eq!(owned.register.as_ref(), current);
         assert_eq!(owned.receipt_bytes, borrowed.receipt_bytes);
@@ -658,32 +675,37 @@ mod typed_decode_controls {
         let mut damaged = encoded.register_storage_bytes.clone();
         // Corrupt the package framing itself, not the borrowed typed witness.
         damaged[0] ^= 1;
-        let borrowed_error = decode(&damaged, Some(current)).err().unwrap();
+        let borrowed_error = decode(&damaged, Some(current))
+            .err()
+            .expect("the fixture call `err` succeeds for the authored inputs");
         assert_eq!(decode(&damaged, None).err(), Some(borrowed_error));
     }
 
     #[test]
     fn admitted_storage_values_keep_nonempty_aid_and_exact_canonical_inverse() {
         let session = fixture::authored_session(
-            crate::michigan_dynamic_hex_foundation().unwrap(),
+            crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds"),
             fixture::config(),
             false,
             false,
         );
-        let opening = OpeningRegister::from_opening(session.material()).unwrap();
-        let chain = initial_lookup_chain(&opening).unwrap();
+        let opening = OpeningRegister::from_opening(session.material())
+            .expect("the opening register admits its sections");
+        let chain = initial_lookup_chain(&opening)
+            .expect("the opening register builds its first lookup chain");
         let accepted = fixture::commitment(&session, OrganizerChoice::LocalAid);
         let candidate = fixture::prepare(&session, Some(&accepted));
         let current = candidate.material().register();
         let receipts = candidate.material().receipt_bytes();
-        let encoded = encode(current, receipts, &opening, chain).unwrap();
+        let encoded = encode(current, receipts, &opening, chain)
+            .expect("the fixture value encodes canonically");
         let loaded = read_period_lookup(
             &opening,
             1,
             &encoded.lookup_delta_bytes,
             LookupAnchor::Previous(chain),
         )
-        .unwrap();
+        .expect("the committed lookup table reads");
         let admitted = decode_typed(
             &opening,
             1,
@@ -692,7 +714,7 @@ mod typed_decode_controls {
             &loaded.lookup,
             loaded.chain,
         )
-        .unwrap();
+        .expect("the canonical bytes decode into the declared type");
         assert_eq!(admitted.register, *current);
         assert_eq!(
             admitted.register.canonical_bytes(),
@@ -701,7 +723,8 @@ mod typed_decode_controls {
         assert_eq!(admitted.receipt_bytes, receipts);
         assert_eq!(
             *admitted.receipts,
-            decode_material_receipts(receipts).unwrap()
+            decode_material_receipts(receipts)
+                .expect("the canonical bytes decode into the declared type")
         );
         assert!(!admitted.receipts.aid.is_empty());
         assert_eq!(
@@ -713,7 +736,7 @@ mod typed_decode_controls {
                 &loaded.lookup,
                 loaded.chain
             )
-            .unwrap(),
+            .expect("the committed canonical bytes decode"),
             (
                 admitted.register.canonical_bytes().to_vec(),
                 admitted.receipt_bytes

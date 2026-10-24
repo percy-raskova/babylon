@@ -2,25 +2,36 @@ use babylon_kernel::geography::{CountyGeoid, CountyGeoidError, CountyJurisdictio
 
 #[test]
 fn exact_geoid_keeps_leading_zeros_without_granting_membership() {
-    let county = CountyGeoid::try_from("01001").unwrap();
+    let county = CountyGeoid::try_from("01001").expect("the fixture value fits the target range");
     assert_eq!(county.as_bytes(), *b"01001");
     assert_eq!(county.as_str(), "01001");
     assert_eq!(county.state_fips(), *b"01");
     assert_eq!(county.county_fips(), *b"001");
     assert_eq!(county.jurisdiction(), CountyJurisdiction::State);
     assert_eq!(
-        CountyGeoid::try_from("11001").unwrap().jurisdiction(),
+        CountyGeoid::try_from("11001")
+            .expect("the fixture value fits the target range")
+            .jurisdiction(),
         CountyJurisdiction::DistrictOfColumbia
     );
     assert_eq!(
-        CountyGeoid::try_from("72001").unwrap().jurisdiction(),
+        CountyGeoid::try_from("72001")
+            .expect("the fixture value fits the target range")
+            .jurisdiction(),
         CountyJurisdiction::Dependency
     );
     assert_eq!(
-        CountyGeoid::try_from("99999").unwrap().jurisdiction(),
+        CountyGeoid::try_from("99999")
+            .expect("the fixture value fits the target range")
+            .jurisdiction(),
         CountyJurisdiction::Unknown
     );
-    assert_eq!(CountyGeoid::try_from("01000").unwrap().as_str(), "01000");
+    assert_eq!(
+        CountyGeoid::try_from("01000")
+            .expect("the fixture value fits the target range")
+            .as_str(),
+        "01000"
+    );
 }
 
 #[test]

@@ -56,7 +56,12 @@ fn labor(values: [u64; 8]) -> Vec<u8> {
 fn member(labor: &[u8]) -> Vec<u8> {
     let hours: Vec<_> = labor[64..]
         .chunks_exact(8)
-        .map(|n| u64::from_be_bytes(n.try_into().unwrap()))
+        .map(|n| {
+            u64::from_be_bytes(
+                n.try_into()
+                    .expect("the fixture slice has the target length"),
+            )
+        })
         .collect();
     let mut bytes = Vec::new();
     for id in [4, 1, 5, 2] {
@@ -89,7 +94,11 @@ fn envelope(transfers: &[Vec<u8>], wages: &[Vec<u8>], labor: &[Vec<u8>]) -> Vec<
             _ => &[],
         };
         bytes.push(tag);
-        bytes.extend_from_slice(&u64::try_from(rows.len()).unwrap().to_be_bytes());
+        bytes.extend_from_slice(
+            &u64::try_from(rows.len())
+                .expect("the fixture value fits the target range")
+                .to_be_bytes(),
+        );
         for row in rows {
             bytes.extend_from_slice(row);
         }
@@ -104,7 +113,8 @@ fn current_receipts_admit_exact_postings_accrual_and_paid_idle_hours() {
         &[accrual()],
         &[labor([7, 8, 6, 2, 4, 2, 1, 3])],
     );
-    let decoded = material_world::decode_material_receipts(&bytes).unwrap();
+    let decoded = material_world::decode_material_receipts(&bytes)
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(decoded.resolve_tick, 7);
     assert_eq!(decoded.money_transfers.len(), 1);
     assert_eq!(decoded.money_transfers[0].debit.delta.micro_units(), -30);
@@ -282,7 +292,7 @@ fn transfer_family_uses_derived_movement_bound_instead_of_state_row_bound() {
     let bytes = envelope(&rows, &[], &[]);
     assert_eq!(
         material_world::decode_material_receipts(&bytes)
-            .unwrap()
+            .expect("the canonical bytes decode into the declared type")
             .money_transfers
             .len(),
         rows.len()
@@ -291,7 +301,7 @@ fn transfer_family_uses_derived_movement_bound_instead_of_state_row_bound() {
     let count_offset = DOMAIN.len() + 12 + 10 * 9 + 1;
     excessive[count_offset..count_offset + 8].copy_from_slice(
         &u64::try_from(MAX_MONEY_TRANSFERS_PER_PERIOD + 1)
-            .unwrap()
+            .expect("the fixture value fits the target range")
             .to_be_bytes(),
     );
     assert_eq!(

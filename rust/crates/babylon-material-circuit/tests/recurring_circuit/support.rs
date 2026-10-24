@@ -176,7 +176,7 @@ pub(crate) fn opening() -> MaterialCircuitState {
                     cash: money(0),
                 },
             ])
-            .unwrap();
+            .expect("the fixture opens the authored source");
             MonetaryCircuit {
                 aid: AidBook::default(),
 
@@ -215,7 +215,7 @@ pub(crate) fn opening() -> MaterialCircuitState {
                     vec![],
                     vec![],
                 )
-                .unwrap(),
+                .expect("the fixture opens the authored source"),
                 book,
                 recurring: Some(Box::new(recurring)),
                 employment: [1, 2, 3]
@@ -350,7 +350,9 @@ pub(crate) fn opening() -> MaterialCircuitState {
             .collect(),
         merchants: vec![MerchantHandling {
             site_id: site(3),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             role: MerchantRole::Retail,
             capacity_id: corridor(3),
             labor_unit_id: hours(),
@@ -363,7 +365,9 @@ pub(crate) fn opening() -> MaterialCircuitState {
         }],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,
@@ -382,7 +386,10 @@ pub(crate) fn recurring_mut(state: &mut MaterialCircuitState) -> &mut RecurringE
     let CircuitAccounting::Monetary(value) = &mut state.accounting else {
         panic!("monetary control")
     };
-    value.recurring.as_mut().unwrap()
+    value
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
 }
 
 pub(crate) fn output(transition: &MaterialCircuitTransition, owner: u8) -> u64 {
@@ -417,12 +424,16 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
     ];
     for period in 1..=8 {
         recurring_mut(&mut state).household_purchases[0].enabled = ![3, 4].contains(&period);
-        let captured = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
-        let restarted = babylon_material_circuit::decode_material_circuit_state(&captured).unwrap();
-        let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+        let captured = babylon_material_circuit::encode_material_circuit_state(&state)
+            .expect("the canonical material state encodes");
+        let restarted = babylon_material_circuit::decode_material_circuit_state(&captured)
+            .expect("the canonical material bytes decode");
+        let closed = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
         assert_eq!(
             closed,
-            babylon_material_circuit::advance_material_circuit(&restarted).unwrap()
+            babylon_material_circuit::advance_material_circuit(&restarted)
+                .expect("the authored material state advances one period")
         );
         let wages: i128 = closed
             .wage_accruals
@@ -456,17 +467,28 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
             .map(|row| row.unplanned_hours)
             .sum::<u64>();
         let accounts = &economy(&closed.state).book;
-        assert_eq!(accounts.total_cash_and_reserves().unwrap(), money(24));
+        assert_eq!(
+            accounts
+                .total_cash_and_reserves()
+                .expect("the fixture book totals without overflow"),
+            money(24)
+        );
         let actual_cash = [
             AccountId::Site(site(1)),
             AccountId::Site(site(2)),
             AccountId::Site(site(3)),
             AccountId::Household(household()),
         ]
-        .map(|id| accounts.cash(id).unwrap().micro_units());
+        .map(|id| {
+            accounts
+                .cash(id)
+                .expect("the fixture book holds the payer account")
+                .micro_units()
+        });
         assert_eq!(
             actual_cash,
-            expected_cash[usize::try_from(period - 1).unwrap()],
+            expected_cash
+                [usize::try_from(period - 1).expect("the fixture value fits the target range")],
             "period {period}"
         );
         let physical = closed
@@ -484,7 +506,7 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
             + economy(&closed.state)
                 .recurring
                 .as_ref()
-                .unwrap()
+                .expect("the fixture set the optional field before this read")
                 .household_stocks
                 .iter()
                 .map(|row| row.quantity)
@@ -517,7 +539,7 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
             .inventory
             .iter()
             .find(|row| row.site_id == site(1) && row.good_id == good(0))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .quantity,
         20
     );
@@ -528,14 +550,16 @@ pub(crate) fn prior_funded_transit_suppresses_duplicate_procurement_and_does_not
 ) {
     let mut state = opening();
     state.route_stages[0].travel_periods = 3;
-    let first = babylon_material_circuit::advance_material_circuit(&state).unwrap();
-    let second = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("the authored material state advances one period");
     assert_eq!(output(&second, 2), 0);
     let raw = second
         .procurement
         .iter()
         .find(|row| row.buyer_site_id == site(2))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (raw.on_hand, raw.outstanding_inbound, raw.admitted_quantity),
         (0, 4, 0)
@@ -559,7 +583,7 @@ pub(crate) fn responsive_next_quote_does_not_reprice_existing_reserves() {
         .inventory
         .iter_mut()
         .find(|row| row.site_id == site(3))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .quantity = 0;
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
         unreachable!()
@@ -569,7 +593,7 @@ pub(crate) fn responsive_next_quote_does_not_reprice_existing_reserves() {
         .stocks
         .iter_mut()
         .find(|row| row.owner == AccountId::Site(site(3)))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .amount = money(0);
     // This scenario starts without the retailer's stock or its opening asset.
     accounts.costs = HistoricalCostBook::open(
@@ -579,24 +603,25 @@ pub(crate) fn responsive_next_quote_does_not_reprice_existing_reserves() {
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let offer = recurring_mut(&mut state)
         .offers
         .iter_mut()
         .find(|row| row.site_id == site(3))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     offer.pricing = PricePolicy::Responsive {
         minimum: money(2),
         maximum: money(8),
         step: money(1),
         target_stock: 0,
     };
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     let quote = closed
         .prices
         .iter()
         .find(|row| row.site_id == site(3))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (quote.old_price, quote.next_price, quote.reason),
         (money(4), money(5), PriceDecision::UnservedDemand)
@@ -625,7 +650,8 @@ pub(crate) fn consumption_or_procurement_failure_leaves_all_opening_accounts_unc
 #[test]
 pub(crate) fn captured_household_policies_refuse_old_bytes_bad_cursors_and_noncanonical_rows() {
     let state = opening();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     let mut finite = state.clone();
     let CircuitAccounting::Monetary(economy) = &mut finite.accounting else {
         unreachable!()
@@ -642,7 +668,7 @@ pub(crate) fn captured_household_policies_refuse_old_bytes_bad_cursors_and_nonca
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let captured = economy.costs.snapshot();
     let cost_bytes = 20
         + 81 * captured.accounts.len()
@@ -653,7 +679,7 @@ pub(crate) fn captured_household_policies_refuse_old_bytes_bad_cursors_and_nonca
     // Seven empty financial table counts and the explicit fixed-time control tag.
     // Three empty gift counts precede the existing finite-capacity trailer.
     let offset = babylon_material_circuit::encode_material_circuit_state(&finite)
-        .unwrap()
+        .expect("the canonical material state encodes")
         .len()
         - cost_bytes
         - 11
@@ -718,7 +744,7 @@ pub(crate) fn retained_finite_purchase_restores_attendance_when_recurring_purcha
         .attendance
         .iter_mut()
         .find(|row| row.site_id == site(3))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .planned_hours = 0;
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
         unreachable!()
@@ -731,7 +757,7 @@ pub(crate) fn retained_finite_purchase_restores_attendance_when_recurring_purcha
             money(4),
             CashTransferPurpose::HouseholdTransfer,
         )
-        .unwrap();
+        .expect("the fixture transfer stays funded");
     let captured = accounts.costs.snapshot();
     // This control opens after its deliberate endowment transfer.
     accounts.costs = HistoricalCostBook::open(
@@ -741,7 +767,7 @@ pub(crate) fn retained_finite_purchase_restores_attendance_when_recurring_purcha
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let id = OrderId::from_bytes([90; 32]);
     let (state, _) = babylon_material_circuit::admit_material_purchase(
         &state,
@@ -756,22 +782,24 @@ pub(crate) fn retained_finite_purchase_restores_attendance_when_recurring_purcha
         }),
         money(4),
     )
-    .unwrap();
-    let first = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    .expect("the fixture admits the authored purchase");
+    let first = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(first.state.final_demand_orders[0].fulfilled, 0);
     assert_eq!(
         economy(&first.state)
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .attendance
             .iter()
             .find(|row| row.site_id == site(3))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .planned_hours,
         1
     );
-    let second = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
+    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("the authored material state advances one period");
     assert_eq!(second.local_fulfillments[0].quantity, 1);
     assert_eq!(second.household_consumption[0].available_quantity, 5);
     assert!(second.state.final_demand_orders.is_empty());
@@ -785,7 +813,9 @@ pub(crate) fn producer_retail_opening() -> MaterialCircuitState {
     let mut state = opening();
     state.merchants.push(MerchantHandling {
         site_id: site(1),
-        location: "county:26163".parse().unwrap(),
+        location: "county:26163"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
         role: MerchantRole::Retail,
         capacity_id: corridor(4),
         labor_unit_id: hours(),
@@ -839,7 +869,8 @@ pub(crate) fn producer_retail_opening() -> MaterialCircuitState {
         unit_id: units(),
         amount: money(0),
     });
-    economy.costs = HistoricalCostBook::from_snapshot(captured).unwrap();
+    economy.costs =
+        HistoricalCostBook::from_snapshot(captured).expect("the snapshot admits the derived value");
     state
 }
 
@@ -866,14 +897,17 @@ pub(crate) fn a_shared_production_and_retail_pool_requests_each_kind_of_work_onc
             site(owner),
             hours(),
             persons,
-            StaffingPolicy::one_period(4).unwrap(),
+            StaffingPolicy::one_period(4).expect("the one-period fixture advances"),
             sources,
         )
-        .unwrap()
+        .expect("the authored fixture satisfies the constructor invariants")
     })
     .collect::<Vec<_>>();
-    let closed = babylon_material_circuit::close_material_period(&state).unwrap();
-    let requests = closed.staffing_requests(&bindings).unwrap();
+    let closed = babylon_material_circuit::close_material_period(&state)
+        .expect("the material period closes");
+    let requests = closed
+        .staffing_requests(&bindings)
+        .expect("the fixture staffing requests are present");
     let source = requests
         .iter()
         .filter(|row| row.site_id() == site(1))
@@ -883,7 +917,7 @@ pub(crate) fn a_shared_production_and_retail_pool_requests_each_kind_of_work_onc
         source
             .iter()
             .find(|row| row.work_source() == StaffingWorkSource::Production(process(1)))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .hours(),
         4
     );
@@ -891,7 +925,7 @@ pub(crate) fn a_shared_production_and_retail_pool_requests_each_kind_of_work_onc
         source
             .iter()
             .find(|row| row.work_source() == StaffingWorkSource::MerchantHandling(site(1)))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .hours(),
         5
     );
@@ -908,15 +942,16 @@ pub(crate) fn cash_backed_unfilled_retail_demand_can_restart_a_producer_with_no_
     rows.attendance
         .iter_mut()
         .find(|row| row.site_id == site(1))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .planned_hours = 0;
     rows.replenishment.clear();
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     let demand = closed
         .household_demand
         .iter()
         .find(|row| row.good_id == good(1))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (
             demand.admitted_quantity,
@@ -929,7 +964,7 @@ pub(crate) fn cash_backed_unfilled_retail_demand_can_restart_a_producer_with_no_
         .production_plans
         .iter()
         .find(|row| row.site_id == site(1))
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(plan.planned_batches, 1);
     assert!(closed
         .state
@@ -957,7 +992,7 @@ pub(crate) fn a_household_purchase_without_a_recipient_stock_is_refused_before_r
             money(1),
             CashTransferPurpose::HouseholdTransfer,
         )
-        .unwrap();
+        .expect("the fixture transfer stays funded");
     let mut captured = accounts.costs.snapshot();
     captured
         .stocks
@@ -970,7 +1005,7 @@ pub(crate) fn a_household_purchase_without_a_recipient_stock_is_refused_before_r
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let original = state.clone();
     assert_eq!(
         babylon_material_circuit::admit_material_purchase(

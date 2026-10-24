@@ -1722,7 +1722,7 @@ fn encode_material_batches(
     writer.extend(MATERIAL_ROWS_DOMAIN)?;
     writer.extend(&MATERIAL_LAYOUT_VERSION.to_be_bytes())?;
     writer.extend(&checked_u32(writer.field, total)?.to_be_bytes())?;
-    for row in world_registers
+    let material_rows = world_registers
         .rows()
         .iter()
         .map(WorldRegisterRow::canonical_bytes)
@@ -1743,8 +1743,8 @@ fn encode_material_batches(
                 .rows()
                 .iter()
                 .map(OrganizationStateRow::canonical_bytes),
-        )
-    {
+        );
+    for row in material_rows {
         append_bytes32(&mut writer, row)?;
     }
     Ok(writer.finish())

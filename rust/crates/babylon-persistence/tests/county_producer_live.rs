@@ -247,14 +247,18 @@ fn receipt_consumption_count(config: &Config, campaign_id: CampaignId) -> i64 {
 }
 
 fn county_page_markdown(config: &Config, campaign_id: CampaignId, geoid: &str) -> String {
-    let tick: i64 = config.connect(NoTls).unwrap().query_one("SELECT effective_tick FROM babylon_meta.archive_page_revision_v2 WHERE campaign_id=$1 AND subject_kind='county' AND subject_id=$2 ORDER BY effective_tick DESC LIMIT 1", &[campaign_id.as_uuid(), &geoid]).unwrap().get(0);
+    let tick: i64 = config.connect(NoTls).expect("the test database accepts the connection").query_one("SELECT effective_tick FROM babylon_meta.archive_page_revision_v2 WHERE campaign_id=$1 AND subject_kind='county' AND subject_id=$2 ORDER BY effective_tick DESC LIMIT 1", &[campaign_id.as_uuid(), &geoid]).expect("the seeded row is present exactly once").get(0);
     archive_reader::with_reader(config, |reader| {
-        let scope = archive_reader::scope_at(config, campaign_id, u64::try_from(tick).unwrap());
-        let subject =
-            ArchivePageRef::try_new(ArchiveSubjectKind::County, geoid.to_owned()).unwrap();
+        let scope = archive_reader::scope_at(
+            config,
+            campaign_id,
+            u64::try_from(tick).expect("the fixture value fits the target range"),
+        );
+        let subject = ArchivePageRef::try_new(ArchiveSubjectKind::County, geoid.to_owned())
+            .expect("the authored fixture satisfies the constructor invariants");
         let read = reader
             .dossier_as_of(&scope, &subject, &ArchiveDossierBounds::default())
-            .unwrap();
+            .expect("the fixture dossier exists at the authored period");
         let ArchiveDossierState::Ready { page, .. } = read.state else {
             panic!("county ready");
         };

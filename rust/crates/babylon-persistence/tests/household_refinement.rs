@@ -19,17 +19,21 @@ use babylon_persistence::national_resident_workforce;
 
 #[test]
 fn empty_refinements_preserve_every_source_budget_and_identity() {
-    let counties = national_counties::national_county_reference().unwrap();
+    let counties =
+        national_counties::national_county_reference().expect("the county reference fixture loads");
     let households = national_household_allocation::allocate_households(
         counties,
-        national_households::national_household_reference().unwrap(),
-        national_resident_workforce::national_resident_workforce_reference().unwrap(),
+        national_households::national_household_reference()
+            .expect("the household reference fixture loads"),
+        national_resident_workforce::national_resident_workforce_reference()
+            .expect("the workforce reference fixture loads"),
         1000,
     )
-    .unwrap();
-    let time =
-        national_household_time_allocation::allocate_household_time(counties, &households).unwrap();
-    let leaves = national_household_refinement::refine_households(&households, &time, &[]).unwrap();
+    .expect("the fixture households fit the authored cohorts");
+    let time = national_household_time_allocation::allocate_household_time(counties, &households)
+        .expect("the fixture household time fits the authored budget");
+    let leaves = national_household_refinement::refine_households(&households, &time, &[])
+        .expect("the fixture household refinement succeeds");
     assert_eq!(
         leaves.leaves().len(),
         households
@@ -57,18 +61,23 @@ fn empty_refinements_preserve_every_source_budget_and_identity() {
     reason = "one scenario asserts the complete source-margin trajectory"
 )]
 fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_totals() {
-    let counties = national_counties::national_county_reference().unwrap();
-    let workforce = national_resident_workforce::national_resident_workforce_reference().unwrap();
+    let counties =
+        national_counties::national_county_reference().expect("the county reference fixture loads");
+    let workforce = national_resident_workforce::national_resident_workforce_reference()
+        .expect("the workforce reference fixture loads");
     let budgets = national_household_allocation::allocate_households(
         counties,
-        national_households::national_household_reference().unwrap(),
+        national_households::national_household_reference()
+            .expect("the household reference fixture loads"),
         workforce,
         1000,
     )
-    .unwrap();
-    let time =
-        national_household_time_allocation::allocate_household_time(counties, &budgets).unwrap();
-    let county = "26163".parse().unwrap();
+    .expect("the fixture households fit the authored cohorts");
+    let time = national_household_time_allocation::allocate_household_time(counties, &budgets)
+        .expect("the fixture household time fits the authored budget");
+    let county = "26163"
+        .parse()
+        .expect("the authored literal parses as the declared type");
     let spec = HouseholdRefinementSpec {
         county,
         parent_key: HouseholdBudgetKey::EarningNonowner,
@@ -89,8 +98,9 @@ fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_total
         &time,
         std::slice::from_ref(&spec),
     )
-    .unwrap();
-    let empty = national_household_refinement::refine_households(&budgets, &time, &[]).unwrap();
+    .expect("the fixture household refinement succeeds");
+    let empty = national_household_refinement::refine_households(&budgets, &time, &[])
+        .expect("the fixture household refinement succeeds");
     assert_eq!(leaves.leaves().len(), empty.leaves().len() + 1);
     assert_eq!(
         national_household_refinement::refine_households(
@@ -113,7 +123,9 @@ fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_total
         Err(HouseholdRefinementError::ParentScope)
     );
     let mut unknown = spec.clone();
-    unknown.county = "72001".parse().unwrap();
+    unknown.county = "72001"
+        .parse()
+        .expect("the authored literal parses as the declared type");
     assert_eq!(
         national_household_refinement::refine_households(&budgets, &time, &[unknown]),
         Err(HouseholdRefinementError::SourceRoster)
@@ -122,38 +134,40 @@ fn designed_wayne_child_preserves_source_margins_and_sparse_workplace_mode_total
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/national/defines.toml"
     )))
-    .unwrap();
+    .expect("the authored literal parses as the declared type");
     let base = national_resident_allocation::allocate_home_county(
         counties,
-        national_cohorts::national_cohort_reference().unwrap(),
+        national_cohorts::national_cohort_reference().expect("the cohort reference fixture loads"),
         workforce,
         &budgets,
         &empty,
         &policy,
     )
-    .unwrap();
+    .expect("the fixture home county allocation fits");
     let refined = national_resident_allocation::allocate_home_county(
         counties,
-        national_cohorts::national_cohort_reference().unwrap(),
+        national_cohorts::national_cohort_reference().expect("the cohort reference fixture loads"),
         workforce,
         &budgets,
         &leaves,
         &policy,
     )
-    .unwrap();
+    .expect("the fixture home county allocation fits");
     let other_budgets = national_household_allocation::allocate_households(
         counties,
-        national_households::national_household_reference().unwrap(),
+        national_households::national_household_reference()
+            .expect("the household reference fixture loads"),
         workforce,
         2000,
     )
-    .unwrap();
+    .expect("the fixture households fit the authored cohorts");
     let mut other_policy = policy.clone();
     other_policy.households.private_owner_households_bps = 2000;
     assert_eq!(
         national_resident_allocation::allocate_home_county(
             counties,
-            national_cohorts::national_cohort_reference().unwrap(),
+            national_cohorts::national_cohort_reference()
+                .expect("the cohort reference fixture loads"),
             workforce,
             &other_budgets,
             &leaves,

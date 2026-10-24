@@ -42,8 +42,11 @@ pub(crate) fn assert_same_foundation_bytes(
     right: &MaterialRuntimeFoundation,
 ) {
     assert_eq!(
-        left.export_canonical_bytes().unwrap(),
-        right.export_canonical_bytes().unwrap()
+        left.export_canonical_bytes()
+            .expect("the content exports its canonical bytes"),
+        right
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes")
     );
 }
 
@@ -88,7 +91,8 @@ impl SourceCopies {
                 "bounded source copy: {}",
                 source.display()
             );
-            std::fs::copy(source, copies.0.join(name)).unwrap();
+            std::fs::copy(source, copies.0.join(name))
+                .expect("the fixture call `copy` succeeds for the authored inputs");
         }
         copies
     }
@@ -99,13 +103,14 @@ impl SourceCopies {
         OpenOptions::new()
             .append(true)
             .open(self.defines())
-            .unwrap()
+            .expect("the fixture opens the authored source")
             .write_all(b"\n# Changed only in the owned PostgreSQL qualification copy.\n")
-            .unwrap();
+            .expect("the fixture sink accepts the authored bytes");
     }
     pub(super) fn remove(&self) {
         for name in SOURCE_FILES {
-            std::fs::remove_file(self.0.join(name)).unwrap();
+            std::fs::remove_file(self.0.join(name))
+                .expect("the fixture file exists before removal");
         }
     }
 }
@@ -151,16 +156,25 @@ pub(crate) fn actual_statewide_sources_survive_four_persisted_sixteen_period_cam
     .into_iter()
     .enumerate()
     {
-        qualify_preset(preset, u128::try_from(index).unwrap());
+        qualify_preset(
+            preset,
+            u128::try_from(index).expect("the fixture value fits the target range"),
+        );
     }
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "`qualify_preset` keeps one authored boundary's fixture and assertions together"
+)]
 pub(crate) fn qualify_preset(delivery: MichiganDeliveryPreset, index: u128) {
     let began = Instant::now();
     let copies = SourceCopies::capture();
     let captured = MichiganMaterialCatalog::load_for_preset(&copies.defines(), delivery)
         .expect("New must admit the canonical qualified sources");
-    let catalog = captured.with_preset(delivery).unwrap();
+    let catalog = captured
+        .with_preset(delivery)
+        .expect("the fixture builder accepts the authored options");
     let physical = catalog.physical_network().expect("actual road network");
     assert!(!physical.source.pbf_url.starts_with("synthetic://"));
     assert!(physical.source.pbf_url.starts_with("https://"));
@@ -168,31 +182,43 @@ pub(crate) fn qualify_preset(delivery: MichiganDeliveryPreset, index: u128) {
     assert_eq!(physical.terminals.len(), 83);
     assert_eq!(catalog.sites().len(), 397);
     let preset = MichiganContentPreset::new_campaign(delivery);
-    let foundation = preset.create_foundation(&captured).unwrap();
+    let foundation = preset
+        .create_foundation(&captured)
+        .expect("the authored catalog builds the foundation");
     let foundation_digest = foundation.digest();
-    let twin = preset.create_foundation(&captured).unwrap();
+    let twin = preset
+        .create_foundation(&captured)
+        .expect("the authored catalog builds the foundation");
     assert_same_foundation_bytes(&foundation, &twin);
-    let mut reference = twin.into_session().unwrap();
+    let mut reference = twin.into_session().expect("the fixture opens a session");
     let mut measured = Measurements {
         captured_bytes: foundation
             .graph_foundation()
             .content_bundle()
             .canonical_bytes()
             .len(),
-        foundation_bytes: foundation.canonical_len().unwrap(),
+        foundation_bytes: foundation
+            .canonical_len()
+            .expect("the fixture call `canonical_len` succeeds for the authored inputs"),
         ..Measurements::default()
     };
     assert!(measured.captured_bytes < MAX_MICHIGAN_SOURCE_BYTES);
     assert!(measured.foundation_bytes < MAX_MATERIAL_FOUNDATION_BYTES);
     let mut target = DisposableTarget::create();
     let campaign = CampaignId::from_uuid(Uuid::from_u128(29_800 + index));
-    let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
-    super::super::install_reader_role(&target.writer).unwrap();
-    super::super::provision_observer_role(&target.writer).unwrap();
+    let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation)
+        .expect("the test database creates the fixture campaign");
+    super::super::install_reader_role(&target.writer)
+        .expect("the test database installs the reader role");
+    super::super::provision_observer_role(&target.writer)
+        .expect("the test database provisions the observer role");
     let config = target.login("babylon_observer", "actualstatewide");
-    let observer =
-        ObserverEconomyReader::connect(&config, ObserverVisibility::FullObserver).unwrap();
-    let mut sql = target.writer.connect(NoTls).unwrap();
+    let observer = ObserverEconomyReader::connect(&config, ObserverVisibility::FullObserver)
+        .expect("the test database accepts the connection");
+    let mut sql = target
+        .writer
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     measured.create_with_reference = began.elapsed();
     let mut held = Vec::new();
     observe(
@@ -267,7 +293,7 @@ pub(crate) fn assert_qualified_totals(
             "SELECT count(*) FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid",
             &[campaign.as_uuid()],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .get(0);
     assert_eq!(committed, 16);
     assert!(measured.dispatch_receipts > 0 && measured.arrival_receipts > 0);
@@ -286,8 +312,8 @@ pub(crate) fn reopen_runtime(
     measured: &mut Measurements,
 ) {
     let started = Instant::now();
-    let reopened =
-        DurableMaterialRuntime::open(&target.writer, campaign, foundation_digest).unwrap();
+    let reopened = DurableMaterialRuntime::open(&target.writer, campaign, foundation_digest)
+        .expect("the fixture opens the authored source");
     measured.resume += started.elapsed();
     assert_eq!(runtime.tail(), reopened.tail());
     assert_eq!(
@@ -295,8 +321,14 @@ pub(crate) fn reopen_runtime(
         reopened.session().material().canonical_bytes()
     );
     assert_eq!(
-        runtime.session().current_world_hash().unwrap(),
-        reopened.session().current_world_hash().unwrap()
+        runtime
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        reopened
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash")
     );
     *runtime = reopened;
 }
@@ -313,10 +345,13 @@ pub(crate) fn advance_pair(
         reference.graph_session().session_identity().clone(),
         reference.completed_tick() + 1,
     )
-    .unwrap();
-    let prepared = reference.prepare_advance(&actions).unwrap();
+    .expect("the empty authored batch constructs");
+    let prepared = reference
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance");
     let bytes = prepared.material().receipt_bytes();
-    let receipts = material_world::decode_material_receipts(bytes).unwrap();
+    let receipts = material_world::decode_material_receipts(bytes)
+        .expect("the canonical bytes decode into the declared type");
     assert_goods_conserved(
         reference.material().state(),
         prepared.material().register().state(),
@@ -346,14 +381,19 @@ pub(crate) fn advance_pair(
         .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_| {
             Ok::<_, ()>(ReplayCommitDisposition::Committed)
         })
-        .unwrap();
+        .expect("the prepared period commits");
     assert_eq!(
         runtime.session().material().canonical_bytes(),
         reference.material().canonical_bytes()
     );
     assert_eq!(
-        runtime.session().current_world_hash().unwrap(),
-        reference.current_world_hash().unwrap()
+        runtime
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        reference
+            .current_world_hash()
+            .expect("the committed session publishes a world hash")
     );
     receipts
 }
@@ -370,7 +410,7 @@ pub(crate) fn observe(
     let began = Instant::now();
     let mut snapshot = observer
         .snapshot(campaign, runtime.session().completed_tick())
-        .unwrap();
+        .expect("the fixture captures a consistent snapshot");
     measured.projection += began.elapsed();
     assert_eq!(snapshot.resolve_tick, runtime.session().completed_tick());
     if snapshot.resolve_tick == 0 {
@@ -379,16 +419,27 @@ pub(crate) fn observe(
         assert_eq!(
             snapshot.nominal_world_hash.as_deref(),
             Some(
-                super::super::identity_hex(runtime.session().current_world_hash().unwrap())
-                    .as_str()
+                super::super::identity_hex(
+                    runtime
+                        .session()
+                        .current_world_hash()
+                        .expect("the committed session publishes a world hash")
+                )
+                .as_str()
             )
         );
     }
-    let evidence = snapshot.production_evidence_digest().unwrap().unwrap();
+    let evidence = snapshot
+        .production_evidence_digest()
+        .expect("the evidence body has a digest")
+        .expect("the nested fixture result is present");
     if [0, 1, 2, 3, 8, 16].contains(&snapshot.resolve_tick) {
         held.push((snapshot.resolve_tick, evidence));
     }
-    let rows = snapshot.production.as_ref().unwrap();
+    let rows = snapshot
+        .production
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(
         rows.content_authority_sha256,
         super::super::identity_hex(
@@ -407,11 +458,22 @@ pub(crate) fn observe(
     );
     assert_eq!(
         rows.physical_edges.len(),
-        catalog.physical_network().unwrap().edges.len()
+        catalog
+            .physical_network()
+            .expect("the fixture call `physical_network` succeeds for the authored inputs")
+            .edges
+            .len()
     );
     assert_eq!(
-        rows.road_source.as_ref().unwrap().pbf_sha256,
-        catalog.physical_network().unwrap().source.pbf_sha256
+        rows.road_source
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .pbf_sha256,
+        catalog
+            .physical_network()
+            .expect("the fixture call `physical_network` succeeds for the authored inputs")
+            .source
+            .pbf_sha256
     );
     assert_workforce(rows, snapshot.resolve_tick);
     assert_stock(rows, runtime.session().material().state());
@@ -439,20 +501,24 @@ pub(crate) fn witnessed_output(
     key: &str,
     unit: &str,
 ) -> u64 {
-    let process = catalog.processes().iter().find(|p| p.key == key).unwrap();
+    let process = catalog
+        .processes()
+        .iter()
+        .find(|p| p.key == key)
+        .expect("the fixture holds the searched element");
     let id = super::super::identity_hex(process.id().as_bytes());
     let observed = rows
         .sites
         .iter()
         .flat_map(|site| &site.processes)
         .find(|process| process.id == id)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(observed.output_unit, unit);
     observed
         .produced_batches
-        .unwrap()
+        .expect("the fixture process records its batch count")
         .checked_mul(observed.output_per_batch)
-        .unwrap()
+        .expect("the fixture arithmetic stays in range")
 }
 
 pub(crate) fn assert_qualified_witness(
@@ -473,15 +539,19 @@ pub(crate) fn assert_qualified_witness(
             .corridors()
             .iter()
             .find(|c| c.key == "mackinac-bridge-freight")
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let bridge_id = super::super::identity_hex(bridge.id().as_bytes());
         let account = rows
             .freight_capacity_accounts
             .iter()
             .find(|c| c.corridor_id == bridge_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(account.route_ids.len(), 16);
-        let reservations = &account.completed.as_ref().unwrap().reservations;
+        let reservations = &account
+            .completed
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .reservations;
         assert_eq!(reservations.len(), 1);
         assert_eq!(
             reservations[0].opening_available_grams,
@@ -501,12 +571,12 @@ pub(crate) fn assert_qualified_witness(
             .sites
             .iter()
             .find(|s| s.is_in_county("26033") && s.sector_code.as_deref() == Some("31-33"))
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let workforce = rows
             .staffing_accounts
             .iter()
             .find(|a| a.site_id == site.id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(
             (workforce.employed, workforce.reserve),
             if freight { (1, 11) } else { (3, 9) }
@@ -588,7 +658,7 @@ pub(crate) fn assert_stock(rows: &ProductionSnapshot, state: &MaterialCircuitSta
                 .sites
                 .iter()
                 .find(|site| site.id == row.site_id)
-                .unwrap();
+                .expect("the fixture holds the searched element");
             let closing = site
                 .inventory
                 .iter()
@@ -641,7 +711,7 @@ pub(crate) fn assert_final_demand(
                 .final_demand_orders
                 .iter()
                 .find(|row| super::super::identity_hex(row.order_id.as_bytes()) == order.order_id)
-                .unwrap();
+                .expect("the fixture holds the searched element");
             assert_eq!(
                 (order.ordered, order.fulfilled),
                 (actual.ordered, actual.fulfilled)
@@ -711,16 +781,19 @@ pub(crate) fn assert_capacity(
     period: u64,
     completed: Option<(&MaterialTickReceipts, &BTreeMap<String, u64>)>,
 ) {
-    let definitions = PhysicalRouteIndex::try_new(rows).unwrap();
+    let definitions = PhysicalRouteIndex::try_new(rows)
+        .expect("the authored fixture satisfies the constructor invariants");
     let mut principals = BTreeSet::new();
-    let order_definitions = FreightOrderIndex::try_new(rows).unwrap();
+    let order_definitions = FreightOrderIndex::try_new(rows)
+        .expect("the authored fixture satisfies the constructor invariants");
     for account in &rows.freight_capacity_accounts {
         assert!(principals.insert(&account.corridor_id));
         let Some(done) = &account.completed else {
             assert!(completed.is_none());
             continue;
         };
-        let (receipts, opening) = completed.unwrap();
+        let (receipts, opening) =
+            completed.expect("the fixture account carries its completed state");
         assert_eq!(done.period, period);
         let mut periods = BTreeSet::new();
         for reservation in &done.reservations {
@@ -741,7 +814,9 @@ pub(crate) fn assert_capacity(
             let mut orders = BTreeSet::new();
             let mut reserved = 0_u128;
             for reference in &reservation.orders {
-                let order = order_definitions.get(reference).unwrap();
+                let order = order_definitions
+                    .get(reference)
+                    .expect("the fixture holds the addressed entry");
                 assert!(orders.insert((order.kind, &order.order_id)));
                 let actual = outbound_quantity(receipts, order.kind, &order.order_id);
                 assert_eq!(u128::from(order.dispatched), actual);
@@ -758,10 +833,10 @@ pub(crate) fn assert_capacity(
                         .routes
                         .iter()
                         .find(|r| Some(&r.physical_route_id) == order.route_id.as_ref())
-                        .unwrap();
+                        .expect("the fixture holds the searched element");
                     assert!(definitions
                         .get(route)
-                        .unwrap()
+                        .expect("the fixture holds the addressed entry")
                         .stages
                         .iter()
                         .any(|stage| stage.capacity_ids.contains(&account.corridor_id)));
@@ -781,7 +856,7 @@ pub(crate) fn assert_merchant(rows: &ProductionSnapshot, receipts: Option<&Mater
             assert!(receipts.is_none());
             continue;
         };
-        let receipts = receipts.unwrap();
+        let receipts = receipts.expect("the fixture observation carries its receipts");
         let matching: Vec<_> = receipts
             .handling
             .iter()
@@ -805,10 +880,10 @@ pub(crate) fn assert_merchant(rows: &ProductionSnapshot, receipts: Option<&Mater
             .labor_accounts
             .iter()
             .find(|row| row.site_id == account.site_id && row.unit_id == account.labor_unit_id)
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .completed
             .as_ref()
-            .unwrap();
+            .expect("the fixture set the optional field before this read");
         assert_eq!(labor.handling_used, done.used_hours);
         assert_eq!(labor.handling_needed, done.needed_hours);
         for order in &done.orders {
@@ -844,7 +919,7 @@ pub(crate) fn assert_goods_conserved(
             .process_outputs
             .iter()
             .find(|row| row.process_id == receipt.process_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         *available
             .entry((output.good_id, output.unit_id))
             .or_default() +=
@@ -863,7 +938,7 @@ pub(crate) fn assert_goods_conserved(
             .orders
             .iter()
             .find(|row| row.order_id == receipt.order_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         *accounted.entry((order.good_id, order.unit_id)).or_default() +=
             u128::from(receipt.quantity);
     }
@@ -898,20 +973,31 @@ pub(crate) fn assert_history_and_preview(
         assert_eq!(
             observer
                 .snapshot(campaign, *period)
-                .unwrap()
+                .expect("the fixture captures a consistent snapshot")
                 .production_evidence_digest()
-                .unwrap(),
+                .expect("the evidence body has a digest"),
             Some(*digest)
         );
     }
     measured.projection += began.elapsed();
-    assert_eq!(observer.campaigns().unwrap()[0].durable_tick, durable_tick);
+    assert_eq!(
+        observer
+            .campaigns()
+            .expect("the fixture lists the authored campaigns")[0]
+            .durable_tick,
+        durable_tick
+    );
     let preview_config = target.login("babylon_reader", "actualpreview");
-    let preview =
-        ObserverEconomyReader::connect(&preview_config, ObserverVisibility::KnownPreview).unwrap();
-    let mut snapshot = preview.snapshot(campaign, durable_tick).unwrap();
+    let preview = ObserverEconomyReader::connect(&preview_config, ObserverVisibility::KnownPreview)
+        .expect("the test database accepts the connection");
+    let mut snapshot = preview
+        .snapshot(campaign, durable_tick)
+        .expect("the fixture captures a consistent snapshot");
     assert!(snapshot.production.is_none());
-    assert!(snapshot.production_evidence_digest().unwrap().is_none());
+    assert!(snapshot
+        .production_evidence_digest()
+        .expect("the evidence body has a digest")
+        .is_none());
 }
 
 pub(crate) fn maximum_rows(state: &MaterialCircuitState) -> usize {
@@ -939,5 +1025,5 @@ pub(crate) fn maximum_rows(state: &MaterialCircuitState) -> usize {
     ]
     .into_iter()
     .max()
-    .unwrap()
+    .expect("the fixture call `max` succeeds for the authored inputs")
 }

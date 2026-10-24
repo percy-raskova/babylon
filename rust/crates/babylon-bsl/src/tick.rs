@@ -489,7 +489,10 @@ pub(crate) fn bind_field_value(
             ty.0
         )));
     }
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "the authored integer magnitudes are exact in f64"
+    )]
     let member_count = member_count as f64;
     if stored >= member_count {
         return Err(err(format!(
@@ -499,7 +502,11 @@ pub(crate) fn bind_field_value(
             enums.name(ty)
         )));
     }
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the bounded fixture index is range-checked before narrowing; the value is non-negative before the unsigned cast"
+    )]
     let ordinal = stored as u32;
     let member = enums
         .member(ty, ordinal)
@@ -516,7 +523,10 @@ fn atom_to_value(atom: &Atom) -> Option<Value> {
         Atom::Scaled(scaled) => {
             // `unscaled / 10^scale`, the canonical minimal-scale form. Both
             // operands are exact in f64 at these magnitudes (scale <= 9).
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let numerator = scaled.unscaled as f64;
             Some(Value::Real(
                 numerator / 10_f64.powi(i32::from(scaled.scale)),
@@ -663,7 +673,11 @@ fn check_sources_servable(bindings: &[BindingDecl], defines: &DefinesEnv) -> Res
 ///
 /// Every execution supplies an explicit replay seed and sealed graph identities.
 /// Only a compiled finite kernel can consume draws from that context.
-#[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::implicit_hasher,
+    reason = "`run_tick` takes every authored field explicitly and fixes the standard hasher"
+)]
 pub fn run_tick<G: GraphSubstrate + CanonicalState>(
     loaded: &LoadedRule,
     types: &TypeEnv,
@@ -712,7 +726,11 @@ pub fn run_tick<G: GraphSubstrate + CanonicalState>(
 /// # Errors
 ///
 /// The same [`TickError`] conditions as [`run_tick`].
-#[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::implicit_hasher,
+    reason = "`run_tick_observed` takes every authored field explicitly and fixes the standard hasher"
+)]
 pub fn run_tick_observed<G>(
     loaded: &LoadedRule,
     types: &TypeEnv,
@@ -751,7 +769,11 @@ where
     )
 }
 
-#[allow(clippy::too_many_arguments, clippy::implicit_hasher)]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::implicit_hasher,
+    reason = "`run_tick_with_observer` takes every authored field explicitly and fixes the standard hasher"
+)]
 fn run_tick_with_observer(
     loaded: &LoadedRule,
     types: &TypeEnv,
@@ -871,7 +893,8 @@ fn run_tick_with_observer(
     clippy::too_many_arguments,
     clippy::implicit_hasher,
     clippy::too_many_lines,
-    clippy::type_complexity
+    clippy::type_complexity,
+    reason = "`collect_pass` takes every authored field explicitly, keeps one authored sequence in a single place, fixes the standard hasher, and spells out the authored nested shape"
 )]
 fn collect_pass(
     graph: &dyn GraphSubstrate,
@@ -1082,7 +1105,10 @@ fn collect_pass(
     Ok((all_pending, fired, kernel_realizations, event_provenance))
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`collect_selected_kernel_effects` takes every authored field explicitly"
+)]
 fn collect_selected_kernel_effects(
     executor: &mut EffectExecutor<'_>,
     effects: &[SExpr],
@@ -1134,7 +1160,10 @@ fn collect_selected_kernel_effects(
 /// Refuses malformed/nonadjacent pairs, a guard-false mechanic (no choice
 /// instance exists), any evaluator/effect failure, or a projection that
 /// produces a material write despite its loader proof.
-#[allow(clippy::too_many_lines)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`forecast_event_likelihoods` keeps one authored sequence in a single place"
+)]
 pub fn forecast_event_likelihoods<G>(
     resolved_rules: &[LoadedRule],
     kernel_index: usize,
@@ -1351,7 +1380,10 @@ pub(crate) fn fixture_resolver<G: CanonicalState + GraphSubstrate>(
 }
 
 #[cfg(test)]
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`run_fixture_rule` takes every authored field explicitly"
+)]
 pub(crate) fn run_fixture_rule<G: GraphSubstrate + CanonicalState>(
     loaded: &LoadedRule,
     types: &TypeEnv,
@@ -1451,7 +1483,7 @@ mod tests {
             &[constant("floor-wage", "economy/floor-wage")],
             &DefinesEnv::new(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_sources_servable`");
         assert!(
             err.message.contains("economy/floor-wage"),
             "{}",
@@ -1488,7 +1520,9 @@ mod tests {
             field("value-produced", "social-class/value-produced"),
         ];
         assert_eq!(
-            super::subject_type_of_bindings(&bindings, None).unwrap(),
+            super::subject_type_of_bindings(&bindings, None).expect(
+                "the fixture call `subject_type_of_bindings` succeeds for the authored inputs"
+            ),
             "SOCIAL_CLASS"
         );
     }
@@ -1501,13 +1535,17 @@ mod tests {
             field("wages", "social-class/wages"),
             field("budget", "organization/budget"),
         ];
-        let err = super::subject_type_of_bindings(&bindings, None).unwrap_err();
+        let err = super::subject_type_of_bindings(&bindings, None).expect_err(
+            "the fixture call `subject_type_of_bindings` fails for the authored inputs",
+        );
         assert!(err.message.contains("ambiguous"), "{}", err.message);
     }
 
     #[test]
     fn a_rule_with_no_field_binding_names_no_population() {
-        let err = super::subject_type_of_bindings(&[], None).unwrap_err();
+        let err = super::subject_type_of_bindings(&[], None).expect_err(
+            "the fixture call `subject_type_of_bindings` fails for the authored inputs",
+        );
         assert!(
             err.message.contains("names no subject type"),
             "{}",
@@ -1538,7 +1576,9 @@ mod tests {
     fn a_hyperedge_owned_field_binding_names_no_subject_type() {
         let vocabulary = d29_vocabulary();
         let bindings = vec![field("heat", "community/heat")];
-        let err = super::subject_type_of_bindings(&bindings, Some(&vocabulary)).unwrap_err();
+        let err = super::subject_type_of_bindings(&bindings, Some(&vocabulary)).expect_err(
+            "the fixture call `subject_type_of_bindings` fails for the authored inputs",
+        );
         assert!(
             err.message.contains("names no subject type"),
             "a hyperedge-owned :field binding is invisible to subject \
@@ -1553,7 +1593,9 @@ mod tests {
         // keeps both kinds out of subject derivation.
         let vocabulary = d29_vocabulary();
         let bindings = vec![field("strength", "solidarity/strength")];
-        let err = super::subject_type_of_bindings(&bindings, Some(&vocabulary)).unwrap_err();
+        let err = super::subject_type_of_bindings(&bindings, Some(&vocabulary)).expect_err(
+            "the fixture call `subject_type_of_bindings` fails for the authored inputs",
+        );
         assert!(
             err.message.contains("names no subject type"),
             "{}",
@@ -1569,7 +1611,9 @@ mod tests {
             field("heat", "community/heat"),
         ];
         assert_eq!(
-            super::subject_type_of_bindings(&bindings, Some(&vocabulary)).unwrap(),
+            super::subject_type_of_bindings(&bindings, Some(&vocabulary)).expect(
+                "the fixture call `subject_type_of_bindings` succeeds for the authored inputs"
+            ),
             "SOCIAL_CLASS",
             "the node-owned binding alone derives the subject type — the \
              hyperedge-owned one must not make the derivation ambiguous"
@@ -1584,7 +1628,9 @@ mod tests {
         // pass `Some`, so this lane is unit-test-only.
         let bindings = vec![field("heat", "community/heat")];
         assert_eq!(
-            super::subject_type_of_bindings(&bindings, None).unwrap(),
+            super::subject_type_of_bindings(&bindings, None).expect(
+                "the fixture call `subject_type_of_bindings` succeeds for the authored inputs"
+            ),
             "COMMUNITY"
         );
     }
@@ -1678,10 +1724,12 @@ mod tests {
         use babylon_graph::substrate::GraphSubstrate;
 
         let mut graph = MemoryGraph::new();
-        let territory = graph.add_node("TERRITORY").unwrap();
+        let territory = graph
+            .add_node("TERRITORY")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(territory, "territory/heat", 10.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         let mut fixture = Fixture::new(
             HashMap::from([(
                 "territory/heat".to_owned(),
@@ -1746,11 +1794,21 @@ mod tests {
         use babylon_graph::substrate::GraphSubstrate;
 
         let mut graph = MemoryGraph::new();
-        let a = graph.add_node("TERRITORY").unwrap();
-        let b = graph.add_node("TERRITORY").unwrap();
-        graph.update_node(a, "territory/heat", 10.0).unwrap();
-        graph.update_node(b, "territory/heat", 100.0).unwrap();
-        graph.add_edge("ADJACENCY", a, b, 1.0).unwrap();
+        let a = graph
+            .add_node("TERRITORY")
+            .expect("the fixture adds a node with a registered kind");
+        let b = graph
+            .add_node("TERRITORY")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .update_node(a, "territory/heat", 10.0)
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .update_node(b, "territory/heat", 100.0)
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .add_edge("ADJACENCY", a, b, 1.0)
+            .expect("the fixture graph admits the authored edge");
 
         let fixture = Fixture::new(
             HashMap::from([(
@@ -1794,8 +1852,12 @@ mod tests {
         )
         .expect("the tick must run");
 
-        let a_heat = graph.node_attribute(a, "territory/heat").unwrap();
-        let b_heat = graph.node_attribute(b, "territory/heat").unwrap();
+        let a_heat = graph
+            .node_attribute(a, "territory/heat")
+            .expect("the fixture node carries the authored attribute");
+        let b_heat = graph
+            .node_attribute(b, "territory/heat")
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (a_heat - 110.0).abs() < 1e-9,
             "a's own 10 + b's PRE-TICK 100 = 110, got {a_heat}"
@@ -1839,16 +1901,22 @@ mod tests {
         use babylon_graph::substrate::GraphSubstrate;
 
         let mut graph = MemoryGraph::new();
-        let carrier = graph.add_node("ORGANIZATION").unwrap();
+        let carrier = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(carrier, "organization/pool", 0.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         for contribution in [1.0, 1.0e16, -1.0e16] {
-            let subject = graph.add_node("TERRITORY").unwrap();
+            let subject = graph
+                .add_node("TERRITORY")
+                .expect("the fixture adds a node with a registered kind");
             graph
                 .update_node(subject, "territory/contribution", contribution)
-                .unwrap();
-            graph.add_edge("ADJACENCY", subject, carrier, 1.0).unwrap();
+                .expect("the fixture node carries the authored attribute");
+            graph
+                .add_edge("ADJACENCY", subject, carrier, 1.0)
+                .expect("the fixture graph admits the authored edge");
         }
 
         let fixture = Fixture::new(
@@ -1902,13 +1970,18 @@ mod tests {
         .expect("the tick must run");
         assert_eq!(outcome.fired, 3, "all three territories fired");
 
-        let pool = graph.node_attribute(carrier, "organization/pool").unwrap();
+        let pool = graph
+            .node_attribute(carrier, "organization/pool")
+            .expect("the fixture node carries the authored attribute");
         // Exact IEEE-754 equality, deliberately (§4.3): the basic ops are
         // correctly rounded and reproduce bit-exactly, so an epsilon margin
         // here would obscure precisely the reduction-order property this
         // test exists to pin — the same reasoning `apply_equality`'s own
         // exact-comparison arm documents (evaluator.rs).
-        #[allow(clippy::float_cmp)]
+        #[allow(
+            clippy::float_cmp,
+            reason = "these comparisons pin exact authored f64 values"
+        )]
         let exact = pool == 0.0;
         assert!(
             exact,
@@ -1936,7 +2009,7 @@ mod tests {
                 "OrgKind",
                 &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let mut fixture = Fixture::new(
             HashMap::from([(
                 "organization/kind".to_owned(),
@@ -1959,14 +2032,18 @@ mod tests {
 
         let mut graph = MemoryGraph::new();
         // Declaration-order ordinals: STATE_APPARATUS=0, BUSINESS=1.
-        let state_org = graph.add_node("ORGANIZATION").unwrap();
+        let state_org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(state_org, "organization/kind", 0.0)
-            .unwrap();
-        let biz_org = graph.add_node("ORGANIZATION").unwrap();
+            .expect("the fixture node carries the authored attribute");
+        let biz_org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(biz_org, "organization/kind", 1.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
 
         let fixture = org_kind_fixture();
         let loaded = fixture.load(
@@ -2026,8 +2103,12 @@ mod tests {
         use babylon_graph::substrate::GraphSubstrate;
 
         let mut graph = MemoryGraph::new();
-        let org = graph.add_node("ORGANIZATION").unwrap();
-        graph.update_node(org, "organization/kind", 0.0).unwrap();
+        let org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .update_node(org, "organization/kind", 0.0)
+            .expect("the fixture node carries the authored attribute");
 
         let fixture = org_kind_fixture();
         let loaded = fixture.load(
@@ -2059,7 +2140,7 @@ mod tests {
             &test_session(),
             None,
         )
-        .unwrap_err();
+        .expect_err("the fixture run completes");
         assert!(
             err.to_string()
                 .contains("Enum and Bool compare with =/!= alone"),
@@ -2076,10 +2157,14 @@ mod tests {
         use babylon_graph::substrate::GraphSubstrate;
 
         let mut graph = MemoryGraph::new();
-        let org = graph.add_node("ORGANIZATION").unwrap();
+        let org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         // OrgKind here declares only 2 members (ordinals 0, 1) — 7.0 is
         // corrupt no matter which write path could have produced it.
-        graph.update_node(org, "organization/kind", 7.0).unwrap();
+        graph
+            .update_node(org, "organization/kind", 7.0)
+            .expect("the fixture node carries the authored attribute");
 
         let fixture = org_kind_fixture();
         let loaded = fixture.load(
@@ -2111,7 +2196,7 @@ mod tests {
             &test_session(),
             None,
         )
-        .unwrap_err();
+        .expect_err("the fixture run completes");
         assert!(err.to_string().contains("organization/kind"), "{err}");
         assert!(err.to_string().contains('7'), "{err}");
         assert!(
@@ -2143,7 +2228,7 @@ mod tests {
                 "OrgKind",
                 &["STATE_APPARATUS".to_owned(), "BUSINESS".to_owned()],
             )
-            .unwrap();
+            .expect("the scenario declares the authored entity");
         let stranger = EnumRegistry::default();
 
         let types = crate::typecheck::TypeEnv {
@@ -2188,14 +2273,18 @@ mod tests {
 
         let mut graph = MemoryGraph::new();
         // Declaration-order ordinals: STATE_APPARATUS=0, BUSINESS=1.
-        let state_org = graph.add_node("ORGANIZATION").unwrap();
+        let state_org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(state_org, "organization/kind", 0.0)
-            .unwrap();
-        let biz_org = graph.add_node("ORGANIZATION").unwrap();
+            .expect("the fixture node carries the authored attribute");
+        let biz_org = graph
+            .add_node("ORGANIZATION")
+            .expect("the fixture adds a node with a registered kind");
         graph
             .update_node(biz_org, "organization/kind", 1.0)
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
 
         let fixture = org_kind_fixture();
         let loaded = fixture.load(
@@ -2262,7 +2351,7 @@ mod tests {
   (effects (update-node self organization/kind (add 1))))"#,
                 "organization/kind-arithmetic-probe.bsl",
             )
-            .unwrap_err();
+            .expect_err("`try_load` rejects the malformed input");
         let message = err.to_string();
         assert!(message.contains("D118"), "{message}");
         assert!(message.contains("organization/kind"), "{message}");
@@ -2297,7 +2386,7 @@ mod tests {
   (effects (emit EventType_RUPTURE (probe 1))))"#,
                 "organization/emit-typo-probe.bsl",
             )
-            .unwrap_err();
+            .expect_err("`try_load` rejects the malformed input");
         let message = err.to_string();
         assert!(message.contains("emit"), "{message}");
         assert!(message.contains("BareUpperIdent"), "{message}");

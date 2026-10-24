@@ -6,7 +6,7 @@ fn opening() -> OrganizerSnapshot {
     serde_json::from_str(include_str!(
         "../fixtures/national_organizer_opening_v11.json"
     ))
-    .unwrap()
+    .expect("the authored JSON matches the declared schema")
 }
 
 fn remote_in_transit() -> OrganizerSnapshot {
@@ -22,7 +22,7 @@ fn remote_in_transit() -> OrganizerSnapshot {
         .aid
         .iter()
         .find(|row| row.kind == OrganizerAidKind::Remote)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     snapshot.pending_aid.push(OrganizerAidPending {
         kind: remote.kind,
         original_commitment_id: [10; 32],
@@ -52,23 +52,35 @@ fn pending_remote_keeps_material_terms_without_a_second_actionable_offer() {
 }
 
 #[test]
+#[should_panic(expected = "actionable aid kinds must exclude exactly the already pending kinds")]
 fn missing_offer_without_pending_is_refused() {
     let mut snapshot = opening();
     snapshot.view.aid_options.pop();
-    assert!(std::panic::catch_unwind(|| super::verify_offers(&snapshot)).is_err());
+    super::verify_offers(&snapshot);
 }
 
 #[test]
-fn changed_pending_identity_and_duplicate_action_are_refused() {
+#[should_panic(expected = "pending mandate must repeat the captured preview mandate")]
+fn changed_pending_identity_is_refused() {
     let mut wrong_identity = remote_in_transit();
     wrong_identity.pending_aid[0].mandate_id = [99; 32];
-    assert!(std::panic::catch_unwind(|| super::verify_offers(&wrong_identity)).is_err());
+    super::verify_offers(&wrong_identity);
+}
+
+#[test]
+#[should_panic(expected = "one original commitment per pending kind")]
+fn duplicate_pending_action_is_refused() {
     let mut duplicate = remote_in_transit();
     duplicate.pending_aid.push(duplicate.pending_aid[0].clone());
-    assert!(std::panic::catch_unwind(|| super::verify_offers(&duplicate)).is_err());
+    super::verify_offers(&duplicate);
+}
+
+#[test]
+#[should_panic(expected = "actionable aid kinds must exclude exactly the already pending kinds")]
+fn second_actionable_offer_is_refused() {
     let mut actionable = remote_in_transit();
     actionable.view.aid_options = opening().view.aid_options;
-    assert!(std::panic::catch_unwind(|| super::verify_offers(&actionable)).is_err());
+    super::verify_offers(&actionable);
 }
 
 #[test]
@@ -76,7 +88,7 @@ fn captured_pending_boundary_retains_both_terms_and_only_the_local_action() {
     let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
         "../fixtures/national_organizer_pending_v11.json"
     ))
-    .unwrap();
+    .expect("the authored JSON matches the declared schema");
     assert_eq!(snapshot.view.period, 1);
     assert_eq!(snapshot.pending_aid.len(), 1);
     assert_eq!(snapshot.pending_aid[0].kind, OrganizerAidKind::Remote);

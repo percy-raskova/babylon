@@ -38,7 +38,8 @@ use std::collections::BTreeSet;
 
 #[test]
 fn fulfilled_gift_uses_real_time_before_later_coordination() {
-    let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap();
+    let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+        .expect("the Michigan hex foundation builds");
     let parts = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation_fixture_parts();
     let mut remaining = foundation.canonical_bytes();
     for part in parts {
@@ -60,19 +61,19 @@ fn fulfilled_gift_uses_real_time_before_later_coordination() {
     let receipt = session
         .material()
         .organizer_state()
-        .unwrap()
+        .expect("the fixture register carries organizer state")
         .aid_receipts
         .last()
         .map(|row| &row.practice)
-        .unwrap();
+        .expect("the fixture call `map` succeeds for the authored inputs");
     assert_actual_aid_postings(
         &session
             .material()
             .organizer_state()
-            .unwrap()
+            .expect("the fixture register carries organizer state")
             .aid_receipts
             .last()
-            .unwrap()
+            .expect("the fixture sequence is non-empty")
             .support,
         2,
         4,
@@ -99,11 +100,11 @@ fn fulfilled_gift_uses_real_time_before_later_coordination() {
         economy
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .household_stocks
             .iter()
             .find(|r| r.principal_id == organizer_aid_fixture::recipient())
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .quantity,
         1
     );
@@ -111,7 +112,8 @@ fn fulfilled_gift_uses_real_time_before_later_coordination() {
 #[test]
 fn captured_promises_cannot_replace_zero_actual_household_time() {
     let mut session = organizer_aid_fixture::authored_session(
-        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("the Michigan hex foundation builds"),
         organizer_aid_fixture::config(),
         true,
         false,
@@ -124,10 +126,10 @@ fn captured_promises_cannot_replace_zero_actual_household_time() {
         session
             .material()
             .organizer_state()
-            .unwrap()
+            .expect("the fixture register carries organizer state")
             .aid_receipts
             .last()
-            .unwrap()
+            .expect("the fixture sequence is non-empty")
             .practice
             .outcome,
         OrganizerOutcome::AidNotProvisioned
@@ -142,10 +144,10 @@ fn captured_promises_cannot_replace_zero_actual_household_time() {
         &session
             .material()
             .organizer_state()
-            .unwrap()
+            .expect("the fixture register carries organizer state")
             .aid_receipts
             .last()
-            .unwrap()
+            .expect("the fixture sequence is non-empty")
             .support,
         0,
         0,
@@ -158,11 +160,11 @@ fn captured_promises_cannot_replace_zero_actual_household_time() {
         economy
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .household_stocks
             .iter()
             .find(|r| r.principal_id == organizer_aid_fixture::recipient())
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .quantity,
         0
     );
@@ -173,7 +175,8 @@ fn recipient_practice_refusal_does_not_revoke_granted_food() {
     cfg.aid_bindings[0].coordination_hours = 1;
     cfg.aid_bindings[0].partner.policy = OrganizerPartnerPolicy::Refuse;
     let mut session = organizer_aid_fixture::authored_session(
-        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("the Michigan hex foundation builds"),
         cfg,
         false,
         false,
@@ -185,19 +188,19 @@ fn recipient_practice_refusal_does_not_revoke_granted_food() {
     let receipt = session
         .material()
         .organizer_state()
-        .unwrap()
+        .expect("the fixture register carries organizer state")
         .aid_receipts
         .last()
         .map(|row| &row.practice)
-        .unwrap();
+        .expect("the fixture call `map` succeeds for the authored inputs");
     assert_actual_aid_postings(
         &session
             .material()
             .organizer_state()
-            .unwrap()
+            .expect("the fixture register carries organizer state")
             .aid_receipts
             .last()
-            .unwrap()
+            .expect("the fixture sequence is non-empty")
             .support,
         2,
         4,
@@ -214,33 +217,42 @@ fn recipient_practice_refusal_does_not_revoke_granted_food() {
         economy
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .household_stocks
             .iter()
             .find(|r| r.principal_id == organizer_aid_fixture::recipient())
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .quantity,
         1
     );
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`delivered_consumed_support_funds_only_actual_independent_coordination` keeps one authored boundary's fixture and assertions together"
+)]
 fn delivered_consumed_support_funds_only_actual_independent_coordination() {
     let mut cfg = organizer_aid_fixture::config();
     cfg.aid_bindings[0].coordination_hours = 1;
     let mut session = organizer_aid_fixture::authored_session(
-        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("the Michigan hex foundation builds"),
         cfg,
         false,
         false,
     );
-    let opening = session.material().organizer_state().unwrap().clone();
+    let opening = session
+        .material()
+        .organizer_state()
+        .expect("the fixture register carries organizer state")
+        .clone();
     let accepted = organizer_aid_fixture::commitment(&session, OrganizerChoice::LocalAid);
     let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
     let material = babylon_tick::material_world::decode_material_receipts(
         candidate.material().receipt_bytes(),
     )
-    .unwrap();
+    .expect("the canonical bytes decode into the declared type");
     assert!(material
         .aid
         .iter()
@@ -249,7 +261,7 @@ fn delivered_consumed_support_funds_only_actual_independent_coordination() {
         .household_consumption
         .iter()
         .find(|r| r.principal_id == organizer_aid_fixture::recipient())
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (consumed.consumed_quantity, consumed.unmet_quantity),
         (1, 0)
@@ -264,15 +276,41 @@ fn delivered_consumed_support_funds_only_actual_independent_coordination() {
     );
     let mut sink = CollectingSink::default();
     organizer_aid_fixture::commit(&mut session, &mut sink, candidate);
-    let next = session.material().organizer_state().unwrap();
-    assert_actual_aid_postings(&next.aid_receipts.last().unwrap().support, 2, 4, 6, 6, 0);
+    let next = session
+        .material()
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
+    assert_actual_aid_postings(
+        &next
+            .aid_receipts
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .support,
+        2,
+        4,
+        6,
+        6,
+        0,
+    );
     assert_eq!(
-        next.receipts.last().unwrap().outcome,
+        next.receipts
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .outcome,
         OrganizerOutcome::AidScheduled
     );
-    assert!(next.receipts.last().unwrap().time_use.is_empty());
+    assert!(next
+        .receipts
+        .last()
+        .expect("the fixture sequence is non-empty")
+        .time_use
+        .is_empty());
     assert_eq!(
-        next.aid_receipts.last().unwrap().practice.outcome,
+        next.aid_receipts
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .practice
+            .outcome,
         OrganizerOutcome::AidPracticeCompleted
     );
     assert_eq!(next.agreements, opening.agreements);
@@ -291,7 +329,7 @@ fn delivered_consumed_support_funds_only_actual_independent_coordination() {
             time.receipts
                 .iter()
                 .find(|r| r.principal_id == principal)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .contribution_available_hours,
             gross
         );
@@ -304,7 +342,8 @@ fn delivered_consumed_support_funds_only_actual_independent_coordination() {
             used
         );
     }
-    let recovered = MaterialWorldRegister::decode(session.material().canonical_bytes()).unwrap();
+    let recovered = MaterialWorldRegister::decode(session.material().canonical_bytes())
+        .expect("the committed canonical bytes decode");
     assert_eq!(recovered, *session.material());
 }
 
@@ -313,7 +352,8 @@ fn failed_gift_tick_publishes_nothing_and_exact_retry_preserves_receipt_identity
     let mut cfg = organizer_aid_fixture::config();
     cfg.aid_bindings[0].coordination_hours = 1;
     let mut session = organizer_aid_fixture::authored_session(
-        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("the Michigan hex foundation builds"),
         cfg,
         false,
         false,
@@ -324,10 +364,12 @@ fn failed_gift_tick_publishes_nothing_and_exact_retry_preserves_receipt_identity
         .graph_session()
         .graph()
         .encode_state()
-        .unwrap()
+        .expect("the graph encodes its canonical state")
         .as_bytes()
         .to_vec();
-    let hash_before = session.current_world_hash().unwrap();
+    let hash_before = session
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
     let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
     let expected = *candidate.identity();
     let mut sink = CollectingSink::default();
@@ -346,11 +388,16 @@ fn failed_gift_tick_publishes_nothing_and_exact_retry_preserves_receipt_identity
             .graph_session()
             .graph()
             .encode_state()
-            .unwrap()
+            .expect("the graph encodes its canonical state")
             .as_bytes(),
         graph_before
     );
-    assert_eq!(session.current_world_hash().unwrap(), hash_before);
+    assert_eq!(
+        session
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        hash_before
+    );
     assert_eq!(session.completed_tick(), 0);
     assert!(sink.events.is_empty());
     let retry = organizer_aid_fixture::prepare(&session, Some(&accepted));
@@ -358,18 +405,28 @@ fn failed_gift_tick_publishes_nothing_and_exact_retry_preserves_receipt_identity
     organizer_aid_fixture::commit(&mut session, &mut sink, retry);
     assert_eq!(session.completed_tick(), 1);
     assert_eq!(
-        session.material().organizer_state().unwrap().receipts.len(),
+        session
+            .material()
+            .organizer_state()
+            .expect("the fixture register carries organizer state")
+            .receipts
+            .len(),
         1
     );
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`remote_support_keeps_original_authorization_until_arrival_without_another_command` keeps one authored boundary's fixture and assertions together"
+)]
 fn remote_support_keeps_original_authorization_until_arrival_without_another_command() {
     let mut cfg = organizer_aid_fixture::config();
     cfg.aid_bindings[0].kind = OrganizerAidKind::Remote;
     cfg.aid_bindings[0].coordination_hours = 1;
     let mut session = organizer_aid_fixture::authored_session(
-        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("the Michigan hex foundation builds"),
         cfg,
         false,
         true,
@@ -378,7 +435,7 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
     let first = organizer_aid_fixture::prepare(&session, Some(&accepted));
     let first_receipts =
         babylon_tick::material_world::decode_material_receipts(first.material().receipt_bytes())
-            .unwrap();
+            .expect("the canonical bytes decode into the declared type");
     assert!(first_receipts
         .aid
         .iter()
@@ -389,9 +446,12 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
         .any(|r| r.outcome == AidOutcome::Granted));
     let mut sink = CollectingSink::default();
     organizer_aid_fixture::commit(&mut session, &mut sink, first);
-    let saved = MaterialWorldRegister::decode(session.material().canonical_bytes()).unwrap();
+    let saved = MaterialWorldRegister::decode(session.material().canonical_bytes())
+        .expect("the committed canonical bytes decode");
     assert_eq!(saved, *session.material());
-    let waiting = saved.organizer_state().unwrap();
+    let waiting = saved
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
     assert_actual_aid_postings(&waiting.aid_receipts[0].support, 2, 4, 6, 0, 0);
     assert_eq!(waiting.pending_aid.len(), 1);
     assert_eq!(waiting.pending_aid[0].gift.commitment, accepted);
@@ -403,7 +463,7 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
     let second = organizer_aid_fixture::prepare(&session, None);
     let second_receipts =
         babylon_tick::material_world::decode_material_receipts(second.material().receipt_bytes())
-            .unwrap();
+            .expect("the canonical bytes decode into the declared type");
     assert!(second_receipts
         .aid
         .iter()
@@ -413,9 +473,15 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
         .iter()
         .any(|r| r.principal_id == organizer_aid_fixture::recipient() && r.consumed_quantity == 1));
     organizer_aid_fixture::commit(&mut session, &mut sink, second);
-    let completed = session.material().organizer_state().unwrap();
+    let completed = session
+        .material()
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
     assert!(completed.pending_aid.is_empty());
-    let resolution = completed.aid_receipts.last().unwrap();
+    let resolution = completed
+        .aid_receipts
+        .last()
+        .expect("the fixture sequence is non-empty");
     assert_actual_aid_postings(&resolution.support, 0, 0, 0, 6, 0);
     assert_eq!(resolution.authorization.gift.commitment, accepted);
     assert_eq!(resolution.authorization.dispatch_period, 1);
@@ -426,7 +492,10 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
     );
     assert_eq!(completed.contact_products.len(), 1); // Ordinary standing contact only.
     assert!(admit_organizer(
-        session.material().organizer_config().unwrap(),
+        session
+            .material()
+            .organizer_config()
+            .expect("the fixture register carries organizer config"),
         completed,
         &accepted.command
     )
@@ -442,7 +511,7 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
             .receipts
             .iter()
             .find(|r| r.principal_id == policy.principal_id)
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .contribution_available_hours;
         let used = time
             .contributions
@@ -452,7 +521,8 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
             .sum::<u64>();
         assert!(used <= available);
     }
-    let recovered = MaterialWorldRegister::decode(session.material().canonical_bytes()).unwrap();
+    let recovered = MaterialWorldRegister::decode(session.material().canonical_bytes())
+        .expect("the committed canonical bytes decode");
     assert_eq!(recovered, *session.material());
 }
 
@@ -467,26 +537,27 @@ fn workplace_report_converts_declared_mass_exactly_without_requiring_one_kg_unit
         .commodities
         .iter_mut()
         .find(|r| r.good_id == organizer_aid_fixture::good(1))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .kind = CommodityKind::Storable {
         grams_per_unit: 14_000,
     };
     let session = organizer_aid_fixture::try_session(
-        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("the Michigan hex foundation builds"),
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         material,
         cfg,
     )
-    .unwrap();
+    .expect("the fixture opens a session");
     let result = organizer_aid_fixture::prepare(&session, None);
     let report = result
         .material()
         .register()
         .organizer_state()
-        .unwrap()
+        .expect("the fixture register carries organizer state")
         .last_workplace_facts
         .as_ref()
-        .unwrap();
+        .expect("the fixture set the optional field before this read");
     assert_eq!(report.output_kg, 56);
     assert_eq!(report.performed_labor_hours, 4);
 }
@@ -502,24 +573,31 @@ fn workplace_report_refuses_nonintegral_kg_instead_of_rounding() {
         .commodities
         .iter_mut()
         .find(|row| row.good_id == organizer_aid_fixture::good(1))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .kind = CommodityKind::Storable {
         grams_per_unit: 1001,
     };
     let session = organizer_aid_fixture::try_session(
-        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("the Michigan hex foundation builds"),
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         material,
         cfg,
     )
-    .unwrap();
+    .expect("the fixture opens a session");
     let actions = babylon_practice_contract::organizer_action_batch(
-        session.material().organizer_config().unwrap(),
-        session.material().organizer_state().unwrap(),
+        session
+            .material()
+            .organizer_config()
+            .expect("the fixture register carries organizer config"),
+        session
+            .material()
+            .organizer_state()
+            .expect("the fixture register carries organizer state"),
         None,
         session.graph_session().session_identity().clone(),
     )
-    .unwrap();
+    .expect("the authored action batch builds");
     assert!(matches!(
         session.prepare_advance_with_organizer(&actions, None),
         Err(babylon_tick::material_replay::MaterialReplayError::Graph(
@@ -540,7 +618,7 @@ fn assert_actual_aid_postings(
     granted: i128,
     refunded: i128,
 ) {
-    let wire = serde_json::to_value(support).unwrap();
+    let wire = serde_json::to_value(support).expect("the value serializes to JSON");
     assert_eq!(
         wire["material_postings"],
         serde_json::json!({
@@ -555,7 +633,8 @@ fn assert_actual_aid_postings(
 // Existing real BSL/material/organizer fixture; source-only RED/GREEN controls.
 fn collection_config_for_control() -> OrganizerConfig {
     let base = organizer_aid_fixture::authored_session(
-        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("the Michigan hex foundation builds"),
         organizer_aid_fixture::config(),
         false,
         false,
@@ -563,7 +642,8 @@ fn collection_config_for_control() -> OrganizerConfig {
     let CircuitAccounting::Monetary(e) = &base.material().state().accounting else {
         unreachable!()
     };
-    let mut value = serde_json::to_value(organizer_aid_fixture::config()).unwrap();
+    let mut value = serde_json::to_value(organizer_aid_fixture::config())
+        .expect("the value serializes to JSON");
     value["collection"] = serde_json::json!({
         "mandate_id": ([93_u8;32].to_vec()), "source_hash": ([94_u8;32].to_vec()),
         "actor_id":101,"contributor_id":201,
@@ -572,11 +652,12 @@ fn collection_config_for_control() -> OrganizerConfig {
         "labor_unit_id": e.aid.mandates[0].labor_unit_id.as_bytes().to_vec(),
         "cash_consent":"accept","maximum_cash_micros":"2","protected_cash_floor_micros":"0","collection_hours":2
     });
-    serde_json::from_value(value).unwrap()
+    serde_json::from_value(value).expect("the JSON value matches the declared type")
 }
 
 fn collection_control_session(protected_target: u64, no_time: bool) -> Session {
-    let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap();
+    let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+        .expect("the Michigan hex foundation builds");
     let base = organizer_aid_fixture::authored_session(
         foundation,
         organizer_aid_fixture::config(),
@@ -589,39 +670,60 @@ fn collection_control_session(protected_target: u64, no_time: bool) -> Session {
     };
     // Authored fixture target: actual closing pantry remains protected and is
     // asserted independently after close. No altered consumption or cash facts.
-    e.recurring.as_mut().unwrap().household_purchases[0].target_closing_stock = protected_target;
+    e.recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .household_purchases[0]
+        .target_closing_stock = protected_target;
     organizer_aid_fixture::try_session(
         foundation,
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         opening,
         collection_config_for_control(),
     )
-    .unwrap()
+    .expect("the fixture opens a session")
 }
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`actual_collection_retains_original_cash_posting_and_material_time_once` keeps one authored boundary's fixture and assertions together"
+)]
 fn actual_collection_retains_original_cash_posting_and_material_time_once() {
     use babylon_material_circuit::{
         AccountId, CashTransferPurpose, MoneyLocation, MoneyTransferPurpose, OrganizationAccountId,
     };
     let mut session = collection_control_session(4, false);
-    let collect: OrganizerChoice = serde_json::from_str("\"collect\"").unwrap();
+    let collect: OrganizerChoice =
+        serde_json::from_str("\"collect\"").expect("the authored JSON matches the declared schema");
     let accepted = organizer_aid_fixture::commitment(&session, collect);
     let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
-    let actual =
-        serde_json::to_value(candidate.material().register().organizer_state().unwrap()).unwrap();
+    let actual = serde_json::to_value(
+        candidate
+            .material()
+            .register()
+            .organizer_state()
+            .expect("the fixture register carries organizer state"),
+    )
+    .expect("the value serializes to JSON");
     let fact = &actual["collection_receipts"][0]["fact"];
     assert_eq!(fact["collected_cash_micros"], "2");
     assert_eq!(fact["performed_hours"], 2);
     assert_eq!(fact["outcome"], "collected");
     assert_eq!(
         actual["collection_receipts"][0]["commitment"]["command"]["nonce"],
-        serde_json::to_value(accepted.command.nonce.to_vec()).unwrap()
+        serde_json::to_value(accepted.command.nonce.to_vec())
+            .expect("the value serializes to JSON")
     );
     let decoded = babylon_tick::material_world::decode_material_receipts(
         candidate.material().receipt_bytes(),
     )
-    .unwrap();
-    let ordinal = usize::try_from(fact["transfer_ordinal"].as_u64().unwrap()).unwrap();
+    .expect("the canonical bytes decode into the declared type");
+    let ordinal = usize::try_from(
+        fact["transfer_ordinal"]
+            .as_u64()
+            .expect("the JSON fixture field is an unsigned integer"),
+    )
+    .expect("the fixture value fits the target range");
     let movement = &decoded.money_transfers[ordinal];
     assert_eq!(
         movement.purpose,
@@ -663,24 +765,37 @@ fn actual_collection_retains_original_cash_posting_and_material_time_once() {
     assert_eq!(
         e.recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .household_stocks
             .iter()
             .find(|row| row.principal_id == organizer_aid_fixture::household())
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .quantity,
         4
     );
-    let old = session.material().organizer_state().unwrap();
-    let new = candidate.material().register().organizer_state().unwrap();
+    let old = session
+        .material()
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
+    let new = candidate
+        .material()
+        .register()
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
     assert_eq!(new.agreements, old.agreements);
     assert_eq!(new.contact_products, old.contact_products);
     let mut sink = CollectingSink::default();
     organizer_aid_fixture::commit(&mut session, &mut sink, candidate);
     let before = session.material().canonical_bytes().to_vec();
     let actions = babylon_practice_contract::organizer_action_batch(
-        session.material().organizer_config().unwrap(),
-        session.material().organizer_state().unwrap(),
+        session
+            .material()
+            .organizer_config()
+            .expect("the fixture register carries organizer config"),
+        session
+            .material()
+            .organizer_state()
+            .expect("the fixture register carries organizer state"),
         Some(&accepted),
         session.graph_session().session_identity().clone(),
     );
@@ -690,11 +805,18 @@ fn actual_collection_retains_original_cash_posting_and_material_time_once() {
 #[test]
 fn protected_closing_pantry_refuses_collection_despite_actual_cash() {
     let session = collection_control_session(8, false);
-    let collect: OrganizerChoice = serde_json::from_str("\"collect\"").unwrap();
+    let collect: OrganizerChoice =
+        serde_json::from_str("\"collect\"").expect("the authored JSON matches the declared schema");
     let accepted = organizer_aid_fixture::commitment(&session, collect);
     let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
-    let actual =
-        serde_json::to_value(candidate.material().register().organizer_state().unwrap()).unwrap();
+    let actual = serde_json::to_value(
+        candidate
+            .material()
+            .register()
+            .organizer_state()
+            .expect("the fixture register carries organizer state"),
+    )
+    .expect("the value serializes to JSON");
     let fact = &actual["collection_receipts"][0]["fact"];
     assert_eq!(fact["outcome"], "protected_closing_stock_unmet");
     assert_eq!(fact["collected_cash_micros"], "0");
@@ -703,7 +825,7 @@ fn protected_closing_pantry_refuses_collection_despite_actual_cash() {
     let mut omitted = actual.clone();
     omitted["collection_receipts"][0]["fact"]
         .as_object_mut()
-        .unwrap()
+        .expect("the JSON fixture field is an object")
         .remove("transfer_ordinal");
     assert!(serde_json::from_value::<OrganizerState>(omitted).is_err());
     let CircuitAccounting::Monetary(e) = &candidate.material().register().state().accounting else {
@@ -714,7 +836,7 @@ fn protected_closing_pantry_refuses_collection_despite_actual_cash() {
             .cash(babylon_material_circuit::AccountId::Household(
                 organizer_aid_fixture::household()
             ))
-            .unwrap()
+            .expect("the fixture book holds the payer account")
             .micro_units()
             >= 2
     );
@@ -726,11 +848,13 @@ fn protected_closing_pantry_refuses_collection_despite_actual_cash() {
 #[test]
 fn actual_collection_wire_refuses_changed_posting_hours_use_and_previous_schema() {
     let session = collection_control_session(4, false);
-    let collect: OrganizerChoice = serde_json::from_str("\"collect\"").unwrap();
+    let collect: OrganizerChoice =
+        serde_json::from_str("\"collect\"").expect("the authored JSON matches the declared schema");
     let accepted = organizer_aid_fixture::commitment(&session, collect);
     let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
     let bytes = candidate.material().receipt_bytes();
-    let decoded = babylon_tick::material_world::decode_material_receipts(bytes).unwrap();
+    let decoded = babylon_tick::material_world::decode_material_receipts(bytes)
+        .expect("the canonical bytes decode into the declared type");
     assert!(decoded.money_transfers.len() > 1);
     let row = bytes.len() - 317;
     for offset in [240_usize, 256, 272, 280, 281, 285] {
@@ -752,13 +876,21 @@ fn actual_collection_wire_refuses_changed_posting_hours_use_and_previous_schema(
         )
         .is_err());
     }
-    assert_eq!(session.material().organizer_state().unwrap().period, 0);
+    assert_eq!(
+        session
+            .material()
+            .organizer_state()
+            .expect("the fixture register carries organizer state")
+            .period,
+        0
+    );
 }
 fn collection_savings_control(no_attendance: bool) -> Session {
     use babylon_material_circuit::{
         AccountId, CashTransferPurpose, HistoricalCostBook, OrganizationAccountId,
     };
-    let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap();
+    let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+        .expect("the Michigan hex foundation builds");
     let base = organizer_aid_fixture::authored_session(
         foundation,
         organizer_aid_fixture::config(),
@@ -770,7 +902,10 @@ fn collection_savings_control(no_attendance: bool) -> Session {
         unreachable!()
     };
     let payer = AccountId::Organization(OrganizationAccountId::from_bytes([96; 32]));
-    let total = e.book.total_cash_and_reserves().unwrap();
+    let total = e
+        .book
+        .total_cash_and_reserves()
+        .expect("the fixture book totals without overflow");
     // Exact conserved Designed opening allocation: the future aid payer starts
     // zero, with its six captured micros held as donor savings instead.
     e.book
@@ -780,9 +915,20 @@ fn collection_savings_control(no_attendance: bool) -> Session {
             organizer_aid_fixture::money(6),
             CashTransferPurpose::PublicTransfer,
         )
-        .unwrap();
-    assert_eq!(e.book.cash(payer).unwrap().micro_units(), 0);
-    assert_eq!(e.book.total_cash_and_reserves().unwrap(), total);
+        .expect("the fixture transfer stays funded");
+    assert_eq!(
+        e.book
+            .cash(payer)
+            .expect("the fixture book holds the payer account")
+            .micro_units(),
+        0
+    );
+    assert_eq!(
+        e.book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
+        total
+    );
     let costs = e.costs.snapshot();
     e.costs = HistoricalCostBook::open(
         &e.book,
@@ -791,8 +937,11 @@ fn collection_savings_control(no_attendance: bool) -> Session {
         costs.equity,
         costs.equipment,
     )
-    .unwrap();
-    let recurring = e.recurring.as_mut().unwrap();
+    .expect("the fixture opens the authored source");
+    let recurring = e
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     recurring.household_purchases[0].target_closing_stock = if no_attendance { 4 } else { 8 };
     recurring.household_purchases[0].enabled = !no_attendance;
     if no_attendance {
@@ -800,28 +949,30 @@ fn collection_savings_control(no_attendance: bool) -> Session {
             row.planned_hours = 0;
         }
     }
-    let mut cfg = serde_json::to_value(collection_config_for_control()).unwrap();
+    let mut cfg = serde_json::to_value(collection_config_for_control())
+        .expect("the value serializes to JSON");
     cfg["collection"]["maximum_cash_micros"] =
         Value::String(if no_attendance { "2" } else { "6" }.into());
     organizer_aid_fixture::try_session(
         foundation,
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         state,
-        serde_json::from_value(cfg).unwrap(),
+        serde_json::from_value(cfg).expect("the JSON value matches the declared type"),
     )
-    .unwrap()
+    .expect("the fixture opens a session")
 }
 #[test]
 fn savings_can_collect_with_zero_current_funded_attendance() {
     use babylon_material_circuit::AccountId;
     let session = collection_savings_control(true);
-    let collect: OrganizerChoice = serde_json::from_str("\"collect\"").unwrap();
+    let collect: OrganizerChoice =
+        serde_json::from_str("\"collect\"").expect("the authored JSON matches the declared schema");
     let accepted = organizer_aid_fixture::commitment(&session, collect);
     let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
     let decoded = babylon_tick::material_world::decode_material_receipts(
         candidate.material().receipt_bytes(),
     )
-    .unwrap();
+    .expect("the canonical bytes decode into the declared type");
     assert_eq!(
         decoded
             .member_labor_use
@@ -835,14 +986,20 @@ fn savings_can_collect_with_zero_current_funded_attendance() {
             .income
             .iter()
             .find(|row| row.account == AccountId::Household(organizer_aid_fixture::household()))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .statement
             .wage_income
             .micro_units(),
         0
     );
-    let value =
-        serde_json::to_value(candidate.material().register().organizer_state().unwrap()).unwrap();
+    let value = serde_json::to_value(
+        candidate
+            .material()
+            .register()
+            .organizer_state()
+            .expect("the fixture register carries organizer state"),
+    )
+    .expect("the value serializes to JSON");
     assert_eq!(
         value["collection_receipts"][0]["fact"]["collected_cash_micros"],
         "2"
@@ -857,7 +1014,7 @@ fn savings_can_collect_with_zero_current_funded_attendance() {
     assert_eq!(
         e.book
             .cash(AccountId::Household(organizer_aid_fixture::household()))
-            .unwrap()
+            .expect("the fixture book holds the payer account")
             .micro_units(),
         4
     );
@@ -866,22 +1023,23 @@ fn savings_can_collect_with_zero_current_funded_attendance() {
 fn original_collection_funds_only_separately_authorized_later_aid() {
     let mut paid = collection_savings_control(false);
     let mut severed = collection_savings_control(false);
-    let collect: OrganizerChoice = serde_json::from_str("\"collect\"").unwrap();
+    let collect: OrganizerChoice =
+        serde_json::from_str("\"collect\"").expect("the authored JSON matches the declared schema");
     let accepted = organizer_aid_fixture::commitment(&paid, collect);
     let paid_candidate = organizer_aid_fixture::prepare(&paid, Some(&accepted));
     let paid_rows = babylon_tick::material_world::decode_material_receipts(
         paid_candidate.material().receipt_bytes(),
     )
-    .unwrap();
+    .expect("the canonical bytes decode into the declared type");
     assert!(paid_rows.aid.is_empty());
     let value = serde_json::to_value(
         paid_candidate
             .material()
             .register()
             .organizer_state()
-            .unwrap(),
+            .expect("the fixture register carries organizer state"),
     )
-    .unwrap();
+    .expect("the value serializes to JSON");
     assert_eq!(
         value["collection_receipts"][0]["fact"]["collected_cash_micros"],
         "6"
@@ -894,7 +1052,7 @@ fn original_collection_funds_only_separately_authorized_later_aid() {
                 == babylon_material_circuit::AccountId::Organization(
                     babylon_material_circuit::OrganizationAccountId::from_bytes([96; 32])
                 ))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .statement
             .gift_income
             .micro_units(),
@@ -912,11 +1070,11 @@ fn original_collection_funds_only_separately_authorized_later_aid() {
     let actual = babylon_tick::material_world::decode_material_receipts(
         paid_next.material().receipt_bytes(),
     )
-    .unwrap();
+    .expect("the canonical bytes decode into the declared type");
     let counterfactual = babylon_tick::material_world::decode_material_receipts(
         severed_next.material().receipt_bytes(),
     )
-    .unwrap();
+    .expect("the canonical bytes decode into the declared type");
     assert!(actual
         .aid
         .iter()
@@ -932,14 +1090,21 @@ fn original_collection_funds_only_separately_authorized_later_aid() {
         .iter()
         .any(|row| row.principal_id == organizer_aid_fixture::recipient()
             && row.consumed_quantity == 1));
-    assert_eq!(paid.material().organizer_state().unwrap().period, 1);
+    assert_eq!(
+        paid.material()
+            .organizer_state()
+            .expect("the fixture register carries organizer state")
+            .period,
+        1
+    );
 }
 
 #[test]
 fn opening_collection_projection_requires_exact_existing_payer_and_labor_unit() {
     use babylon_practice_contract::initial_organizer_state;
     let base = organizer_aid_fixture::authored_session(
-        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("the Michigan hex foundation builds"),
         organizer_aid_fixture::config(),
         false,
         false,
@@ -947,18 +1112,29 @@ fn opening_collection_projection_requires_exact_existing_payer_and_labor_unit() 
     let material = base.material().state().clone();
     let good = collection_config_for_control();
     assert!(MaterialWorldRegister::try_new(0, material.clone())
-        .unwrap()
-        .with_organizer(good.clone(), initial_organizer_state(&good).unwrap())
+        .expect("the authored fixture satisfies the constructor invariants")
+        .with_organizer(
+            good.clone(),
+            initial_organizer_state(&good)
+                .expect("the authored config admits an opening organizer state")
+        )
         .is_ok());
     for field in ["organization_account_id", "labor_unit_id"] {
-        let mut value = serde_json::to_value(&good).unwrap();
-        value["collection"][field] = serde_json::to_value([97_u8; 32].to_vec()).unwrap();
-        let changed: OrganizerConfig = serde_json::from_value(value).unwrap();
-        babylon_practice_contract::validate_organizer_config(&changed).unwrap();
+        let mut value = serde_json::to_value(&good).expect("the value serializes to JSON");
+        value["collection"][field] =
+            serde_json::to_value([97_u8; 32].to_vec()).expect("the value serializes to JSON");
+        let changed: OrganizerConfig =
+            serde_json::from_value(value).expect("the JSON value matches the declared type");
+        babylon_practice_contract::validate_organizer_config(&changed)
+            .expect("the authored organizer config passes validation");
         assert!(
             MaterialWorldRegister::try_new(0, material.clone())
-                .unwrap()
-                .with_organizer(changed.clone(), initial_organizer_state(&changed).unwrap())
+                .expect("the authored fixture satisfies the constructor invariants")
+                .with_organizer(
+                    changed.clone(),
+                    initial_organizer_state(&changed)
+                        .expect("the authored config admits an opening organizer state")
+                )
                 .is_err(),
             "{field}"
         );
@@ -968,24 +1144,32 @@ fn opening_collection_projection_requires_exact_existing_payer_and_labor_unit() 
 fn historical_actual_collection_preserves_original_consent_and_donor_pledge_admission() {
     use babylon_practice_contract::OrganizerGiftConsent;
     let session = collection_control_session(4, false);
-    let collect: OrganizerChoice = serde_json::from_str("\"collect\"").unwrap();
+    let collect: OrganizerChoice =
+        serde_json::from_str("\"collect\"").expect("the authored JSON matches the declared schema");
     let accepted = organizer_aid_fixture::commitment(&session, collect);
     let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
     let actual = &candidate
         .material()
         .register()
         .organizer_state()
-        .unwrap()
+        .expect("the fixture register carries organizer state")
         .collection_receipts[0];
-    let cfg = session.material().organizer_config().unwrap();
+    let cfg = session
+        .material()
+        .organizer_config()
+        .expect("the fixture register carries organizer config");
     babylon_practice_contract::validate_organizer_collection_fact(
         cfg,
         &actual.commitment,
         &actual.fact,
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the rule");
     let mut refused = cfg.clone();
-    refused.collection.as_mut().unwrap().cash_consent = OrganizerGiftConsent::Refuse;
+    refused
+        .collection
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .cash_consent = OrganizerGiftConsent::Refuse;
     assert!(
         babylon_practice_contract::validate_organizer_collection_fact(
             &refused,
@@ -999,7 +1183,7 @@ fn historical_actual_collection_preserves_original_consent_and_donor_pledge_admi
         .participants
         .iter_mut()
         .find(|p| p.contributor_id == 201)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     for pledge in &mut donor.commitments {
         if pledge.actor_id == 101 {
             pledge.hours = 1;
@@ -1016,54 +1200,83 @@ fn historical_actual_collection_preserves_original_consent_and_donor_pledge_admi
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`partial_collection_preserves_protected_floor_and_matches_actual_transfer_and_time` keeps one authored boundary's fixture and assertions together"
+)]
 fn partial_collection_preserves_protected_floor_and_matches_actual_transfer_and_time() {
     use babylon_material_circuit::{AccountId, OrganizationAccountId};
     let base = collection_savings_control(true);
-    let mut cfg = base.material().organizer_config().unwrap().clone();
-    let terms = cfg.collection.as_mut().unwrap();
+    let mut cfg = base
+        .material()
+        .organizer_config()
+        .expect("the fixture register carries organizer config")
+        .clone();
+    let terms = cfg
+        .collection
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     terms.maximum_cash_micros = 8;
     terms.protected_cash_floor_micros = 2;
     let session = organizer_aid_fixture::try_session(
-        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("the Michigan hex foundation builds"),
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         base.material().state().clone(),
         cfg,
     )
-    .unwrap();
+    .expect("the fixture opens a session");
     let accepted = organizer_aid_fixture::commitment(&session, OrganizerChoice::Collect);
     let before = session.material().canonical_bytes().to_vec();
     let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
     assert_eq!(session.material().canonical_bytes(), before);
-    let organizer = candidate.material().register().organizer_state().unwrap();
-    let actual = serde_json::to_value(organizer).unwrap();
+    let organizer = candidate
+        .material()
+        .register()
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
+    let actual = serde_json::to_value(organizer).expect("the value serializes to JSON");
     let fact = &actual["collection_receipts"][0]["fact"];
     assert_eq!(fact["requested_cash_micros"], "8");
     assert_eq!(fact["collected_cash_micros"], "4");
     assert_eq!(fact["outcome"], "partially_collected");
     assert_eq!(fact["performed_hours"], 2);
     assert_eq!(
-        organizer.receipts.last().unwrap().outcome,
+        organizer
+            .receipts
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .outcome,
         OrganizerOutcome::CollectionCompleted
     );
     assert_eq!(
         organizer.agreements,
-        session.material().organizer_state().unwrap().agreements
+        session
+            .material()
+            .organizer_state()
+            .expect("the fixture register carries organizer state")
+            .agreements
     );
     assert_eq!(
         organizer.contact_products,
         session
             .material()
             .organizer_state()
-            .unwrap()
+            .expect("the fixture register carries organizer state")
             .contact_products
     );
     let decoded = babylon_tick::material_world::decode_material_receipts(
         candidate.material().receipt_bytes(),
     )
-    .unwrap();
+    .expect("the canonical bytes decode into the declared type");
     let donor = AccountId::Household(organizer_aid_fixture::household());
     let recipient = AccountId::Organization(OrganizationAccountId::from_bytes([96; 32]));
-    let ordinal = usize::try_from(fact["transfer_ordinal"].as_u64().unwrap()).unwrap();
+    let ordinal = usize::try_from(
+        fact["transfer_ordinal"]
+            .as_u64()
+            .expect("the JSON fixture field is an unsigned integer"),
+    )
+    .expect("the fixture value fits the target range");
     assert_eq!(
         decoded.money_transfers[ordinal].debit.delta.micro_units(),
         -4
@@ -1077,7 +1290,7 @@ fn partial_collection_preserves_protected_floor_and_matches_actual_transfer_and_
             .income
             .iter()
             .find(|row| row.account == donor)
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .statement
             .gift_expense
             .micro_units(),
@@ -1088,7 +1301,7 @@ fn partial_collection_preserves_protected_floor_and_matches_actual_transfer_and_
             .income
             .iter()
             .find(|row| row.account == recipient)
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .statement
             .gift_income
             .micro_units(),
@@ -1097,8 +1310,20 @@ fn partial_collection_preserves_protected_floor_and_matches_actual_transfer_and_
     let CircuitAccounting::Monetary(e) = &candidate.material().register().state().accounting else {
         unreachable!()
     };
-    assert_eq!(e.book.cash(donor).unwrap().micro_units(), 2);
-    assert_eq!(e.book.cash(recipient).unwrap().micro_units(), 4);
+    assert_eq!(
+        e.book
+            .cash(donor)
+            .expect("the fixture book holds the payer account")
+            .micro_units(),
+        2
+    );
+    assert_eq!(
+        e.book
+            .cash(recipient)
+            .expect("the fixture book holds the payer account")
+            .micro_units(),
+        4
+    );
     let HouseholdTimeAccounting::Modeled(time) = &e.household_time else {
         unreachable!()
     };
@@ -1121,17 +1346,25 @@ fn partial_collection_preserves_protected_floor_and_matches_actual_transfer_and_
 
 fn capped_collection_session(cap: i128, floor: i128) -> Session {
     let base = collection_savings_control(true);
-    let mut config = base.material().organizer_config().unwrap().clone();
-    let terms = config.collection.as_mut().unwrap();
+    let mut config = base
+        .material()
+        .organizer_config()
+        .expect("the fixture register carries organizer config")
+        .clone();
+    let terms = config
+        .collection
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     terms.maximum_cash_micros = cap;
     terms.protected_cash_floor_micros = floor;
     organizer_aid_fixture::try_session(
-        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap(),
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+            .expect("the Michigan hex foundation builds"),
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         base.material().state().clone(),
         config,
     )
-    .unwrap()
+    .expect("the fixture opens a session")
 }
 
 fn material_collection_input(session: &Session) -> CollectionResolveInput {
@@ -1139,10 +1372,10 @@ fn material_collection_input(session: &Session) -> CollectionResolveInput {
     let terms = session
         .material()
         .organizer_config()
-        .unwrap()
+        .expect("the fixture register carries organizer config")
         .collection
         .as_ref()
-        .unwrap();
+        .expect("the fixture set the optional field before this read");
     CollectionResolveInput {
         original_commitment_id: accepted.commitment_id,
         command_nonce: accepted.command.nonce,
@@ -1164,11 +1397,11 @@ fn material_collection_input(session: &Session) -> CollectionResolveInput {
         pledged_hours: session
             .material()
             .organizer_config()
-            .unwrap()
+            .expect("the fixture register carries organizer config")
             .participants
             .iter()
             .find(|row| row.contributor_id == terms.contributor_id)
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .commitments
             .iter()
             .filter(|row| row.actor_id == terms.actor_id)
@@ -1182,22 +1415,32 @@ fn collection_independent_consent_and_fixed_pledge_gate_admission_and_material_c
     use babylon_practice_contract::{OrganizerError, OrganizerGiftConsent, OrganizerRefusal};
     let session = capped_collection_session(8, 2);
     let accepted = organizer_aid_fixture::commitment(&session, OrganizerChoice::Collect);
-    let config = session.material().organizer_config().unwrap();
-    let state = session.material().organizer_state().unwrap();
+    let config = session
+        .material()
+        .organizer_config()
+        .expect("the fixture register carries organizer config");
+    let state = session
+        .material()
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
     for consent in [true, false] {
         let mut refused = config.clone();
         if consent {
-            refused.collection.as_mut().unwrap().cash_consent = OrganizerGiftConsent::Refuse;
+            refused
+                .collection
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .cash_consent = OrganizerGiftConsent::Refuse;
         } else {
             refused
                 .participants
                 .iter_mut()
                 .find(|row| row.contributor_id == 201)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .commitments
                 .iter_mut()
                 .find(|row| row.actor_id == 101)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .hours = 1;
         }
         assert_eq!(
@@ -1214,7 +1457,8 @@ fn collection_independent_consent_and_fixed_pledge_gate_admission_and_material_c
         } else {
             input.pledged_hours = 1;
         }
-        let closed = close_collection_control(session.material().state(), &[], &[input]).unwrap();
+        let closed = close_collection_control(session.material().state(), &[], &[input])
+            .expect("the fixture call `close_collection_control` succeeds for the authored inputs");
         let row = &closed.collections[0];
         assert_eq!(row.collected.micro_units(), 0);
         assert_eq!(row.performed_hours, 0);
@@ -1244,7 +1488,11 @@ fn collection_zero_eligible_cash_and_missing_actual_time_refuse_without_spending
     ] {
         let accepted = organizer_aid_fixture::commitment(&session, OrganizerChoice::Collect);
         let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
-        let actual = candidate.material().register().organizer_state().unwrap();
+        let actual = candidate
+            .material()
+            .register()
+            .organizer_state()
+            .expect("the fixture register carries organizer state");
         let fact = &actual.collection_receipts[0].fact;
         assert_eq!(fact.outcome, expected);
         assert_eq!(fact.collected_cash_micros, 0);
@@ -1270,13 +1518,19 @@ fn owned_register_reopen_adopts_authenticated_bytes_and_rejects_wire_changes() {
     let canonical = session.material().canonical_bytes();
     let input = canonical.to_vec();
     let allocation = input.as_ptr();
-    let owned = MaterialWorldRegister::decode_owned(input).unwrap();
-    let borrowed = MaterialWorldRegister::decode(canonical).unwrap();
+    let owned =
+        MaterialWorldRegister::decode_owned(input).expect("the owned canonical bytes decode");
+    let borrowed =
+        MaterialWorldRegister::decode(canonical).expect("the committed canonical bytes decode");
     assert_eq!(owned, borrowed);
     assert_eq!(owned, *session.material());
     assert_eq!(owned.digest(), session.material().digest());
     assert_eq!(
-        owned.organizer_state().unwrap().collection_receipts.len(),
+        owned
+            .organizer_state()
+            .expect("the fixture register carries organizer state")
+            .collection_receipts
+            .len(),
         1
     );
     assert!(
@@ -1287,25 +1541,31 @@ fn owned_register_reopen_adopts_authenticated_bytes_and_rejects_wire_changes() {
     for offset in [0, domain, domain + 11, domain + 19, canonical.len() - 1] {
         let mut invalid = canonical.to_vec();
         invalid[offset] ^= 1;
-        let expected = MaterialWorldRegister::decode(&invalid).unwrap_err();
+        let expected =
+            MaterialWorldRegister::decode(&invalid).expect_err("the malformed bytes are refused");
         assert_eq!(
-            MaterialWorldRegister::decode_owned(invalid).unwrap_err(),
+            MaterialWorldRegister::decode_owned(invalid)
+                .expect_err("`decode_owned` rejects the malformed bytes"),
             expected
         );
     }
     for length in [0, domain + 19, canonical.len() - 1] {
         let invalid = canonical[..length].to_vec();
-        let expected = MaterialWorldRegister::decode(&invalid).unwrap_err();
+        let expected =
+            MaterialWorldRegister::decode(&invalid).expect_err("the malformed bytes are refused");
         assert_eq!(
-            MaterialWorldRegister::decode_owned(invalid).unwrap_err(),
+            MaterialWorldRegister::decode_owned(invalid)
+                .expect_err("`decode_owned` rejects the malformed bytes"),
             expected
         );
     }
     let mut trailing = canonical.to_vec();
     trailing.push(0);
-    let expected = MaterialWorldRegister::decode(&trailing).unwrap_err();
+    let expected =
+        MaterialWorldRegister::decode(&trailing).expect_err("the malformed bytes are refused");
     assert_eq!(
-        MaterialWorldRegister::decode_owned(trailing).unwrap_err(),
+        MaterialWorldRegister::decode_owned(trailing)
+            .expect_err("`decode_owned` rejects the malformed bytes"),
         expected
     );
 }
@@ -1319,10 +1579,12 @@ fn partial_collection_failure_exact_retry_and_reopen_publish_one_original_receip
         .graph_session()
         .graph()
         .encode_state()
-        .unwrap()
+        .expect("the graph encodes its canonical state")
         .as_bytes()
         .to_vec();
-    let hash_before = session.current_world_hash().unwrap();
+    let hash_before = session
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
     let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
     let expected = *candidate.identity();
     let expected_bytes = candidate.material().receipt_bytes().to_vec();
@@ -1341,20 +1603,28 @@ fn partial_collection_failure_exact_retry_and_reopen_publish_one_original_receip
             .graph_session()
             .graph()
             .encode_state()
-            .unwrap()
+            .expect("the graph encodes its canonical state")
             .as_bytes(),
         graph_before
     );
-    assert_eq!(session.current_world_hash().unwrap(), hash_before);
+    assert_eq!(
+        session
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        hash_before
+    );
     assert_eq!(session.completed_tick(), 0);
     assert!(sink.events.is_empty());
     let retry = organizer_aid_fixture::prepare(&session, Some(&accepted));
     assert_eq!(*retry.identity(), expected);
     assert_eq!(retry.material().receipt_bytes(), expected_bytes);
     organizer_aid_fixture::commit(&mut session, &mut sink, retry);
-    let reopened = MaterialWorldRegister::decode(session.material().canonical_bytes()).unwrap();
+    let reopened = MaterialWorldRegister::decode(session.material().canonical_bytes())
+        .expect("the committed canonical bytes decode");
     assert_eq!(reopened, *session.material());
-    let organizer = reopened.organizer_state().unwrap();
+    let organizer = reopened
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
     assert_eq!(organizer.collection_receipts.len(), 1);
     assert_eq!(organizer.collection_receipts[0].commitment, accepted);
     assert_eq!(
@@ -1362,7 +1632,9 @@ fn partial_collection_failure_exact_retry_and_reopen_publish_one_original_receip
         4
     );
     assert!(admit_organizer(
-        reopened.organizer_config().unwrap(),
+        reopened
+            .organizer_config()
+            .expect("the fixture register carries organizer config"),
         organizer,
         &accepted.command
     )
@@ -1370,7 +1642,9 @@ fn partial_collection_failure_exact_retry_and_reopen_publish_one_original_receip
     let mut conflicting = accepted.command.clone();
     conflicting.choice = OrganizerChoice::LocalAid;
     assert!(admit_organizer(
-        reopened.organizer_config().unwrap(),
+        reopened
+            .organizer_config()
+            .expect("the fixture register carries organizer config"),
         organizer,
         &conflicting
     )
@@ -1387,7 +1661,8 @@ fn partial_collection_canonical_row_rejects_fabricated_amount_tag_time_and_join(
     let accepted = organizer_aid_fixture::commitment(&session, OrganizerChoice::Collect);
     let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
     let bytes = candidate.material().receipt_bytes();
-    let decoded = babylon_tick::material_world::decode_material_receipts(bytes).unwrap();
+    let decoded = babylon_tick::material_world::decode_material_receipts(bytes)
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(decoded.collections.len(), 1);
     assert_eq!(decoded.collections[0].outcome as u8, 9);
     let row = bytes.len() - 317;
@@ -1396,7 +1671,7 @@ fn partial_collection_canonical_row_rejects_fabricated_amount_tag_time_and_join(
         .material()
         .register()
         .organizer_state()
-        .unwrap()
+        .expect("the fixture register carries organizer state")
         .collection_receipts[0]
         .fact;
     for (amount, outcome) in [(0_i128, 9_u8), (8, 9), (9, 9), (4, 1), (4, 10)] {
@@ -1425,17 +1700,27 @@ fn partial_collection_canonical_row_rejects_fabricated_amount_tag_time_and_join(
         }
         assert!(
             babylon_practice_contract::validate_organizer_collection_fact(
-                session.material().organizer_config().unwrap(),
+                session
+                    .material()
+                    .organizer_config()
+                    .expect("the fixture register carries organizer config"),
                 &accepted,
                 &fact,
             )
             .is_err()
         );
     }
-    let mut changed =
-        serde_json::to_value(candidate.material().register().organizer_state().unwrap()).unwrap();
+    let mut changed = serde_json::to_value(
+        candidate
+            .material()
+            .register()
+            .organizer_state()
+            .expect("the fixture register carries organizer state"),
+    )
+    .expect("the value serializes to JSON");
     changed["collection_receipts"][0]["fact"]["outcome"] = serde_json::json!("collected");
-    let changed: OrganizerState = serde_json::from_value(changed).unwrap();
+    let changed: OrganizerState =
+        serde_json::from_value(changed).expect("the JSON value matches the declared type");
     assert!(babylon_practice_contract::validate_organizer_state(&changed).is_err());
 }
 
@@ -1481,7 +1766,7 @@ fn collection_duplicate_and_unfunded_due_commitment_never_mint_a_second_transfer
         costs.equity,
         costs.equipment,
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     e.financial.contributions.push(CapitalContributionOrder {
         id: ContributionId::from_bytes([80; 32]),
         due_period: 1,
@@ -1489,7 +1774,8 @@ fn collection_duplicate_and_unfunded_due_commitment_never_mint_a_second_transfer
         issuer_site_id: organizer_aid_fixture::site(1),
         amount: organizer_aid_fixture::money(8),
     });
-    let closed = close_collection_control(&due, &[], &[input]).unwrap();
+    let closed = close_collection_control(&due, &[], &[input])
+        .expect("the fixture call `close_collection_control` succeeds for the authored inputs");
     assert_eq!(
         closed.collections[0].outcome,
         CollectionOutcome::DuePaymentUnmet
@@ -1555,8 +1841,8 @@ fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
             original.push(accepted.commitment_id);
         }
         let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
-        let rows =
-            material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+        let rows = material_world::decode_material_receipts(candidate.material().receipt_bytes())
+            .expect("the canonical bytes decode into the declared type");
         for grant in rows.aid.iter().filter(|r| r.outcome == AidOutcome::Granted) {
             assert_eq!(
                 (grant.quantity, grant.cash_amount),
@@ -1566,7 +1852,7 @@ fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
                 .household_consumption
                 .iter()
                 .find(|r| r.principal_id == grant.recipient)
-                .unwrap();
+                .expect("the fixture holds the searched element");
             assert_eq!(
                 (
                     consumed.good_id,
@@ -1602,25 +1888,28 @@ fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
                     r.credit.delta.micro_units()
                 })
                 .try_fold(0_i128, i128::checked_add)
-                .unwrap();
+                .expect("the fixture input satisfies the fallible conversion");
             assert_eq!(posted, 3);
             actual_grants.insert(grant.commitment_id.as_bytes());
         }
         organizer_aid_fixture::commit(&mut session, &mut sink, candidate);
     }
-    let state = session.material().organizer_state().unwrap();
+    let state = session
+        .material()
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
     let remote = state
         .aid_receipts
         .iter()
         .rev()
         .find(|r| r.authorization.gift.kind == OrganizerAidKind::Remote)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let local = state
         .aid_receipts
         .iter()
         .rev()
         .find(|r| r.authorization.gift.kind == OrganizerAidKind::Local)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     for (row, id) in [(remote, original[0]), (local, original[1])] {
         assert_eq!(row.authorization.gift.commitment.commitment_id, id);
         assert!(matches!(
@@ -1670,18 +1959,21 @@ fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
             .chain(aid)
             .filter(|r| r.actor_id == 101)
             .try_fold(0_u64, |a, r| a.checked_add(r.hours))
-            .unwrap();
+            .expect("the fixture input satisfies the fallible conversion");
         assert!(debit <= 2);
     }
     let CircuitAccounting::Monetary(e) = &session.material().state().accounting else {
         unreachable!()
     };
     assert_eq!(
-        e.book.total_cash_and_reserves().unwrap(),
+        e.book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         organizer_aid_fixture::money(100)
     );
     assert_eq!(
-        MaterialWorldRegister::decode(session.material().canonical_bytes()).unwrap(),
+        MaterialWorldRegister::decode(session.material().canonical_bytes())
+            .expect("the committed canonical bytes decode"),
         *session.material()
     );
 }
@@ -1693,7 +1985,7 @@ fn assert_dual_aid_practice_time(row: &OrganizerAidResolutionReceipt) {
         .iter()
         .filter(|r| r.actor_id == 101)
         .try_fold(0_u64, |a, r| a.checked_add(r.hours))
-        .unwrap();
+        .expect("the fixture input satisfies the fallible conversion");
     let completed = row.practice.outcome == OrganizerOutcome::AidPracticeCompleted;
     assert_eq!(controlled, row.practice.hours_spent);
     assert_eq!(

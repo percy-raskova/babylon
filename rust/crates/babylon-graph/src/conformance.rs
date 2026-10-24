@@ -72,31 +72,53 @@ where
 /// hyperedge is unrepresentable; `add_hyperedge` rejects an empty list, so
 /// leaving one behind would create by deletion a state that cannot be
 /// created directly).
+#[allow(
+    clippy::too_many_lines,
+    reason = "one causal removal sequence is easier to audit in one place"
+)]
 fn removal_cascades_edges_memberships_and_attributes<G, F>(make: &F)
 where
     G: GraphSubstrate + CanonicalState,
     F: Fn() -> G,
 {
     let mut graph = make();
-    let doomed = graph.add_node("social_class").unwrap();
-    let survivor = graph.add_node("social_class").unwrap();
-    let bystander = graph.add_node("social_class").unwrap();
-    graph.update_node(doomed, "wealth", 42.0).unwrap();
-    graph.update_node(survivor, "wealth", 7.0).unwrap();
-    graph.add_edge("solidarity", doomed, survivor, 1.0).unwrap();
+    let doomed = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let survivor = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let bystander = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .update_node(doomed, "wealth", 42.0)
+        .expect("the fixture node carries the authored attribute");
+    graph
+        .update_node(survivor, "wealth", 7.0)
+        .expect("the fixture node carries the authored attribute");
+    graph
+        .add_edge("solidarity", doomed, survivor, 1.0)
+        .expect("the fixture graph admits the authored edge");
     graph
         .add_edge("solidarity", bystander, doomed, 1.0)
-        .unwrap();
+        .expect("the fixture graph admits the authored edge");
     graph
         .add_edge("solidarity", survivor, bystander, 1.0)
-        .unwrap();
+        .expect("the fixture graph admits the authored edge");
     let sector = graph
         .add_hyperedge("economic_sector", &[doomed, survivor, bystander])
-        .unwrap();
-    let solo = graph.add_node("social_class").unwrap();
-    let lone_sector = graph.add_hyperedge("economic_sector", &[solo]).unwrap();
+        .expect("the fixture graph admits the authored hyperedge");
+    let solo = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let lone_sector = graph
+        .add_hyperedge("economic_sector", &[solo])
+        .expect("the fixture graph admits the authored hyperedge");
 
-    graph.remove_node(doomed).unwrap();
+    graph
+        .remove_node(doomed)
+        .expect("the fixture node exists before removal");
 
     assert_eq!(
         graph.edges("solidarity"),
@@ -107,7 +129,9 @@ where
         assert!(graph.node_exists(from) && graph.node_exists(to));
     }
     assert_eq!(
-        graph.members_of(sector).unwrap(),
+        graph
+            .members_of(sector)
+            .expect("the fixture hyperedge has members"),
         vec![survivor, bystander],
         "a member list is a set of LIVE nodes"
     );
@@ -122,12 +146,21 @@ where
         "the removed node's attribute rows are gone, not orphaned"
     );
     assert!(
-        (graph.node_attribute(survivor, "wealth").unwrap() - 7.0).abs() < 1e-12,
+        (graph
+            .node_attribute(survivor, "wealth")
+            .expect("the fixture node carries the authored attribute")
+            - 7.0)
+            .abs()
+            < 1e-12,
         "the survivor's attributes are untouched"
     );
 
-    graph.remove_node(solo).unwrap();
-    let err = graph.members_of(lone_sector).unwrap_err();
+    graph
+        .remove_node(solo)
+        .expect("the fixture node exists before removal");
+    let err = graph
+        .members_of(lone_sector)
+        .expect_err("the fixture call `members_of` fails for the authored inputs");
     assert!(
         err.message.contains("no such hyperedge"),
         "a hyperedge losing its last member is removed, not emptied: {}",
@@ -138,12 +171,18 @@ where
     // rows, or `all_hyperedge_attributes` reports corpses into section
     // 0x07. Seeded before the removal, asserted absent after.
     let mut graph = make();
-    let solo = graph.add_node("social_class").unwrap();
-    let lone = graph.add_hyperedge("economic_sector", &[solo]).unwrap();
+    let solo = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let lone = graph
+        .add_hyperedge("economic_sector", &[solo])
+        .expect("the fixture graph admits the authored hyperedge");
     graph
         .update_hyperedge_attribute(lone, "community/heat", 0.5)
-        .unwrap();
-    graph.remove_node(solo).unwrap();
+        .expect("the fixture hyperedge carries the authored attribute");
+    graph
+        .remove_node(solo)
+        .expect("the fixture node exists before removal");
     assert!(
         !graph
             .all_hyperedge_attributes()
@@ -153,7 +192,7 @@ where
     );
     let err = graph
         .hyperedge_attribute(lone, "community/heat")
-        .unwrap_err();
+        .expect_err("the fixture call `hyperedge_attribute` fails for the authored inputs");
     assert!(
         err.message.contains("no such hyperedge"),
         "a read against the implicitly-dropped hyperedge is loud: {}",
@@ -170,15 +209,23 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
 
-    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+    graph
+        .add_edge("solidarity", a, b, 0.5)
+        .expect("the fixture graph admits the authored edge");
     assert!(
         graph.add_edge("solidarity", a, b, 0.9).is_err(),
         "duplicate edge add is a loud error, never an overwrite"
     );
-    graph.remove_edge("solidarity", a, b).unwrap();
+    graph
+        .remove_edge("solidarity", a, b)
+        .expect("the fixture edge exists before removal");
     assert!(
         graph.remove_edge("solidarity", a, b).is_err(),
         "absent edge remove is a loud error, never a no-op"
@@ -190,8 +237,12 @@ where
         "an edge to a nonexistent endpoint is a loud error"
     );
 
-    let sector = graph.add_hyperedge("economic_sector", &[a, b]).unwrap();
-    graph.remove_hyperedge(sector).unwrap();
+    let sector = graph
+        .add_hyperedge("economic_sector", &[a, b])
+        .expect("the fixture graph admits the authored hyperedge");
+    graph
+        .remove_hyperedge(sector)
+        .expect("the fixture hyperedge exists before removal");
     assert!(
         graph.remove_hyperedge(sector).is_err(),
         "absent hyperedge remove is a loud error, never a no-op"
@@ -209,12 +260,16 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let node = graph.add_node("social_class").unwrap();
+    let node = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
     assert!(
         graph.node_attribute(node, "wealth").is_err(),
         "an unwritten attribute must error, never read as 0.0"
     );
-    graph.update_node(node, "wealth", 42.0).unwrap();
+    graph
+        .update_node(node, "wealth", 42.0)
+        .expect("the fixture node carries the authored attribute");
     assert_eq!(graph.node_attribute(node, "wealth"), Ok(42.0));
 
     // The Currency lane holds the SAME honest-null discipline (T3 #491,
@@ -225,7 +280,7 @@ where
     );
     graph
         .update_node_currency(node, "wages", Currency::from_micro_units(120_000_000))
-        .unwrap();
+        .expect("the fixture node carries the authored currency");
     assert_eq!(
         graph.node_attribute_currency(node, "wages"),
         Ok(Currency::from_micro_units(120_000_000))
@@ -240,14 +295,22 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let first = graph.add_node("social_class").unwrap();
-    let second = graph.add_node("social_class").unwrap();
-    let third = graph.add_node("social_class").unwrap();
+    let first = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let second = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let third = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
     let sector = graph
         .add_hyperedge("economic_sector", &[third, first, second])
-        .unwrap();
+        .expect("the fixture graph admits the authored hyperedge");
     assert_eq!(
-        graph.members_of(sector).unwrap(),
+        graph
+            .members_of(sector)
+            .expect("the fixture hyperedge has members"),
         vec![first, second, third],
         "members_of must sort, regardless of declared order"
     );
@@ -262,7 +325,9 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let member = graph.add_node("social_class").unwrap();
+    let member = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
 
     assert!(
         graph.add_hyperedge("economic_sector", &[]).is_err(),
@@ -294,41 +359,77 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let class_a = graph.add_node("social_class").unwrap();
-    let territory = graph.add_node("territory").unwrap();
-    let class_b = graph.add_node("social_class").unwrap();
+    let class_a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let territory = graph
+        .add_node("territory")
+        .expect("the fixture adds a node with a registered kind");
+    let class_b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
     assert_eq!(graph.nodes("social_class"), vec![class_a, class_b]);
     assert_eq!(graph.nodes("territory"), vec![territory]);
     assert_eq!(graph.nodes("organization"), Vec::<NodeId>::new());
 
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
-    let c = graph.add_node("social_class").unwrap();
-    graph.add_edge("solidarity", b, a, 0.4).unwrap();
-    graph.add_edge("solidarity", a, c, 0.6).unwrap();
-    graph.add_edge("wages", c, a, 0.9).unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let c = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_edge("solidarity", b, a, 0.4)
+        .expect("the fixture graph admits the authored edge");
+    graph
+        .add_edge("solidarity", a, c, 0.6)
+        .expect("the fixture graph admits the authored edge");
+    graph
+        .add_edge("wages", c, a, 0.9)
+        .expect("the fixture graph admits the authored edge");
     assert_eq!(graph.edges("solidarity"), vec![(a, c), (b, a)]);
     assert_eq!(graph.edges("wages"), vec![(c, a)]);
     assert_eq!(graph.edges("tribute"), Vec::<(NodeId, NodeId)>::new());
 
     let mut graph = make();
-    let org = graph.add_node("organization").unwrap();
-    let class_a = graph.add_node("social_class").unwrap();
-    let class_b = graph.add_node("social_class").unwrap();
-    graph.add_edge("membership", org, class_a, 1.0).unwrap();
-    graph.add_edge("membership", org, class_b, 1.0).unwrap();
-    graph.add_edge("membership", class_b, org, 0.2).unwrap();
+    let org = graph
+        .add_node("organization")
+        .expect("the fixture adds a node with a registered kind");
+    let class_a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let class_b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_edge("membership", org, class_a, 1.0)
+        .expect("the fixture graph admits the authored edge");
+    graph
+        .add_edge("membership", org, class_b, 1.0)
+        .expect("the fixture graph admits the authored edge");
+    graph
+        .add_edge("membership", class_b, org, 0.2)
+        .expect("the fixture graph admits the authored edge");
     assert_eq!(
-        graph.neighbors(org, "membership", Direction::Out).unwrap(),
+        graph
+            .neighbors(org, "membership", Direction::Out)
+            .expect("the fixture node has neighbors"),
         vec![class_a, class_b]
     );
     assert_eq!(
-        graph.neighbors(org, "membership", Direction::In).unwrap(),
+        graph
+            .neighbors(org, "membership", Direction::In)
+            .expect("the fixture node has neighbors"),
         vec![class_b]
     );
     assert_eq!(
-        graph.neighbors(org, "membership", Direction::Any).unwrap(),
+        graph
+            .neighbors(org, "membership", Direction::Any)
+            .expect("the fixture node has neighbors"),
         vec![class_a, class_b],
         ":any is a SET — a node reachable both ways appears once"
     );
@@ -349,21 +450,27 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let lone = graph.add_node("social_class").unwrap();
+    let lone = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
 
     assert_eq!(
-        graph.hyperedges_of(lone, "community").unwrap(),
+        graph
+            .hyperedges_of(lone, "community")
+            .expect("the fixture graph holds the authored hyperedges"),
         vec![],
         "a real node in no community of that type is an empty range"
     );
     assert_eq!(
-        graph.hyperedges_of(lone, "no_such_type").unwrap(),
+        graph
+            .hyperedges_of(lone, "no_such_type")
+            .expect("the fixture graph holds the authored hyperedges"),
         vec![],
         "an unknown TYPE is empty, not an error"
     );
     let err = graph
         .hyperedges_of(NodeId(999_999), "community")
-        .unwrap_err();
+        .expect_err("the fixture call `hyperedges_of` fails for the authored inputs");
     assert!(
         !err.message.is_empty(),
         "an absent NODE must be a loud error"
@@ -378,13 +485,19 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let first = graph.add_node("social_class").unwrap();
-    let second = graph.add_node("social_class").unwrap();
+    let first = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let second = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
     let sector = graph
         .add_hyperedge("economic_sector", &[first, second])
-        .unwrap();
+        .expect("the fixture graph admits the authored hyperedge");
     assert_eq!(
-        graph.hyperedges_of(first, "economic_sector").unwrap(),
+        graph
+            .hyperedges_of(first, "economic_sector")
+            .expect("the fixture graph holds the authored hyperedges"),
         vec![sector]
     );
     assert!(
@@ -405,16 +518,30 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
-    let c = graph.add_node("social_class").unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let c = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
 
     // Interleave two hyperedge TYPES so a naive unfiltered read would leak
     // the wrong type into the result.
-    let sector_one = graph.add_hyperedge("economic_sector", &[a]).unwrap();
-    let community_one = graph.add_hyperedge("community", &[b]).unwrap();
-    let sector_two = graph.add_hyperedge("economic_sector", &[b, c]).unwrap();
-    let community_two = graph.add_hyperedge("community", &[a, c]).unwrap();
+    let sector_one = graph
+        .add_hyperedge("economic_sector", &[a])
+        .expect("the fixture graph admits the authored hyperedge");
+    let community_one = graph
+        .add_hyperedge("community", &[b])
+        .expect("the fixture graph admits the authored hyperedge");
+    let sector_two = graph
+        .add_hyperedge("economic_sector", &[b, c])
+        .expect("the fixture graph admits the authored hyperedge");
+    let community_two = graph
+        .add_hyperedge("community", &[a, c])
+        .expect("the fixture graph admits the authored hyperedge");
 
     assert_eq!(
         graph.hyperedges("economic_sector"),
@@ -439,8 +566,12 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    graph.add_hyperedge("economic_sector", &[a]).unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_hyperedge("economic_sector", &[a])
+        .expect("the fixture graph admits the authored hyperedge");
 
     assert_eq!(
         graph.hyperedges("no_such_type"),
@@ -463,35 +594,63 @@ where
     F: Fn() -> G,
 {
     let mut forward = make();
-    let a = forward.add_node("social_class").unwrap();
-    let b = forward.add_node("social_class").unwrap();
-    forward.update_node(a, "wages", 120.0).unwrap();
-    forward.update_node(a, "value_produced", 80.0).unwrap();
-    forward.update_node(b, "wages", 40.0).unwrap();
-    forward.add_edge("solidarity", a, b, 0.5).unwrap();
+    let a = forward
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = forward
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    forward
+        .update_node(a, "wages", 120.0)
+        .expect("the fixture node carries the authored attribute");
+    forward
+        .update_node(a, "value_produced", 80.0)
+        .expect("the fixture node carries the authored attribute");
+    forward
+        .update_node(b, "wages", 40.0)
+        .expect("the fixture node carries the authored attribute");
+    forward
+        .add_edge("solidarity", a, b, 0.5)
+        .expect("the fixture graph admits the authored edge");
     forward
         .update_edge("solidarity", a, b, "solidarity/tension", 0.7)
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     forward
         .update_edge("solidarity", a, b, "solidarity/trust", 0.2)
-        .unwrap();
-    forward.add_hyperedge("economic_sector", &[a, b]).unwrap();
+        .expect("the fixture edge carries the authored attribute");
+    forward
+        .add_hyperedge("economic_sector", &[a, b])
+        .expect("the fixture graph admits the authored hyperedge");
 
     let mut reverse = make();
-    let a2 = reverse.add_node("social_class").unwrap();
-    let b2 = reverse.add_node("social_class").unwrap();
-    reverse.add_hyperedge("economic_sector", &[b2, a2]).unwrap();
-    reverse.add_edge("solidarity", a2, b2, 0.5).unwrap();
+    let a2 = reverse
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b2 = reverse
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    reverse
+        .add_hyperedge("economic_sector", &[b2, a2])
+        .expect("the fixture graph admits the authored hyperedge");
+    reverse
+        .add_edge("solidarity", a2, b2, 0.5)
+        .expect("the fixture graph admits the authored edge");
     // Same two edge attributes, opposite write order.
     reverse
         .update_edge("solidarity", a2, b2, "solidarity/trust", 0.2)
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     reverse
         .update_edge("solidarity", a2, b2, "solidarity/tension", 0.7)
-        .unwrap();
-    reverse.update_node(b2, "wages", 40.0).unwrap();
-    reverse.update_node(a2, "value_produced", 80.0).unwrap();
-    reverse.update_node(a2, "wages", 120.0).unwrap();
+        .expect("the fixture edge carries the authored attribute");
+    reverse
+        .update_node(b2, "wages", 40.0)
+        .expect("the fixture node carries the authored attribute");
+    reverse
+        .update_node(a2, "value_produced", 80.0)
+        .expect("the fixture node carries the authored attribute");
+    reverse
+        .update_node(a2, "wages", 120.0)
+        .expect("the fixture node carries the authored attribute");
 
     (forward, reverse)
 }
@@ -506,53 +665,85 @@ where
 {
     let (forward, reverse) = same_world_two_write_orders(make);
     assert_eq!(
-        forward.state_hash().unwrap(),
-        reverse.state_hash().unwrap(),
+        forward
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        reverse
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
         "the same world must hash identically however it was WRITTEN"
     );
 
-    let first = forward.state_hash().unwrap();
+    let first = forward
+        .state_hash()
+        .expect("the fixture graph hashes its state");
     for _ in 0..8 {
         assert_eq!(
-            forward.state_hash().unwrap(),
+            forward
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
             first,
             "the hash must be stable across repeated encodings"
         );
     }
 
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
-    graph.update_node(a, "wages", 120.0).unwrap();
-    graph.add_edge("solidarity", a, b, 0.5).unwrap();
-    let before = graph.state_hash().unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .update_node(a, "wages", 120.0)
+        .expect("the fixture node carries the authored attribute");
+    graph
+        .add_edge("solidarity", a, b, 0.5)
+        .expect("the fixture graph admits the authored edge");
+    let before = graph
+        .state_hash()
+        .expect("the fixture graph hashes its state");
 
-    graph.update_node(a, "wages", 121.0).unwrap();
-    let after_attribute = graph.state_hash().unwrap();
+    graph
+        .update_node(a, "wages", 121.0)
+        .expect("the fixture node carries the authored attribute");
+    let after_attribute = graph
+        .state_hash()
+        .expect("the fixture graph hashes its state");
     assert_ne!(before, after_attribute, "an attribute write moves the hash");
 
     // T3 (ADR198 R1/R2): one edge-attribute write moves the hash — the
     // fifth section's existence is observable, never a silent store.
     graph
         .update_edge("solidarity", a, b, "solidarity/tension", 0.7)
-        .unwrap();
-    let after_edge_attribute = graph.state_hash().unwrap();
+        .expect("the fixture edge carries the authored attribute");
+    let after_edge_attribute = graph
+        .state_hash()
+        .expect("the fixture graph hashes its state");
     assert_ne!(
         after_attribute, after_edge_attribute,
         "an edge-attribute write moves the hash"
     );
 
-    graph.remove_edge("solidarity", a, b).unwrap();
-    let after_edge = graph.state_hash().unwrap();
+    graph
+        .remove_edge("solidarity", a, b)
+        .expect("the fixture edge exists before removal");
+    let after_edge = graph
+        .state_hash()
+        .expect("the fixture graph hashes its state");
     assert_ne!(
         after_edge_attribute, after_edge,
         "an edge removal (taking its attribute rows with it) moves the hash"
     );
 
-    graph.add_node("organization").unwrap();
+    graph
+        .add_node("organization")
+        .expect("the fixture adds a node with a registered kind");
     assert_ne!(
         after_edge,
-        graph.state_hash().unwrap(),
+        graph
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
         "a new node moves the hash"
     );
 }
@@ -570,7 +761,11 @@ where
     let mut graph = make();
     let mut expected = Vec::with_capacity(12);
     for _ in 0..12 {
-        expected.push(graph.add_node("social_class").unwrap());
+        expected.push(
+            graph
+                .add_node("social_class")
+                .expect("the fixture adds a node with a registered kind"),
+        );
     }
     expected.sort_unstable();
     assert_eq!(
@@ -594,15 +789,27 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
-    let c = graph.add_node("social_class").unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let c = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
 
     // Edges declared with the highest source id first — the opposite of
     // ascending (source, target) order.
-    graph.add_edge("wages", c, a, 1.0).unwrap();
-    graph.add_edge("wages", b, a, 1.0).unwrap();
-    graph.add_edge("wages", a, c, 1.0).unwrap();
+    graph
+        .add_edge("wages", c, a, 1.0)
+        .expect("the fixture graph admits the authored edge");
+    graph
+        .add_edge("wages", b, a, 1.0)
+        .expect("the fixture graph admits the authored edge");
+    graph
+        .add_edge("wages", a, c, 1.0)
+        .expect("the fixture graph admits the authored edge");
     assert_eq!(
         graph.edges("wages"),
         vec![(a, c), (b, a), (c, a)],
@@ -611,15 +818,23 @@ where
 
     // Both hyperedges declared with their members in DESCENDING order —
     // member declaration order and member id order disagree on purpose.
-    let first_minted = graph.add_hyperedge("economic_sector", &[c, b, a]).unwrap();
-    let second_minted = graph.add_hyperedge("economic_sector", &[a]).unwrap();
+    let first_minted = graph
+        .add_hyperedge("economic_sector", &[c, b, a])
+        .expect("the fixture graph admits the authored hyperedge");
+    let second_minted = graph
+        .add_hyperedge("economic_sector", &[a])
+        .expect("the fixture graph admits the authored hyperedge");
     assert_eq!(
-        graph.members_of(first_minted).unwrap(),
+        graph
+            .members_of(first_minted)
+            .expect("the fixture hyperedge has members"),
         vec![a, b, c],
         "members_of sorts regardless of declared member order"
     );
     assert_eq!(
-        graph.hyperedges_of(a, "economic_sector").unwrap(),
+        graph
+            .hyperedges_of(a, "economic_sector")
+            .expect("the fixture graph holds the authored hyperedges"),
         vec![first_minted, second_minted],
         "hyperedges_of orders ascending HyperedgeId — mint order here, \
          since ids are assigned monotonically and cannot themselves be \
@@ -631,8 +846,12 @@ where
     // type-filtered read comes back ascending — both for the newly
     // interleaved type and for the earlier one, unaffected by the
     // interleaving.
-    let third_type_first = graph.add_hyperedge("community", &[c]).unwrap();
-    let third_type_second = graph.add_hyperedge("community", &[a, b]).unwrap();
+    let third_type_first = graph
+        .add_hyperedge("community", &[c])
+        .expect("the fixture graph admits the authored hyperedge");
+    let third_type_second = graph
+        .add_hyperedge("community", &[a, b])
+        .expect("the fixture graph admits the authored hyperedge");
     assert_eq!(
         graph.hyperedges("community"),
         vec![third_type_first, third_type_second],
@@ -659,10 +878,24 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let class = graph.add_node("SOCIAL_CLASS").unwrap();
-    let territory = graph.add_node("TERRITORY").unwrap();
-    assert_eq!(graph.node_type_of(class).unwrap(), "SOCIAL_CLASS");
-    assert_eq!(graph.node_type_of(territory).unwrap(), "TERRITORY");
+    let class = graph
+        .add_node("SOCIAL_CLASS")
+        .expect("the fixture adds a node with a registered kind");
+    let territory = graph
+        .add_node("TERRITORY")
+        .expect("the fixture adds a node with a registered kind");
+    assert_eq!(
+        graph
+            .node_type_of(class)
+            .expect("the fixture node has a registered type"),
+        "SOCIAL_CLASS"
+    );
+    assert_eq!(
+        graph
+            .node_type_of(territory)
+            .expect("the fixture node has a registered type"),
+        "TERRITORY"
+    );
 }
 
 /// A dangling [`NodeId`] must never read as an untyped node — the same
@@ -689,12 +922,30 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
-    let cell = graph.add_hyperedge("community", &[a, b]).unwrap();
-    let cell2 = graph.add_hyperedge("economic_sector", &[b]).unwrap();
-    assert_eq!(graph.hyperedge_type_of(cell).unwrap(), "community");
-    assert_eq!(graph.hyperedge_type_of(cell2).unwrap(), "economic_sector");
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let cell = graph
+        .add_hyperedge("community", &[a, b])
+        .expect("the fixture graph admits the authored hyperedge");
+    let cell2 = graph
+        .add_hyperedge("economic_sector", &[b])
+        .expect("the fixture graph admits the authored hyperedge");
+    assert_eq!(
+        graph
+            .hyperedge_type_of(cell)
+            .expect("the fixture hyperedge has a registered type"),
+        "community"
+    );
+    assert_eq!(
+        graph
+            .hyperedge_type_of(cell2)
+            .expect("the fixture hyperedge has a registered type"),
+        "economic_sector"
+    );
 }
 
 /// The dangling half, mirroring `node_type_of_a_dangling_id_is_loud_not_untyped`
@@ -720,9 +971,15 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
-    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_edge("solidarity", a, b, 0.5)
+        .expect("the fixture graph admits the authored edge");
     // Epsilon-diff, not assert_eq! (clippy::float_cmp, the workspace pedantic level —
     // matches this file's own precedent, e.g. removal_cascades_edges_memberships_and_attributes'
     // wealth check above): the value is an exact HashMap round-trip with no arithmetic, so the
@@ -730,7 +987,7 @@ where
     assert!(
         (graph
             .edge_attribute("solidarity", a, b, "solidarity/strength")
-            .unwrap()
+            .expect("the fixture edge carries the authored attribute")
             - 0.5)
             .abs()
             < f64::EPSILON
@@ -745,8 +1002,12 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
     assert!(
         graph
             .edge_attribute("solidarity", a, b, "solidarity/strength")
@@ -770,9 +1031,15 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
-    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_edge("solidarity", a, b, 0.5)
+        .expect("the fixture graph admits the authored edge");
     assert!(
         graph
             .edge_attribute("solidarity", a, b, "solidarity/tension")
@@ -793,14 +1060,20 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
-    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_edge("solidarity", a, b, 0.5)
+        .expect("the fixture graph admits the authored edge");
     // Epsilon-diff, not assert_eq! — same clippy::float_cmp reason as the sibling test above.
     assert!(
         (graph
             .edge_attribute("solidarity", a, b, "tenancy/strength")
-            .unwrap()
+            .expect("the fixture edge carries the authored attribute")
             - 0.5)
             .abs()
             < f64::EPSILON,
@@ -820,19 +1093,25 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
-    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_edge("solidarity", a, b, 0.5)
+        .expect("the fixture graph admits the authored edge");
 
     graph
         .update_edge("solidarity", a, b, "solidarity/tension", 0.7)
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     // Epsilon-diff, not assert_eq! — same clippy::float_cmp reason as the sibling rows above:
     // an exact HashMap round-trip with no arithmetic, deterministic regardless of the width.
     assert!(
         (graph
             .edge_attribute("solidarity", a, b, "solidarity/tension")
-            .unwrap()
+            .expect("the fixture edge carries the authored attribute")
             - 0.7)
             .abs()
             < f64::EPSILON,
@@ -854,11 +1133,11 @@ where
 
     graph
         .update_edge("solidarity", a, b, "solidarity/tension", 0.9)
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     assert!(
         (graph
             .edge_attribute("solidarity", a, b, "solidarity/tension")
-            .unwrap()
+            .expect("the fixture edge carries the authored attribute")
             - 0.9)
             .abs()
             < f64::EPSILON,
@@ -888,8 +1167,12 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
     assert!(
         graph
             .update_edge("solidarity", a, b, "solidarity/strength", 0.8)
@@ -920,12 +1203,18 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
-    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_edge("solidarity", a, b, 0.5)
+        .expect("the fixture graph admits the authored edge");
     graph
         .update_edge("solidarity", a, b, "solidarity/strength", 0.8)
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
 
     let listed_strength = graph
         .all_edges()
@@ -943,12 +1232,22 @@ where
     );
 
     let mut twin = make();
-    let ta = twin.add_node("social_class").unwrap();
-    let tb = twin.add_node("social_class").unwrap();
-    twin.add_edge("solidarity", ta, tb, 0.8).unwrap();
+    let ta = twin
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let tb = twin
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    twin.add_edge("solidarity", ta, tb, 0.8)
+        .expect("the fixture graph admits the authored edge");
     assert_eq!(
-        graph.encode_state().unwrap().as_bytes(),
-        twin.encode_state().unwrap().as_bytes(),
+        graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes(),
+        twin.encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes(),
         "strength written via update_edge encodes byte-identically to strength set at add_edge \
          time — no fifth-section shadow row exists"
     );
@@ -966,14 +1265,22 @@ where
 {
     // Direct removal.
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
-    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_edge("solidarity", a, b, 0.5)
+        .expect("the fixture graph admits the authored edge");
     graph
         .update_edge("solidarity", a, b, "solidarity/tension", 0.7)
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
 
-    graph.remove_edge("solidarity", a, b).unwrap();
+    graph
+        .remove_edge("solidarity", a, b)
+        .expect("the fixture edge exists before removal");
     assert!(
         graph.all_edge_attributes().is_empty(),
         "remove_edge takes the edge's attribute rows with it"
@@ -987,8 +1294,12 @@ where
 
     // Removal completeness, proven through the hash: what remains is exactly "two nodes".
     let mut bare = make();
-    let ba = bare.add_node("social_class").unwrap();
-    let bb = bare.add_node("social_class").unwrap();
+    let ba = bare
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let bb = bare
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
     assert_eq!(
         ba, a,
         "fixture mint order must line up for the hash comparison"
@@ -998,13 +1309,18 @@ where
         "fixture mint order must line up for the hash comparison"
     );
     assert_eq!(
-        graph.state_hash().unwrap(),
-        bare.state_hash().unwrap(),
+        graph
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        bare.state_hash()
+            .expect("the fixture graph hashes its state"),
         "after removal the store hashes as if the edge (and its attributes) never existed"
     );
 
     // Re-minting the same triple does not resurrect the old attribute rows.
-    graph.add_edge("solidarity", a, b, 0.5).unwrap();
+    graph
+        .add_edge("solidarity", a, b, 0.5)
+        .expect("the fixture graph admits the authored edge");
     assert!(
         graph
             .edge_attribute("solidarity", a, b, "solidarity/tension")
@@ -1014,13 +1330,21 @@ where
 
     // The remove_node cascade half.
     let mut graph = make();
-    let doomed = graph.add_node("social_class").unwrap();
-    let survivor = graph.add_node("social_class").unwrap();
-    graph.add_edge("solidarity", doomed, survivor, 1.0).unwrap();
+    let doomed = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let survivor = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_edge("solidarity", doomed, survivor, 1.0)
+        .expect("the fixture graph admits the authored edge");
     graph
         .update_edge("solidarity", doomed, survivor, "solidarity/tension", 0.3)
-        .unwrap();
-    graph.remove_node(doomed).unwrap();
+        .expect("the fixture edge carries the authored attribute");
+    graph
+        .remove_node(doomed)
+        .expect("the fixture node exists before removal");
     assert!(
         graph.all_edge_attributes().is_empty(),
         "the remove_node cascade takes incident edges' attribute rows too"
@@ -1039,17 +1363,25 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let doomed = graph.add_node("social_class").unwrap();
-    let survivor = graph.add_node("social_class").unwrap();
-    let before = graph.state_hash().unwrap();
+    let doomed = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let survivor = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let before = graph
+        .state_hash()
+        .expect("the fixture graph hashes its state");
 
     graph
         .update_node_currency(doomed, "wages", Currency::from_micro_units(1))
-        .unwrap();
+        .expect("the fixture node carries the authored currency");
     graph
         .update_node_currency(survivor, "wages", Currency::from_micro_units(2))
-        .unwrap();
-    let after = graph.state_hash().unwrap();
+        .expect("the fixture node carries the authored currency");
+    let after = graph
+        .state_hash()
+        .expect("the fixture graph hashes its state");
     assert_ne!(before, after, "a Currency-attribute write moves the hash");
 
     assert_eq!(
@@ -1062,7 +1394,9 @@ where
         "the sixth-section listing reports the written value"
     );
 
-    graph.remove_node(doomed).unwrap();
+    graph
+        .remove_node(doomed)
+        .expect("the fixture node exists before removal");
     assert!(
         !graph
             .all_currency_attributes()
@@ -1090,19 +1424,31 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
-    let doomed = graph.add_hyperedge("community", &[a, b]).unwrap();
-    let survivor = graph.add_hyperedge("community", &[b]).unwrap();
-    let before = graph.state_hash().unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let doomed = graph
+        .add_hyperedge("community", &[a, b])
+        .expect("the fixture graph admits the authored hyperedge");
+    let survivor = graph
+        .add_hyperedge("community", &[b])
+        .expect("the fixture graph admits the authored hyperedge");
+    let before = graph
+        .state_hash()
+        .expect("the fixture graph hashes its state");
 
     graph
         .update_hyperedge_attribute(doomed, "community/heat", 0.5)
-        .unwrap();
+        .expect("the fixture hyperedge carries the authored attribute");
     graph
         .update_hyperedge_attribute(survivor, "community/heat", 0.75)
-        .unwrap();
-    let after = graph.state_hash().unwrap();
+        .expect("the fixture hyperedge carries the authored attribute");
+    let after = graph
+        .state_hash()
+        .expect("the fixture graph hashes its state");
     assert_ne!(before, after, "a hyperedge-attribute write moves the hash");
 
     assert_eq!(
@@ -1115,7 +1461,9 @@ where
         "the seventh-section listing reports the written value"
     );
 
-    graph.remove_hyperedge(doomed).unwrap();
+    graph
+        .remove_hyperedge(doomed)
+        .expect("the fixture hyperedge exists before removal");
     assert!(
         !graph
             .all_hyperedge_attributes()
@@ -1139,9 +1487,15 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("social_class").unwrap();
-    let b = graph.add_node("social_class").unwrap();
-    let cell = graph.add_hyperedge("community", &[a, b]).unwrap();
+    let a = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("social_class")
+        .expect("the fixture adds a node with a registered kind");
+    let cell = graph
+        .add_hyperedge("community", &[a, b])
+        .expect("the fixture graph admits the authored hyperedge");
 
     assert!(
         graph.hyperedge_attribute(cell, "community/heat").is_err(),
@@ -1196,27 +1550,43 @@ fn seed_detached_copy_source<G>(source: &mut G) -> DetachedCopyWitness
 where
     G: GraphSubstrate + CanonicalState + AllocatorState,
 {
-    let a = source.add_node("SOCIAL_CLASS").unwrap();
-    let b = source.add_node("TERRITORY").unwrap();
-    let c = source.add_node("ORGANIZATION").unwrap();
-    source.update_node(a, "class/power", 0.25).unwrap();
+    let a = source
+        .add_node("SOCIAL_CLASS")
+        .expect("the fixture adds a node with a registered kind");
+    let b = source
+        .add_node("TERRITORY")
+        .expect("the fixture adds a node with a registered kind");
+    let c = source
+        .add_node("ORGANIZATION")
+        .expect("the fixture adds a node with a registered kind");
+    source
+        .update_node(a, "class/power", 0.25)
+        .expect("the fixture node carries the authored attribute");
     source
         .update_node_currency(a, "class/cash", Currency::from_micro_units(12_345))
-        .unwrap();
-    source.add_edge("PRESENCE", a, b, 0.75).unwrap();
+        .expect("the fixture node carries the authored currency");
+    source
+        .add_edge("PRESENCE", a, b, 0.75)
+        .expect("the fixture graph admits the authored edge");
     source
         .update_edge("PRESENCE", a, b, "presence/friction", 0.125)
-        .unwrap();
-    let cell = source.add_hyperedge("COALITION", &[c, a, b]).unwrap();
+        .expect("the fixture edge carries the authored attribute");
+    let cell = source
+        .add_hyperedge("COALITION", &[c, a, b])
+        .expect("the fixture graph admits the authored hyperedge");
     source
         .update_hyperedge_attribute(cell, "coalition/cohesion", 0.625)
-        .unwrap();
+        .expect("the fixture hyperedge carries the authored attribute");
     DetachedCopyWitness {
         a,
         b,
         c,
         cell,
-        source_bytes: source.encode_state().unwrap().as_bytes().to_vec(),
+        source_bytes: source
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec(),
         source_cursors: source.allocator_cursors(),
     }
 }
@@ -1227,18 +1597,25 @@ where
     G: GraphSubstrate + CanonicalState + AllocatorState,
 {
     assert_eq!(
-        working.encode_state().unwrap().as_bytes(),
+        working
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes(),
         witness.source_bytes
     );
     assert_eq!(working.allocator_cursors(), witness.source_cursors);
     assert_eq!(source.hyperedges("COALITION"), vec![witness.cell]);
     assert_eq!(
-        source.hyperedges_of(witness.a, "COALITION").unwrap(),
+        source
+            .hyperedges_of(witness.a, "COALITION")
+            .expect("the fixture graph holds the authored hyperedges"),
         vec![witness.cell]
     );
     assert_eq!(working.hyperedges("COALITION"), vec![witness.cell]);
     assert_eq!(
-        working.hyperedges_of(witness.a, "COALITION").unwrap(),
+        working
+            .hyperedges_of(witness.a, "COALITION")
+            .expect("the fixture graph holds the authored hyperedges"),
         vec![witness.cell]
     );
 }
@@ -1249,44 +1626,51 @@ where
     G: GraphSubstrate + CanonicalState + AllocatorState,
 {
     assert_eq!(
-        source.encode_state().unwrap().as_bytes(),
+        source
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes(),
         witness.source_bytes
     );
     assert_eq!(source.allocator_cursors(), witness.source_cursors);
     assert_eq!(
         source
             .node_attribute(witness.a, "class/power")
-            .unwrap()
+            .expect("the fixture node carries the authored attribute")
             .to_bits(),
         0.25f64.to_bits()
     );
     assert_eq!(
         source
             .node_attribute_currency(witness.a, "class/cash")
-            .unwrap(),
+            .expect("the fixture node carries the authored currency"),
         Currency::from_micro_units(12_345)
     );
     assert_eq!(
         source
             .edge_attribute("PRESENCE", witness.a, witness.b, "presence/friction")
-            .unwrap()
+            .expect("the fixture edge carries the authored attribute")
             .to_bits(),
         0.125f64.to_bits()
     );
     assert_eq!(
         source
             .hyperedge_attribute(witness.cell, "coalition/cohesion")
-            .unwrap()
+            .expect("the fixture hyperedge carries the authored attribute")
             .to_bits(),
         0.625f64.to_bits()
     );
     assert_eq!(source.hyperedges("COALITION"), vec![witness.cell]);
     assert_eq!(
-        source.hyperedges_of(witness.a, "COALITION").unwrap(),
+        source
+            .hyperedges_of(witness.a, "COALITION")
+            .expect("the fixture graph holds the authored hyperedges"),
         vec![witness.cell]
     );
     assert_eq!(
-        source.members_of(witness.cell).unwrap(),
+        source
+            .members_of(witness.cell)
+            .expect("the fixture hyperedge has members"),
         vec![witness.a, witness.b, witness.c]
     );
 }
@@ -1297,17 +1681,24 @@ where
     G: GraphSubstrate + CanonicalState + AllocatorState,
 {
     assert_ne!(
-        working.encode_state().unwrap().as_bytes(),
+        working
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes(),
         witness.source_bytes
     );
     assert_ne!(working.allocator_cursors(), witness.source_cursors);
     assert_eq!(working.hyperedges("COALITION"), vec![HyperedgeId(1)]);
     assert_eq!(
-        working.hyperedges_of(witness.a, "COALITION").unwrap(),
+        working
+            .hyperedges_of(witness.a, "COALITION")
+            .expect("the fixture graph holds the authored hyperedges"),
         vec![HyperedgeId(1)]
     );
     assert_eq!(
-        working.members_of(HyperedgeId(1)).unwrap(),
+        working
+            .members_of(HyperedgeId(1))
+            .expect("the fixture hyperedge has members"),
         vec![witness.a, witness.b]
     );
 }
@@ -1317,11 +1708,16 @@ fn exercise_source_after_copy<G>(source: &mut G, working: &G, witness: &Detached
 where
     G: GraphSubstrate,
 {
-    assert_eq!(source.add_node("BUSINESS").unwrap(), NodeId(3));
+    assert_eq!(
+        source
+            .add_node("BUSINESS")
+            .expect("the fixture adds a node with a registered kind"),
+        NodeId(3)
+    );
     assert_eq!(
         source
             .add_hyperedge("COALITION", &[witness.b, witness.c])
-            .unwrap(),
+            .expect("the fixture graph admits the authored hyperedge"),
         HyperedgeId(1)
     );
     assert_eq!(
@@ -1329,43 +1725,61 @@ where
         vec![witness.cell, HyperedgeId(1)]
     );
     assert_eq!(
-        source.hyperedges_of(witness.b, "COALITION").unwrap(),
+        source
+            .hyperedges_of(witness.b, "COALITION")
+            .expect("the fixture graph holds the authored hyperedges"),
         vec![witness.cell, HyperedgeId(1)]
     );
     assert_eq!(
-        source.hyperedges_of(witness.a, "COALITION").unwrap(),
+        source
+            .hyperedges_of(witness.a, "COALITION")
+            .expect("the fixture graph holds the authored hyperedges"),
         vec![witness.cell]
     );
     assert_eq!(
-        source.members_of(HyperedgeId(1)).unwrap(),
+        source
+            .members_of(HyperedgeId(1))
+            .expect("the fixture hyperedge has members"),
         vec![witness.b, witness.c]
     );
     assert_eq!(working.hyperedges("COALITION"), vec![HyperedgeId(1)]);
     assert_eq!(
-        working.hyperedges_of(witness.a, "COALITION").unwrap(),
+        working
+            .hyperedges_of(witness.a, "COALITION")
+            .expect("the fixture graph holds the authored hyperedges"),
         vec![HyperedgeId(1)]
     );
     assert_eq!(
-        working.members_of(HyperedgeId(1)).unwrap(),
+        working
+            .members_of(HyperedgeId(1))
+            .expect("the fixture hyperedge has members"),
         vec![witness.a, witness.b]
     );
 
-    source.remove_hyperedge(witness.cell).unwrap();
+    source
+        .remove_hyperedge(witness.cell)
+        .expect("the fixture hyperedge exists before removal");
     assert_eq!(source.hyperedges("COALITION"), vec![HyperedgeId(1)]);
     assert!(source
         .hyperedges_of(witness.a, "COALITION")
-        .unwrap()
+        .expect("the fixture graph holds the authored hyperedges")
         .is_empty());
     assert_eq!(
-        source.members_of(HyperedgeId(1)).unwrap(),
+        source
+            .members_of(HyperedgeId(1))
+            .expect("the fixture hyperedge has members"),
         vec![witness.b, witness.c]
     );
     assert_eq!(
-        working.hyperedges_of(witness.a, "COALITION").unwrap(),
+        working
+            .hyperedges_of(witness.a, "COALITION")
+            .expect("the fixture graph holds the authored hyperedges"),
         vec![HyperedgeId(1)]
     );
     assert_eq!(
-        working.members_of(HyperedgeId(1)).unwrap(),
+        working
+            .members_of(HyperedgeId(1))
+            .expect("the fixture hyperedge has members"),
         vec![witness.a, witness.b]
     );
 }
@@ -1378,38 +1792,53 @@ fn exercise_every_mutable_lane<G: GraphSubstrate>(
     c: NodeId,
     cell: HyperedgeId,
 ) {
-    working.update_node(a, "class/power", 0.5).unwrap();
+    working
+        .update_node(a, "class/power", 0.5)
+        .expect("the fixture node carries the authored attribute");
     working
         .update_node_currency(a, "class/cash", Currency::from_micro_units(54_321))
-        .unwrap();
+        .expect("the fixture node carries the authored currency");
     working
         .update_edge("PRESENCE", a, b, "presence/friction", 0.875)
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     assert_eq!(
         working
             .edge_attribute("PRESENCE", a, b, "presence/friction")
-            .unwrap()
+            .expect("the fixture edge carries the authored attribute")
             .to_bits(),
         0.875f64.to_bits()
     );
     working
         .update_hyperedge_attribute(cell, "coalition/cohesion", 0.25)
-        .unwrap();
+        .expect("the fixture hyperedge carries the authored attribute");
     assert_eq!(
         working
             .hyperedge_attribute(cell, "coalition/cohesion")
-            .unwrap()
+            .expect("the fixture hyperedge carries the authored attribute")
             .to_bits(),
         0.25f64.to_bits()
     );
-    assert_eq!(working.add_node("BUSINESS").unwrap(), NodeId(3));
     assert_eq!(
-        working.add_hyperedge("COALITION", &[a, b]).unwrap(),
+        working
+            .add_node("BUSINESS")
+            .expect("the fixture adds a node with a registered kind"),
+        NodeId(3)
+    );
+    assert_eq!(
+        working
+            .add_hyperedge("COALITION", &[a, b])
+            .expect("the fixture graph admits the authored hyperedge"),
         HyperedgeId(1)
     );
-    working.remove_edge("PRESENCE", a, b).unwrap();
-    working.remove_hyperedge(cell).unwrap();
-    working.remove_node(c).unwrap();
+    working
+        .remove_edge("PRESENCE", a, b)
+        .expect("the fixture edge exists before removal");
+    working
+        .remove_hyperedge(cell)
+        .expect("the fixture hyperedge exists before removal");
+    working
+        .remove_node(c)
+        .expect("the fixture node exists before removal");
 }
 
 /// Both identity allocators mint `u64::MAX - 1`, advance to the reserved
@@ -1422,15 +1851,26 @@ where
     F: Fn() -> G,
 {
     let mut graph = make();
-    let a = graph.add_node("SOCIAL_CLASS").unwrap();
-    let b = graph.add_node("TERRITORY").unwrap();
-    graph.add_hyperedge("COALITION", &[a, b]).unwrap();
+    let a = graph
+        .add_node("SOCIAL_CLASS")
+        .expect("the fixture adds a node with a registered kind");
+    let b = graph
+        .add_node("TERRITORY")
+        .expect("the fixture adds a node with a registered kind");
+    graph
+        .add_hyperedge("COALITION", &[a, b])
+        .expect("the fixture graph admits the authored hyperedge");
 
     graph.set_allocator_cursors_for_test(AllocatorCursors {
         next_node: u64::MAX - 1,
         next_hyperedge: 1,
     });
-    assert_eq!(graph.add_node("BUSINESS").unwrap(), NodeId(u64::MAX - 1));
+    assert_eq!(
+        graph
+            .add_node("BUSINESS")
+            .expect("the fixture adds a node with a registered kind"),
+        NodeId(u64::MAX - 1)
+    );
     assert_eq!(graph.allocator_cursors().next_node, u64::MAX);
     assert_exhausted_node_allocator_is_atomic(&mut graph);
 
@@ -1439,7 +1879,9 @@ where
         next_hyperedge: u64::MAX - 1,
     });
     assert_eq!(
-        graph.add_hyperedge("COALITION", &[a, b]).unwrap(),
+        graph
+            .add_hyperedge("COALITION", &[a, b])
+            .expect("the fixture graph admits the authored hyperedge"),
         HyperedgeId(u64::MAX - 1)
     );
     assert_eq!(graph.allocator_cursors().next_hyperedge, u64::MAX);
@@ -1451,11 +1893,23 @@ fn assert_exhausted_node_allocator_is_atomic<G>(graph: &mut G)
 where
     G: GraphSubstrate + CanonicalState + AllocatorState,
 {
-    let before = graph.encode_state().unwrap().as_bytes().to_vec();
+    let before = graph
+        .encode_state()
+        .expect("the graph encodes its canonical state")
+        .as_bytes()
+        .to_vec();
     let cursors = graph.allocator_cursors();
-    let error = graph.add_node("BUSINESS").unwrap_err();
+    let error = graph
+        .add_node("BUSINESS")
+        .expect_err("the fixture call `add_node` fails for the authored inputs");
     assert!(error.message.contains("node identity allocator exhausted"));
-    assert_eq!(graph.encode_state().unwrap().as_bytes(), before);
+    assert_eq!(
+        graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes(),
+        before
+    );
     assert_eq!(graph.allocator_cursors(), cursors);
 }
 
@@ -1464,13 +1918,25 @@ fn assert_exhausted_hyperedge_allocator_is_atomic<G>(graph: &mut G, a: NodeId, b
 where
     G: GraphSubstrate + CanonicalState + AllocatorState,
 {
-    let before = graph.encode_state().unwrap().as_bytes().to_vec();
+    let before = graph
+        .encode_state()
+        .expect("the graph encodes its canonical state")
+        .as_bytes()
+        .to_vec();
     let cursors = graph.allocator_cursors();
-    let error = graph.add_hyperedge("COALITION", &[a, b]).unwrap_err();
+    let error = graph
+        .add_hyperedge("COALITION", &[a, b])
+        .expect_err("the fixture call `add_hyperedge` fails for the authored inputs");
     assert!(error
         .message
         .contains("hyperedge identity allocator exhausted"));
-    assert_eq!(graph.encode_state().unwrap().as_bytes(), before);
+    assert_eq!(
+        graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes(),
+        before
+    );
     assert_eq!(graph.allocator_cursors(), cursors);
 }
 

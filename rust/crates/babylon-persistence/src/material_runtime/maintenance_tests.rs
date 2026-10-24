@@ -47,14 +47,14 @@ fn captured_catalog() -> MichiganMaterialCatalog {
         &sources.path("defines.toml"),
         MichiganDeliveryPreset::StatewideMaintenanceBaseline,
     )
-    .unwrap();
+    .expect("the preset content loads");
     for name in [
         "defines.toml",
         "statewide-qualification.json.gz",
         "statewide-physical.json.gz",
         "statewide-sources.json",
     ] {
-        std::fs::remove_file(sources.path(name)).unwrap();
+        std::fs::remove_file(sources.path(name)).expect("the fixture file exists before removal");
     }
     let original = synthetic::catalog();
     assert_eq!(original.sites().len(), 397);
@@ -62,8 +62,12 @@ fn captured_catalog() -> MichiganMaterialCatalog {
     assert_eq!(original.goods(), catalog.goods());
     assert_eq!(original.merchants(), catalog.merchants());
     assert_eq!(original.rule_source(), catalog.rule_source());
-    let provider = catalog.site("owner-26163-81").unwrap();
-    let observed = catalog.industry_for_site(provider).unwrap();
+    let provider = catalog
+        .site("owner-26163-81")
+        .expect("the fixture catalog holds the addressed site");
+    let observed = catalog
+        .industry_for_site(provider)
+        .expect("the fixture call `industry_for_site` succeeds for the authored inputs");
     assert_eq!(observed.industry_code, "811310");
     assert_eq!(
         (observed.annual_avg_estabs_count, observed.annual_avg_emplvl),
@@ -93,13 +97,15 @@ fn opening_witness(
     case: Case,
     foundation: &MaterialRuntimeFoundation,
 ) -> Witness {
-    let provider = catalog.site("owner-26163-81").unwrap();
+    let provider = catalog
+        .site("owner-26163-81")
+        .expect("the fixture catalog holds the addressed site");
     let seed = catalog
         .staffing()
         .pools
         .iter()
         .find(|s| s.site_key == provider.key)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (seed.employed, seed.reserve, seed.previous_unretained_hours),
         (case.employed, 1 - case.employed, case.employed * 160)
@@ -109,12 +115,22 @@ fn opening_witness(
         .processes()
         .iter()
         .find(|p| p.key == "26163-31-33-metal_parts")
-        .unwrap();
-    let consumer = catalog.site(&process.site_key).unwrap().id();
-    let stock = catalog.good("metal_stock").unwrap();
-    let spares = catalog.good("metal_parts").unwrap();
+        .expect("the fixture holds the searched element");
+    let consumer = catalog
+        .site(&process.site_key)
+        .expect("the fixture catalog holds the addressed site")
+        .id();
+    let stock = catalog
+        .good("metal_stock")
+        .expect("the fixture catalog holds the addressed good");
+    let spares = catalog
+        .good("metal_parts")
+        .expect("the fixture catalog holds the addressed good");
     let initial = foundation.initial_register().state();
-    let binding = initial.maintenance_binding.as_ref().unwrap();
+    let binding = initial
+        .maintenance_binding
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     assert_eq!(
         (binding.provider_site_id, binding.consumer_process_id),
         (provider.id(), process.id())
@@ -127,7 +143,7 @@ fn opening_witness(
         initial
             .maintenance_service
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .available_batches,
         16
     );
@@ -136,7 +152,7 @@ fn opening_witness(
             .inventory
             .iter()
             .find(|r| r.site_id == consumer && r.good_id == stock.id())
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .quantity,
         2560
     );
@@ -145,7 +161,7 @@ fn opening_witness(
             .inventory
             .iter()
             .find(|r| r.site_id == provider.id() && r.good_id == spares.id())
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .quantity,
         case.opening_parts
     );
@@ -153,7 +169,7 @@ fn opening_witness(
         .orders
         .iter()
         .find(|r| r.buyer_site_id == provider.id())
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (order.supplier_site_id, order.good_id, order.ordered),
         (consumer, spares.id(), 256)
@@ -171,9 +187,12 @@ fn assert_close(candidate: &Candidate, case: Case, witness: &Witness, period: u6
         candidate.graph_report().report().per_rule_fired,
         [("material/period".to_owned(), 1)]
     );
-    let receipts =
-        material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
-    let maintenance = receipts.maintenance.as_ref().unwrap();
+    let receipts = material_world::decode_material_receipts(candidate.material().receipt_bytes())
+        .expect("the canonical bytes decode into the declared type");
+    let maintenance = receipts
+        .maintenance
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     // No commitment has no production receipt; the maintained process is still
     // present and its physical output is zero. Bound maintenance always receipts.
     let output = receipts
@@ -186,7 +205,7 @@ fn assert_close(candidate: &Candidate, case: Case, witness: &Witness, period: u6
         .orders
         .iter()
         .find(|r| r.order_id == witness.restock)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(order.ordered, 256, "replenishment demand remains finite");
     if period == 1 {
         assert_eq!(output, 960);
@@ -211,7 +230,7 @@ fn assert_close(candidate: &Candidate, case: Case, witness: &Witness, period: u6
                 .inventory
                 .iter()
                 .find(|r| r.site_id == witness.provider && r.good_id == witness.spares)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .quantity,
             case.opening_parts - maintenance.consumed_spare_parts + order.delivered
         );
@@ -220,7 +239,7 @@ fn assert_close(candidate: &Candidate, case: Case, witness: &Witness, period: u6
                 .labor
                 .iter()
                 .find(|r| r.site_id == witness.provider && r.period == 2)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .available,
             160
         );
@@ -244,8 +263,13 @@ fn failed_commit_retry(
     sink: &mut CollectingSink,
 ) -> Candidate {
     let opening = session.material().canonical_bytes().to_vec();
-    let graph = session.graph_session().stable_graph_state().unwrap();
-    let hash = session.current_world_hash().unwrap();
+    let graph = session
+        .graph_session()
+        .stable_graph_state()
+        .expect("the fixture graph has a stable state");
+    let hash = session
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
     let identity = *candidate.identity();
     let physical = candidate.material().register().clone();
     let receipts = candidate.material().receipt_bytes().to_vec();
@@ -259,10 +283,23 @@ fn failed_commit_retry(
     ));
     assert_eq!(session.completed_tick(), 0);
     assert_eq!(session.material().canonical_bytes(), opening);
-    assert_eq!(session.graph_session().stable_graph_state().unwrap(), graph);
-    assert_eq!(session.current_world_hash().unwrap(), hash);
+    assert_eq!(
+        session
+            .graph_session()
+            .stable_graph_state()
+            .expect("the fixture graph has a stable state"),
+        graph
+    );
+    assert_eq!(
+        session
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        hash
+    );
     assert!(sink.events.is_empty());
-    let retry = session.prepare_advance(actions).unwrap();
+    let retry = session
+        .prepare_advance(actions)
+        .expect("the session prepares the authored advance");
     assert_eq!(retry.identity(), &identity);
     assert_eq!(retry.material().register(), &physical);
     assert_eq!(retry.material().receipt_bytes(), receipts);
@@ -284,12 +321,15 @@ fn assert_full_projection(
         history,
     )
     .expect("the full observer must admit the maintenance provider and all merchant accounts");
-    let maintenance = snapshot.maintenance_account.as_ref().unwrap();
+    let maintenance = snapshot
+        .maintenance_account
+        .as_ref()
+        .expect("the fixture set the optional field before this read");
     let provider = snapshot
         .sites
         .iter()
         .find(|site| site.id == maintenance.provider_site_id)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert!(provider.roles.contains(&ProductionSiteRole::Maintenance));
     assert!(provider.processes.is_empty());
     assert_eq!(provider.observed_employment, Some(1480));
@@ -307,31 +347,43 @@ fn assert_full_projection(
             .completed
             .as_ref()
             .map(|done| done.completed_jobs),
-        history
-            .last()
-            .map(|(_, receipt, _)| receipt.maintenance.as_ref().unwrap().completed_jobs),
+        history.last().map(|(_, receipt, _)| receipt
+            .maintenance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .completed_jobs),
         "zero and positive service completion remain visible through the full projection"
     );
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "`qualify_case` keeps one authored boundary's fixture and assertions together"
+)]
 fn qualify_case(base: &MichiganMaterialCatalog, case: Case) {
-    let catalog = base.with_preset(case.delivery).unwrap();
+    let catalog = base
+        .with_preset(case.delivery)
+        .expect("the fixture builder accepts the authored options");
     assert_eq!(
         catalog.graph_scenario_source() == base.graph_scenario_source(),
         case.employed == 1
     );
     let preset = MichiganContentPreset::new_campaign(case.delivery);
-    let foundation = preset.create_foundation(&catalog).unwrap();
+    let foundation = preset
+        .create_foundation(&catalog)
+        .expect("the authored catalog builds the foundation");
     let witness = opening_witness(&catalog, case, &foundation);
     let mut restored = runtime::reconstruct_material_foundation(
         reconstruction_tests::stored_copy(&foundation),
         reconstruction_tests::persisted_graph_copy(foundation.graph_foundation()),
         foundation.digest(),
     )
-    .unwrap()
+    .expect("the fixture call `reconstruct_material_foundation` succeeds for the authored inputs")
     .into_session()
-    .unwrap();
-    let mut uninterrupted = foundation.into_session().unwrap();
+    .expect("the fixture opens a session");
+    let mut uninterrupted = foundation
+        .into_session()
+        .expect("the fixture opens a session");
     let mut sink = CollectingSink::default();
     let mut replay_sink = CollectingSink::default();
     let mut history = Vec::new();
@@ -341,12 +393,15 @@ fn qualify_case(base: &MichiganMaterialCatalog, case: Case) {
             uninterrupted.graph_session().session_identity().clone(),
             period,
         )
-        .unwrap();
-        let mut candidate = uninterrupted.prepare_advance(&actions).unwrap();
+        .expect("the empty authored batch constructs");
+        let mut candidate = uninterrupted
+            .prepare_advance(&actions)
+            .expect("the session prepares the authored advance");
         assert_close(&candidate, case, &witness, period);
         history.push((
             uninterrupted.material().clone(),
-            material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap(),
+            material_world::decode_material_receipts(candidate.material().receipt_bytes())
+                .expect("the canonical bytes decode into the declared type"),
             candidate.identity().receipt_digest(),
         ));
         assert_full_projection(
@@ -366,11 +421,13 @@ fn qualify_case(base: &MichiganMaterialCatalog, case: Case) {
                     MaterialWorldRegister::decode(
                         candidate.material().register().canonical_bytes(),
                     )
-                    .unwrap(),
+                    .expect("the committed canonical bytes decode"),
                 )
-                .unwrap();
+                .expect("the committed checkpoint restores");
         } else {
-            let replay = restored.prepare_advance(&actions).unwrap();
+            let replay = restored
+                .prepare_advance(&actions)
+                .expect("the session prepares the authored advance");
             assert_eq!(replay.identity(), candidate.identity());
             assert_eq!(
                 replay.material().receipt_bytes(),
@@ -388,17 +445,21 @@ fn qualify_case(base: &MichiganMaterialCatalog, case: Case) {
                 .commit_prepared_and_publish(&mut replay_sink, replay, |_| {
                     Ok::<_, ()>(ReplayCommitDisposition::Committed)
                 })
-                .unwrap();
+                .expect("the prepared period commits");
         }
         uninterrupted
             .commit_prepared_and_publish(&mut sink, candidate, |_| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
-            .unwrap();
+            .expect("the prepared period commits");
         assert_eq!(restored.material(), uninterrupted.material());
         assert_eq!(
-            restored.current_world_hash().unwrap(),
-            uninterrupted.current_world_hash().unwrap()
+            restored
+                .current_world_hash()
+                .expect("the committed session publishes a world hash"),
+            uninterrupted
+                .current_world_hash()
+                .expect("the committed session publishes a world hash")
         );
     }
 }

@@ -26,7 +26,8 @@ pub(crate) fn persisted_graph_copy(original: &CampaignFoundation) -> CampaignFou
         original.world_register_bytes().to_vec(),
         original.resolver_manifest_bytes().to_vec(),
         original.prepared_environment_bytes().to_vec(),
-        std::str::from_utf8(original.replay_session_identity().as_bytes()).unwrap(),
+        std::str::from_utf8(original.replay_session_identity().as_bytes())
+            .expect("the fixture bytes came from a UTF-8 string"),
         i64::from_be_bytes(original.rng_seed().to_be_bytes()),
         original.content_digest().defines_hash,
         original.content_digest().rules_hash,
@@ -34,7 +35,7 @@ pub(crate) fn persisted_graph_copy(original: &CampaignFoundation) -> CampaignFou
         bundle.canonical_bytes(),
         content_digest::sha256_of(original.canonical_bytes()),
     )
-    .unwrap()
+    .expect("the persisted content admits the value")
 }
 
 pub(super) fn stored_copy(original: &MaterialRuntimeFoundation) -> StoredMaterialFoundation {
@@ -52,7 +53,7 @@ pub(super) fn stored_copy(original: &MaterialRuntimeFoundation) -> StoredMateria
 fn material_campaign_captures_authored_cycle_and_fires_it_once_per_period() {
     let foundation = crate::michigan_content::MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let rules = foundation
         .graph_foundation()
         .content_bundle()
@@ -61,15 +62,19 @@ fn material_campaign_captures_authored_cycle_and_fires_it_once_per_period() {
         !rules.is_empty(),
         "a material campaign must capture its authored cycle rule"
     );
-    let mut session = foundation.into_session().unwrap();
+    let mut session = foundation
+        .into_session()
+        .expect("the fixture opens a session");
     let mut sink = CollectingSink::default();
     for tick in 1..=4 {
         let actions = OrderedPracticeActionBatch::empty(
             session.graph_session().session_identity().clone(),
             tick,
         )
-        .unwrap();
-        let candidate = session.prepare_advance(&actions).unwrap();
+        .expect("the empty authored batch constructs");
+        let candidate = session
+            .prepare_advance(&actions)
+            .expect("the session prepares the authored advance");
         assert_eq!(
             candidate.graph_report().report().per_rule_fired,
             [("material/period".to_owned(), 1)],
@@ -79,7 +84,7 @@ fn material_campaign_captures_authored_cycle_and_fires_it_once_per_period() {
             .commit_prepared_and_publish(&mut sink, candidate, |_| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
-            .unwrap();
+            .expect("the prepared period commits");
     }
 }
 
@@ -87,12 +92,14 @@ fn material_campaign_captures_authored_cycle_and_fires_it_once_per_period() {
 fn material_foundation_refuses_a_rule_bundle_different_from_its_captured_catalog() {
     let original = crate::michigan_content::MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let bundle = original.graph_foundation().content_bundle();
-    let source = std::str::from_utf8(bundle.scenario_source_bytes()).unwrap();
+    let source = std::str::from_utf8(bundle.scenario_source_bytes())
+        .expect("the fixture bytes came from a UTF-8 string");
     let changed_rules = format!(
         "; This source was not captured in the catalog.\n{}",
-        std::str::from_utf8(bundle.rule_source_bytes()).unwrap()
+        std::str::from_utf8(bundle.rule_source_bytes())
+            .expect("the fixture bytes came from a UTF-8 string")
     );
     let changed_bundle = FoundationContentBundle::try_new(
         source,
@@ -101,7 +108,7 @@ fn material_foundation_refuses_a_rule_bundle_different_from_its_captured_catalog
         bundle.defines_bytes(),
         bundle.reference_bundle_manifest_bytes(),
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(changed_bundle.content_digest(), bundle.content_digest());
     let changed_graph = ReplayTickSession::new(
         source,
@@ -116,12 +123,13 @@ fn material_foundation_refuses_a_rule_bundle_different_from_its_captured_catalog
         changed_bundle.content_digest().clone(),
         changed_bundle.reference_digest(),
         MaterialState::try_from_geography(MaterialGeography::MichiganControl {
-            local_detail: crate::michigan_dynamic_hex_foundation().unwrap(),
+            local_detail: crate::michigan_dynamic_hex_foundation()
+                .expect("the Michigan hex foundation builds"),
             reference_bundle_digest: *changed_bundle.reference_digest().as_bytes(),
         })
-        .unwrap(),
+        .expect("the fixture input satisfies the fallible conversion"),
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     assert!(matches!(
         MaterialRuntimeFoundation::capture(
             changed_graph,
@@ -136,8 +144,9 @@ fn material_foundation_refuses_a_rule_bundle_different_from_its_captured_catalog
 fn alternate_foundation() -> MaterialRuntimeFoundation {
     let original = crate::michigan_content::MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
-    recapture_with_seed(&original, 9821).unwrap()
+        .expect("the authored catalog builds the foundation");
+    recapture_with_seed(&original, 9821)
+        .expect("the fixture call `recapture_with_seed` succeeds for the authored inputs")
 }
 
 fn recapture_with_seed(
@@ -162,8 +171,10 @@ fn typed_experiment_refuses_a_graph_seed_different_from_its_captured_input() {
     let experiment = SimulationExperimentV1::parse(include_bytes!(
         "../../../../../content/scenarios/michigan/diagnostic-sustained.json"
     ))
-    .unwrap();
-    let original = experiment.create_foundation().unwrap();
+    .expect("the authored literal parses as the declared type");
+    let original = experiment
+        .create_foundation()
+        .expect("the authored catalog builds the foundation");
     assert!(recapture_with_seed(&original, experiment.seed).is_ok());
     assert!(recapture_with_seed(&original, 9821).is_err());
 }
@@ -178,18 +189,26 @@ fn stored_content_reconstructs_exact_alternate_session_and_seed_without_factory_
         persisted_graph_copy(original.graph_foundation()),
         digest,
     )
-    .unwrap();
+    .expect("the fixture call `reconstruct_material_foundation` succeeds for the authored inputs");
     assert_eq!(
-        reconstructed.export_canonical_bytes().unwrap(),
-        original.export_canonical_bytes().unwrap()
+        reconstructed
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes"),
+        original
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes")
     );
     assert_eq!(
         reconstructed.initial_register(),
         original.initial_register()
     );
     assert_eq!(reconstructed.spec(), original.spec());
-    let uninterrupted = original.into_session().unwrap();
-    let reopened = reconstructed.into_session().unwrap();
+    let uninterrupted = original
+        .into_session()
+        .expect("the fixture opens a session");
+    let reopened = reconstructed
+        .into_session()
+        .expect("the fixture opens a session");
     assert_eq!(
         reopened.graph_session().session_identity(),
         uninterrupted.graph_session().session_identity()
@@ -198,9 +217,13 @@ fn stored_content_reconstructs_exact_alternate_session_and_seed_without_factory_
         uninterrupted.graph_session().session_identity().clone(),
         1,
     )
-    .unwrap();
-    let first = uninterrupted.prepare_advance(&actions).unwrap();
-    let restored_first = reopened.prepare_advance(&actions).unwrap();
+    .expect("the empty authored batch constructs");
+    let first = uninterrupted
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance");
+    let restored_first = reopened
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance");
     assert_eq!(first.identity(), restored_first.identity());
     assert_eq!(
         first.material().register().canonical_bytes(),
@@ -216,7 +239,7 @@ fn stored_content_reconstructs_exact_alternate_session_and_seed_without_factory_
 fn reconstruction_refuses_component_changes_and_an_unadmitted_expected_identity() {
     let original = crate::michigan_content::MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let expected = original.digest();
     for mutation in 0..5 {
         let mut stored = stored_copy(&original);
@@ -254,7 +277,7 @@ fn reconstruction_refuses_component_changes_and_an_unadmitted_expected_identity(
 fn reconstruction_rejects_a_different_valid_graph_and_a_nonzero_initial_register() {
     let original = crate::michigan_content::MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let alternate = alternate_foundation();
     let mut mixed = stored_copy(&original);
     mixed.graph_foundation_digest =
@@ -270,13 +293,15 @@ fn reconstruction_rejects_a_different_valid_graph_and_a_nonzero_initial_register
     let mut stored = stored_copy(&original);
     let graph = persisted_graph_copy(original.graph_foundation());
     let expected = original.digest();
-    let session = original.into_session().unwrap();
+    let session = original
+        .into_session()
+        .expect("the fixture opens a session");
     let actions =
         OrderedPracticeActionBatch::empty(session.graph_session().session_identity().clone(), 1)
-            .unwrap();
+            .expect("the empty authored batch constructs");
     stored.initial_register_bytes = session
         .prepare_advance(&actions)
-        .unwrap()
+        .expect("the session prepares the authored advance")
         .material()
         .register()
         .canonical_bytes()
@@ -291,7 +316,7 @@ fn reconstruction_rejects_a_different_valid_graph_and_a_nonzero_initial_register
 fn large_stored_sources_reconstruct_the_same_circuit_without_factory_substitution() {
     let original = crate::michigan_content::MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     assert!(
         original
             .graph_foundation()
@@ -305,18 +330,30 @@ fn large_stored_sources_reconstruct_the_same_circuit_without_factory_substitutio
         persisted_graph_copy(original.graph_foundation()),
         original.digest(),
     )
-    .unwrap();
+    .expect("the fixture call `reconstruct_material_foundation` succeeds for the authored inputs");
     assert_eq!(
-        restored.export_canonical_bytes().unwrap(),
-        original.export_canonical_bytes().unwrap()
+        restored
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes"),
+        original
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes")
     );
-    let continued = original.into_session().unwrap();
-    let reopened = restored.into_session().unwrap();
+    let continued = original
+        .into_session()
+        .expect("the fixture opens a session");
+    let reopened = restored
+        .into_session()
+        .expect("the fixture opens a session");
     let actions =
         OrderedPracticeActionBatch::empty(continued.graph_session().session_identity().clone(), 1)
-            .unwrap();
-    let left = continued.prepare_advance(&actions).unwrap();
-    let right = reopened.prepare_advance(&actions).unwrap();
+            .expect("the empty authored batch constructs");
+    let left = continued
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance");
+    let right = reopened
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance");
     assert_eq!(
         left.material().register().canonical_bytes(),
         right.material().register().canonical_bytes()
@@ -333,26 +370,36 @@ fn admitted_bundle_foundations_reconstruct_exactly_through_dispatch_transit_and_
     ] {
         let original = preset
             .create_foundation(&crate::test_support::catalog())
-            .unwrap();
+            .expect("the authored catalog builds the foundation");
         let restored = super::reconstruct_material_foundation(
             stored_copy(&original),
             persisted_graph_copy(original.graph_foundation()),
             preset
                 .admitted(&crate::test_support::catalog())
-                .unwrap()
+                .expect("the fixture admits the authored value")
                 .digest(),
         )
-        .unwrap();
+        .expect(
+            "the fixture call `reconstruct_material_foundation` succeeds for the authored inputs",
+        );
         assert_eq!(
-            restored.export_canonical_bytes().unwrap(),
-            original.export_canonical_bytes().unwrap()
+            restored
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes"),
+            original
+                .export_canonical_bytes()
+                .expect("the content exports its canonical bytes")
         );
         assert_eq!(
             restored.graph_foundation().content_bundle().defines_bytes(),
             original.graph_foundation().content_bundle().defines_bytes()
         );
-        let mut continued = original.into_session().unwrap();
-        let mut reopened = restored.into_session().unwrap();
+        let mut continued = original
+            .into_session()
+            .expect("the fixture opens a session");
+        let mut reopened = restored
+            .into_session()
+            .expect("the fixture opens a session");
         let mut left_sink = CollectingSink::default();
         let mut right_sink = CollectingSink::default();
         for period in 1..=6 {
@@ -360,9 +407,13 @@ fn admitted_bundle_foundations_reconstruct_exactly_through_dispatch_transit_and_
                 continued.graph_session().session_identity().clone(),
                 period,
             )
-            .unwrap();
-            let left = continued.prepare_advance(&actions).unwrap();
-            let right = reopened.prepare_advance(&actions).unwrap();
+            .expect("the empty authored batch constructs");
+            let left = continued
+                .prepare_advance(&actions)
+                .expect("the session prepares the authored advance");
+            let right = reopened
+                .prepare_advance(&actions)
+                .expect("the session prepares the authored advance");
             assert_eq!(
                 left.graph_report().successful_event_batch().events(),
                 right.graph_report().successful_event_batch().events()
@@ -388,12 +439,12 @@ fn admitted_bundle_foundations_reconstruct_exactly_through_dispatch_transit_and_
                 .commit_prepared_and_publish(&mut left_sink, left, |_| {
                     Ok::<_, ()>(ReplayCommitDisposition::Committed)
                 })
-                .unwrap();
+                .expect("the prepared period commits");
             reopened
                 .commit_prepared_and_publish(&mut right_sink, right, |_| {
                     Ok::<_, ()>(ReplayCommitDisposition::Committed)
                 })
-                .unwrap();
+                .expect("the prepared period commits");
             if let Some(checkpoint) = checkpoint {
                 reopened = checkpoint;
             }
@@ -407,10 +458,10 @@ fn bundle_reconstruction_refuses_alternate_content_and_individually_valid_change
     let preset = MichiganContentPreset::FourWeekStandard;
     let original = preset
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let expected = preset
         .admitted(&crate::test_support::catalog())
-        .unwrap()
+        .expect("the fixture admits the authored value")
         .digest();
     let previous = alternate_foundation();
     // A valid graph with a different seed/session cannot replace the admitted one.
@@ -429,7 +480,7 @@ fn bundle_reconstruction_refuses_alternate_content_and_individually_valid_change
     let mut state = original.initial_register().state().clone();
     state.inventory[0].quantity += 1;
     changed.initial_register_bytes = MaterialWorldRegister::try_new(0, state)
-        .unwrap()
+        .expect("the authored fixture satisfies the constructor invariants")
         .canonical_bytes()
         .to_vec();
     assert!(matches!(
@@ -461,16 +512,16 @@ fn assert_delayed_panel_retention(candidate: &PreparedMaterialTick<HypergraphSto
         .pools
         .iter()
         .find(|seed| seed.key == "panel-forming")
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .workplace_local_name();
     let panel = events.iter().find(|event| event.fields().iter().any(|(key,value)| {
         key == "subject" && matches!(value, StableBslValue::Node(StableElementKey::Node{local_name,..}) if *local_name == panel_name)
-    })).unwrap();
+    })).expect("the fixture holds the searched element");
     let field = |name| match &panel
         .fields()
         .iter()
         .find(|(key, _)| key == name)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .1
     {
         StableBslValue::Int(value) => *value,
@@ -496,11 +547,13 @@ fn assert_delayed_panel_retention(candidate: &PreparedMaterialTick<HypergraphSto
 fn unwrapped_definitions_and_changed_opening_workforce_are_not_scheduled_fallbacks() {
     let current = crate::michigan_content::MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let original = current.graph_foundation().content_bundle();
-    let rules = std::str::from_utf8(original.rule_source_bytes()).unwrap();
+    let rules = std::str::from_utf8(original.rule_source_bytes())
+        .expect("the fixture bytes came from a UTF-8 string");
     for change_seed in [false, true] {
-        let source = std::str::from_utf8(original.scenario_source_bytes()).unwrap();
+        let source = std::str::from_utf8(original.scenario_source_bytes())
+            .expect("the fixture bytes came from a UTF-8 string");
         let changed_source = source.replace(
             "(social-class/employed-population 20)",
             "(social-class/employed-population 19)",
@@ -522,23 +575,25 @@ fn unwrapped_definitions_and_changed_opening_workforce_are_not_scheduled_fallbac
             defines,
             original.reference_bundle_manifest_bytes(),
         )
-        .unwrap();
+        .expect("the authored fixture satisfies the constructor invariants");
         let graph = ReplayTickSession::new(
             source,
             None,
             rules,
             HypergraphStore::new(),
-            ReplaySessionId::try_from("fixture/unsupported-authority").unwrap(),
+            ReplaySessionId::try_from("fixture/unsupported-authority")
+                .expect("the fixture value fits the target range"),
             ReplaySeed::new(319),
             bundle.content_digest().clone(),
             bundle.reference_digest(),
             MaterialState::try_from_geography(MaterialGeography::MichiganControl {
-                local_detail: crate::michigan_dynamic_hex_foundation().unwrap(),
+                local_detail: crate::michigan_dynamic_hex_foundation()
+                    .expect("the Michigan hex foundation builds"),
                 reference_bundle_digest: *bundle.reference_digest().as_bytes(),
             })
-            .unwrap(),
+            .expect("the fixture input satisfies the fallible conversion"),
         )
-        .unwrap();
+        .expect("the constructor accepts the authored fixture arguments");
         assert!(matches!(
             MaterialRuntimeFoundation::capture(
                 graph,
@@ -557,18 +612,18 @@ fn reconstructed_checkpoint(
 ) -> MaterialReplaySession<HypergraphStore> {
     let stored = preset
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let mut restored = super::reconstruct_material_foundation(
         stored_copy(&stored),
         persisted_graph_copy(stored.graph_foundation()),
         preset
             .admitted(&crate::test_support::catalog())
-            .unwrap()
+            .expect("the fixture admits the authored value")
             .digest(),
     )
-    .unwrap()
+    .expect("the fixture call `reconstruct_material_foundation` succeeds for the authored inputs")
     .into_session()
-    .unwrap();
+    .expect("the fixture opens a session");
     let graph = candidate.graph_report();
     restored
         .restore_full_checkpoint(
@@ -576,9 +631,9 @@ fn reconstructed_checkpoint(
             graph.material_state_rows(),
             graph.result_registers().canonical_bytes(),
             MaterialWorldRegister::decode(candidate.material().register().canonical_bytes())
-                .unwrap(),
+                .expect("the committed canonical bytes decode"),
         )
-        .unwrap();
+        .expect("the committed checkpoint restores");
     restored
 }
 
@@ -591,7 +646,7 @@ fn assert_workforce_seed_evidence(candidate: &PreparedMaterialTick<HypergraphSto
     for seed in &catalog.staffing().pools {
         let event = events.iter().find(|event| event.fields().iter().any(|(key,value)| {
             key == "subject" && matches!(value, StableBslValue::Node(StableElementKey::Node{local_name,..}) if *local_name == seed.workplace_local_name())
-        })).unwrap();
+        })).expect("the fixture holds the searched element");
         for (field, value) in [
             ("opening-employed", seed.employed),
             ("opening-reserve", seed.reserve),
@@ -599,7 +654,9 @@ fn assert_workforce_seed_evidence(candidate: &PreparedMaterialTick<HypergraphSto
         ] {
             assert!(event.fields().contains(&(
                 field.to_owned(),
-                StableBslValue::Int(i64::try_from(value).unwrap())
+                StableBslValue::Int(
+                    i64::try_from(value).expect("the fixture value fits the target range")
+                )
             )));
         }
     }
@@ -609,18 +666,18 @@ fn assert_workforce_seed_evidence(candidate: &PreparedMaterialTick<HypergraphSto
 fn material_transition_failure_abandons_prepared_graph_and_identity() {
     let foundation = crate::michigan_content::MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let mut initial = foundation.initial_register().state().clone();
     let source = initial
         .production_commitments
         .iter()
         .find(|row| row.period == 1 && row.planned_batches > 0)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let output = initial
         .process_outputs
         .iter()
         .find(|row| row.process_id == source.process_id)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .clone();
     if let Some(stock) = initial.inventory.iter_mut().find(|row| {
         row.site_id == output.site_id
@@ -638,7 +695,8 @@ fn material_transition_failure_abandons_prepared_graph_and_identity() {
                 quantity: u64::MAX,
             });
     }
-    let register = MaterialWorldRegister::try_new(0, initial).unwrap();
+    let register = MaterialWorldRegister::try_new(0, initial)
+        .expect("the authored fixture satisfies the constructor invariants");
     let session = MaterialReplaySession::new(
         foundation.graph,
         register,
@@ -646,12 +704,14 @@ fn material_transition_failure_abandons_prepared_graph_and_identity() {
         babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
         foundation.labor,
     )
-    .unwrap();
+    .expect("the constructor accepts the authored fixture arguments");
     let bytes = session.material().canonical_bytes().to_vec();
-    let hash = session.current_world_hash().unwrap();
+    let hash = session
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
     let actions =
         OrderedPracticeActionBatch::empty(session.graph_session().session_identity().clone(), 1)
-            .unwrap();
+            .expect("the empty authored batch constructs");
     assert!(matches!(
         session.prepare_advance(&actions),
         Err(MaterialReplayError::Graph(
@@ -667,7 +727,12 @@ fn material_transition_failure_abandons_prepared_graph_and_identity() {
     assert_eq!(session.completed_tick(), 0);
     assert_eq!(session.graph_session().completed_tick(), 0);
     assert_eq!(session.material().canonical_bytes(), bytes);
-    assert_eq!(session.current_world_hash().unwrap(), hash);
+    assert_eq!(
+        session
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
+        hash
+    );
 }
 
 #[test]
@@ -677,30 +742,32 @@ fn captured_source_refuses_changed_tick_zero_organizer_agreements() {
             .join("../../../content/scenarios/michigan/defines.toml"),
         MichiganDeliveryPreset::OrganizeInWayne,
     )
-    .unwrap();
+    .expect("the preset content loads");
     let original = crate::michigan_content::MichiganContentPreset::OrganizeInWayne
         .create_foundation_for_campaign(&catalog, CampaignId::from_uuid(Uuid::from_u128(0x40_265)))
-        .unwrap();
+        .expect("the authored catalog builds the campaign foundation");
     let mut changed = original
         .initial_register()
         .organizer_state()
-        .unwrap()
+        .expect("the fixture register carries organizer state")
         .clone();
     assert!(!changed.agreements.is_empty());
     changed.agreements.clear();
     let altered_register =
         MaterialWorldRegister::try_new(0, original.initial_register().state().clone())
-            .unwrap()
+            .expect("the authored fixture satisfies the constructor invariants")
             .with_organizer(
                 original
                     .initial_register()
                     .organizer_config()
-                    .unwrap()
+                    .expect("the fixture register carries organizer config")
                     .clone(),
                 changed,
             )
-            .unwrap();
-    let graph = runtime::reconstruct_graph_foundation_session(original.graph_foundation()).unwrap();
+            .expect("the fixture builder accepts the authored options");
+    let graph = runtime::reconstruct_graph_foundation_session(original.graph_foundation()).expect(
+        "the fixture call `reconstruct_graph_foundation_session` succeeds for the authored inputs",
+    );
     assert!(MaterialRuntimeFoundation::capture_register(
         graph,
         FoundationContentBundle::decode(
@@ -709,7 +776,7 @@ fn captured_source_refuses_changed_tick_zero_organizer_agreements() {
                 .content_bundle()
                 .canonical_bytes(),
         )
-        .unwrap(),
+        .expect("the committed canonical bytes decode"),
         altered_register,
         original.spec().clone(),
     )
@@ -720,23 +787,35 @@ fn captured_source_refuses_changed_tick_zero_organizer_agreements() {
 fn single_owner_components_preserve_binary_export_and_reject_framing_damage() {
     let original = crate::michigan_content::MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
-        .unwrap();
+        .expect("the authored catalog builds the foundation");
     let rebuilt = super::reconstruct_material_foundation(
         stored_copy(&original),
         persisted_graph_copy(original.graph_foundation()),
         original.digest(),
     )
-    .unwrap();
-    let exported = original.export_canonical_bytes().unwrap();
-    assert_eq!(original.canonical_len().unwrap(), exported.len());
+    .expect("the fixture call `reconstruct_material_foundation` succeeds for the authored inputs");
+    let exported = original
+        .export_canonical_bytes()
+        .expect("the content exports its canonical bytes");
+    assert_eq!(
+        original
+            .canonical_len()
+            .expect("the fixture call `canonical_len` succeeds for the authored inputs"),
+        exported.len()
+    );
     assert_eq!(original.digest(), content_digest::sha256_of(&exported));
-    assert_eq!(rebuilt.export_canonical_bytes().unwrap(), exported);
+    assert_eq!(
+        rebuilt
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes"),
+        exported
+    );
     assert_eq!(rebuilt.digest(), original.digest());
     assert_eq!(
         MaterialRuntimeFoundation::decode(&exported, original.digest())
-            .unwrap()
+            .expect("the committed canonical bytes decode")
             .export_canonical_bytes()
-            .unwrap(),
+            .expect("the content exports its canonical bytes"),
         exported
     );
     let mut trailing = exported;

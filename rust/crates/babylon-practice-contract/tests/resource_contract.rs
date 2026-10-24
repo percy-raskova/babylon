@@ -28,7 +28,7 @@ fn cases() -> Vec<Value> {
         .take(32)
         .map(|line| {
             assert!(line.len() <= 65_536);
-            serde_json::from_str(line).unwrap()
+            serde_json::from_str(line).expect("the authored JSON matches the declared schema")
         })
         .collect()
 }
@@ -37,7 +37,7 @@ fn case<'a>(cases: &'a [Value], case_id: &str) -> &'a Value {
     cases
         .iter()
         .find(|value| value["case_id"] == case_id)
-        .unwrap()
+        .expect("the fixture holds the searched element")
 }
 
 #[test]
@@ -51,7 +51,11 @@ fn language_neutral_resource_vectors_drive_every_rust_digest() {
 
     let manifest = case(&cases, "manifest");
     assert_eq!(
-        hex_bytes(manifest["data"]["schema_sha256"].as_str().unwrap()),
+        hex_bytes(
+            manifest["data"]["schema_sha256"]
+                .as_str()
+                .expect("the JSON fixture field is a string")
+        ),
         PRACTICE_RESOURCE_ALLOCATION_SOURCE_SHA256
     );
     assert_eq!(manifest["data"]["contract_bytes"], 66);
@@ -63,54 +67,77 @@ fn language_neutral_resource_vectors_drive_every_rust_digest() {
     assert_eq!(manifest["data"]["max_capacities_total"], 65_536);
 
     let contract_case = case(&cases, "allocation-contract");
-    let contract_bytes = hex_bytes(contract_case["data"]["canonical_hex"].as_str().unwrap());
+    let contract_bytes = hex_bytes(
+        contract_case["data"]["canonical_hex"]
+            .as_str()
+            .expect("the JSON fixture field is a string"),
+    );
     let contract =
         babylon_practice_contract::decode_practice_resource_allocation_contract(&contract_bytes)
-            .unwrap();
+            .expect("the canonical bytes decode into the declared type");
     assert_eq!(
-        encode_practice_resource_allocation_contract(&contract).unwrap(),
+        encode_practice_resource_allocation_contract(&contract)
+            .expect("the fixture value encodes to its canonical bytes"),
         contract_bytes
     );
     assert_eq!(
         practice_resource_allocation_contract_digest(&contract)
-            .unwrap()
+            .expect("the fixture call `practice_resource_allocation_contract_digest` succeeds for the authored inputs")
             .to_vec(),
-        hex_bytes(contract_case["data"]["digest_hex"].as_str().unwrap())
+        hex_bytes(contract_case["data"]["digest_hex"].as_str().expect("the JSON fixture field is a string"))
     );
 
     let request_case = case(&cases, "request-shared-90");
-    let request_bytes = hex_bytes(request_case["data"]["canonical_hex"].as_str().unwrap());
-    let request =
-        babylon_practice_contract::decode_practice_resource_request(&request_bytes).unwrap();
+    let request_bytes = hex_bytes(
+        request_case["data"]["canonical_hex"]
+            .as_str()
+            .expect("the JSON fixture field is a string"),
+    );
+    let request = babylon_practice_contract::decode_practice_resource_request(&request_bytes)
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(
-        encode_practice_resource_request(&request).unwrap(),
+        encode_practice_resource_request(&request)
+            .expect("the fixture value encodes to its canonical bytes"),
         request_bytes
     );
     assert_eq!(
-        practice_resource_request_digest(&request).unwrap().to_vec(),
-        hex_bytes(request_case["data"]["digest_hex"].as_str().unwrap())
+        practice_resource_request_digest(&request).expect("the fixture call `practice_resource_request_digest` succeeds for the authored inputs").to_vec(),
+        hex_bytes(request_case["data"]["digest_hex"].as_str().expect("the JSON fixture field is a string"))
     );
 
     let capacity_case = case(&cases, "capacity-shared-50");
-    let capacity_bytes = hex_bytes(capacity_case["data"]["canonical_hex"].as_str().unwrap());
-    let capacity =
-        babylon_practice_contract::decode_practice_resource_capacity(&capacity_bytes).unwrap();
+    let capacity_bytes = hex_bytes(
+        capacity_case["data"]["canonical_hex"]
+            .as_str()
+            .expect("the JSON fixture field is a string"),
+    );
+    let capacity = babylon_practice_contract::decode_practice_resource_capacity(&capacity_bytes)
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(
-        encode_practice_resource_capacity(&capacity).unwrap(),
+        encode_practice_resource_capacity(&capacity)
+            .expect("the fixture value encodes to its canonical bytes"),
         capacity_bytes
     );
     assert_eq!(
         practice_resource_capacity_digest(&capacity)
-            .unwrap()
+            .expect("the fixture call `practice_resource_capacity_digest` succeeds for the authored inputs")
             .to_vec(),
-        hex_bytes(capacity_case["data"]["digest_hex"].as_str().unwrap())
+        hex_bytes(capacity_case["data"]["digest_hex"].as_str().expect("the JSON fixture field is a string"))
     );
 
     let outcome_case = case(&cases, "outcome-pro-rata");
-    let outcome_bytes = hex_bytes(outcome_case["data"]["canonical_hex"].as_str().unwrap());
+    let outcome_bytes = hex_bytes(
+        outcome_case["data"]["canonical_hex"]
+            .as_str()
+            .expect("the JSON fixture field is a string"),
+    );
     assert_eq!(
         babylon_kernel::content_digest::sha256_of(&outcome_bytes).to_vec(),
-        hex_bytes(outcome_case["data"]["digest_hex"].as_str().unwrap())
+        hex_bytes(
+            outcome_case["data"]["digest_hex"]
+                .as_str()
+                .expect("the JSON fixture field is a string")
+        )
     );
 }
 
@@ -120,9 +147,19 @@ fn language_neutral_invalid_contract_vectors_keep_exact_refusals() {
         .iter()
         .filter(|value| value["kind"] == "invalid_contract_wire")
     {
-        let payload = hex_bytes(value["data"]["payload_hex"].as_str().unwrap());
-        let code = u16::try_from(value["data"]["error"].as_u64().unwrap()).unwrap();
-        let expected = PracticeResourceError::try_from(code).unwrap();
+        let payload = hex_bytes(
+            value["data"]["payload_hex"]
+                .as_str()
+                .expect("the JSON fixture field is a string"),
+        );
+        let code = u16::try_from(
+            value["data"]["error"]
+                .as_u64()
+                .expect("the JSON fixture field is an unsigned integer"),
+        )
+        .expect("the fixture value fits the target range");
+        let expected =
+            PracticeResourceError::try_from(code).expect("the fixture value fits the target range");
         assert_eq!(
             babylon_practice_contract::decode_practice_resource_allocation_contract(&payload),
             Err(expected),

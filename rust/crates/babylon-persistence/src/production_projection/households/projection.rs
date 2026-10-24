@@ -351,14 +351,20 @@ mod tests {
             let CircuitAccounting::Monetary(economy) = &mut opening.accounting else {
                 panic!("monetary control");
             };
-            let recurring = economy.recurring.as_mut().unwrap();
+            let recurring = economy
+                .recurring
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow");
             recurring.households[0].kind = kind;
             recurring.households[0].households = count;
             recurring.household_needs[0].basis = basis;
-            let opening = MaterialWorldRegister::try_new(0, opening).unwrap();
-            let next = opening.prepare_next().unwrap();
-            let mut receipts =
-                material_world::decode_material_receipts(next.receipt_bytes()).unwrap();
+            let opening = MaterialWorldRegister::try_new(0, opening)
+                .expect("the authored fixture satisfies the constructor invariants");
+            let next = opening
+                .prepare_next()
+                .expect("the fixture prepares the authored state");
+            let mut receipts = material_world::decode_material_receipts(next.receipt_bytes())
+                .expect("the canonical bytes decode into the declared type");
             let project = |receipts: &MaterialTickReceipts| {
                 project_with_labels(
                     next.register().state(),
@@ -367,12 +373,16 @@ mod tests {
                     |_, _| Some(("food".to_owned(), "units".to_owned())),
                 )
             };
-            let rows = project(&receipts).unwrap();
+            let rows =
+                project(&receipts).expect("the fixture projection accepts the authored state");
             assert_eq!(rows.len(), 1);
             assert_eq!(rows[0].kind, ProductionHouseholdKind::from(kind));
             assert_eq!((rows[0].person_count, rows[0].household_count), (4, count));
             assert_eq!(rows[0].required_per_period, required);
-            let completed = rows[0].completed.as_ref().unwrap();
+            let completed = rows[0]
+                .completed
+                .as_ref()
+                .expect("the fixture set the optional field before this read");
             assert_eq!(
                 (completed.required, completed.consumed),
                 (required, required)

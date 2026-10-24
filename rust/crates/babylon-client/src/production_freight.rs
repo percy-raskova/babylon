@@ -387,11 +387,11 @@ pub(crate) fn account_reading_with_index<'a>(
         .filter_map(|reference| orders.get(reference))
         .filter_map(|order| order.supplier_relation_id.as_deref())
         .collect();
-    for route in routes
+    let remaining_routes = routes
         .iter()
         .filter(|route| !named.contains(route.id.as_str()))
-        .take(6)
-    {
+        .take(6);
+    for route in remaining_routes {
         writeln!(output, "Participant: {}\n", route_label(route, snapshot)).expect("String write");
     }
     writeln!(output, "Next opening (period {}): {} available\nReservations use capacity; goods arrive after travel. Follow arrivals in Flow and staffing in Work.",
@@ -527,11 +527,11 @@ fn compare_orders(
         let left = left.get(key).copied().unwrap_or([0; 3]);
         let right = right.get(key).copied().unwrap_or([0; 3]);
         writeln!(output, "{}", route_label(route, current)).expect("String write");
-        for ((label, a), b) in ["Requested", "Dispatched", "Remaining unshipped"]
+        let requested_rows = ["Requested", "Dispatched", "Remaining unshipped"]
             .into_iter()
             .zip(left)
-            .zip(right)
-        {
+            .zip(right);
+        for ((label, a), b) in requested_rows {
             pair(output, label, a, b, &route.unit);
         }
         pair(
@@ -757,7 +757,7 @@ pub(crate) mod tests {
             definition.id = babylon_persistence::production_observation::freight_order_identity(
                 &definition.order,
             )
-            .unwrap();
+            .expect("the fixture freight order has an identity");
             for account in &mut snapshot.freight_capacity_accounts {
                 if let Some(completed) = &mut account.completed {
                     for reservation in &mut completed.reservations {
@@ -772,6 +772,10 @@ pub(crate) mod tests {
         }
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "`fixture` keeps one authored boundary's fixture and assertions together"
+    )]
     pub(crate) fn fixture() -> ProductionSnapshot {
         let mut freight_order_definitions = Vec::new();
         let capacity = capacity_fixture(&mut freight_order_definitions);
@@ -780,7 +784,9 @@ pub(crate) mod tests {
             .map(|id| ProductionSite {
                 function: "manufacturing".into(),
                 id: id.into(),
-                location: "county:26163".parse().unwrap(),
+                location: "county:26163"
+                    .parse()
+                    .expect("the authored literal parses as the declared type"),
                 name: id.into(),
                 industry_code: Some("331".into()),
                 observed_employment: None,
@@ -917,7 +923,7 @@ pub(crate) mod tests {
                                 dispatched,
                                 remaining_unshipped: requested - dispatched,
                             };
-                            let id = babylon_persistence::production_observation::freight_order_identity(&order).unwrap();
+                            let id = babylon_persistence::production_observation::freight_order_identity(&order).expect("the fixture freight order has an identity");
                             definitions.push(ProductionFreightOrderDefinition { id: id.clone(), order }); id },
                         )
                         .collect(),
@@ -936,7 +942,9 @@ pub(crate) mod tests {
         .map(|(id, location, retailer)| ProductionHouseholdAccount {
             kind: ProductionHouseholdKind::Ordinary,
             demand_principal_id: id.into(),
-            location: location.parse().unwrap(),
+            location: location
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             good_id: "food".into(),
             unit_id: "food-unit".into(),
             good: "food".into(),
@@ -951,7 +959,11 @@ pub(crate) mod tests {
         .collect();
         let account = &mut snapshot.freight_capacity_accounts[0];
         account.route_ids.push("aid-route".into());
-        let reservation = &mut account.completed.as_mut().unwrap().reservations[0];
+        let reservation = &mut account
+            .completed
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .reservations[0];
         reservation.opening_available_grams = 188_000;
         reservation.newly_reserved_grams = 188_000;
         reservation.support_orders.push(ProductionAidCapacityOrder {
@@ -972,7 +984,12 @@ pub(crate) mod tests {
     fn household_aid_capacity_has_its_own_disclosed_parties_and_mass() {
         let mut snapshot = aid_fixture();
         snapshot.routes.retain(|r| r.id == "sheets");
-        assert_eq!(shared_accounts(&snapshot, Some("meals")).unwrap().len(), 1);
+        assert_eq!(
+            shared_accounts(&snapshot, Some("meals"))
+                .expect("the fixture call `shared_accounts` succeeds for the authored inputs")
+                .len(),
+            1
+        );
         let text = account_reading(&snapshot.freight_capacity_accounts[0], &snapshot);
         assert!(text.contains("HOUSEHOLD AID / county:26163 -> county:17031 / food"));
         assert!(text.contains("Dispatched 2 food units · reserved 28 kg"));
@@ -981,7 +998,7 @@ pub(crate) mod tests {
         let row = &mut other.freight_capacity_accounts[0]
             .completed
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .reservations[0]
             .support_orders[0];
         row.dispatched = 1;
@@ -989,13 +1006,13 @@ pub(crate) mod tests {
         other.freight_capacity_accounts[0]
             .completed
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .reservations[0]
             .newly_reserved_grams = 174_000;
         other.freight_capacity_accounts[0]
             .completed
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .reservations[0]
             .remaining_available_grams = 14_000;
         let comparison = comparison_reading(1, &snapshot, &other, Some("meals"));
@@ -1005,7 +1022,7 @@ pub(crate) mod tests {
             .household_accounts
             .retain(|r| r.demand_principal_id != "recipient");
         assert!(shared_accounts(&snapshot, Some("meals"))
-            .unwrap()
+            .expect("the fixture call `shared_accounts` succeeds for the authored inputs")
             .is_empty());
         let hidden = account_reading(&snapshot.freight_capacity_accounts[0], &snapshot);
         assert!(hidden.contains("Household support detail unavailable in this observation."));
@@ -1043,7 +1060,11 @@ pub(crate) mod tests {
         snapshot.routes[0].unit = "panels".into();
         let account = &mut snapshot.freight_capacity_accounts[0];
         account.next_opening_available_grams = 1;
-        let reservation = &mut account.completed.as_mut().unwrap().reservations[0];
+        let reservation = &mut account
+            .completed
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .reservations[0];
         reservation.newly_reserved_grams = 159_999;
         reservation.remaining_available_grams = 1;
 
@@ -1064,7 +1085,8 @@ pub(crate) mod tests {
     #[test]
     fn shared_pool_is_counted_once_and_names_both_competing_chains() {
         let snapshot = fixture();
-        let accounts = shared_accounts(&snapshot, Some("panels")).unwrap();
+        let accounts = shared_accounts(&snapshot, Some("panels"))
+            .expect("the fixture call `shared_accounts` succeeds for the authored inputs");
         assert_eq!(accounts.len(), 1);
         let text = account_reading(accounts[0], &snapshot);
         assert_eq!(text.matches("Designed regional freight pool").count(), 1);
@@ -1088,7 +1110,7 @@ pub(crate) mod tests {
         unavailable.requested_grams =
             u128::from(unavailable.requested) * u128::from(unavailable.grams_per_unit);
         let id = babylon_persistence::production_observation::freight_order_identity(&unavailable)
-            .unwrap();
+            .expect("the fixture freight order has an identity");
         snapshot
             .freight_order_definitions
             .push(ProductionFreightOrderDefinition {
@@ -1098,7 +1120,7 @@ pub(crate) mod tests {
         snapshot.freight_capacity_accounts[0]
             .completed
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .reservations[0]
             .orders
             .push(id);
@@ -1129,7 +1151,7 @@ pub(crate) mod tests {
         let reservation = &mut snapshot.freight_capacity_accounts[0]
             .completed
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .reservations[0];
         reservation.newly_reserved_grams = 0;
         reservation.remaining_available_grams = 160_000;
@@ -1148,10 +1170,10 @@ pub(crate) mod tests {
     fn invalid_route_definitions_are_not_empty_shared_membership() {
         let mut snapshot = fixture();
         assert!(shared_accounts(&snapshot, Some("undisclosed"))
-            .unwrap()
+            .expect("the fixture call `shared_accounts` succeeds for the authored inputs")
             .is_empty());
         assert!(competitor_sites("undisclosed", &snapshot)
-            .unwrap()
+            .expect("the fixture call `competitor_sites` succeeds for the authored inputs")
             .is_empty());
         snapshot.physical_routes.clear();
         assert!(matches!(
@@ -1168,7 +1190,7 @@ pub(crate) mod tests {
     fn competitor_navigation_exposes_disclosed_peers_without_supplier_edges() {
         let mut snapshot = fixture();
         let peers: Vec<_> = competitor_sites("panels", &snapshot)
-            .unwrap()
+            .expect("the fixture call `competitor_sites` succeeds for the authored inputs")
             .into_iter()
             .map(|site| site.id.as_str())
             .collect();
@@ -1178,9 +1200,11 @@ pub(crate) mod tests {
             1
         );
         snapshot.sites.retain(|site| site.id != "mill");
-        assert!(competitor_sites("panels", &snapshot).unwrap().is_empty());
+        assert!(competitor_sites("panels", &snapshot)
+            .expect("the fixture call `competitor_sites` succeeds for the authored inputs")
+            .is_empty());
         assert!(shared_accounts(&snapshot, Some("panels"))
-            .unwrap()
+            .expect("the fixture call `shared_accounts` succeeds for the authored inputs")
             .is_empty());
     }
 
@@ -1192,7 +1216,7 @@ pub(crate) mod tests {
         let completed = other.freight_capacity_accounts[0]
             .completed
             .as_mut()
-            .unwrap();
+            .expect("the fixture set the optional field before this borrow");
         let reservation = &mut completed.reservations[0];
         reservation.opening_available_grams = 800_000;
         reservation.newly_reserved_grams = 400_000;
@@ -1215,7 +1239,7 @@ pub(crate) mod tests {
         other.freight_capacity_accounts[0]
             .completed
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .period = 2;
         let text = comparison_reading(1, &current, &other, None);
         assert!(text.contains("Freight receipt does not match the selected period"));
@@ -1253,7 +1277,11 @@ pub(crate) mod tests {
             if period == 0 {
                 changed.next_opening_available_grams = 800_000;
             } else {
-                let reservation = &mut changed.completed.as_mut().unwrap().reservations[0];
+                let reservation = &mut changed
+                    .completed
+                    .as_mut()
+                    .expect("the fixture set the optional field before this borrow")
+                    .reservations[0];
                 reservation.opening_available_grams = 800_000;
                 reservation.remaining_available_grams = 640_000;
             }

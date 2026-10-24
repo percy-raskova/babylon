@@ -522,7 +522,10 @@ mod tests {
     fn current_census_configurations_pin_every_object_and_only_role_grants_differ() {
         let censuses = CURRENT_CENSUSES
             .iter()
-            .map(|source| postgres_catalog::parse_catalog_census(source).unwrap())
+            .map(|source| {
+                postgres_catalog::parse_catalog_census(source)
+                    .expect("the authored census catalog parses")
+            })
             .collect::<Vec<_>>();
         let keys = censuses[0]
             .entries()
@@ -571,7 +574,8 @@ mod tests {
         ] {
             let mut digest = String::with_capacity(64);
             for byte in content_digest::sha256_of(source.as_bytes()) {
-                write!(&mut digest, "{byte:02x}").unwrap();
+                write!(&mut digest, "{byte:02x}")
+                    .expect("the in-memory formatter accepts the written text");
             }
             let expected = format!("# source|{name}|{digest}");
             for fixture in CURRENT_CENSUSES {
@@ -594,7 +598,11 @@ mod tests {
                 if index == changed {
                     part[0] ^= 1;
                 }
-                bytes.extend_from_slice(&u64::try_from(part.len()).unwrap().to_le_bytes());
+                bytes.extend_from_slice(
+                    &u64::try_from(part.len())
+                        .expect("the fixture value fits the target range")
+                        .to_le_bytes(),
+                );
                 bytes.extend_from_slice(&part);
             }
             assert_ne!(content_digest::sha256_of(&bytes), digest);
@@ -616,30 +624,43 @@ mod live_tests {
         let base = validated_base_config();
         let db = TestDatabase::create(&base, "roles");
         let config = db.config(&base);
-        preflight_current_schema(&config).unwrap();
-        let installed = install_current_schema(&config).unwrap();
+        preflight_current_schema(&config)
+            .expect("the fixture call `preflight_current_schema` succeeds for the authored inputs");
+        let installed =
+            install_current_schema(&config).expect("the test database installs the current schema");
         assert_eq!(installed.disposition, CurrentSchemaDisposition::Installed);
         assert_eq!(
-            install_current_schema(&config).unwrap().disposition,
+            install_current_schema(&config)
+                .expect("the test database installs the current schema")
+                .disposition,
             CurrentSchemaDisposition::AlreadyCurrent
         );
         assert_eq!(installed.identity.schema_sha256(), &current_schema_sha256());
-        crate::install_reader_role(&config).unwrap();
+        crate::install_reader_role(&config).expect("the test database installs the reader role");
         assert_eq!(
-            install_current_schema(&config).unwrap().identity,
+            install_current_schema(&config)
+                .expect("the test database installs the current schema")
+                .identity,
             installed.identity
         );
-        crate::observer_reader::provision_observer_role(&config).unwrap();
+        crate::observer_reader::provision_observer_role(&config)
+            .expect("the test database provisions the observer role");
         assert_eq!(
-            install_current_schema(&config).unwrap().identity,
+            install_current_schema(&config)
+                .expect("the test database installs the current schema")
+                .identity,
             installed.identity
         );
         let observer_db = TestDatabase::create(&base, "observer");
         let observer_config = observer_db.config(&base);
-        install_current_schema(&observer_config).unwrap();
-        crate::observer_reader::provision_observer_role(&observer_config).unwrap();
+        install_current_schema(&observer_config)
+            .expect("the test database installs the current schema");
+        crate::observer_reader::provision_observer_role(&observer_config)
+            .expect("the test database provisions the observer role");
         assert_eq!(
-            install_current_schema(&observer_config).unwrap().identity,
+            install_current_schema(&observer_config)
+                .expect("the test database installs the current schema")
+                .identity,
             installed.identity
         );
         observer_db.cleanup();
@@ -652,22 +673,26 @@ mod live_tests {
         let base = validated_base_config();
         let db = TestDatabase::create(&base, "legacy");
         let config = db.config(&base);
-        let mut client = config.connect(NoTls).unwrap();
-        client.batch_execute("SET search_path TO pg_catalog; SET quote_all_identifiers TO off; SET jit TO off; SET event_triggers TO off").unwrap();
-        client.batch_execute("CREATE SCHEMA babylon_state; CREATE TABLE babylon_state.schema_migration (version bigint PRIMARY KEY, checksum bytea NOT NULL); INSERT INTO babylon_state.schema_migration VALUES (1, decode(repeat('01',32),'hex'))").unwrap();
-        let before = postgres_catalog::read_census_rows(&mut client).unwrap();
+        let mut client = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
+        client.batch_execute("SET search_path TO pg_catalog; SET quote_all_identifiers TO off; SET jit TO off; SET event_triggers TO off").expect("the test database applies the schema statements");
+        client.batch_execute("CREATE SCHEMA babylon_state; CREATE TABLE babylon_state.schema_migration (version bigint PRIMARY KEY, checksum bytea NOT NULL); INSERT INTO babylon_state.schema_migration VALUES (1, decode(repeat('01',32),'hex'))").expect("the test database applies the schema statements");
+        let before = postgres_catalog::read_census_rows(&mut client)
+            .expect("the fixture source is readable");
         assert!(matches!(
             install_current_schema(&config),
             Err(CurrentSchemaError::UnsupportedSchema)
         ));
         assert_eq!(
-            postgres_catalog::read_census_rows(&mut client).unwrap(),
+            postgres_catalog::read_census_rows(&mut client)
+                .expect("the fixture source is readable"),
             before
         );
         assert_eq!(
             client
                 .query_one("SELECT version FROM babylon_state.schema_migration", &[])
-                .unwrap()
+                .expect("the seeded row is present exactly once")
                 .get::<_, i64>(0),
             1
         );
@@ -676,22 +701,26 @@ mod live_tests {
 
         let db = TestDatabase::create(&base, "foreign");
         let config = db.config(&base);
-        let mut client = config.connect(NoTls).unwrap();
-        client.batch_execute("SET search_path TO pg_catalog; SET quote_all_identifiers TO off; SET jit TO off; SET event_triggers TO off").unwrap();
-        client.batch_execute("CREATE TABLE public.unique_user_data (value text); INSERT INTO public.unique_user_data VALUES ('preserve me')").unwrap();
-        let before = postgres_catalog::read_census_rows(&mut client).unwrap();
+        let mut client = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
+        client.batch_execute("SET search_path TO pg_catalog; SET quote_all_identifiers TO off; SET jit TO off; SET event_triggers TO off").expect("the test database applies the schema statements");
+        client.batch_execute("CREATE TABLE public.unique_user_data (value text); INSERT INTO public.unique_user_data VALUES ('preserve me')").expect("the test database applies the schema statements");
+        let before = postgres_catalog::read_census_rows(&mut client)
+            .expect("the fixture source is readable");
         assert!(matches!(
             install_current_schema(&config),
             Err(CurrentSchemaError::FreshCensusMismatch { .. })
         ));
         assert_eq!(
-            postgres_catalog::read_census_rows(&mut client).unwrap(),
+            postgres_catalog::read_census_rows(&mut client)
+                .expect("the fixture source is readable"),
             before
         );
         assert_eq!(
             client
                 .query_one("SELECT value FROM public.unique_user_data", &[])
-                .unwrap()
+                .expect("the seeded row is present exactly once")
                 .get::<_, String>(0),
             "preserve me"
         );
@@ -705,9 +734,11 @@ mod live_tests {
         let base = validated_base_config();
         let db = TestDatabase::create(&base, "drift");
         let config = db.config(&base);
-        install_current_schema(&config).unwrap();
-        let mut client = config.connect(NoTls).unwrap();
-        client.batch_execute("SET search_path TO pg_catalog; SET quote_all_identifiers TO off; SET jit TO off; SET event_triggers TO off").unwrap();
+        install_current_schema(&config).expect("the test database installs the current schema");
+        let mut client = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
+        client.batch_execute("SET search_path TO pg_catalog; SET quote_all_identifiers TO off; SET jit TO off; SET event_triggers TO off").expect("the test database applies the schema statements");
         for mutation in [
             "UPDATE babylon_meta.current_schema SET schema_sha256 = decode(repeat('00',32),'hex')",
             "DELETE FROM babylon_meta.current_schema",
@@ -723,29 +754,31 @@ mod live_tests {
             "CREATE OR REPLACE VIEW public.v_committed_tick_status_v1 AS SELECT campaign_id, resolve_tick, envelope_layout_version, tick_content_hash, envelope_digest FROM babylon_state.tick_commit WHERE resolve_tick > 1",
             "ALTER TABLE babylon_state.tick_commit DROP CONSTRAINT tick_commit_envelope_layout_v3; ALTER TABLE babylon_state.tick_commit ADD CONSTRAINT tick_commit_envelope_layout_v3 CHECK (envelope_layout_version = 4)",
         ] {
-            let mut tx = client.transaction().unwrap();
-            tx.batch_execute(mutation).unwrap();
+            let mut tx = client.transaction().expect("the test database opens a transaction");
+            tx.batch_execute(mutation).expect("the test database applies the schema statements");
             assert!(
                 require_current_schema(&mut tx).is_err(),
                 "admitted alteration: {mutation}"
             );
-            tx.rollback().unwrap();
+            tx.rollback().expect("the open transaction rolls back");
             assert_eq!(
-                require_current_schema(&mut client).unwrap().schema_sha256(),
+                require_current_schema(&mut client).expect("the fixture call `require_current_schema` succeeds for the authored inputs").schema_sha256(),
                 &current_schema_sha256()
             );
         }
-        let mut tx = client.transaction().unwrap();
+        let mut tx = client
+            .transaction()
+            .expect("the test database opens a transaction");
         let role = format!("per330_schema_nonowner_{}", std::process::id());
         tx.batch_execute(&format!(
             "CREATE ROLE {role} NOLOGIN; SET LOCAL ROLE {role}"
         ))
-        .unwrap();
+        .expect("the test database applies the schema statements");
         assert_eq!(
             require_current_schema(&mut tx),
             Err(CurrentSchemaError::CurrentUserIsNotDatabaseOwner)
         );
-        tx.rollback().unwrap();
+        tx.rollback().expect("the open transaction rolls back");
         drop(client);
         db.cleanup();
     }
@@ -756,32 +789,48 @@ mod live_tests {
         let base = validated_base_config();
         let db = TestDatabase::create(&base, "interrupt");
         let config = db.config(&base);
-        let mut session = LockedSession::connect(&bounded_config(&config)).unwrap();
-        assert_eq!(inspect(session.client()).unwrap(), Presence::Fresh);
-        let mut tx = begin_install(session.client()).unwrap();
-        execute_before_identity(&mut tx).unwrap();
+        let mut session = LockedSession::connect(&bounded_config(&config))
+            .expect("the test database accepts the connection");
+        assert_eq!(
+            inspect(session.client())
+                .expect("the fixture call `inspect` succeeds for the authored inputs"),
+            Presence::Fresh
+        );
+        let mut tx = begin_install(session.client()).expect("the fixture begins the authored step");
+        execute_before_identity(&mut tx)
+            .expect("the test database applies the pre-identity statement");
         assert!(matches!(
             install_current_schema(&config),
             Err(CurrentSchemaError::Lock(CatalogError::LockUnavailable))
         ));
-        let mut outsider = config.connect(NoTls).unwrap();
+        let mut outsider = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         let visible: bool = outsider
             .query_one(
                 "SELECT pg_catalog.to_regnamespace('babylon_meta') IS NOT NULL",
                 &[],
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get(0);
         assert!(
             !visible,
             "uncommitted schema and marker must remain invisible"
         );
         drop(outsider);
-        tx.rollback().unwrap();
-        assert_eq!(inspect(session.client()).unwrap(), Presence::Fresh);
-        session.finish(Ok(())).unwrap();
+        tx.rollback().expect("the open transaction rolls back");
         assert_eq!(
-            install_current_schema(&config).unwrap().disposition,
+            inspect(session.client())
+                .expect("the fixture call `inspect` succeeds for the authored inputs"),
+            Presence::Fresh
+        );
+        session
+            .finish(Ok(()))
+            .expect("the fixture finishes the authored period");
+        assert_eq!(
+            install_current_schema(&config)
+                .expect("the test database installs the current schema")
+                .disposition,
             CurrentSchemaDisposition::Installed
         );
         db.cleanup();
@@ -798,10 +847,12 @@ mod live_tests {
             let db = TestDatabase::create(&base, label);
             let config = db.config(&base);
             COMMIT_FAULT.with(|state| state.set(fault));
-            let installed = install_current_schema(&config).unwrap();
+            let installed = install_current_schema(&config)
+                .expect("the test database installs the current schema");
             assert_eq!(installed.disposition, expected);
             assert_eq!(COMMIT_FAULT.with(std::cell::Cell::get), 0);
-            let second = install_current_schema(&config).unwrap();
+            let second = install_current_schema(&config)
+                .expect("the test database installs the current schema");
             assert_eq!(second.disposition, CurrentSchemaDisposition::AlreadyCurrent);
             assert_eq!(installed.identity, second.identity);
             db.cleanup();
@@ -814,7 +865,7 @@ mod live_tests {
         let base = validated_base_config();
         let db = TestDatabase::create(&base, "hexrollback");
         let config = db.config(&base);
-        install_current_schema(&config).unwrap();
+        install_current_schema(&config).expect("the test database installs the current schema");
         crate::h3_reference_installer::live_postgres_tests::verify_rollback_and_killed_retry(
             &config,
             &base,
@@ -829,7 +880,7 @@ mod live_tests {
         let base = validated_base_config();
         let db = TestDatabase::create(&base, "hexlostack");
         let config = db.config(&base);
-        install_current_schema(&config).unwrap();
+        install_current_schema(&config).expect("the test database installs the current schema");
         crate::h3_reference_installer::live_postgres_tests::verify_committed_reconciliation(
             &config,
             &base,
@@ -844,7 +895,7 @@ mod live_tests {
         let base = validated_base_config();
         let db = TestDatabase::create(&base, "hexcardinality");
         let config = db.config(&base);
-        install_current_schema(&config).unwrap();
+        install_current_schema(&config).expect("the test database installs the current schema");
         crate::h3_reference_installer::live_postgres_tests::verify_membership_cardinality_bound(
             &config,
         );
@@ -857,7 +908,7 @@ mod live_tests {
         let base = validated_base_config();
         let db = TestDatabase::create(&base, "spatial");
         let config = db.config(&base);
-        install_current_schema(&config).unwrap();
+        install_current_schema(&config).expect("the test database installs the current schema");
         crate::spatial_reference_installer::live_postgres_tests::verify_commit_protocol(
             &config, &base,
         );
@@ -875,17 +926,18 @@ mod live_tests {
         let dsn =
             std::env::var("BABYLON_POSTGRES_TEST_DSN").expect("runner supplies the disposable DSN");
         let config = Config::from_str(&dsn).expect("runner DSN parses");
-        postgres_catalog::validate_connection_target(&config).unwrap();
+        postgres_catalog::validate_connection_target(&config)
+            .expect("the authored fixture satisfies the rule");
         assert_eq!(config.get_user(), Some("test"));
         assert_eq!(config.get_dbname(), Some("postgres"));
         let actual: Option<String> = config
             .connect(NoTls)
-            .unwrap()
+            .expect("the test database accepts the connection")
             .query_one(
                 "SELECT pg_catalog.current_setting('babylon.disposable_runtime', true)",
                 &[],
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get(0);
         assert_eq!(actual.as_deref(), Some(canary.as_str()));
         config
@@ -904,11 +956,11 @@ mod live_tests {
             admin.dbname("postgres");
             admin
                 .connect(NoTls)
-                .unwrap()
+                .expect("the test database accepts the connection")
                 .batch_execute(&format!(
                     "CREATE DATABASE \"{name}\" OWNER test TEMPLATE template1"
                 ))
-                .unwrap();
+                .expect("the test database applies the schema statements");
             Self {
                 name,
                 admin,

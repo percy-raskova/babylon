@@ -12,37 +12,44 @@ use babylon_tick::material_world::MaterialWorldRegister;
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL runtime and committed material ticks"]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`cached_history_refuses_earlier_receipt_corruption_and_preserves_the_cursor` keeps one authored boundary's fixture and assertions together"
+)]
 fn cached_history_refuses_earlier_receipt_corruption_and_preserves_the_cursor() {
     let mut target = DisposableTarget::create();
     let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0034_3261_6344));
     let catalog = MichiganMaterialCatalog::from_defines_toml(include_str!(
         "../../../../../content/scenarios/michigan/defines.toml"
     ))
-    .unwrap();
+    .expect("the authored input admits the derived value");
     let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
         .create_foundation(&catalog)
-        .unwrap();
-    let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation).unwrap();
-    super::provision_observer_role(&target.writer).unwrap();
+        .expect("the authored catalog builds the foundation");
+    let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation)
+        .expect("the test database creates the fixture campaign");
+    super::provision_observer_role(&target.writer)
+        .expect("the test database provisions the observer role");
     let observer_config = target.login("babylon_observer", "prefix");
     let observer =
-        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver).unwrap();
+        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver)
+            .expect("the test database accepts the connection");
     for _ in 0..4 {
         super::advance_material_period(&mut runtime);
     }
     let mut cursor = None;
     let healthy = observer
         .snapshot_with_cursor(campaign, 4, &mut cursor)
-        .unwrap();
+        .expect("the fixture snapshot carries its cursor");
     let mut complete_cursor = None;
     let complete = observer
         .committed_material_observation_with_cursor(campaign, 4, &mut complete_cursor)
-        .unwrap();
+        .expect("the fixture call `committed_material_observation_with_cursor` succeeds for the authored inputs");
     assert_owned_register(complete_cursor.as_ref(), runtime.session().material());
     let owned_register_address = register_address(complete_cursor.as_ref());
     let repeated = observer
         .committed_material_observation_with_cursor(campaign, 4, &mut complete_cursor)
-        .unwrap();
+        .expect("the fixture call `committed_material_observation_with_cursor` succeeds for the authored inputs");
     assert_complete_observations_equal(&complete, &repeated);
     assert_eq!(
         owned_register_address,
@@ -56,20 +63,30 @@ fn cached_history_refuses_earlier_receipt_corruption_and_preserves_the_cursor() 
     // new capability captures and admits the foundation again before reuse.
     drop(observer);
     let observer =
-        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver).unwrap();
-    assert_eq!(cursor.as_ref().unwrap().completed_tick(), 4);
-    let mut writer = target.writer.connect(NoTls).unwrap();
+        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver)
+            .expect("the test database accepts the connection");
+    assert_eq!(
+        cursor
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .completed_tick(),
+        4
+    );
+    let mut writer = target
+        .writer
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let original: Vec<u8> = writer.query_one(
         "SELECT receipt_storage_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1 AND resolve_tick=1",
         &[campaign.as_uuid()],
-    ).unwrap().get(0);
+    ).expect("the seeded row is present exactly once").get(0);
     let mut corrupted = original.clone();
     corrupted.push(0);
     let update = "UPDATE babylon_state.material_tick_v3 SET receipt_storage_bytes=$2 WHERE campaign_id=$1 AND resolve_tick=1";
     assert_eq!(
         writer
             .execute(update, &[campaign.as_uuid(), &corrupted])
-            .unwrap(),
+            .expect("the test database applies the setup statement"),
         1
     );
     let cold = observer.snapshot(campaign, 4);
@@ -80,33 +97,56 @@ fn cached_history_refuses_earlier_receipt_corruption_and_preserves_the_cursor() 
     assert_eq!(
         writer
             .execute(update, &[campaign.as_uuid(), &original])
-            .unwrap(),
+            .expect("the test database applies the setup statement"),
         1
     );
-    assert_eq!(cursor.as_ref().unwrap().completed_tick(), 4);
-    assert_eq!(complete_cursor.as_ref().unwrap().completed_tick(), 4);
+    assert_eq!(
+        cursor
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .completed_tick(),
+        4
+    );
+    assert_eq!(
+        complete_cursor
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .completed_tick(),
+        4
+    );
     assert_eq!(
         owned_register_address,
         register_address(complete_cursor.as_ref())
     );
     let restored = observer
         .snapshot_with_cursor(campaign, 4, &mut cursor)
-        .unwrap();
+        .expect("the fixture snapshot carries its cursor");
     assert_eq!(restored, healthy);
     super::advance_material_period(&mut runtime);
     let next = observer
         .snapshot_with_cursor(campaign, 5, &mut cursor)
-        .unwrap();
-    assert_eq!(next, observer.snapshot(campaign, 5).unwrap());
+        .expect("the fixture snapshot carries its cursor");
+    assert_eq!(
+        next,
+        observer
+            .snapshot(campaign, 5)
+            .expect("the fixture captures a consistent snapshot")
+    );
     let next_complete = observer
         .committed_material_observation_with_cursor(campaign, 5, &mut complete_cursor)
-        .unwrap();
-    let cold_complete = observer
-        .committed_material_observation(campaign, 5)
-        .unwrap();
+        .expect("the fixture call `committed_material_observation_with_cursor` succeeds for the authored inputs");
+    let cold_complete = observer.committed_material_observation(campaign, 5).expect(
+        "the fixture call `committed_material_observation` succeeds for the authored inputs",
+    );
     assert_complete_observations_equal(&next_complete, &cold_complete);
     assert_owned_register(complete_cursor.as_ref(), runtime.session().material());
-    assert_eq!(cursor.as_ref().unwrap().completed_tick(), 5);
+    assert_eq!(
+        cursor
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .completed_tick(),
+        5
+    );
     drop(writer);
     drop(observer);
     drop(runtime);
@@ -146,9 +186,20 @@ fn assert_owned_register(
     cursor: Option<&ObserverMaterialCursor>,
     expected: &MaterialWorldRegister,
 ) {
-    assert_eq!(cursor.unwrap().current_register().unwrap(), expected);
+    assert_eq!(
+        cursor
+            .expect("the fixture session returns its cursor")
+            .current_register()
+            .expect("the fixture call `current_register` succeeds for the authored inputs"),
+        expected
+    );
 }
 
 fn register_address(cursor: Option<&ObserverMaterialCursor>) -> *const MaterialWorldRegister {
-    std::ptr::from_ref(cursor.unwrap().current_register().unwrap())
+    std::ptr::from_ref(
+        cursor
+            .expect("the fixture session returns its cursor")
+            .current_register()
+            .expect("the fixture call `current_register` succeeds for the authored inputs"),
+    )
 }

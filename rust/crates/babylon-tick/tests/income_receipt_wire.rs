@@ -35,7 +35,8 @@ fn envelope(rows: &[Vec<u8>]) -> Vec<u8> {
 
 #[test]
 fn signed_retained_earnings_and_capitalization_are_distinct_from_income() {
-    let decoded = material_world::decode_material_receipts(&envelope(&[row(1)])).unwrap();
+    let decoded = material_world::decode_material_receipts(&envelope(&[row(1)]))
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(decoded.income.len(), 1);
     let result = &decoded.income[0];
     assert_eq!(result.net_income.micro_units(), 10);
@@ -84,7 +85,8 @@ fn gifts_are_independent_nonzero_flows_in_exact_income_equations() {
     for (index, value) in [(25, 17_i128), (26, 9), (27, 18), (28, 12)] {
         bytes[41 + index * 16..41 + (index + 1) * 16].copy_from_slice(&value.to_be_bytes());
     }
-    let decoded = material_world::decode_material_receipts(&envelope(&[bytes.clone()])).unwrap();
+    let decoded = material_world::decode_material_receipts(&envelope(&[bytes.clone()]))
+        .expect("the canonical bytes decode into the declared type");
     let result = &decoded.income[0];
     assert_eq!(result.statement.gift_income.micro_units(), 17);
     assert_eq!(result.statement.gift_expense.micro_units(), 9);

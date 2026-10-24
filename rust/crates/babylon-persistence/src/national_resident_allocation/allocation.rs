@@ -578,9 +578,21 @@ mod tests {
     use super::*;
     #[test]
     fn allocation_weights_partition_people_without_equating_them_to_jobs() {
-        assert_eq!(apportion(7, &[1, 1, 1]).unwrap(), [3, 2, 2]);
-        assert_eq!(apportion(2, &[0, 10, 30]).unwrap(), [0, 1, 1]);
-        assert_eq!(apportion(0, &[]).unwrap(), Vec::<u64>::new());
+        assert_eq!(
+            apportion(7, &[1, 1, 1])
+                .expect("the fixture call `apportion` succeeds for the authored inputs"),
+            [3, 2, 2]
+        );
+        assert_eq!(
+            apportion(2, &[0, 10, 30])
+                .expect("the fixture call `apportion` succeeds for the authored inputs"),
+            [0, 1, 1]
+        );
+        assert_eq!(
+            apportion(0, &[])
+                .expect("the fixture call `apportion` succeeds for the authored inputs"),
+            Vec::<u64>::new()
+        );
         assert!(apportion(1, &[0, 0]).is_err());
         assert!(apportion(1, &[u64::MAX, 1]).is_err());
     }

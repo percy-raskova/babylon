@@ -26,75 +26,142 @@ fn hex_bytes(value: &str) -> Vec<u8> {
         .collect()
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "`intent_from_vector` keeps one authored boundary's fixture and assertions together"
+)]
 fn intent_from_vector(data: &Value) -> PracticeIntent {
     PracticeIntent {
         schema_version: 2,
-        submit_after_tick: data["submit_after_tick"].as_u64().unwrap(),
-        resolve_tick: data["resolve_tick"].as_u64().unwrap(),
+        submit_after_tick: data["submit_after_tick"]
+            .as_u64()
+            .expect("the JSON fixture field is an unsigned integer"),
+        resolve_tick: data["resolve_tick"]
+            .as_u64()
+            .expect("the JSON fixture field is an unsigned integer"),
         input_authority_id: InputAuthorityId::from_bytes(
-            hex_bytes(data["input_authority_id_hex"].as_str().unwrap())
-                .try_into()
-                .unwrap(),
+            hex_bytes(
+                data["input_authority_id_hex"]
+                    .as_str()
+                    .expect("the JSON fixture field is a string"),
+            )
+            .try_into()
+            .expect("the fixture slice has the target length"),
         ),
-        actor_org_id: actor_id(data["actor_org_id"].as_u64().unwrap()),
+        actor_org_id: actor_id(
+            data["actor_org_id"]
+                .as_u64()
+                .expect("the JSON fixture field is an unsigned integer"),
+        ),
         practice_id: PracticeId::try_from(
-            u8::try_from(data["practice_id"].as_u64().unwrap()).unwrap(),
+            u8::try_from(
+                data["practice_id"]
+                    .as_u64()
+                    .expect("the JSON fixture field is an unsigned integer"),
+            )
+            .expect("the fixture value fits the target range"),
         )
-        .unwrap(),
+        .expect("the fixture value fits the target range"),
         target: TaggedPracticeTarget {
             tag: PracticeTargetTag::try_from(
-                u8::try_from(data["target_tag"].as_u64().unwrap()).unwrap(),
+                u8::try_from(
+                    data["target_tag"]
+                        .as_u64()
+                        .expect("the JSON fixture field is an unsigned integer"),
+                )
+                .expect("the fixture value fits the target range"),
             )
-            .unwrap(),
+            .expect("the fixture value fits the target range"),
             identity: PracticeTargetIdentity::from_bytes(
-                hex_bytes(data["target_identity_hex"].as_str().unwrap())
-                    .try_into()
-                    .unwrap(),
+                hex_bytes(
+                    data["target_identity_hex"]
+                        .as_str()
+                        .expect("the JSON fixture field is a string"),
+                )
+                .try_into()
+                .expect("the fixture slice has the target length"),
             ),
         },
         proposal_nonce: ProposalNonce::from_bytes(
-            hex_bytes(data["proposal_nonce_hex"].as_str().unwrap())
-                .try_into()
-                .unwrap(),
-        ),
-        quoted_content_digest: hex_bytes(data["quoted_content_digest_hex"].as_str().unwrap())
+            hex_bytes(
+                data["proposal_nonce_hex"]
+                    .as_str()
+                    .expect("the JSON fixture field is a string"),
+            )
             .try_into()
-            .unwrap(),
+            .expect("the fixture slice has the target length"),
+        ),
+        quoted_content_digest: hex_bytes(
+            data["quoted_content_digest_hex"]
+                .as_str()
+                .expect("the JSON fixture field is a string"),
+        )
+        .try_into()
+        .expect("the fixture slice has the target length"),
         quoted_resource_contract_digest: hex_bytes(
             data["quoted_resource_contract_digest_hex"]
                 .as_str()
-                .unwrap(),
+                .expect("the JSON fixture field is a string"),
         )
         .try_into()
-        .unwrap(),
+        .expect("the fixture slice has the target length"),
         parameters: data["parameters"]
             .as_array()
-            .unwrap()
+            .expect("the JSON fixture field is an array")
             .iter()
             .map(|parameter| babylon_practice_contract::PracticeParameter {
-                key_u8: u8::try_from(parameter["key_u8"].as_u64().unwrap()).unwrap(),
-                value_kind_u8: u8::try_from(parameter["value_kind_u8"].as_u64().unwrap()).unwrap(),
-                value_length_u16: u16::try_from(parameter["value_length_u16"].as_u64().unwrap())
-                    .unwrap(),
+                key_u8: u8::try_from(
+                    parameter["key_u8"]
+                        .as_u64()
+                        .expect("the JSON fixture field is an unsigned integer"),
+                )
+                .expect("the fixture value fits the target range"),
+                value_kind_u8: u8::try_from(
+                    parameter["value_kind_u8"]
+                        .as_u64()
+                        .expect("the JSON fixture field is an unsigned integer"),
+                )
+                .expect("the fixture value fits the target range"),
+                value_length_u16: u16::try_from(
+                    parameter["value_length_u16"]
+                        .as_u64()
+                        .expect("the JSON fixture field is an unsigned integer"),
+                )
+                .expect("the fixture value fits the target range"),
                 value_bytes: parameter["value_bytes"]
                     .as_array()
-                    .unwrap()
+                    .expect("the JSON fixture field is an array")
                     .iter()
-                    .map(|value| u8::try_from(value.as_u64().unwrap()).unwrap())
+                    .map(|value| {
+                        u8::try_from(
+                            value
+                                .as_u64()
+                                .expect("the JSON fixture field is an unsigned integer"),
+                        )
+                        .expect("the fixture value fits the target range")
+                    })
                     .collect(),
             })
             .collect(),
         evidence_digests: data["evidence_digests_hex"]
             .as_array()
-            .unwrap()
+            .expect("the JSON fixture field is an array")
             .iter()
             .take(65)
-            .map(|digest| hex_bytes(digest.as_str().unwrap()).try_into().unwrap())
+            .map(|digest| {
+                hex_bytes(digest.as_str().expect("the JSON fixture field is a string"))
+                    .try_into()
+                    .expect("the fixture slice has the target length")
+            })
             .collect(),
     }
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`intent_schema_and_vectors_drive_the_rust_boundary` keeps one authored boundary's fixture and assertions together"
+)]
 fn intent_schema_and_vectors_drive_the_rust_boundary() {
     assert_eq!(
         babylon_kernel::content_digest::sha256_of(SCHEMA),
@@ -105,7 +172,7 @@ fn intent_schema_and_vectors_drive_the_rust_boundary() {
         .take(65)
         .map(|line| {
             assert!(line.len() <= 4_096);
-            serde_json::from_str(line).unwrap()
+            serde_json::from_str(line).expect("the authored JSON matches the declared schema")
         })
         .collect();
     assert_eq!(cases.len(), 17);
@@ -113,23 +180,41 @@ fn intent_schema_and_vectors_drive_the_rust_boundary() {
     let intent_case = cases
         .iter()
         .find(|case| case["case_id"] == "intent-strike")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let intent = intent_from_vector(&intent_case["data"]);
-    let canonical = hex_bytes(intent_case["data"]["canonical_hex"].as_str().unwrap());
+    let canonical = hex_bytes(
+        intent_case["data"]["canonical_hex"]
+            .as_str()
+            .expect("the JSON fixture field is a string"),
+    );
     assert_eq!(canonical.len(), 251);
-    assert_eq!(encode_practice_intent(&intent).unwrap(), canonical);
-    assert_eq!(decode_practice_intent(&canonical).unwrap(), intent);
     assert_eq!(
-        practice_intent_digest(&intent).unwrap().to_vec(),
-        hex_bytes(intent_case["data"]["digest_hex"].as_str().unwrap())
+        encode_practice_intent(&intent).expect("the practice intent encodes canonically"),
+        canonical
+    );
+    assert_eq!(
+        decode_practice_intent(&canonical).expect("the practice intent bytes decode"),
+        intent
+    );
+    assert_eq!(
+        practice_intent_digest(&intent)
+            .expect("the practice intent has a digest")
+            .to_vec(),
+        hex_bytes(
+            intent_case["data"]["digest_hex"]
+                .as_str()
+                .expect("the JSON fixture field is a string")
+        )
     );
 
     assert_eq!(
-        practice_parameter_bytes_digest(&intent).unwrap().as_slice(),
+        practice_parameter_bytes_digest(&intent)
+            .expect("the parameter bytes have a digest")
+            .as_slice(),
         hex_bytes(
             intent_case["data"]["parameter_digest_hex"]
                 .as_str()
-                .unwrap()
+                .expect("the JSON fixture field is a string")
         )
     );
     assert_eq!(
@@ -137,7 +222,7 @@ fn intent_schema_and_vectors_drive_the_rust_boundary() {
         hex_bytes(
             intent_case["data"]["fixed_target_digest_hex"]
                 .as_str()
-                .unwrap()
+                .expect("the JSON fixture field is a string")
         )
     );
     let mut unsupported_domain = canonical.clone();
@@ -149,29 +234,64 @@ fn intent_schema_and_vectors_drive_the_rust_boundary() {
 
     for case in cases.iter().filter(|case| case["kind"] == "intent") {
         let value = intent_from_vector(&case["data"]);
-        let bytes = hex_bytes(case["data"]["canonical_hex"].as_str().unwrap());
-        assert_eq!(encode_practice_intent(&value).unwrap(), bytes);
-        assert_eq!(decode_practice_intent(&bytes).unwrap(), value);
-        assert_eq!(
-            practice_intent_digest(&value).unwrap().as_slice(),
-            hex_bytes(case["data"]["digest_hex"].as_str().unwrap())
+        let bytes = hex_bytes(
+            case["data"]["canonical_hex"]
+                .as_str()
+                .expect("the JSON fixture field is a string"),
         );
         assert_eq!(
-            practice_parameter_bytes_digest(&value).unwrap().as_slice(),
-            hex_bytes(case["data"]["parameter_digest_hex"].as_str().unwrap())
+            encode_practice_intent(&value).expect("the practice intent encodes canonically"),
+            bytes
+        );
+        assert_eq!(
+            decode_practice_intent(&bytes).expect("the practice intent bytes decode"),
+            value
+        );
+        assert_eq!(
+            practice_intent_digest(&value)
+                .expect("the practice intent has a digest")
+                .as_slice(),
+            hex_bytes(
+                case["data"]["digest_hex"]
+                    .as_str()
+                    .expect("the JSON fixture field is a string")
+            )
+        );
+        assert_eq!(
+            practice_parameter_bytes_digest(&value)
+                .expect("the parameter bytes have a digest")
+                .as_slice(),
+            hex_bytes(
+                case["data"]["parameter_digest_hex"]
+                    .as_str()
+                    .expect("the JSON fixture field is a string")
+            )
         );
         assert_eq!(
             fixed_practice_target_digest(value.target.tag, value.target.identity).as_slice(),
-            hex_bytes(case["data"]["fixed_target_digest_hex"].as_str().unwrap())
+            hex_bytes(
+                case["data"]["fixed_target_digest_hex"]
+                    .as_str()
+                    .expect("the JSON fixture field is a string")
+            )
         );
     }
 
     for case in cases.iter().filter(|case| case["kind"] == "invalid_wire") {
-        let payload = hex_bytes(case["data"]["payload_hex"].as_str().unwrap());
+        let payload = hex_bytes(
+            case["data"]["payload_hex"]
+                .as_str()
+                .expect("the JSON fixture field is a string"),
+        );
         let expected = PracticeIntentError::try_from(
-            u16::try_from(case["data"]["error"].as_u64().unwrap()).unwrap(),
+            u16::try_from(
+                case["data"]["error"]
+                    .as_u64()
+                    .expect("the JSON fixture field is an unsigned integer"),
+            )
+            .expect("the fixture value fits the target range"),
         )
-        .unwrap();
+        .expect("the fixture value fits the target range");
         assert_eq!(decode_practice_intent(&payload).map(|_| ()), Err(expected));
     }
 }

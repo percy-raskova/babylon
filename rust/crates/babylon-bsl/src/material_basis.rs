@@ -164,7 +164,8 @@ mod tests {
     #[test]
     fn an_empty_or_whitespace_material_basis_is_e_parse_011() {
         for text in ["\"\"", "\"   \""] {
-            let err = check_rule_surface(&rule_with(text, "64")).unwrap_err();
+            let err = check_rule_surface(&rule_with(text, "64"))
+                .expect_err("the malformed input is rejected by `check_rule_surface`");
             assert_eq!(err, SurfaceError::EmptyMaterialBasis, "{text}");
             assert_eq!(err.spec_code(), Some("E-PARSE-011"));
         }
@@ -176,8 +177,9 @@ mod tests {
             "(rule demo/ungrounded :fuel 64 (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))",
         )
-        .unwrap();
-        let err = check_rule_surface(&rule).unwrap_err();
+        .expect("the fixture reader returns its authored facts");
+        let err = check_rule_surface(&rule)
+            .expect_err("the malformed input is rejected by `check_rule_surface`");
         assert!(matches!(err, SurfaceError::Malformed { .. }));
         assert_eq!(err.spec_code(), None);
     }
@@ -185,7 +187,8 @@ mod tests {
     #[test]
     fn fuel_must_be_positive_and_bounded_e_parse_012() {
         for fuel in ["0", "-5", "1000001"] {
-            let err = check_rule_surface(&rule_with("\"wage relation\"", fuel)).unwrap_err();
+            let err = check_rule_surface(&rule_with("\"wage relation\"", fuel))
+                .expect_err("the malformed input is rejected by `check_rule_surface`");
             assert!(
                 matches!(err, SurfaceError::FuelOutOfRange { .. }),
                 "{fuel}: {err}"

@@ -1644,7 +1644,7 @@ mod tests {
             &mut actual,
             [None, Some(""), Some("a,\"b\"\n\\N"), Some("\\x0001ff")].into_iter(),
         )
-        .unwrap();
+        .expect("the fixture sink accepts the authored bytes");
         assert_eq!(actual, b",\"\",\"a,\"\"b\"\"\n\\N\",\"\\x0001ff\"\n");
         assert_eq!(super::bytea_copy_text(&[0, 1, 255]), "\\x0001ff");
     }

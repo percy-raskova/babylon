@@ -28,7 +28,10 @@
 // Conformance fixtures exercise exact engine values, transcribe spec literals,
 // and build whole scenarios in one test. These pedantic lints would force
 // ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::float_cmp)]
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
@@ -86,16 +89,16 @@ fn shape_1_for_each_over_edges_writes_every_edge_and_the_emit_reads_pre_state() 
     // The writes landed, per element, through the production collect path.
     let strength_ab = graph
         .edge_attribute("SOLIDARITY", BASE_A, BASE_B, "solidarity/strength")
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     let strength_bc = graph
         .edge_attribute("SOLIDARITY", BASE_B, BASE_C, "solidarity/strength")
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     assert_eq!(strength_ab, 0.25, "0.5 scaled by 0.5");
     assert_eq!(strength_bc, 0.125, "0.25 scaled by 0.5");
     for (from, to) in [(BASE_A, BASE_B), (BASE_B, BASE_C)] {
         let tension = graph
             .edge_attribute("SOLIDARITY", from, to, "solidarity/tension")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert_eq!(tension, 0.75, "the deffield field set per element");
     }
 
@@ -181,16 +184,16 @@ fn shape_2_edge_between_targets_one_edges_write_and_the_other_stays_honest_null(
 
     let strength_ab = graph
         .edge_attribute("SOLIDARITY", BASE_A, BASE_B, "solidarity/strength")
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     assert_eq!(strength_ab, 0.75, "0.5 + 0.25, exact");
     let tension_ab = graph
         .edge_attribute("SOLIDARITY", BASE_A, BASE_B, "solidarity/tension")
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     assert_eq!(tension_ab, 0.5, "the set landed");
 
     let strength_bc = graph
         .edge_attribute("SOLIDARITY", BASE_B, BASE_C, "solidarity/strength")
-        .unwrap();
+        .expect("the fixture edge carries the authored attribute");
     assert_eq!(strength_bc, 0.25, "the untouched edge's strength stands");
     assert!(
         graph

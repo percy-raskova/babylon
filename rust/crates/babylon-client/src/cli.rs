@@ -380,7 +380,8 @@ mod qualification_controls {
         let CliRequest::Windowed {
             qualification_control,
             ..
-        } = parse(args.into_iter().map(OsString::from)).unwrap()
+        } = parse(args.into_iter().map(OsString::from))
+            .expect("the authored literal parses as the declared type")
         else {
             panic!("the harness requires the real window");
         };
@@ -1023,7 +1024,7 @@ mod tests {
             "economy",
             "status",
         ]))
-        .unwrap();
+        .expect("the authored literal parses as the declared type");
         assert!(matches!(
             parsed,
             CliRequest::Headless {
@@ -1066,7 +1067,7 @@ mod tests {
             panic!("national New must retain the connected window path")
         };
         assert_eq!(
-            serde_json::to_value(initial_target).unwrap()["preset"],
+            serde_json::to_value(initial_target).expect("the value serializes to JSON")["preset"],
             "national-world"
         );
         assert!(parse(os(&[

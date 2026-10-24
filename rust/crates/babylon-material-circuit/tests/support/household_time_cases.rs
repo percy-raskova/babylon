@@ -24,7 +24,10 @@ fn time_opening(food: u64) -> MaterialCircuitState {
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         panic!("the worked control must have monetary accounts");
     };
-    let recurring = economy.recurring.as_mut().unwrap();
+    let recurring = economy
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     recurring.household_stocks[0].quantity = food;
     recurring.household_purchases[0].enabled = false;
     economy.household_time = HouseholdTimeAccounting::Modeled(
@@ -47,14 +50,15 @@ fn time_opening(food: u64) -> MaterialCircuitState {
                 hours_per_unmet_unit: 5,
             }],
         }])
-        .unwrap(),
+        .expect("the constructor accepts the authored fixture arguments"),
     );
     state
 }
 
 #[test]
 fn actual_attendance_and_consumption_close_one_finite_household_time_account() {
-    let transition = babylon_material_circuit::advance_material_circuit(&time_opening(4)).unwrap();
+    let transition = babylon_material_circuit::advance_material_circuit(&time_opening(4))
+        .expect("the authored material state advances one period");
     assert_eq!(transition.household_time.len(), 1);
     let row = &transition.household_time[0];
     assert_eq!(row.principal_id, crate::household());
@@ -78,7 +82,8 @@ fn actual_attendance_and_consumption_close_one_finite_household_time_account() {
 
 #[test]
 fn paid_idle_and_unmet_food_do_not_become_voluntary_time() {
-    let transition = babylon_material_circuit::advance_material_circuit(&time_opening(2)).unwrap();
+    let transition = babylon_material_circuit::advance_material_circuit(&time_opening(2))
+        .expect("the authored material state advances one period");
     assert_eq!(transition.household_consumption[0].unmet_quantity, 2);
     assert!(transition.member_labor_use.iter().any(|r| r.idle_hours > 0));
     let row = &transition.household_time[0];
@@ -92,7 +97,7 @@ fn paid_idle_and_unmet_food_do_not_become_voluntary_time() {
 #[test]
 fn shared_household_aliases_cannot_duplicate_contribution_time() {
     let mut state = babylon_material_circuit::advance_material_circuit(&time_opening(4))
-        .unwrap()
+        .expect("the authored material state advances one period")
         .state;
     let before = state.clone();
     let uses = [
@@ -117,11 +122,12 @@ fn shared_household_aliases_cannot_duplicate_contribution_time() {
     );
     assert_eq!(state, before);
     let one = &uses[..1];
-    let receipt =
-        babylon_material_circuit::consume_household_contributions(&mut state, 1, one).unwrap();
+    let receipt = babylon_material_circuit::consume_household_contributions(&mut state, 1, one)
+        .expect("the fixture consumes the authored contributions");
     let unchanged = state.clone();
     assert_eq!(
-        babylon_material_circuit::consume_household_contributions(&mut state, 1, one).unwrap(),
+        babylon_material_circuit::consume_household_contributions(&mut state, 1, one)
+            .expect("the fixture consumes the authored contributions"),
         receipt
     );
     assert_eq!(state, unchanged);
@@ -132,8 +138,12 @@ fn shared_household_aliases_cannot_duplicate_contribution_time() {
         Err(MaterialCircuitError::HouseholdTimeInvariant)
     );
     assert_eq!(state, unchanged);
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
-    assert_eq!(decode_material_circuit_state(&bytes).unwrap(), state);
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
+    assert_eq!(
+        decode_material_circuit_state(&bytes).expect("the canonical material bytes decode"),
+        state
+    );
 }
 
 #[test]
@@ -184,12 +194,13 @@ fn missing_wage_funding_preserves_needs_and_finite_household_obligations() {
             })
             .collect(),
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let costs = economy.costs.snapshot();
     economy.costs =
         HistoricalCostBook::open(&economy.book, costs.stocks, costs.freight, vec![], vec![])
-            .unwrap();
-    let transition = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+            .expect("the fixture opens the authored source");
+    let transition = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(transition.household_consumption[0].required_quantity, 4);
     assert_eq!(transition.household_consumption[0].unmet_quantity, 2);
     let row = &transition.household_time[0];
@@ -204,7 +215,7 @@ fn missing_wage_funding_preserves_needs_and_finite_household_obligations() {
 #[test]
 fn payment_of_an_earlier_wage_claim_does_not_charge_attendance_twice() {
     let mut state = babylon_material_circuit::advance_material_circuit(&time_opening(4))
-        .unwrap()
+        .expect("the authored material state advances one period")
         .state;
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         unreachable!()
@@ -221,16 +232,20 @@ fn payment_of_an_earlier_wage_claim_does_not_charge_attendance_twice() {
                 2,
                 crate::money(1),
             )
-            .unwrap(),
+            .expect("the constructor accepts the authored fixture arguments"),
         )
-        .unwrap();
-    economy.book.accrue_shift(shift).unwrap();
+        .expect("the fixture shift reservation fits");
+    economy
+        .book
+        .accrue_shift(shift)
+        .expect("the fixture accrues the authored shift");
     let costs = economy.costs.snapshot();
     // The controlled continuation captures its existing claim and liability unchanged.
     economy.costs =
         HistoricalCostBook::open(&economy.book, costs.stocks, costs.freight, vec![], vec![])
-            .unwrap();
-    let transition = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+            .expect("the fixture opens the authored source");
+    let transition = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(
         transition
             .money_transfers
@@ -263,7 +278,8 @@ fn nonwage_attendance_and_idle_use_the_same_finite_household_time() {
         for term in &mut economy.employment {
             term.compensation = compensation;
         }
-        let transition = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+        let transition = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
         assert!(transition.wage_accruals.is_empty());
         assert!(transition.member_labor_use.iter().any(|r| r.idle_hours > 0));
         assert!(transition
@@ -288,7 +304,12 @@ fn zero_eligible_persons_can_retain_needs_without_invented_time() {
     for labor in &mut economy.member_labor {
         labor.available_hours = 0;
     }
-    for attendance in &mut economy.recurring.as_mut().unwrap().attendance {
+    for attendance in &mut economy
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .attendance
+    {
         attendance.planned_hours = 0;
     }
     let snapshot = economy.book.snapshot();
@@ -302,16 +323,17 @@ fn zero_eligible_persons_can_retain_needs_without_invented_time() {
             })
             .collect(),
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let costs = economy.costs.snapshot();
     economy.costs =
         HistoricalCostBook::open(&economy.book, costs.stocks, costs.freight, vec![], vec![])
-            .unwrap();
+            .expect("the fixture opens the authored source");
     let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
         unreachable!()
     };
     book.policies[0].eligible_persons = 0;
-    let transition = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let transition = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(transition.household_consumption[0].required_quantity, 4);
     assert_eq!(transition.household_consumption[0].unmet_quantity, 2);
     let row = &transition.household_time[0];
@@ -327,7 +349,7 @@ fn zero_eligible_persons_can_retain_needs_without_invented_time() {
 #[test]
 fn persisted_unpaid_claim_cannot_exceed_all_captured_material_needs() {
     let mut state = babylon_material_circuit::advance_material_circuit(&time_opening(2))
-        .unwrap()
+        .expect("the authored material state advances one period")
         .state;
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         unreachable!()
@@ -356,7 +378,12 @@ fn nonworker_household_requires_an_admitted_hour_unit() {
     };
     economy.employment.clear();
     economy.member_labor.clear();
-    for row in &mut economy.recurring.as_mut().unwrap().attendance {
+    for row in &mut economy
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .attendance
+    {
         row.planned_hours = 0;
     }
     let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
@@ -374,7 +401,8 @@ fn nonworker_household_requires_an_admitted_hour_unit() {
         unreachable!()
     };
     book.policies[0].labor_unit_id = crate::hours();
-    let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let closed = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     assert_eq!(closed.household_time[0].attended_hours, 0);
     assert_eq!(closed.household_time[0].contribution_available_hours, 12);
 }
@@ -382,7 +410,7 @@ fn nonworker_household_requires_an_admitted_hour_unit() {
 #[test]
 fn a_prior_period_contribution_cannot_be_replayed_after_rollover() {
     let mut state = babylon_material_circuit::advance_material_circuit(&time_opening(4))
-        .unwrap()
+        .expect("the authored material state advances one period")
         .state;
     let usage = HouseholdContributionUse {
         use_id: [9; 32],
@@ -396,9 +424,9 @@ fn a_prior_period_contribution_cannot_be_replayed_after_rollover() {
         1,
         std::slice::from_ref(&usage),
     )
-    .unwrap();
+    .expect("the fixture consumes the authored contributions");
     state = babylon_material_circuit::advance_material_circuit(&state)
-        .unwrap()
+        .expect("the authored material state advances one period")
         .state;
     let before = state.clone();
     assert_eq!(

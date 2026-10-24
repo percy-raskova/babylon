@@ -2678,17 +2678,31 @@ mod tests {
             ),
         ] {
             let mut graph = HypergraphStore::new();
-            let before = graph.encode_state().unwrap().as_bytes().to_vec();
+            let before = graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes()
+                .to_vec();
             let error =
                 super::super::prepare_rules(STRUGGLE_SCENARIO, None, &changed_rules, &mut graph)
                     .expect_err("a permanent reservation cannot drift");
             assert!(matches!(error, PrepareError::KernelSlot(_)), "{error:?}");
             assert!(error.to_string().contains(expected), "{error}");
-            assert_eq!(graph.encode_state().unwrap().as_bytes(), before);
+            assert_eq!(
+                graph
+                    .encode_state()
+                    .expect("the graph encodes its canonical state")
+                    .as_bytes(),
+                before
+            );
         }
 
         let mut graph = HypergraphStore::new();
-        let before = graph.encode_state().unwrap().as_bytes().to_vec();
+        let before = graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec();
         let error = super::super::prepare_rules_with_kernel_slots(
             STRUGGLE_SCENARIO,
             None,
@@ -2699,7 +2713,13 @@ mod tests {
         .expect_err("a live kernel requires one permanent row");
         assert!(matches!(error, PrepareError::KernelSlot(_)), "{error:?}");
         assert!(error.to_string().contains("no permanent reservation"));
-        assert_eq!(graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(
+            graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            before
+        );
 
         let retained = [
             super::super::kernel_slot::BUNDLED_KERNEL_SLOT_RESERVATIONS[0],
@@ -2779,9 +2799,15 @@ mod tests {
         G: GraphSubstrate + Default,
     {
         let mut graph = G::default();
-        let prior = graph.add_node("PREEXISTING").unwrap();
-        graph.update_node(prior, "prior/value", 0.375).unwrap();
-        graph.add_hyperedge("PRIOR_GROUP", &[prior]).unwrap();
+        let prior = graph
+            .add_node("PREEXISTING")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .update_node(prior, "prior/value", 0.375)
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .add_hyperedge("PRIOR_GROUP", &[prior])
+            .expect("the fixture graph admits the authored hyperedge");
         graph
     }
 
@@ -2790,7 +2816,11 @@ mod tests {
         G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy + Default,
     {
         let mut graph = G::default();
-        let before = graph.encode_state().unwrap().as_bytes().to_vec();
+        let before = graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec();
         let cursors = graph.allocator_cursors();
         let mut sink = CollectingSink {
             events: vec![("EventType/PRIOR".to_owned(), Vec::new())],
@@ -2816,7 +2846,13 @@ mod tests {
 
         let error = result.expect_err("the second probability write must fail");
         assert!(error.contains("E-EVAL-020"), "{error}");
-        assert_eq!(graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(
+            graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            before
+        );
         assert_eq!(graph.allocator_cursors(), cursors);
         assert_eq!(sink.events, events);
     }
@@ -2849,7 +2885,7 @@ mod tests {
         assert_eq!(
             graph
                 .node_attribute(NodeId(0), "social-class/count")
-                .unwrap()
+                .expect("the fixture node carries the authored attribute")
                 .to_bits(),
             2.0f64.to_bits()
         );
@@ -2887,7 +2923,11 @@ mod tests {
     #[test]
     fn one_shot_refuses_unnamed_preexisting_graph_without_publication() {
         let mut graph = prepopulated_graph::<HypergraphStore>();
-        let before = graph.encode_state().unwrap().as_bytes().to_vec();
+        let before = graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec();
         let mut sink = CollectingSink::default();
         let error = super::super::run_once_into(
             ONE_SHOT_SUCCESS_SCENARIO,
@@ -2895,9 +2935,15 @@ mod tests {
             &mut graph,
             &mut sink,
         )
-        .unwrap_err();
+        .expect_err("the malformed tick is refused");
         assert!(error.contains("identity refused"), "{error}");
-        assert_eq!(graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(
+            graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            before
+        );
         assert!(sink.events.is_empty());
     }
 
@@ -3089,7 +3135,8 @@ mod tests {
 
     #[test]
     fn a_declared_vocabulary_typo_refuses_through_the_production_seam() {
-        let err = super::super::run_once(VOCAB_WIRING_SCENARIO, VOCAB_WIRING_RULE).unwrap_err();
+        let err = super::super::run_once(VOCAB_WIRING_SCENARIO, VOCAB_WIRING_RULE)
+            .expect_err("the malformed tick is refused");
         assert!(err.contains("E-LOAD-031"), "{err}");
     }
 
@@ -3159,7 +3206,7 @@ mod tests {
             D32_WIRING_PROBE_RULE,
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("`prepare_rules` rejects the malformed input");
         assert!(err.to_string().contains("E-LOAD-001"), "{err}");
         // #652 Task 3, plan §3.1's fourth row ("the row revision 1
         // missed"): the code must survive as STRUCTURED DATA, not merely as
@@ -3201,7 +3248,7 @@ mod tests {
                 D32_WIRING_PROBE_RULE,
                 &mut graph,
             )
-            .unwrap_err();
+            .expect_err("`prepare_rules` rejects the malformed input");
             assert_eq!(
                 err.to_string(),
                 "E-LOAD-001: solidarity/strength is the implicit <edge-type>/strength field \

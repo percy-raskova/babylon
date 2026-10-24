@@ -79,7 +79,8 @@ mod tests {
     #[test]
     fn maintenance_authoring_refuses_untyped_invalid_or_unbounded_quantities() {
         let source = include_str!("../../../../../content/scenarios/michigan/defines.toml");
-        let original: Value = toml::from_str(source).unwrap();
+        let original: Value =
+            toml::from_str(source).expect("the authored JSON matches the declared schema");
         for (field, value) in [
             ("SPARE_UNITS_PER_JOB", 0),
             ("LABOR_UNITS_PER_JOB", 0),
@@ -95,17 +96,29 @@ mod tests {
             let mut changed = original.clone();
             changed["maintenance"][field] = value.into();
             assert!(
-                MichiganDefines::parse(&toml::to_string(&changed).unwrap()).is_err(),
+                MichiganDefines::parse(
+                    &toml::to_string(&changed).expect("the fixture value formats as text")
+                )
+                .is_err(),
                 "{field}"
             );
         }
         for value in [Value::String("Observed".to_owned()), Value::Boolean(true)] {
             let mut changed = original.clone();
             changed["maintenance"]["EVIDENCE_CLASS"] = value;
-            assert!(MichiganDefines::parse(&toml::to_string(&changed).unwrap()).is_err());
+            assert!(MichiganDefines::parse(
+                &toml::to_string(&changed).expect("the fixture value formats as text")
+            )
+            .is_err());
         }
         let mut changed = original;
-        changed.as_table_mut().unwrap().remove("maintenance");
-        assert!(MichiganDefines::parse(&toml::to_string(&changed).unwrap()).is_err());
+        changed
+            .as_table_mut()
+            .expect("the fixture call `as_table_mut` succeeds for the authored inputs")
+            .remove("maintenance");
+        assert!(MichiganDefines::parse(
+            &toml::to_string(&changed).expect("the fixture value formats as text")
+        )
+        .is_err());
     }
 }

@@ -81,11 +81,14 @@ fn assert_record<T: T3Record>(record: &T, domain: &str, envelope_hex: &str, dige
     let fixture_digest = decode_hex(digest_hex);
     assert_eq!(fixture_digest.len(), 32);
     assert_eq!(
-        babylon_evidence::canonical_envelope(record).unwrap(),
+        babylon_evidence::canonical_envelope(record)
+            .expect("the record exposes its canonical envelope"),
         fixture_envelope
     );
     assert_eq!(
-        babylon_evidence::record_digest(record).unwrap().as_bytes(),
+        babylon_evidence::record_digest(record)
+            .expect("the record has a canonical digest")
+            .as_bytes(),
         fixture_digest.as_slice()
     );
 }
@@ -99,9 +102,9 @@ fn run_identity_with_mutation(field: &str) -> RunIdentity {
         }
     };
     let session = if field == "session" {
-        SessionId::new("run-互助").unwrap()
+        SessionId::new("run-互助").expect("the constructor accepts the authored fixture arguments")
     } else {
-        SessionId::new("run-é").unwrap()
+        SessionId::new("run-é").expect("the constructor accepts the authored fixture arguments")
     };
     let rng = if field == "rng-algorithm-id" {
         "rng-v2"
@@ -133,7 +136,7 @@ fn run_identity_with_mutation(field: &str) -> RunIdentity {
         rng,
         graph,
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn sample(tick: u64, first_tag: u8, aggregate: f64) -> SfsSample {
@@ -144,21 +147,25 @@ fn sample(tick: u64, first_tag: u8, aggregate: f64) -> SfsSample {
         digest(first_tag + 2),
         aggregate,
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
-#[allow(clippy::needless_range_loop)] // The seven-sample ceiling is part of the vector contract.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // The seven-sample ceiling is part of the vector contract.
 fn trace() -> SfsTrace {
     let masses = [0.0, 1.0, 2.0, 5.0, 8.0, 10.0, 11.0];
     let mut samples = Vec::with_capacity(7);
     for index in 0..7 {
         samples.push(sample(
-            100 + u64::try_from(index).unwrap(),
-            40 + u8::try_from(index * 3).unwrap(),
+            100 + u64::try_from(index).expect("the fixture value fits the target range"),
+            40 + u8::try_from(index * 3).expect("the fixture value fits the target range"),
             masses[index],
         ));
     }
-    SfsTrace::new(digest(24), digest(25), 26, 100, 2, samples).unwrap()
+    SfsTrace::new(digest(24), digest(25), 26, 100, 2, samples)
+        .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn candidates() -> Vec<PracticeCandidateRow> {
@@ -169,7 +176,8 @@ fn candidates() -> Vec<PracticeCandidateRow> {
 }
 
 fn candidate_schedule() -> PracticeCandidateSchedule {
-    PracticeCandidateSchedule::new(candidates()).unwrap()
+    PracticeCandidateSchedule::new(candidates())
+        .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn preregistration() -> SfsPreregistration {
@@ -189,7 +197,7 @@ fn preregistration() -> SfsPreregistration {
         digest(87),
         digest(88),
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn attempt_ledger() -> PracticeAttemptLedger {
@@ -197,11 +205,12 @@ fn attempt_ledger() -> PracticeAttemptLedger {
     let rows = schedule.rows();
     let attempts = vec![
         PracticeAttemptRow::new(rows[0].clone(), PracticeDisposition::Accepted, digest(91))
-            .unwrap(),
+            .expect("the constructor accepts the authored fixture arguments"),
         PracticeAttemptRow::new(rows[1].clone(), PracticeDisposition::Rejected, digest(92))
-            .unwrap(),
+            .expect("the constructor accepts the authored fixture arguments"),
     ];
-    PracticeAttemptLedger::new(digest(90), attempts).unwrap()
+    PracticeAttemptLedger::new(digest(90), attempts)
+        .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn profile_set(field: &'static str, values: &[&str]) -> CanonicalProfileSet {
@@ -213,7 +222,8 @@ fn profile_set(field: &'static str, values: &[&str]) -> CanonicalProfileSet {
         }
         entries.push(values[index].to_owned());
     }
-    CanonicalProfileSet::new(field, entries).unwrap()
+    CanonicalProfileSet::new(field, entries)
+        .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn component_profile() -> SfsComponentProofProfile {
@@ -230,7 +240,7 @@ fn component_profile() -> SfsComponentProofProfile {
         profile_set("comparison_clamp_contexts", &["clamp"]),
         profile_set("effects", &["effect", "互助"]),
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn proof_profile() -> SfsProofProfile {
@@ -242,7 +252,7 @@ fn proof_profile() -> SfsProofProfile {
         digest(113),
         vec![component_profile()],
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn causal_cone() -> CausalCone {
@@ -251,30 +261,31 @@ fn causal_cone() -> CausalCone {
         vec!["café".to_owned()],
         vec!["Ā".to_owned(), "互助".to_owned()],
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn intervention_delta() -> InterventionDelta {
     let zero = Digest32::from_bytes([0; 32]);
     let rows = vec![
         InterventionDeltaRow::new(InterventionOperation::Add, digest(120), zero, digest(121))
-            .unwrap(),
+            .expect("the constructor accepts the authored fixture arguments"),
         InterventionDeltaRow::new(
             InterventionOperation::Remove,
             digest(122),
             digest(123),
             zero,
         )
-        .unwrap(),
+        .expect("the constructor accepts the authored fixture arguments"),
         InterventionDeltaRow::new(
             InterventionOperation::Replace,
             digest(124),
             digest(125),
             digest(126),
         )
-        .unwrap(),
+        .expect("the constructor accepts the authored fixture arguments"),
     ];
-    InterventionDelta::new(DifferingLedgerKind::PracticeAttempt, rows).unwrap()
+    InterventionDelta::new(DifferingLedgerKind::PracticeAttempt, rows)
+        .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn persistence_comparison() -> PersistenceComparison {
@@ -289,7 +300,7 @@ fn persistence_comparison() -> PersistenceComparison {
         2,
         vec![2.0, 1.0, 0.5],
     )
-    .unwrap()
+    .expect("the constructor accepts the authored fixture arguments")
 }
 
 fn assert_wire(parts: [&str; 5]) {
@@ -348,7 +359,10 @@ fn parse_bits(value: &str, expected: usize) -> Vec<f64> {
 }
 
 #[test]
-#[allow(clippy::needless_range_loop)] // The eleven-row ceiling is part of the fixture contract.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // The eleven-row ceiling is part of the fixture contract.
 fn every_wire_vector_reconstructs_exact_rust_envelope_and_digest() {
     let lines = fixture_lines(WIRE_VECTORS, 11);
     for index in 0..11 {
@@ -357,7 +371,10 @@ fn every_wire_vector_reconstructs_exact_rust_envelope_and_digest() {
 }
 
 #[test]
-#[allow(clippy::needless_range_loop)] // The twelve-row ceiling is part of the fixture contract.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // The twelve-row ceiling is part of the fixture contract.
 fn all_classifier_vectors_match_the_independent_literal_bits() {
     let lines = fixture_lines(CLASSIFIER_VECTORS, 12);
     for index in 0..12 {
@@ -368,7 +385,7 @@ fn all_classifier_vectors_match_the_independent_literal_bits() {
             "classifier" => {
                 assert_eq!(
                     classify_sfs(width, &parse_bits(parts[3], 7))
-                        .unwrap()
+                        .expect("the fixture call `classify_sfs` succeeds for the authored inputs")
                         .code(),
                     class
                 );
@@ -376,7 +393,7 @@ fn all_classifier_vectors_match_the_independent_literal_bits() {
             "persistence" => {
                 assert_eq!(
                     classify_persistence(width, &parse_bits(parts[3], 3))
-                        .unwrap()
+                        .expect("the fixture call `classify_persistence` succeeds for the authored inputs")
                         .code(),
                     class
                 );
@@ -387,19 +404,26 @@ fn all_classifier_vectors_match_the_independent_literal_bits() {
 }
 
 #[test]
-#[allow(clippy::needless_range_loop)] // The eighteen-row ceiling is part of the fixture contract.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // The eighteen-row ceiling is part of the fixture contract.
 fn every_run_identity_mutation_changes_bytes_and_digest_and_reconstructs() {
     let base = run_identity_with_mutation("");
-    let base_bytes = babylon_evidence::canonical_envelope(&base).unwrap();
-    let base_digest = babylon_evidence::record_digest(&base).unwrap();
+    let base_bytes = babylon_evidence::canonical_envelope(&base)
+        .expect("the record exposes its canonical envelope");
+    let base_digest =
+        babylon_evidence::record_digest(&base).expect("the record has a canonical digest");
     let lines = fixture_lines(IDENTITY_MUTATIONS, 18);
     for index in 0..18 {
         let parts = five_fields(lines[index]);
         assert_eq!(parts[0], "mutation");
         assert_eq!(parts[1], "run-identity");
         let mutated = run_identity_with_mutation(parts[2]);
-        let mutated_bytes = babylon_evidence::canonical_envelope(&mutated).unwrap();
-        let mutated_digest = babylon_evidence::record_digest(&mutated).unwrap();
+        let mutated_bytes = babylon_evidence::canonical_envelope(&mutated)
+            .expect("the record exposes its canonical envelope");
+        let mutated_digest =
+            babylon_evidence::record_digest(&mutated).expect("the record has a canonical digest");
         assert_eq!(mutated_bytes, decode_hex(parts[3]));
         assert_eq!(mutated_digest.to_hex(), parts[4]);
         assert_ne!(mutated_bytes, base_bytes);

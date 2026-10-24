@@ -445,12 +445,16 @@ mod tests {
     #[test]
     fn a_metric_declares_type_kind_domain_and_provider() {
         let r = registry();
-        let graph = r.get("solidarity-density").unwrap();
+        let graph = r
+            .get("solidarity-density")
+            .expect("the fixture holds the addressed entry");
         assert_eq!(graph.domain, MetricDomain::Graph);
         assert_eq!(graph.kind, FieldKind::Intensive);
         assert_eq!(graph.provider, "topology-scores");
         assert_eq!(
-            r.get("betweenness-centrality").unwrap().domain,
+            r.get("betweenness-centrality")
+                .expect("the fixture holds the addressed entry")
+                .domain,
             MetricDomain::Element("organization".to_owned())
         );
     }
@@ -463,7 +467,7 @@ mod tests {
                        (binding c :expr (metric-of self betweenness-centrality))) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         );
-        let decls = crate::bindings::parse_bindings(&ok).unwrap();
+        let decls = crate::bindings::parse_bindings(&ok).expect("the authored bindings parse");
         assert_eq!(r.check_reading_forms(&ok, &decls), Ok(()));
     }
 
@@ -474,10 +478,11 @@ mod tests {
             "(bindings (binding c :metric betweenness-centrality)) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         );
-        let decls = crate::bindings::parse_bindings(&via_binding).unwrap();
+        let decls =
+            crate::bindings::parse_bindings(&via_binding).expect("the authored bindings parse");
         assert_eq!(
             r.check_reading_forms(&via_binding, &decls)
-                .unwrap_err()
+                .expect_err("the malformed input is rejected by `check_reading_forms`")
                 .spec_code(),
             Some("E-LOAD-012")
         );
@@ -486,10 +491,11 @@ mod tests {
             "(bindings (binding d :expr (metric-of self solidarity-density))) \
              (effects (update-node self social-class/agitation (add 0.05i)))",
         );
-        let decls = crate::bindings::parse_bindings(&via_accessor).unwrap();
+        let decls =
+            crate::bindings::parse_bindings(&via_accessor).expect("the authored bindings parse");
         assert_eq!(
             r.check_reading_forms(&via_accessor, &decls)
-                .unwrap_err()
+                .expect_err("the malformed input is rejected by `check_reading_forms`")
                 .spec_code(),
             Some("E-LOAD-012")
         );
@@ -505,10 +511,11 @@ mod tests {
              (effects (update-node self social-class/agitation (add 0.05i)))",
         ] {
             let form = rule(body);
-            let decls = crate::bindings::parse_bindings(&form).unwrap();
+            let decls =
+                crate::bindings::parse_bindings(&form).expect("the authored bindings parse");
             assert_eq!(
                 r.check_reading_forms(&form, &decls)
-                    .unwrap_err()
+                    .expect_err("the malformed input is rejected by `check_reading_forms`")
                     .spec_code(),
                 Some("E-LOAD-011"),
                 "never 0.0 (§6.3): {body}"
@@ -520,11 +527,16 @@ mod tests {
     fn kernel_disagreement_is_e_load_025() {
         let r = registry();
         let mut kernel = HashMap::new();
-        let mut registered = r.get("solidarity-density").unwrap().clone();
+        let mut registered = r
+            .get("solidarity-density")
+            .expect("the fixture holds the addressed entry")
+            .clone();
         registered.kind = FieldKind::Extensive; // the kernel says extensive
         kernel.insert("solidarity-density".to_owned(), registered);
         assert_eq!(
-            r.check_against_kernel(&kernel).unwrap_err().spec_code(),
+            r.check_against_kernel(&kernel)
+                .expect_err("the malformed input is rejected by `check_against_kernel`")
+                .spec_code(),
             Some("E-LOAD-025")
         );
     }
@@ -542,7 +554,7 @@ mod tests {
             exemptions: &[],
         };
         let err = crate::typecheck::typecheck_aggregation(&e("(mean solidarity-density)"), &env)
-            .unwrap_err();
+            .expect_err("the fixture call `typecheck_aggregation` fails for the authored inputs");
         assert_eq!(err.code, Some(TypeCode::UnweightedMeanOfIntensive));
     }
 
@@ -550,7 +562,9 @@ mod tests {
     fn a_duplicate_metric_declaration_is_e_load_001() {
         let mut r = registry();
         assert_eq!(
-            r.declare(&e(GRAPH_METRIC)).unwrap_err().spec_code(),
+            r.declare(&e(GRAPH_METRIC))
+                .expect_err("the malformed declaration is refused")
+                .spec_code(),
             Some("E-LOAD-001")
         );
     }

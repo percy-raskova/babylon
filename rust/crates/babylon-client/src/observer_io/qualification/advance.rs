@@ -272,7 +272,10 @@ mod tests {
         for automated in [false, true] {
             let (_directory, audit, session, _status) = recovery_tests::source();
             let (mut app, requests, responses) = io_tests::quit_app();
-            let scope = session.runtime_scope().unwrap().clone();
+            let scope = session
+                .runtime_scope()
+                .expect("the fixture runtime scope exists")
+                .clone();
             app.insert_resource(audit)
                 .insert_resource(session)
                 .init_resource::<OrganizerClient>();
@@ -293,7 +296,9 @@ mod tests {
                     ObserverCommand::Step
                 });
             app.update();
-            let RuntimeSessionRequest::Advance { request_id, .. } = requests.try_recv().unwrap()
+            let RuntimeSessionRequest::Advance { request_id, .. } = requests
+                .try_recv()
+                .expect("the producer sends before this receive")
             else {
                 panic!("ordinary client must send Advance");
             };
@@ -305,14 +310,14 @@ mod tests {
                     durable_tick: 0,
                     verified_tick: 0,
                 }))
-                .unwrap();
+                .expect("the receiver stays alive for the send");
             app.update();
             assert!(app
                 .world()
                 .resource::<NativeAudit>()
                 .advance
                 .as_ref()
-                .unwrap()
+                .expect("the fixture set the optional field before this read")
                 .committed
                 .is_none());
             responses
@@ -324,15 +329,25 @@ mod tests {
                         tick_content_hash: Some("ab".repeat(32)),
                     },
                 }))
-                .unwrap();
+                .expect("the receiver stays alive for the send");
             app.update();
             assert_eq!(
                 app.world().resource::<ObserverSession>().phase,
                 SessionPhase::Loading
             );
             let audit = app.world().resource::<NativeAudit>();
-            assert!(audit.advance.as_ref().unwrap().committed.is_some());
-            assert!(audit.advance.as_ref().unwrap().archive_elapsed_ns.is_none());
+            assert!(audit
+                .advance
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .committed
+                .is_some());
+            assert!(audit
+                .advance
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .archive_elapsed_ns
+                .is_none());
             responses
                 .send(Ok(RuntimeSessionResponse::ArchiveProgress {
                     request_id: None,
@@ -340,14 +355,14 @@ mod tests {
                     durable_tick: 1,
                     verified_tick: 1,
                 }))
-                .unwrap();
+                .expect("the receiver stays alive for the send");
             app.update();
             assert!(app
                 .world()
                 .resource::<NativeAudit>()
                 .advance
                 .as_ref()
-                .unwrap()
+                .expect("the fixture set the optional field before this read")
                 .archive_elapsed_ns
                 .is_some());
         }
@@ -357,7 +372,10 @@ mod tests {
     fn failed_enqueue_retains_no_clock_or_completed_timing_record() {
         let (directory, audit, session, _status) = recovery_tests::source();
         let (mut app, _requests, _responses) = io_tests::quit_app();
-        let scope = session.runtime_scope().unwrap().clone();
+        let scope = session
+            .runtime_scope()
+            .expect("the fixture runtime scope exists")
+            .clone();
         app.insert_resource(audit).insert_resource(session);
         app.world()
             .resource::<RuntimePipe>()
@@ -367,7 +385,7 @@ mod tests {
                 scope,
                 request_id: 999,
             })
-            .unwrap();
+            .expect("the bounded channel has capacity for the fixture message");
         app.world_mut()
             .resource_mut::<Messages<ObserverCommand>>()
             .write(ObserverCommand::Step);
@@ -383,35 +401,78 @@ mod tests {
     #[test]
     fn commit_and_archive_clocks_require_the_exact_sent_request() {
         let (_directory, mut audit, mut session, _status) = recovery_tests::source();
-        let request_id = session.begin_advance().unwrap();
+        let request_id = session
+            .begin_advance()
+            .expect("the session begins the authored advance");
         let request = RuntimeSessionRequest::Advance {
             protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
-            scope: session.runtime_scope().unwrap().clone(),
+            scope: session
+                .runtime_scope()
+                .expect("the fixture runtime scope exists")
+                .clone(),
             request_id,
             expected_tail: RuntimeSessionTail {
                 resolve_tick: 0,
                 tick_content_hash: None,
             },
         };
-        let pending = audit.prepare_advance(&session, &request).unwrap();
+        let pending = audit
+            .prepare_advance(&session, &request)
+            .expect("the session prepares the authored advance");
         assert!(audit.advance.is_none(), "failed enqueue cannot own a clock");
         audit.advance = Some(pending);
         assert!(audit.prepare_advance(&session, &request).is_err());
-        audit.advance_archive_progress(&session).unwrap();
-        assert!(audit.advance.as_ref().unwrap().archive_elapsed_ns.is_none());
+        audit
+            .advance_archive_progress(&session)
+            .expect("the fixture call `advance_archive_progress` succeeds for the authored inputs");
+        assert!(audit
+            .advance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .archive_elapsed_ns
+            .is_none());
         assert!(session.acknowledge(request_id, 1, Some("ab".repeat(32))));
         assert!(audit.advance_committed(&session, request_id + 1).is_err());
-        assert!(audit.advance.as_ref().unwrap().committed.is_none());
-        audit.advance_committed(&session, request_id).unwrap();
+        assert!(audit
+            .advance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .committed
+            .is_none());
+        audit
+            .advance_committed(&session, request_id)
+            .expect("the fixture call `advance_committed` succeeds for the authored inputs");
         assert!(audit.advance_committed(&session, request_id).is_err());
-        audit.advance_archive_progress(&session).unwrap();
-        assert!(audit.advance.as_ref().unwrap().archive_elapsed_ns.is_none());
+        audit
+            .advance_archive_progress(&session)
+            .expect("the fixture call `advance_archive_progress` succeeds for the authored inputs");
+        assert!(audit
+            .advance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .archive_elapsed_ns
+            .is_none());
         session.archive_verified_tick = 1;
-        audit.advance_archive_progress(&session).unwrap();
-        let original = audit.advance.as_ref().unwrap().archive_elapsed_ns;
+        audit
+            .advance_archive_progress(&session)
+            .expect("the fixture call `advance_archive_progress` succeeds for the authored inputs");
+        let original = audit
+            .advance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .archive_elapsed_ns;
         assert!(original.is_some());
-        audit.advance_archive_progress(&session).unwrap();
-        assert_eq!(audit.advance.as_ref().unwrap().archive_elapsed_ns, original);
+        audit
+            .advance_archive_progress(&session)
+            .expect("the fixture call `advance_archive_progress` succeeds for the authored inputs");
+        assert_eq!(
+            audit
+                .advance
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .archive_elapsed_ns,
+            original
+        );
         session.content_hash = Some("cd".repeat(32));
         assert!(audit.advance_archive_progress(&session).is_err());
     }
@@ -419,10 +480,15 @@ mod tests {
     #[test]
     fn unadmitted_source_and_changed_scope_cannot_start_or_complete_a_clock() {
         let (_directory, mut audit, mut session, _status) = recovery_tests::source();
-        let request_id = session.begin_advance().unwrap();
+        let request_id = session
+            .begin_advance()
+            .expect("the session begins the authored advance");
         let request = RuntimeSessionRequest::Advance {
             protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
-            scope: session.runtime_scope().unwrap().clone(),
+            scope: session
+                .runtime_scope()
+                .expect("the fixture runtime scope exists")
+                .clone(),
             request_id,
             expected_tail: RuntimeSessionTail {
                 resolve_tick: 0,
@@ -434,10 +500,19 @@ mod tests {
         if let RuntimeSessionRequest::Advance { expected_tail, .. } = &mut request {
             expected_tail.tick_content_hash = None;
         }
-        audit.advance = Some(audit.prepare_advance(&session, &request).unwrap());
+        audit.advance = Some(
+            audit
+                .prepare_advance(&session, &request)
+                .expect("the session prepares the authored advance"),
+        );
         assert!(session.acknowledge(request_id, 1, Some("ab".repeat(32))));
         session.foundation_digest = Some("cd".repeat(32));
         assert!(audit.advance_committed(&session, request_id).is_err());
-        assert!(audit.advance.as_ref().unwrap().committed.is_none());
+        assert!(audit
+            .advance
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .committed
+            .is_none());
     }
 }

@@ -15,12 +15,12 @@ use babylon_kernel::geography::CountyGeoid;
 type Error = HouseholdReferenceError;
 
 fn source() -> String {
-    artifact::decode(ARTIFACT).unwrap()
+    artifact::decode(ARTIFACT).expect("the committed canonical bytes decode")
 }
 fn parse(text: &str) -> Result<NationalHouseholdReference, Error> {
     parse::capture(
         text,
-        national_counties::national_county_reference().unwrap(),
+        national_counties::national_county_reference().expect("the county reference fixture loads"),
     )
 }
 fn edit_first(text: &str, edit: impl FnOnce(&mut Vec<String>)) -> String {
@@ -37,57 +37,87 @@ fn cell(fields: &mut [String], offset: usize, margin: bool, parts: [&str; 3]) {
     }
 }
 fn increment(fields: &mut [String], offset: usize, extra: u64) {
-    let value = (fields[1 + offset * 6].parse::<u64>().unwrap() + extra).to_string();
+    let value = (fields[1 + offset * 6]
+        .parse::<u64>()
+        .expect("the fixture world holds the addressed component")
+        + extra)
+        .to_string();
     cell(fields, offset, false, [&value, &value, "published"]);
 }
 
 #[test]
 fn national_households_preserve_four_separate_margins_and_population_residual() {
-    let reference = artifact::national_household_reference().unwrap();
+    let reference =
+        artifact::national_household_reference().expect("the household reference fixture loads");
     assert_eq!(reference.counties().len(), 3144);
     let mut totals = [0; 4];
     for row in reference.counties() {
-        let households = row.total_households().estimate.value().unwrap();
+        let households = row
+            .total_households()
+            .estimate
+            .value()
+            .expect("the fixture value is present");
         assert_eq!(
             HouseholdType::ALL
                 .into_iter()
-                .map(|kind| row.households(kind).estimate.value().unwrap())
+                .map(|kind| row
+                    .households(kind)
+                    .estimate
+                    .value()
+                    .expect("the fixture value is present"))
                 .sum::<u64>(),
             households
         );
         assert_eq!(
             IncomeBand::ALL
                 .into_iter()
-                .map(|band| row.income_households(band).estimate.value().unwrap())
+                .map(|band| row
+                    .income_households(band)
+                    .estimate
+                    .value()
+                    .expect("the fixture value is present"))
                 .sum::<u64>(),
             households
         );
-        let people = row.persons_in_households().estimate.value().unwrap();
-        let residual = row.derived_group_quarters_persons().unwrap();
+        let people = row
+            .persons_in_households()
+            .estimate
+            .value()
+            .expect("the fixture value is present");
+        let residual = row.derived_group_quarters_persons().expect(
+            "the fixture call `derived_group_quarters_persons` succeeds for the authored inputs",
+        );
         assert_eq!(
             people + residual,
-            row.population_persons().estimate.value().unwrap()
+            row.population_persons()
+                .estimate
+                .value()
+                .expect("the fixture value is present")
         );
         totals[0] += households;
         totals[1] += people;
         totals[2] += residual;
-        totals[3] += row.population_persons().estimate.value().unwrap();
+        totals[3] += row
+            .population_persons()
+            .estimate
+            .value()
+            .expect("the fixture value is present");
     }
     assert_eq!(totals, [129_227_496, 326_722_431, 8_200_068, 334_922_499]);
     let reopened = NationalHouseholdReference::decode_captured(
         ARTIFACT,
-        national_counties::national_county_reference().unwrap(),
+        national_counties::national_county_reference().expect("the county reference fixture loads"),
     )
-    .unwrap();
+    .expect("the captured bytes decode");
     assert_eq!(&reopened, reference);
 }
 
 #[test]
 fn separate_margins_do_not_impose_a_fabricated_integer_family_joint() {
     let row = artifact::national_household_reference()
-        .unwrap()
-        .county(CountyGeoid::try_from("15005").unwrap())
-        .unwrap();
+        .expect("the household reference fixture loads")
+        .county(CountyGeoid::try_from("15005").expect("the fixture value fits the target range"))
+        .expect("the fixture catalog holds the addressed county");
     // Published independent margins: five married households, nine persons.
     // Admission must not invent a tenth person or remove a household.
     assert_eq!(
@@ -132,7 +162,8 @@ fn separate_margins_do_not_impose_a_fabricated_integer_family_joint() {
 
 #[test]
 fn controlled_margin_retains_literal_without_claiming_zero_uncertainty() {
-    let reference = artifact::national_household_reference().unwrap();
+    let reference =
+        artifact::national_household_reference().expect("the household reference fixture loads");
     let controlled: Vec<_> = reference
         .counties()
         .iter()
@@ -182,7 +213,7 @@ fn missing_duplicate_reordered_and_foreign_counties_are_refused() {
     assert_eq!(
         parse(&foreign),
         Err(Error::UnknownCounty(
-            CountyGeoid::try_from("72001").unwrap()
+            CountyGeoid::try_from("72001").expect("the fixture value fits the target range")
         ))
     );
 }
@@ -257,7 +288,7 @@ fn missing_cells_preserve_both_literals_and_propagate_to_derived_residual() {
         let changed = edit_first(&source(), |fields| {
             cell(fields, 9, false, ["", raw, "missing"]);
         });
-        let reference = parse(&changed).unwrap();
+        let reference = parse(&changed).expect("the authored literal parses as the declared type");
         let row = &reference.counties()[0];
         assert_eq!(row.persons_in_households().estimate.raw(), raw);
         assert_eq!(
@@ -278,7 +309,7 @@ fn missing_estimates_and_margin_only_sentinels_are_not_interchangeable() {
             ["", "-999999999", "insufficient_sample_cases"],
         );
     });
-    let reference = parse(&changed).unwrap();
+    let reference = parse(&changed).expect("the authored literal parses as the declared type");
     assert_eq!(
         reference.counties()[0].income_source_observations()[4]
             .estimate
@@ -318,7 +349,8 @@ fn an_unavailable_parent_cannot_hide_overflowing_available_children() {
 
 #[test]
 fn historical_earnings_are_a_separate_household_margin_not_current_workers() {
-    let reference = artifact::national_household_reference().unwrap();
+    let reference =
+        artifact::national_household_reference().expect("the household reference fixture loads");
     let mut with_earnings = 0;
     let mut no_earnings = 0;
     for row in reference.counties() {
@@ -326,15 +358,18 @@ fn historical_earnings_are_a_separate_household_margin_not_current_workers() {
             .historical_earnings_households(HistoricalEarnings::WithEarnings)
             .estimate
             .value()
-            .unwrap();
+            .expect("the fixture value is present");
         let without = row
             .historical_earnings_households(HistoricalEarnings::NoEarnings)
             .estimate
             .value()
-            .unwrap();
+            .expect("the fixture value is present");
         assert_eq!(
             with + without,
-            row.total_households().estimate.value().unwrap()
+            row.total_households()
+                .estimate
+                .value()
+                .expect("the fixture value is present")
         );
         assert_eq!(
             row.earnings_source_observations()[0].estimate.value(),

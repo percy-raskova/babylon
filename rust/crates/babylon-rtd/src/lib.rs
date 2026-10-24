@@ -1,6 +1,9 @@
 // Schema literals retain the language-neutral contract spelling.
 mod canonical;
-#[allow(clippy::unreadable_literal)]
+#[allow(
+    clippy::unreadable_literal,
+    reason = "the literal is an authored byte pattern"
+)]
 mod schema;
 mod validate;
 

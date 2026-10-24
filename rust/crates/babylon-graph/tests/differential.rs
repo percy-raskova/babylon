@@ -38,8 +38,14 @@ impl Twin {
 
     fn assert_synced(&mut self, label: &str) {
         self.step += 1;
-        let memory_bytes = self.memory.encode_state().unwrap();
-        let hyper_bytes = self.hyper.encode_state().unwrap();
+        let memory_bytes = self
+            .memory
+            .encode_state()
+            .expect("the graph encodes its canonical state");
+        let hyper_bytes = self
+            .hyper
+            .encode_state()
+            .expect("the graph encodes its canonical state");
         assert_eq!(
             memory_bytes.as_bytes(),
             hyper_bytes.as_bytes(),
@@ -50,22 +56,36 @@ impl Twin {
     }
 
     fn add_node(&mut self, node_type: &str) -> NodeId {
-        let m = self.memory.add_node(node_type).unwrap();
-        let h = self.hyper.add_node(node_type).unwrap();
+        let m = self
+            .memory
+            .add_node(node_type)
+            .expect("the fixture adds a node with a registered kind");
+        let h = self
+            .hyper
+            .add_node(node_type)
+            .expect("the fixture adds a node with a registered kind");
         assert_eq!(m, h, "identity minting diverged at step {}", self.step + 1);
         self.assert_synced("add_node");
         m
     }
 
     fn update_node(&mut self, id: NodeId, attribute: &str, value: f64) {
-        self.memory.update_node(id, attribute, value).unwrap();
-        self.hyper.update_node(id, attribute, value).unwrap();
+        self.memory
+            .update_node(id, attribute, value)
+            .expect("the fixture node carries the authored attribute");
+        self.hyper
+            .update_node(id, attribute, value)
+            .expect("the fixture node carries the authored attribute");
         self.assert_synced("update_node");
     }
 
     fn add_edge(&mut self, edge_type: &str, from: NodeId, to: NodeId, strength: f64) {
-        self.memory.add_edge(edge_type, from, to, strength).unwrap();
-        self.hyper.add_edge(edge_type, from, to, strength).unwrap();
+        self.memory
+            .add_edge(edge_type, from, to, strength)
+            .expect("the fixture graph admits the authored edge");
+        self.hyper
+            .add_edge(edge_type, from, to, strength)
+            .expect("the fixture graph admits the authored edge");
         self.assert_synced("add_edge");
     }
 
@@ -84,22 +104,32 @@ impl Twin {
     ) {
         self.memory
             .update_edge(edge_type, from, to, attribute, value)
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         self.hyper
             .update_edge(edge_type, from, to, attribute, value)
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         self.assert_synced("update_edge");
     }
 
     fn remove_edge(&mut self, edge_type: &str, from: NodeId, to: NodeId) {
-        self.memory.remove_edge(edge_type, from, to).unwrap();
-        self.hyper.remove_edge(edge_type, from, to).unwrap();
+        self.memory
+            .remove_edge(edge_type, from, to)
+            .expect("the fixture edge exists before removal");
+        self.hyper
+            .remove_edge(edge_type, from, to)
+            .expect("the fixture edge exists before removal");
         self.assert_synced("remove_edge");
     }
 
     fn add_hyperedge(&mut self, hyperedge_type: &str, members: &[NodeId]) -> HyperedgeId {
-        let m = self.memory.add_hyperedge(hyperedge_type, members).unwrap();
-        let h = self.hyper.add_hyperedge(hyperedge_type, members).unwrap();
+        let m = self
+            .memory
+            .add_hyperedge(hyperedge_type, members)
+            .expect("the fixture graph admits the authored hyperedge");
+        let h = self
+            .hyper
+            .add_hyperedge(hyperedge_type, members)
+            .expect("the fixture graph admits the authored hyperedge");
         assert_eq!(
             m,
             h,
@@ -116,14 +146,22 @@ impl Twin {
     /// cascade exercises only indirectly (the Levi store, the
     /// `hyperedge_keys` reverse map, and the `hyperedge_type_index`).
     fn remove_hyperedge(&mut self, id: HyperedgeId) {
-        self.memory.remove_hyperedge(id).unwrap();
-        self.hyper.remove_hyperedge(id).unwrap();
+        self.memory
+            .remove_hyperedge(id)
+            .expect("the fixture hyperedge exists before removal");
+        self.hyper
+            .remove_hyperedge(id)
+            .expect("the fixture hyperedge exists before removal");
         self.assert_synced("remove_hyperedge");
     }
 
     fn remove_node(&mut self, id: NodeId) {
-        self.memory.remove_node(id).unwrap();
-        self.hyper.remove_node(id).unwrap();
+        self.memory
+            .remove_node(id)
+            .expect("the fixture node exists before removal");
+        self.hyper
+            .remove_node(id)
+            .expect("the fixture node exists before removal");
         self.assert_synced("remove_node");
     }
 }

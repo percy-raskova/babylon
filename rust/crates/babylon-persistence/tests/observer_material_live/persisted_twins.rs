@@ -34,22 +34,22 @@ impl RunPair {
     fn create(target: &DisposableTarget, preset: MichiganDeliveryPreset, id: u128) -> Self {
         let foundation = MichiganContentPreset::new_campaign(preset)
             .create_foundation(&crate::test_support::catalog())
-            .unwrap();
+            .expect("the authored catalog builds the foundation");
         let foundation_digest = foundation.digest();
         let uninterrupted = DurableMaterialRuntime::create(
             &target.writer,
             CampaignId::from_uuid(Uuid::from_u128(id)),
             foundation,
         )
-        .unwrap();
+        .expect("the test database creates the fixture campaign");
         let restarted = DurableMaterialRuntime::create(
             &target.writer,
             CampaignId::from_uuid(Uuid::from_u128(id + 1)),
             MichiganContentPreset::new_campaign(preset)
                 .create_foundation(&crate::test_support::catalog())
-                .unwrap(),
+                .expect("the authored catalog builds the foundation"),
         )
-        .unwrap();
+        .expect("the test database creates the fixture campaign");
         Self {
             preset,
             uninterrupted,
@@ -64,8 +64,11 @@ impl RunPair {
         [&self.uninterrupted, &self.restarted].map(|runtime| {
             let mut snapshot = observer
                 .snapshot(runtime.campaign_id(), runtime.session().completed_tick())
-                .unwrap();
-            assert!(snapshot.production_evidence_digest().unwrap().is_some());
+                .expect("the fixture captures a consistent snapshot");
+            assert!(snapshot
+                .production_evidence_digest()
+                .expect("the evidence body has a digest")
+                .is_some());
             snapshot
         })
     }
@@ -91,7 +94,13 @@ impl RunPair {
             receipts,
             authenticated_receipts(connection, &self.restarted, &mut current[1])
         );
-        for (prior, next) in self.history.last().unwrap().iter().zip(&current) {
+        for (prior, next) in self
+            .history
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .iter()
+            .zip(&current)
+        {
             assert_reconciled(prior, next, &receipts);
         }
         let tick = current[0].resolve_tick;
@@ -101,7 +110,7 @@ impl RunPair {
                 self.restarted.campaign_id(),
                 self.foundation_digest,
             )
-            .unwrap();
+            .expect("the fixture opens the authored source");
             self.assert_exact_continuation();
             assert_eq!(self.snapshots(observer), current);
             self.restart_periods.push(tick);
@@ -116,8 +125,14 @@ impl RunPair {
             self.restarted.session().material().canonical_bytes()
         );
         assert_eq!(
-            self.uninterrupted.session().current_world_hash().unwrap(),
-            self.restarted.session().current_world_hash().unwrap()
+            self.uninterrupted
+                .session()
+                .current_world_hash()
+                .expect("the committed session publishes a world hash"),
+            self.restarted
+                .session()
+                .current_world_hash()
+                .expect("the committed session publishes a world hash")
         );
     }
 
@@ -129,10 +144,13 @@ impl RunPair {
             {
                 let mut historical = observer
                     .snapshot(runtime.campaign_id(), held.resolve_tick)
-                    .unwrap();
+                    .expect("the fixture captures a consistent snapshot");
                 // Both sides use the evidence API's canonical multiset order.
                 // Held snapshots were canonicalized when first admitted above.
-                assert!(historical.production_evidence_digest().unwrap().is_some());
+                assert!(historical
+                    .production_evidence_digest()
+                    .expect("the evidence body has a digest")
+                    .is_some());
                 assert_eq!(historical, *held);
             }
         }
@@ -144,29 +162,40 @@ pub(super) fn stored_canonical_material(
     campaign: CampaignId,
     tick: u64,
 ) -> (Vec<u8>, Vec<u8>) {
-    let base:Vec<u8>=connection.query_one("SELECT initial_register_bytes FROM public.v_observer_material_foundation_v1 WHERE campaign_id=$1::uuid",&[campaign.as_uuid()]).unwrap().get(0);
-    let opening = babylon_persistence::material_storage::seed(&base).unwrap();
-    let mut chain = babylon_persistence::material_storage::initial_lookup_chain(&opening).unwrap();
+    let base:Vec<u8>=connection.query_one("SELECT initial_register_bytes FROM public.v_observer_material_foundation_v1 WHERE campaign_id=$1::uuid",&[campaign.as_uuid()]).expect("the seeded row is present exactly once").get(0);
+    let opening = babylon_persistence::material_storage::seed(&base)
+        .expect("the fixture seeds the authored rows");
+    let mut chain = babylon_persistence::material_storage::initial_lookup_chain(&opening)
+        .expect("the opening register builds its first lookup chain");
     let mut loaded = None;
-    let tick_sql = i64::try_from(tick).unwrap();
-    let rows=connection.query("SELECT resolve_tick,lookup_delta_bytes FROM public.v_observer_material_state_v1 WHERE campaign_id=$1::uuid AND resolve_tick>=1 AND resolve_tick<=$2 ORDER BY resolve_tick",&[campaign.as_uuid(),&tick_sql]).unwrap();
-    assert_eq!(u64::try_from(rows.len()).unwrap(), tick);
+    let tick_sql = i64::try_from(tick).expect("the fixture value fits the target range");
+    let rows=connection.query("SELECT resolve_tick,lookup_delta_bytes FROM public.v_observer_material_state_v1 WHERE campaign_id=$1::uuid AND resolve_tick>=1 AND resolve_tick<=$2 ORDER BY resolve_tick",&[campaign.as_uuid(),&tick_sql]).expect("the seeded rows are readable");
+    assert_eq!(
+        u64::try_from(rows.len()).expect("the fixture value fits the target range"),
+        tick
+    );
     for (index, row) in rows.iter().enumerate() {
-        assert_eq!(row.get::<_, i64>(0), i64::try_from(index + 1).unwrap());
+        assert_eq!(
+            row.get::<_, i64>(0),
+            i64::try_from(index + 1).expect("the fixture value fits the target range")
+        );
         let delta: &[u8] = row.get(1);
         loaded = Some(
             babylon_persistence::material_storage::read_period_lookup(
                 &opening,
-                u64::try_from(index + 1).unwrap(),
+                u64::try_from(index + 1).expect("the fixture value fits the target range"),
                 delta,
                 LookupAnchor::Previous(chain),
             )
-            .unwrap(),
+            .expect("the committed lookup table reads"),
         );
-        chain = loaded.as_ref().unwrap().chain;
+        chain = loaded
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .chain;
     }
-    let lookup = loaded.unwrap();
-    let row=connection.query_one("SELECT register_storage_bytes,receipt_storage_bytes FROM public.v_observer_material_state_v1 WHERE campaign_id=$1::uuid AND resolve_tick=$2",&[campaign.as_uuid(),&tick_sql]).unwrap();
+    let lookup = loaded.expect("the fixture carries the loaded value");
+    let row=connection.query_one("SELECT register_storage_bytes,receipt_storage_bytes FROM public.v_observer_material_state_v1 WHERE campaign_id=$1::uuid AND resolve_tick=$2",&[campaign.as_uuid(),&tick_sql]).expect("the seeded row is present exactly once");
     let register: &[u8] = row.get(0);
     let receipts: &[u8] = row.get(1);
     babylon_persistence::material_storage::decode(
@@ -177,7 +206,7 @@ pub(super) fn stored_canonical_material(
         &lookup.lookup,
         lookup.chain,
     )
-    .unwrap()
+    .expect("the committed canonical bytes decode")
 }
 
 fn authenticated_receipts(
@@ -185,12 +214,14 @@ fn authenticated_receipts(
     runtime: &DurableMaterialRuntime,
     snapshot: &mut ObserverEconomySnapshot,
 ) -> MaterialTickReceipts {
-    let tail = runtime.tail().unwrap();
-    let tick = i64::try_from(tail.resolve_tick()).unwrap();
+    let tail = runtime
+        .tail()
+        .expect("the fixture sequence holds more than one row");
+    let tick = i64::try_from(tail.resolve_tick()).expect("the fixture value fits the target range");
     let (register, bytes) = stored_canonical_material(
         connection,
         runtime.campaign_id(),
-        u64::try_from(tick).unwrap(),
+        u64::try_from(tick).expect("the fixture value fits the target range"),
     );
     assert_eq!(register, runtime.session().material().canonical_bytes());
     assert_eq!(sha256_of(&bytes), tail.receipt_digest());
@@ -212,21 +243,28 @@ fn authenticated_receipts(
         Some(super::identity_hex(tail.result_world_hash()))
     );
     assert!(snapshot.envelope_digest.is_some());
-    assert!(snapshot.production_evidence_digest().unwrap().is_some());
-    let receipts = material_world::decode_material_receipts(&bytes).unwrap();
+    assert!(snapshot
+        .production_evidence_digest()
+        .expect("the evidence body has a digest")
+        .is_some());
+    let receipts = material_world::decode_material_receipts(&bytes)
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(receipts.resolve_tick, snapshot.resolve_tick);
     receipts
 }
 
 fn production(snapshot: &ObserverEconomySnapshot) -> &ProductionSnapshot {
-    snapshot.production.as_ref().unwrap()
+    snapshot
+        .production
+        .as_ref()
+        .expect("the fixture set the optional field before this read")
 }
 
 fn stock(rows: &ProductionSnapshot, site: &str, good: &str, unit: &str) -> u64 {
     rows.sites
         .iter()
         .find(|row| row.id == site)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .inventory
         .iter()
         .find(|row| row.good_id == good && row.unit_id == unit)
@@ -247,6 +285,10 @@ fn assert_reconciled(
     assert_freight(before, after, receipts);
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "`assert_inventory` keeps one authored boundary's fixture and assertions together"
+)]
 fn assert_inventory(
     before: &ProductionSnapshot,
     after: &ProductionSnapshot,
@@ -254,9 +296,17 @@ fn assert_inventory(
 ) {
     let catalog = crate::test_support::catalog();
     let stock_key = |site_key: &str, good_key: &str| {
-        let good = catalog.good(good_key).unwrap();
+        let good = catalog
+            .good(good_key)
+            .expect("the fixture catalog holds the addressed good");
         (
-            super::identity_hex(catalog.site(site_key).unwrap().id().as_bytes()),
+            super::identity_hex(
+                catalog
+                    .site(site_key)
+                    .expect("the fixture catalog holds the addressed site")
+                    .id()
+                    .as_bytes(),
+            ),
             super::identity_hex(good.id().as_bytes()),
             super::identity_hex(good.unit_id().as_bytes()),
         )
@@ -267,7 +317,7 @@ fn assert_inventory(
             .routes()
             .iter()
             .find(|route| route.id() == receipt.route_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(receipt.order_id, route.order_id());
         *dispatches
             .entry(stock_key(&route.supplier_site_key, &route.good_key))
@@ -279,12 +329,17 @@ fn assert_inventory(
             .routes()
             .iter()
             .find(|route| route.order_id() == receipt.order_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         *arrivals
             .entry(stock_key(&route.buyer_site_key, &route.good_key))
             .or_insert(0_u128) += u128::from(receipt.quantity);
     }
-    for row in &after.material_balance.as_ref().unwrap().rows {
+    for row in &after
+        .material_balance
+        .as_ref()
+        .expect("the fixture set the optional field before this read")
+        .rows
+    {
         let key = (
             row.site_id.clone(),
             row.good_id.clone(),
@@ -303,7 +358,7 @@ fn assert_inventory(
             .sites
             .iter()
             .find(|site| site.id == row.site_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let produced: u128 = site
             .processes
             .iter()
@@ -311,7 +366,11 @@ fn assert_inventory(
                 process.output_good_id == row.good_id && process.output_unit_id == row.unit_id
             })
             .map(|process| {
-                u128::from(process.produced_batches.unwrap()) * u128::from(process.output_per_batch)
+                u128::from(
+                    process
+                        .produced_batches
+                        .expect("the fixture process records its batch count"),
+                ) * u128::from(process.output_per_batch)
             })
             .sum();
         let consumed: u128 = site
@@ -320,7 +379,11 @@ fn assert_inventory(
             .flat_map(|process| process.inputs.iter().map(move |input| (process, input)))
             .filter(|(_, input)| input.good_id == row.good_id && input.unit_id == row.unit_id)
             .map(|(process, input)| {
-                u128::from(process.produced_batches.unwrap()) * u128::from(input.quantity_per_batch)
+                u128::from(
+                    process
+                        .produced_batches
+                        .expect("the fixture process records its batch count"),
+                ) * u128::from(input.quantity_per_batch)
             })
             .sum();
         assert_eq!(u128::from(row.produced), produced);
@@ -354,24 +417,30 @@ fn assert_inventory(
 
 fn assert_labor(before: &ProductionSnapshot, after: &ProductionSnapshot, tick: u64) {
     for labor in &after.labor_accounts {
-        let completed = labor.completed.as_ref().unwrap();
+        let completed = labor
+            .completed
+            .as_ref()
+            .expect("the fixture set the optional field before this read");
         let previous = before
             .labor_accounts
             .iter()
             .find(|row| row.site_id == labor.site_id && row.unit_id == labor.unit_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let site = after
             .sites
             .iter()
             .find(|site| site.id == labor.site_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let production_hours: u128 = site
             .processes
             .iter()
             .map(|process| {
                 assert_eq!(process.labor.len(), 1);
-                u128::from(process.produced_batches.unwrap())
-                    * u128::from(process.labor[0].quantity_per_batch)
+                u128::from(
+                    process
+                        .produced_batches
+                        .expect("the fixture process records its batch count"),
+                ) * u128::from(process.labor[0].quantity_per_batch)
             })
             .sum();
         assert_eq!(completed.period, tick);
@@ -401,13 +470,17 @@ fn assert_freight(
     let mut lots = BTreeSet::new();
     assert!(after.freight.iter().all(|lot| lots.insert(&lot.id)));
     for route in &after.routes {
-        let previous = before.routes.iter().find(|row| row.id == route.id).unwrap();
+        let previous = before
+            .routes
+            .iter()
+            .find(|row| row.id == route.id)
+            .expect("the fixture holds the searched element");
         let catalog = crate::test_support::catalog();
         let source = catalog
             .routes()
             .iter()
             .find(|row| super::identity_hex(row.id().as_bytes()) == route.physical_route_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let dispatched: u128 = receipts
             .dispatches
             .iter()
@@ -455,7 +528,7 @@ fn is_restart_boundary(
         .routes()
         .iter()
         .find(|route| route.key == "sheet-transfer")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let arrival = if preset == MichiganDeliveryPreset::Delayed {
         4
     } else {
@@ -561,14 +634,36 @@ fn subassembly_stock(snapshot: &ObserverEconomySnapshot) -> u64 {
     let catalog = crate::test_support::catalog();
     stock(
         production(snapshot),
-        &super::identity_hex(catalog.site("wayne-vehicle-parts").unwrap().id().as_bytes()),
-        &super::identity_hex(catalog.good("subassembly").unwrap().id().as_bytes()),
-        &super::identity_hex(catalog.good("subassembly").unwrap().unit_id().as_bytes()),
+        &super::identity_hex(
+            catalog
+                .site("wayne-vehicle-parts")
+                .expect("the fixture catalog holds the addressed site")
+                .id()
+                .as_bytes(),
+        ),
+        &super::identity_hex(
+            catalog
+                .good("subassembly")
+                .expect("the fixture catalog holds the addressed good")
+                .id()
+                .as_bytes(),
+        ),
+        &super::identity_hex(
+            catalog
+                .good("subassembly")
+                .expect("the fixture catalog holds the addressed good")
+                .unit_id()
+                .as_bytes(),
+        ),
     )
 }
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL harness; serial persisted twin proof"]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arrival` keeps one authored boundary's fixture and assertions together"
+)]
 fn persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arrival() {
     let mut target = DisposableTarget::create();
     let mut standard = RunPair::create(&target, MichiganDeliveryPreset::Standard, 325_001);
@@ -580,12 +675,12 @@ fn persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arriva
         .routes()
         .iter()
         .find(|route| route.key == "sheet-transfer")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let delayed_leg = normalized
         .route_stages
         .iter_mut()
         .find(|leg| leg.route_id == sheet.id())
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(delayed_leg.travel_periods, 3);
     delayed_leg.travel_periods = 1;
     assert_eq!(*initial, normalized);
@@ -599,12 +694,16 @@ fn persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arriva
         initial.labor.iter().map(|row| row.available).sum::<u64>(),
         4960
     );
-    super::install_reader_role(&target.writer).unwrap();
-    super::provision_observer_role(&target.writer).unwrap();
+    super::install_reader_role(&target.writer).expect("the test database installs the reader role");
+    super::provision_observer_role(&target.writer)
+        .expect("the test database provisions the observer role");
     let observer_config = target.login("babylon_observer", "persistedtwins");
     let observer =
-        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver).unwrap();
-    let mut connection = observer_config.connect(NoTls).unwrap();
+        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver)
+            .expect("the test database accepts the connection");
+    let mut connection = observer_config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     for pair in [&mut standard, &mut delayed] {
         pair.history.push(pair.snapshots(&observer));
     }
@@ -614,42 +713,78 @@ fn persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arriva
         delayed.advance(&target, &observer, &mut connection);
         for (index, pair) in [&standard, &delayed].into_iter().enumerate() {
             assert_current_capacity_budget(pair, &capacities, tick);
-            if subassembly_stock(&pair.history.last().unwrap()[0]) > 0 {
+            if subassembly_stock(
+                &pair
+                    .history
+                    .last()
+                    .expect("the fixture sequence is non-empty")[0],
+            ) > 0
+            {
                 first[index].get_or_insert(tick);
             }
         }
         assert_food_disconnected(
-            production(&standard.history.last().unwrap()[0]),
-            production(&delayed.history.last().unwrap()[0]),
+            production(
+                &standard
+                    .history
+                    .last()
+                    .expect("the fixture sequence is non-empty")[0],
+            ),
+            production(
+                &delayed
+                    .history
+                    .last()
+                    .expect("the fixture sequence is non-empty")[0],
+            ),
         );
     }
     assert_eq!(first, [Some(5), Some(7)]);
     assert_eq!(standard.restart_periods, [1, 2]);
     assert_eq!(delayed.restart_periods, [1, 2, 4]);
     for pair in [&standard, &delayed] {
-        assert!(subassembly_stock(&pair.history.last().unwrap()[0]) > 0);
+        assert!(
+            subassembly_stock(
+                &pair
+                    .history
+                    .last()
+                    .expect("the fixture sequence is non-empty")[0]
+            ) > 0
+        );
         pair.assert_held_history(&observer);
         eprintln!(
             "PER-325 {:?}: first downstream output period {}, restart periods {:?}, final world {}",
             pair.preset,
-            first[usize::from(pair.preset == MichiganDeliveryPreset::Delayed)].unwrap(),
+            first[usize::from(pair.preset == MichiganDeliveryPreset::Delayed)]
+                .expect("the fixture array holds the addressed slot"),
             pair.restart_periods,
-            pair.history.last().unwrap()[0]
+            pair.history
+                .last()
+                .expect("the fixture sequence is non-empty")[0]
                 .nominal_world_hash
                 .as_deref()
-                .unwrap()
+                .expect("the fixture set the optional value before this read")
         );
     }
-    assert_eq!(observer.campaigns().unwrap().len(), 4);
+    assert_eq!(
+        observer
+            .campaigns()
+            .expect("the fixture lists the authored campaigns")
+            .len(),
+        4
+    );
     assert!(observer
         .campaigns()
-        .unwrap()
+        .expect("the fixture lists the authored campaigns")
         .iter()
         .all(|campaign| campaign.durable_tick == PROOF_PERIODS));
 }
 
 #[test]
 #[ignore = "requires the task-owned disposable PostgreSQL harness; independent clone ownership"]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`shared_freight_competition_is_committed_restart_safe_and_scope_confined` keeps one authored boundary's fixture and assertions together"
+)]
 fn shared_freight_competition_is_committed_restart_safe_and_scope_confined() {
     let mut target = DisposableTarget::create();
     let mut ample = RunPair::create(&target, MichiganDeliveryPreset::SharedFreightAmple, 331_001);
@@ -658,17 +793,21 @@ fn shared_freight_competition_is_committed_restart_safe_and_scope_confined() {
         MichiganDeliveryPreset::SharedFreightConstrained,
         331_003,
     );
-    super::install_reader_role(&target.writer).unwrap();
-    super::provision_observer_role(&target.writer).unwrap();
+    super::install_reader_role(&target.writer).expect("the test database installs the reader role");
+    super::provision_observer_role(&target.writer)
+        .expect("the test database provisions the observer role");
     let observer_config = target.login("babylon_observer", "sharedfreight");
     let observer =
-        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver).unwrap();
+        ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver)
+            .expect("the test database accepts the connection");
     let preview = ObserverEconomyReader::connect(
         &target.login("babylon_reader", "sharedpreview"),
         ObserverVisibility::KnownPreview,
     )
-    .unwrap();
-    let mut connection = observer_config.connect(NoTls).unwrap();
+    .expect("the test database accepts the connection");
+    let mut connection = observer_config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     for pair in [&mut ample, &mut constrained] {
         let initial = pair.snapshots(&observer);
         let accounts = &production(&initial[0]).freight_capacity_accounts;
@@ -683,12 +822,15 @@ fn shared_freight_competition_is_committed_restart_safe_and_scope_confined() {
     for tick in 1..=PROOF_PERIODS {
         for pair in [&mut ample, &mut constrained] {
             pair.advance(&target, &observer, &mut connection);
-            let snapshot = &pair.history.last().unwrap()[0];
+            let snapshot = &pair
+                .history
+                .last()
+                .expect("the fixture sequence is non-empty")[0];
             assert_shared_reservations(snapshot, pair.preset, tick);
             super::assert_known_material_absence(
                 &mut preview
                     .snapshot(pair.uninterrupted.campaign_id(), tick)
-                    .unwrap(),
+                    .expect("the fixture captures a consistent snapshot"),
             );
         }
     }
@@ -698,21 +840,34 @@ fn shared_freight_competition_is_committed_restart_safe_and_scope_confined() {
         (&constrained, 120, 40, 12, 40, (2, 2), (1, 1)),
     ] {
         let first = production(&pair.history[1][0]);
-        let orders = FreightOrderIndex::try_new(first).unwrap();
+        let orders = FreightOrderIndex::try_new(first)
+            .expect("the authored fixture satisfies the constructor invariants");
         let shared = first
             .freight_capacity_accounts
             .iter()
             .find(|a| a.route_ids.len() == 2)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         for (key, expected) in [("sheet", first_sheet), ("meal", first_meal)] {
-            let good_id = super::identity_hex(catalog.good(key).unwrap().id().as_bytes());
+            let good_id = super::identity_hex(
+                catalog
+                    .good(key)
+                    .expect("the fixture catalog holds the addressed good")
+                    .id()
+                    .as_bytes(),
+            );
             assert_eq!(
-                shared.completed.as_ref().unwrap().reservations[0]
+                shared
+                    .completed
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read")
+                    .reservations[0]
                     .orders
                     .iter()
-                    .map(|reference| orders.get(reference).unwrap())
+                    .map(|reference| orders
+                        .get(reference)
+                        .expect("the fixture holds the addressed entry"))
                     .find(|order| order.good_id == good_id)
-                    .unwrap()
+                    .expect("the fixture holds the searched element")
                     .dispatched,
                 expected
             );
@@ -722,19 +877,32 @@ fn shared_freight_competition_is_committed_restart_safe_and_scope_confined() {
             ("macomb-fabricated-metal", panels, panel_people),
             ("oakland-food", meals, meal_people),
         ] {
-            let id = super::identity_hex(catalog.site(key).unwrap().id().as_bytes());
-            let site = third.sites.iter().find(|site| site.id == id).unwrap();
+            let id = super::identity_hex(
+                catalog
+                    .site(key)
+                    .expect("the fixture catalog holds the addressed site")
+                    .id()
+                    .as_bytes(),
+            );
+            let site = third
+                .sites
+                .iter()
+                .find(|site| site.id == id)
+                .expect("the fixture holds the searched element");
             assert_eq!(site.processes.len(), 1);
             let process = &site.processes[0];
             assert_eq!(
-                process.produced_batches.unwrap() * process.output_per_batch,
+                process
+                    .produced_batches
+                    .expect("the fixture process records its batch count")
+                    * process.output_per_batch,
                 output
             );
             let staffing = third
                 .staffing_accounts
                 .iter()
                 .find(|account| account.site_id == id)
-                .unwrap();
+                .expect("the fixture holds the searched element");
             assert_eq!((staffing.employed, staffing.reserve), people);
         }
     }
@@ -750,10 +918,14 @@ fn assert_shared_reservations(
     tick: u64,
 ) {
     let production = production(snapshot);
-    let orders = FreightOrderIndex::try_new(production).unwrap();
+    let orders = FreightOrderIndex::try_new(production)
+        .expect("the authored fixture satisfies the constructor invariants");
     let accounts = &production.freight_capacity_accounts;
     for account in accounts {
-        let completed = account.completed.as_ref().unwrap();
+        let completed = account
+            .completed
+            .as_ref()
+            .expect("the fixture set the optional field before this read");
         assert_eq!(completed.period, tick);
         for reservation in &completed.reservations {
             assert_eq!(
@@ -765,7 +937,9 @@ fn assert_shared_reservations(
                 reservation
                     .orders
                     .iter()
-                    .map(|reference| orders.get(reference).unwrap())
+                    .map(|reference| orders
+                        .get(reference)
+                        .expect("the fixture holds the addressed entry"))
                     .map(|order| {
                         assert_eq!(
                             order.reserved_grams,
@@ -778,8 +952,15 @@ fn assert_shared_reservations(
         }
     }
     if tick == 1 {
-        let shared = accounts.iter().find(|a| a.route_ids.len() == 2).unwrap();
-        let reservation = &shared.completed.as_ref().unwrap().reservations[0];
+        let shared = accounts
+            .iter()
+            .find(|a| a.route_ids.len() == 2)
+            .expect("the fixture holds the searched element");
+        let reservation = &shared
+            .completed
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .reservations[0];
         let expected = if preset == MichiganDeliveryPreset::SharedFreightAmple {
             (800_000, 400_000)
         } else {
@@ -796,7 +977,9 @@ fn assert_shared_reservations(
 }
 
 fn assert_current_capacity_budget(pair: &RunPair, opening: &[CapacityRow], tick: u64) {
-    let period = tick.checked_add(1).unwrap();
+    let period = tick
+        .checked_add(1)
+        .expect("the fixture arithmetic stays in range");
     let expected = opening
         .iter()
         .cloned()

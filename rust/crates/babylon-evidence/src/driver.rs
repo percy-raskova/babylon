@@ -192,7 +192,10 @@ fn validate_candidate_rows(
     schedule: &PracticeCandidateSchedule,
     intents: &[PracticeIntent],
 ) -> Result<(), SyntheticDriverError> {
-    #[allow(clippy::needless_range_loop)]
+    #[allow(
+        clippy::needless_range_loop,
+        reason = "the loop index is the authored row ordinal"
+    )]
     for index in 0..65_535 {
         if index >= schedule.rows().len() {
             break;
@@ -569,17 +572,17 @@ mod tests {
                 SyntheticMaterialSample::new(u64::from(index), digest(index), f64::from(index))
             })
             .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+            .expect("the fixture world holds the addressed component");
         let aligned = (0_u8..7)
             .map(|index| {
                 SyntheticMaterialSample::new(u64::from(index) + 2, digest(index), f64::from(index))
             })
             .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+            .expect("the fixture world holds the addressed component");
         assert_eq!(validate_aligned_material(&control, &aligned, 2, 2), Ok(()));
         assert_eq!(
             SyntheticMaterialSample::new(0, digest(0), -0.0)
-                .unwrap()
+                .expect("the constructor accepts the authored fixture arguments")
                 .aggregate_bits,
             0
         );
@@ -592,7 +595,7 @@ mod tests {
                 SyntheticMaterialSample::new(u64::from(index), digest(1), f64::from(index))
             })
             .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+            .expect("the fixture world holds the addressed component");
         assert!(matches!(
             validate_aligned_material(&width_one, &width_one, 1, 1),
             Err(SyntheticDriverError::MaterialSampleCountMismatch { expected: 0, .. })
@@ -604,7 +607,7 @@ mod tests {
         let too_short = (0..6)
             .map(|index| SyntheticMaterialSample::new(index, digest(1), 1.0))
             .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+            .expect("the fixture world holds the addressed component");
         assert_eq!(
             validate_aligned_material(&too_short, &too_short, 2, 2),
             Err(SyntheticDriverError::MaterialSampleCountMismatch {
@@ -616,7 +619,7 @@ mod tests {
         let too_long = (0..8)
             .map(|index| SyntheticMaterialSample::new(index, digest(1), 1.0))
             .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+            .expect("the fixture world holds the addressed component");
         assert_eq!(
             validate_aligned_material(&too_long, &too_long, 2, 2),
             Err(SyntheticDriverError::MaterialSampleCountMismatch {
@@ -628,11 +631,11 @@ mod tests {
         let control = (0..7)
             .map(|index| SyntheticMaterialSample::new(index, digest(1), 1.0))
             .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+            .expect("the fixture world holds the addressed component");
         let mut aligned = (0..7)
             .map(|index| SyntheticMaterialSample::new(index + 2, digest(1), 1.0))
             .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+            .expect("the fixture world holds the addressed component");
         assert_eq!(
             validate_aligned_material(&control, &aligned, 2, 1),
             Err(SyntheticDriverError::WrongAlignmentOffset {
@@ -661,33 +664,39 @@ mod tests {
     fn input_permutations_preserve_bytes() {
         let first = PracticeCandidateRow::new(10, digest(2), digest(3));
         let second = PracticeCandidateRow::new(12, digest(4), digest(5));
-        let left = PracticeCandidateSchedule::new(vec![first.clone(), second.clone()]).unwrap();
-        let right = PracticeCandidateSchedule::new(vec![second.clone(), first.clone()]).unwrap();
+        let left = PracticeCandidateSchedule::new(vec![first.clone(), second.clone()])
+            .expect("the constructor accepts the authored fixture arguments");
+        let right = PracticeCandidateSchedule::new(vec![second.clone(), first.clone()])
+            .expect("the constructor accepts the authored fixture arguments");
         assert_eq!(
-            crate::canonical_envelope(&left).unwrap(),
-            crate::canonical_envelope(&right).unwrap()
+            crate::canonical_envelope(&left).expect("the record exposes its canonical envelope"),
+            crate::canonical_envelope(&right).expect("the record exposes its canonical envelope")
         );
         let left_attempts = PracticeAttemptLedger::new(
             digest(6),
             vec![
                 PracticeAttemptRow::new(first.clone(), PracticeDisposition::Rejected, digest(7))
-                    .unwrap(),
+                    .expect("the constructor accepts the authored fixture arguments"),
                 PracticeAttemptRow::new(second.clone(), PracticeDisposition::Rejected, digest(8))
-                    .unwrap(),
+                    .expect("the constructor accepts the authored fixture arguments"),
             ],
         )
-        .unwrap();
+        .expect("the constructor accepts the authored fixture arguments");
         let right_attempts = PracticeAttemptLedger::new(
             digest(6),
             vec![
-                PracticeAttemptRow::new(second, PracticeDisposition::Rejected, digest(8)).unwrap(),
-                PracticeAttemptRow::new(first, PracticeDisposition::Rejected, digest(7)).unwrap(),
+                PracticeAttemptRow::new(second, PracticeDisposition::Rejected, digest(8))
+                    .expect("the constructor accepts the authored fixture arguments"),
+                PracticeAttemptRow::new(first, PracticeDisposition::Rejected, digest(7))
+                    .expect("the constructor accepts the authored fixture arguments"),
             ],
         )
-        .unwrap();
+        .expect("the constructor accepts the authored fixture arguments");
         assert_eq!(
-            crate::canonical_envelope(&left_attempts).unwrap(),
-            crate::canonical_envelope(&right_attempts).unwrap()
+            crate::canonical_envelope(&left_attempts)
+                .expect("the record exposes its canonical envelope"),
+            crate::canonical_envelope(&right_attempts)
+                .expect("the record exposes its canonical envelope")
         );
     }
 
@@ -698,20 +707,21 @@ mod tests {
             digest(2),
             digest(3),
         )])
-        .unwrap();
+        .expect("the constructor accepts the authored fixture arguments");
         let changed = PracticeCandidateSchedule::new(vec![PracticeCandidateRow::new(
             11,
             digest(2),
             digest(3),
         )])
-        .unwrap();
+        .expect("the constructor accepts the authored fixture arguments");
         assert_ne!(
-            crate::canonical_envelope(&original).unwrap(),
-            crate::canonical_envelope(&changed).unwrap()
+            crate::canonical_envelope(&original)
+                .expect("the record exposes its canonical envelope"),
+            crate::canonical_envelope(&changed).expect("the record exposes its canonical envelope")
         );
         assert_ne!(
-            crate::record_digest(&original).unwrap(),
-            crate::record_digest(&changed).unwrap()
+            crate::record_digest(&original).expect("the record has a canonical digest"),
+            crate::record_digest(&changed).expect("the record has a canonical digest")
         );
     }
 }

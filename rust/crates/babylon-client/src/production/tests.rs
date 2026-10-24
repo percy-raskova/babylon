@@ -36,7 +36,9 @@ fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
     ProductionSite {
         function: "manufacturing".into(),
         id: id.into(),
-        location: "county:26163".parse().unwrap(),
+        location: "county:26163"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
         name: format!("Cohort {id}"),
         industry_code: Some("331".into()),
         observed_employment: Some(20),
@@ -204,7 +206,11 @@ fn reading_headline_uses_exact_output_identity_and_keeps_absence_distinct_from_z
         }],
     });
     assert!(!readings::reading_headline(&selected, &snapshot, 5).contains("999"));
-    let row = &mut snapshot.material_balance.as_mut().unwrap().rows[0];
+    let row = &mut snapshot
+        .material_balance
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .rows[0];
     row.unit_id
         .clone_from(&selected.processes[0].output_unit_id);
     row.unit.clone_from(&selected.processes[0].output_unit);
@@ -564,7 +570,9 @@ fn workforce_foundation_absence_and_zero_completed_flows_remain_distinct() {
     );
     assert!(missing.contains("No workforce account disclosed for this subject."));
     assert!(!missing.contains("0 employed"));
-    let completed = staffing_account("a").completed.unwrap();
+    let completed = staffing_account("a")
+        .completed
+        .expect("the fixture account carries its completed state");
     snapshot.staffing_accounts[0].completed = Some(
         babylon_persistence::production_observation::CompletedProductionStaffing {
             opening_employed: 2,
@@ -635,7 +643,10 @@ fn attributed_snapshot() -> ProductionSnapshot {
             .push(DesignedProcessAttribution {
                 process_id: format!("process-{}", site.id),
                 site_id: site.id.clone(),
-                industry_code: site.industry_code.clone().unwrap(),
+                industry_code: site
+                    .industry_code
+                    .clone()
+                    .expect("the fixture value clones"),
                 cohort_subject: subject.clone(),
                 scenario_artifact_sha256: "c".repeat(64),
                 industry_artifact_sha256: "d".repeat(64),
@@ -729,9 +740,15 @@ fn flat_camera_projects_the_scene_and_plinths_inside_its_clip_volume() {
         ))
         .id();
     app.update();
-    let transform = *app.world().get::<Transform>(camera).unwrap();
-    let Projection::Orthographic(mut projection) =
-        app.world().get::<Projection>(camera).unwrap().clone()
+    let transform = *app
+        .world()
+        .get::<Transform>(camera)
+        .expect("the fixture world holds the addressed component");
+    let Projection::Orthographic(mut projection) = app
+        .world()
+        .get::<Projection>(camera)
+        .expect("the fixture world holds the addressed component")
+        .clone()
     else {
         panic!("flat view must install an orthographic projection");
     };
@@ -872,7 +889,7 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
     app.world_mut()
         .entity_mut(panel)
         .get_mut::<ScrollPosition>()
-        .unwrap()
+        .expect("the fixture world holds the addressed component")
         .y = 240.0;
     app.world_mut()
         .resource_mut::<ObserverSession>()
@@ -882,7 +899,7 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
     assert_eq!(
         app.world()
             .get::<ScrollPosition>(panel)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .y
             .to_bits(),
         240.0_f32.to_bits()
@@ -891,7 +908,7 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
         app.world_mut()
             .entity_mut(panel)
             .get_mut::<ScrollPosition>()
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .y = 180.0;
         match change {
             0 => {
@@ -918,7 +935,7 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
         assert_eq!(
             app.world()
                 .get::<ScrollPosition>(panel)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .y
                 .to_bits(),
             0.0_f32.to_bits()
@@ -926,7 +943,7 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
         assert_eq!(
             app.world()
                 .get::<ScrollPosition>(other)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .y
                 .to_bits(),
             77.0_f32.to_bits()
@@ -935,13 +952,13 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
     app.world_mut()
         .entity_mut(panel)
         .get_mut::<ScrollPosition>()
-        .unwrap()
+        .expect("the fixture world holds the addressed component")
         .y = 120.0;
     app.update();
     assert_eq!(
         app.world()
             .get::<ScrollPosition>(panel)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .y
             .to_bits(),
         120.0_f32.to_bits()
@@ -1253,7 +1270,7 @@ fn panel_text<T: Component>(app: &mut App) -> String {
     world
         .query_filtered::<&Text, With<T>>()
         .single(world)
-        .unwrap()
+        .expect("the fixture holds exactly one matching row")
         .0
         .clone()
 }
@@ -1307,8 +1324,14 @@ fn county_selection_keeps_readings_closed_until_a_cohort_is_chosen() {
     let macomb = {
         let atlas = app.world().resource::<CountyAtlas>();
         (0..atlas.len())
-            .find(|index| atlas.county(*index).unwrap().fips == "26099")
-            .unwrap()
+            .find(|index| {
+                atlas
+                    .county(*index)
+                    .expect("the fixture catalog holds the addressed county")
+                    .fips
+                    == "26099"
+            })
+            .expect("the fixture holds the searched element")
     };
     app.world_mut().resource_mut::<SelectedCounty>().0 = Some(macomb);
     app.update();
@@ -1349,23 +1372,32 @@ fn production_context_yields_its_rail_to_readings_and_returns_after_close() {
     let subject = world
         .query_filtered::<Entity, With<ProductionPanel>>()
         .single(world)
-        .unwrap();
+        .expect("the fixture holds exactly one matching row");
     assert_eq!(
-        world.get::<Node>(subject).unwrap().flex_direction,
+        world
+            .get::<Node>(subject)
+            .expect("the fixture world holds the addressed component")
+            .flex_direction,
         FlexDirection::Column
     );
     assert_eq!(
-        *world.get::<Visibility>(subject).unwrap(),
+        *world
+            .get::<Visibility>(subject)
+            .expect("the fixture world holds the addressed component"),
         Visibility::Visible
     );
     send_command(&mut app, ProductionCommand::Details);
     assert_eq!(
-        *app.world().get::<Visibility>(subject).unwrap(),
+        *app.world()
+            .get::<Visibility>(subject)
+            .expect("the fixture world holds the addressed component"),
         Visibility::Hidden
     );
     send_command(&mut app, ProductionCommand::Details);
     assert_eq!(
-        *app.world().get::<Visibility>(subject).unwrap(),
+        *app.world()
+            .get::<Visibility>(subject)
+            .expect("the fixture world holds the addressed component"),
         Visibility::Visible
     );
 }
@@ -1396,7 +1428,13 @@ fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
         assert!(reading.height() > 600.0);
         assert!(reading.min.x > layout.world.max.x);
     }
-    assert_eq!(world.get::<Node>(detail).unwrap().display, Display::Flex);
+    assert_eq!(
+        world
+            .get::<Node>(detail)
+            .expect("the fixture world holds the addressed component")
+            .display,
+        Display::Flex
+    );
     // History owns this same rail while open; closing it restores the
     // current subject's existing reading preference without recreating it.
     app.world_mut()
@@ -1404,7 +1442,10 @@ fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
         .history_open = true;
     app.update();
     assert_eq!(
-        app.world().get::<Node>(detail).unwrap().display,
+        app.world()
+            .get::<Node>(detail)
+            .expect("the fixture world holds the addressed component")
+            .display,
         Display::None
     );
     assert!(app.world().resource::<ProductionNavigation>().details_open);
@@ -1413,7 +1454,10 @@ fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
         .history_open = false;
     app.update();
     assert_eq!(
-        app.world().get::<Node>(detail).unwrap().display,
+        app.world()
+            .get::<Node>(detail)
+            .expect("the fixture world holds the addressed component")
+            .display,
         Display::Flex
     );
     for modal in 0..4 {
@@ -1426,7 +1470,10 @@ fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
         }
         app.update();
         assert_eq!(
-            app.world().get::<Node>(detail).unwrap().display,
+            app.world()
+                .get::<Node>(detail)
+                .expect("the fixture world holds the addressed component")
+                .display,
             Display::None
         );
     }
@@ -1437,12 +1484,18 @@ fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
     };
     app.update();
     assert_eq!(
-        app.world().get::<Node>(detail).unwrap().display,
+        app.world()
+            .get::<Node>(detail)
+            .expect("the fixture world holds the addressed component")
+            .display,
         Display::Flex
     );
     send_command(&mut app, ProductionCommand::Map);
     assert_eq!(
-        app.world().get::<Node>(detail).unwrap().display,
+        app.world()
+            .get::<Node>(detail)
+            .expect("the fixture world holds the addressed component")
+            .display,
         Display::None
     );
 }
@@ -1450,7 +1503,12 @@ fn expanded_readings_use_the_side_panel_and_yield_to_modal_views() {
 #[test]
 fn undisclosed_scene_hides_controls_and_explains_keyboard_refusals() {
     let mut app = production_panel_app();
-    let full = app.world().resource::<ObserverFrame>().0.clone().unwrap();
+    let full = app
+        .world()
+        .resource::<ObserverFrame>()
+        .0
+        .clone()
+        .expect("the fixture value clones");
     assert_eq!(
         control_display(&mut app, &ProductionCommand::Back),
         Display::None
@@ -1469,7 +1527,12 @@ fn undisclosed_scene_hides_controls_and_explains_keyboard_refusals() {
                 frame.visibility = ObserverVisibility::KnownPreview;
                 frame.production = None;
             }
-            2 => frame.production.as_mut().unwrap().sites.clear(),
+            2 => frame
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .sites
+                .clear(),
             _ => frame.resolve_tick += 1,
         }
         app.world_mut()
@@ -1690,10 +1753,13 @@ fn exact_readings_are_collapsed_until_requested_and_clear_with_capability() {
         world
             .query_filtered::<Entity, With<ProductionDetailGroup>>()
             .single(world)
-            .unwrap()
+            .expect("the fixture holds exactly one matching row")
     };
     assert_eq!(
-        app.world().get::<Node>(group).unwrap().display,
+        app.world()
+            .get::<Node>(group)
+            .expect("the fixture world holds the addressed component")
+            .display,
         Display::None
     );
     assert!(panel_text::<ProductionBrief>(&mut app).contains("Committed plan partly completed"));
@@ -1708,7 +1774,10 @@ fn exact_readings_are_collapsed_until_requested_and_clear_with_capability() {
     app.update();
     assert!(app.world().resource::<ProductionNavigation>().details_open);
     assert_eq!(
-        app.world().get::<Node>(group).unwrap().display,
+        app.world()
+            .get::<Node>(group)
+            .expect("the fixture world holds the addressed component")
+            .display,
         Display::Flex
     );
     assert!(panel_text::<ProductionDetails>(&mut app).contains("INPUTS / ON HAND"));
@@ -1722,7 +1791,10 @@ fn exact_readings_are_collapsed_until_requested_and_clear_with_capability() {
     app.update();
     assert!(!app.world().resource::<ProductionNavigation>().details_open);
     assert_eq!(
-        app.world().get::<Node>(group).unwrap().display,
+        app.world()
+            .get::<Node>(group)
+            .expect("the fixture world holds the addressed component")
+            .display,
         Display::None
     );
     assert!(panel_text::<ProductionDetails>(&mut app).is_empty());
@@ -1737,13 +1809,13 @@ fn shared_freight_participant_buttons_navigate_and_expire_with_observation_scope
     let mut app = dependency_navigation_app();
     app.world_mut()
         .run_system_once(|mut commands: Commands| view::setup_readings_panel(&mut commands))
-        .unwrap();
+        .expect("the Bevy system completes one run");
     app.add_systems(Update, paint_readings.after(navigate));
     app.world_mut()
         .resource_mut::<ObserverFrame>()
         .0
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .production = Some(crate::production_freight::tests::fixture());
     let context = app.world().resource::<ObserverSession>().context();
     send_command(
@@ -1918,8 +1990,14 @@ fn world_county_list_enters_the_selected_circuit_and_rejects_old_observations() 
     let county_index = |app: &App, fips: &str| {
         let atlas = app.world().resource::<CountyAtlas>();
         (0..atlas.len())
-            .find(|index| atlas.county(*index).unwrap().fips == fips)
-            .unwrap()
+            .find(|index| {
+                atlas
+                    .county(*index)
+                    .expect("the fixture catalog holds the addressed county")
+                    .fips
+                    == fips
+            })
+            .expect("the fixture holds the searched element")
     };
     let wayne = county_index(&app, "26163");
     app.world_mut().resource_mut::<SelectedCounty>().0 = Some(wayne);
@@ -2011,7 +2089,13 @@ fn keyboard_pages_the_disclosed_county_then_enters_a_circuit_and_back() {
     app.add_observer(keyboard_activate);
     {
         let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
-        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+        let snapshot = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         snapshot.sites = (0..14)
             .map(|index| site(&format!("owner-{index:02}"), &[]))
             .collect();
@@ -2200,23 +2284,23 @@ fn readings_focus_app() -> ReadingsFocusFixture {
     }
     app.world_mut()
         .run_system_once(|mut commands: Commands| view::setup_readings_panel(&mut commands))
-        .unwrap();
+        .expect("the Bevy system completes one run");
     let body = app
         .world_mut()
         .query_filtered::<Entity, With<ProductionReadingBody>>()
         .single(app.world())
-        .unwrap();
+        .expect("the fixture holds exactly one matching row");
     let reading = app
         .world_mut()
         .query_filtered::<Entity, With<ProductionDetails>>()
         .single(app.world())
-        .unwrap();
+        .expect("the fixture holds exactly one matching row");
     let find_button = |world: &mut World, command: fn(&ProductionCommand) -> bool| {
         world
             .query::<(Entity, &ProductionButton)>()
             .iter(world)
             .find_map(|(entity, button)| command(&button.0).then_some(entity))
-            .unwrap()
+            .expect("the fixture yields the searched value")
     };
     let close = find_button(app.world_mut(), |command| {
         matches!(command, ProductionCommand::Details)
@@ -2340,9 +2424,13 @@ fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ances
         ProductionReadingSection::Sources,
     ] {
         readings_key(&mut app, window, KeyCode::Tab);
-        let focused = app.world().resource::<InputFocus>().get().unwrap();
+        let focused = app
+            .world()
+            .resource::<InputFocus>()
+            .get()
+            .expect("the fixture holds the addressed entry");
         assert!(
-            matches!(&app.world().get::<ProductionButton>(focused).unwrap().0,
+            matches!(&app.world().get::<ProductionButton>(focused).expect("the fixture world holds the addressed component").0,
             ProductionCommand::Reading(current) if *current == section)
         );
     }
@@ -2354,12 +2442,19 @@ fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ances
     );
     let period = app.world().resource::<ObserverSession>().viewed_tick;
     readings_key(&mut app, window, KeyCode::PageDown);
-    assert!(app.world().get::<ScrollPosition>(body).unwrap().0.y > 0.0);
+    assert!(
+        app.world()
+            .get::<ScrollPosition>(body)
+            .expect("the fixture world holds the addressed component")
+            .0
+            .y
+            > 0.0
+    );
     readings_key(&mut app, window, KeyCode::End);
     assert_eq!(
         app.world()
             .get::<ScrollPosition>(body)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .0
             .y
             .to_bits(),
@@ -2367,7 +2462,10 @@ fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ances
     );
     readings_key(&mut app, window, KeyCode::Home);
     assert_eq!(
-        app.world().get::<ScrollPosition>(body).unwrap().0,
+        app.world()
+            .get::<ScrollPosition>(body)
+            .expect("the fixture world holds the addressed component")
+            .0,
         Vec2::ZERO
     );
     readings_key(&mut app, window, KeyCode::Enter);
@@ -2397,7 +2495,7 @@ fn shared_freight_reading_enters_tab_order_and_pages_its_scroll_ancestor() {
         .resource_mut::<ObserverFrame>()
         .0
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .production = Some(crate::production_freight::tests::fixture());
     {
         let mut navigation = app.world_mut().resource_mut::<ProductionNavigation>();
@@ -2408,7 +2506,7 @@ fn shared_freight_reading_enters_tab_order_and_pages_its_scroll_ancestor() {
         .world_mut()
         .query_filtered::<Entity, With<ProductionDependencies>>()
         .single(app.world())
-        .unwrap();
+        .expect("the fixture holds exactly one matching row");
     app.world_mut().entity_mut(body).insert((
         Node {
             overflow: Overflow::scroll_y(),
@@ -2429,15 +2527,25 @@ fn shared_freight_reading_enters_tab_order_and_pages_its_scroll_ancestor() {
         .world_mut()
         .query_filtered::<Entity, With<ProductionFreightReading>>()
         .single(app.world())
-        .unwrap();
-    let target = app.world().get::<ObserverFocusTarget>(reading).unwrap();
+        .expect("the fixture holds exactly one matching row");
+    let target = app
+        .world()
+        .get::<ObserverFocusTarget>(reading)
+        .expect("the fixture world holds the addressed component");
     assert!(target.available);
     assert!(app.world().get::<TabIndex>(reading).is_some());
     app.world_mut().resource_mut::<InputFocus>().set(footer);
     readings_key(&mut app, window, KeyCode::Tab);
     assert_eq!(app.world().resource::<InputFocus>().get(), Some(reading));
     readings_key(&mut app, window, KeyCode::PageDown);
-    assert!(app.world().get::<ScrollPosition>(body).unwrap().0.y > 0.0);
+    assert!(
+        app.world()
+            .get::<ScrollPosition>(body)
+            .expect("the fixture world holds the addressed component")
+            .0
+            .y
+            > 0.0
+    );
     let period = app.world().resource::<ObserverSession>().viewed_tick;
     readings_key(&mut app, window, KeyCode::Enter);
     assert_eq!(
@@ -2449,7 +2557,7 @@ fn shared_freight_reading_enters_tab_order_and_pages_its_scroll_ancestor() {
     assert!(
         !app.world()
             .get::<ObserverFocusTarget>(reading)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .available
     );
     assert!(app.world().get::<TabIndex>(reading).is_none());
@@ -2471,7 +2579,10 @@ fn repainted_reading_scope_reenters_tab_order_after_a_committed_period_refresh()
     }
     {
         let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
-        let snapshot = frame.0.as_mut().unwrap();
+        let snapshot = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         snapshot.resolve_tick = 2;
         snapshot.tick_content_hash = Some(hash);
     }
@@ -2481,7 +2592,10 @@ fn repainted_reading_scope_reenters_tab_order_after_a_committed_period_refresh()
         .context = Some(context.clone());
     app.update(); // old scope is removed, then the reading is repainted
     app.update(); // the repainted target must be admitted without another UI action
-    let target = app.world().get::<ObserverFocusTarget>(reading).unwrap();
+    let target = app
+        .world()
+        .get::<ObserverFocusTarget>(reading)
+        .expect("the fixture world holds the addressed component");
     assert_eq!(target.context.as_ref(), Some(&context));
     assert!(target.available);
     assert!(app.world().get::<TabIndex>(reading).is_some());
@@ -2658,7 +2772,10 @@ fn only_actual_visible_in_transit_lots_get_static_markers() {
 #[test]
 fn maintenance_readings_keep_service_jobs_expiry_and_output_ceiling_distinct() {
     let snapshot = crate::maintenance_fixture::snapshot(&snapshot(), 1, Some(2));
-    let provider = snapshot.sites.last().unwrap();
+    let provider = snapshot
+        .sites
+        .last()
+        .expect("the fixture sequence is non-empty");
     let consumer = &snapshot.sites[0];
     for site in [provider, consumer] {
         let flow = readings::describe_flow(site, &snapshot);
@@ -2691,8 +2808,19 @@ fn maintenance_readings_keep_service_jobs_expiry_and_output_ceiling_distinct() {
 fn maintenance_foundation_missing_and_completed_zero_remain_different() {
     let foundation = crate::maintenance_fixture::snapshot(&snapshot(), 0, None);
     let zero = crate::maintenance_fixture::snapshot(&snapshot(), 1, Some(0));
-    let initial = readings::describe_flow(foundation.sites.last().unwrap(), &foundation);
-    let done = readings::describe_flow(zero.sites.last().unwrap(), &zero);
+    let initial = readings::describe_flow(
+        foundation
+            .sites
+            .last()
+            .expect("the fixture sequence is non-empty"),
+        &foundation,
+    );
+    let done = readings::describe_flow(
+        zero.sites
+            .last()
+            .expect("the fixture sequence is non-empty"),
+        &zero,
+    );
     assert!(
         initial.contains("Foundation; no completed maintenance receipt"),
         "{initial}"
@@ -2705,7 +2833,10 @@ fn maintenance_foundation_missing_and_completed_zero_remain_different() {
 #[test]
 fn maintenance_is_navigable_both_ways_without_becoming_a_parts_route() {
     let snapshot = crate::maintenance_fixture::snapshot(&snapshot(), 1, Some(2));
-    let provider = snapshot.sites.last().unwrap();
+    let provider = snapshot
+        .sites
+        .last()
+        .expect("the fixture sequence is non-empty");
     let consumer = &snapshot.sites[0];
     let from_consumer = production_brief::dependency_sites(consumer, &snapshot);
     let from_provider = production_brief::dependency_sites(provider, &snapshot);

@@ -197,9 +197,13 @@ mod tests {
         ];
         let wanted = values
             .iter()
-            .map(|k| k.canonical_bytes().unwrap())
+            .map(|k| {
+                k.canonical_bytes()
+                    .expect("the graph value exposes canonical bytes")
+            })
             .collect();
-        let (nodes, literal, strings) = split_keys(&wanted).unwrap();
+        let (nodes, literal, strings) = split_keys(&wanted)
+            .expect("the fixture call `split_keys` succeeds for the authored inputs");
         assert_eq!(nodes.len(), 2);
         assert_eq!(literal.len(), 2);
         assert!(strings.contains("foreign"));
@@ -210,12 +214,16 @@ mod tests {
                     local_name
                 }
                 .canonical_bytes()
-                .unwrap(),
+                .expect("the graph value exposes canonical bytes"),
                 bytes
             );
         }
         for value in &values[2..] {
-            assert!(literal.contains(&value.canonical_bytes().unwrap()));
+            assert!(literal.contains(
+                &value
+                    .canonical_bytes()
+                    .expect("the graph value exposes canonical bytes")
+            ));
         }
         assert!(split_keys(&BTreeSet::from([vec![1, 2, 3]])).is_err());
     }

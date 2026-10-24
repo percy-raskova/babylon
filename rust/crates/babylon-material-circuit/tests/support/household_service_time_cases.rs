@@ -113,7 +113,7 @@ fn time_service_opening(input: u64) -> MaterialCircuitState {
                 hours_per_unmet_unit: 5,
             }],
         }])
-        .unwrap(),
+        .expect("the constructor accepts the authored fixture arguments"),
     );
     babylon_material_circuit::admit_material_purchase(
         &state,
@@ -128,16 +128,16 @@ fn time_service_opening(input: u64) -> MaterialCircuitState {
         }),
         crate::money(2),
     )
-    .unwrap()
+    .expect("the fixture admits the authored purchase")
     .0
 }
 
 #[test]
 fn household_service_performance_relaxes_only_its_actual_unmet_time_burden() {
-    let supplied =
-        babylon_material_circuit::advance_material_circuit(&time_service_opening(1)).unwrap();
-    let interrupted =
-        babylon_material_circuit::advance_material_circuit(&time_service_opening(0)).unwrap();
+    let supplied = babylon_material_circuit::advance_material_circuit(&time_service_opening(1))
+        .expect("the authored material state advances one period");
+    let interrupted = babylon_material_circuit::advance_material_circuit(&time_service_opening(0))
+        .expect("the authored material state advances one period");
     assert_eq!(supplied.household_services[0].satisfied_quantity, 1);
     assert_eq!(interrupted.household_services[0].unmet_quantity, 1);
     assert_eq!(supplied.household_time[0].attended_hours, 4);

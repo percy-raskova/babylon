@@ -1405,8 +1405,8 @@ note = "Mass declaration ownership fixture"
         let first = super::diagnose_bsl(&uri(), "rules/probe.bsl", &manifest, &source);
         let second = super::diagnose_bsl(&uri(), "rules/probe.bsl", &manifest, &source);
         assert_eq!(
-            serde_json::to_string(&first).unwrap(),
-            serde_json::to_string(&second).unwrap()
+            serde_json::to_string(&first).expect("the fixture value formats as text"),
+            serde_json::to_string(&second).expect("the fixture value formats as text")
         );
         assert!(!first.is_empty());
     }

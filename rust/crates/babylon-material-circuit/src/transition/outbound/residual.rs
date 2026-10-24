@@ -209,12 +209,17 @@ mod controls {
                 8
             })
         })
-        .unwrap();
+        .expect("the constructor accepts the authored fixture arguments");
         let mut actual = vec![0];
-        matrix.augment(&mut actual, &[0]).unwrap();
+        matrix
+            .augment(&mut actual, &[0])
+            .expect("the fixture call `augment` succeeds for the authored inputs");
         assert_eq!(actual, [1]);
-        let matrix = Matrix::new(&groups, vec![2], |_| Ok(100)).unwrap();
-        matrix.augment(&mut actual, &[0]).unwrap();
+        let matrix = Matrix::new(&groups, vec![2], |_| Ok(100))
+            .expect("the constructor accepts the authored fixture arguments");
+        matrix
+            .augment(&mut actual, &[0])
+            .expect("the fixture call `augment` succeeds for the authored inputs");
         assert_eq!(actual, [2]);
     }
     #[test]
@@ -222,19 +227,32 @@ mod controls {
         let key =
             FreightResourceKey::Labor(SiteId::from_bytes([1; 32]), UnitId::from_bytes([2; 32]));
         let mut groups = BTreeMap::from([(key, vec![request(0, 3, 2), request(0, 3, 3)])]);
-        let normalized = aggregate(&groups).unwrap();
+        let normalized = aggregate(&groups)
+            .expect("the fixture call `aggregate` succeeds for the authored inputs");
         assert_eq!(normalized[&key][0].resource_per_unit, 5);
-        let matrix = Matrix::new(&normalized, vec![3], |_| Ok(9)).unwrap();
+        let matrix = Matrix::new(&normalized, vec![3], |_| Ok(9))
+            .expect("the constructor accepts the authored fixture arguments");
         let mut actual = vec![0];
-        matrix.augment(&mut actual, &[0]).unwrap();
+        matrix
+            .augment(&mut actual, &[0])
+            .expect("the fixture call `augment` succeeds for the authored inputs");
         assert_eq!(actual, [1]);
-        groups.get_mut(&key).unwrap()[1].requested = 2;
+        groups
+            .get_mut(&key)
+            .expect("the fixture holds the addressed entry")[1]
+            .requested = 2;
         assert!(matches!(
             aggregate(&groups),
             Err(MaterialCircuitError::FreightInvariant)
         ));
-        groups.get_mut(&key).unwrap()[0].resource_per_unit = u64::MAX;
-        groups.get_mut(&key).unwrap()[1].requested = 3;
+        groups
+            .get_mut(&key)
+            .expect("the fixture holds the addressed entry")[0]
+            .resource_per_unit = u64::MAX;
+        groups
+            .get_mut(&key)
+            .expect("the fixture holds the addressed entry")[1]
+            .requested = 3;
         assert!(matches!(
             aggregate(&groups),
             Err(MaterialCircuitError::Arithmetic)
@@ -250,8 +268,12 @@ mod controls {
                     vec![bound, bound],
                 );
                 let mut actual = vec![0, 0];
-                matrix.augment(&mut actual, &[0, 1]).unwrap();
-                let remaining = matrix.residuals(&actual).unwrap();
+                matrix
+                    .augment(&mut actual, &[0, 1])
+                    .expect("the fixture call `augment` succeeds for the authored inputs");
+                let remaining = matrix
+                    .residuals(&actual)
+                    .expect("the fixture call `residuals` succeeds for the authored inputs");
                 for (i, cuts) in matrix.cuts.iter().enumerate() {
                     assert!(actual[i] == bound || cuts.iter().any(|(r, c)| remaining[*r] < *c));
                 }

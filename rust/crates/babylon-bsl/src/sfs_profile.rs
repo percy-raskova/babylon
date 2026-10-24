@@ -347,7 +347,10 @@ impl SfsAuditPolicy {
     /// # Errors
     ///
     /// [`SfsProfileError`] for duplicate, oversized, or forbidden rows.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "`new` takes every authored field explicitly"
+    )]
     pub fn new(
         rule_id: &'static str,
         expected_source_digest: [u8; 32],

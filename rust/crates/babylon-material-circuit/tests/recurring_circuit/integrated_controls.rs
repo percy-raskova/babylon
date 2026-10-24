@@ -83,14 +83,16 @@ fn staffing() -> StaffingState {
                 crate::site(owner),
                 crate::hours(),
                 persons,
-                StaffingPolicy::one_period(4).unwrap(),
+                StaffingPolicy::one_period(4).expect("the one-period fixture advances"),
                 vec![source],
             )
-            .unwrap();
-            StaffingPoolState::try_new(binding, persons, 0, persons * 4).unwrap()
+            .expect("the authored fixture satisfies the constructor invariants");
+            StaffingPoolState::try_new(binding, persons, 0, persons * 4)
+                .expect("the authored fixture satisfies the constructor invariants")
         })
         .collect();
-    StaffingState::try_new(1, pools).unwrap()
+    StaffingState::try_new(1, pools)
+        .expect("the authored fixture satisfies the constructor invariants")
 }
 
 fn residents() -> Vec<Vec<StaffingMemberState>> {
@@ -101,14 +103,16 @@ fn residents() -> Vec<Vec<StaffingMemberState>> {
                 StaffingMemberBinding::try_new(
                     StaffingMemberId::from_bytes([id; 32]),
                     crate::household(),
-                    "county:26163".parse().unwrap(),
+                    "county:26163"
+                        .parse()
+                        .expect("the authored literal parses as the declared type"),
                     persons,
                 )
-                .unwrap(),
+                .expect("the authored fixture satisfies the constructor invariants"),
                 persons,
                 0,
             )
-            .unwrap()]
+            .expect("the authored fixture satisfies the constructor invariants")]
         })
         .collect()
 }
@@ -124,7 +128,7 @@ fn assert_conservation(
         + crate::economy(state)
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .household_stocks
             .iter()
             .map(|r| r.quantity)
@@ -134,7 +138,7 @@ fn assert_conservation(
         crate::economy(state)
             .book
             .total_cash_and_reserves()
-            .unwrap(),
+            .expect("the fixture book totals without overflow"),
         crate::money(cash)
     );
 }
@@ -150,7 +154,7 @@ fn allocate_resident_work(
     for (index, receipt) in receipts.iter().enumerate() {
         let shares =
             babylon_material_circuit::distribute_staffing_members(receipt, &members[index])
-                .unwrap();
+                .expect("the fixture distributes the authored members");
         assert_eq!(
             shares.iter().map(|r| r.closing_employed).sum::<u64>(),
             receipt.closing_employed()
@@ -162,7 +166,8 @@ fn allocate_resident_work(
         members[index] = shares
             .iter()
             .map(|r| {
-                r.validate().unwrap();
+                r.validate()
+                    .expect("the authored fixture passes validation");
                 assert_eq!(
                     r.closing_employed + r.closing_reserve,
                     r.member.labor_force()
@@ -179,7 +184,7 @@ fn allocate_resident_work(
                     r.closing_employed,
                     r.closing_reserve,
                 )
-                .unwrap()
+                .expect("the authored fixture satisfies the constructor invariants")
             })
             .collect();
     }
@@ -230,17 +235,21 @@ fn withdrawal_and_recovery_pass_through_plans_and_conserved_resident_workforce()
     let mut consumed = 0;
     for period in 1..=12 {
         crate::recurring_mut(&mut state).household_purchases[0].enabled = ![3, 4].contains(&period);
-        let closed = babylon_material_circuit::close_material_period(&state).unwrap();
+        let closed = babylon_material_circuit::close_material_period(&state)
+            .expect("the material period closes");
         let bindings: Vec<_> = pools.pools().iter().map(|p| p.binding().clone()).collect();
-        let requests = closed.staffing_requests(&bindings).unwrap();
-        let staffing = babylon_material_circuit::advance_staffing(&pools, &requests).unwrap();
+        let requests = closed
+            .staffing_requests(&bindings)
+            .expect("the fixture staffing requests are present");
+        let staffing = babylon_material_circuit::advance_staffing(&pools, &requests)
+            .expect("the fixture staffing advances");
         let (hours_next, period_hires, period_separations) =
             allocate_resident_work(staffing.receipts(), &mut members, period + 1);
         hires += period_hires;
         separations += period_separations;
         let transition = closed
             .finish_with_workforce(staffing.next_labor().to_vec(), hours_next)
-            .unwrap();
+            .expect("the fixture call `finish_with_workforce` succeeds for the authored inputs");
         trajectory.push(circuit_activity(&transition, &members));
         consumed += transition
             .household_consumption
@@ -258,9 +267,10 @@ fn withdrawal_and_recovery_pass_through_plans_and_conserved_resident_workforce()
         );
         pools = staffing.state().clone();
         state = babylon_material_circuit::decode_material_circuit_state(
-            &babylon_material_circuit::encode_material_circuit_state(&transition.state).unwrap(),
+            &babylon_material_circuit::encode_material_circuit_state(&transition.state)
+                .expect("the canonical material state encodes"),
         )
-        .unwrap();
+        .expect("the canonical material bytes decode");
     }
     assert!(
         separations > 0 && hires > 0,
@@ -294,7 +304,12 @@ fn foreign_trade_opening() -> MaterialCircuitState {
     crate::recurring_mut(&mut state).household_stocks[0].quantity = 0;
     state.merchants.extend(
         [
-            (1, "county:26163".parse().unwrap()),
+            (
+                1,
+                "county:26163"
+                    .parse()
+                    .expect("the authored literal parses as the declared type"),
+            ),
             (2, EconomicLocation::Foreign(ForeignCounterpart::Canada)),
         ]
         .into_iter()
@@ -362,7 +377,7 @@ fn fund_foreign_trade(state: &mut MaterialCircuitState) {
         })
         .collect(),
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     e.costs = HistoricalCostBook::open(
         &e.book,
         [
@@ -383,7 +398,7 @@ fn fund_foreign_trade(state: &mut MaterialCircuitState) {
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
 }
 
 fn configure_trade_policies(recurring: &mut RecurringEconomy) {
@@ -423,14 +438,18 @@ fn record_trade_settlement(
             .orders
             .iter()
             .find(|r| r.order_id == receipt.order_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         delivered[usize::from(order.supplier_site_id == crate::site(2))] += receipt.quantity;
     }
     for transfer in &transition.money_transfers {
         if let MoneyTransferPurpose::DeliverySettlement(OutboundOrderId::Delivery(id)) =
             transfer.purpose
         {
-            let order = state.orders.iter().find(|r| r.order_id == id).unwrap();
+            let order = state
+                .orders
+                .iter()
+                .find(|r| r.order_id == id)
+                .expect("the fixture holds the searched element");
             assert_eq!(
                 transfer.credit.location,
                 MoneyLocation::Cash(AccountId::Site(order.supplier_site_id))
@@ -459,7 +478,8 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
     let mut purchased = 0;
     let mut consumed = 0;
     for period in 1..=8 {
-        let transition = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+        let transition = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
         if !transition.dispatches.is_empty() {
             active_periods += 1;
         }
@@ -490,8 +510,10 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
             .member_labor_use
             .iter()
             .find(|r| r.site_id == crate::site(3))
-            .unwrap();
-        retailer_work.validate().unwrap();
+            .expect("the fixture holds the searched element");
+        retailer_work
+            .validate()
+            .expect("the authored fixture passes validation");
         assert_eq!(retailer_work.handling_hours, period_purchases);
         assert_eq!(
             retailer_work.handling_wages,
@@ -506,9 +528,10 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
         assert!(transition.production.is_empty());
         assert!(transition.local_transfers.is_empty());
         state = babylon_material_circuit::decode_material_circuit_state(
-            &babylon_material_circuit::encode_material_circuit_state(&transition.state).unwrap(),
+            &babylon_material_circuit::encode_material_circuit_state(&transition.state)
+                .expect("the canonical material state encodes"),
         )
-        .unwrap();
+        .expect("the canonical material bytes decode");
     }
     assert!(active_periods >= 2);
     assert!(purchase_periods >= 2);

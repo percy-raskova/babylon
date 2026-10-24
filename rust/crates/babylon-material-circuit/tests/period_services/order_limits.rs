@@ -17,7 +17,11 @@ const SERVICE_ORDER_BYTES: usize = 32 + 8 + 32 + 33 + 32 + 32 + 8;
 
 fn order_id(index: usize) -> OrderId {
     let mut bytes = [0; 32];
-    bytes[..8].copy_from_slice(&u64::try_from(index).unwrap().to_be_bytes());
+    bytes[..8].copy_from_slice(
+        &u64::try_from(index)
+            .expect("the fixture value fits the target range")
+            .to_be_bytes(),
+    );
     OrderId::from_bytes(bytes)
 }
 fn order(index: usize) -> ServiceOrder {
@@ -49,10 +53,11 @@ fn reserved_orders(count: usize) -> MaterialCircuitState {
                 order.quantity,
                 crate::money(1),
             )
-            .unwrap()
+            .expect("the constructor accepts the authored fixture arguments")
         })
         .collect();
-    economy.book = MonetaryBook::from_snapshot(snapshot).unwrap();
+    economy.book =
+        MonetaryBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     economy.costs = HistoricalCostBook::open(
         &economy.book,
         state
@@ -69,7 +74,7 @@ fn reserved_orders(count: usize) -> MaterialCircuitState {
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     state
 }
 
@@ -81,7 +86,7 @@ fn service_principals_reach_the_named_bound_and_refuse_the_next_purchase() {
         MaterialPurchase::Service(order(SERVICE_LIMIT - 1)),
         crate::money(1),
     )
-    .unwrap();
+    .expect("the fixture admits the authored purchase");
     assert_eq!(full.service_orders.len(), SERVICE_LIMIT);
     assert_eq!(
         babylon_material_circuit::admit_material_purchase(
@@ -91,11 +96,14 @@ fn service_principals_reach_the_named_bound_and_refuse_the_next_purchase() {
         ),
         Err(MaterialCircuitError::RowLimit)
     );
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&full).unwrap();
-    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&full)
+        .expect("the canonical material state encodes");
+    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes)
+        .expect("the canonical material bytes decode");
     assert_eq!(restored, full);
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&restored).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&restored)
+            .expect("the canonical material state encodes"),
         bytes
     );
     let last = bytes.len() - SERVICE_ORDER_BYTES;
@@ -107,8 +115,11 @@ fn service_principals_reach_the_named_bound_and_refuse_the_next_purchase() {
     );
     let mut excess = bytes;
     let count_offset = excess.len() - SERVICE_LIMIT * SERVICE_ORDER_BYTES - 4;
-    excess[count_offset..count_offset + 4]
-        .copy_from_slice(&u32::try_from(SERVICE_LIMIT + 1).unwrap().to_be_bytes());
+    excess[count_offset..count_offset + 4].copy_from_slice(
+        &u32::try_from(SERVICE_LIMIT + 1)
+            .expect("the fixture value fits the target range")
+            .to_be_bytes(),
+    );
     assert_eq!(
         babylon_material_circuit::decode_material_circuit_state(&excess),
         Err(MaterialCircuitError::WireLimit)

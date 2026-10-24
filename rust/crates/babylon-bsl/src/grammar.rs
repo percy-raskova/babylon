@@ -959,7 +959,7 @@ mod tests {
             (EnumKind::HyperedgeType, vec!["COMMUNITY".to_owned()]),
             (EnumKind::EventType, vec!["RUPTURE".to_owned()]),
         ])
-        .unwrap()
+        .expect("the constructor accepts the authored fixture arguments")
     }
 
     fn e(source: &str) -> crate::reader::SExpr {
@@ -995,7 +995,7 @@ mod tests {
         let err = super::check_enum_ref_kinds(&e(
             "(neighbors self NodeType/SOCIAL_CLASS :out EdgeType/SOLIDARITY)",
         ))
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_enum_ref_kinds`");
         assert_eq!(err.spec_code(), "E-TYPE-011");
         assert!(super::check_enum_ref_kinds(&e(
             "(neighbors self EdgeType/SOLIDARITY :out NodeType/SOCIAL_CLASS)"
@@ -1140,7 +1140,7 @@ mod tests {
             &e("(add-edge EdgeType/SOLIDARITY a b :strength 0.5c (solidarity/strength 0.9c))"),
             &vocabulary(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_field_init_owners`");
         assert_eq!(err.spec_code(), "E-PARSE-041");
     }
 
@@ -1150,7 +1150,7 @@ mod tests {
             &e("(add-node NodeType/SOCIAL_CLASS n1 (polity/imperial-rent-pool 5$))"),
             &vocabulary(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_field_init_owners`");
         assert_eq!(err.spec_code(), "E-TYPE-014");
     }
 
@@ -1182,7 +1182,7 @@ mod tests {
             &e("(add-node NodeType/SOCIAL_CLASS n1 (imperium/rent 5$))"),
             &vocabulary(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_field_init_owners`");
         assert_eq!(err.spec_code(), "E-LOAD-023");
         assert!(matches!(
             &err,
@@ -1255,7 +1255,7 @@ mod tests {
             &e("(guard #t (emit EventType/NOWHERE))"),
             &vocabulary(),
         )
-        .unwrap_err();
+        .expect_err("the malformed input is rejected by `check_enum_ref_membership`");
         assert_eq!(err.spec_code(), "E-LOAD-031");
     }
 
@@ -1265,7 +1265,7 @@ mod tests {
         // report the offending form — the raw `VocabularyError` alone
         // names only the type/member, not which verb wrote it.
         let err = super::check_enum_ref_membership(&e("(emit EventType/NOWHERE)"), &vocabulary())
-            .unwrap_err();
+            .expect_err("the malformed input is rejected by `check_enum_ref_membership`");
         assert!(err.to_string().contains("emit"), "{err}");
         assert!(err.to_string().contains("EventType/NOWHERE"), "{err}");
     }
@@ -1305,7 +1305,8 @@ mod tests {
         // E-LOAD-031 for a kind that was never even opted into vocabulary
         // checking.
         let partial =
-            ClosedVocabulary::new([(EnumKind::NodeType, vec!["SOCIAL_CLASS".to_owned()])]).unwrap();
+            ClosedVocabulary::new([(EnumKind::NodeType, vec!["SOCIAL_CLASS".to_owned()])])
+                .expect("the constructor accepts the authored fixture arguments");
         assert!(
             super::check_enum_ref_membership(&e("(emit EventType/ANYTHING)"), &partial).is_ok(),
             "EventType was never declared in this vocabulary — its checking must stay inert"

@@ -101,3 +101,7 @@ rc_buffer = "deny"
 should_implement_trait = "deny"
 wildcard_imports = "deny"
 wrong_self_convention = "deny"
+# PER-350: a bare `unwrap()` is a finding in every target, tests included.
+# `expect("<invariant>")` or a pattern match replaces it; the message states
+# why the call cannot fail (`docs/agents/rust-style.md`, implementation table).
+unwrap_used = "deny"

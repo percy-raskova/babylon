@@ -85,18 +85,28 @@ fn h3_cell_id_round_trips_display_bytes_sql_and_semantic_parents_from_vectors() 
         assert_eq!(from_raw.as_u64(), vector.raw_u64);
         assert_eq!(from_raw.resolution(), vector.resolution);
         assert_eq!(from_raw.to_string(), vector.text);
-        assert_eq!(H3CellId::from_str(&vector.text).unwrap(), from_raw);
+        assert_eq!(
+            H3CellId::from_str(&vector.text)
+                .expect("the authored JSON matches the declared schema"),
+            from_raw
+        );
         assert_eq!(from_raw.to_be_bytes(), vector.bytes_be);
-        assert_eq!(i64::try_from(from_raw).unwrap(), vector.sql_i64);
-        assert_eq!(H3CellId::try_from(vector.sql_i64).unwrap(), from_raw);
+        assert_eq!(
+            i64::try_from(from_raw).expect("the fixture value fits the target range"),
+            vector.sql_i64
+        );
+        assert_eq!(
+            H3CellId::try_from(vector.sql_i64).expect("the fixture value fits the target range"),
+            from_raw
+        );
         assert_eq!(
             vector.ancestor_chain_r0_to_self.len(),
             usize::from(vector.resolution) + 1
         );
-        for (requested_resolution, expected_ancestor) in
-            vector.ancestor_chain_r0_to_self.iter().take(16).enumerate()
-        {
-            let requested_resolution = u8::try_from(requested_resolution).unwrap();
+        let numbered_ancestors = vector.ancestor_chain_r0_to_self.iter().take(16).enumerate();
+        for (requested_resolution, expected_ancestor) in numbered_ancestors {
+            let requested_resolution = u8::try_from(requested_resolution)
+                .expect("the fixture value fits the target range");
             assert_eq!(
                 vector.ancestor_at(requested_resolution),
                 Some(expected_ancestor.as_str())
@@ -104,18 +114,24 @@ fn h3_cell_id_round_trips_display_bytes_sql_and_semantic_parents_from_vectors() 
             assert_eq!(
                 from_raw
                     .ancestor_at(requested_resolution)
-                    .unwrap()
+                    .expect("the fixture call `ancestor_at` succeeds for the authored inputs")
                     .to_string(),
                 *expected_ancestor
             );
         }
 
         if let Some(parent) = &vector.immediate_parent {
-            assert_eq!(from_raw.immediate_parent().unwrap().to_string(), *parent);
+            assert_eq!(
+                from_raw
+                    .immediate_parent()
+                    .expect("the fixture call `immediate_parent` succeeds for the authored inputs")
+                    .to_string(),
+                *parent
+            );
             assert_eq!(
                 from_raw
                     .ancestor_at(vector.resolution.saturating_sub(1))
-                    .unwrap()
+                    .expect("the fixture call `ancestor_at` succeeds for the authored inputs")
                     .to_string(),
                 *parent
             );
@@ -184,7 +200,9 @@ fn h3_cell_id_ancestor_requests_reject_too_fine_or_out_of_range_resolution() {
         .take(INVALID_ANCESTOR_VECTOR_COUNT)
     {
         let cell = H3CellId::from_str(&vector.text).expect("fixture ancestor cell is valid");
-        let error = cell.ancestor_at(vector.requested_resolution).unwrap_err();
+        let error = cell
+            .ancestor_at(vector.requested_resolution)
+            .expect_err("the fixture call `ancestor_at` fails for the authored inputs");
         match vector.label.as_str() {
             "too_fine_parent" => assert_eq!(
                 error,
@@ -203,8 +221,11 @@ fn h3_cell_id_ancestor_requests_reject_too_fine_or_out_of_range_resolution() {
 
 #[test]
 fn immediate_children_are_complete_ordered_and_round_trip_their_parent() {
-    let ordinary = H3CellId::from_str("872664800ffffff").unwrap();
-    let ordinary_children = ordinary.immediate_children().unwrap();
+    let ordinary = H3CellId::from_str("872664800ffffff")
+        .expect("the authored JSON matches the declared schema");
+    let ordinary_children = ordinary
+        .immediate_children()
+        .expect("the fixture call `immediate_children` succeeds for the authored inputs");
     let expected_ordinary = [
         "8826648001fffff",
         "8826648003fffff",
@@ -224,8 +245,11 @@ fn immediate_children_are_complete_ordered_and_round_trip_their_parent() {
         expected_ordinary
     );
 
-    let pentagon = H3CellId::from_str("81083ffffffffff").unwrap();
-    let pentagon_children = pentagon.immediate_children().unwrap();
+    let pentagon = H3CellId::from_str("81083ffffffffff")
+        .expect("the authored JSON matches the declared schema");
+    let pentagon_children = pentagon
+        .immediate_children()
+        .expect("the fixture call `immediate_children` succeeds for the authored inputs");
     let expected_pentagon = [
         "820807fffffffff",
         "820817fffffffff",
@@ -256,7 +280,8 @@ fn immediate_children_are_complete_ordered_and_round_trip_their_parent() {
         }));
     }
 
-    let finest = H3CellId::from_str("8f2664800d2d569").unwrap();
+    let finest = H3CellId::from_str("8f2664800d2d569")
+        .expect("the authored JSON matches the declared schema");
     assert_eq!(
         finest.immediate_children(),
         Err(H3CellIdError::NoImmediateChildren { current: 15 })

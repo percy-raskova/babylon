@@ -179,11 +179,11 @@ pub(crate) fn insert_projection(
         )
         .map_err(archive_error)?;
     }
-    for receipt in state
+    let organizer_receipts = state
         .receipts
         .iter()
-        .chain(state.aid_receipts.iter().map(|row| &row.practice))
-    {
+        .chain(state.aid_receipts.iter().map(|row| &row.practice));
+    for receipt in organizer_receipts {
         if receipt.actor_id != config.controlled_actor_id {
             continue;
         }
@@ -616,11 +616,11 @@ impl CapturedOrganizerPages {
                     signals.push(observation_signal(observation)?);
                 }
             } else {
-                for value in receipts
+                let matching_receipts = receipts
                     .iter()
                     .copied()
-                    .filter(|value| value.actor_id.to_string() == actor && actor == id)
-                {
+                    .filter(|value| value.actor_id.to_string() == actor && actor == id);
+                for value in matching_receipts {
                     if let Some(collection) = collection_by_receipt.get(&value.receipt_id) {
                         signals.push(collection_signal(collection)?);
                         continue;
@@ -962,7 +962,8 @@ mod projection_tests {
             contact_product_id: None,
             time_use: vec![],
         };
-        let signal = practice_signal(&receipt).unwrap();
+        let signal = practice_signal(&receipt)
+            .expect("the fixture call `practice_signal` succeeds for the authored inputs");
         let text = signal.value();
         assert!(text.contains("Period 1: Ask about work and output"));
         assert!(text.contains("Result: No report obtained"));
@@ -975,7 +976,8 @@ mod projection_tests {
         receipt.choice = OrganizerChoice::Hold;
         receipt.outcome = OrganizerOutcome::ContactCompleted;
         receipt.hours_spent = 8;
-        let signal = practice_signal(&receipt).unwrap();
+        let signal = practice_signal(&receipt)
+            .expect("the fixture call `practice_signal` succeeds for the authored inputs");
         let text = signal.value();
         assert!(text.contains("Period 1: Keep current routine"));
         assert!(text.contains("Result: Mutual contact completed"));
@@ -987,7 +989,8 @@ mod projection_tests {
         receipt.outcome = OrganizerOutcome::StandingPaused;
         receipt.hours_spent = 0;
         receipt.partner_response = OrganizerPartnerResponse::NotRequested;
-        let signal = practice_signal(&receipt).unwrap();
+        let signal = practice_signal(&receipt)
+            .expect("the fixture call `practice_signal` succeeds for the authored inputs");
         let text = signal.value();
         assert!(text.contains("Period 1: Pause neighborhood work"));
         assert!(text.contains("Result: Standing work paused"));
@@ -998,7 +1001,8 @@ mod projection_tests {
         receipt.outcome = OrganizerOutcome::ContactUncompleted;
         receipt.hours_spent = 8;
         receipt.partner_response = OrganizerPartnerResponse::Refused;
-        let signal = practice_signal(&receipt).unwrap();
+        let signal = practice_signal(&receipt)
+            .expect("the fixture call `practice_signal` succeeds for the authored inputs");
         let text = signal.value();
         assert!(text.contains("Period 1: Resume neighborhood work"));
         assert!(text.contains("Source: specific ruling · saved routine"));
@@ -1010,7 +1014,8 @@ mod projection_tests {
     #[test]
     fn observation_projection_refuses_changed_keys_subject_or_periods_with_unchanged_bytes() {
         let expected = observation();
-        let bytes = serde_json::to_vec(&expected).unwrap();
+        let bytes =
+            serde_json::to_vec(&expected).expect("the value serializes to canonical JSON bytes");
         assert!(
             validate_observation_columns(&expected, &[1; 32], "101", "104", (2, 3), &bytes).is_ok()
         );
@@ -1051,7 +1056,8 @@ mod projection_tests {
             contact_product_id: None,
             time_use: vec![],
         };
-        let bytes = serde_json::to_vec(&expected).unwrap();
+        let bytes =
+            serde_json::to_vec(&expected).expect("the value serializes to canonical JSON bytes");
         assert!(validate_receipt_columns(&expected, &[2; 32], "101", 3, &bytes).is_ok());
         for (key, actor, period) in [
             ([9; 32], "101", 3),

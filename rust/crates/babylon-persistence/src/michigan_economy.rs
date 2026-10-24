@@ -331,15 +331,19 @@ mod tests {
 
     #[test]
     fn diagnostic_interval_changes_foundation_identity_without_rescaling_source_facts() {
-        let economy = michigan_economy().unwrap();
-        let (session, bundle) = build_observer_foundation(economy).unwrap();
-        let defines: Value = serde_json::from_slice(bundle.defines_bytes()).unwrap();
+        let economy = michigan_economy().expect("the Michigan economy fixture builds");
+        let (session, bundle) = build_observer_foundation(economy).expect(
+            "the fixture call `build_observer_foundation` succeeds for the authored inputs",
+        );
+        let defines: Value = serde_json::from_slice(bundle.defines_bytes())
+            .expect("the authored bytes match the declared schema");
         assert_eq!(defines["qcew_vintage"], 2024);
         assert_eq!(defines["tick_duration_days"], 28);
-        let current = CampaignFoundation::capture(&session, bundle).unwrap();
+        let current = CampaignFoundation::capture(&session, bundle)
+            .expect("the fixture captures the authored state");
         assert_eq!(
             content_digest::sha256_of(current.canonical_bytes()),
-            michigan_observer_foundation_digest().unwrap()
+            michigan_observer_foundation_digest().expect("the fixture call `michigan_observer_foundation_digest` succeeds for the authored inputs")
         );
 
         for incompatible in [
@@ -353,8 +357,9 @@ mod tests {
                 "g4/michigan-observer-v1",
                 incompatible,
             )
-            .unwrap();
-            let old = CampaignFoundation::capture(&old_session, old_bundle).unwrap();
+            .expect("the fixture call `foundation_from_sources` succeeds for the authored inputs");
+            let old = CampaignFoundation::capture(&old_session, old_bundle)
+                .expect("the fixture captures the authored state");
             assert_ne!(
                 content_digest::sha256_of(old.canonical_bytes()),
                 content_digest::sha256_of(current.canonical_bytes()),
@@ -371,11 +376,14 @@ mod tests {
     fn advance_observation(
         session: &mut ReplayTickSession<HypergraphStore>,
     ) -> IdentifiedTickReport {
-        let tick = u64::try_from(session.completed_tick() + 1).unwrap();
-        let actions =
-            OrderedPracticeActionBatch::empty(session.session_identity().clone(), tick).unwrap();
+        let tick = u64::try_from(session.completed_tick() + 1)
+            .expect("the fixture value fits the target range");
+        let actions = OrderedPracticeActionBatch::empty(session.session_identity().clone(), tick)
+            .expect("the empty authored batch constructs");
         let mut sink = CollectingSink::default();
-        let report = session.advance(&mut sink, &actions).unwrap();
+        let report = session
+            .advance(&mut sink, &actions)
+            .expect("the fixture advances the authored period");
         assert_eq!(report.report().considered, 0);
         assert_eq!(report.report().fired, 0);
         assert!(report.report().audit_receipts.is_empty());
@@ -410,8 +418,11 @@ mod tests {
                 };
                 Some(*value)
             });
-            let input = CommittedTerritoryFields::try_from_qcew(values).unwrap();
-            let signals = crate::county_committed_signals(&input).unwrap();
+            let input = CommittedTerritoryFields::try_from_qcew(values)
+                .expect("the fixture input satisfies the fallible conversion");
+            let signals = crate::county_committed_signals(&input).expect(
+                "the fixture call `county_committed_signals` succeeds for the authored inputs",
+            );
             assert_eq!(signals.len(), 4);
             assert!(result.insert(local_name.clone(), signals).is_none());
         }
@@ -421,14 +432,20 @@ mod tests {
 
     #[test]
     fn generated_qcew_source_changes_only_its_county_through_the_real_foundation_and_projection() {
-        let baseline = parse_csv(GENERATED_BASELINE).unwrap();
-        let changed = parse_csv(GENERATED_CHANGED).unwrap();
-        let (mut original, original_bundle) = build_observer_foundation(&baseline).unwrap();
-        let (mut revised, revised_bundle) = build_observer_foundation(&changed).unwrap();
+        let baseline = parse_csv(GENERATED_BASELINE).expect("the authored CSV parses");
+        let changed = parse_csv(GENERATED_CHANGED).expect("the authored CSV parses");
+        let (mut original, original_bundle) = build_observer_foundation(&baseline).expect(
+            "the fixture call `build_observer_foundation` succeeds for the authored inputs",
+        );
+        let (mut revised, revised_bundle) = build_observer_foundation(&changed).expect(
+            "the fixture call `build_observer_foundation` succeeds for the authored inputs",
+        );
         assert!(original_bundle.rule_source_bytes().is_empty());
         assert!(revised_bundle.rule_source_bytes().is_empty());
-        let original_foundation = CampaignFoundation::capture(&original, original_bundle).unwrap();
-        let revised_foundation = CampaignFoundation::capture(&revised, revised_bundle).unwrap();
+        let original_foundation = CampaignFoundation::capture(&original, original_bundle)
+            .expect("the fixture captures the authored state");
+        let revised_foundation = CampaignFoundation::capture(&revised, revised_bundle)
+            .expect("the fixture captures the authored state");
         assert_ne!(
             original_foundation.canonical_bytes(),
             revised_foundation.canonical_bytes()
@@ -487,15 +504,19 @@ mod tests {
 
     #[test]
     fn generated_county_observations_resume_with_identical_projection_and_tick_identity() {
-        let economy = parse_csv(GENERATED_CHANGED).unwrap();
-        let (mut continued, first_bundle) = build_observer_foundation(&economy).unwrap();
-        let (mut reopened, second_bundle) = build_observer_foundation(&economy).unwrap();
+        let economy = parse_csv(GENERATED_CHANGED).expect("the authored CSV parses");
+        let (mut continued, first_bundle) = build_observer_foundation(&economy).expect(
+            "the fixture call `build_observer_foundation` succeeds for the authored inputs",
+        );
+        let (mut reopened, second_bundle) = build_observer_foundation(&economy).expect(
+            "the fixture call `build_observer_foundation` succeeds for the authored inputs",
+        );
         assert_eq!(
             CampaignFoundation::capture(&continued, first_bundle)
-                .unwrap()
+                .expect("the fixture captures the authored state")
                 .canonical_bytes(),
             CampaignFoundation::capture(&reopened, second_bundle)
-                .unwrap()
+                .expect("the fixture captures the authored state")
                 .canonical_bytes()
         );
         let first = advance_observation(&mut continued);
@@ -506,7 +527,7 @@ mod tests {
                 first.material_state_rows(),
                 first.result_registers().canonical_bytes(),
             )
-            .unwrap();
+            .expect("the committed checkpoint restores");
         let next = advance_observation(&mut continued);
         let resumed = advance_observation(&mut reopened);
         assert_eq!(next.tick_content_hash(), resumed.tick_content_hash());

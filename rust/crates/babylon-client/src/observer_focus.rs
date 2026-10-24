@@ -967,7 +967,7 @@ mod tests {
         let field = target(&mut app, root, None);
         app.world_mut()
             .get_mut::<ObserverFocusTarget>(field)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .kind = ObserverFocusKind::TextInput;
         let next = target(&mut app, root, None);
         app.update();
@@ -1123,7 +1123,7 @@ mod tests {
         press(&mut app, window, KeyCode::Tab);
         app.world_mut()
             .get_mut::<ObserverFocusTarget>(button)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .available = false;
         press(&mut app, window, KeyCode::Enter);
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(button));
@@ -1215,7 +1215,7 @@ mod tests {
         let location = Location {
             target: RenderTarget::Window(WindowRef::Entity(window))
                 .normalize(Some(window))
-                .unwrap(),
+                .expect("the fixture content normalizes"),
             position: Vec2::new(20.0, 20.0),
         };
         app.world_mut()
@@ -1305,7 +1305,7 @@ mod tests {
         let disabled = target(&mut app, root, None);
         app.world_mut()
             .get_mut::<ObserverFocusTarget>(disabled)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .available = false;
         let clipped = target(&mut app, root, None);
         app.world_mut()
@@ -1328,7 +1328,7 @@ mod tests {
         press(&mut app, window, KeyCode::Tab);
         app.world_mut()
             .get_mut::<ObserverFocusTarget>(button)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .available = false;
         press(&mut app, window, KeyCode::Enter);
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(button));
@@ -1434,7 +1434,7 @@ mod tests {
                     &target_transform,
                     Vec2::ZERO,
                 )
-                .unwrap();
+                .expect("the fixture call `reveal_position` succeeds for the authored inputs");
                 assert_eq!(next, Vec2::new(40.0, 50.0));
                 let moved = UiGlobalTransform::from_translation(
                     target_transform.affine().translation - next * scale,
@@ -1490,7 +1490,10 @@ mod tests {
         press(&mut app, window, KeyCode::Tab);
         press(&mut app, window, KeyCode::PageDown);
         assert_eq!(
-            app.world().get::<ScrollPosition>(entity).unwrap().0,
+            app.world()
+                .get::<ScrollPosition>(entity)
+                .expect("the fixture world holds the addressed component")
+                .0,
             Vec2::new(0.0, 100.0)
         );
         press(&mut app, window, KeyCode::Enter);
@@ -1530,18 +1533,24 @@ mod tests {
             UiGlobalTransform::from_xy(0.0, 140.0),
         ));
         app.world_mut().resource_mut::<RevealFocus>().target = Some(button);
-        app.world_mut().run_system_once(reveal_focus).unwrap();
+        app.world_mut()
+            .run_system_once(reveal_focus)
+            .expect("the Bevy system completes one run");
         // Integral pixel offsets are exact; rounding drift must not pass this test.
         assert_eq!(
             app.world()
                 .get::<ScrollPosition>(inner)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .y
                 .to_bits(),
             40.0_f32.to_bits()
         );
         assert_eq!(
-            app.world().get::<ScrollPosition>(root).unwrap().y.to_bits(),
+            app.world()
+                .get::<ScrollPosition>(root)
+                .expect("the fixture world holds the addressed component")
+                .y
+                .to_bits(),
             0.0_f32.to_bits()
         );
 
@@ -1549,17 +1558,23 @@ mod tests {
         app.world_mut()
             .entity_mut(button)
             .insert(UiGlobalTransform::from_xy(0.0, 100.0));
-        app.world_mut().run_system_once(reveal_focus).unwrap();
+        app.world_mut()
+            .run_system_once(reveal_focus)
+            .expect("the Bevy system completes one run");
         assert_eq!(
             app.world()
                 .get::<ScrollPosition>(inner)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .y
                 .to_bits(),
             40.0_f32.to_bits()
         );
         assert_eq!(
-            app.world().get::<ScrollPosition>(root).unwrap().y.to_bits(),
+            app.world()
+                .get::<ScrollPosition>(root)
+                .expect("the fixture world holds the addressed component")
+                .y
+                .to_bits(),
             60.0_f32.to_bits()
         );
 
@@ -1570,18 +1585,24 @@ mod tests {
         app.world_mut()
             .entity_mut(button)
             .insert(UiGlobalTransform::from_xy(0.0, 40.0));
-        app.world_mut().run_system_once(reveal_focus).unwrap();
+        app.world_mut()
+            .run_system_once(reveal_focus)
+            .expect("the Bevy system completes one run");
         assert!(app.world().resource::<RevealFocus>().target.is_none());
         assert_eq!(
             app.world()
                 .get::<ScrollPosition>(inner)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .y
                 .to_bits(),
             40.0_f32.to_bits()
         );
         assert_eq!(
-            app.world().get::<ScrollPosition>(root).unwrap().y.to_bits(),
+            app.world()
+                .get::<ScrollPosition>(root)
+                .expect("the fixture world holds the addressed component")
+                .y
+                .to_bits(),
             60.0_f32.to_bits()
         );
     }

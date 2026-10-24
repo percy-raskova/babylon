@@ -39,7 +39,8 @@ mod synthetic;
 fn physical_paths_require_all_overlapping_capacity_memberships_and_preserve_identity() {
     use babylon_persistence::michigan_material::MichiganMaterialPath;
     let fixture = synthetic::load();
-    let qualification = serde_json::to_vec(&fixture.qualification).unwrap();
+    let qualification = serde_json::to_vec(&fixture.qualification)
+        .expect("the value serializes to canonical JSON bytes");
     let mut physical = fixture.physical;
     let mut overlap = physical.capacity_groups[0].clone();
     overlap.key = "second-shared-road-service".to_owned();
@@ -53,8 +54,9 @@ fn physical_paths_require_all_overlapping_capacity_memberships_and_preserve_iden
             Vec::new(),
         )
     };
-    let physical_bytes = serde_json::to_vec(&physical).unwrap();
-    let catalog = compile(physical.clone()).unwrap();
+    let physical_bytes =
+        serde_json::to_vec(&physical).expect("the value serializes to canonical JSON bytes");
+    let catalog = compile(physical.clone()).expect("the authored scenario compiles");
     let mut routed = 0;
     for route in catalog.routes() {
         if let MichiganMaterialPath::Routed { capacity_keys, .. } = &route.path {
@@ -71,13 +73,14 @@ fn physical_paths_require_all_overlapping_capacity_memberships_and_preserve_iden
     for group in &mut physical.capacity_groups {
         group.edge_keys.reverse();
     }
-    let reordered_bytes = serde_json::to_vec(&physical).unwrap();
-    let reordered = compile(physical.clone()).unwrap();
+    let reordered_bytes =
+        serde_json::to_vec(&physical).expect("the value serializes to canonical JSON bytes");
+    let reordered = compile(physical.clone()).expect("the authored scenario compiles");
     // Raw supplied source ordering stays evidence. Compare the complete resolved
     // inputs and regenerated initialization separately from that source identity.
     assert_eq!(
-        serde_json::to_value(catalog.resolved_report()).unwrap(),
-        serde_json::to_value(reordered.resolved_report()).unwrap()
+        serde_json::to_value(catalog.resolved_report()).expect("the value serializes to JSON"),
+        serde_json::to_value(reordered.resolved_report()).expect("the value serializes to JSON")
     );
     assert_eq!(catalog.preset(), reordered.preset());
     assert_eq!(
@@ -85,17 +88,26 @@ fn physical_paths_require_all_overlapping_capacity_memberships_and_preserve_iden
         reordered.graph_scenario_source()
     );
     assert_eq!(catalog.rule_source(), reordered.rule_source());
-    let original_opening =
-        babylon_persistence::economic_catalog::import_michigan_opening(&catalog).unwrap();
+    let original_opening = babylon_persistence::economic_catalog::import_michigan_opening(&catalog)
+        .expect("the fixture call `import_michigan_opening` succeeds for the authored inputs");
     let reordered_opening =
-        babylon_persistence::economic_catalog::import_michigan_opening(&reordered).unwrap();
+        babylon_persistence::economic_catalog::import_michigan_opening(&reordered)
+            .expect("the fixture call `import_michigan_opening` succeeds for the authored inputs");
     assert_eq!(original_opening, reordered_opening);
     assert_eq!(
-        original_opening.compile().unwrap().state,
-        reordered_opening.compile().unwrap().state
+        original_opening
+            .compile()
+            .expect("the authored scenario compiles")
+            .state,
+        reordered_opening
+            .compile()
+            .expect("the authored scenario compiles")
+            .state
     );
-    let original_capture = CapturedEconomicCatalog::from_michigan(&catalog).unwrap();
-    let reordered_capture = CapturedEconomicCatalog::from_michigan(&reordered).unwrap();
+    let original_capture = CapturedEconomicCatalog::from_michigan(&catalog)
+        .expect("the Michigan fixture content loads");
+    let reordered_capture = CapturedEconomicCatalog::from_michigan(&reordered)
+        .expect("the Michigan fixture content loads");
     let source_kind = SourceArtifactKind::MichiganPhysicalNetworkJson;
     assert_eq!(
         original_capture.source(source_kind),
@@ -122,8 +134,10 @@ fn prepare(session: &Session) -> PreparedMaterialTick<HypergraphStore> {
         session.graph_session().session_identity().clone(),
         session.completed_tick() + 1,
     )
-    .unwrap();
-    session.prepare_advance(&actions).unwrap()
+    .expect("the empty authored batch constructs");
+    session
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance")
 }
 
 fn stock_and_transit(state: &MaterialCircuitState) -> Goods {
@@ -149,7 +163,7 @@ fn assert_goods_conserved(
             .process_outputs
             .iter()
             .find(|row| row.process_id == receipt.process_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(receipt.site_id, output.site_id);
         *available
             .entry((output.good_id, output.unit_id))
@@ -169,7 +183,7 @@ fn assert_goods_conserved(
             .orders
             .iter()
             .find(|row| row.order_id == receipt.order_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         *accounted.entry((order.good_id, order.unit_id)).or_default() +=
             u128::from(receipt.quantity);
     }
@@ -198,7 +212,7 @@ fn assert_order_accounts(
             .final_demand_orders
             .iter()
             .find(|row| row.order_id == receipt.order_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(receipt.retailer_site_id, order.retailer_site_id);
         assert_eq!(receipt.demand_principal_id, order.demand_principal_id);
         assert_eq!(
@@ -248,7 +262,7 @@ fn assert_opening_labor_limits(opening: &MaterialCircuitState, receipts: &Materi
             .labor_coefficients
             .iter()
             .find(|row| row.process_id == receipt.process_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         *used
             .entry((receipt.site_id, coefficient.unit_id))
             .or_default() +=
@@ -259,7 +273,7 @@ fn assert_opening_labor_limits(opening: &MaterialCircuitState, receipts: &Materi
             .merchants
             .iter()
             .find(|row| row.site_id == receipt.site_id)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         *used
             .entry((receipt.site_id, merchant.labor_unit_id))
             .or_default() += u128::from(receipt.used_hours);
@@ -302,7 +316,7 @@ fn maximum_row_count(state: &MaterialCircuitState) -> usize {
     ]
     .into_iter()
     .max()
-    .unwrap()
+    .expect("the fixture call `max` succeeds for the authored inputs")
 }
 
 #[test]
@@ -318,7 +332,7 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
     assert!(catalog.routes().len() > 500);
     assert!(
         CapturedEconomicCatalog::from_michigan(&catalog)
-            .unwrap()
+            .expect("the Michigan fixture content loads")
             .canonical_bytes()
             .len()
             < MAX_MICHIGAN_SOURCE_BYTES
@@ -336,11 +350,13 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
         let prepared = prepare(&session);
         let bytes = prepared.material().receipt_bytes();
         assert_eq!(sha256_of(bytes), prepared.identity().receipt_digest());
-        let receipts = material_world::decode_material_receipts(bytes).unwrap();
+        let receipts = material_world::decode_material_receipts(bytes)
+            .expect("the canonical bytes decode into the declared type");
         assert_eq!(receipts.resolve_tick, period);
         let register = prepared.material().register();
         assert_eq!(
-            MaterialWorldRegister::decode(register.canonical_bytes()).unwrap(),
+            MaterialWorldRegister::decode(register.canonical_bytes())
+                .expect("the committed canonical bytes decode"),
             *register
         );
         maximum_register_bytes = maximum_register_bytes.max(register.canonical_bytes().len());
@@ -360,7 +376,7 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
             .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
-            .unwrap();
+            .expect("the prepared period commits");
     }
     assert!(maximum_register_bytes < MAX_MATERIAL_WORLD_REGISTER_BYTES);
     assert!(maximum_receipt_bytes < MAX_MATERIAL_TICK_RECEIPT_BYTES);
@@ -375,16 +391,23 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
         .iter()
         .filter(|r| r.fulfilled < r.ordered)
         .count();
-    let before = session.current_world_hash().unwrap();
+    let before = session
+        .current_world_hash()
+        .expect("the committed session publishes a world hash");
     let actions =
         OrderedPracticeActionBatch::empty(session.graph_session().session_identity().clone(), 17)
-            .unwrap();
+            .expect("the empty authored batch constructs");
     assert!(session.prepare_advance(&actions).is_ok());
-    assert_eq!(before, session.current_world_hash().unwrap());
+    assert_eq!(
+        before,
+        session
+            .current_world_hash()
+            .expect("the committed session publishes a world hash")
+    );
     assert_eq!(session.completed_tick(), 16);
     eprintln!(
         "SYNTHETIC SCALE ONLY: owners=397 counties=83 processes=233 routes={} captured_bytes={} foundation_bytes={foundation_bytes} max_register_bytes={maximum_register_bytes} max_receipt_bytes={maximum_receipt_bytes} max_rows={maximum_rows} dispatches={dispatch_count} local_transfers={local_count} fulfilled_orders={} unfilled_orders={unfilled} compile_and_admit_ms={} advance_16_ms={} unsold_native_by_good={named_unsold:?}",
-        catalog.routes().len(), CapturedEconomicCatalog::from_michigan(&catalog).unwrap().canonical_bytes().len(), fulfilled.len(),
+        catalog.routes().len(), CapturedEconomicCatalog::from_michigan(&catalog).expect("the Michigan fixture content loads").canonical_bytes().len(), fulfilled.len(),
         compile_time.as_millis(), advancing.elapsed().as_millis(),
     );
 }
@@ -409,8 +432,12 @@ fn unsold_merchandise(state: &MaterialCircuitState) -> Goods {
 
 fn captured_session(catalog: &MichiganMaterialCatalog) -> (Session, usize) {
     let preset = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::StatewideBaseline);
-    let foundation = preset.create_foundation(catalog).unwrap();
-    let foundation_bytes = foundation.canonical_len().unwrap();
+    let foundation = preset
+        .create_foundation(catalog)
+        .expect("the authored catalog builds the foundation");
+    let foundation_bytes = foundation
+        .canonical_len()
+        .expect("the fixture call `canonical_len` succeeds for the authored inputs");
     assert!(foundation_bytes < MAX_MATERIAL_FOUNDATION_BYTES);
     assert_eq!(
         foundation
@@ -433,12 +460,18 @@ fn captured_session(catalog: &MichiganMaterialCatalog) -> (Session, usize) {
         &foundation.spec().content_digest,
         &foundation.digest(),
         0,
-        &foundation.export_canonical_bytes().unwrap(),
+        &foundation
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes"),
     )
-    .unwrap();
+    .expect("the fixture admits the economic content");
     assert_eq!(admitted.digest(), foundation.digest());
-    let mut corrupted = foundation.export_canonical_bytes().unwrap();
-    *corrupted.last_mut().unwrap() ^= 1;
+    let mut corrupted = foundation
+        .export_canonical_bytes()
+        .expect("the content exports its canonical bytes");
+    *corrupted
+        .last_mut()
+        .expect("the fixture sequence is non-empty") ^= 1;
     assert!(economic_content::admit_economic_content(
         preset.id(),
         foundation.spec().duration,
@@ -448,7 +481,12 @@ fn captured_session(catalog: &MichiganMaterialCatalog) -> (Session, usize) {
         &corrupted,
     )
     .is_err());
-    (foundation.into_session().unwrap(), foundation_bytes)
+    (
+        foundation
+            .into_session()
+            .expect("the fixture opens a session"),
+        foundation_bytes,
+    )
 }
 
 fn named_goods(
@@ -476,15 +514,18 @@ fn new_reads_pinned_siblings_and_saved_open_survives_changed_or_missing_source_f
     let defines_path = sources.path("defines.toml");
     let delivery = MichiganDeliveryPreset::StatewideBoth;
     let preset = MichiganContentPreset::new_campaign(delivery);
-    let catalog = MichiganMaterialCatalog::load_for_preset(&defines_path, delivery).unwrap();
-    let selected = catalog.with_preset(delivery).unwrap();
+    let catalog = MichiganMaterialCatalog::load_for_preset(&defines_path, delivery)
+        .expect("the preset content loads");
+    let selected = catalog
+        .with_preset(delivery)
+        .expect("the fixture builder accepts the authored options");
     assert_eq!(selected.sites().len(), 397);
     assert_eq!(
         selected
             .corridors()
             .iter()
             .find(|row| row.key == "synthetic-shared-road")
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .capacity_grams_per_period,
         50_000_000
     );
@@ -495,23 +536,27 @@ fn new_reads_pinned_siblings_and_saved_open_survives_changed_or_missing_source_f
                 .iter()
                 .any(|input| input.good_key == "paper_packaging" && input.opening_quantity == 0)
     }));
-    let foundation = preset.create_foundation(&catalog).unwrap();
+    let foundation = preset
+        .create_foundation(&catalog)
+        .expect("the authored catalog builds the foundation");
     for name in [
         "statewide-qualification.json.gz",
         "statewide-physical.json.gz",
     ] {
         let path = sources.path(name);
-        let original = std::fs::read(&path).unwrap();
+        let original = std::fs::read(&path).expect("the fixture reader returns its authored facts");
         let mut changed = original.clone();
-        *changed.last_mut().unwrap() ^= 1;
-        std::fs::write(&path, changed).unwrap();
+        *changed
+            .last_mut()
+            .expect("the fixture sequence is non-empty") ^= 1;
+        std::fs::write(&path, changed).expect("the fixture sink accepts the authored bytes");
         assert!(matches!(
             MichiganMaterialCatalog::load_for_preset(&defines_path, delivery),
             Err(MichiganDefinesError::Material(
                 MichiganMaterialError::ArtifactDigest
             ))
         ));
-        std::fs::write(path, original).unwrap();
+        std::fs::write(path, original).expect("the fixture sink accepts the authored bytes");
     }
     // All current source files become unavailable. Open only receives the
     // admitted campaign header and its captured foundation, including overrides.
@@ -521,7 +566,7 @@ fn new_reads_pinned_siblings_and_saved_open_survives_changed_or_missing_source_f
         "statewide-qualification.json.gz",
         "statewide-physical.json.gz",
     ] {
-        std::fs::remove_file(sources.path(name)).unwrap();
+        std::fs::remove_file(sources.path(name)).expect("the fixture file exists before removal");
     }
     assert!(MichiganMaterialCatalog::load_for_preset(&defines_path, delivery).is_err());
     let opened = economic_content::admit_economic_content(
@@ -530,9 +575,11 @@ fn new_reads_pinned_siblings_and_saved_open_survives_changed_or_missing_source_f
         &foundation.spec().content_digest,
         &foundation.digest(),
         0,
-        &foundation.export_canonical_bytes().unwrap(),
+        &foundation
+            .export_canonical_bytes()
+            .expect("the content exports its canonical bytes"),
     )
-    .unwrap();
+    .expect("the fixture admits the economic content");
     assert_eq!(opened.preset_id(), preset.id());
     assert_eq!(opened.digest(), foundation.digest());
 }

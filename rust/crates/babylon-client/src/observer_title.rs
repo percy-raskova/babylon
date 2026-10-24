@@ -611,7 +611,7 @@ mod tests {
                 .query::<(Entity, &TitleAction)>()
                 .iter(app.world())
                 .find_map(|(entity, candidate)| (*candidate == action).then_some(entity))
-                .unwrap();
+                .expect("the fixture yields the searched value");
             app.world_mut().trigger(ObserverKeyboardActivate {
                 entity,
                 context: None,
@@ -680,7 +680,7 @@ mod tests {
             .query::<(Entity, &TitleAction)>()
             .iter(app.world())
             .find_map(|(entity, candidate)| (*candidate == action).then_some(entity))
-            .unwrap();
+            .expect("the fixture yields the searched value");
         app.world_mut().trigger(ObserverKeyboardActivate {
             entity,
             context: None,
@@ -785,7 +785,7 @@ mod tests {
         assert!(
             app.world()
                 .get::<ObserverFocusTarget>(main_menu)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .available
         );
         app.world_mut().trigger(ObserverKeyboardActivate {

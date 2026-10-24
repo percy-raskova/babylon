@@ -263,7 +263,10 @@ fn requires_field<T: DeserializeOwned>(source: &str, fragment: &str) {
     assert!(serde_json::from_str::<T>(&missing).is_err());
 }
 
-#[allow(clippy::needless_range_loop)] // Const-generic arrays fix every group bound.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // Const-generic arrays fix every group bound.
 fn assert_identity_group<const N: usize>(
     start: usize,
     category: &str,
@@ -311,7 +314,10 @@ fn schema_limits_and_error_registry_are_exact() {
 }
 
 #[test]
-#[allow(clippy::needless_range_loop)] // The identity registry has a fixed 69-row bound.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // The identity registry has a fixed 69-row bound.
 fn identity_registry_has_exact_unique_rows() {
     assert_eq!(RTD_IDENTITY_REGISTRY.len(), 69);
     let mut identities = BTreeSet::new();
@@ -585,7 +591,10 @@ fn assert_metric_registry_row(index: usize) {
 }
 
 #[test]
-#[allow(clippy::needless_range_loop)] // The metric registry has a fixed 18-row bound.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // The metric registry has a fixed 18-row bound.
 fn metric_registry_rows_are_exact() {
     assert_eq!(RTD_METRIC_REGISTRY.len(), 18);
     for index in 0..18 {
@@ -594,7 +603,10 @@ fn metric_registry_rows_are_exact() {
 }
 
 #[test]
-#[allow(clippy::needless_range_loop)] // The relation registry has a fixed six-row bound.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // The relation registry has a fixed six-row bound.
 fn relation_binding_registry_rows_are_exact() {
     for index in 0..6 {
         let row = RTD_RELATION_BINDING_REGISTRY[index];
@@ -629,7 +641,10 @@ fn schema_metadata_mutations_do_not_match_the_registry_contract() {
 }
 
 #[test]
-#[allow(clippy::needless_range_loop)] // The error registry is a fixed 20-row contract.
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)] // The error registry is a fixed 20-row contract.
 fn rust_error_display_matches_the_schema_registry_exactly() {
     let errors = [
         RtdError::Json,

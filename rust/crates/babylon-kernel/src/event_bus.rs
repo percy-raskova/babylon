@@ -258,7 +258,8 @@ mod tests {
                 Ok(())
             }),
         );
-        bus.publish(event("t", 0)).unwrap();
+        bus.publish(event("t", 0))
+            .expect("the fixture call `publish` succeeds for the authored inputs");
         assert_eq!(observed.try_iter().collect::<Vec<_>>(), vec![1, 2]);
     }
 
@@ -285,7 +286,9 @@ mod tests {
                 Ok(())
             }),
         );
-        let failures = bus.publish(event("t", 5)).unwrap_err();
+        let failures = bus
+            .publish(event("t", 5))
+            .expect_err("the fixture call `publish` fails for the authored inputs");
         assert_eq!(
             observed.try_iter().collect::<Vec<_>>(),
             vec![1, 3],
@@ -317,7 +320,8 @@ mod tests {
                 Ok(())
             }),
         );
-        bus.publish(event("t", 0)).unwrap();
+        bus.publish(event("t", 0))
+            .expect("the fixture call `publish` succeeds for the authored inputs");
         assert!(observed.try_recv().is_err(), "no handler may run");
         assert_eq!(
             bus.history().len(),
@@ -365,7 +369,8 @@ mod tests {
                 verdict: allow,
             }));
         }
-        bus.publish(event("t", 0)).unwrap();
+        bus.publish(event("t", 0))
+            .expect("the fixture call `publish` succeeds for the authored inputs");
         // Descending priority; mid_a before mid_b because registered first.
         assert_eq!(
             observed.try_iter().collect::<Vec<_>>(),
@@ -393,7 +398,8 @@ mod tests {
                 reason: "state repression".into(),
             },
         }));
-        bus.publish(event("t", 3)).unwrap();
+        bus.publish(event("t", 3))
+            .expect("the fixture call `publish` succeeds for the authored inputs");
         assert!(observed.try_recv().is_err(), "no handler may run");
         assert!(bus.history().is_empty());
         let blocked = bus.blocked_events();
@@ -417,7 +423,8 @@ mod tests {
                 })
             },
         }));
-        bus.publish(event("t", 1)).unwrap();
+        bus.publish(event("t", 1))
+            .expect("the fixture call `publish` succeeds for the authored inputs");
         assert_eq!(bus.history(), &[event("t", 100)]);
 
         // ...and when a LOWER-priority blocker fires after a modifier, the
@@ -430,7 +437,8 @@ mod tests {
                 reason: "after modify".into(),
             },
         }));
-        bus.publish(event("t", 2)).unwrap();
+        bus.publish(event("t", 2))
+            .expect("the fixture call `publish` succeeds for the authored inputs");
         assert_eq!(
             bus.blocked_events()[0].event,
             event("t", 2),

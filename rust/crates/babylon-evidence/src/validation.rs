@@ -963,8 +963,10 @@ fn validate_typed_edges(
             break;
         }
         let edge = &manifest.edges[index];
-        let producer = component_profile(profiles, &edge.producer_id).unwrap();
-        let consumer = component_profile(profiles, &edge.consumer_id).unwrap();
+        let producer = component_profile(profiles, &edge.producer_id)
+            .expect("close_references rejects every unknown edge endpoint first");
+        let consumer = component_profile(profiles, &edge.consumer_id)
+            .expect("close_references rejects every unknown edge endpoint first");
         let (effect, read, set_name) = edge_tokens(edge);
         if !profile_has(manifest, producer.component_id(), "effects", &effect) {
             return Err(SfsValidationError::EdgeProducerEffectMismatch {
@@ -1045,8 +1047,10 @@ fn validate_reachability(
         if index >= manifest.edges.len() {
             break;
         }
-        let producer = component_index(manifest, &manifest.edges[index].producer_id).unwrap();
-        let consumer = component_index(manifest, &manifest.edges[index].consumer_id).unwrap();
+        let producer = component_index(manifest, &manifest.edges[index].producer_id)
+            .expect("close_references rejects every unknown edge endpoint first");
+        let consumer = component_index(manifest, &manifest.edges[index].consumer_id)
+            .expect("close_references rejects every unknown edge endpoint first");
         adjacency[producer][consumer] = true;
     }
     let forward = closure(cone.roots(), manifest, &adjacency, false);
@@ -1082,7 +1086,8 @@ fn closure(
         if index >= starts.len() {
             break;
         }
-        found[component_index(manifest, &starts[index]).unwrap()] = true;
+        found[component_index(manifest, &starts[index])
+            .expect("validate_endpoint_set rejects every unknown cone endpoint first")] = true;
     }
     for _pass in 0..MAX_COMPONENTS {
         for left in 0..MAX_COMPONENTS {
@@ -1346,7 +1351,11 @@ fn set(
         if index >= values.len() {
             break;
         }
-        entries.push(remaining.pop_first().unwrap());
+        entries.push(
+            remaining
+                .pop_first()
+                .expect("the loop pops exactly one entry per authored value"),
+        );
     }
     Ok(CanonicalProfileSet::new(field, entries)?)
 }

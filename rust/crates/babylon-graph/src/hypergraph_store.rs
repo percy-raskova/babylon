@@ -905,31 +905,56 @@ mod tests {
     #[test]
     fn failed_library_hyperedge_insert_does_not_advance_the_cursor() {
         let mut graph = HypergraphStore::new();
-        let member = graph.add_node("SOCIAL_CLASS").unwrap();
-        graph.add_hyperedge("COALITION", &[member]).unwrap();
+        let member = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_hyperedge("COALITION", &[member])
+            .expect("the fixture graph admits the authored hyperedge");
         graph.set_allocator_cursors_for_test(AllocatorCursors {
             next_node: 1,
             next_hyperedge: 0,
         });
-        let before = graph.encode_state().unwrap().as_bytes().to_vec();
+        let before = graph
+            .encode_state()
+            .expect("the graph encodes its canonical state")
+            .as_bytes()
+            .to_vec();
         let cursors = graph.allocator_cursors();
         let indexed = graph.hyperedges("COALITION");
-        let memberships = graph.hyperedges_of(member, "COALITION").unwrap();
-        let members = graph.members_of(indexed[0]).unwrap();
+        let memberships = graph
+            .hyperedges_of(member, "COALITION")
+            .expect("the fixture graph holds the authored hyperedges");
+        let members = graph
+            .members_of(indexed[0])
+            .expect("the fixture hyperedge has members");
 
         let error = graph
             .add_hyperedge("COALITION", &[member])
             .expect_err("the library must reject the duplicate internal edge key");
 
         assert!(error.message.contains("hyperedge-half mint"));
-        assert_eq!(graph.encode_state().unwrap().as_bytes(), before);
+        assert_eq!(
+            graph
+                .encode_state()
+                .expect("the graph encodes its canonical state")
+                .as_bytes(),
+            before
+        );
         assert_eq!(graph.allocator_cursors(), cursors);
         assert_eq!(graph.hyperedges("COALITION"), indexed);
         assert_eq!(
-            graph.hyperedges_of(member, "COALITION").unwrap(),
+            graph
+                .hyperedges_of(member, "COALITION")
+                .expect("the fixture graph holds the authored hyperedges"),
             memberships
         );
-        assert_eq!(graph.members_of(indexed[0]).unwrap(), members);
+        assert_eq!(
+            graph
+                .members_of(indexed[0])
+                .expect("the fixture hyperedge has members"),
+            members
+        );
 
         graph.set_allocator_cursors_for_test(AllocatorCursors {
             next_node: 1,
@@ -944,10 +969,17 @@ mod tests {
             vec![indexed[0], crate::substrate::HyperedgeId(1)]
         );
         assert_eq!(
-            graph.hyperedges_of(member, "COALITION").unwrap(),
+            graph
+                .hyperedges_of(member, "COALITION")
+                .expect("the fixture graph holds the authored hyperedges"),
             vec![indexed[0], crate::substrate::HyperedgeId(1)]
         );
-        assert_eq!(graph.members_of(next).unwrap(), vec![member]);
+        assert_eq!(
+            graph
+                .members_of(next)
+                .expect("the fixture hyperedge has members"),
+            vec![member]
+        );
         let detached = graph.detached_copy();
         assert_eq!(detached.allocator_cursors(), graph.allocator_cursors());
     }
@@ -955,10 +987,18 @@ mod tests {
     #[test]
     fn allocator_cursors_report_the_next_ids_even_after_removal() {
         let mut graph = HypergraphStore::new();
-        let first = graph.add_node("SOCIAL_CLASS").unwrap();
-        let second = graph.add_node("SOCIAL_CLASS").unwrap();
-        graph.add_hyperedge("CLASS", &[first, second]).unwrap();
-        graph.remove_node(second).unwrap();
+        let first = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let second = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .add_hyperedge("CLASS", &[first, second])
+            .expect("the fixture graph admits the authored hyperedge");
+        graph
+            .remove_node(second)
+            .expect("the fixture node exists before removal");
 
         assert_eq!(
             graph.allocator_cursors(),
@@ -980,17 +1020,37 @@ mod tests {
     #[test]
     fn adding_a_read_only_query_method_does_not_move_the_state_hash() {
         let mut graph = HypergraphStore::new();
-        let a = graph.add_node("SOCIAL_CLASS").unwrap();
-        let b = graph.add_node("SOCIAL_CLASS").unwrap();
-        let c = graph.add_node("TERRITORY").unwrap();
-        graph.update_node(a, "social-class/wages", 120.0).unwrap();
-        graph.update_node(a, "social-class/agitation", 0.3).unwrap();
-        graph.update_node(c, "territory/heat", 0.5).unwrap();
-        graph.add_edge("SOLIDARITY", a, b, 0.75).unwrap();
-        graph.add_edge("ADJACENCY", b, c, 1.0).unwrap();
-        graph.add_hyperedge("CELL", &[a, b, c]).unwrap();
+        let a = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let b = graph
+            .add_node("SOCIAL_CLASS")
+            .expect("the fixture adds a node with a registered kind");
+        let c = graph
+            .add_node("TERRITORY")
+            .expect("the fixture adds a node with a registered kind");
+        graph
+            .update_node(a, "social-class/wages", 120.0)
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .update_node(a, "social-class/agitation", 0.3)
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .update_node(c, "territory/heat", 0.5)
+            .expect("the fixture node carries the authored attribute");
+        graph
+            .add_edge("SOLIDARITY", a, b, 0.75)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_edge("ADJACENCY", b, c, 1.0)
+            .expect("the fixture graph admits the authored edge");
+        graph
+            .add_hyperedge("CELL", &[a, b, c])
+            .expect("the fixture graph admits the authored hyperedge");
 
-        let hash = graph.state_hash().unwrap();
+        let hash = graph
+            .state_hash()
+            .expect("the fixture graph hashes its state");
         let hex = hash.iter().fold(String::new(), |mut acc, byte| {
             let _ = write!(acc, "{byte:02x}");
             acc

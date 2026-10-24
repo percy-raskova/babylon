@@ -367,11 +367,11 @@ pub fn validate_organizer_pair(
         super::aid::validate_pending(config, &row.authorization)?;
         super::aid::validate_resolution_allocation(config, row)?;
     }
-    for receipt in state
+    let all_receipts = state
         .receipts
         .iter()
-        .chain(state.aid_receipts.iter().map(|row| &row.practice))
-    {
+        .chain(state.aid_receipts.iter().map(|row| &row.practice));
+    for receipt in all_receipts {
         if let Some(kind) = super::aid::aid_kind(receipt.choice) {
             let binding = config
                 .aid_bindings

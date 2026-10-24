@@ -1218,7 +1218,10 @@ fn validate_admin_boundary(draft: &RtdDossierDraft) -> Result<(), RtdError> {
 }
 
 // The contract requires a statically bounded indexed registry traversal.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)]
 fn metric_row(identity: &TypedIdentity) -> Result<&'static RtdMetricRegistryRow, RtdError> {
     for index in 0..METRIC_ROWS {
         let row = &RTD_METRIC_REGISTRY[index];
@@ -1236,7 +1239,10 @@ fn literal_matches(literal: &TypedIdentityLiteral, identity: &TypedIdentity) -> 
 }
 
 // The contract requires a statically bounded indexed registry traversal.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)]
 fn is_registered_h3_metric(identity: &TypedIdentity) -> bool {
     for index in 0..METRIC_ROWS {
         let row = &RTD_METRIC_REGISTRY[index];
@@ -1344,7 +1350,10 @@ fn validate_required_digest(
 }
 
 // The contract requires a statically bounded indexed registry traversal.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)]
 fn binding(family: &str, kind: &str) -> Result<&'static RtdRelationBindingRegistryRow, RtdError> {
     for index in 0..BINDING_ROWS {
         let row = &RTD_RELATION_BINDING_REGISTRY[index];
@@ -1430,7 +1439,10 @@ fn validate_dyad(dyad: &Dyad) -> Result<(), RtdError> {
 }
 
 // The contract requires a statically bounded indexed registry traversal.
-#[allow(clippy::needless_range_loop)]
+#[allow(
+    clippy::needless_range_loop,
+    reason = "the loop index is the authored row ordinal"
+)]
 fn metric_from_literal(
     literal: &TypedIdentityLiteral,
 ) -> Result<&'static RtdMetricRegistryRow, RtdError> {

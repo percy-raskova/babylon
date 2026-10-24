@@ -4,7 +4,10 @@
 // Conformance fixtures exercise exact engine values, transcribe spec literals,
 // and build whole scenarios in one test. These pedantic lints would force
 // ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::float_cmp)]
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
 
 use babylon_bsl::causal_contract::{
     AllowedEffect, EffectSignature, EvidenceClass, RuleRole, GOVERNED_EFFECT_ALLOWANCES,
@@ -276,7 +279,7 @@ fn a_mechanic_derives_an_outcome_and_receipts_actual_event_then_write() {
     assert_eq!(
         graph
             .node_attribute(NodeId(0), "social-class/imperial-rent")
-            .unwrap()
+            .expect("the fixture node carries the authored attribute")
             .to_bits(),
         40.0_f64.to_bits()
     );
@@ -324,7 +327,9 @@ fn restricted_roles_cannot_author_an_outcome_field() {
   (effects (update-node self social-class/imperial-rent (set wages))))"#
         );
         let mut graph = HypergraphStore::new();
-        let before = graph.state_hash().unwrap();
+        let before = graph
+            .state_hash()
+            .expect("the fixture graph hashes its state");
         let mut sink = CollectingSink::default();
         let error = babylon_tick::run_once_into(SHOCK_PRESENT, &rule, &mut graph, &mut sink)
             .expect_err("the default-deny contract must refuse the outcome write");
@@ -334,7 +339,12 @@ fn restricted_roles_cannot_author_an_outcome_field() {
             error.contains("social-class/imperial-rent"),
             "{role}: {error}"
         );
-        assert_eq!(graph.state_hash().unwrap(), before);
+        assert_eq!(
+            graph
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
+            before
+        );
         assert!(sink.events.is_empty());
     }
 }
@@ -362,13 +372,20 @@ fn verb_like_emit_payload_labels_survive_the_composed_load_and_tick_path() {
 #[test]
 fn a_failed_working_tick_publishes_neither_effects_nor_a_receipt_report() {
     let mut graph = HypergraphStore::new();
-    let before = graph.state_hash().unwrap();
+    let before = graph
+        .state_hash()
+        .expect("the fixture graph hashes its state");
     let mut sink = CollectingSink::default();
 
     let result = babylon_tick::run_once_into(FAILING_SCENARIO, FAILING_RULE, &mut graph, &mut sink);
 
     assert!(result.is_err());
-    assert_eq!(graph.state_hash().unwrap(), before);
+    assert_eq!(
+        graph
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        before
+    );
     assert!(sink.events.is_empty());
 }
 

@@ -22,10 +22,10 @@ fn reader(visibility: ObserverVisibility) -> ObserverEconomyReader {
     ObserverEconomyReader::connect(
         &"host=127.0.0.1 port=5432 dbname=babylon user=babylon_observer"
             .parse()
-            .unwrap(),
+            .expect("the authored literal parses as the declared type"),
         visibility,
     )
-    .unwrap()
+    .expect("the test database accepts the connection")
 }
 
 #[test]
@@ -39,7 +39,7 @@ fn full_reader_owner_survives_opening_and_next_period_work() {
                 connects.set(connects.get() + 1);
                 Ok(reader(ObserverVisibility::FullObserver))
             })
-            .unwrap();
+            .expect("the fixture call `reader` succeeds for the authored inputs");
         // Work::opening drops its handle before preparing restricted presentation.
         drop(work);
         cache.reconcile(key());
@@ -65,7 +65,7 @@ fn known_refresh_never_receives_or_replaces_the_full_reader() {
                 connects.set(connects.get() + 1);
                 Ok(reader(visibility))
             })
-            .unwrap();
+            .expect("the fixture call `reader` succeeds for the authored inputs");
         assert_eq!(work.visibility(), visibility);
     }
     assert_eq!(
@@ -104,7 +104,7 @@ fn changed_campaign_epoch_foundation_or_perspective_replaces_the_owner() {
                     connects.set(connects.get() + 1);
                     Ok(reader(ObserverVisibility::FullObserver))
                 })
-                .unwrap();
+                .expect("the fixture call `reader` succeeds for the authored inputs");
         }
         assert_eq!(connects.get(), 2);
     }
@@ -128,7 +128,7 @@ fn crossed_visibility_is_refused_before_reader_retention() {
         assert_eq!(
             cache
                 .reader(expected, || Ok(reader(expected)))
-                .unwrap()
+                .expect("the fixture call `reader` succeeds for the authored inputs")
                 .visibility(),
             expected
         );
@@ -149,7 +149,7 @@ fn failed_reader_construction_is_retried() {
             .reader(ObserverVisibility::FullObserver, || Ok(reader(
                 ObserverVisibility::FullObserver
             )))
-            .unwrap()
+            .expect("the fixture call `reader` succeeds for the authored inputs")
             .visibility(),
         ObserverVisibility::FullObserver
     );

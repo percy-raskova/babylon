@@ -95,7 +95,9 @@ pub(crate) fn verify_commit_protocol(config: &Config, admin: &Config) {
 }
 
 fn refuse_derived_ancestor_as_product_cell(config: &Config) {
-    let mut client = config.connect(NoTls).unwrap();
+    let mut client = config
+        .connect(NoTls)
+        .expect("the test database accepts the connection");
     let membership = client
         .query_one(
             "SELECT ref_digest, cell_id \
@@ -103,10 +105,16 @@ fn refuse_derived_ancestor_as_product_cell(config: &Config) {
              WHERE origin = 2 ORDER BY ref_digest, cell_id LIMIT 1",
             &[],
         )
-        .unwrap();
-    let ref_digest: Vec<u8> = membership.try_get(0).unwrap();
-    let cell_id: i64 = membership.try_get(1).unwrap();
-    let mut transaction = client.transaction().unwrap();
+        .expect("the seeded row is present exactly once");
+    let ref_digest: Vec<u8> = membership
+        .try_get(0)
+        .expect("the fixture row holds the addressed column");
+    let cell_id: i64 = membership
+        .try_get(1)
+        .expect("the fixture row holds the addressed column");
+    let mut transaction = client
+        .transaction()
+        .expect("the test database opens a transaction");
     transaction
         .execute(
             "INSERT INTO babylon_ref.h3_population_count \
@@ -114,8 +122,10 @@ fn refuse_derived_ancestor_as_product_cell(config: &Config) {
              VALUES ($1, 'h3_res7_population', $2, 1, 1)",
             &[&ref_digest, &cell_id],
         )
-        .unwrap();
-    let refusal = transaction.commit().unwrap_err();
+        .expect("the test database applies the setup statement");
+    let refusal = transaction
+        .commit()
+        .expect_err("the fixture call `commit` fails for the authored inputs");
     assert_eq!(refusal.code(), Some(&SqlState::FOREIGN_KEY_VIOLATION));
     let visible: i64 = client
         .query_one(
@@ -123,52 +133,52 @@ fn refuse_derived_ancestor_as_product_cell(config: &Config) {
              WHERE ref_digest = $1 AND cell_id = $2",
             &[&ref_digest, &cell_id],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .try_get(0)
-        .unwrap();
+        .expect("the fixture row holds the addressed column");
     assert_eq!(visible, 0);
 }
 
 fn backend_pid(client: &mut Client) -> i32 {
     client
         .query_one("SELECT pg_catalog.pg_backend_pid()", &[])
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .try_get(0)
-        .unwrap()
+        .expect("the fixture row holds the addressed column")
 }
 
 fn terminate_backend(admin: &Config, backend_pid: i32) {
     let terminated: bool = admin
         .connect(NoTls)
-        .unwrap()
+        .expect("the test database accepts the connection")
         .query_one(
             "SELECT pg_catalog.pg_terminate_backend($1, $2)",
             &[&backend_pid, &BACKEND_TERMINATION_TIMEOUT_MILLIS],
         )
-        .unwrap()
+        .expect("the seeded row is present exactly once")
         .try_get(0)
-        .unwrap();
+        .expect("the fixture row holds the addressed column");
     assert!(terminated);
 }
 
 fn mutate_product_digest(config: &Config) {
     let changed = config
         .connect(NoTls)
-        .unwrap()
+        .expect("the test database accepts the connection")
         .execute(
             "UPDATE babylon_ref.reference_product \
              SET artifact_sha256 = pg_catalog.decode(pg_catalog.repeat('00', 32), 'hex') \
              WHERE product_code = 'dim_county'",
             &[],
         )
-        .unwrap();
+        .expect("the test database applies the setup statement");
     assert_eq!(changed, 1);
 }
 
 fn reference_counts(config: &Config) -> [i64; 8] {
     let row = config
         .connect(NoTls)
-        .unwrap()
+        .expect("the test database accepts the connection")
         .query_one(
             "SELECT \
                 (SELECT pg_catalog.count(*) FROM babylon_ref.reference_product), \
@@ -181,7 +191,7 @@ fn reference_counts(config: &Config) -> [i64; 8] {
                 (SELECT pg_catalog.count(*) FROM babylon_ref.county_place_h3_land_area)",
             &[],
         )
-        .unwrap();
+        .expect("the seeded row is present exactly once");
     std::array::from_fn(|index| row.get(index))
 }
 

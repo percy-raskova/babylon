@@ -165,8 +165,10 @@ fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
     state.corridor_capacities[0].available_grams = 10;
     let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
         .expect("distinct buyers may share their captured logistics access point");
-    let opening = babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap();
-    let dispatched = babylon_material_circuit::advance_material_circuit(&opening).unwrap();
+    let opening = babylon_material_circuit::decode_material_circuit_state(&bytes)
+        .expect("the canonical material bytes decode");
+    let dispatched = babylon_material_circuit::advance_material_circuit(&opening)
+        .expect("the authored material state advances one period");
     assert_eq!(dispatched.state.freight.len(), 2);
     assert_eq!(
         dispatched
@@ -179,7 +181,8 @@ fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
     assert_eq!(inventory_quantity(&dispatched.state, site(SUPPLIER)), 2);
     assert_eq!(inventory_quantity(&dispatched.state, site(BUYER)), 0);
     assert_eq!(inventory_quantity(&dispatched.state, site(12)), 0);
-    let arrived = babylon_material_circuit::advance_material_circuit(&dispatched.state).unwrap();
+    let arrived = babylon_material_circuit::advance_material_circuit(&dispatched.state)
+        .expect("the authored material state advances one period");
     assert!(arrived.state.freight.is_empty());
     assert_eq!(inventory_quantity(&arrived.state, site(SUPPLIER)), 2);
     assert_eq!(inventory_quantity(&arrived.state, site(BUYER)), 6);
@@ -325,8 +328,10 @@ fn route_depth_state(leg_count: usize) -> MaterialCircuitState {
     state.route_stage_capacities = (0..leg_count)
         .map(|index| RouteStageCapacity {
             route_id: route(ROUTE),
-            stage_index: u16::try_from(index).unwrap(),
-            corridor_id: corridor(60 + u8::try_from(index).unwrap()),
+            stage_index: u16::try_from(index).expect("the fixture value fits the target range"),
+            corridor_id: corridor(
+                60 + u8::try_from(index).expect("the fixture value fits the target range"),
+            ),
         })
         .collect();
     state.corridor_capacities = state
@@ -642,7 +647,7 @@ fn severed_corridor_changes_only_its_routed_inventory_and_realization() {
             .orders
             .iter()
             .find(|row| row.order_id == order(ORDER))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .realized,
         4
     );
@@ -652,7 +657,7 @@ fn severed_corridor_changes_only_its_routed_inventory_and_realization() {
             .orders
             .iter()
             .find(|row| row.order_id == order(ORDER))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .realized,
         0
     );
@@ -662,7 +667,7 @@ fn severed_corridor_changes_only_its_routed_inventory_and_realization() {
             .orders
             .iter()
             .find(|row| row.order_id == order(14))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .realized,
         4
     );
@@ -672,7 +677,7 @@ fn severed_corridor_changes_only_its_routed_inventory_and_realization() {
             .orders
             .iter()
             .find(|row| row.order_id == order(14))
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .realized,
         4
     );

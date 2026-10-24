@@ -1,10 +1,16 @@
 //! Post-opening produced food reaches paid donor provision before real authorized aid.
 // Shared fixture module contains helpers used by other integration targets.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the shared fixture module serves other integration targets"
+)]
 #[path = "../../babylon-persistence/src/michigan_dynamic_hex_foundation.rs"]
 mod michigan_dynamic_hex_foundation;
 // This target uses the market-derived session, preserving the other aid fixtures.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "the shared fixture module serves this target's aid fixtures"
+)]
 #[path = "support/organizer_aid_fixture.rs"]
 mod organizer_aid_fixture;
 use crate::organizer_aid_fixture::Session;
@@ -41,7 +47,7 @@ fn paid_handoff(rows: &MaterialTickReceipts, d: &HouseholdDemandReceipt) -> u64 
         assert!(actual.is_none());
         return 0;
     }
-    let actual = actual.unwrap();
+    let actual = actual.expect("the fixture call returns its actual value");
     assert_eq!(
         (
             actual.retailer_site_id,
@@ -69,7 +75,7 @@ fn paid_handoff(rows: &MaterialTickReceipts, d: &HouseholdDemandReceipt) -> u64 
         paid,
         i128::from(actual.quantity)
             .checked_mul(d.unit_price.micro_units())
-            .unwrap()
+            .expect("the fixture arithmetic stays in range")
     );
     actual.quantity
 }
@@ -92,7 +98,7 @@ fn paid_amount(
             r.credit.delta.micro_units()
         })
         .try_fold(0_i128, i128::checked_add)
-        .unwrap()
+        .expect("the fixture input satisfies the fallible conversion")
 }
 fn exact_paid_handoff(rows: &MaterialTickReceipts) -> u64 {
     rows.household_demand
@@ -103,7 +109,7 @@ fn exact_paid_handoff(rows: &MaterialTickReceipts) -> u64 {
         })
         .map(|d| paid_handoff(rows, d))
         .try_fold(0_u64, u64::checked_add)
-        .unwrap()
+        .expect("the fixture input satisfies the fallible conversion")
 }
 
 #[derive(Default)]
@@ -123,17 +129,17 @@ fn produced_food(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u
                 .process_outputs
                 .iter()
                 .find(|o| o.process_id == r.process_id && o.site_id == r.site_id)
-                .unwrap();
+                .expect("the fixture holds the searched element");
             assert_eq!(
                 (recipe.good_id, recipe.unit_id),
                 (organizer_aid_fixture::good(2), UnitId::from_bytes([1; 32]))
             );
             r.produced_batches
                 .checked_mul(recipe.quantity_per_batch)
-                .unwrap()
+                .expect("the fixture arithmetic stays in range")
         })
         .try_fold(0_u64, u64::checked_add)
-        .unwrap()
+        .expect("the fixture input satisfies the fallible conversion")
 }
 fn paid_supply(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u64 {
     rows.deliveries
@@ -143,7 +149,7 @@ fn paid_supply(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u64
                 .orders
                 .iter()
                 .find(|r| r.order_id == delivered.order_id)
-                .unwrap();
+                .expect("the fixture holds the searched element");
             if order.supplier_site_id != organizer_aid_fixture::site(2)
                 || order.buyer_site_id != organizer_aid_fixture::site(3)
             {
@@ -163,7 +169,10 @@ fn paid_supply(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u64
                 .any(|r| r.order_id == order.order_id && r.quantity == delivered.quantity));
             let id = OutboundOrderId::Delivery(order.order_id);
             let purchase = match &state.accounting {
-                CircuitAccounting::Monetary(e) => e.book.purchase(id).unwrap(),
+                CircuitAccounting::Monetary(e) => e
+                    .book
+                    .purchase(id)
+                    .expect("the fixture purchase is present"),
                 CircuitAccounting::PhysicalControl => unreachable!(),
             };
             let paid = paid_amount(
@@ -176,12 +185,12 @@ fn paid_supply(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u64
                 paid,
                 i128::from(delivered.quantity)
                     .checked_mul(purchase.unit_price.micro_units())
-                    .unwrap()
+                    .expect("the fixture arithmetic stays in range")
             );
             delivered.quantity
         })
         .try_fold(0_u64, u64::checked_add)
-        .unwrap()
+        .expect("the fixture input satisfies the fallible conversion")
 }
 fn read_provision(
     rows: &MaterialTickReceipts,
@@ -195,15 +204,15 @@ fn read_provision(
     proof.produced = proof
         .produced
         .checked_add(produced_food(rows, state))
-        .unwrap();
+        .expect("the fixture arithmetic stays in range");
     proof.supplier_paid = proof
         .supplier_paid
         .checked_add(paid_supply(rows, state))
-        .unwrap();
+        .expect("the fixture arithmetic stays in range");
     proof.donor_paid = proof
         .donor_paid
         .checked_add(exact_paid_handoff(rows))
-        .unwrap();
+        .expect("the fixture arithmetic stays in range");
     let used = rows
         .household_consumption
         .iter()
@@ -213,21 +222,27 @@ fn read_provision(
         })
         .map(|r| r.consumed_quantity)
         .try_fold(0_u64, u64::checked_add)
-        .unwrap();
-    proof.donor_consumed = proof.donor_consumed.checked_add(used).unwrap();
+        .expect("the fixture input satisfies the fallible conversion");
+    proof.donor_consumed = proof
+        .donor_consumed
+        .checked_add(used)
+        .expect("the fixture arithmetic stays in range");
 }
 fn market_preparation(session: &mut Session, sink: &mut CollectingSink, cut: MarketProvisionCut) {
     let mut proof = Provision::default();
     for _ in 0..2 {
         let candidate = organizer_aid_fixture::prepare(session, None);
-        let rows =
-            material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+        let rows = material_world::decode_material_receipts(candidate.material().receipt_bytes())
+            .expect("the canonical bytes decode into the declared type");
         read_provision(&rows, session.material().state(), &mut proof);
         organizer_aid_fixture::commit(session, sink, candidate);
     }
     if matches!(cut, MarketProvisionCut::None) {
         assert!(proof.produced >= proof.supplier_paid && proof.supplier_paid >= proof.donor_paid);
-        let retained = proof.donor_paid.checked_sub(proof.donor_consumed).unwrap();
+        let retained = proof
+            .donor_paid
+            .checked_sub(proof.donor_consumed)
+            .expect("the fixture arithmetic stays in range");
         assert!(retained >= 1 && proof.donor_consumed > 0);
         let CircuitAccounting::Monetary(e) = &session.material().state().accounting else {
             unreachable!()
@@ -235,14 +250,14 @@ fn market_preparation(session: &mut Session, sink: &mut CollectingSink, cut: Mar
         let pantry = e
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .household_stocks
             .iter()
             .find(|r| {
                 r.principal_id == organizer_aid_fixture::household()
                     && r.good_id == organizer_aid_fixture::good(2)
             })
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(pantry.quantity, retained);
     } else {
         assert_eq!(proof.donor_paid, 0, "{cut:?}");
@@ -299,7 +314,7 @@ fn actual_gift(rows: &MaterialTickReceipts, positive: bool) {
         .household_consumption
         .iter()
         .find(|r| r.principal_id == organizer_aid_fixture::recipient())
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (
             consumed.good_id,
@@ -311,7 +326,8 @@ fn actual_gift(rows: &MaterialTickReceipts, positive: bool) {
 }
 
 fn market_then_aid(cut: MarketProvisionCut) {
-    let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().unwrap();
+    let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+        .expect("the Michigan hex foundation builds");
     let state = market_aid_opening(cut);
     assert!(state
         .inventory
@@ -327,33 +343,44 @@ fn market_then_aid(cut: MarketProvisionCut) {
         state,
         config,
     )
-    .unwrap();
+    .expect("the fixture opens a session");
     let mut sink = CollectingSink::default();
     // Designed three-close witness: one-period market route, then separately authorized local gift.
     market_preparation(&mut session, &mut sink, cut);
     let positive = matches!(cut, MarketProvisionCut::None);
     let accepted = organizer_aid_fixture::commitment(&session, OrganizerChoice::LocalAid);
     let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
-    let rows =
-        material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    let rows = material_world::decode_material_receipts(candidate.material().receipt_bytes())
+        .expect("the canonical bytes decode into the declared type");
     actual_gift(&rows, positive);
     organizer_aid_fixture::commit(&mut session, &mut sink, candidate);
-    let organizer = session.material().organizer_state().unwrap();
+    let organizer = session
+        .material()
+        .organizer_state()
+        .expect("the fixture register carries organizer state");
     assert_eq!(
-        organizer.aid_receipts.last().unwrap().practice.outcome,
+        organizer
+            .aid_receipts
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .practice
+            .outcome,
         if positive {
             OrganizerOutcome::AidPracticeCompleted
         } else {
             OrganizerOutcome::AidNotProvisioned
         }
     );
-    let restored = MaterialWorldRegister::decode(session.material().canonical_bytes()).unwrap();
+    let restored = MaterialWorldRegister::decode(session.material().canonical_bytes())
+        .expect("the committed canonical bytes decode");
     assert_eq!(restored, *session.material());
     let CircuitAccounting::Monetary(e) = &session.material().state().accounting else {
         unreachable!()
     };
     assert_eq!(
-        e.book.total_cash_and_reserves().unwrap(),
+        e.book
+            .total_cash_and_reserves()
+            .expect("the fixture book totals without overflow"),
         organizer_aid_fixture::money(100)
     );
 }
@@ -401,24 +428,27 @@ fn market_aid_opening(cut: MarketProvisionCut) -> MaterialCircuitState {
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         unreachable!()
     };
-    let rows = e.recurring.as_mut().unwrap();
+    let rows = e
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     rows.household_stocks
         .iter_mut()
         .for_each(|r| r.quantity = 0);
     rows.household_purchases
         .iter_mut()
         .find(|r| r.principal_id == organizer_aid_fixture::household())
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .enabled = !matches!(cut, MarketProvisionCut::Purchase);
     rows.household_purchases
         .iter_mut()
         .find(|r| r.principal_id == organizer_aid_fixture::household())
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .target_closing_stock = 2;
     rows.household_needs
         .iter_mut()
         .find(|r| r.principal_id == organizer_aid_fixture::household())
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .basis = HouseholdNeedBasis::Households;
     let mut stocks = e.costs.snapshot().stocks;
     stocks
@@ -441,8 +471,9 @@ fn market_aid_opening(cut: MarketProvisionCut) -> MaterialCircuitState {
         })
         .collect(),
     )
-    .unwrap();
-    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![]).unwrap();
+    .expect("the fixture opens the authored source");
+    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     e.aid.mandates[0].maximum_quantity = 1;
     if matches!(cut, MarketProvisionCut::SupplyRoute) {
         state

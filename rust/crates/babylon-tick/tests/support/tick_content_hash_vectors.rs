@@ -124,13 +124,13 @@ fn stable_element(data: &Value) -> Vec<u8> {
 
 fn carrier_segment(data: &Value) -> Vec<u8> {
     let mut output = Vec::new();
-    for (index, segment) in data["segments"]
+    let bounded_segments = data["segments"]
         .as_array()
         .expect("carrier segments")
         .iter()
         .take(258)
-        .enumerate()
-    {
+        .enumerate();
+    for (index, segment) in bounded_segments {
         if index > 0 {
             output.push(b'|');
         }
@@ -998,11 +998,11 @@ pub(super) fn verify_every_canonical_row(rows: &[VectorRow]) {
 }
 
 pub(super) fn verify_every_outer_mutation(rows: &[VectorRow]) {
-    for mutation in rows
+    let bounded_mutations = rows
         .iter()
         .take(MAX_ROWS)
-        .filter(|row| row.kind == "mutation")
-    {
+        .filter(|row| row.kind == "mutation");
+    for mutation in bounded_mutations {
         let data = &mutation.data;
         let base = super::row_by_id(rows, super::text(data, "base_id"));
         let mut changed = base.data.clone();

@@ -53,7 +53,7 @@ fn accounting(inventory: &[InventoryRow]) -> CircuitAccounting {
             }])
             .collect(),
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let costs = HistoricalCostBook::open(
         &book,
         inventory
@@ -69,7 +69,7 @@ fn accounting(inventory: &[InventoryRow]) -> CircuitAccounting {
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
         aid: AidBook::default(),
         household_time: HouseholdTimeAccounting::NotModeled,
@@ -259,7 +259,9 @@ pub(super) fn opening() -> MaterialCircuitState {
         handling_coefficients: vec![],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,
@@ -283,7 +285,7 @@ pub(super) fn funded(mut state: MaterialCircuitState) -> MaterialCircuitState {
             }),
             money(price),
         )
-        .unwrap()
+        .expect("the fixture admits the authored purchase")
         .0;
     }
     state
@@ -374,7 +376,7 @@ pub(super) fn recurring(mut state: MaterialCircuitState) -> MaterialCircuitState
             .labor
             .iter()
             .find(|r| r.site_id.as_bytes() == member.member_id.as_bytes())
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .available;
     }
     state

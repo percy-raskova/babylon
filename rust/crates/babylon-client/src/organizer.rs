@@ -122,15 +122,18 @@ mod tests {
     #[test]
     fn aid_requires_current_authenticated_preview_offered_consent_and_no_pending_kind() {
         let (mut client, _) = ready();
-        client.view.as_mut().unwrap().aid_options.push(
-            babylon_persistence::runtime_session::OrganizerAidOption {
+        client
+            .view
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .aid_options
+            .push(babylon_persistence::runtime_session::OrganizerAidOption {
                 kind: OrganizerAidKind::Local,
                 partner_actor_id: 95,
                 partner_label: "Recipient collective".into(),
                 coordination_hours: 3,
                 receiving_consent: OrganizerGiftConsent::Accept,
-            },
-        );
+            });
         assert!(!client.choice_available(OrganizerChoice::LocalAid));
         client.aid.push(aid_fixture());
         assert!(client.choice_available(OrganizerChoice::LocalAid));
@@ -166,11 +169,22 @@ mod tests {
         assert!(session.installed(&session.context()));
         let command = client
             .make_command(&session, OrganizerChoice::Reinforce)
-            .unwrap();
+            .expect("the fixture command builds");
         client.queue(&mut session, RequestKind::Submit, Some(command.clone()));
-        let request_id = client.pending.as_ref().unwrap().id;
+        let request_id = client
+            .pending
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .id;
         client.queue(&mut session, RequestKind::Submit, Some(command.clone()));
-        assert_eq!(client.pending.as_ref().unwrap().id, request_id);
+        assert_eq!(
+            client
+                .pending
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .id,
+            request_id
+        );
         assert!(session.begin_advance().is_none());
         assert!(!session.start_playback());
         assert!(
@@ -186,7 +200,7 @@ mod tests {
                 },
                 &mut session,
             )
-            .unwrap();
+            .expect("the fixture call `accepted` succeeds for the authored inputs");
         assert!(!client.available(&session));
         assert!(!session.organizer_control_pending());
         assert!(session.begin_advance().is_some());
@@ -198,9 +212,13 @@ mod tests {
             let (mut client, mut session) = ready();
             let command = client
                 .make_command(&session, OrganizerChoice::Hold)
-                .unwrap();
+                .expect("the fixture command builds");
             client.queue(&mut session, RequestKind::Submit, Some(command.clone()));
-            let request_id = client.pending.as_ref().unwrap().id;
+            let request_id = client
+                .pending
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .id;
             let mut commitment = OrganizerCommitment {
                 command,
                 resolves_period: 4,
@@ -224,19 +242,27 @@ mod tests {
         client
             .draft
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .notes
             .insert("Keep this objection.");
-        client.draft.as_mut().unwrap().choice = OrganizerChoice::Hold;
+        client
+            .draft
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .choice = OrganizerChoice::Hold;
         let accepted = OrganizerCommitment {
             command: client
                 .make_command(&session, OrganizerChoice::Reinforce)
-                .unwrap(),
+                .expect("the fixture command builds"),
             resolves_period: 4,
             commitment_id: [4; 32],
         };
         client.queue(&mut session, RequestKind::Status, None);
-        let request_id = client.pending.as_ref().unwrap().id;
+        let request_id = client
+            .pending
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .id;
         assert!(matches!(
             client.outbox.take(),
             Some(RuntimeSessionRequest::OrganizerStatus { .. })
@@ -250,17 +276,22 @@ mod tests {
                     aid: Vec::new(),
                     pending_aid: Vec::new(),
                     aid_resolutions: Vec::new(),
-                    view: client.view.clone().unwrap(),
+                    view: client.view.clone().expect("the fixture value clones"),
                     pending: Some(accepted.clone()),
                     duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
                 },
                 &mut session,
             )
-            .unwrap();
+            .expect("the fixture command reports its status");
         assert_eq!(client.commitment, Some(accepted));
         assert_eq!(client.choice(), OrganizerChoice::Hold);
         assert_eq!(
-            client.draft.as_ref().unwrap().notes.text,
+            client
+                .draft
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .notes
+                .text,
             "Keep this objection."
         );
         assert!(!client.available(&session));
@@ -271,7 +302,10 @@ mod tests {
     #[test]
     fn held_evidence_withholds_later_reports_and_labels_live_agreements() {
         let (mut client, _) = ready();
-        let view = client.view.as_mut().unwrap();
+        let view = client
+            .view
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         view.observations.push(OrganizerObservation {
             observation_id: [1; 32],
             actor_id: view.actor_id,
@@ -318,7 +352,11 @@ mod tests {
                 session.phase = SessionPhase::Loading;
             }
             client.queue(&mut session, RequestKind::Status, None);
-            let request_id = client.pending.as_ref().unwrap().id;
+            let request_id = client
+                .pending
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .id;
             client.outbox = None;
             client
                 .status(
@@ -329,7 +367,7 @@ mod tests {
                         aid: Vec::new(),
                         pending_aid: Vec::new(),
                         aid_resolutions: Vec::new(),
-                        view: client.view.clone().unwrap(),
+                        view: client.view.clone().expect("the fixture value clones"),
                         pending: None,
                         duration: babylon_kernel::clock::CampaignDuration::Finite {
                             final_period: 3,
@@ -337,7 +375,7 @@ mod tests {
                     },
                     &mut session,
                 )
-                .unwrap();
+                .expect("the fixture command reports its status");
             assert_eq!(
                 session.duration,
                 Some(babylon_kernel::clock::CampaignDuration::Finite { final_period: 3 })
@@ -354,11 +392,19 @@ mod tests {
     #[test]
     fn collection_original_command_uses_actual_runtime_queue_and_blocks_historical_actions() {
         let (mut client, mut session) = ready();
-        let period = client.view.as_ref().unwrap().period;
+        let period = client
+            .view
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .period;
         client.collection = Some(OrganizerCollectionPreview {
             period,
             mandate_id: [8; 32],
-            actor_id: client.view.as_ref().unwrap().actor_id,
+            actor_id: client
+                .view
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .actor_id,
             contributor_id: 1,
             contributor_label: "Fixture contributor".into(),
             source_hash: [16; 32],
@@ -374,25 +420,43 @@ mod tests {
             collection: client.collection.clone(),
             ..OrganizerClient::default()
         };
-        unrelated.collection.as_mut().unwrap().actor_id += 1;
+        unrelated
+            .collection
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .actor_id += 1;
         assert!(!unrelated.choice_available(OrganizerChoice::Collect));
-        unrelated.collection.as_mut().unwrap().actor_id -= 1;
-        unrelated.collection.as_mut().unwrap().source_hash = [0; 32];
+        unrelated
+            .collection
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .actor_id -= 1;
+        unrelated
+            .collection
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .source_hash = [0; 32];
         assert!(!unrelated.choice_available(OrganizerChoice::Collect));
         let command = client
             .make_command(&session, OrganizerChoice::Collect)
-            .unwrap();
+            .expect("the fixture command builds");
         client.queue(&mut session, RequestKind::Submit, Some(command.clone()));
         assert!(
             matches!(client.outbox.take(),Some(RuntimeSessionRequest::SubmitOrganizer {command:sent,..}) if sent==command)
         );
-        let id = client.pending.as_ref().unwrap().id;
+        let id = client
+            .pending
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .id;
         let accepted = OrganizerCommitment {
             command: command.clone(),
             resolves_period: period + 1,
             commitment_id: [9; 32],
         };
-        client.accepted(id, accepted.clone(), &mut session).unwrap();
+        client
+            .accepted(id, accepted.clone(), &mut session)
+            .expect("the fixture call `accepted` succeeds for the authored inputs");
         assert_eq!(client.commitment, Some(accepted));
         assert_eq!(command.choice, OrganizerChoice::Collect);
         assert_eq!(command.expected_period, period);
@@ -405,7 +469,11 @@ mod tests {
         assert!(!historical.available(&session));
         assert!(!historical.choice_available(OrganizerChoice::Collect));
         historical.collection = client.collection;
-        historical.collection.as_mut().unwrap().cash_consent = OrganizerGiftConsent::Refuse;
+        historical
+            .collection
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .cash_consent = OrganizerGiftConsent::Refuse;
         assert!(!historical.choice_available(OrganizerChoice::Collect));
     }
 }

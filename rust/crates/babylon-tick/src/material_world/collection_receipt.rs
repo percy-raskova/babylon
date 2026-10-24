@@ -239,7 +239,13 @@ mod tests {
         assert_eq!(hex.len() % 2, 0);
         hex.as_bytes()
             .chunks_exact(2)
-            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .map(|pair| {
+                u8::from_str_radix(
+                    std::str::from_utf8(pair).expect("the fixture bytes came from a UTF-8 string"),
+                    16,
+                )
+                .expect("the authored digits parse as the declared type")
+            })
             .collect()
     }
 
@@ -253,14 +259,14 @@ mod tests {
         ] {
             let bytes = hex_bytes(hex);
             assert_eq!(bytes.len(), ROW_BYTES);
-            let expected_hash: [u8; 32] = hex_bytes(hash).try_into().unwrap();
+            let expected_hash: [u8; 32] = hex_bytes(hash).try_into().expect("the fixture slice has the target length");
             assert_eq!(sha256_of(&bytes), expected_hash);
             let mut cursor = ReceiptCursor { bytes: &bytes, position: 0 };
-            let row = decode(&mut cursor, 1).unwrap();
+            let row = decode(&mut cursor, 1).expect("the committed canonical bytes decode");
             assert_eq!(cursor.position, ROW_BYTES);
             assert_eq!(row.outcome, outcome);
             let mut encoded = Vec::new();
-            encode(std::slice::from_ref(&row), 1, &mut encoded).unwrap();
+            encode(std::slice::from_ref(&row), 1, &mut encoded).expect("the fixture value encodes canonically");
             assert_eq!(encoded, bytes);
             assert_eq!(sha256_of(&encoded), expected_hash);
             let mut unknown = bytes.clone();

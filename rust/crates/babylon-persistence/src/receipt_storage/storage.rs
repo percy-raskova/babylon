@@ -573,24 +573,37 @@ mod tests {
     fn complete_empty_receipts_survive_later_lookup_appends() {
         let original = empty_receipts();
         let mut lookup = TypedLookup::default();
-        lookup.intern(IdentityKind::Site, [1; 32]).unwrap();
-        let encoded = encode_raw(&original, &mut lookup).unwrap();
-        lookup.intern(IdentityKind::Site, [2; 32]).unwrap();
-        assert_eq!(decode(&encoded, &lookup).unwrap(), original);
+        lookup
+            .intern(IdentityKind::Site, [1; 32])
+            .expect("the fixture interner admits the symbol");
+        let encoded =
+            encode_raw(&original, &mut lookup).expect("the fixture value encodes canonically");
+        lookup
+            .intern(IdentityKind::Site, [2; 32])
+            .expect("the fixture interner admits the symbol");
+        assert_eq!(
+            decode(&encoded, &lookup).expect("the committed canonical bytes decode"),
+            original
+        );
         let mut changed = TypedLookup::default();
-        changed.intern(IdentityKind::Site, [3; 32]).unwrap();
+        changed
+            .intern(IdentityKind::Site, [3; 32])
+            .expect("the fixture interner admits the symbol");
         assert_eq!(decode(&encoded, &changed), Err(Error::LookupPrefix));
     }
     #[test]
     fn malformed_receipts_leave_lookup_unchanged_and_trailing_data_refuses() {
         let mut lookup = TypedLookup::default();
-        lookup.intern(IdentityKind::PublicAccount, [7; 32]).unwrap();
+        lookup
+            .intern(IdentityKind::PublicAccount, [7; 32])
+            .expect("the fixture interner admits the symbol");
         let before = lookup.entries().to_vec();
         let mut original = empty_receipts();
         original.push(0);
         assert!(encode_raw(&original, &mut lookup).is_err());
         assert_eq!(lookup.entries(), before);
-        let mut encoded = encode_raw(&empty_receipts(), &mut lookup).unwrap();
+        let mut encoded = encode_raw(&empty_receipts(), &mut lookup)
+            .expect("the fixture value encodes canonically");
         encoded.push(0);
         assert_eq!(decode(&encoded, &lookup), Err(Error::Trailing));
     }
@@ -600,12 +613,21 @@ mod tests {
         let mut row = vec![0; RECEIPT_ROW_BYTES[0]];
         row[..32].fill(1);
         row[32..64].fill(2);
-        let packed = pack_row(1, &row, &mut lookup).unwrap();
-        assert_eq!(unpack_row(1, &packed, &lookup, 2).unwrap(), row);
+        let packed =
+            pack_row(1, &row, &mut lookup).expect("the fixture row packs into the bounded frame");
+        assert_eq!(
+            unpack_row(1, &packed, &lookup, 2)
+                .expect("the fixture call `unpack_row` succeeds for the authored inputs"),
+            row
+        );
         assert!(unpack_row(1, &packed, &lookup, 1).is_err());
         let mut wrong = TypedLookup::default();
-        wrong.intern(IdentityKind::Site, [1; 32]).unwrap();
-        wrong.intern(IdentityKind::Site, [2; 32]).unwrap();
+        wrong
+            .intern(IdentityKind::Site, [1; 32])
+            .expect("the fixture interner admits the symbol");
+        wrong
+            .intern(IdentityKind::Site, [2; 32])
+            .expect("the fixture interner admits the symbol");
         assert!(unpack_row(1, &packed, &wrong, 2).is_err());
     }
     fn authored_aid_row(routed: bool) -> Vec<u8> {
@@ -637,7 +659,8 @@ mod tests {
         for routed in [false, true] {
             let row = authored_aid_row(routed);
             let mut lookup = TypedLookup::default();
-            let packed = pack_row(35, &row, &mut lookup).unwrap();
+            let packed = pack_row(35, &row, &mut lookup)
+                .expect("the fixture row packs into the bounded frame");
             assert_eq!(packed.len(), 107);
             let prefix = lookup.entries().len();
             assert_eq!(prefix, if routed { 9 } else { 6 });
@@ -646,17 +669,30 @@ mod tests {
             if !routed {
                 assert_eq!(&packed[25..37], &[0; 12]);
             }
-            assert_eq!(unpack_row(35, &packed, &lookup, prefix).unwrap(), row);
+            assert_eq!(
+                unpack_row(35, &packed, &lookup, prefix)
+                    .expect("the fixture call `unpack_row` succeeds for the authored inputs"),
+                row
+            );
             let mut envelope = empty_receipts();
             // Aid remains family35; current framing also contains empty family36.
             let count = CANONICAL_DOMAIN.len() + 4 + 8 + (35 - 1) * 9 + 1;
             assert_eq!(envelope[count - 1], 35);
             envelope[count..count + 8].copy_from_slice(&1_u64.to_be_bytes());
             envelope.splice(count + 8..count + 8, row);
-            let encoded = encode_raw(&envelope, &mut lookup).unwrap();
-            assert_eq!(decode(&encoded, &lookup).unwrap(), envelope);
-            lookup.intern(IdentityKind::AidMandate, [12; 32]).unwrap();
-            assert_eq!(decode(&encoded, &lookup).unwrap(), envelope);
+            let encoded =
+                encode_raw(&envelope, &mut lookup).expect("the fixture value encodes canonically");
+            assert_eq!(
+                decode(&encoded, &lookup).expect("the committed canonical bytes decode"),
+                envelope
+            );
+            lookup
+                .intern(IdentityKind::AidMandate, [12; 32])
+                .expect("the fixture interner admits the symbol");
+            assert_eq!(
+                decode(&encoded, &lookup).expect("the committed canonical bytes decode"),
+                envelope
+            );
         }
     }
 
@@ -664,16 +700,22 @@ mod tests {
     fn aid_refs_refuse_wrong_domain_absent_and_future_identities() {
         let row = authored_aid_row(true);
         let mut lookup = TypedLookup::default();
-        let packed = pack_row(35, &row, &mut lookup).unwrap();
+        let packed =
+            pack_row(35, &row, &mut lookup).expect("the fixture row packs into the bounded frame");
         let prefix = lookup.entries().len();
         let mut entries = lookup.entries().to_vec();
         entries[1].kind = IdentityKind::Order;
-        let wrong = TypedLookup::from_entries(entries).unwrap();
+        let wrong =
+            TypedLookup::from_entries(entries).expect("the authored entries admit the value");
         assert_eq!(
             unpack_row(35, &packed, &wrong, prefix),
             Err(Error::Lookup(StorageError::IdentityKind))
         );
-        for reference in [0, u32::try_from(prefix + 1).unwrap(), u32::MAX] {
+        for reference in [
+            0,
+            u32::try_from(prefix + 1).expect("the fixture value fits the target range"),
+            u32::MAX,
+        ] {
             let mut damaged = packed.clone();
             damaged[4..8].copy_from_slice(&reference.to_be_bytes());
             assert_eq!(
@@ -691,7 +733,8 @@ mod tests {
     fn local_aid_padding_is_not_an_identity_or_a_hidden_route() {
         let row = authored_aid_row(false);
         let mut lookup = TypedLookup::default();
-        let packed = pack_row(35, &row, &mut lookup).unwrap();
+        let packed =
+            pack_row(35, &row, &mut lookup).expect("the fixture row packs into the bounded frame");
         let prefix = lookup.entries().len();
         for (raw_offset, packed_offset) in [(81, 25), (113, 29), (145, 33)] {
             let mut raw = row.clone();
@@ -724,7 +767,8 @@ mod tests {
                 continue;
             }
             for (index, amount) in amounts.iter().enumerate() {
-                let purpose = u8::try_from(index % 10 + 1).unwrap();
+                let purpose =
+                    u8::try_from(index % 10 + 1).expect("the fixture value fits the target range");
                 let (subtype, id, reserve_tag) = match purpose {
                     1..=3 => (1, [19; 32], 2),
                     4..=6 => (0, [20; 32], 3),
@@ -768,16 +812,27 @@ mod tests {
         );
         assert_eq!(&encoded[start + 11..start + 15], &18_u32.to_be_bytes());
         let count = usize::try_from(u64::from_be_bytes(
-            encoded[start + 1..start + 9].try_into().unwrap(),
+            encoded[start + 1..start + 9]
+                .try_into()
+                .expect("the fixture slice has the target length"),
         ))
-        .unwrap();
-        let unique = u32::from_be_bytes(encoded[start + 15..start + 19].try_into().unwrap());
-        let length = count * 18 + usize::try_from(unique).unwrap() * 16;
-        let digest = encoded[start + 19..start + 51].try_into().unwrap();
+        .expect("the fixture value fits the target range");
+        let unique = u32::from_be_bytes(
+            encoded[start + 15..start + 19]
+                .try_into()
+                .expect("the fixture slice has the target length"),
+        );
+        let length = count * 18
+            + usize::try_from(unique).expect("the fixture value fits the target range") * 16;
+        let digest = encoded[start + 19..start + 51]
+            .try_into()
+            .expect("the fixture slice has the target length");
         let payload_length = usize::try_from(u64::from_be_bytes(
-            encoded[start + 51..start + 59].try_into().unwrap(),
+            encoded[start + 51..start + 59]
+                .try_into()
+                .expect("the fixture slice has the target length"),
         ))
-        .unwrap();
+        .expect("the fixture value fits the target range");
         let payload = &encoded[start + 59..start + 59 + payload_length];
         let columns = if encoded[start + 10] == 1 {
             storage_compression::decompress_exact(
@@ -786,7 +841,7 @@ mod tests {
                 digest,
                 MAX_MATERIAL_TICK_RECEIPT_BYTES,
             )
-            .unwrap()
+            .expect("the compressed body decodes")
         } else {
             assert_eq!(content_digest::sha256_of(payload), digest);
             payload.to_vec()
@@ -797,9 +852,11 @@ mod tests {
     fn money_package_with_columns(encoded: &[u8], columns: &[u8]) -> Vec<u8> {
         let start = money_family_offset();
         let old_length = usize::try_from(u64::from_be_bytes(
-            encoded[start + 51..start + 59].try_into().unwrap(),
+            encoded[start + 51..start + 59]
+                .try_into()
+                .expect("the fixture slice has the target length"),
         ))
-        .unwrap();
+        .expect("the fixture value fits the target range");
         let mut out = encoded[..start + 59].to_vec();
         out[start + 10] = 0;
         out[start + 19..start + 51].copy_from_slice(&content_digest::sha256_of(columns));
@@ -815,7 +872,8 @@ mod tests {
         let amounts = [i128::MAX, 1, 1, i128::MAX, high, 1, i128::MAX, high, 1, 1];
         let original = amount_receipts(&amounts);
         let mut lookup = TypedLookup::default();
-        let encoded = encode_raw(&original, &mut lookup).unwrap();
+        let encoded =
+            encode_raw(&original, &mut lookup).expect("the fixture value encodes canonically");
         let (count, unique, columns) = money_columns(&encoded);
         assert!(encoded.starts_with(b"BabylonReceiptStorageV3\0"));
         assert_eq!((count, unique), (10, 3));
@@ -826,7 +884,8 @@ mod tests {
             }
             assert_eq!(i128::from_be_bytes(exact), expected);
         }
-        let (restored, typed) = decode_admitted(&encoded, &lookup).unwrap();
+        let (restored, typed) =
+            decode_admitted(&encoded, &lookup).expect("the admitted canonical bytes decode");
         assert_eq!(restored, original);
         assert_eq!(
             content_digest::sha256_of(&restored),
@@ -849,17 +908,24 @@ mod tests {
             amounts.map(|amount| -amount)
         );
         let mut independent = TypedLookup::default();
-        assert_eq!(encode_raw(&original, &mut independent).unwrap(), encoded);
+        assert_eq!(
+            encode_raw(&original, &mut independent).expect("the fixture value encodes canonically"),
+            encoded
+        );
         lookup
             .intern(IdentityKind::PublicAccount, [99; 32])
-            .unwrap();
-        assert_eq!(decode(&encoded, &lookup).unwrap(), original);
+            .expect("the fixture interner admits the symbol");
+        assert_eq!(
+            decode(&encoded, &lookup).expect("the committed canonical bytes decode"),
+            original
+        );
     }
 
     #[test]
     fn unsupported_receipt_storage_domain_refuses_before_body() {
         let mut lookup = TypedLookup::default();
-        let mut encoded = encode_raw(&empty_receipts(), &mut lookup).unwrap();
+        let mut encoded = encode_raw(&empty_receipts(), &mut lookup)
+            .expect("the fixture value encodes canonically");
         encoded[..b"BabylonReceiptStorageV1\0".len()].copy_from_slice(b"BabylonReceiptStorageV1\0");
         assert_eq!(decode(&encoded, &lookup), Err(Error::Domain));
     }
@@ -868,13 +934,17 @@ mod tests {
     fn exact_money_rows_without_repetition_use_current_numeric_storage() {
         let original = amount_receipts(&[1, i128::MAX]);
         let mut lookup = TypedLookup::default();
-        let encoded = encode_raw(&original, &mut lookup).unwrap();
+        let encoded =
+            encode_raw(&original, &mut lookup).expect("the fixture value encodes canonically");
         assert!(encoded.starts_with(b"BabylonReceiptStorageV3\0"));
         let start = money_family_offset();
         assert_eq!(encoded[start + 9], 1);
         assert_eq!(&encoded[start + 11..start + 15], &30_u32.to_be_bytes());
         assert_eq!(&encoded[start + 15..start + 19], &0_u32.to_be_bytes());
-        assert_eq!(decode(&encoded, &lookup).unwrap(), original);
+        assert_eq!(
+            decode(&encoded, &lookup).expect("the committed canonical bytes decode"),
+            original
+        );
     }
 
     #[test]
@@ -883,10 +953,14 @@ mod tests {
         let amounts = [i128::MAX, 1, 1, i128::MAX, high, 1, i128::MAX, high, 1, 1];
         let original = amount_receipts(&amounts);
         let mut lookup = TypedLookup::default();
-        let encoded = encode_raw(&original, &mut lookup).unwrap();
+        let encoded =
+            encode_raw(&original, &mut lookup).expect("the fixture value encodes canonically");
         let (count, unique, columns) = money_columns(&encoded);
         assert_eq!(unique, 3);
-        assert_eq!(decode(&encoded, &lookup).unwrap(), original);
+        assert_eq!(
+            decode(&encoded, &lookup).expect("the committed canonical bytes decode"),
+            original
+        );
         let dictionary = count * 14;
         let references = dictionary + 3 * 16;
         for fault in 0..7 {
@@ -971,29 +1045,38 @@ mod tests {
     fn selection_payload_lengths(canonical: &[u8], lookup: &TypedLookup) -> (usize, usize, u32) {
         let start = CANONICAL_DOMAIN.len() + 12 + 10 * 9;
         let count = usize::try_from(u64::from_be_bytes(
-            canonical[start + 1..start + 9].try_into().unwrap(),
+            canonical[start + 1..start + 9]
+                .try_into()
+                .expect("the fixture slice has the target length"),
         ))
-        .unwrap();
+        .expect("the fixture value fits the target range");
         let body = &canonical[start + 9..start + 9 + count * RECEIPT_ROW_BYTES[10]];
         let mut lookup = lookup.clone();
         let mut rows = Vec::new();
         for row in body.chunks_exact(RECEIPT_ROW_BYTES[10]) {
-            rows.extend(pack_row(11, row, &mut lookup).unwrap());
+            rows.extend(
+                pack_row(11, row, &mut lookup)
+                    .expect("the fixture row packs into the bounded frame"),
+            );
         }
-        let (_, width, retained) = numeric::pack_family(11, &rows, count, 50, 7).unwrap();
-        let columns = transpose(&retained, count, width, false).unwrap();
+        let (_, width, retained) = numeric::pack_family(11, &rows, count, 50, 7)
+            .expect("the fixture call `pack_family` succeeds for the authored inputs");
+        let columns = transpose(&retained, count, width, false)
+            .expect("the fixture call `transpose` succeeds for the authored inputs");
         let numeric = columns.len().min(
             storage_compression::compress_exact(&columns, MAX_MATERIAL_TICK_RECEIPT_BYTES)
-                .unwrap()
+                .expect("the body fits the exact compressed bound")
                 .len(),
         );
-        let dictionary = amount::pack(&retained, count).unwrap().unwrap();
+        let dictionary = amount::pack(&retained, count)
+            .expect("the fixture rows pack into the bounded frame")
+            .expect("the nested fixture result is present");
         let candidate = dictionary.columns.len().min(
             storage_compression::compress_exact(
                 &dictionary.columns,
                 MAX_MATERIAL_TICK_RECEIPT_BYTES,
             )
-            .unwrap()
+            .expect("the body fits the exact compressed bound")
             .len(),
         );
         (numeric, candidate, dictionary.dictionary_count)
@@ -1003,7 +1086,9 @@ mod tests {
         let mut fallbacks = 0;
         for count in [8, 16, 128, 1024] {
             let sequential = (1..=count / 2)
-                .map(|amount| i128::try_from(amount).unwrap())
+                .map(|amount| {
+                    i128::try_from(amount).expect("the fixture value fits the target range")
+                })
                 .cycle()
                 .take(count)
                 .collect::<Vec<_>>();
@@ -1011,13 +1096,16 @@ mod tests {
             for amounts in [sequential, repeated] {
                 let original = selection_direct_gift_receipts(&amounts);
                 let mut lookup = TypedLookup::default();
-                let encoded = encode_raw(&original, &mut lookup).unwrap();
+                let encoded = encode_raw(&original, &mut lookup)
+                    .expect("the fixture value encodes canonically");
                 let (numeric, candidate, unique) = selection_payload_lengths(&original, &lookup);
                 let start = money_family_offset();
                 let payload = usize::try_from(u64::from_be_bytes(
-                    encoded[start + 51..start + 59].try_into().unwrap(),
+                    encoded[start + 51..start + 59]
+                        .try_into()
+                        .expect("the fixture slice has the target length"),
                 ))
-                .unwrap();
+                .expect("the fixture value fits the target range");
                 eprintln!("amount_selection rows={count} numeric_payload={numeric} dictionary_payload={candidate} selected_payload={payload} selected_mode={}", encoded[start+9]);
                 assert_eq!(
                     payload,
@@ -1037,7 +1125,12 @@ mod tests {
                     assert_eq!(&encoded[start + 11..start + 15], &30_u32.to_be_bytes());
                     assert_eq!(&encoded[start + 15..start + 19], &0_u32.to_be_bytes());
                 }
-                assert_eq!(decode_admitted(&encoded, &lookup).unwrap().0, original);
+                assert_eq!(
+                    decode_admitted(&encoded, &lookup)
+                        .expect("the admitted canonical bytes decode")
+                        .0,
+                    original
+                );
             }
         }
         assert!(
@@ -1062,25 +1155,35 @@ mod tests {
         ] {
             let original = amount_receipts(&amounts);
             let mut lookup = TypedLookup::default();
-            let encoded = encode_raw(&original, &mut lookup).unwrap();
+            let encoded =
+                encode_raw(&original, &mut lookup).expect("the fixture value encodes canonically");
             let (numeric, dictionary, _) = selection_payload_lengths(&original, &lookup);
             let start = money_family_offset();
             let payload = usize::try_from(u64::from_be_bytes(
-                encoded[start + 51..start + 59].try_into().unwrap(),
+                encoded[start + 51..start + 59]
+                    .try_into()
+                    .expect("the fixture slice has the target length"),
             ))
-            .unwrap();
+            .expect("the fixture value fits the target range");
             eprintln!("amount_selection fixture={name} rows=10 numeric_payload={numeric} dictionary_payload={dictionary} selected_payload={payload} selected_mode={}", encoded[start+9]);
             assert_eq!(payload, numeric.min(dictionary));
             assert_eq!(encoded[start + 9], if dictionary < numeric { 2 } else { 1 });
-            assert_eq!(decode_admitted(&encoded, &lookup).unwrap().0, original);
+            assert_eq!(
+                decode_admitted(&encoded, &lookup)
+                    .expect("the admitted canonical bytes decode")
+                    .0,
+                original
+            );
         }
     }
 
     #[test]
     fn amount_selection_ties_keep_numeric_mode_and_raw_frame_ties_keep_raw() {
-        let selected = stored_family(1, 30, 0, vec![]).unwrap();
+        let selected = stored_family(1, 30, 0, vec![])
+            .expect("the fixture call `stored_family` succeeds for the authored inputs");
         assert_eq!(selected.compression, 0);
-        let candidate = stored_family(2, 18, 1, vec![]).unwrap();
+        let candidate = stored_family(2, 18, 1, vec![])
+            .expect("the fixture call `stored_family` succeeds for the authored inputs");
         let winner = prefer_family(selected, candidate);
         assert_eq!(winner.mode, 1);
         assert_eq!(winner.amount_count, 0);
@@ -1089,7 +1192,8 @@ mod tests {
     fn previous_v2_package_and_v17_canonical_receipts_refuse() {
         let current = empty_receipts();
         let mut lookup = TypedLookup::default();
-        let mut previous = encode_raw(&current, &mut lookup).unwrap();
+        let mut previous =
+            encode_raw(&current, &mut lookup).expect("the fixture value encodes canonically");
         let package_domain = b"BabylonReceiptStorageV2\0";
         previous[..package_domain.len()].copy_from_slice(package_domain);
         let mut old_canonical = current;

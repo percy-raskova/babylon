@@ -768,7 +768,11 @@ mod aid_reading_tests {
                 fulfilled: 3,
                 expired: 0,
             });
-        let site = snapshot.sites.iter().find(|s| s.id == "panels").unwrap();
+        let site = snapshot
+            .sites
+            .iter()
+            .find(|s| s.id == "panels")
+            .expect("the fixture holds the searched element");
         let mut text = String::new();
         describe_households(&mut text, site, &snapshot);
         assert!(text.contains("3 purchased · 2 support received · 4 support sent · 4 consumed · 0 unmet · 2 in pantry"));

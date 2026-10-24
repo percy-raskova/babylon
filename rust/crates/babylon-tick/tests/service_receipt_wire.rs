@@ -76,14 +76,17 @@ fn envelope(tag: u8, rows: &[Vec<u8>]) -> Vec<u8> {
 }
 #[test]
 fn service_receipts_keep_performance_satisfaction_market_and_output_distinct() {
-    let performance =
-        material_world::decode_material_receipts(&envelope(20, &[row(20, 1)])).unwrap();
+    let performance = material_world::decode_material_receipts(&envelope(20, &[row(20, 1)]))
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(performance.service_performance[0].used_quantity, 1);
-    let household = material_world::decode_material_receipts(&envelope(21, &[row(21, 1)])).unwrap();
+    let household = material_world::decode_material_receipts(&envelope(21, &[row(21, 1)]))
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(household.household_services[0].satisfied_quantity, 2);
-    let market = material_world::decode_material_receipts(&envelope(22, &[row(22, 1)])).unwrap();
+    let market = material_world::decode_material_receipts(&envelope(22, &[row(22, 1)]))
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(market.service_markets[0].direct_cost.micro_units(), 10);
-    let output = material_world::decode_material_receipts(&envelope(23, &[row(23, 1)])).unwrap();
+    let output = material_world::decode_material_receipts(&envelope(23, &[row(23, 1)]))
+        .expect("the canonical bytes decode into the declared type");
     assert_eq!(
         (
             output.service_outputs[0].expired_quantity,

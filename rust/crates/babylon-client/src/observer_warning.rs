@@ -431,7 +431,7 @@ mod tests {
             .query::<(Entity, &WarningAction)>()
             .iter(world)
             .find_map(|(entity, candidate)| (*candidate == action).then_some(entity))
-            .unwrap()
+            .expect("the fixture yields the searched value")
     }
 
     #[test]
@@ -548,17 +548,21 @@ mod tests {
             let title = world
                 .query_filtered::<&TextFont, With<WarningHeadline>>()
                 .single(world)
-                .unwrap();
+                .expect("the fixture holds exactly one matching row");
             assert!((64.0..=120.0).contains(&title.font_size));
             let reading = world
                 .query_filtered::<&ChildOf, With<WarningReading>>()
                 .single(world)
-                .unwrap();
-            let body = world.get::<Node>(reading.parent()).unwrap();
+                .expect("the fixture holds exactly one matching row");
+            let body = world
+                .get::<Node>(reading.parent())
+                .expect("the fixture world holds the addressed component");
             assert_eq!(body.overflow, Overflow::scroll_y());
             assert_eq!(body.min_height, px(0));
             for (_, parent) in world.query::<(&WarningAction, &ChildOf)>().iter(world) {
-                let footer = world.get::<Node>(parent.parent()).unwrap();
+                let footer = world
+                    .get::<Node>(parent.parent())
+                    .expect("the fixture world holds the addressed component");
                 assert_eq!(footer.flex_shrink.to_bits(), 0.0_f32.to_bits());
                 assert_ne!(footer.overflow, Overflow::scroll_y());
             }

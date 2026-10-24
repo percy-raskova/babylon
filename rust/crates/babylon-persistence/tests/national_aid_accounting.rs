@@ -9,23 +9,25 @@ use sha2::{Digest, Sha256};
 
 fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
     let mut before: OrganizerSnapshot =
-        serde_json::from_str(include_str!("fixtures/national_organizer_opening_v11.json")).unwrap();
+        serde_json::from_str(include_str!("fixtures/national_organizer_opening_v11.json"))
+            .expect("the authored JSON matches the declared schema");
     before.view.actor_id = 42;
     before.view.authority_id = [17; 16];
     before.view.available_hours = 7;
-    before.view.resource_digest = babylon_practice_contract::organizer_resource_digest().unwrap();
+    before.view.resource_digest = babylon_practice_contract::organizer_resource_digest()
+        .expect("the organizer resource set has a digest");
     let local = before
         .aid
         .iter_mut()
         .find(|r| r.kind == OrganizerAidKind::Local)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     local.coordination_hours = 5;
     before
         .view
         .aid_options
         .iter_mut()
         .find(|r| r.kind == OrganizerAidKind::Local)
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .coordination_hours = 5;
     let command = babylon_practice_contract::OrganizerCommand {
         campaign_id: [9; 16],
@@ -38,13 +40,16 @@ fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
         choice: OrganizerChoice::LocalAid,
     };
     let mut bytes = b"babylon.organizer-commitment.v1\0".to_vec();
-    bytes.extend_from_slice(&serde_json::to_vec(&command).unwrap());
+    bytes.extend_from_slice(
+        &serde_json::to_vec(&command).expect("the value serializes to canonical JSON bytes"),
+    );
     let commitment = OrganizerCommitment {
         command,
         resolves_period: 1,
         commitment_id: Sha256::digest(bytes).into(),
     };
-    babylon_practice_contract::validate_organizer_commitment(&commitment).unwrap();
+    babylon_practice_contract::validate_organizer_commitment(&commitment)
+        .expect("the authored fixture satisfies the rule");
     let preview = OrganizerPreview {
         choice: OrganizerChoice::LocalAid,
         current_period: 0,
@@ -61,7 +66,8 @@ fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
 #[test]
 fn original_aid_witness_requires_an_authenticated_opening() {
     let (before, preview, commitment) = witness();
-    let accepted = Accepted::capture(&commitment, &preview, &before).unwrap();
+    let accepted = Accepted::capture(&commitment, &preview, &before)
+        .expect("the fixture captures the authored state");
     let mut audit = Audit::default();
     assert_eq!(audit.accept(accepted), Err(Refusal::OriginalOffer));
     assert_eq!(audit.report()["accepted_original_commands"], 0);
@@ -105,13 +111,17 @@ fn aid_witness_refuses_crossed_authority_refusal_and_conflicting_retry() {
         Err(Refusal::Admission)
     );
     let (before, preview, commitment) = witness();
-    let accepted = Accepted::capture(&commitment, &preview, &before).unwrap();
+    let accepted = Accepted::capture(&commitment, &preview, &before)
+        .expect("the fixture captures the authored state");
     let mut audit = Audit::default();
     assert_eq!(audit.accept(accepted), Err(Refusal::OriginalOffer));
     let mut changed = before;
     changed.aid[0].payer_cash += 1;
     assert_eq!(
-        audit.accept(Accepted::capture(&commitment, &preview, &changed).unwrap()),
+        audit.accept(
+            Accepted::capture(&commitment, &preview, &changed)
+                .expect("the fixture captures the authored state")
+        ),
         Err(Refusal::OriginalOffer)
     );
     assert_eq!(audit.report()["accepted_original_commands"], 0);

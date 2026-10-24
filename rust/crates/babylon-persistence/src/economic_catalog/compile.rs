@@ -377,7 +377,7 @@ fn opening_books(opening: &EconomicOpening) -> Result<(MonetaryBook, HistoricalC
     }
     let mut cash = opening.institutional_cash.clone();
     let mut stocks = Vec::new();
-    for (owner, balance, inventory) in opening
+    let owners = opening
         .sites
         .iter()
         .map(|s| (AccountId::Site(s.site_id), s.opening_cash, &s.opening_stock))
@@ -387,8 +387,8 @@ fn opening_books(opening: &EconomicOpening) -> Result<(MonetaryBook, HistoricalC
                 h.opening_cash,
                 &h.opening_stock,
             )
-        }))
-    {
+        }));
+    for (owner, balance, inventory) in owners {
         cash.push(CashAccount {
             id: owner,
             cash: balance,

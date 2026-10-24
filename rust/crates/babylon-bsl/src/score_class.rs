@@ -383,8 +383,8 @@ mod tests {
                        (binding now :tick)) \
              (effects (update-node self social-class/wealth (add 1$))))",
         )
-        .unwrap();
-        let decls = crate::bindings::parse_bindings(&rule).unwrap();
+        .expect("the fixture reader returns its authored facts");
+        let decls = crate::bindings::parse_bindings(&rule).expect("the authored bindings parse");
         let fields = fields();
         let names = HashMap::new();
         let env = ClassEnv {
@@ -392,7 +392,14 @@ mod tests {
             fields: &fields,
             element_names: &names,
         };
-        let of = |src: &str| super::classify(&crate::reader::read(src).unwrap().0, &env);
+        let of = |src: &str| {
+            super::classify(
+                &crate::reader::read(src)
+                    .expect("the fixture reader returns its authored facts")
+                    .0,
+                &env,
+            )
+        };
         assert_eq!(of("wealth"), ScoreClass::Scalar);
         assert_eq!(of("flag"), ScoreClass::Bool);
         assert_eq!(of("now"), ScoreClass::Scalar);

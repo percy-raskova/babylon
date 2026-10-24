@@ -26,36 +26,82 @@ fn assert_direct_refusal_preserves_graph(source: &str, code: &'static str) {
     let mut subject = MemoryGraph::new();
     let mut control = MemoryGraph::new();
     assert_eq!(
-        subject.add_node("SEED").unwrap(),
-        control.add_node("SEED").unwrap()
+        subject
+            .add_node("SEED")
+            .expect("the fixture adds a node with a registered kind"),
+        control
+            .add_node("SEED")
+            .expect("the fixture adds a node with a registered kind")
     );
-    let before = control.state_hash().unwrap();
-    let error = scenario::load_scenario(source, &mut subject).unwrap_err();
+    let before = control
+        .state_hash()
+        .expect("the fixture graph hashes its state");
+    let error = scenario::load_scenario(source, &mut subject)
+        .expect_err("the malformed scenario is refused");
     assert_eq!(error.code, Some(code), "{error}");
-    assert_eq!(subject.state_hash().unwrap(), before);
     assert_eq!(
-        subject.add_node("AFTER").unwrap(),
-        control.add_node("AFTER").unwrap()
+        subject
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        before
     );
-    assert_eq!(subject.state_hash().unwrap(), control.state_hash().unwrap());
+    assert_eq!(
+        subject
+            .add_node("AFTER")
+            .expect("the fixture adds a node with a registered kind"),
+        control
+            .add_node("AFTER")
+            .expect("the fixture adds a node with a registered kind")
+    );
+    assert_eq!(
+        subject
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        control
+            .state_hash()
+            .expect("the fixture graph hashes its state")
+    );
 }
 
 fn assert_prelude_refusal_preserves_graph(prelude: &str, source: &str, code: &'static str) {
     let mut subject = MemoryGraph::new();
     let mut control = MemoryGraph::new();
     assert_eq!(
-        subject.add_node("SEED").unwrap(),
-        control.add_node("SEED").unwrap()
+        subject
+            .add_node("SEED")
+            .expect("the fixture adds a node with a registered kind"),
+        control
+            .add_node("SEED")
+            .expect("the fixture adds a node with a registered kind")
     );
-    let before = control.state_hash().unwrap();
-    let error = scenario::load_scenario_with_prelude(prelude, source, &mut subject).unwrap_err();
+    let before = control
+        .state_hash()
+        .expect("the fixture graph hashes its state");
+    let error = scenario::load_scenario_with_prelude(prelude, source, &mut subject)
+        .expect_err("the malformed scenario is refused");
     assert_eq!(error.code, Some(code), "{error}");
-    assert_eq!(subject.state_hash().unwrap(), before);
     assert_eq!(
-        subject.add_node("AFTER").unwrap(),
-        control.add_node("AFTER").unwrap()
+        subject
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        before
     );
-    assert_eq!(subject.state_hash().unwrap(), control.state_hash().unwrap());
+    assert_eq!(
+        subject
+            .add_node("AFTER")
+            .expect("the fixture adds a node with a registered kind"),
+        control
+            .add_node("AFTER")
+            .expect("the fixture adds a node with a registered kind")
+    );
+    assert_eq!(
+        subject
+            .state_hash()
+            .expect("the fixture graph hashes its state"),
+        control
+            .state_hash()
+            .expect("the fixture graph hashes its state")
+    );
 }
 
 fn organization_source(count: usize) -> String {
@@ -137,7 +183,8 @@ fn prelude_solidarity_source(edge_count: usize) -> String {
 #[test]
 fn exact_organization_maximum_loads_and_plus_one_is_e_load_061() {
     let mut graph = MemoryGraph::new();
-    let loaded = scenario::load_scenario(&organization_source(4_096), &mut graph).unwrap();
+    let loaded = scenario::load_scenario(&organization_source(4_096), &mut graph)
+        .expect("the authored scenario compiles");
     assert_eq!(loaded.node_count, 4_096);
     assert_direct_refusal_preserves_graph(&organization_source(4_097), "E-LOAD-061");
 }
@@ -145,7 +192,8 @@ fn exact_organization_maximum_loads_and_plus_one_is_e_load_061() {
 #[test]
 fn exact_solidarity_maximum_loads_and_plus_one_is_e_load_062() {
     let mut graph = MemoryGraph::new();
-    let loaded = scenario::load_scenario(&solidarity_source(256), &mut graph).unwrap();
+    let loaded = scenario::load_scenario(&solidarity_source(256), &mut graph)
+        .expect("the authored scenario compiles");
     assert_eq!(loaded.edge_count, 256);
     assert_direct_refusal_preserves_graph(&solidarity_source(257), "E-LOAD-062");
 }
@@ -158,7 +206,7 @@ fn prelude_loader_pins_exact_organization_and_edge_boundaries() {
         &prelude_organization_source(4_096),
         &mut organization_graph,
     )
-    .unwrap();
+    .expect("the authored scenario compiles with its prelude");
     assert_prelude_refusal_preserves_graph(
         PRACTICE_PRELUDE,
         &prelude_organization_source(4_097),
@@ -171,7 +219,7 @@ fn prelude_loader_pins_exact_organization_and_edge_boundaries() {
         &prelude_solidarity_source(256),
         &mut edge_graph,
     )
-    .unwrap();
+    .expect("the authored scenario compiles with its prelude");
     assert_prelude_refusal_preserves_graph(
         PRACTICE_PRELUDE,
         &prelude_solidarity_source(257),
@@ -238,7 +286,8 @@ fn effective_last_active_and_budget_attributes_match_loader_order() {
          (organization/active 1)\n\
          (organization/active 0))\n",
     );
-    scenario::load_scenario(&inactive, &mut MemoryGraph::new()).unwrap();
+    scenario::load_scenario(&inactive, &mut MemoryGraph::new())
+        .expect("the authored scenario compiles");
 
     let active = scenario(
         "  (node org NodeType/ORGANIZATION\n\
@@ -253,7 +302,8 @@ fn effective_last_active_and_budget_attributes_match_loader_order() {
          (organization/action-budget -1)\n\
          (organization/action-budget 1))\n",
     );
-    scenario::load_scenario(&valid_budget, &mut MemoryGraph::new()).unwrap();
+    scenario::load_scenario(&valid_budget, &mut MemoryGraph::new())
+        .expect("the authored scenario compiles");
 
     let invalid_budget = scenario(
         "  (node org NodeType/ORGANIZATION\n\
@@ -273,7 +323,8 @@ fn only_exact_organization_rows_count_toward_the_limit() {
     }
     body.push_str("  (node org NodeType/ORGANIZATION)\n");
     let mut graph = MemoryGraph::new();
-    let loaded = scenario::load_scenario(&scenario(&body), &mut graph).unwrap();
+    let loaded = scenario::load_scenario(&scenario(&body), &mut graph)
+        .expect("the authored scenario compiles");
     assert_eq!(loaded.node_count, 4_098);
 }
 
@@ -306,7 +357,8 @@ fn organization_to_organization_solidarity_does_not_count_toward_class_footprint
         .expect("writing to a String cannot fail");
     }
     body.push_str("  (edge EdgeType/SOLIDARITY org other-org 1)\n");
-    let loaded = scenario::load_scenario(&scenario(&body), &mut MemoryGraph::new()).unwrap();
+    let loaded = scenario::load_scenario(&scenario(&body), &mut MemoryGraph::new())
+        .expect("the authored scenario compiles");
     assert_eq!(loaded.edge_count, 257);
 }
 
@@ -322,9 +374,11 @@ fn source_byte_maximum_loads_and_plus_one_refuses_before_reading() {
     let base = "(scenario test/practice-topology)";
     let exact = format!("{base}{}", " ".repeat(MAX_SOURCE_BYTES - base.len()));
     assert_eq!(exact.len(), MAX_SOURCE_BYTES);
-    scenario::load_scenario(&exact, &mut MemoryGraph::new()).unwrap();
+    scenario::load_scenario(&exact, &mut MemoryGraph::new())
+        .expect("the authored scenario compiles");
     let plus_one = format!("{exact} ");
-    let error = scenario::load_scenario(&plus_one, &mut MemoryGraph::new()).unwrap_err();
+    let error = scenario::load_scenario(&plus_one, &mut MemoryGraph::new())
+        .expect_err("the malformed scenario is refused");
     assert!(error.message.contains("4,194,304"), "{error}");
 }
 
@@ -348,9 +402,11 @@ fn scenario_with_body_form_count(count: usize) -> String {
 #[test]
 fn body_form_maximum_loads_and_plus_one_refuses() {
     let exact = scenario_with_body_form_count(65_536);
-    scenario::load_scenario(&exact, &mut MemoryGraph::new()).unwrap();
+    scenario::load_scenario(&exact, &mut MemoryGraph::new())
+        .expect("the authored scenario compiles");
     let plus_one = scenario_with_body_form_count(65_537);
-    let error = scenario::load_scenario(&plus_one, &mut MemoryGraph::new()).unwrap_err();
+    let error = scenario::load_scenario(&plus_one, &mut MemoryGraph::new())
+        .expect_err("the malformed scenario is refused");
     assert!(error.message.contains("65,536-form"), "{error}");
 }
 
@@ -362,14 +418,14 @@ fn nested_body_form(list_depth: usize) -> String {
 
 #[test]
 fn walker_depth_maximum_reaches_semantic_loading_and_plus_one_refuses() {
-    let exact_error =
-        scenario::load_scenario(&nested_body_form(255), &mut MemoryGraph::new()).unwrap_err();
+    let exact_error = scenario::load_scenario(&nested_body_form(255), &mut MemoryGraph::new())
+        .expect_err("the malformed scenario is refused");
     assert!(
         !exact_error.message.contains("walker depth"),
         "{exact_error}"
     );
-    let error =
-        scenario::load_scenario(&nested_body_form(256), &mut MemoryGraph::new()).unwrap_err();
+    let error = scenario::load_scenario(&nested_body_form(256), &mut MemoryGraph::new())
+        .expect_err("the malformed scenario is refused");
     assert!(
         error.message.contains("walker depth bound of 256"),
         "{error}"
@@ -382,14 +438,14 @@ fn wide_body_form(child_count: usize) -> String {
 
 #[test]
 fn walker_stack_maximum_reaches_semantic_loading_and_plus_one_refuses() {
-    let exact_error =
-        scenario::load_scenario(&wide_body_form(65_536), &mut MemoryGraph::new()).unwrap_err();
+    let exact_error = scenario::load_scenario(&wide_body_form(65_536), &mut MemoryGraph::new())
+        .expect_err("the malformed scenario is refused");
     assert!(
         !exact_error.message.contains("walker stack"),
         "{exact_error}"
     );
-    let error =
-        scenario::load_scenario(&wide_body_form(65_537), &mut MemoryGraph::new()).unwrap_err();
+    let error = scenario::load_scenario(&wide_body_form(65_537), &mut MemoryGraph::new())
+        .expect_err("the malformed scenario is refused");
     assert!(
         error.message.contains("65,536-entry walker stack"),
         "{error}"
@@ -417,14 +473,14 @@ fn ast_node_maximum_reaches_semantic_loading_and_plus_one_refuses() {
     let exact_children = 1_048_576 - NON_EMPTY_LIST_AST_NODES;
     let exact_error =
         scenario::load_scenario(&ast_body_form(exact_children), &mut MemoryGraph::new())
-            .unwrap_err();
+            .expect_err("the malformed scenario is refused");
     assert!(
         !exact_error.message.contains("AST exceeds"),
         "{exact_error}"
     );
     let error =
         scenario::load_scenario(&ast_body_form(exact_children + 1), &mut MemoryGraph::new())
-            .unwrap_err();
+            .expect_err("the malformed scenario is refused");
     assert!(error.message.contains("1,048,576-node"), "{error}");
 }
 
@@ -433,6 +489,7 @@ fn error_type_remains_structured() {
     fn require_scenario_error(error: ScenarioError) -> ScenarioError {
         error
     }
-    let error = scenario::load_scenario("", &mut MemoryGraph::new()).unwrap_err();
+    let error = scenario::load_scenario("", &mut MemoryGraph::new())
+        .expect_err("the malformed scenario is refused");
     assert!(require_scenario_error(error).code.is_none());
 }

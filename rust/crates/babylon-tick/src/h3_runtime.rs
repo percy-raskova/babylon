@@ -555,9 +555,12 @@ mod tests {
 
     #[test]
     fn r8_coverage_refuses_length_mismatch_before_pairwise_comparison() {
-        let parent = H3CellId::from_str("872664800ffffff").unwrap();
-        let child = H3CellId::from_str("8826648001fffff").unwrap();
-        let expected = [MichiganH3R8ChildParent::try_new(child, parent).unwrap()];
+        let parent = H3CellId::from_str("872664800ffffff")
+            .expect("the authored JSON matches the declared schema");
+        let child = H3CellId::from_str("8826648001fffff")
+            .expect("the authored JSON matches the declared schema");
+        let expected = [MichiganH3R8ChildParent::try_new(child, parent)
+            .expect("the authored fixture satisfies the constructor invariants")];
 
         assert_eq!(
             validate_r8_coverage(&[], &expected),

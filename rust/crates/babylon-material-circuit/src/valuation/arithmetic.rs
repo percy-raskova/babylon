@@ -186,17 +186,29 @@ mod tests {
     #[test]
     fn proportional_cost_preserves_exact_remainder_even_at_i128_and_u64_limits() {
         let cost = Currency::from_micro_units(i128::MAX);
-        let partial = portion(cost, u64::MAX, u64::MAX - 1).unwrap();
-        let residual = sub(cost, partial).unwrap();
+        let partial = portion(cost, u64::MAX, u64::MAX - 1)
+            .expect("the fixture call `portion` succeeds for the authored inputs");
+        let residual =
+            sub(cost, partial).expect("the fixture call `sub` succeeds for the authored inputs");
         assert!(partial.micro_units() > 0);
         assert_eq!(
-            add(partial, portion(residual, 1, 1).unwrap()).unwrap(),
+            add(
+                partial,
+                portion(residual, 1, 1)
+                    .expect("the fixture call `portion` succeeds for the authored inputs")
+            )
+            .expect("the fixture call `add` succeeds for the authored inputs"),
             cost
         );
         let seven = Currency::from_micro_units(7);
-        assert_eq!(portion(seven, 4, 3).unwrap(), Currency::from_micro_units(5));
         assert_eq!(
-            portion(Currency::from_micro_units(2), 1, 1).unwrap(),
+            portion(seven, 4, 3)
+                .expect("the fixture call `portion` succeeds for the authored inputs"),
+            Currency::from_micro_units(5)
+        );
+        assert_eq!(
+            portion(Currency::from_micro_units(2), 1, 1)
+                .expect("the fixture call `portion` succeeds for the authored inputs"),
             Currency::from_micro_units(2)
         );
         assert_eq!(

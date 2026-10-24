@@ -127,8 +127,9 @@ fn accounting(retailer: u8) -> CircuitAccounting {
         })
         .collect(),
     )
-    .unwrap();
-    let costs = HistoricalCostBook::open(&book, vec![], vec![], vec![], vec![]).unwrap();
+    .expect("the fixture opens the authored source");
+    let costs = HistoricalCostBook::open(&book, vec![], vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
         aid: AidBook::default(),
         household_time: HouseholdTimeAccounting::NotModeled,
@@ -342,24 +343,36 @@ fn supply(r: &mut MaterialTickReceipts, supplier: u8, q: u64, local: bool) {
 }
 #[test]
 fn opening_stock_only_has_no_production_renewal() {
-    let mut audit = Audit::seed(&seed(1, 10), 39, [7; 32]).unwrap();
+    let mut audit =
+        Audit::seed(&seed(1, 10), 39, [7; 32]).expect("the fixture seeds the authored rows");
     let mut r = receipts(40);
     retail(&mut r, 1, 10);
-    let e = audit.read(&r).unwrap();
+    let e = audit
+        .read(&r)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(e.proven_consumed, 0);
     assert_eq!(e.status, "incomplete");
 }
 #[test]
 fn renewed_output_reaches_paid_households_through_local_and_routed_supply() {
     for local in [true, false] {
-        let mut audit = Audit::seed(&seed(2, 0), 39, [7; 32]).unwrap();
+        let mut audit =
+            Audit::seed(&seed(2, 0), 39, [7; 32]).expect("the fixture seeds the authored rows");
         let mut r = receipts(40);
         output(&mut r, 10);
         supply(&mut r, 1, 10, local);
-        assert_eq!(audit.read(&r).unwrap().proven_consumed, 0);
+        assert_eq!(
+            audit
+                .read(&r)
+                .expect("the fixture reader returns its authored facts")
+                .proven_consumed,
+            0
+        );
         let mut next = receipts(41);
         retail(&mut next, 2, 10);
-        let e = audit.read(&next).unwrap();
+        let e = audit
+            .read(&next)
+            .expect("the fixture reader returns its authored facts");
         assert_eq!(e.proven_consumed, 10);
         assert_eq!(e.pending_orders, 0);
         assert_eq!((e.seed_period, e.through_period), (39, 41));
@@ -368,46 +381,81 @@ fn renewed_output_reaches_paid_households_through_local_and_routed_supply() {
 #[test]
 fn receipt_order_does_not_attribute_lots_or_change_window_bound() {
     let state = seed(2, 0);
-    let mut a = Audit::seed(&state, 39, [7; 32]).unwrap();
+    let mut a = Audit::seed(&state, 39, [7; 32]).expect("the fixture seeds the authored rows");
     let mut b = a.clone();
     let mut r = receipts(40);
     output(&mut r, 10);
     supply(&mut r, 1, 10, true);
     supply(&mut r, 3, 4, false);
     retail(&mut r, 2, 10);
-    let expected = a.read(&r).unwrap();
+    let expected = a
+        .read(&r)
+        .expect("the fixture reader returns its authored facts");
     r.procurement.reverse();
     r.money_transfers.reverse();
     r.deliveries.reverse();
-    assert_eq!(b.read(&r).unwrap(), expected);
+    assert_eq!(
+        b.read(&r)
+            .expect("the fixture reader returns its authored facts"),
+        expected
+    );
     assert_eq!(expected.proven_consumed, 6);
 }
 #[test]
 fn unknown_incoming_stock_cannot_supply_a_positive_production_claim() {
-    let mut audit = Audit::seed(&seed(2, 0), 39, [7; 32]).unwrap();
+    let mut audit =
+        Audit::seed(&seed(2, 0), 39, [7; 32]).expect("the fixture seeds the authored rows");
     let mut r = receipts(40);
     output(&mut r, 10);
     supply(&mut r, 1, 10, true);
     supply(&mut r, 3, 10, false);
     retail(&mut r, 2, 10);
-    assert_eq!(audit.read(&r).unwrap().proven_consumed, 0);
+    assert_eq!(
+        audit
+            .read(&r)
+            .expect("the fixture reader returns its authored facts")
+            .proven_consumed,
+        0
+    );
 }
 #[test]
 fn payment_and_crossed_units_refuse_without_publishing_candidate() {
     let state = seed(2, 0);
-    let mut audit = Audit::seed(&state, 39, [7; 32]).unwrap();
-    let before = audit.evidence().unwrap();
+    let mut audit = Audit::seed(&state, 39, [7; 32]).expect("the fixture seeds the authored rows");
+    let before = audit
+        .evidence()
+        .expect("the fixture call `evidence` succeeds for the authored inputs");
     let mut r = receipts(40);
     output(&mut r, 10);
     supply(&mut r, 1, 10, true);
     retail(&mut r, 2, 10);
     r.local_transfers[0].unit_id = UnitId::from_bytes([9; 32]);
-    assert_eq!(audit.read(&r).unwrap_err(), Refusal::Unit);
-    assert_eq!(audit.evidence().unwrap(), before);
+    assert_eq!(
+        audit
+            .read(&r)
+            .expect_err("the malformed read request is refused"),
+        Refusal::Unit
+    );
+    assert_eq!(
+        audit
+            .evidence()
+            .expect("the fixture call `evidence` succeeds for the authored inputs"),
+        before
+    );
     r.local_transfers[0].unit_id = unit();
     r.money_transfers.pop();
-    assert_eq!(audit.read(&r).unwrap_err(), Refusal::Payment);
-    assert_eq!(audit.evidence().unwrap(), before);
+    assert_eq!(
+        audit
+            .read(&r)
+            .expect_err("the malformed read request is refused"),
+        Refusal::Payment
+    );
+    assert_eq!(
+        audit
+            .evidence()
+            .expect("the fixture call `evidence` succeeds for the authored inputs"),
+        before
+    );
 }
 #[test]
 fn no_usable_producer_is_explicitly_incomplete() {
@@ -415,9 +463,9 @@ fn no_usable_producer_is_explicitly_incomplete() {
     state.process_outputs.clear();
     assert_eq!(
         Audit::seed(&state, 39, [7; 32])
-            .unwrap()
+            .expect("the fixture seeds the authored rows")
             .evidence()
-            .unwrap()
+            .expect("the fixture call `evidence` succeeds for the authored inputs")
             .status,
         "no_usable_chain"
     );
@@ -431,7 +479,7 @@ fn aid_and_initial_household_stock_are_unproven_consumption_allowances() {
     };
     book.recurring
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .household_stocks
         .push(HouseholdStock {
             principal_id: household(),
@@ -439,7 +487,7 @@ fn aid_and_initial_household_stock_are_unproven_consumption_allowances() {
             unit_id: unit(),
             quantity: 4,
         });
-    let mut audit = Audit::seed(&state, 39, [7; 32]).unwrap();
+    let mut audit = Audit::seed(&state, 39, [7; 32]).expect("the fixture seeds the authored rows");
     let mut r = receipts(40);
     output(&mut r, 10);
     retail(&mut r, 1, 10);
@@ -460,19 +508,28 @@ fn aid_and_initial_household_stock_are_unproven_consumption_allowances() {
         cash_amount: money(0),
         contribution_hours: 0,
     });
-    let e = audit.read(&r).unwrap();
+    let e = audit
+        .read(&r)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(e.proven_consumed, 0);
     assert_eq!(e.household_unproven_allowance, 10);
 }
 #[test]
 fn direct_producer_retailer_needs_paid_handoff_and_actual_consumption() {
-    let mut audit = Audit::seed(&seed(1, 3), 39, [7; 32]).unwrap();
+    let mut audit =
+        Audit::seed(&seed(1, 3), 39, [7; 32]).expect("the fixture seeds the authored rows");
     let mut r = receipts(40);
     output(&mut r, 10);
     retail(&mut r, 1, 10);
-    let e = audit.read(&r).unwrap();
+    let e = audit
+        .read(&r)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(e.proven_consumed, 7);
-    assert!(e.selection.unwrap().direct_producer_retailer);
+    assert!(
+        e.selection
+            .expect("the fixture observation carries its selection")
+            .direct_producer_retailer
+    );
 }
 
 #[test]
@@ -497,9 +554,9 @@ fn seed_transit_is_an_allowance_once() {
                 10,
                 money(1),
             )
-            .unwrap(),
+            .expect("the constructor accepts the authored fixture arguments"),
         )
-        .unwrap();
+        .expect("the fixture reserve admits the purchase");
     state.orders.push(OrderRow {
         order_id: id,
         access_mode: OrderAccessMode::CommoditySale,
@@ -526,7 +583,7 @@ fn seed_transit_is_an_allowance_once() {
         unit_id: unit(),
         quantity: 10,
     });
-    let mut audit = Audit::seed(&state, 39, [7; 32]).unwrap();
+    let mut audit = Audit::seed(&state, 39, [7; 32]).expect("the fixture seeds the authored rows");
     let mut r = receipts(40);
     output(&mut r, 20);
     supply(&mut r, 1, 20, true);
@@ -550,7 +607,9 @@ fn seed_transit_is_an_allowance_once() {
         MoneyLocation::Cash(AccountId::Site(site(3))),
         10,
     );
-    let e = audit.read(&r).unwrap();
+    let e = audit
+        .read(&r)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(e.retailer_unproven_allowance, 10);
     assert_eq!(e.proven_consumed, 20);
 }
@@ -558,13 +617,30 @@ fn seed_transit_is_an_allowance_once() {
 fn noncontiguous_period_and_checked_overflow_refuse_atomically() {
     let mut state = seed(1, 0);
     state.process_outputs[0].quantity_per_batch = 2;
-    let mut audit = Audit::seed(&state, 39, [7; 32]).unwrap();
-    let before = audit.evidence().unwrap();
-    assert_eq!(audit.read(&receipts(41)).unwrap_err(), Refusal::Period);
+    let mut audit = Audit::seed(&state, 39, [7; 32]).expect("the fixture seeds the authored rows");
+    let before = audit
+        .evidence()
+        .expect("the fixture call `evidence` succeeds for the authored inputs");
+    assert_eq!(
+        audit
+            .read(&receipts(41))
+            .expect_err("the malformed read request is refused"),
+        Refusal::Period
+    );
     let mut r = receipts(40);
     output(&mut r, u64::MAX);
-    assert_eq!(audit.read(&r).unwrap_err(), Refusal::Overflow);
-    assert_eq!(audit.evidence().unwrap(), before);
+    assert_eq!(
+        audit
+            .read(&r)
+            .expect_err("the malformed read request is refused"),
+        Refusal::Overflow
+    );
+    assert_eq!(
+        audit
+            .evidence()
+            .expect("the fixture call `evidence` succeeds for the authored inputs"),
+        before
+    );
 }
 
 #[test]
@@ -579,7 +655,7 @@ fn omitted_ninth_output_cannot_borrow_later_retained_production() {
             quantity_per_batch: 1,
         })
         .collect();
-    let mut audit = Audit::seed(&state, 39, [7; 32]).unwrap();
+    let mut audit = Audit::seed(&state, 39, [7; 32]).expect("the fixture seeds the authored rows");
     let mut sold = receipts(40);
     sold.production.push(ProductionReceipt {
         process_id: ProcessId::from_bytes([9; 32]),
@@ -588,7 +664,13 @@ fn omitted_ninth_output_cannot_borrow_later_retained_production() {
         produced_batches: 1,
     });
     retail(&mut sold, 1, 1);
-    assert_eq!(audit.read(&sold).unwrap().proven_consumed, 0);
+    assert_eq!(
+        audit
+            .read(&sold)
+            .expect("the fixture reader returns its authored facts")
+            .proven_consumed,
+        0
+    );
     let mut retained = receipts(41);
     retained.production.push(ProductionReceipt {
         process_id: ProcessId::from_bytes([1; 32]),
@@ -596,7 +678,9 @@ fn omitted_ninth_output_cannot_borrow_later_retained_production() {
         planned_batches: 1,
         produced_batches: 1,
     });
-    let e = audit.read(&retained).unwrap();
+    let e = audit
+        .read(&retained)
+        .expect("the fixture reader returns its authored facts");
     assert_eq!(e.proven_consumed, 0);
     assert_eq!(e.status, "no_usable_chain");
     assert!(e.selection.is_none());

@@ -43,14 +43,14 @@ fn binding(processes: &[u8]) -> StaffingPoolBinding {
         site(1),
         unit(1),
         2,
-        StaffingPolicy::one_period(40).unwrap(),
+        StaffingPolicy::one_period(40).expect("the one-period fixture advances"),
         processes
             .iter()
             .copied()
             .map(|id| StaffingWorkSource::Production(process(id)))
             .collect(),
     )
-    .unwrap()
+    .expect("the authored fixture satisfies the constructor invariants")
 }
 
 fn opening() -> MaterialCircuitState {
@@ -186,40 +186,43 @@ fn real_arrival_requests_work_with_zero_employment_then_plans_next_period() {
     let original = opening.clone();
     let binding = binding(&[1]);
     let dispatched = babylon_material_circuit::close_material_period(&opening)
-        .unwrap()
+        .expect("the material period closes")
         .finish_with_labor(vec![labor(2, 0)])
-        .unwrap();
+        .expect("the fixture completes with labor");
     assert_eq!(dispatched.dispatches.len(), 1);
     assert!(dispatched.state.production_commitments.is_empty());
     assert_eq!(opening, original);
 
-    let closed = babylon_material_circuit::close_material_period(&dispatched.state).unwrap();
+    let closed = babylon_material_circuit::close_material_period(&dispatched.state)
+        .expect("the material period closes");
     assert_eq!((closed.closing_period(), closed.next_period()), (2, 3));
     assert_eq!(closed.inventory()[0].quantity, 4);
     let requests = closed
         .staffing_requests(std::slice::from_ref(&binding))
-        .unwrap();
+        .expect("the fixture staffing requests are present");
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].period(), 2);
     assert_eq!(requests[0].hours(), 40);
     let people = StaffingState::try_new(
         2,
-        vec![StaffingPoolState::try_new(binding, 0, 2, 0).unwrap()],
+        vec![StaffingPoolState::try_new(binding, 0, 2, 0)
+            .expect("the authored fixture satisfies the constructor invariants")],
     )
-    .unwrap();
-    let staffing = babylon_material_circuit::advance_staffing(&people, &requests).unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
+    let staffing = babylon_material_circuit::advance_staffing(&people, &requests)
+        .expect("the fixture staffing advances");
     assert_eq!(staffing.receipts()[0].hires(), 1);
     let arrival = closed
         .finish_with_labor(staffing.next_labor().to_vec())
-        .unwrap();
+        .expect("the fixture completes with labor");
     assert_eq!(arrival.arrivals.len(), 1);
     assert!(arrival.production.is_empty());
     assert_eq!(arrival.state.production_commitments[0].planned_batches, 2);
     assert_eq!(arrival.state.labor, vec![labor(3, 40)]);
     let production = babylon_material_circuit::close_material_period(&arrival.state)
-        .unwrap()
+        .expect("the material period closes")
         .finish_with_labor(vec![labor(4, 0)])
-        .unwrap();
+        .expect("the fixture completes with labor");
     assert_eq!(production.production[0].produced_batches, 2);
     // Debiting preserves existing zero rows, including the emptied supplier.
     assert_eq!(
@@ -284,10 +287,19 @@ fn requests_share_inputs_preserve_zero_processes_and_ignore_labor_under_permutat
     twin.capacities.reverse();
     twin.labor = vec![labor(1, 0)];
     let bindings = [binding(&[3, 1, 2])];
-    let closed = babylon_material_circuit::close_material_period(&state).unwrap();
-    let requests = closed.staffing_requests(&bindings).unwrap();
-    let permuted = babylon_material_circuit::close_material_period(&twin).unwrap();
-    assert_eq!(requests, permuted.staffing_requests(&bindings).unwrap());
+    let closed = babylon_material_circuit::close_material_period(&state)
+        .expect("the material period closes");
+    let requests = closed
+        .staffing_requests(&bindings)
+        .expect("the fixture staffing requests are present");
+    let permuted =
+        babylon_material_circuit::close_material_period(&twin).expect("the material period closes");
+    assert_eq!(
+        requests,
+        permuted
+            .staffing_requests(&bindings)
+            .expect("the fixture staffing requests are present")
+    );
     assert_eq!(
         requests.iter().map(|row| row.hours()).collect::<Vec<_>>(),
         [30, 30, 0]
@@ -295,8 +307,12 @@ fn requests_share_inputs_preserve_zero_processes_and_ignore_labor_under_permutat
     assert_eq!(closed.inventory(), state.inventory);
     // The final planner must use the real small replacement, not request-mode grants
     // or either preseeded future schedule. Shared labor allows one batch each.
-    let actual = closed.finish_with_labor(vec![labor(2, 20)]).unwrap();
-    let twin = permuted.finish_with_labor(vec![labor(2, 20)]).unwrap();
+    let actual = closed
+        .finish_with_labor(vec![labor(2, 20)])
+        .expect("the fixture completes with labor");
+    let twin = permuted
+        .finish_with_labor(vec![labor(2, 20)])
+        .expect("the fixture completes with labor");
     assert_eq!(actual, twin);
     assert_eq!(actual.state.labor, vec![labor(2, 20)]);
     assert_eq!(actual.state.production_commitments.len(), 2);
@@ -312,7 +328,8 @@ fn requests_share_inputs_preserve_zero_processes_and_ignore_labor_under_permutat
 #[test]
 fn staffing_requests_refuse_incomplete_duplicate_and_foreign_bindings() {
     let state = shared_opening();
-    let closed = babylon_material_circuit::close_material_period(&state).unwrap();
+    let closed = babylon_material_circuit::close_material_period(&state)
+        .expect("the material period closes");
     for bindings in [vec![], vec![binding(&[1, 2])], vec![binding(&[1, 2, 4])]] {
         assert_eq!(
             closed.staffing_requests(&bindings),
@@ -329,13 +346,13 @@ fn staffing_requests_refuse_incomplete_duplicate_and_foreign_bindings() {
             owner,
             labor_unit,
             2,
-            StaffingPolicy::one_period(40).unwrap(),
+            StaffingPolicy::one_period(40).expect("the one-period fixture advances"),
             vec![1, 2, 3]
                 .into_iter()
                 .map(|id| StaffingWorkSource::Production(process(id)))
                 .collect(),
         )
-        .unwrap();
+        .expect("the authored fixture satisfies the constructor invariants");
         assert_eq!(
             closed.staffing_requests(&[foreign]),
             Err(MaterialCircuitError::ProcessInvariant)
@@ -344,7 +361,7 @@ fn staffing_requests_refuse_incomplete_duplicate_and_foreign_bindings() {
     assert_eq!(
         closed
             .staffing_requests(&[binding(&[1, 2, 3])])
-            .unwrap()
+            .expect("the fixture staffing requests are present")
             .len(),
         3
     );
@@ -368,16 +385,16 @@ fn invalid_next_labor_refuses_without_mutating_opening_or_publishing_a_partial_c
     ] {
         assert_eq!(
             babylon_material_circuit::close_material_period(&state)
-                .unwrap()
+                .expect("the material period closes")
                 .finish_with_labor(rows),
             Err(expected)
         );
         assert_eq!(state, original);
     }
     let finished = babylon_material_circuit::close_material_period(&state)
-        .unwrap()
+        .expect("the material period closes")
         .finish_with_labor(vec![labor(2, 0)])
-        .unwrap();
+        .expect("the fixture completes with labor");
     assert!(finished.state.production_commitments.is_empty());
     assert_eq!(finished.state.labor, vec![labor(2, 0)]);
 }
@@ -389,7 +406,8 @@ fn request_hour_overflow_and_closing_period_overflow_refuse_atomically() {
     state.capacities[0].available_batches = 2;
     state.labor_coefficients[0].quantity_per_batch = u64::MAX;
     let original = state.clone();
-    let closed = babylon_material_circuit::close_material_period(&state).unwrap();
+    let closed = babylon_material_circuit::close_material_period(&state)
+        .expect("the material period closes");
     assert_eq!(
         closed.staffing_requests(&[binding(&[1])]),
         Err(MaterialCircuitError::Arithmetic)
@@ -412,11 +430,12 @@ fn request_hour_overflow_and_closing_period_overflow_refuse_atomically() {
 fn supplied_schedule_and_one_shot_use_identical_execution_and_planning() {
     let mut state = opening();
     state.labor.push(labor(2, 20));
-    let one_shot = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let one_shot = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     let split = babylon_material_circuit::close_material_period(&state)
-        .unwrap()
+        .expect("the material period closes")
         .finish_with_labor(vec![labor(2, 20)])
-        .unwrap();
+        .expect("the fixture completes with labor");
     assert_eq!(split, one_shot);
 }
 
@@ -432,13 +451,19 @@ fn zero_current_labor_still_blocks_execution_before_unconstrained_next_period_re
         period: 1,
         planned_batches: 4,
     });
-    let closed = babylon_material_circuit::close_material_period(&state).unwrap();
+    let closed = babylon_material_circuit::close_material_period(&state)
+        .expect("the material period closes");
     assert_eq!(closed.inventory(), state.inventory);
     assert_eq!(
-        closed.staffing_requests(&[binding(&[1])]).unwrap()[0].hours(),
+        closed
+            .staffing_requests(&[binding(&[1])])
+            .expect("the fixture staffing requests are present")[0]
+            .hours(),
         40
     );
-    let next = closed.finish_with_labor(vec![labor(2, 40)]).unwrap();
+    let next = closed
+        .finish_with_labor(vec![labor(2, 40)])
+        .expect("the fixture completes with labor");
     assert_eq!(next.production[0].produced_batches, 0);
     assert_eq!(next.state.production_commitments[0].planned_batches, 4);
     assert_eq!(next.state.inventory, state.inventory);
@@ -467,9 +492,9 @@ fn replacement_labor_is_sorted_before_the_planner_searches_multiple_principals()
     let mut second = labor(2, 20);
     second.site_id = site(2);
     let next = babylon_material_circuit::close_material_period(&state)
-        .unwrap()
+        .expect("the material period closes")
         .finish_with_labor(vec![second.clone(), labor(2, 10)])
-        .unwrap();
+        .expect("the fixture completes with labor");
     assert_eq!(next.state.labor, [labor(2, 10), second]);
     assert_eq!(next.state.production_commitments[0].planned_batches, 1);
     assert_eq!(next.state.production_commitments[1].planned_batches, 2);

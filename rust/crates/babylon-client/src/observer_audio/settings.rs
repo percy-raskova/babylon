@@ -414,7 +414,11 @@ mod tests {
         assert_eq!(*deck, MusicDeck::Gameplay(0));
         assert!(matches!(settings.mode, PlaybackMode::Once));
         assert_eq!(
-            player.0.path().unwrap().path(),
+            player
+                .0
+                .path()
+                .expect("the fixture call `path` succeeds for the authored inputs")
+                .path(),
             Path::new("music/ambient/01_history_breathing.ogg")
         );
     }
@@ -426,7 +430,7 @@ mod tests {
         let finished = decks
             .iter(app.world())
             .find_map(|(entity, deck)| (*deck == MusicDeck::Gameplay(0)).then_some(entity))
-            .unwrap();
+            .expect("the fixture yields the searched value");
         let (sink, _samples) = Sink::new_idle();
         app.world_mut()
             .entity_mut(finished)
@@ -439,7 +443,13 @@ mod tests {
         assert!(!app.world().entities().contains(finished));
         app.update();
         assert_eq!(app.world().resource::<ObserverAudioSettings>().track, 1);
-        assert_eq!(decks.single(app.world()).unwrap().0, next);
+        assert_eq!(
+            decks
+                .single(app.world())
+                .expect("the fixture holds exactly one matching row")
+                .0,
+            next
+        );
         // Next while muted wins over completion observed in the same frame.
         {
             let mut settings = app.world_mut().resource_mut::<ObserverAudioSettings>();
@@ -453,7 +463,10 @@ mod tests {
         app.update();
         assert_eq!(app.world().resource::<ObserverAudioSettings>().track, 2);
         assert_eq!(
-            *decks.single(app.world()).unwrap().1,
+            *decks
+                .single(app.world())
+                .expect("the fixture holds exactly one matching row")
+                .1,
             MusicDeck::Gameplay(2)
         );
         assert!(!app.world().entities().contains(next));
@@ -476,17 +489,24 @@ mod tests {
             app.world_mut()
                 .resource_mut::<Time>()
                 .advance_by(Duration::from_secs(4));
-            app.world_mut().run_system_once(mix).unwrap();
+            app.world_mut()
+                .run_system_once(mix)
+                .expect("the Bevy system completes one run");
             assert_eq!(
                 app.world()
                     .get::<AudioSink>(playing)
-                    .unwrap()
+                    .expect("the fixture world holds the addressed component")
                     .volume()
                     .to_linear()
                     .to_bits(),
                 volume.to_bits()
             );
-            assert_eq!(decks.single(app.world()).unwrap(), playing);
+            assert_eq!(
+                decks
+                    .single(app.world())
+                    .expect("the fixture holds exactly one matching row"),
+                playing
+            );
             assert_eq!(app.world().resource::<ObserverAudioSettings>().track, 0);
         }
     }
@@ -498,7 +518,7 @@ mod tests {
             .world_mut()
             .query_filtered::<Entity, With<MusicDeck>>()
             .single(app.world())
-            .unwrap();
+            .expect("the fixture holds exactly one matching row");
         let (sink, _samples) = Sink::new_idle();
         app.world_mut()
             .entity_mut(playing)
@@ -509,22 +529,26 @@ mod tests {
         app.world_mut()
             .resource_mut::<Time>()
             .advance_by(Duration::from_secs(8));
-        app.world_mut().run_system_once(mix).unwrap();
+        app.world_mut()
+            .run_system_once(mix)
+            .expect("the Bevy system completes one run");
         let volume = app
             .world()
             .get::<AudioSink>(playing)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .volume()
             .to_linear();
         assert!((20.0 * volume.log10() - 3.0).abs() < 0.001);
         app.world_mut()
             .resource_mut::<ObserverAudioSettings>()
             .music_volume = 0.0;
-        app.world_mut().run_system_once(mix).unwrap();
+        app.world_mut()
+            .run_system_once(mix)
+            .expect("the Bevy system completes one run");
         assert_eq!(
             app.world()
                 .get::<AudioSink>(playing)
-                .unwrap()
+                .expect("the fixture world holds the addressed component")
                 .volume()
                 .to_linear()
                 .to_bits(),
@@ -545,7 +569,11 @@ mod tests {
         assert_eq!(*deck, MusicDeck::Title);
         assert!(matches!(settings.mode, PlaybackMode::Loop));
         assert_eq!(
-            player.0.path().unwrap().path(),
+            player
+                .0
+                .path()
+                .expect("the fixture call `path` succeeds for the authored inputs")
+                .path(),
             Path::new("music/fascist/05_the_purge.ogg")
         );
         let (sink, _samples) = Sink::new_idle();
@@ -553,7 +581,13 @@ mod tests {
             .entity_mut(title)
             .insert(AudioSink::new(sink));
         app.update();
-        assert_eq!(decks.single(app.world()).unwrap().0, title);
+        assert_eq!(
+            decks
+                .single(app.world())
+                .expect("the fixture holds exactly one matching row")
+                .0,
+            title
+        );
         assert_eq!(
             app.world().resource::<ObserverAudioSettings>().track,
             DEFAULT_TRACK_INDEX
@@ -565,7 +599,11 @@ mod tests {
         assert_eq!(*deck, MusicDeck::Gameplay(DEFAULT_TRACK_INDEX));
         assert!(matches!(settings.mode, PlaybackMode::Once));
         assert_eq!(
-            player.0.path().unwrap().path(),
+            player
+                .0
+                .path()
+                .expect("the fixture call `path` succeeds for the authored inputs")
+                .path(),
             Path::new("music/ambient/01_history_breathing.ogg")
         );
         assert!(!app.world().entities().contains(title));
@@ -587,7 +625,13 @@ mod tests {
         let mut decks = app.world_mut().query_filtered::<Entity, With<MusicDeck>>();
         assert_eq!(decks.iter(app.world()).count(), 0);
         app.update();
-        assert_eq!(fanfares.single(app.world()).unwrap().0, fanfare);
+        assert_eq!(
+            fanfares
+                .single(app.world())
+                .expect("the fixture holds exactly one matching row")
+                .0,
+            fanfare
+        );
         app.world_mut().resource_mut::<OpeningPresentation>().stage = OpeningStage::Title;
         app.update();
         assert_eq!(fanfares.iter(app.world()).count(), 0);

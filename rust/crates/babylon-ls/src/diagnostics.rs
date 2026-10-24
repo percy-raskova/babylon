@@ -802,7 +802,12 @@ mod tests {
         };
         assert_eq!(super::precision_of(&located), Precision::Exact);
         assert_eq!(located.family, "E-LEX");
-        let (start, end) = super::token_span_at("(~= agitation 0.5p)", located.position.unwrap());
+        let (start, end) = super::token_span_at(
+            "(~= agitation 0.5p)",
+            located
+                .position
+                .expect("the fixture token records its source position"),
+        );
         assert_eq!(&"(~= agitation 0.5p)"[start..end], "~=");
     }
 
@@ -849,8 +854,20 @@ mod tests {
         // prose) — the SAME range — so the total order's `message`
         // tiebreak decides, and "aaa..." < "duplicate intrinsic".
         assert!(diags[0].message.starts_with("aaa"));
-        assert_eq!(diags[0].data.as_ref().unwrap()["family"], "E-PARSE");
-        assert_eq!(diags[1].data.as_ref().unwrap()["family"], "E-LOAD");
+        assert_eq!(
+            diags[0]
+                .data
+                .as_ref()
+                .expect("the fixture set the optional field before this read")["family"],
+            "E-PARSE"
+        );
+        assert_eq!(
+            diags[1]
+                .data
+                .as_ref()
+                .expect("the fixture set the optional field before this read")["family"],
+            "E-LOAD"
+        );
     }
 
     #[test]
@@ -869,7 +886,13 @@ mod tests {
         let diags =
             super::diagnostics_for_file(&uri(), text, &line_index, std::slice::from_ref(&located));
         assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].data.as_ref().unwrap()["family"], "E-LOAD");
+        assert_eq!(
+            diags[0]
+                .data
+                .as_ref()
+                .expect("the fixture set the optional field before this read")["family"],
+            "E-LOAD"
+        );
         let related = diags[0]
             .related_information
             .as_ref()
@@ -884,8 +907,12 @@ mod tests {
 
     #[test]
     fn compute_result_id_is_deterministic_and_order_sensitive() {
-        let uri_a = "file:///a.bsl".parse::<Uri>().unwrap();
-        let uri_b = "file:///b.bsl".parse::<Uri>().unwrap();
+        let uri_a = "file:///a.bsl"
+            .parse::<Uri>()
+            .expect("the fixture world holds the addressed component");
+        let uri_b = "file:///b.bsl"
+            .parse::<Uri>()
+            .expect("the fixture world holds the addressed component");
         let manifest = b"schema = 2";
         let ab = super::compute_result_id(&[(&uri_a, b"one"), (&uri_b, b"two")], manifest);
         let ab_again = super::compute_result_id(&[(&uri_a, b"one"), (&uri_b, b"two")], manifest);

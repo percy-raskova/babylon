@@ -35,7 +35,11 @@
 
 // This file is both the shared helper module and, because Cargo discovers
 // `tests/*.rs`, a standalone helper target with no product API.
-#![allow(clippy::missing_panics_doc, clippy::must_use_candidate)]
+#![allow(
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    reason = "the panic case is documented on the function; the caller consumes the returned value"
+)]
 
 #[path = "support/helpers.rs"]
 mod helpers;

@@ -401,7 +401,8 @@ mod posting_tests {
     fn exact_owned_postings_reject_damaged_duplicate_and_unmatched_material_evidence() {
         let (mandate, aid, transfers) = local();
         let id = aid[0].commitment_id;
-        let actual = actual_postings(&mandate, id, 1, 1, &aid, &transfers).unwrap();
+        let actual = actual_postings(&mandate, id, 1, 1, &aid, &transfers)
+            .expect("the fixture call `actual_postings` succeeds for the authored inputs");
         assert_eq!(actual.dispatched_quantity, 2); // Captured maximum is nine.
         assert_eq!(actual.fulfillment_hours, 4);
         assert_eq!(actual.payer_cash_reserved_micros, 6);
@@ -441,10 +442,12 @@ mod posting_tests {
             credit: transfers[1].credit.clone(),
         });
         assert_eq!(
-            actual_postings(&mandate, id, 1, 1, &aid, &unrelated).unwrap(),
+            actual_postings(&mandate, id, 1, 1, &aid, &unrelated)
+                .expect("the fixture call `actual_postings` succeeds for the authored inputs"),
             actual
         );
-        let empty = actual_postings(&mandate, id, 1, 1, &aid[..1], &[]).unwrap();
+        let empty = actual_postings(&mandate, id, 1, 1, &aid[..1], &[])
+            .expect("the fixture call `actual_postings` succeeds for the authored inputs");
         assert_eq!(empty.dispatched_quantity, 0);
         assert_eq!(empty.fulfillment_hours, 0);
         assert_eq!(empty.payer_cash_reserved_micros, 0);

@@ -388,8 +388,9 @@ mod tests {
         let control = MichiganMaterialCatalog::from_defines_toml(include_str!(
             "../../../../../content/scenarios/michigan/defines.toml"
         ))
-        .unwrap();
-        let captured = CapturedEconomicCatalog::from_michigan(&control).unwrap();
+        .expect("the authored input admits the derived value");
+        let captured = CapturedEconomicCatalog::from_michigan(&control)
+            .expect("the Michigan fixture content loads");
         let mut missing = captured.input.clone();
         missing
             .sources
@@ -405,7 +406,7 @@ mod tests {
             .sources
             .iter_mut()
             .find(|row| row.kind() == SourceArtifactKind::MichiganSpatialProducts)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let mut bytes = source.bytes().to_vec();
         bytes[52] ^= 1;
         *source = SourceArtifact::capture(SourceArtifactKind::MichiganSpatialProducts, bytes);
@@ -417,7 +418,8 @@ mod tests {
         ));
     }
     fn previous_compiler_refuses(catalog: &CapturedEconomicCatalog, compiler: &str) {
-        let previous = codec::encode(&catalog.input, compiler).unwrap();
+        let previous =
+            codec::encode(&catalog.input, compiler).expect("the fixture value encodes canonically");
         // Genuine prior compiler framing and an exact recomputed digest: refusal
         // must come from supported authority, not damaged or unauthenticated bytes.
         assert_eq!(
@@ -429,7 +431,7 @@ mod tests {
     fn previous_national_world_v4_compiler_is_refused() {
         let catalog =
             CapturedEconomicCatalog::capture(super::super::preset::national_catalog_input(), None)
-                .unwrap();
+                .expect("the fixture captures the authored state");
         previous_compiler_refuses(&catalog, "national-world-v4");
     }
     #[test]
@@ -437,8 +439,9 @@ mod tests {
         let control = MichiganMaterialCatalog::from_defines_toml(include_str!(
             "../../../../../content/scenarios/michigan/defines.toml"
         ))
-        .unwrap();
-        let catalog = CapturedEconomicCatalog::from_michigan(&control).unwrap();
+        .expect("the authored input admits the derived value");
+        let catalog = CapturedEconomicCatalog::from_michigan(&control)
+            .expect("the Michigan fixture content loads");
         previous_compiler_refuses(&catalog, "michigan-control-v1");
     }
 }

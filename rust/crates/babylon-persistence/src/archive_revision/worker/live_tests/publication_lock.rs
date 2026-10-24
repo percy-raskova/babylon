@@ -110,7 +110,10 @@ fn assert_restart_and_retained_evidence(
     .expect("restart authenticates the concurrent commit");
     assert_eq!(runtime.session().completed_tick(), 2);
     assert_eq!(
-        runtime.session().current_world_hash().unwrap(),
+        runtime
+            .session()
+            .current_world_hash()
+            .expect("the committed session publishes a world hash"),
         committed.result_world_hash()
     );
     let actions = OrderedPracticeActionBatch::empty(
@@ -122,7 +125,7 @@ fn assert_restart_and_retained_evidence(
         *runtime
             .session()
             .prepare_advance(&actions)
-            .unwrap()
+            .expect("the session prepares the authored advance")
             .identity(),
         *next_identity
     );

@@ -84,7 +84,10 @@
 // Conformance fixtures exercise exact engine values, transcribe spec literals,
 // and build whole scenarios in one test. These pedantic lints would force
 // ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::float_cmp)]
+#![allow(
+    clippy::float_cmp,
+    reason = "these comparisons pin exact authored f64 values"
+)]
 
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
@@ -99,12 +102,18 @@ const T0: NodeId = NodeId(0);
 const T1: NodeId = NodeId(1);
 const T2: NodeId = NodeId(2);
 const T3: NodeId = NodeId(3);
-#[allow(dead_code)] // named for documentation symmetry with the id map above
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)] // named for documentation symmetry with the id map above
 const SOURCE_B: NodeId = NodeId(4);
 const SINK_A: NodeId = NodeId(5);
 const SINK_B: NodeId = NodeId(6);
 const ISOLATED_C: NodeId = NodeId(7);
-#[allow(dead_code)] // named for documentation symmetry with the id map above
+#[allow(
+    dead_code,
+    reason = "the named constant keeps the scenario identity map readable"
+)] // named for documentation symmetry with the id map above
 const PENAL_COLONY_D: NodeId = NodeId(8);
 const TENANT_1: NodeId = NodeId(9);
 const TENANT_2: NodeId = NodeId(10);
@@ -183,7 +192,11 @@ fn shape_a_heat_spillover_reads_pre_tick_neighbour_state() {
         "exactly the four shape=0 chain territories fire"
     );
 
-    let heat = |id: NodeId| graph.node_attribute(id, "territory/heat").unwrap();
+    let heat = |id: NodeId| {
+        graph
+            .node_attribute(id, "territory/heat")
+            .expect("the fixture node carries the authored attribute")
+    };
     assert_eq!(
         heat(T0).to_bits(),
         0.275_f64.to_bits(),
@@ -270,7 +283,7 @@ fn shape_b_priority_sink_selection_with_a_tie() {
 
     let sink_a_population = graph
         .node_attribute(SINK_A, "territory/population")
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     assert_eq!(
         sink_a_population, 10.0,
         "sink-a (the lower-id, tied-priority sink) received the transfer: \
@@ -335,7 +348,7 @@ fn shape_c_empty_neighbourhood_takes_the_fallback_branch_never_e_eval_021() {
 
     let priority = graph
         .node_attribute(ISOLATED_C, "territory/priority")
-        .unwrap();
+        .expect("the fixture node carries the authored attribute");
     assert_eq!(
         priority, 1.0,
         "the update-node target resolved to self (isolated-c) via the \
@@ -380,7 +393,7 @@ fn shape_d_penal_colony_suppression_writes_only_tenant_classes() {
     let organization = |id: NodeId| {
         graph
             .node_attribute(id, "social-class/organization")
-            .unwrap()
+            .expect("the fixture node carries the authored attribute")
     };
     assert_eq!(organization(TENANT_1), 0.0, "tenant-1: zeroed via TENANCY");
     assert_eq!(organization(TENANT_2), 0.0, "tenant-2: zeroed via TENANCY");

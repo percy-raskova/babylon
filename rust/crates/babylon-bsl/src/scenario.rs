@@ -88,7 +88,10 @@
 // `Result<_, ScenarioError>` is the right trade against boxing a field
 // §2.3 specifies unboxed, or `Box`-wrapping every one of this module's
 // ~20 pre-existing fallible signatures for a rarely-taken error branch.
-#![allow(clippy::result_large_err)]
+#![allow(
+    clippy::result_large_err,
+    reason = "the error carries the full authored refusal context"
+)]
 
 #[path = "scenario_seed.rs"]
 pub mod seed;
@@ -715,7 +718,10 @@ fn effective_practice_attributes(attrs: &[SExpr]) -> (bool, Option<f64>) {
         } else if field == "organization/action-budget" {
             budget = match value {
                 Atom::Int(value) => {
-                    #[allow(clippy::cast_precision_loss)]
+                    #[allow(
+                        clippy::cast_precision_loss,
+                        reason = "the authored integer magnitudes are exact in f64"
+                    )]
                     let storage = *value as f64;
                     Some(storage)
                 }
@@ -1127,7 +1133,10 @@ fn load_scenario_inner(
     load_scenario_forms(source_id, &forms, graph, registries)
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "`load_scenario_forms` keeps one authored sequence in a single place"
+)]
 fn load_scenario_forms(
     source_id: &str,
     forms: &[SExpr],
@@ -1472,7 +1481,10 @@ fn load_defconst(
             // the SAME arithmetic `tick.rs::atom_to_value` performs on a
             // `:default` literal — so a scaled coefficient reads identically
             // whichever door it enters by.
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let numerator = scaled.unscaled as f64;
             Value::Real(numerator / 10_f64.powi(i32::from(scaled.scale)))
         }
@@ -1695,7 +1707,10 @@ fn parse_ratio_bound(
 /// lex time — but a defensive, named error (rather than an `expect`) keeps
 /// a reader/kernel sort disagreement a loud `ScenarioError`, not a panic.
 fn ratio_from_scaled(qname: &str, scaled: &ScaledLit) -> Result<Ratio, ScenarioError> {
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "the authored integer magnitudes are exact in f64"
+    )]
     let raw = scaled.unscaled as f64 / 10_f64.powi(i32::from(scaled.scale));
     Ratio::new(raw).map_err(|e| {
         err(format!(
@@ -2146,7 +2161,10 @@ fn attribute_value_int(atom: &Atom, local: &str, field: &str) -> Result<f64, Sce
                     "{local} field `{field}`: {value} exceeds f64's exact integer range"
                 )));
             }
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             Ok(*value as f64)
         }
         Atom::Currency(_) => Err(err(currency_refusal_message(local, field))),
@@ -2172,11 +2190,17 @@ fn attribute_value_real(atom: &Atom, local: &str, field: &str) -> Result<f64, Sc
                     "{local} field `{field}`: {value} exceeds f64's exact integer range"
                 )));
             }
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             Ok(*value as f64)
         }
         Atom::Scaled(scaled) => {
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let numerator = scaled.unscaled as f64;
             Ok(numerator / 10_f64.powi(i32::from(scaled.scale)))
         }
@@ -2246,12 +2270,18 @@ fn attribute_value_unit_interval(
             // `[0,1]` check below is this arm's ONLY domain enforcement, and
             // it is load-bearing: an out-of-range bare Int (e.g. `6`) must
             // still be refused here.
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let widened = *value as f64;
             widened
         }
         Atom::Scaled(scaled) if scaled.kind == ScaledKind::Ratio => {
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let numerator = scaled.unscaled as f64;
             let value = numerator / 10_f64.powi(i32::from(scaled.scale));
             return Err(err(format!(
@@ -2263,7 +2293,10 @@ fn attribute_value_unit_interval(
         Atom::Scaled(scaled) => {
             // See this function's doc comment for the conversion contract
             // and why it is not `grid::quantize`.
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let numerator = scaled.unscaled as f64;
             numerator / 10_f64.powi(i32::from(scaled.scale))
         }
@@ -2412,7 +2445,10 @@ fn load_edge(
     // [0,1]-bounded at lex (E-LEX-024).
     let strength = match strength {
         Atom::Int(value) => {
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let widened = *value as f64;
             widened
         }
@@ -2425,7 +2461,10 @@ fn load_edge(
             // `unscaled / 10^scale` — the crate's one scaled-literal
             // conversion contract (attribute_value_unit_interval's doc
             // comment is its normative home), copied verbatim.
-            #[allow(clippy::cast_precision_loss)]
+            #[allow(
+                clippy::cast_precision_loss,
+                reason = "the authored integer magnitudes are exact in f64"
+            )]
             let numerator = scaled.unscaled as f64;
             numerator / 10_f64.powi(i32::from(scaled.scale))
         }
@@ -2499,7 +2538,10 @@ fn load_edge(
 // the six load-time registries the top-to-bottom law consults — the same
 // shape `load_node`/`load_edge` already take, plus this form's own second
 // seed set. Bundling them into a struct would rename, not reduce, them.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`load_edge_attr` takes every authored field explicitly"
+)]
 fn load_edge_attr(
     parts: &[SExpr],
     graph: &mut dyn GraphSubstrate,
@@ -2728,7 +2770,10 @@ fn load_hyperedge(
         })?;
         members.push(id);
     }
-    #[allow(clippy::cast_possible_truncation)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "the bounded fixture index is range-checked before narrowing"
+    )]
     let member_count = members.len() as u64;
     // Member canonicalization is the executor's already-landed law — see
     // this function's doc comment.
@@ -2867,7 +2912,8 @@ mod tests {
     #[test]
     fn a_scenario_becomes_a_populated_graph() {
         let mut graph = MemoryGraph::new();
-        let loaded = super::load_scenario(TWO_CLASSES, &mut graph).unwrap();
+        let loaded =
+            super::load_scenario(TWO_CLASSES, &mut graph).expect("the authored scenario compiles");
         assert_eq!(loaded.id, "ft/two-classes");
         assert_eq!(loaded.node_count, 2);
         assert_eq!(loaded.edge_count, 1);
@@ -2877,7 +2923,7 @@ mod tests {
         assert!(
             (graph
                 .node_attribute(classes[0], "social-class/wages")
-                .unwrap()
+                .expect("the fixture node carries the authored attribute")
                 - 120.0)
                 .abs()
                 < 1e-12
@@ -2885,7 +2931,7 @@ mod tests {
         assert_eq!(
             graph
                 .neighbors(classes[0], "SOLIDARITY", Direction::Out)
-                .unwrap(),
+                .expect("the fixture node has neighbors"),
             vec![classes[1]],
             "the edge resolved both endpoints by local name"
         );
@@ -2896,9 +2942,16 @@ mod tests {
         // Declaration order fixes id assignment, so a scenario is replayable.
         let mut first = MemoryGraph::new();
         let mut second = MemoryGraph::new();
-        super::load_scenario(TWO_CLASSES, &mut first).unwrap();
-        super::load_scenario(TWO_CLASSES, &mut second).unwrap();
-        assert_eq!(first.state_hash().unwrap(), second.state_hash().unwrap());
+        super::load_scenario(TWO_CLASSES, &mut first).expect("the authored scenario compiles");
+        super::load_scenario(TWO_CLASSES, &mut second).expect("the authored scenario compiles");
+        assert_eq!(
+            first
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
+            second
+                .state_hash()
+                .expect("the fixture graph hashes its state")
+        );
     }
 
     // Task 3.1 RED #1 (plan §3.4): the field must exist and map each minted
@@ -2909,7 +2962,8 @@ mod tests {
     #[test]
     fn node_content_ids_map_each_node_id_back_to_its_declared_local_name() {
         let mut graph = MemoryGraph::new();
-        let loaded = super::load_scenario(TWO_CLASSES, &mut graph).unwrap();
+        let loaded =
+            super::load_scenario(TWO_CLASSES, &mut graph).expect("the authored scenario compiles");
         assert_eq!(
             loaded.node_content_ids.get(&NodeId(0)),
             Some(&"core".to_owned())
@@ -2949,9 +3003,11 @@ mod tests {
   (node periphery NodeType/SOCIAL_CLASS))
 ";
         let mut graph_s = MemoryGraph::new();
-        let loaded_s = super::load_scenario(S, &mut graph_s).unwrap();
+        let loaded_s =
+            super::load_scenario(S, &mut graph_s).expect("the authored scenario compiles");
         let mut graph_s_prime = MemoryGraph::new();
-        let loaded_s_prime = super::load_scenario(S_PRIME, &mut graph_s_prime).unwrap();
+        let loaded_s_prime = super::load_scenario(S_PRIME, &mut graph_s_prime)
+            .expect("the authored scenario compiles");
 
         // `S` mints top to bottom starting at NodeId(0); `S'`'s inserted
         // node takes NodeId(0) instead, pushing `core`/`periphery` one
@@ -3024,10 +3080,10 @@ mod tests {
     fn an_unwritten_field_still_errors_after_a_load() {
         // The loader seeds no defaults, so III.11's honest null survives it.
         let mut graph = MemoryGraph::new();
-        super::load_scenario(TWO_CLASSES, &mut graph).unwrap();
+        super::load_scenario(TWO_CLASSES, &mut graph).expect("the authored scenario compiles");
         let err = graph
             .node_attribute(NodeId(0), "social-class/agitation")
-            .unwrap_err();
+            .expect_err("the fixture call `node_attribute` fails for the authored inputs");
         assert!(err.message.contains("never a default"), "{}", err.message);
     }
 
@@ -3039,7 +3095,8 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("duplicate scenario name"),
             "{}",
@@ -3055,7 +3112,8 @@ mod tests {
   (edge EdgeType/SOLIDARITY core ghost 1))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("unknown node `ghost`"),
             "{}",
@@ -3075,7 +3133,7 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/wages 120$)))
 ";
         let mut graph = MemoryGraph::new();
-        super::load_scenario(source, &mut graph).unwrap();
+        super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         assert_eq!(
             graph.node_attribute_currency(NodeId(0), "social-class/wages"),
             Ok(Currency::from_micro_units(120_000_000))
@@ -3097,7 +3155,8 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/wagez 120)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(err.message.contains("never declared"), "{}", err.message);
     }
 
@@ -3123,7 +3182,8 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/agitation 120)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(err.message.contains("declared"), "{}", err.message);
     }
 
@@ -3164,8 +3224,10 @@ mod tests {
                  (node core NodeType/SOCIAL_CLASS (social-class/x {literal})))"
             );
             let mut graph = MemoryGraph::new();
-            super::load_scenario(&source, &mut graph).unwrap();
-            let value = graph.node_attribute(NodeId(0), "social-class/x").unwrap();
+            super::load_scenario(&source, &mut graph).expect("the authored scenario compiles");
+            let value = graph
+                .node_attribute(NodeId(0), "social-class/x")
+                .expect("the fixture node carries the authored attribute");
             assert_eq!(
                 value.to_bits(),
                 expected_bits,
@@ -3193,10 +3255,10 @@ mod tests {
   (edge EdgeType/SOLIDARITY core periphery 0.125c))
 ";
         let mut graph = MemoryGraph::new();
-        super::load_scenario(source, &mut graph).unwrap();
+        super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         let strength = graph
             .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/strength")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert_eq!(
             strength.to_bits(),
             (0.125_f64).to_bits(),
@@ -3220,10 +3282,10 @@ mod tests {
                  (edge EdgeType/SOLIDARITY core periphery {literal}))"
             );
             let mut graph = MemoryGraph::new();
-            super::load_scenario(&source, &mut graph).unwrap();
+            super::load_scenario(&source, &mut graph).expect("the authored scenario compiles");
             let strength = graph
                 .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/strength")
-                .unwrap();
+                .expect("the fixture edge carries the authored attribute");
             assert_eq!(strength.to_bits(), (0.125_f64).to_bits(), "{literal}");
         }
     }
@@ -3244,7 +3306,8 @@ mod tests {
                  (edge EdgeType/SOLIDARITY core periphery {literal}))"
             );
             let mut graph = MemoryGraph::new();
-            let err = super::load_scenario(&source, &mut graph).unwrap_err();
+            let err = super::load_scenario(&source, &mut graph)
+                .expect_err("the malformed scenario is refused");
             assert!(
                 err.message.contains(
                     "expected an integer or p/i/c-suffixed unit-interval strength literal"
@@ -3281,7 +3344,8 @@ mod tests {
             // Review round 1 (#576, Minor): thread the REAL `node_content_ids`
             // this hydration produces, rather than discarding it and passing
             // an empty map: the hydrated names are the sealed fixture identities.
-            let loaded_scenario = super::load_scenario(&source, &mut graph).unwrap();
+            let loaded_scenario =
+                super::load_scenario(&source, &mut graph).expect("the authored scenario compiles");
 
             let types = TypeEnv {
                 fields: HashMap::from([
@@ -3360,10 +3424,10 @@ mod tests {
 
             let seeded = graph
                 .node_attribute(NodeId(0), "social-class/seeded")
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
             let written = graph
                 .node_attribute(NodeId(0), "social-class/written")
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
             assert_eq!(
                 seeded.to_bits(),
                 written.to_bits(),
@@ -3393,7 +3457,8 @@ mod tests {
                  (node core NodeType/SOCIAL_CLASS (social-class/seeded {literal})))"
             );
             let mut graph = MemoryGraph::new();
-            let loaded_scenario = super::load_scenario(&source, &mut graph).unwrap();
+            let loaded_scenario =
+                super::load_scenario(&source, &mut graph).expect("the authored scenario compiles");
 
             let types = TypeEnv {
                 fields: HashMap::from([
@@ -3472,10 +3537,10 @@ mod tests {
 
             let seeded = graph
                 .node_attribute_currency(NodeId(0), "social-class/seeded")
-                .unwrap();
+                .expect("the fixture node carries the authored currency");
             let written = graph
                 .node_attribute_currency(NodeId(0), "social-class/written")
-                .unwrap();
+                .expect("the fixture node carries the authored currency");
             assert_eq!(
                 seeded, written,
                 "{literal}: seed path {seeded:?} != runtime path {written:?}"
@@ -3503,8 +3568,10 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/wages 120)))
 ";
         let mut graph = MemoryGraph::new();
-        super::load_scenario(source, &mut graph).unwrap();
-        let bytes = graph.encode_state().unwrap();
+        super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
+        let bytes = graph
+            .encode_state()
+            .expect("the graph encodes its canonical state");
         // Hand-built expected encoding: one node, one int attribute, no
         // edges, no hyperedges, no edge attributes, no currency attributes
         // — sections 0x01/0x02 only, 0x03-0x06 all empty-but-present or
@@ -3513,12 +3580,16 @@ mod tests {
         let mut manual = StateEncoder::new();
         manual
             .write_nodes(&[(NodeId(0), "SOCIAL_CLASS".to_owned())])
-            .unwrap();
+            .expect("the fixture graph writes its nodes");
         manual
             .write_attributes(&[(NodeId(0), "social-class/wages".to_owned(), 120.0)])
-            .unwrap();
-        manual.write_edges(&[]).unwrap();
-        manual.write_hyperedges(&[]).unwrap();
+            .expect("the fixture graph writes its attributes");
+        manual
+            .write_edges(&[])
+            .expect("the fixture graph writes its edges");
+        manual
+            .write_hyperedges(&[])
+            .expect("the fixture graph writes its hyperedges");
         assert_eq!(
             bytes.as_bytes(),
             manual.as_bytes(),
@@ -3539,8 +3610,10 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/wages 120)))
 ";
         let mut bare_graph = MemoryGraph::new();
-        super::load_scenario(bare_source, &mut bare_graph).unwrap();
-        let bare_bytes = bare_graph.encode_state().unwrap();
+        super::load_scenario(bare_source, &mut bare_graph).expect("the authored scenario compiles");
+        let bare_bytes = bare_graph
+            .encode_state()
+            .expect("the graph encodes its canonical state");
 
         let currency_source = r"
 (scenario ft/with-currency
@@ -3549,8 +3622,11 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/wages 120) (social-class/treasury 5$)))
 ";
         let mut currency_graph = MemoryGraph::new();
-        super::load_scenario(currency_source, &mut currency_graph).unwrap();
-        let currency_bytes = currency_graph.encode_state().unwrap();
+        super::load_scenario(currency_source, &mut currency_graph)
+            .expect("the authored scenario compiles");
+        let currency_bytes = currency_graph
+            .encode_state()
+            .expect("the graph encodes its canonical state");
 
         assert!(
             currency_bytes.as_bytes().starts_with(bare_bytes.as_bytes()),
@@ -3575,7 +3651,7 @@ mod tests {
         assert_eq!(
             currency_graph
                 .node_attribute_currency(NodeId(0), "social-class/treasury")
-                .unwrap(),
+                .expect("the fixture node carries the authored currency"),
             Currency::from_micro_units(5_000_000)
         );
     }
@@ -3593,10 +3669,10 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/agitation 0.5p)))
 ";
         let mut graph = MemoryGraph::new();
-        super::load_scenario(source, &mut graph).unwrap();
+        super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         let value = graph
             .node_attribute(NodeId(0), "social-class/agitation")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert!((value - 0.5).abs() < 1e-12);
     }
 
@@ -3612,10 +3688,10 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/agitation 1)))
 ";
         let mut graph = MemoryGraph::new();
-        super::load_scenario(source, &mut graph).unwrap();
+        super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         let value = graph
             .node_attribute(NodeId(0), "social-class/agitation")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert!((value - 1.0).abs() < 1e-12);
     }
 
@@ -3630,7 +3706,8 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/agitation -3)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(err.message.contains("[0,1]"), "{}", err.message);
         assert!(err.message.contains("never a clamp"), "{}", err.message);
     }
@@ -3647,7 +3724,8 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/agitation 0.5r)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(err.message.contains("Ratio"), "{}", err.message);
     }
 
@@ -3661,7 +3739,8 @@ mod tests {
             (1_i64 << 53) + 1
         );
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(&source, &mut graph).unwrap_err();
+        let err = super::load_scenario(&source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("exceeds f64's exact integer range"),
             "{}",
@@ -3678,7 +3757,7 @@ mod tests {
             1_i64 << 53
         );
         let mut graph = MemoryGraph::new();
-        super::load_scenario(&source, &mut graph).unwrap();
+        super::load_scenario(&source, &mut graph).expect("the authored scenario compiles");
     }
 
     #[test]
@@ -3692,7 +3771,8 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/wages 120$)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("needs a currency-declared field"),
             "{}",
@@ -3708,7 +3788,8 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/agitation 120$)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("needs a currency-declared field"),
             "{}",
@@ -3736,8 +3817,10 @@ mod tests {
     (social-class/agitation 0.358c)))
 ";
         let mut graph = MemoryGraph::new();
-        super::load_scenario(source, &mut graph).unwrap();
-        let hash = graph.state_hash().unwrap();
+        super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
+        let hash = graph
+            .state_hash()
+            .expect("the fixture graph hashes its state");
 
         // Hand-built via StateEncoder directly, bypassing attribute_value
         // (and the whole scenario loader) entirely — a second, independent
@@ -3745,7 +3828,7 @@ mod tests {
         // ascending ("social-class/agitation" < "social-class/population").
         let mut enc = StateEncoder::new();
         enc.write_nodes(&[(NodeId(0), "SOCIAL_CLASS".to_owned())])
-            .unwrap();
+            .expect("the fixture graph writes its nodes");
         enc.write_attributes(&[
             (
                 NodeId(0),
@@ -3754,9 +3837,11 @@ mod tests {
             ),
             (NodeId(0), "social-class/population".to_owned(), 120.0),
         ])
-        .unwrap();
-        enc.write_edges(&[]).unwrap();
-        enc.write_hyperedges(&[]).unwrap();
+        .expect("the fixture graph writes its attributes");
+        enc.write_edges(&[])
+            .expect("the fixture graph writes its edges");
+        enc.write_hyperedges(&[])
+            .expect("the fixture graph writes its hyperedges");
         assert_eq!(hash, enc.finish());
     }
 
@@ -3778,10 +3863,10 @@ mod tests {
                  (node core NodeType/SOCIAL_CLASS (social-class/balance {literal})))"
             );
             let mut graph = MemoryGraph::new();
-            super::load_scenario(&source, &mut graph).unwrap();
+            super::load_scenario(&source, &mut graph).expect("the authored scenario compiles");
             let value = graph
                 .node_attribute(NodeId(0), "social-class/balance")
-                .unwrap();
+                .expect("the fixture node carries the authored attribute");
             assert_eq!(
                 value.to_bits(),
                 expected.to_bits(),
@@ -3804,7 +3889,8 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/balance 9$)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("needs a currency-declared field"),
             "{}",
@@ -3819,7 +3905,8 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS (social-class/balance someident)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("`core`") && err.message.contains("social-class/balance"),
             "{}",
@@ -3838,7 +3925,8 @@ mod tests {
   (defconst economy/tick-budget 12))
 ";
         let mut graph = MemoryGraph::new();
-        let loaded = super::load_scenario(source, &mut graph).unwrap();
+        let loaded =
+            super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         assert_eq!(loaded.consts.len(), 2);
         // 5 / 10^4, the canonical minimal-scale form — the same conversion
         // the tick applies to a `:default` literal.
@@ -3862,7 +3950,8 @@ mod tests {
   (defconst event/ticket-mass 0.5m))
 ";
         let mut graph = MemoryGraph::new();
-        let loaded = super::load_scenario(source, &mut graph).unwrap();
+        let loaded =
+            super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
 
         assert_eq!(loaded.consts.len(), 4);
         assert_eq!(
@@ -3883,7 +3972,8 @@ mod tests {
   (defconst territory/rent-spike-multiplier 2.0r))
 ";
         let mut graph = MemoryGraph::new();
-        let loaded = super::load_scenario(source, &mut graph).unwrap();
+        let loaded =
+            super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         match &loaded.consts["territory/rent-spike-multiplier"] {
             crate::evaluator::Value::Ratio { value, floor, cap } => {
                 assert!((value.get() - 2.0).abs() < 1e-12);
@@ -3902,7 +3992,8 @@ mod tests {
   (defconst lifecycle/pareto-alpha 1.5r :cap 10r))
 ";
         let mut graph = MemoryGraph::new();
-        let loaded = super::load_scenario(source, &mut graph).unwrap();
+        let loaded =
+            super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         match &loaded.consts["lifecycle/pareto-alpha"] {
             crate::evaluator::Value::Ratio { value, floor, cap } => {
                 assert!((value.get() - 1.5).abs() < 1e-12);
@@ -3920,7 +4011,8 @@ mod tests {
   (defconst lifecycle/pareto-alpha 12r :cap 10r))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-052"));
         assert!(
             err.message.contains("exceeds its own :cap"),
@@ -3938,12 +4030,15 @@ mod tests {
   (defconst lifecycle/pareto-alpha 10r :cap 10r))
 ";
         let mut graph = MemoryGraph::new();
-        let loaded = super::load_scenario(source, &mut graph).unwrap();
+        let loaded =
+            super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         match &loaded.consts["lifecycle/pareto-alpha"] {
             crate::evaluator::Value::Ratio { value, floor, cap } => {
                 assert!((value.get() - 10.0).abs() < 1e-12);
                 assert_eq!(*floor, None);
-                assert!((cap.unwrap().get() - 10.0).abs() < 1e-12);
+                assert!(
+                    (cap.expect("the fixture state carries its cap").get() - 10.0).abs() < 1e-12
+                );
             }
             other => panic!("expected Value::Ratio, got {other:?}"),
         }
@@ -3960,7 +4055,8 @@ mod tests {
         ] {
             let source = format!("(scenario ft/stray-cap {src})");
             let mut graph = MemoryGraph::new();
-            let err = super::load_scenario(&source, &mut graph).unwrap_err();
+            let err = super::load_scenario(&source, &mut graph)
+                .expect_err("the malformed scenario is refused");
             assert!(
                 err.message
                     .contains(":floor/:cap are legal only on a Ratio"),
@@ -3977,7 +4073,8 @@ mod tests {
   (defconst lifecycle/pareto-alpha 1.5r :cap 0.5c))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains(":cap's operand must be a Ratio"),
             "{}",
@@ -3997,7 +4094,8 @@ mod tests {
   (defconst metabolism/entropy-factor 1.5r :floor 1r :cap 3r))
 ";
         let mut graph = MemoryGraph::new();
-        let loaded = super::load_scenario(source, &mut graph).unwrap();
+        let loaded =
+            super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         match &loaded.consts["metabolism/entropy-factor"] {
             crate::evaluator::Value::Ratio { value, floor, cap } => {
                 assert!((value.get() - 1.5).abs() < 1e-12);
@@ -4015,7 +4113,8 @@ mod tests {
   (defconst metabolism/entropy-factor 1.5r :floor 1r))
 ";
         let mut graph = MemoryGraph::new();
-        let loaded = super::load_scenario(source, &mut graph).unwrap();
+        let loaded =
+            super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         match &loaded.consts["metabolism/entropy-factor"] {
             crate::evaluator::Value::Ratio { value, floor, cap } => {
                 assert!((value.get() - 1.5).abs() < 1e-12);
@@ -4034,12 +4133,17 @@ mod tests {
   (defconst metabolism/entropy-factor 1.5r :cap 3r :floor 1r))
 ";
         let mut graph = MemoryGraph::new();
-        let loaded = super::load_scenario(source, &mut graph).unwrap();
+        let loaded =
+            super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         match &loaded.consts["metabolism/entropy-factor"] {
             crate::evaluator::Value::Ratio { value, floor, cap } => {
                 assert!((value.get() - 1.5).abs() < 1e-12);
-                assert!((floor.unwrap().get() - 1.0).abs() < 1e-12);
-                assert!((cap.unwrap().get() - 3.0).abs() < 1e-12);
+                assert!(
+                    (floor.expect("the fixture state carries its floor").get() - 1.0).abs() < 1e-12
+                );
+                assert!(
+                    (cap.expect("the fixture state carries its cap").get() - 3.0).abs() < 1e-12
+                );
             }
             other => panic!("expected Value::Ratio, got {other:?}"),
         }
@@ -4054,7 +4158,8 @@ mod tests {
   (defconst metabolism/entropy-factor 1r :floor 1r :cap 3r))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-052"));
         assert!(
             err.message.contains("does not exceed its own :floor"),
@@ -4070,7 +4175,8 @@ mod tests {
   (defconst metabolism/entropy-factor 0.5r :floor 1r :cap 3r))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-052"));
         assert!(
             err.message.contains("does not exceed its own :floor"),
@@ -4095,7 +4201,8 @@ mod tests {
         ] {
             let source = format!("(scenario ft/bad-floor-cap {src})");
             let mut graph = MemoryGraph::new();
-            let err = super::load_scenario(&source, &mut graph).unwrap_err();
+            let err = super::load_scenario(&source, &mut graph)
+                .expect_err("the malformed scenario is refused");
             assert_eq!(err.code, Some("E-LOAD-052"), "{label}: {}", err.message);
             assert!(
                 err.message.contains("is not strictly below its own :cap"),
@@ -4112,7 +4219,8 @@ mod tests {
   (defconst metabolism/entropy-factor 1.5r :floor 0.5c))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains(":floor's operand must be a Ratio"),
             "{}",
@@ -4127,7 +4235,8 @@ mod tests {
   (defconst metabolism/entropy-factor 1.5r :floor 1r :floor 0.5r))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(err.message.contains("given twice"), "{}", err.message);
     }
 
@@ -4138,7 +4247,8 @@ mod tests {
   (defconst metabolism/entropy-factor 1.5r :ceiling 3r))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("unrecognized keyword"),
             "{}",
@@ -4158,7 +4268,8 @@ mod tests {
   (defconst economy/floor-wage 15$))
 ";
         let mut graph = MemoryGraph::new();
-        let loaded = super::load_scenario(source, &mut graph).unwrap();
+        let loaded =
+            super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         assert_eq!(
             loaded.consts["economy/floor-wage"],
             crate::evaluator::Value::Currency(Currency::from_micro_units(15_000_000))
@@ -4176,7 +4287,8 @@ mod tests {
   (defconst economy/floor-wage 15$ :cap 20$))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(err.message.contains("Currency literal"), "{}", err.message);
     }
 
@@ -4190,7 +4302,8 @@ mod tests {
   (defconst economy/base-subsistence 0.5c))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("duplicate defconst"),
             "{}",
@@ -4209,7 +4322,8 @@ mod tests {
   (defconst economy/base-subsistence 0.5c))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(
             err.identity,
             Some(ErrorIdentity::Name("economy/base-subsistence".to_owned()))
@@ -4227,7 +4341,8 @@ mod tests {
         let raw = crate::reader::read_all(source.as_bytes())
             .expect_err("the fixture must not read cleanly");
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.position, Some(raw.position));
         assert_eq!(err.code, Some("E-LEX-003"));
     }
@@ -4243,7 +4358,8 @@ mod tests {
   (defconst economy/base-subsistence (* 2 3)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(err.message.contains("<literal>"), "{}", err.message);
     }
 
@@ -4251,7 +4367,8 @@ mod tests {
     fn a_file_holding_two_scenarios_is_refused() {
         let source = "(scenario a/one) (scenario a/two)";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(err.message.contains("exactly one"), "{}", err.message);
     }
 
@@ -4272,7 +4389,9 @@ mod tests {
         let loaded = super::load_scenario(ORG_KIND_SOURCE, &mut graph).expect("loads");
         assert_eq!(loaded.node_count, 1);
         let id = graph.nodes("ORGANIZATION")[0];
-        let stored = graph.node_attribute(id, "organization/kind").unwrap();
+        let stored = graph
+            .node_attribute(id, "organization/kind")
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (stored - 1.0).abs() < 1e-12,
             "BUSINESS is declaration-order index 1, stored: {stored}"
@@ -4289,7 +4408,8 @@ mod tests {
   (node acme NodeType/ORGANIZATION (organization/kind 1)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-056"));
         assert!(
             err.message.contains("<EnumType>/<MEMBER>") && err.message.contains("never"),
@@ -4307,7 +4427,8 @@ mod tests {
   (node acme NodeType/ORGANIZATION (organization/kind NodeType/SOCIAL_CLASS)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-056"));
         assert!(err.message.contains("OrgKind"), "{}", err.message);
     }
@@ -4321,7 +4442,8 @@ mod tests {
   (node acme NodeType/ORGANIZATION (organization/kind OrgKind/NOWHERE)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-055"));
         assert!(err.message.contains("NOWHERE"), "{}", err.message);
     }
@@ -4334,7 +4456,8 @@ mod tests {
   (node acme NodeType/ORGANIZATION))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-054"));
     }
 
@@ -4347,9 +4470,18 @@ mod tests {
         // at the unit level, for the fixture this test module already uses.
         let mut first = MemoryGraph::new();
         let mut second = MemoryGraph::new();
-        let a = super::load_scenario(TWO_CLASSES, &mut first).unwrap();
-        let b = super::load_scenario(TWO_CLASSES, &mut second).unwrap();
-        assert_eq!(first.state_hash().unwrap(), second.state_hash().unwrap());
+        let a =
+            super::load_scenario(TWO_CLASSES, &mut first).expect("the authored scenario compiles");
+        let b =
+            super::load_scenario(TWO_CLASSES, &mut second).expect("the authored scenario compiles");
+        assert_eq!(
+            first
+                .state_hash()
+                .expect("the fixture graph hashes its state"),
+            second
+                .state_hash()
+                .expect("the fixture graph hashes its state")
+        );
         assert_eq!(a.node_count, 2);
         assert_eq!(b.node_count, 2);
     }
@@ -4376,7 +4508,7 @@ mod tests {
         assert_eq!(
             vocabulary
                 .check_enum_ref("NodeType", "SOCIAL_CLASS")
-                .unwrap(),
+                .expect("the authored enum reference resolves"),
             EnumKind::NodeType
         );
     }
@@ -4397,11 +4529,13 @@ mod tests {
         assert_eq!(
             vocabulary
                 .check_enum_ref("NodeType", "ORGANIZATION")
-                .unwrap(),
+                .expect("the authored enum reference resolves"),
             EnumKind::NodeType
         );
         assert_eq!(
-            vocabulary.check_enum_ref("EdgeType", "SOLIDARITY").unwrap(),
+            vocabulary
+                .check_enum_ref("EdgeType", "SOLIDARITY")
+                .expect("the authored enum reference resolves"),
             EnumKind::EdgeType
         );
     }
@@ -4429,7 +4563,8 @@ mod tests {
   (node acme NodeType/TENANCY))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-032"));
     }
 
@@ -4440,7 +4575,8 @@ mod tests {
   (defvocabulary SovereignType (USA)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-030"));
     }
 
@@ -4452,7 +4588,8 @@ mod tests {
   (defvocabulary NodeType (TERRITORY)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-001"));
     }
 
@@ -4470,7 +4607,8 @@ mod tests {
   (defvocabulary NodeType (EdgeType/SOLIDARITY)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(err.message.contains("bare"), "{}", err.message);
     }
 
@@ -4485,7 +4623,8 @@ mod tests {
   (defvocabulary Node_Type (SOCIAL_CLASS)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-030"));
     }
 
@@ -4500,7 +4639,8 @@ mod tests {
   (defvocabulary NodeType (SocialClass)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(err.message.contains("enum-member"), "{}", err.message);
     }
 
@@ -4516,7 +4656,8 @@ mod tests {
   (node x NodeType/FOO))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-031"));
         assert!(err.message.contains("FOO"), "{}", err.message);
         // The node must never have minted — a loud refusal is not a
@@ -4535,7 +4676,8 @@ mod tests {
   (edge EdgeType/NOWHERE a b 1))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-031"));
         assert!(err.message.contains("NOWHERE"), "{}", err.message);
     }
@@ -4578,7 +4720,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-031"), "{}", err.message);
 
         // undeclared-kind: NodeType is never declared (only EdgeType is) —
@@ -4612,7 +4754,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
         assert_eq!(graph.nodes("SOLIDARITY").len(), 0);
     }
@@ -4635,7 +4777,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-030"), "{}", err.message);
     }
 
@@ -4655,7 +4797,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert_eq!(
             err.identity,
             Some(ErrorIdentity::Enum {
@@ -4687,7 +4829,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
     }
 
@@ -4712,7 +4854,7 @@ mod tests {
 ",
             &mut declared_first,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert_eq!(
             err_declared_first.code,
             Some("E-TYPE-011"),
@@ -4730,7 +4872,7 @@ mod tests {
 ",
             &mut declared_after,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert_eq!(
             err_declared_after.code,
             Some("E-LOAD-030"),
@@ -4760,7 +4902,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
     }
 
@@ -4780,7 +4922,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
     }
 
@@ -4802,7 +4944,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-031"), "{}", err.message);
 
         // undeclared-kind: EdgeType never declared (only NodeType is) —
@@ -4837,7 +4979,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-TYPE-011"), "{}", err.message);
         assert_eq!(graph.edge_count(), 0);
     }
@@ -4915,16 +5057,17 @@ mod tests {
   (edge-attr EdgeType/SOLIDARITY a b solidarity/tension 0.25i))
 ";
         let mut graph = MemoryGraph::new();
-        let loaded = super::load_scenario(source, &mut graph).unwrap();
+        let loaded =
+            super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         assert_eq!(loaded.edge_count, 1, "edge-attr mints no edge of its own");
         let value = graph
             .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/tension")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert_eq!(value.to_bits(), (0.25_f64).to_bits());
         // …and the strength slot the `edge` form seeded is untouched.
         let strength = graph
             .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/strength")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert_eq!(strength.to_bits(), (0.5_f64).to_bits());
     }
 
@@ -4948,7 +5091,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("a → c") && err.message.contains("no such edge"),
             "{}",
@@ -4970,7 +5113,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("solidarity/nope") && err.message.contains("never declared"),
             "{}",
@@ -4997,7 +5140,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("strength") && err.message.contains("IMPLICIT"),
             "{}",
@@ -5019,7 +5162,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("NODE attributes only"),
             "{}",
@@ -5047,7 +5190,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("wages/value-flow") && err.message.contains("SOLIDARITY"),
             "{}",
@@ -5072,7 +5215,8 @@ mod tests {
   (edge-attr EdgeType/SOLIDARITY a b solidarity/tension 0.5i))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-057"), "{}", err.message);
     }
 
@@ -5098,7 +5242,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("solidarity/strength") && err.message.contains("IMPLICIT"),
             "{}",
@@ -5108,7 +5252,7 @@ mod tests {
         // any write reached the substrate.
         let strength = graph
             .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/strength")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert_eq!(strength.to_bits(), (0.5_f64).to_bits());
     }
 
@@ -5132,10 +5276,11 @@ mod tests {
   (hyperedge-attr cell community/heat 0.25c))
 ";
         let mut graph = MemoryGraph::new();
-        let loaded = super::load_scenario(source, &mut graph).unwrap();
+        let loaded =
+            super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         let value = graph
             .hyperedge_attribute(HyperedgeId(0), "community/heat")
-            .unwrap();
+            .expect("the fixture hyperedge carries the authored attribute");
         assert_eq!(value.to_bits(), (0.25_f64).to_bits());
         assert_eq!(
             loaded.hyperedge_content_ids.get(&HyperedgeId(0)),
@@ -5158,10 +5303,10 @@ mod tests {
   (hyperedge-attr cell community/kind CommunityType/LIBERAL))
 ";
         let mut graph = MemoryGraph::new();
-        super::load_scenario(source, &mut graph).unwrap();
+        super::load_scenario(source, &mut graph).expect("the authored scenario compiles");
         let value = graph
             .hyperedge_attribute(HyperedgeId(0), "community/kind")
-            .unwrap();
+            .expect("the fixture hyperedge carries the authored attribute");
         assert_eq!(value.to_bits(), (1.0_f64).to_bits(), "LIBERAL is ordinal 1");
     }
 
@@ -5178,7 +5323,8 @@ mod tests {
   (hyperedge-attr cell community/count 0.5c))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(
             err.message,
             "hyperedge `cell` field `community/count`: expected an integer \
@@ -5200,7 +5346,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert!(
             err.message
                 .contains("hyperedge-attr names unknown hyperedge `ghost`"),
@@ -5221,7 +5367,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("community/heta") && err.message.contains("never declared"),
             "{}",
@@ -5241,7 +5387,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert!(
             err.message
                 .contains("is owned by ECONOMIC_SECTOR, not COMMUNITY"),
@@ -5264,7 +5410,7 @@ mod tests {
 ",
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert_eq!(err.code, Some("E-LOAD-057"), "{}", err.message);
     }
 
@@ -5288,7 +5434,8 @@ mod tests {
   (node class-exploited NodeType/SOCIAL_CLASS (social-class/agitation 0.1i)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario(source, &mut graph).unwrap_err();
+        let err = super::load_scenario(source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert_eq!(
             err.message,
             "node `class-exploited` field `social-class/agitation`: expected an integer \
@@ -5316,7 +5463,7 @@ mod tests {
         let id = graph.nodes("SOCIAL_CLASS")[0];
         let stored = graph
             .node_attribute(id, "social-class/dominant-worldview")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert!(
             (stored - 2.0).abs() < 1e-12,
             "FASCIST is declaration-order index 2, stored: {stored}"
@@ -5331,8 +5478,8 @@ mod tests {
 (node ghost NodeType/SOCIAL_CLASS)
 ";
         let mut graph = MemoryGraph::new();
-        let err =
-            super::load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph).unwrap_err();
+        let err = super::load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph)
+            .expect_err("the malformed scenario is refused");
         // The interpolated head, not the static "node/edge/edge-attr forms
         // belong in the scenario" text every one of these three refusals
         // shares — a broken interpolation (always naming e.g. `defenum`)
@@ -5347,8 +5494,8 @@ mod tests {
 (edge EdgeType/SOLIDARITY a b 1)
 ";
         let mut graph = MemoryGraph::new();
-        let err =
-            super::load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph).unwrap_err();
+        let err = super::load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph)
+            .expect_err("the malformed scenario is refused");
         // Not a bare `contains("edge")` — that would also pass against the
         // static "node/edge/edge-attr forms belong in the scenario" text
         // even if `{tag}` interpolated the WRONG head (or "edge-attr",
@@ -5368,8 +5515,8 @@ mod tests {
 (edge-attr EdgeType/SOLIDARITY a b solidarity/strength 0.5c)
 ";
         let mut graph = MemoryGraph::new();
-        let err =
-            super::load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph).unwrap_err();
+        let err = super::load_scenario_with_prelude(prelude, "(scenario org/t)", &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(err.message.contains("found `edge-attr`"), "{}", err.message);
     }
 
@@ -5387,7 +5534,10 @@ mod tests {
         let mut graph = MemoryGraph::new();
         let loaded = super::load_scenario_with_prelude(WORLDVIEW_PRELUDE, source, &mut graph)
             .expect("an identical re-declaration must not refuse");
-        let ty = loaded.enums.resolve("WorldView").unwrap();
+        let ty = loaded
+            .enums
+            .resolve("WorldView")
+            .expect("the fixture call `resolve` succeeds for the authored inputs");
         assert_eq!(loaded.enums.ordinal(ty, "LIBERAL"), Some(1));
     }
 
@@ -5399,8 +5549,8 @@ mod tests {
   (node core NodeType/SOCIAL_CLASS))
 ";
         let mut graph = MemoryGraph::new();
-        let err =
-            super::load_scenario_with_prelude(WORLDVIEW_PRELUDE, source, &mut graph).unwrap_err();
+        let err = super::load_scenario_with_prelude(WORLDVIEW_PRELUDE, source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(
             err.message.contains("duplicate defenum type name"),
             "{}",
@@ -5450,14 +5600,14 @@ mod tests {
         // scenario's node attribute write.
         let agitation = graph
             .node_attribute(NodeId(0), "social-class/agitation")
-            .unwrap();
+            .expect("the fixture node carries the authored attribute");
         assert_eq!(agitation.to_bits(), (0.3_f64).to_bits());
 
         // deffield (edge field, via D156's edge-attr form): the prelude's
         // field resolved a scenario `(edge-attr ...)` write.
         let tension = graph
             .edge_attribute("SOLIDARITY", NodeId(0), NodeId(1), "solidarity/tension")
-            .unwrap();
+            .expect("the fixture edge carries the authored attribute");
         assert_eq!(tension.to_bits(), (0.25_f64).to_bits());
 
         // defconst: threaded into `LoadedScenario.consts`, the exact map
@@ -5481,11 +5631,13 @@ mod tests {
         assert_eq!(
             vocabulary
                 .check_enum_ref("NodeType", "SOCIAL_CLASS")
-                .unwrap(),
+                .expect("the authored enum reference resolves"),
             EnumKind::NodeType
         );
         assert_eq!(
-            vocabulary.check_enum_ref("EdgeType", "SOLIDARITY").unwrap(),
+            vocabulary
+                .check_enum_ref("EdgeType", "SOLIDARITY")
+                .expect("the authored enum reference resolves"),
             EnumKind::EdgeType
         );
     }
@@ -5498,7 +5650,8 @@ mod tests {
   (defconst event/likelihood 0.25p))
 ";
         let mut graph = MemoryGraph::new();
-        let error = super::load_scenario_with_prelude(prelude, source, &mut graph).unwrap_err();
+        let error = super::load_scenario_with_prelude(prelude, source, &mut graph)
+            .expect_err("the malformed scenario is refused");
 
         assert!(error.message.contains("duplicate defconst"), "{error}");
         assert_eq!(
@@ -5529,7 +5682,7 @@ mod tests {
             &preludes,
             &mut graph,
         )
-        .unwrap();
+        .expect("the authored scenario compiles with its preludes");
 
         let facts = &loaded.mass_declarations;
         assert_eq!(facts.len(), 3);
@@ -5548,8 +5701,11 @@ mod tests {
             (prelude_a, &facts[1], "2m"),
             (prelude_b, &facts[2], "4m"),
         ] {
-            let (_, spans) = crate::reader::read_all_spanned(source.as_bytes()).unwrap();
-            let span = spans.span_of(&fact.form_path).unwrap();
+            let (_, spans) = crate::reader::read_all_spanned(source.as_bytes())
+                .expect("the fixture source is readable");
+            let span = spans
+                .span_of(&fact.form_path)
+                .expect("the fixture source contains the addressed token");
             assert_eq!(&source[span.start..span.end], expected_literal);
         }
     }
@@ -5581,7 +5737,7 @@ mod tests {
         assert_eq!(
             graph
                 .node_attribute(NodeId(0), "social-class/mood")
-                .unwrap()
+                .expect("the fixture node carries the authored attribute")
                 .to_bits(),
             1.0_f64.to_bits()
         );
@@ -5606,7 +5762,7 @@ mod tests {
             &duplicate,
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert!(error.message.contains("duplicate defconst"), "{error}");
 
         let too_many = [NamedDeclarationPrelude {
@@ -5620,7 +5776,7 @@ mod tests {
             &too_many,
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert_eq!(
             error.message,
             "a content set may compose at most 16 declaration preludes"
@@ -5660,7 +5816,7 @@ mod tests {
             &second_bom,
             &mut graph,
         )
-        .unwrap_err();
+        .expect_err("the malformed scenario is refused");
         assert_eq!(error.code, Some("E-LEX-001"));
         assert_eq!(error.position, Some(second_bom[0].source.len()));
     }
@@ -5683,7 +5839,8 @@ mod tests {
   (node a NodeType/SOCIAL_CLASS (social-class/agitation 0.3i)))
 ";
         let mut graph = MemoryGraph::new();
-        let err = super::load_scenario_with_prelude(prelude, source, &mut graph).unwrap_err();
+        let err = super::load_scenario_with_prelude(prelude, source, &mut graph)
+            .expect_err("the malformed scenario is refused");
         assert!(
             err.message
                 .contains("duplicate deffield `social-class/agitation`"),

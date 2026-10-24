@@ -280,11 +280,11 @@ fn build_batch(
         .ok_or(OrderedPracticeActionError::CapacityOverflow {
             field: "ordered practice action batch",
         })?;
-    for (index, source) in source_items
+    let bounded_sources = source_items
         .iter()
         .take(MAX_RESOLVED_PRACTICE_BATCH_ITEMS + 1)
-        .enumerate()
-    {
+        .enumerate();
+    for (index, source) in bounded_sources {
         let ordinal =
             u16::try_from(index).map_err(|_| OrderedPracticeActionError::IntegerConversion {
                 field: "canonical input ordinal",

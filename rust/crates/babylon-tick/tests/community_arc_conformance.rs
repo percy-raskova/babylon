@@ -22,7 +22,10 @@
 // Conformance fixtures exercise exact engine values, transcribe spec literals,
 // and build whole scenarios in one test. These pedantic lints would force
 // ceremony that hides those contracts, so they stay off in test code only.
-#![allow(clippy::unreadable_literal)]
+#![allow(
+    clippy::unreadable_literal,
+    reason = "the literal is an authored byte pattern"
+)]
 
 use babylon_bsl::scenario;
 use babylon_bsl::structural_verbs::CollectingSink;

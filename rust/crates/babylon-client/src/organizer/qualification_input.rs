@@ -533,7 +533,10 @@ fn flush_reply(transport: &Transport, controls: &mut Controls) -> OutputReady {
     }
 }
 
-#[allow(clippy::too_many_arguments)] // The three message writers route distinct existing input ports.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`dispatch` declares each Bevy parameter explicitly"
+)] // The three message writers route distinct existing input ports.
 fn dispatch(
     transport: Res<Transport>,
     mut controls: ResMut<Controls>,
@@ -926,11 +929,14 @@ mod tests {
     fn qualification_socket_is_private_lossless_and_closes_on_drop() {
         let fixture =
             SocketFixture(std::env::temp_dir().join(format!("babylon-q-{}", Uuid::new_v4())));
-        fs::create_dir(&fixture.0).unwrap();
-        fs::set_permissions(&fixture.0, Permissions::from_mode(0o700)).unwrap();
+        fs::create_dir(&fixture.0).expect("the fixture directory is creatable");
+        fs::set_permissions(&fixture.0, Permissions::from_mode(0o700))
+            .expect("the fixture file mode is settable");
         let path = fixture.0.join("control.sock");
-        let listener = UnixListener::bind(&path).unwrap();
-        fs::set_permissions(&path, Permissions::from_mode(0o600)).unwrap();
+        let listener = UnixListener::bind(&path)
+            .expect("the fixture call `bind` succeeds for the authored inputs");
+        fs::set_permissions(&path, Permissions::from_mode(0o600))
+            .expect("the fixture file mode is settable");
         let (started, ready) = mpsc::sync_channel(1);
         let connect_path = path.clone();
         let worker = thread::spawn(move || {
@@ -939,10 +945,13 @@ mod tests {
                     &connect_path,
                     "00000000-0000-0000-0000-000000000001",
                 ))
-                .unwrap();
+                .expect("the receiver stays alive for the send");
         });
-        let (mut peer, _) = listener.accept().unwrap();
-        peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let (mut peer, _) = listener
+            .accept()
+            .expect("the fixture call `accept` succeeds for the authored inputs");
+        peer.set_read_timeout(Some(Duration::from_secs(2)))
+            .expect("the fixture connection accepts the timeout");
         assert!(
             matches!(
                 ready.recv_timeout(Duration::from_millis(50)),
@@ -952,34 +961,61 @@ mod tests {
         );
         let mut admission = b"{\"version\":2,\"campaign_id\":\"00000000-0000-0000-0000-000000000001\",\"phase\":\"capture_ready\"}\n".to_vec();
         admission.extend(frame(""));
-        peer.write_all(&admission).unwrap();
-        let transport = ready.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
-        worker.join().unwrap();
-        let receiver = transport.incoming.lock().unwrap();
-        let Incoming::Input(input) = receiver.recv_timeout(Duration::from_secs(2)).unwrap() else {
+        peer.write_all(&admission)
+            .expect("the fixture sink accepts the authored bytes");
+        let transport = ready
+            .recv_timeout(Duration::from_secs(2))
+            .expect("the producer sends before the fixture timeout")
+            .expect("the nested fixture result is present");
+        worker
+            .join()
+            .expect("the fixture worker finishes without panic");
+        let receiver = transport
+            .incoming
+            .lock()
+            .expect("the fixture lock is never poisoned");
+        let Incoming::Input(input) = receiver
+            .recv_timeout(Duration::from_secs(2))
+            .expect("the producer sends before the fixture timeout")
+        else {
             panic!("private socket must preserve the input frame");
         };
         assert_eq!((input.sequence, input.action), (1, Action::Status));
         let bytes = response(Some(1), "observed", None, json!({}));
-        transport.outgoing.try_send(bytes.clone()).unwrap();
-        let mut read = BufReader::new(peer.try_clone().unwrap());
+        transport
+            .outgoing
+            .try_send(bytes.clone())
+            .expect("the bounded channel has capacity for the fixture message");
+        let mut read = BufReader::new(
+            peer.try_clone()
+                .expect("the fixture input satisfies the fallible conversion"),
+        );
         let mut decoded = Vec::new();
-        read.read_until(b'\n', &mut decoded).unwrap();
+        read.read_until(b'\n', &mut decoded)
+            .expect("the fixture source is readable");
         assert_eq!(decoded, bytes);
-        peer.shutdown(Shutdown::Write).unwrap();
+        peer.shutdown(Shutdown::Write)
+            .expect("the fixture call `shutdown` succeeds for the authored inputs");
         assert!(matches!(
-            receiver.recv_timeout(Duration::from_secs(2)).unwrap(),
+            receiver
+                .recv_timeout(Duration::from_secs(2))
+                .expect("the producer sends before the fixture timeout"),
             Incoming::Closed
         ));
         drop(receiver);
-        fs::set_permissions(&fixture.0, Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(&fixture.0, Permissions::from_mode(0o755))
+            .expect("the fixture file mode is settable");
         assert!(
             Transport::connect(&path, "00000000-0000-0000-0000-000000000001").is_err(),
             "a public directory cannot become a control channel"
         );
         drop(transport);
         let mut trailing = [0; 1];
-        assert_eq!(read.read(&mut trailing).unwrap(), 0);
+        assert_eq!(
+            read.read(&mut trailing)
+                .expect("the fixture reader returns its authored facts"),
+            0
+        );
     }
 
     fn pending(session: &ObserverSession, client: &OrganizerClient, action: Action) -> Pending {
@@ -1021,6 +1057,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "`qualification_opening_controls_wait_for_real_handlers_before_long_frame_progress` keeps one authored boundary's fixture and assertions together"
+    )]
     fn qualification_opening_controls_wait_for_real_handlers_before_long_frame_progress() {
         // Either plugin order must acknowledge the ordinary handler's exact
         // result, including when the same frame advances Production to Title.
@@ -1052,7 +1092,8 @@ mod tests {
                 .resource_mut::<Time<Virtual>>()
                 .set_max_delta(Duration::from_secs(60));
             app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs(60)));
-            let (socket, _peer) = UnixStream::pair().unwrap();
+            let (socket, _peer) = UnixStream::pair()
+                .expect("the fixture call `pair` succeeds for the authored inputs");
             let (incoming, receiver) = mpsc::channel();
             let (outgoing, output) = mpsc::sync_channel(1);
             let transport = Transport {
@@ -1074,11 +1115,18 @@ mod tests {
                 Action::ContinueWarning,
             )
             .input;
-            incoming.send(Incoming::Input(input)).unwrap();
+            incoming
+                .send(Incoming::Input(input))
+                .expect("the receiver stays alive for the send");
             app.update();
-            let reply: Value =
-                serde_json::from_slice(app.world().resource::<Controls>().reply.as_ref().unwrap())
-                    .unwrap();
+            let reply: Value = serde_json::from_slice(
+                app.world()
+                    .resource::<Controls>()
+                    .reply
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read"),
+            )
+            .expect("the authored bytes match the declared schema");
             assert_eq!(
                 reply["event"], "applied",
                 "adapter_first={adapter_first}: {reply}"
@@ -1090,7 +1138,9 @@ mod tests {
                 "the real presentation may progress after the handler is acknowledged"
             );
             app.update();
-            output.try_recv().unwrap();
+            output
+                .try_recv()
+                .expect("the producer sends before this receive");
             let mut input = pending(
                 app.world().resource::<ObserverSession>(),
                 app.world().resource::<OrganizerClient>(),
@@ -1098,11 +1148,18 @@ mod tests {
             )
             .input;
             input.sequence = 2;
-            incoming.send(Incoming::Input(input)).unwrap();
+            incoming
+                .send(Incoming::Input(input))
+                .expect("the receiver stays alive for the send");
             app.update();
-            let reply: Value =
-                serde_json::from_slice(app.world().resource::<Controls>().reply.as_ref().unwrap())
-                    .unwrap();
+            let reply: Value = serde_json::from_slice(
+                app.world()
+                    .resource::<Controls>()
+                    .reply
+                    .as_ref()
+                    .expect("the fixture set the optional field before this read"),
+            )
+            .expect("the authored bytes match the declared schema");
             assert_eq!(
                 reply["event"], "applied",
                 "adapter_first={adapter_first}: {reply}"
@@ -1129,10 +1186,16 @@ mod tests {
             tracked: Some(Tracked::Organizer(id.id, Action::Review)),
             ..default()
         };
-        let command = client.make_command(&session, client.choice()).unwrap();
+        let command = client
+            .make_command(&session, client.choice())
+            .expect("the fixture command builds");
         client.queue(&mut session, RequestKind::Preview, Some(command.clone()));
         receipt.organizer_finished(id, true, &client);
-        let request_id = client.pending.as_ref().unwrap().id;
+        let request_id = client
+            .pending
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .id;
         client
             .previewed(
                 request_id,
@@ -1148,9 +1211,17 @@ mod tests {
                 },
                 &mut session,
             )
-            .unwrap();
+            .expect("the fixture call `previewed` succeeds for the authored inputs");
         assert!(client.pending.is_none());
-        capture_handler(&mut pending, receipt.handled.take().unwrap().unwrap()).unwrap();
+        capture_handler(
+            &mut pending,
+            receipt
+                .handled
+                .take()
+                .expect("the fixture call `take` succeeds for the authored inputs")
+                .expect("the nested fixture result is present"),
+        )
+        .expect("the fixture captures the authored state");
         assert_eq!(pending.request, Some(request_id));
         assert_eq!(pending.reviewed, client.reviewed_command);
         assert_eq!(pending.reviewed.as_ref(), Some(&command));
@@ -1160,10 +1231,19 @@ mod tests {
     fn qualification_review_refuses_a_competing_choice() {
         let (mut client, mut session) = super::super::tests::ready();
         let mut pending = pending(&session, &client, Action::Review);
-        client.draft.as_mut().unwrap().choice = OrganizerChoice::Reinforce;
-        let command = client.make_command(&session, client.choice()).unwrap();
+        client
+            .draft
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .choice = OrganizerChoice::Reinforce;
+        let command = client
+            .make_command(&session, client.choice())
+            .expect("the fixture command builds");
         client.queue(&mut session, RequestKind::Preview, Some(command.clone()));
-        let request = client.pending.as_ref().unwrap();
+        let request = client
+            .pending
+            .as_ref()
+            .expect("the fixture set the optional field before this read");
         assert_eq!(
             capture_handler(
                 &mut pending,
@@ -1191,7 +1271,9 @@ mod tests {
             Some(Tracked::Observer(id.id, Action::Step));
         app.update();
         assert!(matches!(
-            requests.try_recv().unwrap(),
+            requests
+                .try_recv()
+                .expect("the producer sends before this receive"),
             babylon_persistence::runtime_session::RuntimeSessionRequest::Advance { .. }
         ));
         assert!(
@@ -1218,11 +1300,17 @@ mod tests {
         }
         let (mut client, mut session) = super::super::tests::ready();
         session.duration = Some(CampaignDuration::Continuous);
-        let command = client.make_command(&session, client.choice()).unwrap();
+        let command = client
+            .make_command(&session, client.choice())
+            .expect("the fixture command builds");
         client.reviewed_command = Some(command.clone());
         let mut original = pending(&session, &client, Action::Confirm);
         client.queue(&mut session, RequestKind::Submit, Some(command.clone()));
-        let id = client.pending.as_ref().unwrap().id;
+        let id = client
+            .pending
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .id;
         capture_handler(
             &mut original,
             Witness::Organizer {
@@ -1231,7 +1319,7 @@ mod tests {
                 command: Some(command.clone()),
             },
         )
-        .unwrap();
+        .expect("the fixture captures the authored state");
         client
             .accepted(
                 id,
@@ -1242,15 +1330,21 @@ mod tests {
                 },
                 &mut session,
             )
-            .unwrap();
+            .expect("the fixture call `accepted` succeeds for the authored inputs");
         client.require_status(&mut session);
         assert!(session.begin_advance().is_none());
         client.queue(&mut session, RequestKind::Status, None);
-        let status_id = client.pending.as_ref().unwrap().id;
+        let status_id = client
+            .pending
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .id;
         let fresh = babylon_persistence::runtime_session::OrganizerSnapshot {
-            view: client.view.clone().unwrap(),
+            view: client.view.clone().expect("the fixture value clones"),
             pending: client.commitment.clone(),
-            duration: session.duration.unwrap(),
+            duration: session
+                .duration
+                .expect("the fixture session records its duration"),
             aid: client.aid.clone(),
             pending_aid: client.pending_aid.clone(),
             aid_resolutions: client.aid_resolutions.clone(),
@@ -1276,7 +1370,7 @@ mod tests {
                         fresh,
                         &mut world.resource_mut::<ObserverSession>(),
                     )
-                    .unwrap();
+                    .expect("the fixture command reports its status");
             });
         app.update();
         assert_eq!(
@@ -1310,15 +1404,21 @@ mod tests {
                 .into_bytes(),
             frame(""),
             valid.trim_end().as_bytes().to_vec(),
-            vec![b'x'; usize::try_from(INPUT_BYTES + 1).unwrap()],
+            vec![
+                b'x';
+                usize::try_from(INPUT_BYTES + 1).expect("the fixture value fits the target range")
+            ],
         ] {
-            let (socket, mut peer) = UnixStream::pair().unwrap();
+            let (socket, mut peer) = UnixStream::pair()
+                .expect("the fixture call `pair` succeeds for the authored inputs");
             let worker = thread::spawn(move || Transport::from_stream(socket, campaign));
-            peer.write_all(&bytes).unwrap();
-            peer.shutdown(Shutdown::Write).unwrap();
+            peer.write_all(&bytes)
+                .expect("the fixture sink accepts the authored bytes");
+            peer.shutdown(Shutdown::Write)
+                .expect("the fixture call `shutdown` succeeds for the authored inputs");
             let refusal = worker
                 .join()
-                .unwrap()
+                .expect("the fixture worker finishes without panic")
                 .err()
                 .expect("invalid startup must refuse");
             assert!(refusal.contains("capture_startup"));
@@ -1329,32 +1429,42 @@ mod tests {
     fn qualification_frames_reject_ambiguous_or_unbounded_input() {
         for bytes in [
             String::from_utf8(frame(""))
-                .unwrap()
+                .expect("the fixture bytes came from a UTF-8 string")
                 .replace("\"version\":2", "\"version\":1")
                 .into_bytes(),
             frame(",\"sequence\":2"),
             frame(",\"unused\":true"),
             String::from_utf8(frame(""))
-                .unwrap()
+                .expect("the fixture bytes came from a UTF-8 string")
                 .replace("\"scope_epoch\":null,", "")
                 .into_bytes(),
             frame("").into_iter().take_while(|b| *b != b'\n').collect(),
-            vec![b'x'; usize::try_from(INPUT_BYTES + 2).unwrap()],
+            vec![
+                b'x';
+                usize::try_from(INPUT_BYTES + 2).expect("the fixture value fits the target range")
+            ],
         ] {
             assert!(read_input(&mut Cursor::new(bytes)).is_err());
         }
         let mut input = Cursor::new(frame(""));
         assert_eq!(
-            read_input(&mut input).unwrap().unwrap().action,
+            read_input(&mut input)
+                .expect("the fixture source is readable")
+                .expect("the nested fixture result is present")
+                .action,
             Action::Status
         );
-        assert!(read_input(&mut input).unwrap().is_none());
+        assert!(read_input(&mut input)
+            .expect("the fixture source is readable")
+            .is_none());
     }
 
     #[test]
     fn qualification_preconditions_bind_campaign_scope_age_and_generation() {
         let session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(0x342)));
-        let mut input = read_input(&mut Cursor::new(frame(""))).unwrap().unwrap();
+        let mut input = read_input(&mut Cursor::new(frame("")))
+            .expect("the fixture source is readable")
+            .expect("the nested fixture result is present");
         assert!(precondition(&input, &session));
         input.expected_tick = 1;
         assert!(!precondition(&input, &session));

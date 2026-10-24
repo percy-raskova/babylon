@@ -39,7 +39,11 @@ const CONNECTION_HEIGHT: f32 = BASE_HEIGHT + DATA_HEIGHT + 22.0;
 /// Parameters match its pinned PROJ definition (GRS80, parallels 29.5/45.5,
 /// origin 23/-96). No routing distance or material quantity is derived here.
 /// Formula: <https://pubs.usgs.gov/pp/1395/report.pdf>, section 14.
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    reason = "the cast feeds display geometry, where f64 approximation is invisible; the display value is range-checked before the f32 narrowing"
+)]
 fn geographic_map_point([longitude, latitude]: [i64; 2]) -> Option<Vec2> {
     if !(-1_800_000_000..=1_800_000_000).contains(&longitude)
         || !(-900_000_000..=900_000_000).contains(&latitude)
@@ -1020,15 +1024,26 @@ mod tests {
         let fixture: Value = serde_json::from_str(include_str!(
             "../tests/fixtures/michigan_atlas_land_probes.json"
         ))
-        .unwrap();
-        for probe in fixture["probes"].as_array().unwrap() {
-            let longitude_degrees = probe["epsg4269"][0].as_f64().unwrap();
-            let latitude_degrees = probe["epsg4269"][1].as_f64().unwrap();
+        .expect("the authored JSON matches the declared schema");
+        for probe in fixture["probes"]
+            .as_array()
+            .expect("the JSON fixture field is an array")
+        {
+            let longitude_degrees = probe["epsg4269"][0]
+                .as_f64()
+                .expect("the JSON fixture field is a number");
+            let latitude_degrees = probe["epsg4269"][1]
+                .as_f64()
+                .expect("the JSON fixture field is a number");
             assert!((-180.0..=180.0).contains(&longitude_degrees));
             assert!((-90.0..=90.0).contains(&latitude_degrees));
             let projected = [
-                probe["epsg5070"][0].as_f64().unwrap(),
-                probe["epsg5070"][1].as_f64().unwrap(),
+                probe["epsg5070"][0]
+                    .as_f64()
+                    .expect("the JSON fixture field is a number"),
+                probe["epsg5070"][1]
+                    .as_f64()
+                    .expect("the JSON fixture field is a number"),
             ];
             assert!(projected
                 .iter()
@@ -1038,7 +1053,9 @@ mod tests {
             let expected = Vec2::new(projected[0] as f32, projected[1] as f32);
             assert!(
                 geographic_map_point([longitude, latitude])
-                    .unwrap()
+                    .expect(
+                        "the fixture call `geographic_map_point` succeeds for the authored inputs"
+                    )
                     .distance(expected)
                     < 1.0,
                 "atlas probe {}",
@@ -1065,7 +1082,9 @@ mod tests {
         ProductionSite {
             function: "manufacturing".into(),
             id: id.into(),
-            location: format!("county:{county}").parse().unwrap(),
+            location: format!("county:{county}")
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             name: format!("{id} county cohort"),
             industry_code: Some("331".into()),
             observed_employment: None,
@@ -1214,10 +1233,10 @@ mod tests {
         frame
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .sites
             .reverse();
         assert_eq!(
@@ -1291,7 +1310,13 @@ mod tests {
     #[test]
     fn selected_physical_path_uses_captured_edges_and_exact_material_identity() {
         let (session, mut frame, anchors) = fixture();
-        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+        let snapshot = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         set_captured_shared_path(snapshot);
         let filter = MaterialGoodKey {
             good_id: "steel".into(),
@@ -1333,10 +1358,10 @@ mod tests {
         frame
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .physical_edges
             .clear();
         let missing = project(
@@ -1356,7 +1381,13 @@ mod tests {
 
     fn road_layer_app() -> App {
         let (session, mut frame, anchors) = fixture();
-        let snapshot = frame.0.as_mut().unwrap().production.as_mut().unwrap();
+        let snapshot = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow");
         let points = [
             [-830_000_000, 423_000_000],
             [-829_900_000, 423_100_000],
@@ -1439,7 +1470,15 @@ mod tests {
         let meshes = app.world().resource::<Assets<Mesh>>();
         handles
             .into_iter()
-            .map(|(batch, handle)| (batch, meshes.get(&handle).unwrap().count_vertices()))
+            .map(|(batch, handle)| {
+                (
+                    batch,
+                    meshes
+                        .get(&handle)
+                        .expect("the fixture holds the addressed entry")
+                        .count_vertices(),
+                )
+            })
             .collect()
     }
 
@@ -1524,10 +1563,10 @@ mod tests {
             .resource_mut::<ObserverFrame>()
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .physical_edges
             .reverse();
         app.update();
@@ -1577,7 +1616,7 @@ mod tests {
                         .resource_mut::<ObserverFrame>()
                         .0
                         .as_mut()
-                        .unwrap()
+                        .expect("the fixture set the optional field before this borrow")
                         .visibility = ObserverVisibility::KnownPreview;
                 }
                 "period" => {
@@ -1585,7 +1624,7 @@ mod tests {
                         .resource_mut::<ObserverFrame>()
                         .0
                         .as_mut()
-                        .unwrap()
+                        .expect("the fixture set the optional field before this borrow")
                         .resolve_tick = 2;
                 }
                 "campaign" => {
@@ -1593,7 +1632,7 @@ mod tests {
                         .resource_mut::<ObserverFrame>()
                         .0
                         .as_mut()
-                        .unwrap()
+                        .expect("the fixture set the optional field before this borrow")
                         .campaign_id = Uuid::from_u128(99).to_string();
                 }
                 "missing" => app.world_mut().resource_mut::<ObserverFrame>().0 = None,
@@ -1602,10 +1641,10 @@ mod tests {
                     .resource_mut::<ObserverFrame>()
                     .0
                     .as_mut()
-                    .unwrap()
+                    .expect("the fixture set the optional field before this borrow")
                     .production
                     .as_mut()
-                    .unwrap()
+                    .expect("the fixture set the optional field before this borrow")
                     .physical_edges
                     .clear(),
                 _ => unreachable!(),
@@ -1633,12 +1672,15 @@ mod tests {
             .viewed_tick = 2;
         {
             let mut frame = app.world_mut().resource_mut::<ObserverFrame>();
-            let snapshot = frame.0.as_mut().unwrap();
+            let snapshot = frame
+                .0
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow");
             snapshot.resolve_tick = 2;
             snapshot
                 .production
                 .as_mut()
-                .unwrap()
+                .expect("the fixture set the optional field before this borrow")
                 .physical_edges
                 .retain(|edge| edge.id != "branch");
         }
@@ -1656,13 +1698,13 @@ mod tests {
             .resource_mut::<ObserverFrame>()
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .physical_edges
             .last_mut()
-            .unwrap()
+            .expect("the fixture sequence is non-empty")
             .shape_e7[0] = [i64::MAX, 0];
         app.update();
         assert_eq!(road_batch_vertices(&mut app), [(RoadBatch::Selected, 18)]);
@@ -1678,7 +1720,11 @@ mod tests {
     #[test]
     fn compact_labels_preserve_unrecognized_public_names_without_inference() {
         let (session, frame, mut anchors) = fixture();
-        anchors.0.get_mut("26163").unwrap().name = "Disclosed district".into();
+        anchors
+            .0
+            .get_mut("26163")
+            .expect("the fixture holds the addressed entry")
+            .name = "Disclosed district".into();
         assert_eq!(
             project(&frame, &session, Some(1), &anchors, Some("a"), None).rows[0].caption,
             "Disclosed district -> Macomb\nore | tonne"
@@ -1698,10 +1744,10 @@ mod tests {
         frame
             .0
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .production
             .as_mut()
-            .unwrap()
+            .expect("the fixture set the optional field before this borrow")
             .sites
             .retain(|site| site.id != "a");
         assert_eq!(
@@ -1729,7 +1775,11 @@ mod tests {
             jump_target(&jump, &frame, &session, Some(2), &anchors),
             None
         );
-        frame.0.as_mut().unwrap().resolve_tick = 2;
+        frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .resolve_tick = 2;
         assert!(
             project(&frame, &session, Some(1), &anchors, Some("a"), None)
                 .rows
@@ -1739,11 +1789,23 @@ mod tests {
             jump_target(&jump, &frame, &session, Some(1), &anchors),
             None
         );
-        frame.0.as_mut().unwrap().resolve_tick = 3;
+        frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .resolve_tick = 3;
         session.set_perspective(Perspective::PlayerKnowledge);
         assert!(!project(&frame, &session, Some(1), &anchors, Some("a"), None).available);
-        frame.0.as_mut().unwrap().visibility = ObserverVisibility::KnownPreview;
-        frame.0.as_mut().unwrap().production = None;
+        frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .visibility = ObserverVisibility::KnownPreview;
+        frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production = None;
         assert!(!project(&frame, &session, Some(1), &anchors, Some("a"), None).available);
         assert_eq!(
             jump_target(&jump, &frame, &session, Some(1), &anchors),
@@ -1752,7 +1814,11 @@ mod tests {
         session.set_perspective(Perspective::FullObserver);
         let (_, valid, _) = fixture();
         frame = valid;
-        frame.0.as_mut().unwrap().campaign_id = Uuid::from_u128(9).to_string();
+        frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .campaign_id = Uuid::from_u128(9).to_string();
         assert!(
             project(&frame, &session, Some(1), &anchors, Some("a"), None)
                 .rows
@@ -1781,13 +1847,29 @@ mod tests {
     #[test]
     fn display_bound_counts_only_valid_disclosed_relationships() {
         let (session, mut frame, anchors) = fixture();
-        let input = frame.0.as_mut().unwrap().production.as_mut().unwrap().sites[1].processes[0]
+        let input = frame
+            .0
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .production
+            .as_mut()
+            .expect("the fixture set the optional field before this borrow")
+            .sites[1]
+            .processes[0]
             .inputs[0]
             .clone();
         for index in 0..10 {
             let mut next = input.clone();
             next.good_id = format!("good-{index:02}");
-            frame.0.as_mut().unwrap().production.as_mut().unwrap().sites[1].processes[0]
+            frame
+                .0
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .production
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .sites[1]
+                .processes[0]
                 .inputs
                 .push(next);
         }
@@ -1834,14 +1916,14 @@ mod tests {
             Some(ObserverDisclosure::Time);
         app.world_mut()
             .get_mut::<Interaction>(button)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .set_changed();
         app.update();
         assert_eq!(app.world().resource::<SelectedCounty>().0, Some(1));
         app.world_mut().resource_mut::<ObserverUiState>().disclosure = None;
         app.world_mut()
             .get_mut::<Interaction>(button)
-            .unwrap()
+            .expect("the fixture world holds the addressed component")
             .set_changed();
         app.update();
         assert_eq!(app.world().resource::<SelectedCounty>().0, Some(2));

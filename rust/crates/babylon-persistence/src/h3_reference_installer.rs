@@ -1156,11 +1156,11 @@ fn verify_membership<ClientType: GenericClient>(
     }
     let mut expected_index = 0_usize;
     let mut direct_cells = Vec::with_capacity(cohort.receipt().direct_cell_count());
-    for (membership_row, cell_row) in membership_rows
+    let paired_rows = membership_rows
         .iter()
         .zip(cell_rows.iter())
-        .take(MAX_H3_REFERENCE_CLOSURE_ROWS)
-    {
+        .take(MAX_H3_REFERENCE_CLOSURE_ROWS);
+    for (membership_row, cell_row) in paired_rows {
         let stored = decode_stored_row(
             membership_row,
             cell_row,
@@ -2024,7 +2024,7 @@ pub(crate) mod live_postgres_tests {
         };
         let report =
             super::install_michigan_h3_reference_bundle_using(config, &bundle, &mut killed_attempt)
-                .unwrap();
+                .expect("the test database accepts the setup step");
         assert_eq!(
             report.disposition(),
             H3ReferenceInstallDisposition::Installed
@@ -2044,17 +2044,21 @@ pub(crate) mod live_postgres_tests {
         cohort: &H3ReferenceCohort,
     ) {
         let bounded = super::installer_config(config);
-        let mut session = LockedInstallSession::connect(&bounded).unwrap();
-        super::require_schema(session.client()).unwrap();
-        super::prepare_installer_session(session.client()).unwrap();
+        let mut session = LockedInstallSession::connect(&bounded)
+            .expect("the test database accepts the connection");
+        super::require_schema(session.client())
+            .expect("the fixture call `require_schema` succeeds for the authored inputs");
+        super::prepare_installer_session(session.client())
+            .expect("the fixture prepares the authored state");
         let mut transaction = session
             .client()
             .build_transaction()
             .isolation_level(postgres::IsolationLevel::Serializable)
             .read_only(false)
             .start()
-            .unwrap();
-        super::prepare_transaction(&mut transaction).unwrap();
+            .expect("the fixture starts the authored period");
+        super::prepare_transaction(&mut transaction)
+            .expect("the test database prepares the transaction");
         transaction
             .batch_execute(
                 "SET LOCAL statement_timeout TO '5000ms'; \
@@ -2064,18 +2068,25 @@ pub(crate) mod live_postgres_tests {
                  SET LOCAL enable_hashjoin TO off; \
                  SET LOCAL enable_mergejoin TO off",
             )
-            .unwrap();
-        super::insert_cells(&mut transaction, cohort.rows()).unwrap();
-        super::insert_header(&mut transaction, cohort.receipt()).unwrap();
-        super::insert_membership(&mut transaction, cohort).unwrap();
+            .expect("the test database applies the schema statements");
+        super::insert_cells(&mut transaction, cohort.rows())
+            .expect("the test database accepts the authored row");
+        super::insert_header(&mut transaction, cohort.receipt())
+            .expect("the test database accepts the authored row");
+        super::insert_membership(&mut transaction, cohort)
+            .expect("the test database accepts the authored row");
         super::verify_membership(
             &mut transaction,
             cohort,
             H3ReferenceMembershipReadContext::CommitAttempt { attempt: 1 },
         )
-        .unwrap();
-        transaction.rollback().unwrap();
-        session.finish(Ok(())).unwrap();
+        .expect("the authored fixture satisfies the rule");
+        transaction
+            .rollback()
+            .expect("the open transaction rolls back");
+        session
+            .finish(Ok(()))
+            .expect("the fixture finishes the authored period");
     }
 
     pub(crate) fn verify_committed_reconciliation(
@@ -2106,7 +2117,7 @@ pub(crate) mod live_postgres_tests {
             &bundle,
             &mut ambiguous_attempt,
         )
-        .unwrap();
+        .expect("the test database accepts the setup step");
         assert_eq!(
             report.disposition(),
             H3ReferenceInstallDisposition::ReconciledAfterAmbiguousCommit
@@ -2126,21 +2137,33 @@ pub(crate) mod live_postgres_tests {
     ) {
         let before = reference_counts(config);
         let bounded = super::installer_config(config);
-        let mut session = LockedInstallSession::connect(&bounded).unwrap();
-        super::require_schema(session.client()).unwrap();
-        super::prepare_installer_session(session.client()).unwrap();
+        let mut session = LockedInstallSession::connect(&bounded)
+            .expect("the test database accepts the connection");
+        super::require_schema(session.client())
+            .expect("the fixture call `require_schema` succeeds for the authored inputs");
+        super::prepare_installer_session(session.client())
+            .expect("the fixture prepares the authored state");
         let context = H3ReferenceMembershipReadContext::InitialInspection;
-        super::verify_membership_cardinality(session.client(), cohort, context).unwrap();
+        super::verify_membership_cardinality(session.client(), cohort, context)
+            .expect("the authored fixture satisfies the rule");
 
-        let mut blocker = config.connect(NoTls).unwrap();
-        let mut blocker_transaction = blocker.transaction().unwrap();
+        let mut blocker = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
+        let mut blocker_transaction = blocker
+            .transaction()
+            .expect("the test database opens a transaction");
         blocker_transaction
             .batch_execute("LOCK TABLE babylon_ref.h3_cell IN ACCESS EXCLUSIVE MODE")
-            .unwrap();
+            .expect("the test database applies the schema statements");
         let operation = super::H3ReferenceInstallOperation::ReadCellRows { context };
         let result = super::read_cell_rows(session.client(), cohort, operation);
-        blocker_transaction.rollback().unwrap();
-        session.finish(Ok(())).unwrap();
+        blocker_transaction
+            .rollback()
+            .expect("the open transaction rolls back");
+        session
+            .finish(Ok(()))
+            .expect("the fixture finishes the authored period");
 
         let error = result.expect_err("the cell read must honor the bounded lock timeout");
         match error {
@@ -2165,25 +2188,32 @@ pub(crate) mod live_postgres_tests {
         }
         assert_eq!(reference_counts(config), before);
 
-        let reacquired = LockedInstallSession::connect(&bounded).unwrap();
-        reacquired.finish(Ok(())).unwrap();
+        let reacquired = LockedInstallSession::connect(&bounded)
+            .expect("the test database accepts the connection");
+        reacquired
+            .finish(Ok(()))
+            .expect("the fixture finishes the authored period");
     }
 
     pub(crate) fn verify_membership_cardinality_bound(config: &Config) {
         let cohort = representative_cohort();
-        let foundation = crate::michigan_dynamic_hex_foundation().unwrap();
-        let report =
-            super::install_michigan_h3_reference_bundle(config, &cohort, foundation).unwrap();
+        let foundation =
+            crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds");
+        let report = super::install_michigan_h3_reference_bundle(config, &cohort, foundation)
+            .expect("the test database accepts the setup step");
         assert_eq!(
             report.disposition(),
             H3ReferenceInstallDisposition::Installed
         );
         insert_excess_membership(config, cohort.receipt().ref_digest());
-        let excess_count = i64::try_from(CLOSURE_COUNT + EXCESS_MEMBERSHIP_COUNT).unwrap();
+        let excess_count = i64::try_from(CLOSURE_COUNT + EXCESS_MEMBERSHIP_COUNT)
+            .expect("the fixture value fits the target range");
         assert_eq!(
             reference_counts(config),
             (
-                378_853 + i64::try_from(EXCESS_MEMBERSHIP_COUNT).unwrap(),
+                378_853
+                    + i64::try_from(EXCESS_MEMBERSHIP_COUNT)
+                        .expect("the fixture value fits the target range"),
                 1,
                 excess_count,
                 1
@@ -2200,8 +2230,12 @@ pub(crate) mod live_postgres_tests {
     }
 
     fn insert_excess_membership(config: &Config, ref_digest: RefDigest) {
-        let mut client = config.connect(NoTls).unwrap();
-        let mut transaction = client.transaction().unwrap();
+        let mut client = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
+        let mut transaction = client
+            .transaction()
+            .expect("the test database opens a transaction");
         let rows = transaction
             .query(
                 "INSERT INTO babylon_ref.h3_cell \
@@ -2214,10 +2248,11 @@ pub(crate) mod live_postgres_tests {
                  ORDER BY candidate.cell_id LIMIT $2 RETURNING cell_id",
                 &[
                     &RESOLUTION_ZERO_CANDIDATES.as_slice(),
-                    &i64::try_from(EXCESS_MEMBERSHIP_COUNT).unwrap(),
+                    &i64::try_from(EXCESS_MEMBERSHIP_COUNT)
+                        .expect("the fixture value fits the target range"),
                 ],
             )
-            .unwrap();
+            .expect("the seeded rows are readable");
         assert_eq!(rows.len(), EXCESS_MEMBERSHIP_COUNT);
         let inserted = rows
             .iter()
@@ -2232,12 +2267,14 @@ pub(crate) mod live_postgres_tests {
                  FROM pg_catalog.unnest($2::bigint[]) AS input(cell_id)",
                 &[&ref_digest.as_bytes().as_slice(), &inserted],
             )
-            .unwrap();
+            .expect("the test database applies the setup statement");
         assert_eq!(
-            usize::try_from(memberships).unwrap(),
+            usize::try_from(memberships).expect("the fixture value fits the target range"),
             EXCESS_MEMBERSHIP_COUNT
         );
-        transaction.commit().unwrap();
+        transaction
+            .commit()
+            .expect("the fixture transaction commits");
     }
 
     fn killed_before_commit(
@@ -2260,27 +2297,29 @@ pub(crate) mod live_postgres_tests {
     fn backend_pid(client: &mut postgres::Client) -> i32 {
         client
             .query_one("SELECT pg_catalog.pg_backend_pid()", &[])
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .try_get(0)
-            .unwrap()
+            .expect("the fixture row holds the addressed column")
     }
 
     fn terminate_backend(admin: &Config, backend_pid: i32) {
         let terminated: bool = admin
             .connect(NoTls)
-            .unwrap()
+            .expect("the test database accepts the connection")
             .query_one(
                 "SELECT pg_catalog.pg_terminate_backend($1, $2)",
                 &[&backend_pid, &BACKEND_TERMINATION_TIMEOUT_MILLIS],
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .try_get(0)
-            .unwrap();
+            .expect("the fixture row holds the addressed column");
         assert!(terminated);
     }
 
     fn reference_counts(config: &Config) -> (i64, i64, i64, i64) {
-        let mut client = config.connect(NoTls).unwrap();
+        let mut client = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         let row = client
             .query_one(
                 "SELECT (SELECT pg_catalog.count(*) FROM babylon_ref.h3_cell), \
@@ -2290,7 +2329,7 @@ pub(crate) mod live_postgres_tests {
                         (SELECT pg_catalog.count(*) FROM babylon_ref.reference_product)",
                 &[],
             )
-            .unwrap();
+            .expect("the seeded row is present exactly once");
         (row.get(0), row.get(1), row.get(2), row.get(3))
     }
 
@@ -2303,9 +2342,9 @@ pub(crate) mod live_postgres_tests {
     fn representative_bundle(cohort: &H3ReferenceCohort) -> MichiganH3ReferenceBundle<'_> {
         MichiganH3ReferenceBundle::validate(
             cohort,
-            crate::michigan_dynamic_hex_foundation().unwrap(),
+            crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds"),
         )
-        .unwrap()
+        .expect("the authored fixture passes validation")
     }
 }
 
@@ -2418,7 +2457,8 @@ mod tests {
     #[test]
     fn committed_install_reports_installed_after_one_attempt() {
         let mut driver = ScriptedDriver::new([Some(CommitAttempt::Committed), None], [None, None]);
-        let resolution = super::drive_install(InstallPresence::Absent, &mut driver).unwrap();
+        let resolution = super::drive_install(InstallPresence::Absent, &mut driver)
+            .expect("the fixture call `drive_install` succeeds for the authored inputs");
 
         assert_eq!(
             resolution.disposition,
@@ -2436,7 +2476,8 @@ mod tests {
     #[test]
     fn exact_preexisting_reference_bundle_skips_commit() {
         let mut driver = ScriptedDriver::new([None, None], [None, None]);
-        let resolution = super::drive_install(InstallPresence::Exact, &mut driver).unwrap();
+        let resolution = super::drive_install(InstallPresence::Exact, &mut driver)
+            .expect("the fixture call `drive_install` succeeds for the authored inputs");
 
         assert_eq!(
             resolution.disposition,
@@ -2452,7 +2493,8 @@ mod tests {
             [Some(CommitAttempt::Ambiguous), None],
             [Some(InstallPresence::Exact), None],
         );
-        let resolution = super::drive_install(InstallPresence::Absent, &mut driver).unwrap();
+        let resolution = super::drive_install(InstallPresence::Absent, &mut driver)
+            .expect("the fixture call `drive_install` succeeds for the authored inputs");
 
         assert_eq!(
             resolution.disposition,
@@ -2476,7 +2518,8 @@ mod tests {
             ],
             [Some(InstallPresence::Absent), None],
         );
-        let resolution = super::drive_install(InstallPresence::Absent, &mut driver).unwrap();
+        let resolution = super::drive_install(InstallPresence::Absent, &mut driver)
+            .expect("the fixture call `drive_install` succeeds for the authored inputs");
 
         assert_eq!(
             resolution.disposition,
@@ -2500,7 +2543,8 @@ mod tests {
             ],
             [Some(InstallPresence::Absent), Some(InstallPresence::Absent)],
         );
-        let error = super::drive_install(InstallPresence::Absent, &mut driver).unwrap_err();
+        let error = super::drive_install(InstallPresence::Absent, &mut driver)
+            .expect_err("the fixture call `drive_install` fails for the authored inputs");
 
         assert_eq!(
             error,

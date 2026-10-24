@@ -121,11 +121,17 @@ mod tests {
             CampaignDuration::Finite { final_period: 131 },
         ] {
             assert_eq!(
-                CampaignDuration::decode(duration.canonical_bytes().unwrap()),
+                CampaignDuration::decode(
+                    duration
+                        .canonical_bytes()
+                        .expect("the graph value exposes canonical bytes")
+                ),
                 Ok(duration)
             );
         }
-        let mut padding = CampaignDuration::Continuous.canonical_bytes().unwrap();
+        let mut padding = CampaignDuration::Continuous
+            .canonical_bytes()
+            .expect("the graph value exposes canonical bytes");
         padding[8] = 1;
         assert!(CampaignDuration::decode(padding).is_err());
         let mut unknown = [0; 9];

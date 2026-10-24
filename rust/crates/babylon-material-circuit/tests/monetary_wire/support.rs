@@ -55,7 +55,7 @@ pub(crate) fn paid_state() -> MaterialCircuitState {
             cash: money(11),
         },
     ])
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let orders: Vec<_> = [10, 11]
         .into_iter()
         .map(|id| OrderRow {
@@ -81,9 +81,9 @@ pub(crate) fn paid_state() -> MaterialCircuitState {
                 order.ordered,
                 money((1_i128 << 80) + 5),
             )
-            .unwrap(),
+            .expect("the constructor accepts the authored fixture arguments"),
         )
-        .unwrap();
+        .expect("the fixture reserve admits the purchase");
     }
     for id in [12, 13] {
         let shift = ShiftId::from_bytes([id; 32]);
@@ -96,10 +96,11 @@ pub(crate) fn paid_state() -> MaterialCircuitState {
                 4,
                 money((1_i128 << 65) + 7),
             )
-            .unwrap(),
+            .expect("the constructor accepts the authored fixture arguments"),
         )
-        .unwrap();
-        book.accrue_shift(shift).unwrap();
+        .expect("the fixture shift reservation fits");
+        book.accrue_shift(shift)
+            .expect("the fixture accrues the authored shift");
     }
     MaterialCircuitState {
         capacity_supply: CapacitySupply::FiniteSchedule,
@@ -117,11 +118,15 @@ pub(crate) fn paid_state() -> MaterialCircuitState {
                             account: AccountId::Organization(OrganizationAccountId::from_bytes(
                                 [1; 32],
                             )),
-                            location: "county:26163".parse().unwrap(),
+                            location: "county:26163"
+                                .parse()
+                                .expect("the authored literal parses as the declared type"),
                         },
                         InstitutionLocation {
                             account: AccountId::Public(PublicAccountId::from_bytes([1; 32])),
-                            location: "county:26163".parse().unwrap(),
+                            location: "county:26163"
+                                .parse()
+                                .expect("the authored literal parses as the declared type"),
                         },
                     ];
                     financial
@@ -153,7 +158,7 @@ pub(crate) fn paid_state() -> MaterialCircuitState {
                     vec![],
                     vec![],
                 )
-                .unwrap(),
+                .expect("the fixture opens the authored source"),
                 book,
                 recurring: None,
                 employment: [seller, buyer]
@@ -173,7 +178,9 @@ pub(crate) fn paid_state() -> MaterialCircuitState {
             .enumerate()
             .map(|(index, site_id)| SiteLogisticsNode {
                 site_id,
-                node_id: LogisticsNodeId::from_bytes([u8::try_from(index + 1).unwrap(); 32]),
+                node_id: LogisticsNodeId::from_bytes(
+                    [u8::try_from(index + 1).expect("the fixture value fits the target range"); 32],
+                ),
             })
             .collect(),
         process_outputs: vec![],
@@ -231,7 +238,9 @@ pub(crate) fn paid_state() -> MaterialCircuitState {
         handling_coefficients: vec![],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household,
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
         }],
         final_demand_orders: vec![],
         maintenance_binding: None,
@@ -244,7 +253,7 @@ pub(crate) fn accounting_offset(state: &MaterialCircuitState) -> usize {
     control.accounting = CircuitAccounting::PhysicalControl;
     // One accounting tag, one finite-capacity tag, and two empty service row counts.
     babylon_material_circuit::encode_material_circuit_state(&control)
-        .unwrap()
+        .expect("the canonical material state encodes")
         .len()
         - 10
 }
@@ -263,20 +272,25 @@ pub(crate) const MEMBER_LABOR_BYTES: usize = 32 + 8 + 8;
 #[test]
 pub(crate) fn exact_i128_accounts_escrow_and_unpaid_wages_survive_restart() {
     let state = paid_state();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
-    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
+    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes)
+        .expect("the canonical material bytes decode");
     assert_eq!(restored, state);
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&restored).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&restored)
+            .expect("the canonical material state encodes"),
         bytes
     );
     assert_eq!(
-        material_circuit_state_digest(&restored).unwrap(),
+        material_circuit_state_digest(&restored).expect("the material state has a digest"),
         sha256_of(&bytes)
     );
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&restored).unwrap(),
-        babylon_material_circuit::advance_material_circuit(&state).unwrap()
+        babylon_material_circuit::advance_material_circuit(&restored)
+            .expect("the authored material state advances one period"),
+        babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period")
     );
     let CircuitAccounting::Monetary(economy) = &restored.accounting else {
         panic!("lost monetary mode");
@@ -295,7 +309,7 @@ pub(crate) fn exact_i128_accounts_escrow_and_unpaid_wages_survive_restart() {
         &economy
             .book
             .cash(AccountId::Site(SiteId::from_bytes([1; 32])))
-            .unwrap()
+            .expect("the fixture book holds the payer account")
             .micro_units()
             .to_be_bytes()
     );
@@ -304,7 +318,8 @@ pub(crate) fn exact_i128_accounts_escrow_and_unpaid_wages_survive_restart() {
 #[test]
 pub(crate) fn all_monetary_row_families_reject_noncanonical_wire_order() {
     let state = paid_state();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     let accounts = accounting_offset(&state) + 1 + 4;
     let purchases = accounts + 5 * ACCOUNT_BYTES + 4;
     let shifts = purchases + 2 * PURCHASE_BYTES + 4;
@@ -328,7 +343,8 @@ pub(crate) fn all_monetary_row_families_reject_noncanonical_wire_order() {
 #[test]
 pub(crate) fn monetary_tags_counts_and_invalid_currency_are_refused() {
     let state = paid_state();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     let accounting = accounting_offset(&state);
     let accounts = accounting + 1 + 4;
     let purchases = accounts + 5 * ACCOUNT_BYTES + 4;
@@ -373,7 +389,8 @@ pub(crate) fn monetary_tags_counts_and_invalid_currency_are_refused() {
 #[test]
 pub(crate) fn old_schema_missing_accounting_truncation_and_trailing_bytes_are_refused() {
     let state = paid_state();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     let mut old_schema = bytes.clone();
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     old_schema[version..version + 2].copy_from_slice(&4_u16.to_be_bytes());
@@ -399,10 +416,12 @@ pub(crate) fn old_schema_missing_accounting_truncation_and_trailing_bytes_are_re
     );
     let mut control = state;
     control.accounting = CircuitAccounting::PhysicalControl;
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&control).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&control)
+        .expect("the canonical material state encodes");
     assert_eq!(bytes.last(), Some(&0));
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap(),
+        babylon_material_circuit::decode_material_circuit_state(&bytes)
+            .expect("the canonical material bytes decode"),
         control
     );
 }
@@ -410,7 +429,8 @@ pub(crate) fn old_schema_missing_accounting_truncation_and_trailing_bytes_are_re
 #[test]
 pub(crate) fn physical_binding_and_employment_remain_required_after_decoding() {
     let state = paid_state();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     let purchases = accounting_offset(&state) + 1 + 4 + 5 * ACCOUNT_BYTES + 4;
     let shifts = purchases + 2 * PURCHASE_BYTES + 4;
     let mut quantity = bytes.clone();
@@ -440,15 +460,18 @@ pub(crate) fn physical_binding_and_employment_remain_required_after_decoding() {
 pub(crate) fn historical_cost_opening_accrued_wages_are_assets_and_liabilities_without_repeat_income(
 ) {
     let state = paid_state();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
-    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap();
-    let result = babylon_material_circuit::advance_material_circuit(&restored).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
+    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes)
+        .expect("the canonical material bytes decode");
+    let result = babylon_material_circuit::advance_material_circuit(&restored)
+        .expect("the authored material state advances one period");
     let household = AccountId::Household(FinalDemandPrincipalId::from_bytes([3; 32]));
     let row = result
         .income
         .iter()
         .find(|r| r.account == household)
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let owed = 2 * 4 * ((1_i128 << 65) + 7);
     assert_eq!(row.opening_capital, money((1_i128 << 90) + 3 + owed));
     assert_eq!(row.statement.wage_income, money(0));
@@ -457,13 +480,19 @@ pub(crate) fn historical_cost_opening_accrued_wages_are_assets_and_liabilities_w
         panic!("paid control");
     };
     assert!(economy.book.snapshot().shifts.is_empty());
-    assert_eq!(economy.book.cash(household).unwrap(), row.opening_capital);
+    assert_eq!(
+        economy
+            .book
+            .cash(household)
+            .expect("the fixture book holds the payer account"),
+        row.opening_capital
+    );
 }
 
 #[test]
 pub(crate) fn previous_schema18_is_refused_before_replaying_the_new_allocation_policy() {
-    let mut previous =
-        babylon_material_circuit::encode_material_circuit_state(&paid_state()).unwrap();
+    let mut previous = babylon_material_circuit::encode_material_circuit_state(&paid_state())
+        .expect("the canonical material state encodes");
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     previous[version..version + 2].copy_from_slice(&18_u16.to_be_bytes());
     assert_eq!(

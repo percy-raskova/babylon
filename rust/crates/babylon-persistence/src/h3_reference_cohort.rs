@@ -642,11 +642,11 @@ fn digest_source_cells(
     let mut bytes = Vec::with_capacity(capacity);
     bytes.extend_from_slice(SOURCE_DOMAIN);
     push_count(&mut bytes, count)?;
-    for cell in cells
+    let bounded_cells = cells
         .iter()
         .take(MAX_H3_REFERENCE_SOURCE_CELLS)
-        .filter(|cell| resolution.is_none_or(|wanted| cell.resolution() == wanted))
-    {
+        .filter(|cell| resolution.is_none_or(|wanted| cell.resolution() == wanted));
+    for cell in bounded_cells {
         bytes.extend_from_slice(&cell.to_be_bytes());
     }
     Ok(RefDigest::from_bytes(content_digest::sha256_of(&bytes)))
@@ -734,7 +734,7 @@ mod fixture_tests {
 
     #[test]
     fn checked_in_fixture_has_the_exact_governed_receipt() {
-        let cohort = representative_h3_reference_cohort().unwrap();
+        let cohort = representative_h3_reference_cohort().expect("the fixture call `representative_h3_reference_cohort` succeeds for the authored inputs");
         assert_eq!(cohort.rows().len(), 59_849);
         assert_eq!(cohort.receipt().source_cell_count(), EXPECTED_SOURCE_CELLS);
         assert_eq!(
@@ -794,9 +794,12 @@ mod fixture_tests {
         let mut wrong_digest = SOURCE_FIXTURE.to_vec();
         let second = payload_offset + SOURCE_ROW_BYTES;
         let third = second + SOURCE_ROW_BYTES;
-        let first_cell: [u8; SOURCE_ROW_BYTES] =
-            wrong_digest[payload_offset..second].try_into().unwrap();
-        let second_cell: [u8; SOURCE_ROW_BYTES] = wrong_digest[second..third].try_into().unwrap();
+        let first_cell: [u8; SOURCE_ROW_BYTES] = wrong_digest[payload_offset..second]
+            .try_into()
+            .expect("the fixture slice has the target length");
+        let second_cell: [u8; SOURCE_ROW_BYTES] = wrong_digest[second..third]
+            .try_into()
+            .expect("the fixture slice has the target length");
         wrong_digest[payload_offset..second].copy_from_slice(&second_cell);
         wrong_digest[second..third].copy_from_slice(&first_cell);
         assert!(matches!(

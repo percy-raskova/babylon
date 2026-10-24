@@ -8,7 +8,10 @@ mod intent;
 mod ordered_action;
 mod organizer;
 mod resource;
-#[allow(clippy::unreadable_literal)]
+#[allow(
+    clippy::unreadable_literal,
+    reason = "the literal is an authored byte pattern"
+)]
 mod schema;
 mod strike;
 mod topology;

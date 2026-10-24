@@ -21,7 +21,11 @@ use babylon_material_circuit::StockCarryingValue;
 use babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS;
 fn order_id(index: usize) -> OrderId {
     let mut bytes = [0; 32];
-    bytes[..8].copy_from_slice(&u64::try_from(index).unwrap().to_be_bytes());
+    bytes[..8].copy_from_slice(
+        &u64::try_from(index)
+            .expect("the fixture value fits the target range")
+            .to_be_bytes(),
+    );
     OrderId::from_bytes(bytes)
 }
 fn mixed_order_state_counts(delivery: usize, retail: usize) -> MaterialCircuitState {
@@ -84,7 +88,7 @@ fn mixed_order_state_counts(delivery: usize, retail: usize) -> MaterialCircuitSt
                 1,
                 crate::money(1),
             )
-            .unwrap()
+            .expect("the constructor accepts the authored fixture arguments")
         })
         .chain(state.final_demand_orders.iter().map(|row| {
             PurchaseEscrow::new(
@@ -94,10 +98,11 @@ fn mixed_order_state_counts(delivery: usize, retail: usize) -> MaterialCircuitSt
                 1,
                 crate::money(1),
             )
-            .unwrap()
+            .expect("the constructor accepts the authored fixture arguments")
         }))
         .collect();
-    economy.book = MonetaryBook::from_snapshot(snapshot).unwrap();
+    economy.book =
+        MonetaryBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     economy.costs = HistoricalCostBook::open(
         &economy.book,
         vec![StockCarryingValue {
@@ -110,7 +115,7 @@ fn mixed_order_state_counts(delivery: usize, retail: usize) -> MaterialCircuitSt
         vec![],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     state
 }
 fn mixed_order_state() -> MaterialCircuitState {
@@ -120,11 +125,14 @@ fn mixed_order_state() -> MaterialCircuitState {
 #[test]
 fn mixed_physical_orders_and_escrow_roundtrip_beyond_the_old_combined_limit() {
     let state = mixed_order_state();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
-    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
+    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes)
+        .expect("the canonical material bytes decode");
     assert_eq!(restored, state);
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&restored).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&restored)
+            .expect("the canonical material state encodes"),
         bytes
     );
     let CircuitAccounting::Monetary(economy) = &restored.accounting else {
@@ -140,7 +148,7 @@ fn mixed_physical_orders_and_escrow_roundtrip_beyond_the_old_combined_limit() {
             .purchase(OutboundOrderId::LocalFinalDemand(order_id(
                 MAX_MATERIAL_CIRCUIT_ROWS / 2
             )))
-            .unwrap()
+            .expect("the fixture purchase is present")
             .quantity,
         1
     );
@@ -163,7 +171,7 @@ fn public_purchase_admission_preserves_each_physical_family_ceiling() {
         MaterialPurchase::Delivery(order),
         crate::money(1),
     )
-    .unwrap();
+    .expect("the fixture admits the authored purchase");
     assert_eq!(admitted.orders.len(), state.orders.len() + 1);
     let mut overbound = state;
     overbound.orders.resize(
@@ -186,11 +194,13 @@ fn retail_admission_and_wire_keep_the_independent_unchanged_ceiling() {
         MaterialPurchase::LocalFinalDemand(order.clone()),
         crate::money(1),
     )
-    .unwrap();
+    .expect("the fixture admits the authored purchase");
     assert_eq!(full.final_demand_orders.len(), MAX_MATERIAL_CIRCUIT_ROWS);
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&full).unwrap();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&full)
+        .expect("the canonical material state encodes");
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap(),
+        babylon_material_circuit::decode_material_circuit_state(&bytes)
+            .expect("the canonical material bytes decode"),
         full
     );
     order.order_id = order_id(MAX_MATERIAL_CIRCUIT_ROWS);
@@ -203,7 +213,8 @@ fn retail_admission_and_wire_keep_the_independent_unchanged_ceiling() {
         Err(MaterialCircuitError::RowLimit)
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&full).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&full)
+            .expect("the canonical material state encodes"),
         bytes
     );
 }

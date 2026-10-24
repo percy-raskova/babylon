@@ -139,21 +139,22 @@ mod tests {
         let control = MichiganMaterialCatalog::from_defines_toml(include_str!(
             "../../../../content/scenarios/michigan/defines.toml"
         ))
-        .unwrap();
+        .expect("the authored input admits the derived value");
         let foundation = CapturedEconomicCatalog::from_michigan(&control)
-            .unwrap()
+            .expect("the Michigan fixture content loads")
             .create_foundation(
-                ReplaySessionId::try_from("archive-source").unwrap(),
+                ReplaySessionId::try_from("archive-source")
+                    .expect("the fixture value fits the target range"),
                 ReplaySeed::new(41),
             )
-            .unwrap();
+            .expect("the authored catalog builds the foundation");
         let config = Config::new();
         let producer = from_foundation(
             &config,
             CampaignId::from_uuid(Uuid::nil()),
             crate::material_runtime::persisted_graph_copy(foundation.graph_foundation()),
         )
-        .unwrap();
+        .expect("the foundation admits the derived value");
         assert_eq!(producer.producers().len(), 2);
     }
 }

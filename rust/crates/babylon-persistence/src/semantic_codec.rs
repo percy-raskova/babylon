@@ -659,7 +659,9 @@ mod foundation_content_bounds_tests {
 
     #[test]
     fn complete_bundle_includes_framing_and_enforces_exact_aggregate_bound() {
-        let overhead = foundation_content_length(0, None, 0, 0, 0).unwrap();
+        let overhead = foundation_content_length(0, None, 0, 0, 0).expect(
+            "the fixture call `foundation_content_length` succeeds for the authored inputs",
+        );
         assert_eq!(
             foundation_content_length(0, None, 0, MAX_BYTES - overhead, 0),
             Ok(MAX_BYTES)
@@ -673,15 +675,21 @@ mod foundation_content_bounds_tests {
             Ok(overhead + 4)
         );
         let encoded =
-            encode_foundation_content("scenario", Some("prelude"), "", b"defines", b"ref").unwrap();
+            encode_foundation_content("scenario", Some("prelude"), "", b"defines", b"ref")
+                .expect("the fixture value encodes to its canonical bytes");
         assert_eq!(
             encoded.len(),
-            foundation_content_length(8, Some(7), 0, 7, 3).unwrap()
+            foundation_content_length(8, Some(7), 0, 7, 3).expect(
+                "the fixture call `foundation_content_length` succeeds for the authored inputs"
+            )
         );
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`encode_foundation` takes every authored field explicitly"
+)]
 pub(crate) fn encode_foundation(
     stable_graph: &[u8],
     world_registers: &[u8],

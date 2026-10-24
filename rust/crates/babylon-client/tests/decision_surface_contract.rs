@@ -124,7 +124,9 @@ fn surface_site(id: &str) -> babylon_persistence::production_observation::Produc
     use babylon_persistence::production_observation::ProductionSite;
     ProductionSite {
         id: id.into(),
-        location: "county:26163".parse().unwrap(),
+        location: "county:26163"
+            .parse()
+            .expect("the authored literal parses as the declared type"),
         function: "manufacturing".into(),
         name: format!("Surface fixture {id}"),
         industry_code: Some("331".into()),
@@ -579,9 +581,18 @@ fn aid_cards_without_authenticated_material_terms_are_not_visible_choices() {
         .collect::<Vec<_>>();
     assert_eq!(parents.len(), 2);
     for parent in parents {
-        assert_eq!(world.get::<Node>(parent).unwrap().display, Display::None);
         assert_eq!(
-            world.get::<DeclaredSurface>(parent).unwrap().id,
+            world
+                .get::<Node>(parent)
+                .expect("the fixture world holds the addressed component")
+                .display,
+            Display::None
+        );
+        assert_eq!(
+            world
+                .get::<DeclaredSurface>(parent)
+                .expect("the fixture world holds the addressed component")
+                .id,
             SurfaceId::OrganizerWorkspace
         );
     }

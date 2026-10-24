@@ -8,8 +8,17 @@ use crate::production_observation::{
 use babylon_material_circuit::OrderId;
 use babylon_tick::material_world::MaterialTickReceipts;
 fn order_history(catalog: &MichiganMaterialCatalog) -> OrderHistory {
-    let source = CapturedEconomicCatalog::from_michigan(catalog).unwrap();
-    OrderHistory::from_opening(&source.view().opening.compile().unwrap().state).unwrap()
+    let source = CapturedEconomicCatalog::from_michigan(catalog)
+        .expect("the Michigan fixture content loads");
+    OrderHistory::from_opening(
+        &source
+            .view()
+            .opening
+            .compile()
+            .expect("the authored scenario compiles")
+            .state,
+    )
+    .expect("the opening register admits its sections")
 }
 fn project_events(
     catalog: &MichiganMaterialCatalog,
@@ -18,7 +27,8 @@ fn project_events(
     digest: [u8; 32],
     events: &mut Vec<ProductionEvent>,
 ) -> Result<()> {
-    let source = CapturedEconomicCatalog::from_michigan(catalog).unwrap();
+    let source = CapturedEconomicCatalog::from_michigan(catalog)
+        .expect("the Michigan fixture content loads");
     events::project_events(&Metadata::new(source.view())?, history, r, digest, events)
 }
 use crate::economic_catalog::CapturedEconomicCatalog;
@@ -82,9 +92,15 @@ fn delivery_receipts(order_id: OrderId) -> MaterialTickReceipts {
 fn typed_delivery_preserves_original_rows_identifiers_sequence_and_descriptions() {
     let catalog = crate::test_support::catalog();
     let route = &catalog.routes()[0];
-    let supplier = catalog.site(&route.supplier_site_key).unwrap();
-    let buyer = catalog.site(&route.buyer_site_key).unwrap();
-    let good = catalog.good(&route.good_key).unwrap();
+    let supplier = catalog
+        .site(&route.supplier_site_key)
+        .expect("the fixture catalog holds the addressed site");
+    let buyer = catalog
+        .site(&route.buyer_site_key)
+        .expect("the fixture catalog holds the addressed site");
+    let good = catalog
+        .good(&route.good_key)
+        .expect("the fixture catalog holds the addressed good");
     let mut receipts = delivery_receipts(route.order_id());
     let mut events = Vec::new();
     project_events(
@@ -94,7 +110,7 @@ fn typed_delivery_preserves_original_rows_identifiers_sequence_and_descriptions(
         [1; 32],
         &mut events,
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     receipts.resolve_tick = 3;
     project_events(
         &catalog,
@@ -103,7 +119,7 @@ fn typed_delivery_preserves_original_rows_identifiers_sequence_and_descriptions(
         [2; 32],
         &mut events,
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     assert_eq!(events.len(), 8);
     let expected = [
         ("arrival", ProductionDeliveryStage::Arrival, 3),
@@ -197,11 +213,13 @@ fn recurring_delivery_keeps_dated_order_identity_on_the_stable_supplier_route() 
         [3; 32],
         &mut events,
     )
-    .unwrap();
+    .expect("the fixture projection accepts the authored input");
     assert_eq!(events.len(), 4);
     for event in events {
         assert_eq!(event.period, 2);
-        let evidence = event.delivery_evidence.unwrap();
+        let evidence = event
+            .delivery_evidence
+            .expect("the fixture event carries delivery evidence");
         assert_eq!(
             evidence.order_id,
             michigan_economy::digest_hex(&generated.as_bytes())

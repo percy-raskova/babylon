@@ -183,7 +183,7 @@ fn a_served_head_in_bare_expression_position_still_refuses_with_the_2_7_law() {
             &mut graph,
             &mut sink,
         )
-        .unwrap_err();
+        .expect_err("the malformed tick is refused");
         assert!(
             err.contains("no <expr> production of its own (§2.7)"),
             "{head_form}: {err}"
@@ -211,7 +211,8 @@ fn the_fuel_axis_bounds_a_hyperedge_fold_as_landed() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink)
+        .expect_err("the malformed tick is refused");
     assert!(err.contains("E-LOAD-040"), "{err}");
     let bound = err
         .split("static bound ")
@@ -255,7 +256,8 @@ fn a_members_of_fold_in_an_empty_census_world_is_e_load_045() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = babylon_tick::run_once_into(empty_world, rule, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(empty_world, rule, &mut graph, &mut sink)
+        .expect_err("the malformed tick is refused");
     assert!(err.contains("E-LOAD-045"), "{err}");
     assert!(err.contains("COMMUNITY"), "{err}");
 }
@@ -280,7 +282,8 @@ fn a_hyperedge_element_in_a_numeric_position_refuses_at_load() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink)
+        .expect_err("the malformed tick is refused");
     assert!(
         err.contains("kind-propagation over compound expressions is not implemented in Phase 1"),
         "{err}"
@@ -307,7 +310,8 @@ fn a_node_type_member_in_a_hyperedge_position_is_e_type_011() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(SCENARIO, rule, &mut graph, &mut sink)
+        .expect_err("the malformed tick is refused");
     assert!(err.contains("E-TYPE-011"), "{err}");
 }
 
@@ -342,7 +346,8 @@ fn a_members_of_fold_with_a_mismatched_annotation_is_e_eval_032() {
 "#;
     let mut graph = HypergraphStore::new();
     let mut sink = CollectingSink::default();
-    let err = babylon_tick::run_once_into(world, rule, &mut graph, &mut sink).unwrap_err();
+    let err = babylon_tick::run_once_into(world, rule, &mut graph, &mut sink)
+        .expect_err("the malformed tick is refused");
     assert!(err.contains("E-EVAL-032"), "{err}");
     assert!(err.contains("SECTOR"), "{err}");
     assert!(err.contains("COMMUNITY"), "{err}");

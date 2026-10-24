@@ -8,16 +8,18 @@ use crate::storage_compression;
 use babylon_kernel::content_digest;
 fn opening() -> OpeningRegister {
     let session = crate::organizer_aid_fixture::authored_session(
-        crate::michigan_dynamic_hex_foundation().unwrap(),
+        crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds"),
         crate::organizer_aid_fixture::config(),
         false,
         false,
     );
-    OpeningRegister::from_opening(session.material()).unwrap()
+    OpeningRegister::from_opening(session.material())
+        .expect("the opening register admits its sections")
 }
 fn checked_body(package: &[u8], body: &[u8]) -> Vec<u8> {
     let offset = LOOKUP_DOMAIN.len() + 2 + 32 + 8 + 32 + 8 + 32;
-    let compressed = storage_compression::compress_exact(body, MAX_LOOKUP_BYTES).unwrap();
+    let compressed = storage_compression::compress_exact(body, MAX_LOOKUP_BYTES)
+        .expect("the body fits the exact compressed bound");
     let mut changed = package[..offset].to_vec();
     changed.extend_from_slice(&(body.len() as u64).to_be_bytes());
     changed.extend_from_slice(&content_digest::sha256_of(body));
@@ -28,12 +30,14 @@ fn checked_body(package: &[u8], body: &[u8]) -> Vec<u8> {
 #[test]
 fn logical_length_and_count_refuse_before_out_of_range_recipe_resolution() {
     let opening = opening();
-    let previous = register::initial_lookup_chain(&opening).unwrap();
+    let previous = register::initial_lookup_chain(&opening)
+        .expect("the opening register builds its first lookup chain");
     let entry = IdentityEntry {
         kind: K::Site,
         bytes: [241; 32],
     };
-    let (package, _) = register::encode_period_lookup(&opening, 1, previous, &[entry]).unwrap();
+    let (package, _) = register::encode_period_lookup(&opening, 1, previous, &[entry])
+        .expect("the authored lookup table encodes");
     let mut body = 1u32.to_be_bytes().to_vec();
     body.push(128);
     body.extend_from_slice(&u32::MAX.to_be_bytes());
@@ -41,7 +45,7 @@ fn logical_length_and_count_refuse_before_out_of_range_recipe_resolution() {
     let broken_row = checked_body(&package, &body);
     assert_eq!(
         register::read_period_lookup(&opening, 1, &broken_row, LookupAnchor::Previous(previous))
-            .unwrap_err(),
+            .expect_err("the malformed lookup request is refused"),
         Error::Descriptor(DescriptorError::Row)
     );
     let offset = LOOKUP_DOMAIN.len() + 2 + 32 + 8 + 32;
@@ -50,7 +54,7 @@ fn logical_length_and_count_refuse_before_out_of_range_recipe_resolution() {
         changed[offset..offset + 8].copy_from_slice(&length.to_be_bytes());
         assert_eq!(
             register::read_period_lookup(&opening, 1, &changed, LookupAnchor::Previous(previous))
-                .unwrap_err(),
+                .expect_err("the malformed lookup request is refused"),
             Error::State(StorageError::Framing)
         );
     }
@@ -60,28 +64,29 @@ fn logical_length_and_count_refuse_before_out_of_range_recipe_resolution() {
     changed[offset..offset + 8].copy_from_slice(&70u64.to_be_bytes());
     assert_eq!(
         register::read_period_lookup(&opening, 1, &changed, LookupAnchor::Previous(previous))
-            .unwrap_err(),
+            .expect_err("the malformed lookup request is refused"),
         Error::Descriptor(DescriptorError::Framing)
     );
     body[..4].copy_from_slice(&u32::MAX.to_be_bytes());
     let huge_count = checked_body(&package, &body);
     assert_eq!(
         register::read_period_lookup(&opening, 1, &huge_count, LookupAnchor::Previous(previous))
-            .unwrap_err(),
+            .expect_err("the malformed lookup request is refused"),
         Error::Descriptor(DescriptorError::Framing)
     );
     let mut oversized = broken_row;
     oversized[offset..offset + 8].copy_from_slice(&(MAX_LOOKUP_BYTES as u64 + 1).to_be_bytes());
     assert_eq!(
         register::read_period_lookup(&opening, 1, &oversized, LookupAnchor::Previous(previous))
-            .unwrap_err(),
+            .expect_err("the malformed lookup request is refused"),
         Error::Bounds
     );
 }
 #[test]
 fn empty_and_nonrecipe_kinds_keep_exact_logical_tables() {
     let opening = opening();
-    let previous = register::initial_lookup_chain(&opening).unwrap();
+    let previous = register::initial_lookup_chain(&opening)
+        .expect("the opening register builds its first lookup chain");
     for entries in [
         vec![],
         vec![IdentityEntry {
@@ -89,11 +94,11 @@ fn empty_and_nonrecipe_kinds_keep_exact_logical_tables() {
             bytes: [243; 32],
         }],
     ] {
-        let (package, chain) =
-            register::encode_period_lookup(&opening, 1, previous, &entries).unwrap();
+        let (package, chain) = register::encode_period_lookup(&opening, 1, previous, &entries)
+            .expect("the authored lookup table encodes");
         let loaded =
             register::read_period_lookup(&opening, 1, &package, LookupAnchor::Previous(previous))
-                .unwrap();
+                .expect("the committed lookup table reads");
         assert_eq!(
             &loaded.lookup.entries()[opening.lookup().entries().len()..],
             entries
@@ -101,8 +106,16 @@ fn empty_and_nonrecipe_kinds_keep_exact_logical_tables() {
         assert_eq!(loaded.chain, chain);
         let offset = LOOKUP_DOMAIN.len() + 2 + 32 + 8 + 32;
         assert_eq!(
-            u64::from_be_bytes(package[offset..offset + 8].try_into().unwrap()),
-            u64::from_be_bytes(package[offset + 40..offset + 48].try_into().unwrap())
+            u64::from_be_bytes(
+                package[offset..offset + 8]
+                    .try_into()
+                    .expect("the fixture slice has the target length")
+            ),
+            u64::from_be_bytes(
+                package[offset + 40..offset + 48]
+                    .try_into()
+                    .expect("the fixture slice has the target length")
+            )
         );
         assert_eq!(
             &package[offset + 8..offset + 40],
@@ -114,8 +127,10 @@ fn empty_and_nonrecipe_kinds_keep_exact_logical_tables() {
 #[test]
 fn descriptor_length_cannot_exceed_its_logical_table_before_decompression() {
     let opening = opening();
-    let previous = register::initial_lookup_chain(&opening).unwrap();
-    let (mut package, _) = register::encode_period_lookup(&opening, 1, previous, &[]).unwrap();
+    let previous = register::initial_lookup_chain(&opening)
+        .expect("the opening register builds its first lookup chain");
+    let (mut package, _) = register::encode_period_lookup(&opening, 1, previous, &[])
+        .expect("the authored lookup table encodes");
     let offset = LOOKUP_DOMAIN.len() + 2 + 32 + 8 + 32 + 8 + 32;
     // The closed grammar can encode zero additions in exactly four bytes.
     // Keep the valid four-byte compressed frame but declare five. Refusal must
@@ -124,7 +139,7 @@ fn descriptor_length_cannot_exceed_its_logical_table_before_decompression() {
         package[offset..offset + 8].copy_from_slice(&declared.to_be_bytes());
         assert_eq!(
             register::read_period_lookup(&opening, 1, &package, LookupAnchor::Previous(previous))
-                .unwrap_err(),
+                .expect_err("the malformed lookup request is refused"),
             Error::Descriptor(DescriptorError::Framing)
         );
     }

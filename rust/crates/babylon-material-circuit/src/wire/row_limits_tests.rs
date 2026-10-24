@@ -18,20 +18,30 @@ fn inventory_tail_above_the_old_shared_ceiling_roundtrips_completely() {
     let rows: Vec<_> = (0..MAX_MATERIAL_CIRCUIT_ROWS + 2)
         .map(|index| {
             let mut id = [0; 32];
-            id[..8].copy_from_slice(&u64::try_from(index).unwrap().to_be_bytes());
+            id[..8].copy_from_slice(
+                &u64::try_from(index)
+                    .expect("the fixture value fits the target range")
+                    .to_be_bytes(),
+            );
             InventoryRow {
                 site_id: SiteId::from_bytes(id),
                 good_id: GoodId::from_bytes([1; 32]),
                 unit_id: UnitId::from_bytes([2; 32]),
-                quantity: u64::try_from(index).unwrap(),
+                quantity: u64::try_from(index).expect("the fixture value fits the target range"),
             }
         })
         .collect();
     let mut bytes = Vec::new();
-    wire::append_inventory(&mut bytes, &rows).unwrap();
+    wire::append_inventory(&mut bytes, &rows)
+        .expect("the fixture call `append_inventory` succeeds for the authored inputs");
     let mut cursor = Cursor::new(&bytes);
-    assert_eq!(decode_inventory(&mut cursor).unwrap(), rows);
-    cursor.finish().unwrap();
+    assert_eq!(
+        decode_inventory(&mut cursor).expect("the canonical bytes decode into the declared type"),
+        rows
+    );
+    cursor
+        .finish()
+        .expect("the fixture finishes the authored period");
     assert_eq!(
         decode_inventory(&mut Cursor::new(&bytes[..bytes.len() - 1])),
         Err(MaterialCircuitError::WireTruncated)
@@ -41,7 +51,9 @@ fn inventory_tail_above_the_old_shared_ceiling_roundtrips_completely() {
 #[test]
 fn family_excess_refuses_before_allocating_or_decoding_row_payloads() {
     fn header(limit: usize) -> [u8; 4] {
-        u32::try_from(limit + 1).unwrap().to_be_bytes()
+        u32::try_from(limit + 1)
+            .expect("the fixture value fits the target range")
+            .to_be_bytes()
     }
     assert_eq!(
         decode_inventory(&mut Cursor::new(&header(crate::MAX_INVENTORY_ROWS))),

@@ -324,8 +324,13 @@ mod tests {
         for (i, v) in [1_u64, 5, 8, 3, 2, 1, 0, 4, 1, 32].into_iter().enumerate() {
             row[26 + i * 8..34 + i * 8].copy_from_slice(&v.to_be_bytes());
         }
-        let kept = keep(28, &row).unwrap();
-        assert_eq!(unpack_row(28, 1, &kept, 1, 106).unwrap(), row);
+        let kept =
+            keep(28, &row).expect("the fixture call `keep` succeeds for the authored inputs");
+        assert_eq!(
+            unpack_row(28, 1, &kept, 1, 106)
+                .expect("the fixture call `unpack_row` succeeds for the authored inputs"),
+            row
+        );
     }
     #[test]
     fn independently_authored_period_uses_exact_generic_fallback() {
@@ -333,7 +338,8 @@ mod tests {
         for (i, v) in [2_u64, 5, 8, 3, 2, 1, 0, 4, 1, 32].into_iter().enumerate() {
             row[26 + i * 8..34 + i * 8].copy_from_slice(&v.to_be_bytes());
         }
-        let (mode, width, packed) = pack_family(28, &row, 1, 106, 1).unwrap();
+        let (mode, width, packed) = pack_family(28, &row, 1, 106, 1)
+            .expect("the fixture call `pack_family` succeeds for the authored inputs");
         assert_eq!(mode, 0);
         assert_eq!(width, 106);
         assert_eq!(packed, row);
@@ -353,10 +359,15 @@ mod tests {
         for (i, value) in values.into_iter().enumerate() {
             row[13 + i * 16..29 + i * 16].copy_from_slice(&value.to_be_bytes());
         }
-        let (mode, width, packed) = pack_family(19, &row, 1, 477, 1).unwrap();
+        let (mode, width, packed) = pack_family(19, &row, 1, 477, 1)
+            .expect("the fixture call `pack_family` succeeds for the authored inputs");
         assert_eq!(mode, 1);
         assert_eq!(width, 421);
-        assert_eq!(unpack_row(19, mode, &packed, 1, 477).unwrap(), row);
+        assert_eq!(
+            unpack_row(19, mode, &packed, 1, 477)
+                .expect("the fixture call `unpack_row` succeeds for the authored inputs"),
+            row
+        );
     }
     #[test]
     fn overflow_and_underflow_refuse() {
@@ -384,12 +395,24 @@ mod tests {
         for (i, amount) in amounts.into_iter().enumerate() {
             row[13 + i * 16..29 + i * 16].copy_from_slice(&amount.to_be_bytes());
         }
-        let (mode, width, packed) = pack_family(19, &row, 1, 477, 1).unwrap();
+        let (mode, width, packed) = pack_family(19, &row, 1, 477, 1)
+            .expect("the fixture call `pack_family` succeeds for the authored inputs");
         assert_eq!((mode, width), (1, 421));
-        assert_eq!(unpack_row(19, mode, &packed, 1, 477).unwrap(), row);
-        assert_eq!(c(&row, 13 + 25 * 16).unwrap(), 17);
-        assert_eq!(c(&row, 13 + 26 * 16).unwrap(), 9);
-        let (mode, width, packed) = pack_family(19, &row, 1, 477, 2).unwrap();
+        assert_eq!(
+            unpack_row(19, mode, &packed, 1, 477)
+                .expect("the fixture call `unpack_row` succeeds for the authored inputs"),
+            row
+        );
+        assert_eq!(
+            c(&row, 13 + 25 * 16).expect("the fixture call `c` succeeds for the authored inputs"),
+            17
+        );
+        assert_eq!(
+            c(&row, 13 + 26 * 16).expect("the fixture call `c` succeeds for the authored inputs"),
+            9
+        );
+        let (mode, width, packed) = pack_family(19, &row, 1, 477, 2)
+            .expect("the fixture call `pack_family` succeeds for the authored inputs");
         assert_eq!((mode, width), (0, 477));
         assert_eq!(packed, row);
     }
@@ -411,9 +434,14 @@ mod tests {
             row[12..28].copy_from_slice(&(-31_i128).to_be_bytes());
             row[28..34].copy_from_slice(&credit);
             row[34..50].copy_from_slice(&31_i128.to_be_bytes());
-            let (mode, width, packed) = pack_family(11, &row, 1, 50, 1).unwrap();
+            let (mode, width, packed) = pack_family(11, &row, 1, 50, 1)
+                .expect("the fixture call `pack_family` succeeds for the authored inputs");
             assert_eq!((mode, width), (1, 30));
-            assert_eq!(unpack_row(11, mode, &packed, 1, 50).unwrap(), row);
+            assert_eq!(
+                unpack_row(11, mode, &packed, 1, 50)
+                    .expect("the fixture call `unpack_row` succeeds for the authored inputs"),
+                row
+            );
             let bad_reserve = if purpose == 8 { 28 } else { 6 };
             row[bad_reserve] = 2;
             assert_eq!(keep(11, &row), Err(Error::Canonical));

@@ -372,7 +372,9 @@ mod tests {
         ProductionSite {
             function: "manufacturing".into(),
             id: id.into(),
-            location: "county:26163".parse().unwrap(),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
             name: format!("Cohort {id}"),
             industry_code: Some("331".into()),
             observed_employment: Some(999_999),

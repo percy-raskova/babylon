@@ -41,7 +41,10 @@ fn split_existing_household() -> MaterialCircuitState {
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
         unreachable!()
     };
-    let recurring = accounts.recurring.as_mut().unwrap();
+    let recurring = accounts
+        .recurring
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow");
     recurring.households[0].households = 1;
     recurring.households[0].persons = 3;
     recurring.households.push(HouseholdCohort {
@@ -72,12 +75,13 @@ fn split_existing_household() -> MaterialCircuitState {
         id: AccountId::Household(second),
         cash: crate::money(0),
     });
-    accounts.book = MonetaryBook::from_snapshot(snapshot).unwrap();
+    accounts.book =
+        MonetaryBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     let mut stocks = accounts.costs.snapshot().stocks;
     stocks
         .iter_mut()
         .find(|r| r.owner == AccountId::Household(crate::household()))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .amount = crate::money(24);
     stocks.push(StockCarryingValue {
         owner: AccountId::Household(second),
@@ -85,8 +89,8 @@ fn split_existing_household() -> MaterialCircuitState {
         unit_id: crate::units(),
         amount: crate::money(8),
     });
-    accounts.costs =
-        HistoricalCostBook::open(&accounts.book, stocks, vec![], vec![], vec![]).unwrap();
+    accounts.costs = HistoricalCostBook::open(&accounts.book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     state
 }
 
@@ -96,7 +100,7 @@ fn a_no_earner_budget_can_exhaust_while_its_neighbor_receives_actual_wages() {
     let household_controls = crate::economy(&state)
         .recurring
         .as_ref()
-        .unwrap()
+        .expect("the fixture set the optional field before this read")
         .households
         .clone();
     assert_eq!(household_controls.iter().map(|r| r.persons).sum::<u64>(), 4);
@@ -108,24 +112,26 @@ fn a_no_earner_budget_can_exhaust_while_its_neighbor_receives_actual_wages() {
         crate::economy(&state)
             .book
             .total_cash_and_reserves()
-            .unwrap(),
+            .expect("the fixture book totals without overflow"),
         crate::money(24)
     );
-    let mut result = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+    let mut result = babylon_material_circuit::advance_material_circuit(&state)
+        .expect("the authored material state advances one period");
     for _ in 0..2 {
         state = result.state;
-        result = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+        result = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
     }
     let deprived = result
         .household_consumption
         .iter()
         .find(|r| r.principal_id == second_household())
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let earning = result
         .household_consumption
         .iter()
         .find(|r| r.principal_id == crate::household())
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         (deprived.consumed_quantity, deprived.unmet_quantity),
         (0, 1)
@@ -146,14 +152,14 @@ fn a_no_earner_budget_can_exhaust_while_its_neighbor_receives_actual_wages() {
         crate::economy(&result.state)
             .book
             .total_cash_and_reserves()
-            .unwrap(),
+            .expect("the fixture book totals without overflow"),
         crate::money(24)
     );
     assert_eq!(
         crate::economy(&result.state)
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .households,
         household_controls
     );
@@ -161,16 +167,22 @@ fn a_no_earner_budget_can_exhaust_while_its_neighbor_receives_actual_wages() {
 
 #[test]
 fn separate_budget_consumption_and_payroll_survive_canonical_restart() {
-    let first =
-        babylon_material_circuit::advance_material_circuit(&split_existing_household()).unwrap();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&first.state).unwrap();
-    let reopened = babylon_material_circuit::decode_material_circuit_state(&bytes).unwrap();
-    let live = babylon_material_circuit::advance_material_circuit(&first.state).unwrap();
-    let resumed = babylon_material_circuit::advance_material_circuit(&reopened).unwrap();
+    let first = babylon_material_circuit::advance_material_circuit(&split_existing_household())
+        .expect("the authored material state advances one period");
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&first.state)
+        .expect("the canonical material state encodes");
+    let reopened = babylon_material_circuit::decode_material_circuit_state(&bytes)
+        .expect("the canonical material bytes decode");
+    let live = babylon_material_circuit::advance_material_circuit(&first.state)
+        .expect("the authored material state advances one period");
+    let resumed = babylon_material_circuit::advance_material_circuit(&reopened)
+        .expect("the authored material state advances one period");
     assert_eq!(live, resumed);
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&live.state).unwrap(),
-        babylon_material_circuit::encode_material_circuit_state(&resumed.state).unwrap()
+        babylon_material_circuit::encode_material_circuit_state(&live.state)
+            .expect("the canonical material state encodes"),
+        babylon_material_circuit::encode_material_circuit_state(&resumed.state)
+            .expect("the canonical material state encodes")
     );
 }
 
@@ -180,15 +192,18 @@ fn collective_residents_consume_person_based_needs_without_fake_households() {
     let recurring = crate::recurring_mut(&mut state);
     recurring.households[0].kind = HouseholdKind::CollectiveResidence;
     recurring.households[0].households = 0;
-    let encoded = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
-    let reopened = babylon_material_circuit::decode_material_circuit_state(&encoded).unwrap();
-    let result = babylon_material_circuit::advance_material_circuit(&reopened).unwrap();
+    let encoded = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
+    let reopened = babylon_material_circuit::decode_material_circuit_state(&encoded)
+        .expect("the canonical material bytes decode");
+    let result = babylon_material_circuit::advance_material_circuit(&reopened)
+        .expect("the authored material state advances one period");
     assert_eq!(result.household_consumption[0].required_quantity, 4);
     assert_eq!(result.household_consumption[0].consumed_quantity, 4);
     let row = &crate::economy(&result.state)
         .recurring
         .as_ref()
-        .unwrap()
+        .expect("the fixture set the optional field before this read")
         .households[0];
     assert_eq!(
         (row.kind, row.persons, row.households),
@@ -223,7 +238,7 @@ fn reserve_hiring_preserves_the_resident_budget_identity_and_counts() {
     let cohorts = crate::economy(&state)
         .recurring
         .as_ref()
-        .unwrap()
+        .expect("the fixture set the optional field before this read")
         .households
         .clone();
     let waiting = StaffingMemberBinding::try_new(
@@ -232,23 +247,23 @@ fn reserve_hiring_preserves_the_resident_budget_identity_and_counts() {
         state.final_demand_principals[0].location,
         1,
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     let active = StaffingMemberBinding::try_new(
         StaffingMemberId::from_bytes([1; 32]),
         crate::household(),
         state.final_demand_principals[0].location,
         1,
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     let pool = StaffingPoolBinding::try_new(
         StaffingPoolId::from_bytes([3; 32]),
         crate::site(3),
         crate::hours(),
         2,
-        StaffingPolicy::one_period(4).unwrap(),
+        StaffingPolicy::one_period(4).expect("the one-period fixture advances"),
         vec![StaffingWorkSource::MerchantHandling(crate::site(3))],
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     let request = StaffingWorkRequest::new(
         1,
         pool.pool_id(),
@@ -257,21 +272,27 @@ fn reserve_hiring_preserves_the_resident_budget_identity_and_counts() {
         crate::hours(),
         8,
     );
-    let workforce =
-        StaffingState::try_new(1, vec![StaffingPoolState::try_new(pool, 1, 1, 0).unwrap()])
-            .unwrap();
-    let closed = babylon_material_circuit::advance_staffing(&workforce, &[request]).unwrap();
+    let workforce = StaffingState::try_new(
+        1,
+        vec![StaffingPoolState::try_new(pool, 1, 1, 0)
+            .expect("the authored fixture satisfies the constructor invariants")],
+    )
+    .expect("the authored fixture satisfies the constructor invariants");
+    let closed = babylon_material_circuit::advance_staffing(&workforce, &[request])
+        .expect("the fixture staffing advances");
     let members = [
-        StaffingMemberState::try_new(active, 1, 0).unwrap(),
-        StaffingMemberState::try_new(waiting.clone(), 0, 1).unwrap(),
+        StaffingMemberState::try_new(active, 1, 0)
+            .expect("the authored fixture satisfies the constructor invariants"),
+        StaffingMemberState::try_new(waiting.clone(), 0, 1)
+            .expect("the authored fixture satisfies the constructor invariants"),
     ];
     let changes =
         babylon_material_circuit::distribute_staffing_members(&closed.receipts()[0], &members)
-            .unwrap();
+            .expect("the fixture distributes the authored members");
     let hired = changes
         .iter()
         .find(|r| r.member.member_id() == waiting.member_id())
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(hired.member, waiting);
     assert_eq!(hired.member.household_id(), second_household());
     assert_eq!(
@@ -296,7 +317,7 @@ fn reserve_hiring_preserves_the_resident_budget_identity_and_counts() {
         crate::economy(&state)
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .households,
         cohorts
     );
@@ -311,11 +332,11 @@ fn captured_ownership_pays_its_own_budget_without_becoming_wage_income() {
     accounts
         .recurring
         .as_mut()
-        .unwrap()
+        .expect("the fixture set the optional field before this borrow")
         .offers
         .iter_mut()
         .find(|r| r.site_id == crate::site(3))
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .unit_price = crate::money(5);
     accounts.financial.ownership.push(OwnershipClaim {
         issuer_site_id: crate::site(3),
@@ -339,11 +360,12 @@ fn captured_ownership_pays_its_own_budget_without_becoming_wage_income() {
         }],
         vec![],
     )
-    .unwrap();
+    .expect("the fixture opens the authored source");
     let mut paid_to_owner = 0;
     let mut actual_wages = 0;
     for _ in 0..8 {
-        let closed = babylon_material_circuit::advance_material_circuit(&state).unwrap();
+        let closed = babylon_material_circuit::advance_material_circuit(&state)
+            .expect("the authored material state advances one period");
         assert!(closed
             .wage_accruals
             .iter()
@@ -367,7 +389,7 @@ fn captured_ownership_pays_its_own_budget_without_becoming_wage_income() {
             .income
             .iter()
             .find(|r| r.account == AccountId::Household(second_household()))
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(owner_income.statement.wage_income, crate::money(0));
         assert_eq!(
             owner_income.statement.distribution_income,
@@ -377,7 +399,7 @@ fn captured_ownership_pays_its_own_budget_without_becoming_wage_income() {
             .income
             .iter()
             .find(|r| r.account == AccountId::Household(crate::household()))
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(wage_income.statement.distribution_income, crate::money(0));
         state = closed.state;
     }
@@ -387,7 +409,7 @@ fn captured_ownership_pays_its_own_budget_without_becoming_wage_income() {
         crate::economy(&state)
             .book
             .total_cash_and_reserves()
-            .unwrap(),
+            .expect("the fixture book totals without overflow"),
         crate::money(24)
     );
 }
@@ -395,7 +417,8 @@ fn captured_ownership_pays_its_own_budget_without_becoming_wage_income() {
 #[test]
 fn household_kind_is_explicit_in_canonical_bytes_and_unknown_tags_are_refused() {
     let state = split_existing_household();
-    let encoded = babylon_material_circuit::encode_material_circuit_state(&state).unwrap();
+    let encoded = babylon_material_circuit::encode_material_circuit_state(&state)
+        .expect("the canonical material state encodes");
     let mut row = vec![1]; // current Ordinary tag, followed by the exact counted principal
     row.extend_from_slice(&second_household().as_bytes());
     row.extend_from_slice(&1_u64.to_be_bytes());
@@ -417,21 +440,23 @@ fn household_kind_is_explicit_in_canonical_bytes_and_unknown_tags_are_refused() 
         &encoded[..position + row.len() - 1]
     )
     .is_err());
-    let restored = babylon_material_circuit::decode_material_circuit_state(&encoded).unwrap();
+    let restored = babylon_material_circuit::decode_material_circuit_state(&encoded)
+        .expect("the canonical material bytes decode");
     assert_eq!(
         crate::economy(&restored)
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .households,
         crate::economy(&state)
             .recurring
             .as_ref()
-            .unwrap()
+            .expect("the fixture set the optional field before this read")
             .households
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&restored).unwrap(),
+        babylon_material_circuit::encode_material_circuit_state(&restored)
+            .expect("the canonical material state encodes"),
         encoded
     );
 }

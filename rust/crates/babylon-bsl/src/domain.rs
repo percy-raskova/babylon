@@ -319,7 +319,7 @@ mod tests {
             ),
             (EnumKind::EdgeType, vec!["SOLIDARITY".to_owned()]),
         ])
-        .unwrap()
+        .expect("the constructor accepts the authored fixture arguments")
     }
 
     fn domain(source: &str) -> Result<RuleDomain, DomainError> {
@@ -341,7 +341,7 @@ mod tests {
              (when (< wealth 1000.5$)) \
              (effects (update-node self social-class/agitation (add 0.05i))))"
         ))
-        .unwrap();
+        .expect("the fixture call `domain` succeeds for the authored inputs");
         assert_eq!(d, RuleDomain::Node("social-class".to_owned()));
     }
 
@@ -353,7 +353,7 @@ mod tests {
              (when (< now 5)) \
              (effects (emit EventType/RUPTURE (t now))))"
         ))
-        .unwrap_err();
+        .expect_err("the fixture call `domain` fails for the authored inputs");
         assert_eq!(err.spec_code(), Some("E-LOAD-004"));
     }
 
@@ -366,7 +366,7 @@ mod tests {
              (when (< wealth claim)) \
              (effects (update-node self social-class/agitation (add 0.05i))))"
         ))
-        .unwrap_err();
+        .expect_err("the fixture call `domain` fails for the authored inputs");
         assert_eq!(err.spec_code(), Some("E-LOAD-004"));
     }
 
@@ -383,7 +383,7 @@ mod tests {
              (when (< wealth claim)) \
              (effects (update-node self social-class/agitation (add 0.05i))))"
         ))
-        .unwrap_err();
+        .expect_err("the fixture call `domain` fails for the authored inputs");
         assert_eq!(err.spec_code(), Some("E-TYPE-010"));
     }
 
@@ -396,7 +396,7 @@ mod tests {
              (when (< wealth 5)) \
              (effects (update-node self social-class/agitation (add 0.05i))))"
         ))
-        .unwrap();
+        .expect("the fixture call `domain` succeeds for the authored inputs");
         assert_eq!(d, RuleDomain::Node("social-class".to_owned()));
     }
 
@@ -411,7 +411,7 @@ mod tests {
              (when (< (fold sum (nodes NodeType/ORGANIZATION) claim) 5)) \
              (effects (emit EventType/RUPTURE (x 1))))"
         ))
-        .unwrap();
+        .expect("the fixture call `domain` succeeds for the authored inputs");
         assert_eq!(d, RuleDomain::Graph);
     }
 
@@ -423,7 +423,7 @@ mod tests {
              (bindings) \
              (effects (update-node self social-class/agitation (add 0.05i))))"
         ))
-        .unwrap_err();
+        .expect_err("the fixture call `domain` fails for the authored inputs");
         assert_eq!(err.spec_code(), Some("E-TYPE-015"));
     }
 
@@ -436,7 +436,7 @@ mod tests {
              (when (< wealth 5)) \
              (effects (emit EventType/RUPTURE (x 1))))"
         ))
-        .unwrap_err();
+        .expect_err("the fixture call `domain` fails for the authored inputs");
         assert_eq!(err.spec_code(), Some("E-TYPE-015"));
     }
 
@@ -450,7 +450,7 @@ mod tests {
              (effects (update-node (the NodeType/POLITY) \
                                    polity/imperial-rent-pool (set 0$))))"
         ))
-        .unwrap();
+        .expect("the fixture call `domain` succeeds for the authored inputs");
         assert_eq!(d, RuleDomain::Graph);
     }
 }

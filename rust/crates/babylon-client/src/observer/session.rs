@@ -314,7 +314,9 @@ mod tests {
 
     fn commit(state: &mut ObserverSession) {
         let period = state.durable_tick + 1;
-        let request = state.begin_advance().unwrap();
+        let request = state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         assert!(state.begin_advance().is_none());
         assert!(state.acknowledge(request, period, None));
         assert!(
@@ -327,7 +329,9 @@ mod tests {
     #[test]
     fn one_advance_has_one_acknowledged_four_week_period() {
         let mut state = ready(0);
-        let request = state.begin_advance().unwrap();
+        let request = state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         assert!(state.begin_advance().is_none());
         assert!(!state.acknowledge(request, 4, None));
         assert!(!state.acknowledge(request + 1, 1, None));
@@ -349,7 +353,9 @@ mod tests {
         assert!(state.start_playback());
         commit(&mut state);
         assert!(state.playback_due());
-        let request = state.begin_advance().unwrap();
+        let request = state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         state.pause_playback();
         assert!(state.advance_pending());
         assert!(state.acknowledge(request, 4, None));
@@ -365,7 +371,9 @@ mod tests {
         let mut state = ready(6);
         assert!(state.start_playback());
         let old = state.context();
-        let request = state.begin_advance().unwrap();
+        let request = state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         state.set_perspective(Perspective::PlayerKnowledge);
         assert!(!state.playing);
         assert!(!state.accepts(&old));
@@ -393,7 +401,9 @@ mod tests {
         assert!(!state.start_playback());
         let mut closing = ready(2);
         assert!(closing.start_playback());
-        let request = closing.begin_advance().unwrap();
+        let request = closing
+            .begin_advance()
+            .expect("the session begins the authored advance");
         closing.quit_requested = true;
         assert!(closing.acknowledge(request, 3, None));
         assert!(closing.installed(&closing.context()));
@@ -405,7 +415,9 @@ mod tests {
     fn lost_acknowledgement_reopen_reconciles_without_replaying_a_period() {
         let mut state = ready(6);
         assert!(state.start_playback());
-        state.begin_advance().unwrap();
+        state
+            .begin_advance()
+            .expect("the session begins the authored advance");
         state.fail("acknowledgement lost".into());
         assert!(state.advance_pending());
         assert!(!state.start_playback());

@@ -529,13 +529,17 @@ mod national_scope_tests {
         let source = NationalCountyReference::decode_pinned(include_bytes!(
             "../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"
         ))
-        .unwrap();
-        let base = national_reference_grants(&source, None).unwrap();
+        .expect("the pinned vector bytes decode");
+        let base = national_reference_grants(&source, None).expect(
+            "the fixture call `national_reference_grants` succeeds for the authored inputs",
+        );
         let products = spatial_reference_products::michigan_spatial_reference_products(
-            h3_reference_cohort::representative_h3_reference_cohort().unwrap(),
+            h3_reference_cohort::representative_h3_reference_cohort().expect("the fixture call `representative_h3_reference_cohort` succeeds for the authored inputs"),
         )
-        .unwrap();
-        let detailed = national_reference_grants(&source, Some(&products)).unwrap();
+        .expect("the fixture call `michigan_spatial_reference_products` succeeds for the authored inputs");
+        let detailed = national_reference_grants(&source, Some(&products)).expect(
+            "the fixture call `national_reference_grants` succeeds for the authored inputs",
+        );
         assert_eq!(base.len(), 9_432);
         assert_eq!(detailed.len(), base.len() + 745 * 3);
         assert_eq!(&detailed[..base.len()], base);
@@ -555,8 +559,9 @@ mod national_scope_tests {
         let source = NationalCountyReference::decode_pinned(include_bytes!(
             "../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"
         ))
-        .unwrap();
-        let rows = national_county_grants(&source).unwrap();
+        .expect("the pinned vector bytes decode");
+        let rows = national_county_grants(&source)
+            .expect("the fixture call `national_county_grants` succeeds for the authored inputs");
         assert_eq!(rows.len(), 3 * 3_144);
         assert!(rows
             .iter()

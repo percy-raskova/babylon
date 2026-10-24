@@ -248,7 +248,10 @@ fn log_feedback(
 
 #[derive(PartialEq)]
 // These are independent applied controls, not mutually exclusive session states.
-#[allow(clippy::struct_excessive_bools)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "the struct mirrors the authored flag schema"
+)]
 struct PresentationSnapshot {
     network_layer: RoadLayer,
     network_sector: NetworkSector,
@@ -274,7 +277,10 @@ struct PresentationSnapshot {
     audio: Option<(f32, f32, usize)>,
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`log_presentation` declares each Bevy parameter explicitly"
+)]
 fn log_presentation(
     session: Res<ObserverSession>,
     frame: Option<Res<ObserverFrame>>,
@@ -386,7 +392,10 @@ struct DossierSnapshot {
     status: &'static str,
     page: &'static str,
 }
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "`log_dossier` takes every authored field explicitly"
+)]
 fn log_dossier(
     session: Res<ObserverSession>,
     projection: Option<Res<ActiveCountyDossier>>,
@@ -647,7 +656,9 @@ mod tests {
                     function: "manufacturing".into(),
                     id: HIDDEN_SITE.into(),
                     name: HIDDEN_LABEL.into(),
-                    location: "county:26163".parse().unwrap(),
+                    location: "county:26163"
+                        .parse()
+                        .expect("the authored literal parses as the declared type"),
                     industry_code: Some("331".into()),
                     observed_employment: None,
                     inventory: Vec::new(),
@@ -750,11 +761,14 @@ mod tests {
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../../assets/map/county_atlas.bin"
             )))
-            .unwrap();
-            let wayne = atlas.index_of_fips("26163").unwrap();
-            let scope = ArchiveReadScope::committed(campaign, 1, [1; 32]).unwrap();
-            let subject =
-                ArchivePageRef::try_new(ArchiveSubjectKind::Place, "2674900".into()).unwrap();
+            .expect("the authored literal parses as the declared type");
+            let wayne = atlas
+                .index_of_fips("26163")
+                .expect("the fixture call `index_of_fips` succeeds for the authored inputs");
+            let scope = ArchiveReadScope::committed(campaign, 1, [1; 32])
+                .expect("the fixture observation carries the committed value");
+            let subject = ArchivePageRef::try_new(ArchiveSubjectKind::Place, "2674900".into())
+                .expect("the authored fixture satisfies the constructor invariants");
             app.insert_resource(atlas)
                 .insert_resource(SelectedCounty(Some(wayne)))
                 .insert_resource(DossierCampaignId(campaign))

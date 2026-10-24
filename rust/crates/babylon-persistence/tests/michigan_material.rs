@@ -15,9 +15,9 @@ type Session = MaterialReplaySession<HypergraphStore>;
 fn session(preset: MichiganDeliveryPreset) -> Session {
     MichiganContentPreset::new_campaign(preset)
         .create_foundation(&crate::test_support::catalog())
-        .unwrap()
+        .expect("the authored catalog builds the foundation")
         .into_session()
-        .unwrap()
+        .expect("the fixture opens a session")
 }
 
 fn prepare(session: &Session) -> PreparedMaterialTick<HypergraphStore> {
@@ -25,8 +25,10 @@ fn prepare(session: &Session) -> PreparedMaterialTick<HypergraphStore> {
         session.graph_session().session_identity().clone(),
         session.completed_tick() + 1,
     )
-    .unwrap();
-    session.prepare_advance(&actions).unwrap()
+    .expect("the empty authored batch constructs");
+    session
+        .prepare_advance(&actions)
+        .expect("the session prepares the authored advance")
 }
 
 fn commit(session: &mut Session, candidate: PreparedMaterialTick<HypergraphStore>) {
@@ -34,13 +36,13 @@ fn commit(session: &mut Session, candidate: PreparedMaterialTick<HypergraphStore
         .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_| {
             Ok::<_, ()>(ReplayCommitDisposition::Committed)
         })
-        .unwrap();
+        .expect("the prepared period commits");
 }
 
 fn advance(session: &mut Session) -> MaterialTickReceipts {
     let candidate = prepare(session);
-    let receipts =
-        material_world::decode_material_receipts(candidate.material().receipt_bytes()).unwrap();
+    let receipts = material_world::decode_material_receipts(candidate.material().receipt_bytes())
+        .expect("the canonical bytes decode into the declared type");
     commit(session, candidate);
     receipts
 }
@@ -60,9 +62,9 @@ fn shared_freight_capacity_changes_two_chains_through_the_authoritative_session(
             .expect("shared freight must be admitted campaign content");
         let mut session = preset
             .create_foundation(&crate::test_support::catalog())
-            .unwrap()
+            .expect("the authored catalog builds the foundation")
             .into_session()
-            .unwrap();
+            .expect("the fixture opens a session");
         let catalog = crate::test_support::catalog();
         advance(&mut session);
         let shipped = |key: &str| {
@@ -70,7 +72,7 @@ fn shared_freight_capacity_changes_two_chains_through_the_authoritative_session(
                 .routes()
                 .iter()
                 .find(|r| r.key == key)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .order_id();
             session
                 .material()
@@ -78,7 +80,7 @@ fn shared_freight_capacity_changes_two_chains_through_the_authoritative_session(
                 .orders
                 .iter()
                 .find(|r| r.order_id == id)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .shipped
         };
         assert_eq!(shipped("sheet-transfer"), sheet);
@@ -91,7 +93,7 @@ fn shared_freight_capacity_changes_two_chains_through_the_authoritative_session(
                 .processes()
                 .iter()
                 .find(|p| p.key == key)
-                .unwrap()
+                .expect("the fixture holds the searched element")
                 .id();
             third
                 .production
@@ -103,7 +105,7 @@ fn shared_freight_capacity_changes_two_chains_through_the_authoritative_session(
                             .processes()
                             .iter()
                             .find(|p| p.id() == id)
-                            .unwrap()
+                            .expect("the fixture holds the searched element")
                             .output_quantity_per_batch
                 })
                 .sum::<u64>()
@@ -120,7 +122,7 @@ fn shared_freight_has_one_capacity_principal_and_competing_order_demand() {
     let opening = |preset| {
         MichiganContentPreset::new_campaign(preset)
             .create_foundation(&catalog)
-            .unwrap()
+            .expect("the authored catalog builds the foundation")
             .initial_register()
             .state()
             .clone()
@@ -132,12 +134,12 @@ fn shared_freight_has_one_capacity_principal_and_competing_order_demand() {
         .routes()
         .iter()
         .find(|r| r.key == "sheet-transfer")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let shared = ample
         .route_stage_capacities
         .iter()
         .find(|row| row.route_id == sheet.id())
-        .unwrap()
+        .expect("the fixture holds the searched element")
         .corridor_id;
     for row in &mut constrained.corridor_capacities {
         if row.corridor_id == shared {
@@ -152,16 +154,21 @@ fn shared_freight_has_one_capacity_principal_and_competing_order_demand() {
 
     let text = include_str!("../../../../content/scenarios/michigan/defines.toml")
         .replace("ORDERED_UNITS = 200", "ORDERED_UNITS = 80");
-    let changed = MichiganMaterialCatalog::from_defines_toml(&text).unwrap();
+    let changed = MichiganMaterialCatalog::from_defines_toml(&text)
+        .expect("the authored input admits the derived value");
     let mut session =
         MichiganContentPreset::new_campaign(MichiganDeliveryPreset::SharedFreightConstrained)
             .create_foundation(&changed)
-            .unwrap()
+            .expect("the authored catalog builds the foundation")
             .into_session()
-            .unwrap();
+            .expect("the fixture opens a session");
     let receipts = advance(&mut session);
     let dispatched = |key| {
-        let route = changed.routes().iter().find(|r| r.key == key).unwrap();
+        let route = changed
+            .routes()
+            .iter()
+            .find(|r| r.key == key)
+            .expect("the fixture holds the searched element");
         receipts
             .dispatches
             .iter()
@@ -178,10 +185,19 @@ fn shared_freight_has_one_capacity_principal_and_competing_order_demand() {
     let dispatched_grams: u64 = ["sheet-transfer", "food-transfer"]
         .into_iter()
         .map(|key| {
-            let route = changed.routes().iter().find(|r| r.key == key).unwrap();
+            let route = changed
+                .routes()
+                .iter()
+                .find(|r| r.key == key)
+                .expect("the fixture holds the searched element");
             dispatched(key)
-                .checked_mul(changed.good(&route.good_key).unwrap().grams_per_unit)
-                .unwrap()
+                .checked_mul(
+                    changed
+                        .good(&route.good_key)
+                        .expect("the fixture catalog holds the addressed good")
+                        .grams_per_unit,
+                )
+                .expect("the fixture arithmetic stays in range")
         })
         .sum();
     assert_eq!(dispatched_grams, 160_000);
@@ -190,8 +206,14 @@ fn shared_freight_has_one_capacity_principal_and_competing_order_demand() {
 
 fn inventory(state: &MaterialCircuitState, site: &str, good: &str) -> u64 {
     let catalog = crate::test_support::catalog();
-    let site_id = catalog.site(site).unwrap().id();
-    let good_id = catalog.good(good).unwrap().id();
+    let site_id = catalog
+        .site(site)
+        .expect("the fixture catalog holds the addressed site")
+        .id();
+    let good_id = catalog
+        .good(good)
+        .expect("the fixture catalog holds the addressed good")
+        .id();
     state
         .inventory
         .iter()
@@ -212,7 +234,10 @@ fn assert_material_conserved(state: &MaterialCircuitState) {
         ("meal", 1, false),
         ("packaged-meal", 1, false),
     ] {
-        let good_id = catalog.good(good_key).unwrap().id();
+        let good_id = catalog
+            .good(good_key)
+            .expect("the fixture catalog holds the addressed good")
+            .id();
         let on_hand: u64 = state
             .inventory
             .iter()
@@ -250,13 +275,13 @@ fn assert_second_period_delivery_delay(
         .processes()
         .iter()
         .find(|row| row.key == "panel-forming")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         standard
             .production_commitments
             .iter()
             .find(|row| row.process_id == transformer.id())
-            .unwrap()
+            .expect("the fixture holds the searched element")
             .planned_batches,
         32
     );
@@ -275,13 +300,13 @@ fn assert_second_period_delivery_delay(
 fn presets_share_exact_setup_except_the_single_declared_delay() {
     let standard = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
         .create_foundation(&crate::test_support::catalog())
-        .unwrap()
+        .expect("the authored catalog builds the foundation")
         .initial_register()
         .state()
         .clone();
     let mut delayed = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Delayed)
         .create_foundation(&crate::test_support::catalog())
-        .unwrap()
+        .expect("the authored catalog builds the foundation")
         .initial_register()
         .state()
         .clone();
@@ -290,17 +315,19 @@ fn presets_share_exact_setup_except_the_single_declared_delay() {
         .routes()
         .iter()
         .find(|route| route.key == "sheet-transfer")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     let changed = delayed
         .route_stages
         .iter_mut()
         .find(|row| row.route_id == route.id())
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(changed.travel_periods, 3);
     changed.travel_periods = 1;
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&standard).unwrap(),
-        babylon_material_circuit::encode_material_circuit_state(&delayed).unwrap()
+        babylon_material_circuit::encode_material_circuit_state(&standard)
+            .expect("the canonical material state encodes"),
+        babylon_material_circuit::encode_material_circuit_state(&delayed)
+            .expect("the canonical material state encodes")
     );
     assert_eq!(standard.period, 1);
     assert_eq!(standard.capacities.len(), 5 * 16);
@@ -320,25 +347,27 @@ fn presets_share_exact_setup_except_the_single_declared_delay() {
             .processes()
             .iter()
             .find(|row| row.key == key)
-            .unwrap();
+            .expect("the fixture holds the searched element");
         let row = standard
             .labor
             .iter()
             .find(|row| row.site_id == process.site_id())
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(row.available, hours, "{key}");
         let seed = catalog
             .staffing()
             .pools
             .iter()
             .find(|pool| pool.process_keys.iter().any(|process| process == key))
-            .unwrap();
+            .expect("the fixture holds the searched element");
         assert_eq!(row.available, seed.employed * 160);
     }
     assert_eq!(standard.corridor_capacities.len(), 3 * 16);
     assert_eq!(catalog.terminal_output_disposition(), "on_hand_unsold");
     for site in catalog.sites() {
-        let source = catalog.industry_for_site(site).unwrap();
+        let source = catalog
+            .industry_for_site(site)
+            .expect("the fixture call `industry_for_site` succeeds for the authored inputs");
         assert_eq!(source.area_fips, site.county_geoid);
         assert_eq!(source.industry_code, site.naics);
         assert!(source.disclosure_code.is_empty());
@@ -362,7 +391,7 @@ fn assert_food_disconnected(
         .routes()
         .iter()
         .find(|route| route.key == "food-transfer")
-        .unwrap();
+        .expect("the fixture holds the searched element");
     assert_eq!(
         a.production
             .iter()
@@ -483,7 +512,9 @@ fn every_dispatch_transit_arrival_restart_reproduces_exact_continuation() {
             // The previous restart comparison already prepared this exact
             // continuation. Retain it while still rebuilding every restored
             // session from a fresh foundation below.
-            let candidate = next.take().unwrap();
+            let candidate = next
+                .take()
+                .expect("the fixture call `take` succeeds for the authored inputs");
             // Restore the complete graph+register checkpoint, including people
             // and retention. The physical state alone is no longer an owner.
             let mut restored = session(preset);
@@ -498,21 +529,26 @@ fn every_dispatch_transit_arrival_restart_reproduces_exact_continuation() {
                     MaterialWorldRegister::decode(
                         candidate.material().register().canonical_bytes(),
                     )
-                    .unwrap(),
+                    .expect("the committed canonical bytes decode"),
                 )
-                .unwrap();
+                .expect("the committed checkpoint restores");
             let encoded = babylon_material_circuit::encode_material_circuit_state(
                 candidate.material().register().state(),
             )
-            .unwrap();
+            .expect("the canonical material state encodes");
             assert_eq!(
-                decode_material_circuit_state(&encoded).unwrap(),
+                decode_material_circuit_state(&encoded)
+                    .expect("the canonical material bytes decode"),
                 *restored.material().state()
             );
             commit(&mut uninterrupted, candidate);
             assert_eq!(
-                restored.current_world_hash().unwrap(),
-                uninterrupted.current_world_hash().unwrap()
+                restored
+                    .current_world_hash()
+                    .expect("the committed session publishes a world hash"),
+                uninterrupted
+                    .current_world_hash()
+                    .expect("the committed session publishes a world hash")
             );
             assert_eq!(restored.material(), uninterrupted.material());
             if period

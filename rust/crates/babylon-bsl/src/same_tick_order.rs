@@ -1534,8 +1534,19 @@ mod tests {
 
         assert!(diagnosis.stale_default_reads.is_empty());
         assert!(diagnosis.unreset_fan_ins.is_empty());
-        assert_eq!(diagnosis.clone().into_result().unwrap_err(), expected);
-        assert_eq!(diagnosis.into_enforced_result().unwrap_err(), expected);
+        assert_eq!(
+            diagnosis
+                .clone()
+                .into_result()
+                .expect_err("the diagnosis reports the expected violation"),
+            expected
+        );
+        assert_eq!(
+            diagnosis
+                .into_enforced_result()
+                .expect_err("the diagnosis reports the expected violation"),
+            expected
+        );
     }
 
     #[test]
@@ -1580,11 +1591,15 @@ mod tests {
         });
 
         assert_eq!(
-            diagnose_ranked(&forward).into_result().unwrap_err(),
+            diagnose_ranked(&forward)
+                .into_result()
+                .expect_err("the diagnosis reports the expected violation"),
             expected
         );
         assert_eq!(
-            diagnose_ranked(&reverse).into_result().unwrap_err(),
+            diagnose_ranked(&reverse)
+                .into_result()
+                .expect_err("the diagnosis reports the expected violation"),
             expected
         );
     }
@@ -1599,7 +1614,9 @@ mod tests {
         }];
 
         assert_eq!(
-            diagnose_ranked(&ranked).into_result().unwrap_err(),
+            diagnose_ranked(&ranked)
+                .into_result()
+                .expect_err("the diagnosis reports the expected violation"),
             SameTickOrderError::RankedRuleInput(RankedRuleInputError::InvalidRuleForm {
                 supplied_rule_id: "invalid/form".to_owned(),
             })
@@ -1620,7 +1637,9 @@ mod tests {
         let diagnosis = diagnose_same_rank(&source);
         assert!(!diagnosis.is_clean());
         assert_eq!(
-            diagnosis.into_result().unwrap_err(),
+            diagnosis
+                .into_result()
+                .expect_err("the diagnosis reports the expected violation"),
             SameTickOrderError::AstWalkLimit(AstWalkError::new(
                 "same-tick field writes",
                 AstWalkLimit::Depth,
@@ -1649,7 +1668,9 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                walk_for_writes_with_limits(&ast, limits).unwrap_err(),
+                walk_for_writes_with_limits(&ast, limits).expect_err(
+                    "the fixture call `walk_for_writes_with_limits` fails for the authored inputs"
+                ),
                 expected
             );
         }
@@ -1680,7 +1701,10 @@ mod tests {
                     .has_set
             );
             assert_eq!(
-                diagnosis.into_result().unwrap_err().spec_code(),
+                diagnosis
+                    .into_result()
+                    .expect_err("the diagnosis reports the expected violation")
+                    .spec_code(),
                 Some("E-LOAD-059")
             );
         }
@@ -1709,7 +1733,9 @@ mod tests {
         assert_eq!(finding.writer_rule, "b/writer");
         assert_eq!(finding.field, "ns/f");
         assert_eq!(finding.binding_name, "v");
-        let err = diagnosis.into_result().unwrap_err();
+        let err = diagnosis
+            .into_result()
+            .expect_err("the diagnosis reports the expected violation");
         assert_eq!(err.spec_code(), Some("E-LOAD-058"));
         assert!(err.to_string().contains("a/reader"), "{err}");
         assert!(err.to_string().contains("b/writer"), "{err}");
@@ -1822,7 +1848,9 @@ mod tests {
             finding.writers,
             vec!["a/first".to_owned(), "b/second".to_owned()]
         );
-        let err = diagnosis.into_result().unwrap_err();
+        let err = diagnosis
+            .into_result()
+            .expect_err("the diagnosis reports the expected violation");
         assert_eq!(err.spec_code(), Some("E-LOAD-059"));
         assert!(err.to_string().contains("ns/f"), "{err}");
     }
@@ -2548,7 +2576,9 @@ mod tests {
             diagnosis.stale_default_reads[0].writer_rule, "consciousness/p6-route",
             "the existing display writer remains byte-first"
         );
-        let error = diagnosis.into_enforced_result().unwrap_err();
+        let error = diagnosis
+            .into_enforced_result()
+            .expect_err("the diagnosis reports the expected violation");
         assert_eq!(error.spec_code(), Some("E-LOAD-058"));
     }
 
@@ -2573,7 +2603,7 @@ mod tests {
         let source = format!("{PRODUCTION_BSL}\n{new_writer}");
         let error = diagnose_same_rank(&source)
             .into_enforced_result()
-            .unwrap_err();
+            .expect_err("the diagnosis reports the expected violation");
 
         assert_eq!(error.spec_code(), Some("E-LOAD-059"));
         let SameTickOrderError::UnresetFanIn(finding) = error else {
@@ -2596,7 +2626,7 @@ mod tests {
 "#;
         let error = diagnose_same_rank(source)
             .into_enforced_result()
-            .unwrap_err();
+            .expect_err("the diagnosis reports the expected violation");
 
         assert_eq!(error.spec_code(), Some("E-LOAD-059"));
     }
@@ -2620,7 +2650,9 @@ mod tests {
                 10
             }
         });
-        let error = diagnosis.into_enforced_result().unwrap_err();
+        let error = diagnosis
+            .into_enforced_result()
+            .expect_err("the diagnosis reports the expected violation");
 
         assert_eq!(error.spec_code(), Some("E-LOAD-059"));
         let SameTickOrderError::UnresetFanIn(finding) = error else {
@@ -2644,7 +2676,7 @@ mod tests {
 "#;
         let error = diagnose_same_rank(source)
             .into_enforced_result()
-            .unwrap_err();
+            .expect_err("the diagnosis reports the expected violation");
 
         assert_eq!(error.spec_code(), Some("E-LOAD-058"));
         let SameTickOrderError::StaleDefaultRead(finding) = error else {
@@ -2668,10 +2700,10 @@ mod tests {
 
         let first = diagnose_same_rank(&forward)
             .into_enforced_result()
-            .unwrap_err();
+            .expect_err("the diagnosis reports the expected violation");
         let second = diagnose_same_rank(&reverse)
             .into_enforced_result()
-            .unwrap_err();
+            .expect_err("the diagnosis reports the expected violation");
         assert_eq!(first, second);
         let SameTickOrderError::StaleDefaultRead(finding) = first else {
             panic!("E058 retains precedence over E059")

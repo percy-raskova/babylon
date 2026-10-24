@@ -20,8 +20,9 @@ fn captured_national_counties_select_current_ct_and_island_identities_without_fa
     let counties = NationalCountyReference::decode_pinned(include_bytes!(
         "../../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"
     ))
-    .unwrap();
-    let source = CountySource::national(&counties, None).unwrap();
+    .expect("the pinned vector bytes decode");
+    let source = CountySource::national(&counties, None)
+        .expect("the fixture call `national` succeeds for the authored inputs");
     let mapping = counties
         .counties()
         .iter()
@@ -30,14 +31,23 @@ fn captured_national_counties_select_current_ct_and_island_identities_without_fa
             (geoid.clone(), format!("county-{geoid}"))
         })
         .collect();
-    let pages = source.plans(mapping, &BTreeMap::new()).unwrap();
+    let pages = source
+        .plans(mapping, &BTreeMap::new())
+        .expect("the fixture call `plans` succeeds for the authored inputs");
     assert_eq!(pages.len(), 3_144);
     for selected in ["06037", "09110", "15005"] {
         assert!(pages.iter().any(|page| page.county_geoid() == selected));
     }
     for page in &pages {
-        let geoid = CountyGeoid::try_from(page.county_geoid()).unwrap();
-        assert_eq!(page.title(), counties.county(geoid).unwrap().name());
+        let geoid = CountyGeoid::try_from(page.county_geoid())
+            .expect("the fixture value fits the target range");
+        assert_eq!(
+            page.title(),
+            counties
+                .county(geoid)
+                .expect("the fixture catalog holds the addressed county")
+                .name()
+        );
         assert!(page.place_links().is_empty());
         assert!(page
             .decision_question()
@@ -55,7 +65,7 @@ fn captured_national_counties_select_current_ct_and_island_identities_without_fa
     let mut forged = CommittedTerritoryFields::default();
     forged
         .insert_stored("qcew-employment", 1, None, Some(10))
-        .unwrap();
+        .expect("the test database accepts the authored row");
     let forged = BTreeMap::from([("county-15005".into(), forged)]);
     assert!(source
         .plans(vec![("15005".into(), "county-15005".into())], &forged)
@@ -67,16 +77,18 @@ fn captured_county_identity_citation_round_trips_and_remains_grant_bound() {
     let counties = NationalCountyReference::decode_pinned(include_bytes!(
         "../../../../../src/babylon/data/reference/economy/national_county_reference_2024.csv.gz"
     ))
-    .unwrap();
-    let source = CountySource::national(&counties, None).unwrap();
+    .expect("the pinned vector bytes decode");
+    let source = CountySource::national(&counties, None)
+        .expect("the fixture call `national` succeeds for the authored inputs");
     let page = source
         .plans(
             vec![("15005".into(), "county-15005".into())],
             &BTreeMap::new(),
         )
-        .unwrap()
+        .expect("the fixture call `plans` succeeds for the authored inputs")
         .remove(0);
-    let citation = source::signal_citation(&page, &page.signals()[0], 3).unwrap();
+    let citation = source::signal_citation(&page, &page.signals()[0], 3)
+        .expect("the fixture call `signal_citation` succeeds for the authored inputs");
     assert_eq!(citation.source_id(), "national-county-reference-2024-v1");
     assert!(citation
         .locator()
@@ -98,34 +110,38 @@ fn captured_county_identity_citation_round_trips_and_remains_grant_bound() {
             key.to_owned(),
         )
     }))
-    .unwrap();
+    .expect("the fixture input satisfies the fallible conversion");
     let knowledge = ArchiveKnowledge::try_new(
         keys.map(|key| {
             ArchiveKnowledgeGrant::try_new(
-                ArchivePageRef::try_new(ArchiveSubjectKind::County, "15005".to_owned()).unwrap(),
+                ArchivePageRef::try_new(ArchiveSubjectKind::County, "15005".to_owned())
+                    .expect("the authored fixture satisfies the constructor invariants"),
                 key.to_owned(),
                 1,
                 citation.clone(),
             )
-            .unwrap()
+            .expect("the authored fixture satisfies the constructor invariants")
         })
         .into(),
     )
-    .unwrap();
+    .expect("the authored fixture satisfies the constructor invariants");
     let rendered = FogSafeArchiveRenderer::new()
-        .unwrap()
+        .expect("the constructor accepts the authored fixture arguments")
         .render(
-            &dossier::county_page_input(&page, 3, [7; 32]).unwrap(),
+            &dossier::county_page_input(&page, 3, [7; 32])
+                .expect("the fixture call `county_page_input` succeeds for the authored inputs"),
             &knowledge,
         )
-        .unwrap();
+        .expect("the fixture call `render` succeeds for the authored inputs");
     assert_eq!(
         parse_stored_county_page("15005", page.title(), rendered.markdown()),
-        Some(desired_county_projection(&page, &index).unwrap())
+        Some(desired_county_projection(&page, &index).expect(
+            "the fixture call `desired_county_projection` succeeds for the authored inputs"
+        ))
     );
     let hidden = CountyGrantIndex::default();
     assert!(desired_county_projection(&page, &hidden)
-        .unwrap()
+        .expect("the fixture call `desired_county_projection` succeeds for the authored inputs")
         .signals()
         .is_empty());
 }
@@ -141,13 +157,14 @@ fn captured_spatial_detail_uses_supplied_bytes_and_refuses_source_drift() {
     let detail = crate::decode_michigan_dynamic_hex_foundation(
         &crate::michigan_dynamic_hex_foundation_fixture_parts().concat(),
     )
-    .unwrap();
-    let products = SpatialReferenceProducts::decode_captured(&bytes, &detail).unwrap();
+    .expect("the canonical bytes decode into the declared type");
+    let products = SpatialReferenceProducts::decode_captured(&bytes, &detail)
+        .expect("the captured bytes decode");
     assert_eq!(products.places().len(), 745);
     assert_eq!(products.land_fractions().len(), 45_572);
     let pages = CountySource::Michigan(products)
         .plans(vec![("26163".into(), "wayne".into())], &BTreeMap::new())
-        .unwrap();
+        .expect("the fixture call `plans` succeeds for the authored inputs");
     assert!(!pages[0].place_links().is_empty());
     assert!(pages[0]
         .place_links()

@@ -282,11 +282,11 @@ fn production_resource_groups(
     resources: ProductionResources,
 ) -> Result<BTreeMap<ProductionResourceKey, Vec<ProductionResourceRequest>>, MaterialCircuitError> {
     let mut groups = BTreeMap::new();
-    for (index, commitment) in commitments
+    let bounded_commitments = commitments
         .iter()
         .enumerate()
-        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
-    {
+        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1);
+    for (index, commitment) in bounded_commitments {
         let labor = labor_coefficient(state, commitment.process_id)
             .ok_or(MaterialCircuitError::ProcessInvariant)?;
         if matches!(resources, ProductionResources::InputsAndLabor) {
@@ -471,11 +471,11 @@ fn debit_production_allocations(
     costs: &mut CostClose,
 ) -> Result<Vec<Currency>, MaterialCircuitError> {
     let mut inputs = Vec::with_capacity(commitments.len());
-    for (index, commitment) in commitments
+    let bounded_commitments = commitments
         .iter()
         .enumerate()
-        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
-    {
+        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1);
+    for (index, commitment) in bounded_commitments {
         inputs.push(consume_production_inputs(
             state,
             inventory,
@@ -497,11 +497,11 @@ fn credit_production_allocations(
     receipts: &mut Vec<ProductionReceipt>,
     costs: &mut CostClose,
 ) -> Result<(), MaterialCircuitError> {
-    for (index, commitment) in commitments
+    let bounded_commitments = commitments
         .into_iter()
         .enumerate()
-        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
-    {
+        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1);
+    for (index, commitment) in bounded_commitments {
         let output = process_output(state, commitment.process_id)
             .cloned()
             .ok_or(MaterialCircuitError::ProcessInvariant)?;
@@ -676,11 +676,11 @@ fn derive_next_period_production(
         next_period,
         ProductionResources::InputsAndLabor,
     )?;
-    for (index, candidate) in candidates
+    let bounded_candidates = candidates
         .into_iter()
         .enumerate()
-        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1)
-    {
+        .take(MAX_MATERIAL_CIRCUIT_ROWS + 1);
+    for (index, candidate) in bounded_candidates {
         let batches = allocations[index];
         if batches > 0 {
             state.production_commitments.push(ProductionCommitment {

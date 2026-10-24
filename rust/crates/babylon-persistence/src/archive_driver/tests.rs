@@ -191,8 +191,10 @@ fn pending_sweeps_admit_once_and_reuse_after_production_refusal() {
     let owner = RefCell::new(None::<NullArchiveDossierProducer>);
     let calls = Cell::new(0);
     let cancellation = ArchiveWorkerCancellation::default();
-    let receipt = PendingArchiveReceipt::try_new(1, [7; 32]).unwrap();
-    let knowledge = ArchiveKnowledge::try_new(Vec::new()).unwrap();
+    let receipt = PendingArchiveReceipt::try_new(1, [7; 32])
+        .expect("the authored fixture satisfies the constructor invariants");
+    let knowledge = ArchiveKnowledge::try_new(Vec::new())
+        .expect("the authored fixture satisfies the constructor invariants");
     for _ in 0..2 {
         let result = run::sweep_with_factory(
             &owner,
@@ -226,8 +228,10 @@ fn cancellation_never_starts_factory_and_stop_during_admission_refuses_productio
         Err(SemanticArchiveError::WorkerCanceled)
     );
     let cancellation = ArchiveWorkerCancellation::default();
-    let receipt = PendingArchiveReceipt::try_new(1, [7; 32]).unwrap();
-    let knowledge = ArchiveKnowledge::try_new(Vec::new()).unwrap();
+    let receipt = PendingArchiveReceipt::try_new(1, [7; 32])
+        .expect("the authored fixture satisfies the constructor invariants");
+    let knowledge = ArchiveKnowledge::try_new(Vec::new())
+        .expect("the authored fixture satisfies the constructor invariants");
     let result = run::sweep_with_factory(
         &owner,
         &cancellation,

@@ -634,10 +634,11 @@ mod tests {
             &names,
             &keys,
         )
-        .unwrap();
+        .expect("the fixture projection accepts the authored state");
         assert_eq!(currency.currency, Some(i128::MIN));
         assert_eq!(currency.int, None);
-        let real = project(1, 0, 0, &StableBslValue::RealBits(1 << 63), &names, &keys).unwrap();
+        let real = project(1, 0, 0, &StableBslValue::RealBits(1 << 63), &names, &keys)
+            .expect("the fixture projection accepts the authored state");
         assert_eq!(real.real, Some(i64::MIN));
         let ratio = project(
             1,
@@ -651,7 +652,7 @@ mod tests {
             &names,
             &keys,
         )
-        .unwrap();
+        .expect("the fixture projection accepts the authored state");
         let csv = field_csv("00000000-0000-0000-0000-000000000001", 1, 0, 4, &[ratio]);
         assert!(csv.contains("\"{NULL}\""));
         assert!(csv.contains("\"{-1}\""));
@@ -671,12 +672,13 @@ mod tests {
             &names,
             &keys,
         )
-        .unwrap();
+        .expect("the fixture projection accepts the authored state");
         assert_eq!(
             (enum_value.enum_type, enum_value.member),
             (Some(2), Some(3))
         );
-        let boolean = project(0, 1, 1, &StableBslValue::Bool(false), &names, &keys).unwrap();
+        let boolean = project(0, 1, 1, &StableBslValue::Bool(false), &names, &keys)
+            .expect("the fixture projection accepts the authored state");
         assert_eq!(boolean.boolean, Some(false));
         assert!(field_csv("id", 1, 0, 5, &[boolean]).contains("\"{f}\""));
     }
@@ -707,14 +709,17 @@ mod key_controls {
         let mut keys = BTreeMap::new();
         for (n, k) in variants.iter().enumerate() {
             keys.insert(
-                k.canonical_bytes().unwrap(),
+                k.canonical_bytes()
+                    .expect("the graph value exposes canonical bytes"),
                 if n == 0 {
                     KeyReference::Node {
                         scenario: 13,
                         name: 0,
                     }
                 } else {
-                    KeyReference::Literal(i64::try_from(n).unwrap())
+                    KeyReference::Literal(
+                        i64::try_from(n).expect("the fixture value fits the target range"),
+                    )
                 },
             );
         }
@@ -724,21 +729,38 @@ mod key_controls {
             StableBslValue::Edge(variants[2].clone()),
         ];
         for (n, v) in values.iter().enumerate() {
-            let row = project(2, i64::try_from(n).unwrap(), 4, v, &BTreeMap::new(), &keys).unwrap();
-            assert_eq!(row.tag, i16::try_from(n).unwrap() + 7);
-            assert_eq!(row.key, Some(i64::try_from(n).unwrap()));
-            let original = variants[n].canonical_bytes().unwrap();
+            let row = project(
+                2,
+                i64::try_from(n).expect("the fixture value fits the target range"),
+                4,
+                v,
+                &BTreeMap::new(),
+                &keys,
+            )
+            .expect("the fixture projection accepts the authored state");
+            assert_eq!(
+                row.tag,
+                i16::try_from(n).expect("the fixture value fits the target range") + 7
+            );
+            assert_eq!(
+                row.key,
+                Some(i64::try_from(n).expect("the fixture value fits the target range"))
+            );
+            let original = variants[n]
+                .canonical_bytes()
+                .expect("the graph value exposes canonical bytes");
             let resolved = if let Some(scenario) = row.key_scenario {
                 KeyReference::Node {
                     scenario,
-                    name: row.key.unwrap(),
+                    name: row.key.expect("the fixture row carries its key"),
                 }
             } else {
-                KeyReference::Literal(row.key.unwrap())
+                KeyReference::Literal(row.key.expect("the fixture row carries its key"))
             };
             assert_eq!(keys.get(&original).copied(), Some(resolved));
             assert_eq!(
-                StableElementKey::from_canonical_bytes(&original).unwrap(),
+                StableElementKey::from_canonical_bytes(&original)
+                    .expect("the canonical bytes admit the value"),
                 variants[n]
             );
         }
@@ -778,24 +800,29 @@ mod live_payload_controls {
             std::env::var("BABYLON_POSTGRES_DISPOSABLE_ACK").as_deref(),
             Ok("I_UNDERSTAND_THIS_DISPOSABLE_RUNTIME_DROPS_ITS_SCRATCH_DATABASES_AND_ROLES")
         );
-        let canary = std::env::var("BABYLON_POSTGRES_DISPOSABLE_CANARY").unwrap();
+        let canary = std::env::var("BABYLON_POSTGRES_DISPOSABLE_CANARY")
+            .expect("the fixture variable is bound");
         assert_eq!(canary.len(), 32);
-        let mut config =
-            Config::from_str(&std::env::var("BABYLON_POSTGRES_TEST_DSN").unwrap()).unwrap();
-        crate::postgres_catalog::validate_connection_target(&config).unwrap();
+        let mut config = Config::from_str(
+            &std::env::var("BABYLON_POSTGRES_TEST_DSN").expect("the fixture variable is bound"),
+        )
+        .expect("the authored JSON matches the declared schema");
+        crate::postgres_catalog::validate_connection_target(&config)
+            .expect("the authored fixture satisfies the rule");
         assert_eq!(config.get_user(), Some("test"));
         assert_eq!(config.get_dbname(), Some("postgres"));
         let actual: Option<String> = config
             .connect(NoTls)
-            .unwrap()
+            .expect("the test database accepts the connection")
             .query_one(
                 "SELECT pg_catalog.current_setting('babylon.disposable_runtime',true)",
                 &[],
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get(0);
         assert_eq!(actual.as_deref(), Some(canary.as_str()));
-        let database = std::env::var("BABYLON_EVENT_COPY_DATABASE").unwrap();
+        let database =
+            std::env::var("BABYLON_EVENT_COPY_DATABASE").expect("the fixture variable is bound");
         assert!(database.starts_with("per337_event_continuity_"));
         config.dbname(&database);
         config
@@ -919,15 +946,24 @@ mod live_payload_controls {
             }
             StableBslValue::Node(key) => {
                 row.tag = 7;
-                row.key = Some(key.canonical_bytes().unwrap());
+                row.key = Some(
+                    key.canonical_bytes()
+                        .expect("the graph value exposes canonical bytes"),
+                );
             }
             StableBslValue::Hyperedge(key) => {
                 row.tag = 8;
-                row.key = Some(key.canonical_bytes().unwrap());
+                row.key = Some(
+                    key.canonical_bytes()
+                        .expect("the graph value exposes canonical bytes"),
+                );
             }
             StableBslValue::Edge(key) => {
                 row.tag = 9;
-                row.key = Some(key.canonical_bytes().unwrap());
+                row.key = Some(
+                    key.canonical_bytes()
+                        .expect("the graph value exposes canonical bytes"),
+                );
             }
         }
         row
@@ -938,11 +974,12 @@ mod live_payload_controls {
         campaign: CampaignId,
         values: &[(String, StableBslValue)],
     ) {
-        tx.batch_execute("CREATE TEMP TABLE payload_reference(campaign_id uuid,resolve_tick bigint,ordinal bigint,position bigint,field_name text COLLATE pg_catalog.\"C\",value_tag smallint,int_value bigint,currency_value numeric(39,0),real_bits bigint,ratio_bits bigint,ratio_min_bits bigint,ratio_max_bits bigint,bool_value boolean,enum_type text COLLATE pg_catalog.\"C\",enum_member text COLLATE pg_catalog.\"C\",stable_key bytea) ON COMMIT DROP").unwrap();
+        tx.batch_execute("CREATE TEMP TABLE payload_reference(campaign_id uuid,resolve_tick bigint,ordinal bigint,position bigint,field_name text COLLATE pg_catalog.\"C\",value_tag smallint,int_value bigint,currency_value numeric(39,0),real_bits bigint,ratio_bits bigint,ratio_min_bits bigint,ratio_max_bits bigint,bool_value boolean,enum_type text COLLATE pg_catalog.\"C\",enum_member text COLLATE pg_catalog.\"C\",stable_key bytea) ON COMMIT DROP").expect("the test database applies the schema statements");
         for (position, (name, value)) in values.iter().enumerate() {
             let row = original_projection(value);
-            let position = i64::try_from(position).unwrap();
-            tx.execute("INSERT INTO pg_temp.payload_reference VALUES($1,1,0,$2,$3,$4,$5,$6::text::numeric,$7,$8,$9,$10,$11,$12,$13,$14)",&[campaign.as_uuid(),&position,name,&row.tag,&row.int,&row.currency,&row.real,&row.ratio,&row.floor,&row.cap,&row.boolean,&row.enum_type,&row.member,&row.key]).unwrap();
+            let position =
+                i64::try_from(position).expect("the fixture value fits the target range");
+            tx.execute("INSERT INTO pg_temp.payload_reference VALUES($1,1,0,$2,$3,$4,$5,$6::text::numeric,$7,$8,$9,$10,$11,$12,$13,$14)",&[campaign.as_uuid(),&position,name,&row.tag,&row.int,&row.currency,&row.real,&row.ratio,&row.floor,&row.cap,&row.boolean,&row.enum_type,&row.member,&row.key]).expect("the test database applies the setup statement");
         }
     }
 
@@ -968,14 +1005,18 @@ mod live_payload_controls {
                 StableBslValue::Node(key)
                 | StableBslValue::Hyperedge(key)
                 | StableBslValue::Edge(key) => {
-                    raw_keys.insert(key.canonical_bytes().unwrap());
+                    raw_keys.insert(
+                        key.canonical_bytes()
+                            .expect("the graph value exposes canonical bytes"),
+                    );
                 }
                 _ => {}
             }
         }
-        let (mut texts, mut next_text) =
-            load_matching(tx, campaign, 1, Lookup::Text, &wanted).unwrap();
-        let (keys, prior_key) = node_keys::admit(tx, campaign, 1, &raw_keys).unwrap();
+        let (mut texts, mut next_text) = load_matching(tx, campaign, 1, Lookup::Text, &wanted)
+            .expect("the fixture artifact loads");
+        let (keys, prior_key) = node_keys::admit(tx, campaign, 1, &raw_keys)
+            .expect("the fixture admits the authored value");
         let prior_text = next_text;
 
         for value in wanted {
@@ -984,7 +1025,8 @@ mod live_payload_controls {
                 next_text += 1;
             }
         }
-        write_lookups(tx, campaign, 1, &texts, prior_text, &keys, prior_key).unwrap();
+        write_lookups(tx, campaign, 1, &texts, prior_text, &keys, prior_key)
+            .expect("the fixture sink accepts the authored bytes");
         PayloadLookups { texts, keys }
     }
 
@@ -999,25 +1041,38 @@ mod live_payload_controls {
         for (position, (name, value)) in values.iter().enumerate() {
             let field = project(
                 0,
-                i64::try_from(position).unwrap(),
-                *texts.get(name).unwrap(),
+                i64::try_from(position).expect("the fixture value fits the target range"),
+                *texts
+                    .get(name)
+                    .expect("the fixture holds the addressed entry"),
                 value,
                 texts,
                 keys,
             )
-            .unwrap();
+            .expect("the fixture projection accepts the authored state");
             grouped.entry(field.tag).or_default().push(field);
         }
         assert_eq!(grouped.len(), 9);
-        let mut sink=tx.copy_in("COPY babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values,currency_values,real_bits,ratio_bits,ratio_mins,ratio_maxs,bool_values,enum_types,enum_members,key_ids,key_scenario_ids) FROM STDIN WITH(FORMAT csv)").unwrap();
+        let mut sink=tx.copy_in("COPY babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values,currency_values,real_bits,ratio_bits,ratio_mins,ratio_maxs,bool_values,enum_types,enum_members,key_ids,key_scenario_ids) FROM STDIN WITH(FORMAT csv)").expect("the fixture call `copy_in` succeeds for the authored inputs");
         let campaign = campaign.as_uuid().to_string();
         for (chunk, (tag, rows)) in grouped.into_iter().enumerate() {
             sink.write_all(
-                field_csv(&campaign, 1, i64::try_from(chunk).unwrap(), tag, &rows).as_bytes(),
+                field_csv(
+                    &campaign,
+                    1,
+                    i64::try_from(chunk).expect("the fixture value fits the target range"),
+                    tag,
+                    &rows,
+                )
+                .as_bytes(),
             )
-            .unwrap();
+            .expect("the fixture sink accepts the authored bytes");
         }
-        assert_eq!(sink.finish().unwrap(), 9);
+        assert_eq!(
+            sink.finish()
+                .expect("the fixture finishes the authored period"),
+            9
+        );
     }
 
     fn raw_counts(client: &mut impl GenericClient, campaign: CampaignId) -> Vec<i64> {
@@ -1037,7 +1092,7 @@ mod live_payload_controls {
                     &format!("SELECT count(*) FROM babylon_state.{table} WHERE campaign_id=$1"),
                     &[campaign.as_uuid()],
                 )
-                .unwrap()
+                .expect("the seeded row is present exactly once")
                 .get(0)
         })
         .collect()
@@ -1049,7 +1104,7 @@ mod live_payload_controls {
                 &format!("SELECT count(*) FROM babylon_state.{table} WHERE campaign_id=$1"),
                 &[campaign.as_uuid()],
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get(0)
     }
 
@@ -1062,12 +1117,17 @@ mod live_payload_controls {
         ));
         let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
             .create_foundation(&crate::test_support::catalog())
-            .unwrap();
-        let _runtime = DurableMaterialRuntime::create(&config, campaign, foundation).unwrap();
-        let mut client = config.connect(NoTls).unwrap();
+            .expect("the authored catalog builds the foundation");
+        let _runtime = DurableMaterialRuntime::create(&config, campaign, foundation)
+            .expect("the test database creates the fixture campaign");
+        let mut client = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         let before = raw_counts(&mut client, campaign);
         let values = payloads();
-        let mut tx = client.transaction().unwrap();
+        let mut tx = client
+            .transaction()
+            .expect("the test database opens a transaction");
         reference_rows(&mut tx, campaign, &values);
         let PayloadLookups { texts, keys } = admitted_lookups(&mut tx, campaign, &values);
         write_projected_csv(&mut tx, campaign, &values, &texts, &keys);
@@ -1076,7 +1136,7 @@ mod live_payload_controls {
                 "SELECT count(*) FROM babylon_state.event_key_lookup_v1 WHERE campaign_id=$1",
                 &[campaign.as_uuid()]
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get::<_, i64>(0),
             2,
             "Node keys use no duplicate literal dictionary row"
@@ -1086,13 +1146,13 @@ mod live_payload_controls {
                 "SELECT count(*) FROM babylon_state.graph_node_lookup_v1 WHERE campaign_id=$1",
                 &[campaign.as_uuid()]
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get::<_, i64>(0),
-            *before.last().unwrap(),
+            *before.last().expect("the fixture sequence is non-empty"),
             "native key identity does not acquire graph tuple membership"
         );
         let snapshot = |tx: &mut Transaction<'_>, relation: &str| -> String {
-            tx.query_one(&format!("SELECT jsonb_agg(to_jsonb(row) ORDER BY position)::text FROM {relation} row WHERE campaign_id=$1"),&[campaign.as_uuid()]).unwrap().get(0)
+            tx.query_one(&format!("SELECT jsonb_agg(to_jsonb(row) ORDER BY position)::text FROM {relation} row WHERE campaign_id=$1"),&[campaign.as_uuid()]).expect("the seeded row is present exactly once").get(0)
         };
         assert_eq!(
             snapshot(&mut tx, "babylon_state.event_field_expanded_v1"),
@@ -1103,7 +1163,7 @@ mod live_payload_controls {
                 "SELECT count(*) FROM babylon_state.event_field_expanded_v1 WHERE campaign_id=$1",
                 &[campaign.as_uuid()]
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get::<_, i64>(0),
             12
         );
@@ -1112,11 +1172,11 @@ mod live_payload_controls {
                 "SELECT count(*) FROM babylon_state.tick_event_field_v2 WHERE campaign_id=$1",
                 &[campaign.as_uuid()]
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get::<_, i64>(0),
             0
         );
-        tx.rollback().unwrap();
+        tx.rollback().expect("the open transaction rolls back");
         assert_eq!(raw_counts(&mut client, campaign), before);
     }
     #[test]
@@ -1128,11 +1188,14 @@ mod live_payload_controls {
         ));
         let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
             .create_foundation(&crate::test_support::catalog())
-            .unwrap();
-        let _runtime = DurableMaterialRuntime::create(&config, campaign, foundation).unwrap();
-        let mut client = config.connect(NoTls).unwrap();
+            .expect("the authored catalog builds the foundation");
+        let _runtime = DurableMaterialRuntime::create(&config, campaign, foundation)
+            .expect("the test database creates the fixture campaign");
+        let mut client = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         let before = raw_counts(&mut client, campaign);
-        let row=client.query_one("SELECT s.string_id,s.value FROM babylon_state.graph_node_lookup_v1 n JOIN babylon_state.graph_string_lookup_v1 s ON s.campaign_id=n.campaign_id AND s.string_id=n.name_id WHERE n.campaign_id=$1 ORDER BY n.node_id LIMIT 1",&[campaign.as_uuid()]).unwrap();
+        let row=client.query_one("SELECT s.string_id,s.value FROM babylon_state.graph_node_lookup_v1 n JOIN babylon_state.graph_string_lookup_v1 s ON s.campaign_id=n.campaign_id AND s.string_id=n.name_id WHERE n.campaign_id=$1 ORDER BY n.node_id LIMIT 1",&[campaign.as_uuid()]).expect("the seeded row is present exactly once");
         let name_id: i64 = row.get(0);
         let name: String = row.get(1);
         let originals = [
@@ -1147,19 +1210,26 @@ mod live_payload_controls {
         ];
         let wanted = originals
             .iter()
-            .map(|k| k.canonical_bytes().unwrap())
+            .map(|k| {
+                k.canonical_bytes()
+                    .expect("the graph value exposes canonical bytes")
+            })
             .collect();
-        let mut tx = client.transaction().unwrap();
-        let (refs, prior) = node_keys::admit(&mut tx, campaign, 1, &wanted).unwrap();
+        let mut tx = client
+            .transaction()
+            .expect("the test database opens a transaction");
+        let (refs, prior) = node_keys::admit(&mut tx, campaign, 1, &wanted)
+            .expect("the fixture admits the authored value");
         assert_eq!(prior, 0);
         let string_count: i64 = tx
             .query_one(
                 "SELECT count(*) FROM babylon_state.graph_string_lookup_v1 WHERE campaign_id=$1",
                 &[campaign.as_uuid()],
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get(0);
-        let (again, again_prior) = node_keys::admit(&mut tx, campaign, 1, &wanted).unwrap();
+        let (again, again_prior) = node_keys::admit(&mut tx, campaign, 1, &wanted)
+            .expect("the fixture admits the authored value");
         assert_eq!(again, refs);
         assert_eq!(again_prior, prior);
         assert_eq!(
@@ -1167,7 +1237,7 @@ mod live_payload_controls {
                 "SELECT count(*) FROM babylon_state.graph_string_lookup_v1 WHERE campaign_id=$1",
                 &[campaign.as_uuid()]
             )
-            .unwrap()
+            .expect("the seeded row is present exactly once")
             .get::<_, i64>(0),
             string_count,
             "exact scenario/name values are introduced only once"
@@ -1178,32 +1248,39 @@ mod live_payload_controls {
             .map(|(position, key)| {
                 project(
                     0,
-                    i64::try_from(position).unwrap(),
+                    i64::try_from(position).expect("the fixture value fits the target range"),
                     0,
                     &StableBslValue::Node(key.clone()),
                     &BTreeMap::new(),
                     &refs,
                 )
-                .unwrap()
+                .expect("the fixture projection accepts the authored state")
             })
             .collect();
         assert!(rows.iter().all(|r| r.key == Some(name_id)));
         assert_ne!(rows[0].key_scenario, rows[1].key_scenario);
-        let mut sink=tx.copy_in("COPY babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values,currency_values,real_bits,ratio_bits,ratio_mins,ratio_maxs,bool_values,enum_types,enum_members,key_ids,key_scenario_ids) FROM STDIN WITH(FORMAT csv)").unwrap();
+        let mut sink=tx.copy_in("COPY babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values,currency_values,real_bits,ratio_bits,ratio_mins,ratio_maxs,bool_values,enum_types,enum_members,key_ids,key_scenario_ids) FROM STDIN WITH(FORMAT csv)").expect("the fixture call `copy_in` succeeds for the authored inputs");
         sink.write_all(field_csv(&campaign.as_uuid().to_string(), 1, 0, 7, &rows).as_bytes())
-            .unwrap();
-        assert_eq!(sink.finish().unwrap(), 1);
-        let expanded=tx.query("SELECT stable_key FROM babylon_state.event_field_expanded_v1 WHERE campaign_id=$1 ORDER BY position",&[campaign.as_uuid()]).unwrap();
+            .expect("the fixture sink accepts the authored bytes");
+        assert_eq!(
+            sink.finish()
+                .expect("the fixture finishes the authored period"),
+            1
+        );
+        let expanded=tx.query("SELECT stable_key FROM babylon_state.event_field_expanded_v1 WHERE campaign_id=$1 ORDER BY position",&[campaign.as_uuid()]).expect("the seeded rows are readable");
         assert_eq!(expanded.len(), 2);
         let recovered: Vec<Vec<u8>> = expanded.iter().map(|row| row.get(0)).collect();
         let expected: Vec<_> = originals
             .iter()
-            .map(|key| key.canonical_bytes().unwrap())
+            .map(|key| {
+                key.canonical_bytes()
+                    .expect("the graph value exposes canonical bytes")
+            })
             .collect();
         assert_eq!(recovered, expected);
         assert_eq!(campaign_rows(&mut tx, campaign, "event_key_lookup_v1"), 0);
         assert_eq!(campaign_rows(&mut tx, campaign, "tick_event_field_v2"), 0);
-        tx.rollback().unwrap();
+        tx.rollback().expect("the open transaction rolls back");
         assert_eq!(raw_counts(&mut client, campaign), before);
     }
 }
@@ -1252,35 +1329,35 @@ mod marker_integrity_controls {
                 "INSERT INTO babylon_state.territory_tick_manifest_v1 (campaign_id,resolve_tick,territory_count) VALUES($1,1,0)",
                 &[campaign.as_uuid()],
             )
-            .unwrap();
-        client.execute("INSERT INTO babylon_state.material_tick_v3(campaign_id,resolve_tick,identity_bytes,register_storage_bytes,receipt_storage_bytes,lookup_delta_bytes) VALUES($1,1,$2,$2,$2,$2)", &[campaign.as_uuid(),&&[1_u8;32][..]]).unwrap();
+            .expect("the test database applies the setup statement");
+        client.execute("INSERT INTO babylon_state.material_tick_v3(campaign_id,resolve_tick,identity_bytes,register_storage_bytes,receipt_storage_bytes,lookup_delta_bytes) VALUES($1,1,$2,$2,$2,$2)", &[campaign.as_uuid(),&&[1_u8;32][..]]).expect("the test database applies the setup statement");
         client
             .execute(
                 "INSERT INTO babylon_state.graph_node_manifest_v1 VALUES($1,1,0,0,0,0)",
                 &[campaign.as_uuid()],
             )
-            .unwrap();
+            .expect("the test database applies the setup statement");
         client
             .execute(
                 "INSERT INTO babylon_state.tick_commit VALUES($1,1,3,$2,$2)",
                 &[campaign.as_uuid(), &&[1_u8; 32][..]],
             )
-            .unwrap();
+            .expect("the test database applies the setup statement");
     }
 
     fn insert_key_case(tx: &mut impl GenericClient, campaign: CampaignId, case: &str) {
         if matches!(case, "duplicate_key" | "key_gap" | "future_key") {
             let first_tick = if case == "future_key" { 2_i64 } else { 1 };
-            tx.execute("INSERT INTO babylon_state.event_key_lookup_v1(campaign_id,key_id,first_tick,value) VALUES($1,0,$2,$3)",&[campaign.as_uuid(),&first_tick,&&[1_u8][..]]).unwrap();
+            tx.execute("INSERT INTO babylon_state.event_key_lookup_v1(campaign_id,key_id,first_tick,value) VALUES($1,0,$2,$3)",&[campaign.as_uuid(),&first_tick,&&[1_u8][..]]).expect("the test database applies the setup statement");
             if case != "future_key" {
                 let id = if case == "key_gap" { 2_i64 } else { 1 };
                 let value = if case == "key_gap" { 2_u8 } else { 1 };
-                tx.execute("INSERT INTO babylon_state.event_key_lookup_v1(campaign_id,key_id,first_tick,value) VALUES($1,$2,1,$3)",&[campaign.as_uuid(),&id,&&[value][..]]).unwrap();
+                tx.execute("INSERT INTO babylon_state.event_key_lookup_v1(campaign_id,key_id,first_tick,value) VALUES($1,$2,1,$3)",&[campaign.as_uuid(),&id,&&[value][..]]).expect("the test database applies the setup statement");
             }
         }
         if matches!(case, "missing_key" | "future_key") {
             let key = if case == "missing_key" { 999_i64 } else { 0 };
-            tx.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,key_ids) VALUES($1,1,0,8,ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[1::bigint],ARRAY[$2::bigint])",&[campaign.as_uuid(),&key]).unwrap();
+            tx.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,key_ids) VALUES($1,1,0,8,ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[1::bigint],ARRAY[$2::bigint])",&[campaign.as_uuid(),&key]).expect("the test database applies the setup statement");
         }
         if matches!(
             case,
@@ -1289,14 +1366,14 @@ mod marker_integrity_controls {
                 | "future_node_name"
                 | "future_node_scenario"
         ) {
-            let head:i64=tx.query_one("SELECT count(*) FROM babylon_state.graph_string_lookup_v1 WHERE campaign_id=$1",&[campaign.as_uuid()]).unwrap().get(0);
+            let head:i64=tx.query_one("SELECT count(*) FROM babylon_state.graph_string_lookup_v1 WHERE campaign_id=$1",&[campaign.as_uuid()]).expect("the seeded row is present exactly once").get(0);
             let scenario_tick = if case == "future_node_scenario" {
                 2_i64
             } else {
                 1
             };
             let name_tick = if case == "future_node_name" { 2_i64 } else { 1 };
-            tx.execute("INSERT INTO babylon_state.graph_string_lookup_v1(campaign_id,string_id,first_tick,value) VALUES($1,$2,$3,$4),($1,$5,$6,$7)",&[campaign.as_uuid(),&head,&scenario_tick,&format!("proof-{case}"),&(head+1),&name_tick,&format!("name-{case}")]).unwrap();
+            tx.execute("INSERT INTO babylon_state.graph_string_lookup_v1(campaign_id,string_id,first_tick,value) VALUES($1,$2,$3,$4),($1,$5,$6,$7)",&[campaign.as_uuid(),&head,&scenario_tick,&format!("proof-{case}"),&(head+1),&name_tick,&format!("name-{case}")]).expect("the test database applies the setup statement");
             let scenario = if case == "missing_node_scenario" {
                 i64::MAX
             } else {
@@ -1307,7 +1384,7 @@ mod marker_integrity_controls {
             } else {
                 head + 1
             };
-            tx.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,key_ids,key_scenario_ids) VALUES($1,1,0,7,ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[1::bigint],ARRAY[$2::bigint],ARRAY[$3::bigint])",&[campaign.as_uuid(),&name,&scenario]).unwrap();
+            tx.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,key_ids,key_scenario_ids) VALUES($1,1,0,7,ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[1::bigint],ARRAY[$2::bigint],ARRAY[$3::bigint])",&[campaign.as_uuid(),&name,&scenario]).expect("the test database applies the setup statement");
         }
         if case == "key_wrong_kind" {
             let key = babylon_graph::stable_element::StableElementKey::Edge {
@@ -1317,9 +1394,9 @@ mod marker_integrity_controls {
                 target_local_name: "group".into(),
             }
             .canonical_bytes()
-            .unwrap();
-            tx.execute("INSERT INTO babylon_state.event_key_lookup_v1(campaign_id,key_id,first_tick,value) VALUES($1,0,1,$2)",&[campaign.as_uuid(),&key]).unwrap();
-            tx.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,key_ids) VALUES($1,1,0,8,ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[1::bigint],ARRAY[0::bigint])",&[campaign.as_uuid()]).unwrap();
+            .expect("the graph value exposes canonical bytes");
+            tx.execute("INSERT INTO babylon_state.event_key_lookup_v1(campaign_id,key_id,first_tick,value) VALUES($1,0,1,$2)",&[campaign.as_uuid(),&key]).expect("the test database applies the setup statement");
+            tx.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,key_ids) VALUES($1,1,0,8,ARRAY[0::bigint],ARRAY[0::bigint],ARRAY[1::bigint],ARRAY[0::bigint])",&[campaign.as_uuid()]).expect("the test database applies the setup statement");
         }
     }
 
@@ -1353,17 +1430,17 @@ mod marker_integrity_controls {
                     &field_chunks,
                 ],
             )
-            .unwrap();
+            .expect("the test database applies the setup statement");
             if parent_chunks > 0 {
                 let first_tick = if case == "future_text" { 2_i64 } else { 1 };
-                tx.execute("INSERT INTO babylon_state.event_text_lookup_v1 VALUES($1,0,$2,DEFAULT,'type'),($1,1,1,DEFAULT,'z'),($1,2,1,DEFAULT,'a')",&[campaign.as_uuid(),&first_tick]).unwrap();
+                tx.execute("INSERT INTO babylon_state.event_text_lookup_v1 VALUES($1,0,$2,DEFAULT,'type'),($1,1,1,DEFAULT,'z'),($1,2,1,DEFAULT,'a')",&[campaign.as_uuid(),&first_tick]).expect("the test database applies the setup statement");
                 let type_id = if case == "missing_text" { 999_i64 } else { 0 };
                 let choice = if matches!(case, "wrong_choice" | "current_choice") {
                     Some(0_i64)
                 } else {
                     None
                 };
-                tx.execute("INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,0,ARRAY[0::bigint],ARRAY[$2::bigint],ARRAY[0::bigint],ARRAY[$3::bigint])",&[campaign.as_uuid(),&type_id,&choice]).unwrap();
+                tx.execute("INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,0,ARRAY[0::bigint],ARRAY[$2::bigint],ARRAY[0::bigint],ARRAY[$3::bigint])",&[campaign.as_uuid(),&type_id,&choice]).expect("the test database applies the setup statement");
                 if matches!(case, "duplicate_text" | "text_gap") {
                     let id = if case == "text_gap" { 4_i64 } else { 3 };
                     let value = if case == "duplicate_text" {
@@ -1371,16 +1448,16 @@ mod marker_integrity_controls {
                     } else {
                         "gap"
                     };
-                    tx.execute("INSERT INTO babylon_state.event_text_lookup_v1(campaign_id,text_id,first_tick,value) VALUES($1,$2,1,$3)",&[campaign.as_uuid(),&id,&value]).unwrap();
+                    tx.execute("INSERT INTO babylon_state.event_text_lookup_v1(campaign_id,text_id,first_tick,value) VALUES($1,$2,1,$3)",&[campaign.as_uuid(),&id,&value]).expect("the test database applies the setup statement");
                 }
                 insert_key_case(tx, campaign, case);
                 if fields == 2 {
                     let second = if case == "duplicate_name" { 1_i64 } else { 2 };
-                    tx.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values) VALUES($1,1,0,1,ARRAY[0,0]::bigint[],ARRAY[0,1]::bigint[],ARRAY[1::bigint,$2::bigint],ARRAY[7,8]::bigint[])",&[campaign.as_uuid(),&second]).unwrap();
+                    tx.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values) VALUES($1,1,0,1,ARRAY[0,0]::bigint[],ARRAY[0,1]::bigint[],ARRAY[1::bigint,$2::bigint],ARRAY[7,8]::bigint[])",&[campaign.as_uuid(),&second]).expect("the test database applies the setup statement");
                 }
                 if choice.is_some() {
                     let tick = if case == "wrong_choice" { 2_i64 } else { 1 };
-                    tx.execute("INSERT INTO babylon_state.tick_choice_receipt_v1 VALUES($1,$2,0,'sql-control','sql-control',0,'sql-control',$3,0,'sql-control',$4,$4)",&[campaign.as_uuid(),&tick,&&[1_u8][..],&&[1_u8;32][..]]).unwrap();
+                    tx.execute("INSERT INTO babylon_state.tick_choice_receipt_v1 VALUES($1,$2,0,'sql-control','sql-control',0,'sql-control',$3,0,'sql-control',$4,$4)",&[campaign.as_uuid(),&tick,&&[1_u8][..],&&[1_u8;32][..]]).expect("the test database applies the setup statement");
                 }
             }
         }
@@ -1455,17 +1532,21 @@ mod marker_integrity_controls {
     #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
     fn live_event_deferred_marker_integrity_table() {
         let mut config = validated_base_config();
-        let database = std::env::var("BABYLON_EVENT_COPY_DATABASE").unwrap();
+        let database =
+            std::env::var("BABYLON_EVENT_COPY_DATABASE").expect("the fixture variable is bound");
         assert!(database.starts_with("per337_event_continuity_"));
         config.dbname(&database);
         let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
             .create_foundation(&crate::test_support::catalog())
-            .unwrap();
+            .expect("the authored catalog builds the foundation");
         let campaign = CampaignId::from_uuid(Uuid::from_u128(
             (u128::from(std::process::id()) << 64) | 0x337_e1ad,
         ));
-        let runtime = DurableMaterialRuntime::create(&config, campaign, foundation).unwrap();
-        let mut client = config.connect(NoTls).unwrap();
+        let runtime = DurableMaterialRuntime::create(&config, campaign, foundation)
+            .expect("the test database creates the fixture campaign");
+        let mut client = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
         let relations = [
             "event_text_lookup_v1",
             "event_key_lookup_v1",
@@ -1487,9 +1568,9 @@ mod marker_integrity_controls {
                         &format!("SELECT count(*) FROM babylon_state.{r} WHERE campaign_id=$1"),
                         &[campaign.as_uuid()],
                     )
-                    .unwrap()
+                    .expect("the seeded row is present exactly once")
                     .try_get(0)
-                    .unwrap()
+                    .expect("the fixture row holds the addressed column")
                 })
                 .collect()
         };
@@ -1500,7 +1581,9 @@ mod marker_integrity_controls {
             "fresh foundation has no event lookups"
         );
         for (case, expected) in CASES {
-            let mut tx = client.transaction().unwrap();
+            let mut tx = client
+                .transaction()
+                .expect("the test database opens a transaction");
             insert_case(&mut tx, campaign, case);
             insert_event_test_marker(&mut tx, campaign);
             let result = tx.batch_execute(
@@ -1508,7 +1591,9 @@ mod marker_integrity_controls {
             );
             if let Some(message) = expected {
                 let error = result.expect_err(case);
-                let db = error.as_db_error().unwrap();
+                let db = error
+                    .as_db_error()
+                    .expect("the runtime error is a database error");
                 assert_eq!(
                     db.code(),
                     &postgres::error::SqlState::RAISE_EXCEPTION,
@@ -1516,9 +1601,9 @@ mod marker_integrity_controls {
                 );
                 assert_eq!(db.message(), message, "{case}");
             } else {
-                result.unwrap();
+                result.expect("the fixture call returns its expected result");
             }
-            tx.rollback().unwrap();
+            tx.rollback().expect("the open transaction rolls back");
             assert_eq!(counts(&mut client), before, "{case}");
         }
         assert_eq!(runtime.campaign_id(), campaign);

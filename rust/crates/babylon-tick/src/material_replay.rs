@@ -626,10 +626,12 @@ impl MaterialReplaySession<HypergraphStore> {
         material: MaterialWorldRegister,
     ) -> Result<(), MaterialReplayError> {
         let tick = material.completed_tick();
-        if tick == 0
-            || !self.duration.contains(tick)
-            || material.catalog_digest() != self.catalog.catalog_digest
-        {
+        // A foreign catalog is a provenance refusal of the stored frame, not a
+        // horizon refusal; `new` refuses the same discrepancy with `Wire`.
+        if material.catalog_digest() != self.catalog.catalog_digest {
+            return Err(MaterialReplayError::Material(MaterialWorldError::Wire));
+        }
+        if tick == 0 || !self.duration.contains(tick) {
             return Err(MaterialReplayError::Horizon);
         }
         let tick = i64::try_from(tick).map_err(|_| MaterialReplayError::Identity)?;

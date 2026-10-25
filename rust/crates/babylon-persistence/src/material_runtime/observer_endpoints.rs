@@ -2,11 +2,10 @@
 
 use super::{
     material_storage, CampaignId, GenericClient, MaterialComponentIdentity, MaterialReadAuthority,
-    MaterialRuntimeError, MaterialWorldRegister, RegisterWitnesses, StoredMaterialTick,
-    StoredTickReadSource,
+    MaterialRuntimeError, MaterialWorldRegister, ObserverReadAuthority, RegisterWitnesses,
+    StoredMaterialTick, StoredTickReadSource,
 };
 use crate::production_projection::diagnostics::{Stage, Timing};
-use babylon_material_circuit::MaterialCatalog;
 use material_storage::AdmittedReceiptWitness;
 use material_storage::OpeningRegister;
 
@@ -48,23 +47,22 @@ impl AuthenticatedPreviousMaterialTick<'_> {
     }
 }
 
-#[allow(
-    clippy::too_many_arguments,
-    reason = "the campaign catalog is a distinct authority beside the endpoint lookup"
-)]
 pub(crate) fn read_observer_material_endpoints<'w>(
     client: &mut impl GenericClient,
     campaign: CampaignId,
     tick: u64,
-    scope: &str,
-    foundation_digest: [u8; 32],
-    components: &MaterialComponentIdentity,
+    read: ObserverReadAuthority<'_>,
     lookup: ObserverEndpointLookup<'_, 'w>,
-    catalog: &MaterialCatalog,
 ) -> Result<(StoredMaterialTick<'w>, Option<StoredMaterialTick<'w>>), MaterialRuntimeError> {
     if tick == 0 {
         return Err(MaterialRuntimeError::InvalidCheckpoint);
     }
+    let ObserverReadAuthority {
+        scope,
+        foundation_digest,
+        components,
+        catalog,
+    } = read;
     let authority = MaterialReadAuthority {
         scope,
         foundation_digest,

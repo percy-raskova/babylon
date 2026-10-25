@@ -763,15 +763,17 @@ pub(crate) fn production_history(
                     transaction,
                     campaign,
                     period,
-                    expected.foundation_graph().scenario_scope(),
-                    expected.digest(),
-                    &expected.component_identity,
+                    material_runtime::ObserverReadAuthority {
+                        scope: expected.foundation_graph().scenario_scope(),
+                        foundation_digest: expected.digest(),
+                        components: &expected.component_identity,
+                        catalog: expected.material_catalog(),
+                    },
                     (
                         &history.lookup,
                         history.lookup_chain,
                         [Some(history.register(expected)), history.opening(expected)],
                     ),
-                    expected.material_catalog(),
                 )
                 .map_err(|_| ObserverEconomyError::InvalidProjection)?;
                 if stored.register.as_ref() != history.register(expected)
@@ -817,9 +819,12 @@ pub(crate) fn authenticated_history_endpoints<'w>(
         transaction,
         campaign,
         tick,
-        expected.foundation_graph().scenario_scope(),
-        expected.digest(),
-        &expected.component_identity,
+        material_runtime::ObserverReadAuthority {
+            scope: expected.foundation_graph().scenario_scope(),
+            foundation_digest: expected.digest(),
+            components: &expected.component_identity,
+            catalog: expected.material_catalog(),
+        },
         ObserverEndpointLookup {
             opening: &history.lookup,
             current_chain: history.lookup_chain,
@@ -827,7 +832,6 @@ pub(crate) fn authenticated_history_endpoints<'w>(
             registers: [Some(register), history.opening(expected)],
             receipt: history.receipt_witness.as_ref(),
         },
-        expected.material_catalog(),
     )
     .map_err(|_| ObserverEconomyError::InvalidProjection)?;
     if current.register.as_ref() != register

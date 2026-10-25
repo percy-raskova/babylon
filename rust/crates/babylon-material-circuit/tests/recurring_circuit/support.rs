@@ -435,6 +435,7 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
         [0, 0, 4, 4],
         [0, 0, 4, 4],
     ];
+    let mut digests = Vec::new();
     for period in 1..=8 {
         recurring_mut(&mut state).household_purchases[0].enabled = ![3, 4].contains(&period);
         let captured = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
@@ -442,6 +443,15 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
         let restarted =
             babylon_material_circuit::decode_material_circuit_state(&catalog, &captured)
                 .expect("the canonical material bytes decode");
+        let digest = babylon_material_circuit::material_circuit_state_digest(&catalog, &state)
+            .expect("the authored material state has a canonical digest");
+        assert_eq!(
+            babylon_material_circuit::material_circuit_state_digest(&catalog, &restarted)
+                .expect("the restarted material state has a canonical digest"),
+            digest,
+            "period {period}: a canonical restart preserves the state digest"
+        );
+        digests.push(digest);
         let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
         assert_eq!(
@@ -548,6 +558,29 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
         ]
     );
     assert_eq!((consumption, used, idle, unplanned), (28, 80, 4, 44));
+    // One canonical digest per pre-close opening. The compact v4 frame seals the
+    // catalog digest, so these values intentionally differ from the pre-split
+    // frame; they pin the post-split encoding as well as the quantity trajectory.
+    let expected_digests = [
+        "42761fc58201184fb0eaa8015e99566cfc0c44ea6eae2c7ae67a3a1952598b8f",
+        "3842e4812265a774fe00352b9d09f21f7d917870768c1f8dfafb6469f5df158d",
+        "bea01cb8bc108824a8c4477ba85bbd0115f53bbbf951542e643a6dc42e65ca8c",
+        "85596f6e8ea75ac24dda95ceafa017b82302ffc83f0407d352312a30fb388b88",
+        "989a8816fa999712139a4a4e688e13696f76430545ecfb543da8ce72d4a49230",
+        "95dbfbae8ab41472c12295606d294576fcc7b50c03bacb9fccb527f9eef5022c",
+        "26bb574058cf105944755de02419e2d91ff27d0f71399c9c287a42d06f0a5e8a",
+        "ec2bfc11631a89b1a97ba1d48b0b6f1b8f959aa380c9169a7cd47cd6dbf808dd",
+    ];
+    assert_eq!(
+        digests
+            .iter()
+            .map(|digest| digest
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>())
+            .collect::<Vec<_>>(),
+        expected_digests
+    );
     assert_eq!(
         state
             .inventory

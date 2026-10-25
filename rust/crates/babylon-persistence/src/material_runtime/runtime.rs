@@ -1555,20 +1555,19 @@ pub(crate) type RegisterWitnesses<'w> = [Option<&'w MaterialWorldRegister>; 2];
 
 /// Uses the same complete decoder and envelope proof as durable reconciliation.
 /// The caller retains its role confinement and repeatable-read transaction.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "the campaign catalog is a distinct authority beside the lookup witness"
-)]
 pub(crate) fn read_observer_material_tick<'w>(
     client: &mut impl GenericClient,
     campaign: CampaignId,
     tick: u64,
-    scope: &str,
-    foundation_digest: [u8; 32],
-    components: &MaterialComponentIdentity,
+    read: ObserverReadAuthority<'_>,
     lookup_authority: (&OpeningRegister, [u8; 32], RegisterWitnesses<'w>),
-    catalog: &MaterialCatalog,
 ) -> Result<StoredMaterialTick<'w>, MaterialRuntimeError> {
+    let ObserverReadAuthority {
+        scope,
+        foundation_digest,
+        components,
+        catalog,
+    } = read;
     let (opening, chain, witnesses) = lookup_authority;
     read_authenticated_material_tick(
         client,
@@ -1716,6 +1715,19 @@ pub(crate) fn admit_archive_foundation(
                 .map_err(|_| MaterialRuntimeError::FoundationMismatch)?,
         )),
     }
+}
+
+/// Campaign-scoped authorities every authenticated observer read shares.
+///
+/// The two-endpoint reader and the single-tick reader authenticate against the
+/// same admitted content; bundling them keeps the catalog beside the identity it
+/// authenticates instead of adding a trailing parameter to each signature.
+#[derive(Clone, Copy)]
+pub(crate) struct ObserverReadAuthority<'a> {
+    pub(crate) scope: &'a str,
+    pub(crate) foundation_digest: [u8; 32],
+    pub(crate) components: &'a MaterialComponentIdentity,
+    pub(crate) catalog: &'a MaterialCatalog,
 }
 
 #[derive(Clone, Copy)]
@@ -1957,8 +1969,7 @@ impl CapturedMaterialTick {
         drop(row);
         let lookup_chain = decoded.chain;
         let admitted = material_storage::decode_typed_with_witness(
-            catalog,
-            opening,
+            material_storage::MaterialProvenance { catalog, opening },
             tick,
             &register_storage,
             &receipt_storage,
@@ -2035,20 +2046,20 @@ impl CapturedMaterialTick {
 
 // Only runtime authority can authenticate organizer inputs. The player uses
 // the restricted projection; no observer SQL view acquires private input access.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "the campaign catalog is a distinct authority beside the stored tick and opening"
-)]
 pub(crate) fn authenticated_organizer_actions(
     client: &mut impl GenericClient,
     source: StoredTickReadSource,
     campaign: CampaignId,
     tick: u64,
-    components: &MaterialComponentIdentity,
     stored: &StoredMaterialTick<'_>,
-    foundation_opening: &OpeningRegister,
-    catalog: &MaterialCatalog,
+    authority: MaterialReadAuthority<'_, '_>,
 ) -> Result<Option<OrderedPracticeActionBatch>, MaterialRuntimeError> {
+    let MaterialReadAuthority {
+        components,
+        opening: foundation_opening,
+        catalog,
+        ..
+    } = authority;
     let register = &stored.register;
     let Some(config) = register.organizer_config() else {
         return Ok(None);
@@ -2207,11 +2218,7 @@ pub(crate) fn validate_component_identity(
     stored: &StoredMaterialTick<'_>,
     authority: MaterialReadAuthority<'_, '_>,
 ) -> Result<(), MaterialRuntimeError> {
-    let MaterialReadAuthority {
-        components,
-        opening,
-        ..
-    } = authority;
+    let MaterialReadAuthority { components, .. } = authority;
     components.validate_sections(&stored.sections)?;
     let tick_sql = i64::try_from(tick).map_err(|_| MaterialRuntimeError::Bounds)?;
     let row = client
@@ -2226,16 +2233,9 @@ pub(crate) fn validate_component_identity(
         .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
     let bytes = row.try_get::<_, Vec<u8>>(2)?;
     let accepted = match source {
-        StoredTickReadSource::Runtime => authenticated_organizer_actions(
-            client,
-            source,
-            campaign,
-            tick,
-            components,
-            stored,
-            opening,
-            authority.catalog,
-        )?,
+        StoredTickReadSource::Runtime => {
+            authenticated_organizer_actions(client, source, campaign, tick, stored, authority)?
+        }
         StoredTickReadSource::FullObserver => {
             observer_organizer_actions(client, campaign, tick, stored, authority, &bytes)?
         }

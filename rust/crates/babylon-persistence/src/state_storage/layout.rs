@@ -311,7 +311,7 @@ const LAYOUTS: &[(u16, Layout)] = &[
             (65, Identity(K::FinalDemandPrincipal)),
             (97, Identity(K::FinalDemandPrincipal))
         ]
-    ), // aid.cash_reserves,
+    ), // aid.cash_reserves
 ];
 pub(super) fn layout(id: u16) -> Option<Layout> {
     LAYOUTS

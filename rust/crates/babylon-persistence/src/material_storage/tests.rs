@@ -544,8 +544,10 @@ fn admitted_current_receipt_is_not_typed_decoded_again_for_endpoint_framing() {
     )
     .expect("the canonical bytes decode into the declared type");
     let endpoint = register::decode_typed_with_witness(
-        &catalog,
-        &opening,
+        register::MaterialProvenance {
+            catalog: &catalog,
+            opening: &opening,
+        },
         1,
         &encoded.register_storage_bytes,
         &encoded.receipt_storage_bytes,
@@ -596,8 +598,7 @@ fn assert_receipt_witness_refusals(
     };
     let restored = |tick, package: &[u8], chain| {
         register::decode_typed_with_witness(
-            catalog,
-            opening,
+            register::MaterialProvenance { catalog, opening },
             tick,
             &encoded.register_storage_bytes,
             package,

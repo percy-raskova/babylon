@@ -48,5 +48,5 @@ storage:
   preset_comparison: Distinct campaign foundations; no in-session intervention.
 related_contracts:
   - contracts/material_world_register_v4.yaml
-  - contracts/material_circuit_v3.yaml
+  - contracts/material_circuit_v4.yaml
   - contracts/simulation_interval_v1.yaml

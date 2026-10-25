@@ -443,14 +443,20 @@ pub(crate) fn decode_typed(
     })
 }
 
+/// The immutable authorities that authenticate one stored material package.
+///
+/// The captured catalog and the admitted opening travel together on every
+/// storage read; bundling them keeps the definition set beside the opening it
+/// admits instead of trailing two unrelated parameters.
+#[derive(Clone, Copy)]
+pub(crate) struct MaterialProvenance<'a> {
+    pub(crate) catalog: &'a MaterialCatalog,
+    pub(crate) opening: &'a OpeningRegister,
+}
+
 // Each borrowed owner is usable only after exact storage/component equality.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "the campaign catalog is a distinct authority beside the stored package and witness"
-)]
 pub(crate) fn decode_typed_with_witness<'w>(
-    catalog: &MaterialCatalog,
-    opening: &OpeningRegister,
+    provenance: MaterialProvenance<'_>,
     tick: u64,
     state_package: &[u8],
     receipt_package: &[u8],
@@ -458,6 +464,7 @@ pub(crate) fn decode_typed_with_witness<'w>(
     lookup_chain: [u8; 32],
     witnesses: MaterialStorageWitnesses<'w>,
 ) -> Result<DecodedMaterial<Cow<'w, MaterialWorldRegister>>> {
+    let MaterialProvenance { catalog, opening } = provenance;
     if tick == 0 {
         return Err(Error::Tick);
     }
@@ -582,8 +589,10 @@ mod typed_decode_controls {
         .expect("the committed lookup table reads");
         for witness in [None, Some(current)] {
             let actual = decode_typed_with_witness(
-                session.catalog(),
-                &opening,
+                MaterialProvenance {
+                    catalog: session.catalog(),
+                    opening: &opening,
+                },
                 1,
                 &encoded.register_storage_bytes,
                 &encoded.receipt_storage_bytes,
@@ -641,8 +650,10 @@ mod typed_decode_controls {
         .expect("the committed lookup table reads");
         let decode = |package: &[u8], witness| {
             decode_typed_with_witness(
-                session.catalog(),
-                &opening,
+                MaterialProvenance {
+                    catalog: session.catalog(),
+                    opening: &opening,
+                },
                 1,
                 package,
                 &encoded.receipt_storage_bytes,

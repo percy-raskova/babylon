@@ -51,7 +51,8 @@ pub(crate) use runtime::{
     bounded_material_writer_config, capture_archive_organizer_register,
     capture_material_foundation_components, read_duration, read_observer_material_tick,
     AdmittedMaterial, ArchiveFoundationCandidate, CapturedArchiveOrganizerRegister,
-    CapturedMaterialFoundation, FoundationReadSource, RegisterWitnesses, StoredMaterialTick,
+    CapturedMaterialFoundation, FoundationReadSource, ObserverReadAuthority, RegisterWitnesses,
+    StoredMaterialTick,
 };
 pub use runtime::{
     DurableMaterialRuntime, MaterialAdvanceStage, MaterialFoundationSpec, MaterialRuntimeError,

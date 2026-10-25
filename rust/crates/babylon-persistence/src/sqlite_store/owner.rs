@@ -33,6 +33,7 @@ use std::io::Error;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 use babylon_kernel::content_digest;
@@ -43,6 +44,7 @@ use crate::sqlite_runtime_pin;
 use crate::sqlite_store::chunks;
 use crate::sqlite_store::chunks::ChunkSection;
 use crate::sqlite_store::chunks::ContentEntryKind;
+use crate::sqlite_store::chunks::DetailFamily;
 use crate::sqlite_store::chunks::JournalKind;
 use crate::sqlite_store::chunks::JournalRecordInput;
 use crate::sqlite_store::chunks::JournalSubject;
@@ -55,6 +57,14 @@ use crate::sqlite_store::export::ExportIdentity;
 use crate::sqlite_store::export::VerifiedExport;
 use crate::sqlite_store::lock::CampaignLock;
 use crate::sqlite_store::lock::SaveError;
+use crate::sqlite_store::replay;
+use crate::sqlite_store::replay::RecentDetailRow;
+use crate::sqlite_store::replay::ReplayError;
+use crate::sqlite_store::replay::VerifiedRecovery;
+use crate::sqlite_store::replay::VerifiedReplayReconstruction;
+use crate::sqlite_store::retention;
+use crate::sqlite_store::retention::PeriodSummary;
+use crate::sqlite_store::retention::RetentionAccountingReport;
 use crate::sqlite_store::schema;
 use crate::sqlite_store::schema::SnapshotRole;
 use crate::sqlite_store::schema::SCHEMA_VERSION;
@@ -197,6 +207,17 @@ pub struct PreparedKnowledgeGrant {
     pub payload: Vec<u8>,
 }
 
+/// One exhaustive technical-detail row offered with a period candidate.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PreparedDetailRow {
+    /// Closed receipt or event family.
+    pub family: DetailFamily,
+    /// Ordered fragment inside the family.
+    pub ordinal: u32,
+    /// Exact canonical payload bytes.
+    pub payload: Vec<u8>,
+}
+
 /// One complete period candidate prepared outside the write transaction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreparedPeriod {
@@ -214,6 +235,8 @@ pub struct PreparedPeriod {
     pub journal: Vec<PreparedJournalRecord>,
     /// Facts or authorities earned in the period.
     pub knowledge: Vec<PreparedKnowledgeGrant>,
+    /// Exhaustive technical detail retained for the thirteen-period window.
+    pub detail: Vec<PreparedDetailRow>,
 }
 
 /// Whether an acceptance inserted a new commitment or replayed an existing one.
@@ -274,6 +297,8 @@ pub struct CommittedPeriod {
     pub commit_ns: u64,
     /// Whether the commit inserted or replayed.
     pub kind: CommitKind,
+    /// Rotation and reclamation accounting for this commit.
+    pub retention: RetentionAccountingReport,
 }
 
 /// One state chunk reached by the current snapshot.
@@ -511,6 +536,26 @@ impl SqliteCampaignStore {
         schema::configure_connection(&connection)?;
         schema::verify_installed_schema(&connection)?;
         reconcile(connection, lock, path, campaign_id, expected_build)
+    }
+
+    /// Recover one damaged campaign into a clean independent destination.
+    ///
+    /// Cold layers that no longer authenticate are dropped; the current root,
+    /// permanent journal and earned knowledge must verify completely. The source
+    /// file is opened read-only and preserved as evidence.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a missing source, an existing destination, a mismatched build, any
+    /// damage to the current root or a permanent structure, an integrity failure,
+    /// or a host I/O failure. A failed recovery publishes nothing.
+    pub fn recover_to_new_save(
+        damaged_path: &Path,
+        destination: &Path,
+        expected_build: BuildIdentity,
+    ) -> Result<VerifiedRecovery, SaveError> {
+        sqlite_runtime_pin::verify_sqlite_runtime()?;
+        replay::recover_to_new_save(damaged_path, destination, expected_build)
     }
 }
 
@@ -772,11 +817,12 @@ impl CampaignHandle {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.pragma_update(None, "defer_foreign_keys", "ON")?;
         let committed = read_manifest(&transaction)?;
         let current = read_snapshot(&transaction, committed.current_snapshot_id)?;
 
         if candidate.period <= current.period {
-            let Some(existing) = snapshot_for_period(&transaction, candidate.period)? else {
+            let Some(existing) = period_summary_for(&transaction, candidate.period)? else {
                 return Err(SaveError::WrongPeriod {
                     expected: current.period.checked_add(1).ok_or(SaveError::Arithmetic {
                         field: "next period",
@@ -784,25 +830,29 @@ impl CampaignHandle {
                     actual: candidate.period,
                 });
             };
-            let stored = decode_manifest(&existing.manifest_bytes)?;
-            if stored.candidate_hash != prepared.candidate_hash {
+            if existing.0.candidate_hash != prepared.candidate_hash {
                 return Err(SaveError::ConflictingPeriodCommit {
                     period: candidate.period,
                 });
             }
             transaction.commit()?;
+            let summary = existing.0;
             return Ok(CommittedPeriod {
-                period: existing.period,
-                world_hash: existing.world_hash,
-                state_hash: existing.state_hash,
-                journal_tail_seq: existing.committed_journal_seq,
-                journal_tail_hash: existing.committed_journal_hash,
-                knowledge_tail_seq: existing.knowledge_seq,
-                knowledge_tail_hash: existing.knowledge_hash,
+                period: summary.period,
+                world_hash: summary.world_hash,
+                state_hash: summary.state_hash,
+                journal_tail_seq: existing.1,
+                journal_tail_hash: existing.2,
+                knowledge_tail_seq: summary.knowledge_tail_seq,
+                knowledge_tail_hash: summary.knowledge_tail_hash,
                 chunks_inserted: 0,
                 chunks_reused: 0,
                 commit_ns: elapsed_ns(started),
                 kind: CommitKind::Existing,
+                retention: RetentionAccountingReport {
+                    period: summary.period,
+                    ..RetentionAccountingReport::default()
+                },
             });
         }
 
@@ -824,10 +874,12 @@ impl CampaignHandle {
 
         let mut journal_seq = committed.journal_tail_seq;
         let mut journal_hash = committed.journal_tail_hash;
+        let mut gross_bytes_added = 0_u64;
         if let Some(accepted) = unresolved_command(&transaction, candidate.period)? {
             journal_seq = journal_seq.checked_add(1).ok_or(SaveError::Arithmetic {
                 field: "journal sequence",
             })?;
+            gross_bytes_added = gross_bytes_added.saturating_add(u64::from(accepted.raw_len));
             let entry_hash = journal_entry_hash(&JournalInput {
                 journal_seq,
                 kind: JournalKind::ResolvedBatch,
@@ -872,6 +924,7 @@ impl CampaignHandle {
             journal_seq = journal_seq.checked_add(1).ok_or(SaveError::Arithmetic {
                 field: "journal sequence",
             })?;
+            gross_bytes_added = gross_bytes_added.saturating_add(u64::from(descriptor.raw_len));
             let subject = record
                 .subject
                 .as_ref()
@@ -953,7 +1006,83 @@ impl CampaignHandle {
                 ],
             )?;
             knowledge_hash = entry_hash;
+            gross_bytes_added = gross_bytes_added.saturating_add(u64::from(descriptor.raw_len));
         }
+
+        let detail_rows =
+            u32::try_from(candidate.detail.len()).map_err(|_| SaveError::Arithmetic {
+                field: "detail row count",
+            })?;
+        for row in &candidate.detail {
+            chunks::write_recent_detail(
+                &transaction,
+                candidate.period,
+                row.family,
+                row.ordinal,
+                &row.payload,
+            )?;
+            gross_bytes_added = gross_bytes_added.saturating_add(
+                u64::try_from(row.payload.len()).map_err(|_| SaveError::Arithmetic {
+                    field: "detail payload length",
+                })?,
+            );
+        }
+
+        // The owner writes the period's terminal compact summary. It binds the
+        // identity the caller committed, the tails before it, and the knowledge
+        // the period earned, so replay can verify every intervening commit
+        // without retaining a snapshot for it.
+        let summary = PeriodSummary {
+            period: candidate.period,
+            candidate_hash: prepared.candidate_hash,
+            world_hash: candidate.world_hash,
+            state_hash: candidate.state_hash,
+            prior_journal_seq: journal_seq,
+            prior_journal_hash: journal_hash,
+            knowledge_tail_seq: knowledge_seq,
+            knowledge_tail_hash: knowledge_hash,
+            detail_rows,
+            evidence_records: count(candidate.journal.len(), "evidence record count")?,
+        };
+        let summary_payload = summary.encode();
+        journal_seq = journal_seq.checked_add(1).ok_or(SaveError::Arithmetic {
+            field: "journal sequence",
+        })?;
+        let summary_hash = journal_entry_hash(&JournalInput {
+            journal_seq,
+            kind: JournalKind::PeriodSummary,
+            period: candidate.period,
+            actor_id: None,
+            subject: None,
+            nonce: None,
+            record_key: None,
+            raw_len: u32::try_from(summary_payload.len()).map_err(|_| SaveError::Arithmetic {
+                field: "period summary length",
+            })?,
+            raw_hash: content_digest::sha256_of(&summary_payload),
+            previous_hash: journal_hash,
+        })?;
+        chunks::write_journal_record(
+            &transaction,
+            &JournalRecordInput {
+                journal_seq,
+                kind: JournalKind::PeriodSummary,
+                period: candidate.period,
+                actor_id: None,
+                subject: None,
+                nonce: None,
+                record_key: None,
+                payload: &summary_payload,
+                previous_hash: journal_hash,
+                entry_hash: summary_hash,
+            },
+        )?;
+        journal_hash = summary_hash;
+        gross_bytes_added = gross_bytes_added.saturating_add(
+            u64::try_from(summary_payload.len()).map_err(|_| SaveError::Arithmetic {
+                field: "period summary length",
+            })?,
+        );
 
         let previous = previous_chunks(&transaction, current.snapshot_id)?;
         let ordered = ordered_chunks(&candidate.chunks);
@@ -976,6 +1105,8 @@ impl CampaignHandle {
                 }
                 _ => {
                     inserted = inserted.saturating_add(1);
+                    gross_bytes_added =
+                        gross_bytes_added.saturating_add(u64::from(descriptor.raw_len));
                     chunks::write_state_chunk(
                         &transaction,
                         chunk.section,
@@ -987,11 +1118,15 @@ impl CampaignHandle {
             links.push((chunk_id, *descriptor));
         }
 
+        // Install the successor restart root. The superseded current row is
+        // removed rather than demoted: a checkpoint period keeps its own twin,
+        // and every other period's root is not part of the retained roster.
+        // Foreign keys are deferred to `COMMIT` so the single current row, its
+        // manifest reference and reachability reclamation can move in one
+        // transaction while `save_manifest` still publishes last.
+        let mut superseded_bytes = 0_u64;
         if current.role == SnapshotRole::Current {
-            transaction.execute(
-                "UPDATE snapshot SET role = ?1 WHERE snapshot_id = ?2",
-                params![SnapshotRole::Historical.code(), current.snapshot_id],
-            )?;
+            superseded_bytes = retention::delete_snapshot(&transaction, current.snapshot_id)?;
         }
         let manifest_bytes = encode_manifest(&prepared.chunks, prepared.candidate_hash)?;
         let snapshot_id = insert_snapshot(
@@ -1006,18 +1141,28 @@ impl CampaignHandle {
             knowledge_seq,
             knowledge_hash,
         )?;
-        for (chunk_id, descriptor) in &links {
-            transaction.execute(
-                "INSERT INTO snapshot_chunk (snapshot_id, section, ordinal, chunk_id)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![
-                    snapshot_id,
-                    descriptor.section.code(),
-                    i64::from(descriptor.ordinal),
-                    chunk_id
-                ],
+        insert_chunk_links(&transaction, snapshot_id, &links)?;
+        if retention::is_checkpoint_period(candidate.period) {
+            let checkpoint_id = insert_snapshot(
+                &transaction,
+                SnapshotRole::Historical,
+                candidate.period,
+                candidate.world_hash,
+                candidate.state_hash,
+                &manifest_bytes,
+                journal_seq,
+                journal_hash,
+                knowledge_seq,
+                knowledge_hash,
             )?;
+            insert_chunk_links(&transaction, checkpoint_id, &links)?;
         }
+        let rotation = retention::rotate(
+            &transaction,
+            candidate.period,
+            gross_bytes_added,
+            superseded_bytes,
+        )?;
 
         #[cfg(test)]
         if self.fault.get() == Some(FaultPoint::DuringCommit) {
@@ -1040,6 +1185,10 @@ impl CampaignHandle {
         )?;
         transaction.commit()?;
         let commit_ns = elapsed_ns(started);
+        let rotation = RetentionAccountingReport {
+            wal_bytes: retention::wal_bytes(&self.path),
+            ..rotation
+        };
         self.current = CurrentRoot {
             snapshot_id,
             period: candidate.period,
@@ -1077,6 +1226,7 @@ impl CampaignHandle {
             chunks_reused: reused,
             commit_ns,
             kind: CommitKind::Inserted,
+            retention: rotation,
         })
     }
 
@@ -1180,6 +1330,68 @@ impl CampaignHandle {
             });
         }
         Ok(stored.payload)
+    }
+
+    /// Reconstruct one historical period from an isolated copy of the save.
+    ///
+    /// The newest retained checkpoint at or before `target_period` supplies the
+    /// verified chunk bytes; the permanent journal chain supplies every
+    /// intervening period identity and governed choice receipt, and the knowledge
+    /// prefix exposes only facts acquired by the target. The live save is never
+    /// mutated and no reconstruction grants live knowledge.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a future period, a cancelled request, a missing compact period
+    /// summary, damage to a retained layer, or a `SQLite` failure.
+    pub fn replay_to_period(
+        &self,
+        target_period: u64,
+        cancel: &AtomicBool,
+    ) -> Result<VerifiedReplayReconstruction, ReplayError> {
+        replay::reconstruct(
+            &self.connection,
+            &self.path,
+            self.build.hash(),
+            self.content_hash,
+            self.current.period,
+            target_period,
+            cancel,
+        )
+    }
+
+    /// Read the authenticated exhaustive detail of one retained period.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a period outside the retained thirteen-period window, a stored
+    /// payload that does not match its codec, length or digest, or a `SQLite`
+    /// failure. Damage inside the window is diagnosed here rather than blocking
+    /// the open of an otherwise valid campaign.
+    pub fn read_recent_detail(
+        &self,
+        period: u64,
+        family: DetailFamily,
+    ) -> Result<Vec<RecentDetailRow>, SaveError> {
+        replay::read_recent_detail(&self.connection, self.current.period, period, family)
+    }
+
+    /// Resolve one permanent evidence record by its closed kind and record key.
+    ///
+    /// A compact current row names its evidence by record key rather than by a
+    /// sequence the tick could not know before commit. Rotation never deletes a
+    /// permanent journal record, so this resolution survives every checkpoint and
+    /// detail-row eviction.
+    ///
+    /// # Errors
+    ///
+    /// Refuses an empty record key or a `SQLite` failure.
+    pub fn journal_sequence_for_record(
+        &self,
+        kind: JournalKind,
+        record_key: &[u8],
+    ) -> Result<Option<u64>, SaveError> {
+        retention::journal_sequence_for_record(&self.connection, kind, record_key)
     }
 
     /// Publish one verified online backup to a new destination.
@@ -1883,23 +2095,87 @@ pub(super) fn read_snapshot(
         })
 }
 
-fn snapshot_for_period(
+/// Read one committed period's compact permanent summary.
+///
+/// The summary is the durable reconciliation identity of a committed period, so
+/// a lost-ack retry is answered without a retained snapshot and without
+/// re-executing the period.
+fn period_summary_for(
     connection: &Connection,
     period: u64,
-) -> Result<Option<SnapshotHeader>, SaveError> {
-    connection
+) -> Result<Option<(PeriodSummary, u64, [u8; 32])>, SaveError> {
+    let row = connection
         .query_row(
-            "SELECT snapshot_id, role, period, world_hash, state_hash, manifest_bytes,
-                    committed_journal_seq, committed_journal_hash, knowledge_seq, knowledge_hash
-             FROM snapshot WHERE period = ?1 ORDER BY snapshot_id DESC LIMIT 1",
-            params![checked_i64(period, "snapshot period")?],
-            decode_snapshot_row,
+            "SELECT journal_seq, codec, raw_len, raw_hash, payload, entry_hash
+             FROM permanent_journal
+             WHERE kind = ?1 AND period = ?2 ORDER BY journal_seq",
+            params![
+                JournalKind::PeriodSummary.code(),
+                checked_i64(period, "summary period")?
+            ],
+            decode_stored_summary,
         )
-        .optional()
-        .map_err(SaveError::from)
+        .optional()?;
+    let Some(stored_summary) = row else {
+        return Ok(None);
+    };
+    let stored = codec::StoredPayload {
+        codec: codec::PayloadCodec::from_code(stored_summary.codec)?,
+        raw_len: stored_summary.raw_len,
+        raw_hash: hash_from_row("permanent_journal", &stored_summary.raw_hash)?,
+        payload: &stored_summary.payload,
+    };
+    let decoded = codec::decode_chunk_payload(PayloadBudget::PermanentJournal, &stored)?;
+    let summary = retention::decode_period_summary(&decoded)?;
+    if summary.period != period {
+        return Err(SaveError::CorruptManifest {
+            reason: "the period summary names another period",
+        });
+    }
+    let retained_manifest: Option<Vec<u8>> = connection
+        .query_row(
+            "SELECT manifest_bytes FROM snapshot WHERE period = ?1
+             ORDER BY snapshot_id DESC LIMIT 1",
+            [checked_i64(period, "summary period")?],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if let Some(manifest_bytes) = retained_manifest {
+        if decode_manifest(&manifest_bytes)?.candidate_hash != summary.candidate_hash {
+            return Err(SaveError::CorruptManifest {
+                reason: "the retained snapshot and the period summary disagree",
+            });
+        }
+    }
+    Ok(Some((
+        summary,
+        to_u64(stored_summary.journal_seq, "permanent_journal.journal_seq")?,
+        hash_from_row("permanent_journal", &stored_summary.entry_hash)?,
+    )))
 }
 
-fn decode_snapshot_row(row: &Row<'_>) -> SqliteResult<SnapshotHeader> {
+struct StoredSummaryRow {
+    journal_seq: i64,
+    codec: i64,
+    raw_len: u32,
+    raw_hash: Vec<u8>,
+    payload: Vec<u8>,
+    entry_hash: Vec<u8>,
+}
+
+fn decode_stored_summary(row: &Row<'_>) -> SqliteResult<StoredSummaryRow> {
+    Ok(StoredSummaryRow {
+        journal_seq: row.get(0)?,
+        codec: row.get(1)?,
+        raw_len: u32::try_from(row.get::<_, i64>(2)?)
+            .map_err(|_| corruption("the period summary length is out of range"))?,
+        raw_hash: row.get(3)?,
+        payload: row.get(4)?,
+        entry_hash: row.get(5)?,
+    })
+}
+
+pub(super) fn decode_snapshot_row(row: &Row<'_>) -> SqliteResult<SnapshotHeader> {
     Ok(SnapshotHeader {
         snapshot_id: row.get(0)?,
         role: snapshot_role_from_code(row.get(1)?)?,
@@ -1951,6 +2227,26 @@ fn insert_snapshot(
         ],
     )?;
     Ok(connection.last_insert_rowid())
+}
+
+fn insert_chunk_links(
+    connection: &Connection,
+    snapshot_id: i64,
+    links: &[(i64, ChunkDescriptor)],
+) -> Result<(), SaveError> {
+    for (chunk_id, descriptor) in links {
+        connection.execute(
+            "INSERT INTO snapshot_chunk (snapshot_id, section, ordinal, chunk_id)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![
+                snapshot_id,
+                descriptor.section.code(),
+                i64::from(descriptor.ordinal),
+                chunk_id
+            ],
+        )?;
+    }
+    Ok(())
 }
 
 fn validate_content(captured: &AdmittedContent) -> Result<(), SaveError> {
@@ -2100,7 +2396,7 @@ fn prepare_candidate(candidate: &PreparedPeriod) -> Result<PreparedCandidate, Sa
     for record in &candidate.journal {
         if matches!(
             record.kind,
-            JournalKind::AcceptedCommand | JournalKind::ResolvedBatch
+            JournalKind::AcceptedCommand | JournalKind::ResolvedBatch | JournalKind::PeriodSummary
         ) {
             return Err(SaveError::ReservedJournalKind {
                 code: record.kind.code(),

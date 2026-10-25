@@ -7,12 +7,14 @@
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use babylon_kernel::content_digest;
 use rusqlite::params;
 use rusqlite::Connection;
+use rusqlite::OpenFlags;
 use uuid::Uuid;
 
 use crate::identity::CampaignId;
@@ -43,17 +45,22 @@ use super::owner::AdmittedContent;
 use super::owner::AdmittedContentEntry;
 use super::owner::AdmittedOpening;
 use super::owner::BuildIdentity;
+use super::owner::CampaignHandle;
 use super::owner::CommandError;
 use super::owner::CommitKind;
+use super::owner::CommittedPeriod;
 use super::owner::CurrentRoot;
 use super::owner::FaultPoint;
 use super::owner::PlayerCommand;
+use super::owner::PreparedDetailRow;
 use super::owner::PreparedJournalRecord;
 use super::owner::PreparedKnowledgeGrant;
 use super::owner::PreparedPeriod;
 use super::owner::PreparedSubject;
 use super::owner::SqliteCampaignStore;
 use super::owner::StateChunk;
+use super::replay::RecentDetailRow;
+use super::replay::ReplayError;
 use super::schema;
 use super::schema::SnapshotRole;
 use super::schema::BUSY_TIMEOUT;
@@ -1412,6 +1419,7 @@ fn prepared(
         chunks,
         journal,
         knowledge,
+        detail: Vec::new(),
     }
 }
 
@@ -1587,13 +1595,10 @@ fn two_period_identities_survive_cold_reopen_and_export() {
             b"earned-county-fact",
         )],
     );
-    assert!(
-        matches!(
-            handle.commit(conflicting),
-            Err(SaveError::ConflictingPeriodCommit { period: 1 })
-        ),
-        "period one already holds one immutable canonical commitment"
-    );
+    match handle.commit(conflicting) {
+        Err(SaveError::ConflictingPeriodCommit { period }) => assert_eq!(period, 1),
+        other => panic!("period one must keep one immutable commitment: {other:?}"),
+    }
     assert_eq!(
         handle
             .read_granted_subject(
@@ -1615,7 +1620,7 @@ fn two_period_identities_survive_cold_reopen_and_export() {
             chunk(ChunkSection::StableGraph, 0, graph_one),
         ],
         vec![journal(
-            JournalKind::PeriodSummary,
+            JournalKind::PlayerReceipt,
             None,
             b"period-two-summary",
         )],
@@ -2194,8 +2199,8 @@ fn during_commit_fault_rolls_back_atomically() {
     assert_eq!(committed.kind, CommitKind::Inserted);
     assert_eq!(
         committed.journal_tail_seq,
-        accepted.acceptance_seq + 2,
-        "the retry appends exactly one command consumption and one journal record"
+        accepted.acceptance_seq + 3,
+        "the retry appends the command consumption, the evidence record and the period summary"
     );
     assert_eq!(
         retried
@@ -2648,7 +2653,7 @@ fn prior_subject_resolution_is_persisted_and_survives_cold_reopen() {
             first.world_hash,
             vec![chunk(ChunkSection::WorldRegisters, 0, register(2))],
             vec![resolving_journal(
-                JournalKind::PeriodSummary,
+                JournalKind::PlayerReceipt,
                 (SubjectKind::Shipment, b"freight-wayne-1"),
                 b"freight-delivered",
             )],
@@ -2657,12 +2662,17 @@ fn prior_subject_resolution_is_persisted_and_survives_cold_reopen() {
         .expect("the period-two record resolves the prior freight subject");
     assert_eq!(
         second.journal_tail_seq,
-        first.journal_tail_seq + 1,
-        "the resolution is the only period-two journal record"
+        first.journal_tail_seq + 2,
+        "period two appends the resolving freight record and its period summary"
     );
+    let resolution_seq = second.journal_tail_seq - 1;
     let assert_freight = |rows: &[(u64, Option<u64>, Option<u64>)]| {
         assert_eq!(rows.len(), 2, "the freight subject owns two records");
-        assert_eq!(rows[0].0, first.journal_tail_seq);
+        assert_eq!(
+            rows[0].0,
+            first.journal_tail_seq - 1,
+            "the freight record precedes its period's terminal summary"
+        );
         assert_eq!(
             rows[0].1,
             Some(2),
@@ -2670,10 +2680,10 @@ fn prior_subject_resolution_is_persisted_and_survives_cold_reopen() {
         );
         assert_eq!(
             rows[0].2,
-            Some(second.journal_tail_seq),
+            Some(resolution_seq),
             "the earlier freight record names the period-two resolution"
         );
-        assert_eq!(rows[1].0, second.journal_tail_seq);
+        assert_eq!(rows[1].0, resolution_seq);
         assert_eq!(rows[1].1, None, "the resolving record stays unresolved");
         assert_eq!(rows[1].2, None);
     };
@@ -2771,5 +2781,671 @@ fn export_refuses_a_broken_snapshot_chunk_link() {
     assert!(
         leftovers.is_empty(),
         "a refused export removes its temporary file: {leftovers:?}"
+    );
+}
+
+//
+// Task 8 (`P4b`): 13-period retention, two rolling checkpoints, chunk GC,
+// isolated replay and recovery. The tests cross the roster boundaries named in
+// the plan (12/13/14, 25/26/27, 39/40) and inject independent corruption into
+// the current chunk, a cold detail row, an acquired fact and a command
+// resolution.
+//
+
+/// Deterministic poorly compressible bytes for the retention fixture.
+fn incompressible_bytes(seed: u64, len: usize) -> Vec<u8> {
+    let mut state = seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+    let mut bytes = Vec::with_capacity(len);
+    for _ in 0..len {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        bytes.push(state.to_le_bytes()[0]);
+    }
+    bytes
+}
+
+/// One committed period kept for replay comparison.
+fn long_candidate(
+    period: u64,
+    expected_world: [u8; 32],
+    journal: Vec<PreparedJournalRecord>,
+    knowledge: Vec<PreparedKnowledgeGrant>,
+) -> PreparedPeriod {
+    // Each period's register owns whole pages of poorly compressible bytes, so
+    // retiring a checkpoint frees pages rather than only slack in a shared page.
+    let mut register_period = register(period);
+    register_period.extend_from_slice(&incompressible_bytes(period, 65_536));
+    PreparedPeriod {
+        period,
+        expected_world_hash: expected_world,
+        world_hash: world_identity(period),
+        state_hash: content_digest::sha256_of(&register_period),
+        chunks: vec![
+            chunk(ChunkSection::WorldRegisters, 0, register_period),
+            chunk(ChunkSection::StableGraph, 0, graph(0)),
+        ],
+        journal,
+        knowledge,
+        detail: vec![PreparedDetailRow {
+            family: DetailFamily::Prices,
+            ordinal: 0,
+            payload: format!("prices-{period}").into_bytes(),
+        }],
+    }
+}
+
+/// A campaign driven period by period with one choice receipt per period.
+struct RetentionRun {
+    handle: CampaignHandle,
+    receipts: Vec<CommittedPeriod>,
+}
+
+impl RetentionRun {
+    fn start(database: &Path) -> Self {
+        let handle = SqliteCampaignStore::create(database, admitted_content(), admitted_opening())
+            .expect("the retention campaign is created once");
+        Self {
+            handle,
+            receipts: Vec::new(),
+        }
+    }
+
+    fn advance_to(&mut self, last_period: u64) {
+        while self.handle.current().period < last_period {
+            let period = self.handle.current().period + 1;
+            let mut records = vec![journal(
+                JournalKind::GovernedChoice,
+                Some((
+                    SubjectKind::Observation,
+                    format!("choice-{period}").as_bytes(),
+                )),
+                format!("choice-receipt-{period}").as_bytes(),
+            )];
+            if period == 2 {
+                let mut receipt = journal(
+                    JournalKind::PlayerReceipt,
+                    Some((SubjectKind::County, b"26163")),
+                    b"county-wage-receipt",
+                );
+                receipt.record_key = Some(b"receipt-2".to_vec());
+                records.push(receipt);
+            }
+            let knowledge = if period == 9 {
+                vec![knowledge(
+                    42,
+                    SubjectKind::County,
+                    b"michigan-wayne",
+                    1,
+                    b"observed-in-period-4-acquired-in-9",
+                )]
+            } else {
+                Vec::new()
+            };
+            let candidate =
+                long_candidate(period, self.handle.current().world_hash, records, knowledge);
+            let committed = self
+                .handle
+                .commit(candidate)
+                .expect("every retention period commits");
+            self.receipts.push(committed);
+        }
+    }
+}
+
+/// Read `(role, period)` for every retained snapshot in natural order.
+fn snapshot_roster(database: &Path) -> Vec<(i64, i64)> {
+    let connection = read_connection(database);
+    let mut statement = connection
+        .prepare("SELECT role, period FROM snapshot ORDER BY role, period")
+        .expect("the snapshot roster queries");
+    let rows = statement
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .expect("the snapshot roster reads");
+    rows.map(|row| row.expect("a snapshot row is readable"))
+        .collect()
+}
+
+/// Read the chunk identity set one snapshot reaches.
+fn snapshot_chunks(database: &Path, period: i64, role: i64) -> Vec<i64> {
+    let connection = read_connection(database);
+    let mut statement = connection
+        .prepare(
+            "SELECT chunk_id FROM snapshot_chunk
+             WHERE snapshot_id = (SELECT snapshot_id FROM snapshot WHERE period = ?1 AND role = ?2)
+             ORDER BY chunk_id",
+        )
+        .expect("the snapshot chunk list queries");
+    let rows = statement
+        .query_map(params![period, role], |row| row.get::<_, i64>(0))
+        .expect("the snapshot chunk list reads");
+    rows.map(|row| row.expect("a chunk link is readable"))
+        .collect()
+}
+
+fn scalar(connection: &Connection, sql: &str) -> i64 {
+    connection
+        .query_row(sql, [], |row| row.get(0))
+        .expect("the scalar query reads one row")
+}
+
+fn read_connection(database: &Path) -> Connection {
+    Connection::open_with_flags(
+        database,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .expect("the campaign database opens read-only")
+}
+
+/// Flip one byte of every row a `WHERE` clause selects in a payload column.
+fn flip_payload_bytes(database: &Path, table: &str, where_clause: &str) {
+    let connection = raw_connection(database);
+    connection
+        .execute(
+            &format!(
+                "UPDATE {table} SET payload = CAST(
+                     substr(payload, 1, 1) || x'FF' || substr(payload, 3) AS BLOB
+                 ) WHERE {where_clause}"
+            ),
+            [],
+        )
+        .expect("the test flips one payload byte");
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "one conformance scenario asserts every roster boundary, the window and the accounting"
+)]
+fn retention_rotation_keeps_the_exact_roster_and_recent_window() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut run = RetentionRun::start(&database);
+
+    run.advance_to(12);
+    assert_eq!(
+        snapshot_roster(&database),
+        vec![(1, 0), (2, 12)],
+        "period 12 retains opening and current and no checkpoint"
+    );
+
+    run.advance_to(13);
+    assert_eq!(
+        snapshot_roster(&database),
+        vec![(1, 0), (2, 13), (3, 13)],
+        "period 13 adds one checkpoint beside the current root"
+    );
+    assert_eq!(
+        snapshot_chunks(&database, 13, 2),
+        snapshot_chunks(&database, 13, 3),
+        "the current root and its checkpoint share integer chunk identities"
+    );
+
+    run.advance_to(14);
+    assert_eq!(
+        snapshot_roster(&database),
+        vec![(1, 0), (2, 14), (3, 13)],
+        "period 14 replaces the current root and keeps checkpoint 13"
+    );
+
+    run.advance_to(25);
+    assert_eq!(
+        snapshot_roster(&database),
+        vec![(1, 0), (2, 25), (3, 13)],
+        "periods 15 to 25 never accumulate checkpoints"
+    );
+
+    run.advance_to(26);
+    assert_eq!(
+        snapshot_roster(&database),
+        vec![(1, 0), (2, 26), (3, 13), (3, 26)],
+        "period 26 retains the two completed checkpoints"
+    );
+
+    run.advance_to(27);
+    assert_eq!(
+        snapshot_roster(&database),
+        vec![(1, 0), (2, 27), (3, 13), (3, 26)],
+        "period 27 keeps both checkpoints behind the new current root"
+    );
+
+    run.advance_to(39);
+    assert_eq!(
+        snapshot_roster(&database),
+        vec![(1, 0), (2, 39), (3, 26), (3, 39)],
+        "period 39 retires checkpoint 13 and keeps 26 and 39"
+    );
+
+    run.advance_to(40);
+    assert_eq!(
+        snapshot_roster(&database),
+        vec![(1, 0), (2, 40), (3, 26), (3, 39)],
+        "period 40 moves the current root without adding a checkpoint"
+    );
+
+    let retirement = run.receipts[38].retention;
+    assert_eq!(
+        (retirement.period, retirement.snapshots_retained),
+        (39, 4),
+        "the period-39 checkpoint rotation retains opening, current and two checkpoints"
+    );
+    assert!(
+        retirement.gross_bytes_added > 65_536 && retirement.bytes_made_unreachable > 0,
+        "period 39 counts its inserted register bytes apart from the bytes it made unreachable"
+    );
+    assert!(
+        retirement.chunks_reclaimed > 0 && retirement.main_file_bytes > 0,
+        "period 39 reclaims the retired checkpoint's exclusive chunks and reports the file"
+    );
+    assert!(
+        retirement.reclaimed_bytes > 0,
+        "the bounded incremental vacuum actually returns the retired checkpoint's pages"
+    );
+    let newest = run.receipts[39].retention;
+    assert_eq!(
+        (newest.period, newest.detail_rows_reclaimed),
+        (40, 1),
+        "period 40 evicts exactly the detail row that left the thirteen-period window"
+    );
+    let connection = read_connection(&database);
+    assert_eq!(
+        scalar(
+            &connection,
+            "SELECT COUNT(*) FROM state_chunk
+             WHERE chunk_id NOT IN (SELECT chunk_id FROM snapshot_chunk)"
+        ),
+        0,
+        "rotation reclaims every chunk no retained snapshot reaches"
+    );
+    assert_eq!(
+        scalar(
+            &connection,
+            "SELECT COUNT(*) FROM snapshot_chunk
+             WHERE snapshot_id = (SELECT snapshot_id FROM snapshot WHERE role = 1)"
+        ),
+        2,
+        "the opening keeps its exact chunk links through rotation"
+    );
+    assert_eq!(
+        scalar(
+            &connection,
+            "SELECT COUNT(*) FROM recent_detail
+             WHERE period < (SELECT MAX(period) FROM recent_detail) - 12"
+        ),
+        0,
+        "recent detail keeps only the latest thirteen completed periods"
+    );
+    assert_eq!(
+        (
+            scalar(&connection, "SELECT MIN(period) FROM recent_detail"),
+            scalar(&connection, "SELECT MAX(period) FROM recent_detail"),
+            scalar(
+                &connection,
+                "SELECT COUNT(DISTINCT period) FROM recent_detail"
+            ),
+        ),
+        (28, 40, 13),
+        "period 40 exposes detail for exactly [28, 40]"
+    );
+    assert_eq!(
+        scalar(
+            &connection,
+            "SELECT COUNT(*) FROM snapshot WHERE period = 2"
+        ),
+        0,
+        "the period-two root is rotated out"
+    );
+    assert!(
+        scalar(
+            &connection,
+            "SELECT COUNT(*) FROM permanent_journal WHERE period = 2"
+        ) >= 2,
+        "the permanent journal keeps period-two evidence after rotation"
+    );
+    drop(connection);
+
+    let sequence = run
+        .handle
+        .journal_sequence_for_record(JournalKind::PlayerReceipt, b"receipt-2")
+        .expect("the permanent receipt index reads")
+        .expect("the period-two receipt stays resolvable across rotation");
+    assert!(sequence > 0);
+    assert_eq!(
+        run.handle
+            .read_recent_detail(40, DetailFamily::Prices)
+            .expect("the newest detail row is readable"),
+        vec![RecentDetailRow {
+            period: 40,
+            family: DetailFamily::Prices,
+            ordinal: 0,
+            payload: b"prices-40".to_vec(),
+        }],
+    );
+    assert!(
+        matches!(
+            run.handle.read_recent_detail(27, DetailFamily::Prices),
+            Err(SaveError::InvalidField {
+                table: "recent_detail",
+                ..
+            })
+        ),
+        "period 27 fell out of the thirteen-period window and is refused explicitly"
+    );
+    assert_eq!(
+        run.handle.current().period,
+        40,
+        "rotation publishes the newest current root"
+    );
+    drop(run);
+
+    let reopened = SqliteCampaignStore::open(&database, build_identity())
+        .expect("the rotated campaign cold reopens");
+    assert_eq!(reopened.current().period, 40);
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "one conformance scenario asserts both replay spans, deltas and isolation together"
+)]
+fn replay_reconstructs_opening_and_checkpoint_span_with_matching_identities() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut run = RetentionRun::start(&database);
+    run.advance_to(40);
+    let source_before = fs::read(&database).expect("the campaign file is readable");
+    let journal_before = {
+        let connection = read_connection(&database);
+        scalar(&connection, "SELECT COUNT(*) FROM permanent_journal")
+    };
+    let cancel = AtomicBool::new(false);
+
+    let from_opening = run
+        .handle
+        .replay_to_period(5, &cancel)
+        .expect("period five reconstructs from the opening");
+    assert_eq!(from_opening.target_period, 5);
+    assert_eq!(from_opening.source_checkpoint_period, 0);
+    assert_eq!(from_opening.world_hash, run.receipts[4].world_hash);
+    assert_eq!(from_opening.state_hash, run.receipts[4].state_hash);
+    assert_eq!(from_opening.periods_verified, 5);
+    assert_eq!(from_opening.choice_receipts.len(), 5);
+    assert_eq!(
+        from_opening
+            .choice_receipts
+            .iter()
+            .map(|receipt| receipt.period)
+            .collect::<Vec<_>>(),
+        vec![1, 2, 3, 4, 5],
+        "every intervening governed choice is reconstructed in order"
+    );
+
+    let from_checkpoint = run
+        .handle
+        .replay_to_period(28, &cancel)
+        .expect("period twenty-eight reconstructs from checkpoint 26");
+    assert_eq!(from_checkpoint.source_checkpoint_period, 26);
+    assert_eq!(from_checkpoint.world_hash, run.receipts[27].world_hash);
+    assert_eq!(from_checkpoint.state_hash, run.receipts[27].state_hash);
+    assert_eq!(from_checkpoint.periods_verified, 2);
+    assert_eq!(
+        from_checkpoint
+            .choice_receipts
+            .iter()
+            .map(|receipt| receipt.period)
+            .collect::<Vec<_>>(),
+        vec![27, 28]
+    );
+
+    let checkpoint_itself = run
+        .handle
+        .replay_to_period(26, &cancel)
+        .expect("a checkpoint period reconstructs from itself");
+    assert_eq!(checkpoint_itself.source_checkpoint_period, 26);
+    assert_eq!(checkpoint_itself.world_hash, run.receipts[25].world_hash);
+    assert_eq!(checkpoint_itself.periods_verified, 0);
+
+    assert!(
+        run.handle
+            .replay_to_period(4, &cancel)
+            .expect("period four reconstructs")
+            .knowledge_grants
+            .is_empty(),
+        "a fact acquired in period nine is invisible in a period-four view"
+    );
+    let at_nine = run
+        .handle
+        .replay_to_period(9, &cancel)
+        .expect("period nine reconstructs");
+    assert_eq!(at_nine.knowledge_grants.len(), 1);
+    assert_eq!(at_nine.knowledge_grants[0].acquired_period, 9);
+    assert_eq!(at_nine.knowledge_grants[0].subject_id, b"michigan-wayne");
+
+    assert_eq!(
+        fs::read(&database).expect("the campaign file is readable"),
+        source_before,
+        "replay never mutates the source save bytes"
+    );
+    {
+        let connection = read_connection(&database);
+        assert_eq!(
+            scalar(&connection, "SELECT COUNT(*) FROM permanent_journal"),
+            journal_before,
+            "replay publishes no journal record"
+        );
+    }
+    assert_eq!(
+        run.handle.current().period,
+        40,
+        "replay leaves the live current period untouched"
+    );
+
+    let cancelled = AtomicBool::new(true);
+    assert!(matches!(
+        run.handle.replay_to_period(10, &cancelled),
+        Err(ReplayError::Cancelled)
+    ));
+    assert!(matches!(
+        run.handle.replay_to_period(41, &cancel),
+        Err(ReplayError::FuturePeriod {
+            current: 40,
+            requested: 41
+        })
+    ));
+}
+
+#[test]
+fn open_refuses_a_bit_flip_in_the_current_chunk() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut run = RetentionRun::start(&database);
+    run.advance_to(14);
+    drop(run.handle);
+    flip_payload_bytes(
+        &database,
+        "state_chunk",
+        "chunk_id = (SELECT chunk_id FROM snapshot_chunk
+             WHERE snapshot_id = (SELECT current_snapshot_id FROM save_manifest WHERE id = 1)
+             LIMIT 1)",
+    );
+    assert!(
+        SqliteCampaignStore::open(&database, build_identity()).is_err(),
+        "a damaged current root refuses before mutation"
+    );
+}
+
+#[test]
+fn a_cold_detail_bit_flip_is_diagnosed_on_access_not_at_open() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut run = RetentionRun::start(&database);
+    run.advance_to(14);
+    drop(run.handle);
+    flip_payload_bytes(&database, "recent_detail", "period = 5");
+    let reopened = SqliteCampaignStore::open(&database, build_identity())
+        .expect("cold detail damage does not block an otherwise valid open");
+    assert!(
+        matches!(
+            reopened.read_recent_detail(5, DetailFamily::Prices),
+            Err(SaveError::CorruptPayload {
+                table: "recent_detail",
+                ..
+            })
+        ),
+        "reading the damaged detail range diagnoses it explicitly"
+    );
+    assert_eq!(
+        reopened
+            .read_recent_detail(14, DetailFamily::Prices)
+            .expect("an intact cold row still reads")
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn an_acquired_fact_bit_flip_refuses_its_read_and_its_replay() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut run = RetentionRun::start(&database);
+    run.advance_to(14);
+    drop(run.handle);
+    flip_payload_bytes(&database, "knowledge_grant", "knowledge_seq = 1");
+    let reopened = SqliteCampaignStore::open(&database, build_identity())
+        .expect("the campaign still opens around a damaged grant payload");
+    assert!(matches!(
+        reopened.read_granted_subject(
+            42_u64.to_be_bytes(),
+            SubjectKind::County,
+            b"michigan-wayne",
+            14
+        ),
+        Err(SaveError::CorruptPayload {
+            table: "knowledge_grant",
+            ..
+        })
+    ));
+    assert!(matches!(
+        reopened.replay_to_period(10, &AtomicBool::new(false)),
+        Err(ReplayError::Save(SaveError::CorruptPayload {
+            table: "knowledge_grant",
+            ..
+        }))
+    ));
+}
+
+#[test]
+fn a_command_resolution_bit_flip_refuses_the_open() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("the campaign is created once");
+    handle
+        .accept_command(
+            PlayerCommand {
+                period: 1,
+                actor_id: [9; 8],
+                payload: b"organizer-command".to_vec(),
+            },
+            NONCE_ONE,
+        )
+        .expect("the command is durably accepted");
+    handle
+        .commit(prepared(
+            1,
+            world_identity(0),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(1))],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect("period one commits");
+    drop(handle);
+
+    let raw = raw_connection(&database);
+    raw.execute(
+        "UPDATE permanent_journal SET period = 7 WHERE kind = ?1",
+        params![JournalKind::ResolvedBatch.code()],
+    )
+    .expect("the test flips the resolution period");
+    drop(raw);
+    assert!(matches!(
+        SqliteCampaignStore::open(&database, build_identity()),
+        Err(SaveError::CorruptManifest { .. })
+    ));
+}
+
+#[test]
+fn recover_to_new_save_drops_cold_damage_and_preserves_the_evidence() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut run = RetentionRun::start(&database);
+    run.advance_to(40);
+    let recovered_world = run.receipts[39].world_hash;
+    drop(run.handle);
+    flip_payload_bytes(&database, "recent_detail", "period = 35");
+    let source_before = fs::read(&database).expect("the damaged source is readable");
+    let destination = root.path("recovered.sqlite3");
+    let recovery =
+        SqliteCampaignStore::recover_to_new_save(&database, &destination, build_identity())
+            .expect("cold damage recovers into a clean independent file");
+    assert!(recovery.integrity_verified);
+    assert_eq!(recovery.recovered_period, 40);
+    assert_eq!(recovery.world_hash, recovered_world);
+    assert!(recovery.cold_rows_dropped >= 1);
+    assert_eq!(
+        fs::read(&database).expect("the damaged source is readable"),
+        source_before,
+        "recovery never overwrites the sole original"
+    );
+    let reopened = SqliteCampaignStore::open(&destination, build_identity())
+        .expect("the recovered destination is a complete campaign");
+    assert_eq!(reopened.current().period, 40);
+    assert_eq!(
+        reopened
+            .read_recent_detail(35, DetailFamily::Prices)
+            .expect("the dropped cold row reads as absent"),
+        Vec::new()
+    );
+    assert_eq!(
+        reopened
+            .read_recent_detail(40, DetailFamily::Prices)
+            .expect("intact cold detail survives recovery")
+            .len(),
+        1
+    );
+    assert!(
+        matches!(
+            SqliteCampaignStore::recover_to_new_save(&database, &destination, build_identity()),
+            Err(SaveError::ExportDestinationExists)
+        ),
+        "recovery never overwrites an existing destination"
+    );
+}
+
+#[test]
+fn recover_to_new_save_refuses_a_damaged_current_root() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut run = RetentionRun::start(&database);
+    run.advance_to(14);
+    drop(run.handle);
+    flip_payload_bytes(
+        &database,
+        "state_chunk",
+        "chunk_id = (SELECT chunk_id FROM snapshot_chunk
+             WHERE snapshot_id = (SELECT current_snapshot_id FROM save_manifest WHERE id = 1)
+             LIMIT 1)",
+    );
+    let destination = root.path("unrecoverable.sqlite3");
+    assert!(
+        SqliteCampaignStore::recover_to_new_save(&database, &destination, build_identity())
+            .is_err(),
+        "a damaged current root cannot be recovered into a fabricated save"
+    );
+    assert!(
+        !destination.exists(),
+        "a refused recovery publishes no destination"
     );
 }

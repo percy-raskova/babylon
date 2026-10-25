@@ -1,5 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
+use babylon_practice_contract::OrganizerPeriodJournal;
+use babylon_practice_contract::OrganizerPeriodJournalEntries;
+use babylon_practice_contract::ResolvedOrganizerPeriod;
 use babylon_practice_contract::{
     OrganizerContribution, OrganizerHouseholdBinding, OrganizerObservation, OrganizerParticipant,
     OrganizerPartner, OrganizerTimeUse, PracticeResourceCapacity, PracticeResourceRequirement,
@@ -104,12 +107,18 @@ pub(crate) fn command(
     }
 }
 
+pub(crate) fn journal_of(entries: &OrganizerPeriodJournalEntries) -> OrganizerPeriodJournal {
+    OrganizerPeriodJournal {
+        periods: vec![entries.clone()],
+    }
+}
+
 pub(crate) fn act(
     config: &OrganizerConfig,
     state: &OrganizerState,
     choice: OrganizerChoice,
     labor: u64,
-) -> OrganizerState {
+) -> ResolvedOrganizerPeriod {
     let accepted =
         babylon_practice_contract::admit_organizer(config, state, &command(config, state, choice))
             .expect("the fixture admits the organizer actor");
@@ -156,12 +165,14 @@ pub(crate) fn inquiry_uses_typed_practice_and_earns_a_finite_committed_report() 
     )
     .expect("the organizer period resolves");
     let receipt = third
+        .journal
         .receipts
         .last()
         .expect("the fixture sequence is non-empty");
     assert_eq!(receipt.hours_spent, 12);
     assert_eq!(receipt.outcome, OrganizerOutcome::EvidenceObtained);
     let observed = third
+        .journal
         .observations
         .last()
         .expect("the fixture sequence is non-empty");
@@ -176,9 +187,13 @@ pub(crate) fn inquiry_uses_typed_practice_and_earns_a_finite_committed_report() 
         }
     ));
     let fourth = act(&config, &third, OrganizerChoice::Hold, 160);
-    assert_eq!(fourth.observations.last(), Some(observed));
+    assert!(fourth
+        .learned_authority_index
+        .iter()
+        .any(|row| row.observation_id == observed.observation_id));
     assert_eq!(
         fourth
+            .journal
             .receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -208,6 +223,7 @@ pub(crate) fn choices_create_different_real_work_without_altering_factory_facts(
         .iter()
         .map(|state| {
             state
+                .journal
                 .receipts
                 .last()
                 .expect("the fixture sequence is non-empty")
@@ -241,11 +257,12 @@ pub(crate) fn contact_receipt_is_consumed_later_and_expired_relationship_can_rec
     let mut state = babylon_practice_contract::initial_organizer_state(&config)
         .expect("the authored config admits an opening organizer state");
     for _ in 0..3 {
-        state = act(&config, &state, OrganizerChoice::Hold, 160);
+        state = act(&config, &state, OrganizerChoice::Hold, 160).state;
     }
-    state = act(&config, &state, OrganizerChoice::PauseStanding, 0);
+    let standing = act(&config, &state, OrganizerChoice::PauseStanding, 0);
+    let mut state = standing;
     assert_eq!(
-        state.observations.len(),
+        state.journal.observations.len(),
         0,
         "workplace report agreement expired after period 3"
     );
@@ -256,6 +273,7 @@ pub(crate) fn contact_receipt_is_consumed_later_and_expired_relationship_can_rec
         .expect("the fixture sequence is non-empty")
         .clone();
     let receipt = state
+        .journal
         .receipts
         .last()
         .expect("the fixture sequence is non-empty")
@@ -283,7 +301,8 @@ pub(crate) fn contact_receipt_is_consumed_later_and_expired_relationship_can_rec
         (6, 7)
     );
     assert_eq!(
-        next.observations
+        next.journal
+            .observations
             .last()
             .expect("the fixture sequence is non-empty")
             .observed_period,
@@ -311,6 +330,7 @@ pub(crate) fn partner_refusal_and_capacity_do_not_override_ruling_or_create_cont
             .expect("the authored config admits an opening organizer state");
         let result = act(&config, &state, OrganizerChoice::Reinforce, 160);
         let receipt = result
+            .journal
             .receipts
             .last()
             .expect("the fixture sequence is non-empty");
@@ -329,7 +349,8 @@ pub(crate) fn explicit_pause_persists_hold_does_not_resume_and_resume_performs_r
     let paused = act(&config, &initial, OrganizerChoice::PauseStanding, 160);
     let held = act(&config, &paused, OrganizerChoice::Hold, 0);
     assert_eq!(
-        held.receipts
+        held.journal
+            .receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .hours_spent,
@@ -340,6 +361,7 @@ pub(crate) fn explicit_pause_persists_hold_does_not_resume_and_resume_performs_r
     assert!(resumed.standing.authorized);
     assert_eq!(
         resumed
+            .journal
             .receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -348,6 +370,7 @@ pub(crate) fn explicit_pause_persists_hold_does_not_resume_and_resume_performs_r
     );
     assert_eq!(
         resumed
+            .journal
             .receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -381,7 +404,8 @@ pub(crate) fn missing_routine_time_pauses_and_failed_admission_preserves_authori
         Some(OrganizerPauseReason::InsufficientCommittedTime)
     );
     assert_eq!(
-        next.receipts
+        next.journal
+            .receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .hours_spent,
@@ -417,7 +441,7 @@ pub(crate) fn private_partner_policy_capacity_and_factory_facts_do_not_change_la
         .expect("the authored config admits an opening organizer state");
     let state = act(&config, &initial, OrganizerChoice::PauseStanding, 160);
     assert!(
-        !state.observations.is_empty(),
+        !state.learned_authority_index.is_empty(),
         "the authorization test must have actual knowledge to withhold"
     );
     let command = command(
@@ -427,9 +451,13 @@ pub(crate) fn private_partner_policy_capacity_and_factory_facts_do_not_change_la
     );
     let preview = babylon_practice_contract::preview_organizer(&config, &state, &command)
         .expect("the organizer preview builds");
-    let view =
-        babylon_practice_contract::organizer_view(&config, &state, config.controlled_actor_id)
-            .expect("the fixture call `organizer_view` succeeds for the authored inputs");
+    let view = babylon_practice_contract::organizer_view(
+        &config,
+        &state,
+        &journal_of(&state.journal),
+        config.controlled_actor_id,
+    )
+    .expect("the fixture call `organizer_view` succeeds for the authored inputs");
     let mut hidden = config.clone();
     hidden.workplace_partner.policy = OrganizerPartnerPolicy::Refuse;
     hidden.workplace_partner.permits_work_report = false;
@@ -437,6 +465,7 @@ pub(crate) fn private_partner_policy_capacity_and_factory_facts_do_not_change_la
     hidden.participants[1].commitments[0].hours = 999;
     let mut hidden_state = state.clone();
     hidden_state
+        .state
         .last_workplace_facts
         .as_mut()
         .expect("the fixture set the optional field before this borrow")
@@ -450,6 +479,7 @@ pub(crate) fn private_partner_policy_capacity_and_factory_facts_do_not_change_la
         babylon_practice_contract::organizer_view(
             &hidden,
             &hidden_state,
+            &journal_of(&hidden_state.journal),
             hidden.controlled_actor_id
         )
         .expect("the fixture call `organizer_view` succeeds for the authored inputs"),
@@ -495,7 +525,7 @@ pub(crate) fn private_partner_policy_capacity_and_factory_facts_do_not_change_la
             assert!(lawful.observations.is_empty());
         } else {
             assert_eq!(
-                lawful.observations, state.observations,
+                lawful.observations, preview.observations,
                 "authorized refusal retains only lawful observations"
             );
             assert_eq!(lawful.required_hours, config.inquiry_hours);
@@ -584,6 +614,7 @@ pub(crate) fn shared_contributors_cannot_promise_or_spend_the_same_hours_twice()
         .expect("the authored config admits an opening organizer state");
     let next = act(&config, &state, OrganizerChoice::Reinforce, 160);
     let usage = &next
+        .journal
         .receipts
         .last()
         .expect("the fixture sequence is non-empty")
@@ -668,7 +699,7 @@ pub(crate) fn restart_canonical_roundtrip_and_action_batch_are_deterministic() {
         babylon_practice_contract::decode_organizer_state(&bytes),
         Err(OrganizerError::NonCanonical)
     );
-    let mut invalid = first.clone();
+    let mut invalid = first.state.clone();
     invalid.schema_version = 0;
     assert_eq!(
         babylon_practice_contract::encode_organizer_state(&invalid),
@@ -698,10 +729,12 @@ pub(crate) fn changing_actor_labels_and_authority_identifiers_creates_no_capacit
         160,
     );
     let left = left
+        .journal
         .receipts
         .last()
         .expect("the fixture sequence is non-empty");
     let right = right
+        .journal
         .receipts
         .last()
         .expect("the fixture sequence is non-empty");
@@ -715,13 +748,15 @@ pub(crate) fn changing_actor_labels_and_authority_identifiers_creates_no_capacit
 pub(crate) fn severing_the_contact_consumer_removes_later_report_access_but_preserves_completed_work(
 ) {
     let config = config();
-    let mut opening = babylon_practice_contract::initial_organizer_state(&config)
+    let initial = babylon_practice_contract::initial_organizer_state(&config)
         .expect("the authored config admits an opening organizer state");
-    for _ in 0..2 {
+    let mut opening = act(&config, &initial, OrganizerChoice::Hold, 160);
+    for _ in 0..1 {
         opening = act(&config, &opening, OrganizerChoice::Hold, 160);
     }
     opening = act(&config, &opening, OrganizerChoice::Reinforce, 160);
     let contact_receipt = opening
+        .journal
         .receipts
         .last()
         .expect("the fixture sequence is non-empty")
@@ -734,9 +769,23 @@ pub(crate) fn severing_the_contact_consumer_removes_later_report_access_but_pres
         &config, &opening, &opening, &completed,
     )
     .expect("the fixture call `report_organizer_workplace` succeeds for the authored inputs");
-    assert_eq!(connected.receipts.last(), Some(&contact_receipt));
-    assert_eq!(disconnected.receipts.last(), Some(&contact_receipt));
-    assert_eq!(connected.contact_products, disconnected.contact_products);
+    assert!(connected.journal.receipts.is_empty());
+    assert!(disconnected.journal.receipts.is_empty());
+    assert_eq!(
+        opening.journal.receipts.last(),
+        Some(&contact_receipt),
+        "completed work stays in its own period evidence"
+    );
+    assert!(connected.consumed_product_ids.contains(
+        &contact_receipt
+            .contact_product_id
+            .expect("contact completed")
+    ));
+    assert!(!disconnected.consumed_product_ids.contains(
+        &contact_receipt
+            .contact_product_id
+            .expect("contact completed")
+    ));
     assert!(connected
         .agreements
         .iter()
@@ -745,8 +794,8 @@ pub(crate) fn severing_the_contact_consumer_removes_later_report_access_but_pres
         .agreements
         .iter()
         .any(|row| row.partner_actor_id == 102 && row.valid_through_period >= 4));
-    assert_eq!(connected.observations.len(), 1);
-    assert_eq!(disconnected.observations.len(), 0);
+    assert_eq!(connected.journal.observations.len(), 1);
+    assert_eq!(disconnected.journal.observations.len(), 0);
 }
 
 #[test]
@@ -760,6 +809,7 @@ pub(crate) fn receipt_codec_rejects_noncanonical_unknown_and_false_conservation_
         160,
     );
     let receipt = state
+        .journal
         .receipts
         .last()
         .expect("the fixture sequence is non-empty");
@@ -883,6 +933,7 @@ pub(crate) fn every_accepted_control_and_nonce_binds_distinct_canonical_input() 
         );
         assert_eq!(
             state
+                .journal
                 .receipts
                 .last()
                 .expect("the fixture sequence is non-empty")
@@ -891,6 +942,7 @@ pub(crate) fn every_accepted_control_and_nonce_binds_distinct_canonical_input() 
         );
         assert_eq!(
             state
+                .journal
                 .receipts
                 .last()
                 .expect("the fixture sequence is non-empty")
@@ -909,7 +961,8 @@ pub(crate) fn completed_contact_product_cannot_be_retargeted_to_a_different_part
             .expect("the authored config admits an opening organizer state"),
         OrganizerChoice::Hold,
         160,
-    );
+    )
+    .state;
     assert_eq!(
         state.contact_products[0].partner_actor_id,
         config.neighborhood_partner.actor_id
@@ -1041,11 +1094,13 @@ pub(crate) fn explicit_hold_cannot_alias_standing_work_even_with_the_same_nonce(
     .expect("the organizer period resolves");
     assert_eq!(
         routine_result
+            .journal
             .receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .hours_spent,
         explicit_result
+            .journal
             .receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -1053,11 +1108,13 @@ pub(crate) fn explicit_hold_cannot_alias_standing_work_even_with_the_same_nonce(
     );
     assert_eq!(
         routine_result
+            .journal
             .receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .outcome,
         explicit_result
+            .journal
             .receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -1143,6 +1200,7 @@ pub(crate) fn player_and_policy_authority_bindings_grant_no_shared_contact_time_
     )
     .expect("the organizer period resolves");
     let receipt = actual
+        .journal
         .receipts
         .last()
         .expect("the fixture sequence is non-empty");
@@ -1237,7 +1295,7 @@ pub(crate) fn finite_act(
     config: &OrganizerConfig,
     state: &OrganizerState,
     resources: &OrganizerPeriodTimeResources,
-) -> Result<OrganizerState, OrganizerError> {
+) -> Result<babylon_practice_contract::ResolvedOrganizerPeriod, OrganizerError> {
     let accepted = babylon_practice_contract::admit_organizer(
         config,
         state,
@@ -1268,8 +1326,9 @@ pub(crate) fn shared_time(
     resources
 }
 
-pub(crate) fn assert_no_time_product(state: &OrganizerState) {
+pub(crate) fn assert_no_time_product(state: &babylon_practice_contract::ResolvedOrganizerPeriod) {
     let receipt = state
+        .journal
         .receipts
         .last()
         .expect("the fixture sequence is non-empty");
@@ -1324,6 +1383,7 @@ pub(crate) fn finite_complete_shared_budget_keeps_exact_alias_and_actor_debits()
     let next = finite_act(&config, &opening, &shared_time(&config, 10))
         .expect("the fixture call `finite_act` succeeds for the authored inputs");
     let receipt = next
+        .journal
         .receipts
         .last()
         .expect("the fixture sequence is non-empty");
@@ -1366,6 +1426,7 @@ pub(crate) fn finite_same_actor_aliases_share_one_derived_request_identity() {
     let next = finite_act(&config, &opening, &resources)
         .expect("the fixture call `finite_act` succeeds for the authored inputs");
     let receipt = next
+        .journal
         .receipts
         .last()
         .expect("the fixture sequence is non-empty");
@@ -1481,6 +1542,7 @@ pub(crate) fn finite_time_does_not_supply_partner_consent() {
         let next = finite_act(&config, &opening, &finite_time(&config, 1))
             .expect("the fixture call `finite_act` succeeds for the authored inputs");
         let receipt = next
+            .journal
             .receipts
             .last()
             .expect("the fixture sequence is non-empty");
@@ -1538,7 +1600,8 @@ pub(crate) fn finite_partner_shortage_keeps_all_own_time_and_produces_no_respons
         .expect("the fixture call `finite_act` succeeds for the authored inputs");
     assert_no_time_product(&next);
     assert_eq!(
-        next.receipts
+        next.journal
+            .receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .partner_response,
@@ -1604,7 +1667,8 @@ pub(crate) fn finite_one_contributor_can_fund_distinct_actor_uses_without_duplic
     let next = finite_act(&config, &opening, &resources)
         .expect("the fixture call `finite_act` succeeds for the authored inputs");
     assert_eq!(
-        next.receipts
+        next.journal
+            .receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .time_use,
@@ -1622,7 +1686,8 @@ pub(crate) fn finite_one_contributor_can_fund_distinct_actor_uses_without_duplic
         ]
     );
     assert_eq!(
-        next.receipts
+        next.journal
+            .receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .outcome,
@@ -1755,6 +1820,7 @@ pub(crate) fn captured_time_binding_preserves_shared_principal_budget_identity()
             &resources
         )
         .expect("the fixture call `finite_act` succeeds for the authored inputs")
+        .journal
         .receipts
         .last()
         .expect("the fixture sequence is non-empty")
@@ -1793,25 +1859,35 @@ pub(crate) fn long_horizon_organizer_view_bounds_reply_without_mutating_history_
     let config = config();
     let mut state = babylon_practice_contract::initial_organizer_state(&config)
         .expect("the authored config admits an opening organizer state");
+    let mut journal = babylon_practice_contract::OrganizerPeriodJournal::empty();
     for period in 1..=325 {
-        state = babylon_practice_contract::resolve_organizer_period(
+        let resolved = babylon_practice_contract::resolve_organizer_period(
             &config,
             &state,
             &facts(period, 160),
             None,
         )
         .expect("the organizer period resolves");
+        journal
+            .append(resolved.journal)
+            .expect("the resolved period extends the retained window");
+        state = resolved.state;
     }
-    assert_eq!(state.receipts.len(), 325);
-    assert!(state.contact_products.len() > 8);
+    assert_eq!(journal.periods.len(), 325);
+    assert!(state.consumed_product_ids.len() > 8);
+    assert!(state.contact_products.len() <= 1);
     let canonical =
         serde_json::to_vec(&state).expect("the value serializes to canonical JSON bytes");
     let command = command(&config, &state, OrganizerChoice::Hold);
     let accepted = babylon_practice_contract::admit_organizer(&config, &state, &command)
         .expect("the fixture admits the organizer actor");
-    let view =
-        babylon_practice_contract::organizer_view(&config, &state, config.controlled_actor_id)
-            .expect("the fixture call `organizer_view` succeeds for the authored inputs");
+    let view = babylon_practice_contract::organizer_view(
+        &config,
+        &state,
+        &journal,
+        config.controlled_actor_id,
+    )
+    .expect("the fixture call `organizer_view` succeeds for the authored inputs");
     assert_eq!(
         view.receipts.len(),
         8,
@@ -1835,7 +1911,11 @@ pub(crate) fn long_horizon_organizer_view_bounds_reply_without_mutating_history_
     assert_eq!(response["organizer"]["view"]["total_receipt_count"], 325);
     assert_eq!(
         response["organizer"]["view"]["total_observation_count"],
-        state.observations.len()
+        journal
+            .periods
+            .iter()
+            .flat_map(|entries| &entries.observations)
+            .count()
     );
     assert!(
         serde_json::to_vec(&response)
@@ -1863,34 +1943,59 @@ pub(crate) fn recent_observations_preserve_latest_distinct_reports_and_complete_
     config.initial_agreement_through_period = 1000;
     let initial = babylon_practice_contract::initial_organizer_state(&config)
         .expect("the authored config admits an opening organizer state");
+    let mut journal = babylon_practice_contract::OrganizerPeriodJournal::empty();
     let first = act(&config, &initial, OrganizerChoice::Hold, 160);
-    let mut state = act(
+    journal
+        .append(first.journal.clone())
+        .expect("the resolved period extends the retained window");
+    let mut state = first.state;
+    let second = act(
         &config,
-        &first,
+        &state,
         OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
         0,
     );
-    let early = state
-        .observations
+    journal
+        .append(second.journal.clone())
+        .expect("the resolved period extends the retained window");
+    state = second.state;
+    let early = journal
+        .periods
         .iter()
+        .flat_map(|entries| &entries.observations)
         .filter(|row| !matches!(row.report, OrganizerReport::Maintenance { .. }))
         .map(|row| row.observation_id)
         .collect::<Vec<_>>();
     assert!(!early.is_empty());
     for _ in 0..40 {
-        state = act(
+        let next = act(
             &config,
             &state,
             OrganizerChoice::Inquiry(OrganizerInquiry::MaintenanceReceived),
             0,
         );
+        journal
+            .append(next.journal.clone())
+            .expect("the resolved period extends the retained window");
+        state = next.state;
     }
     let canonical =
         serde_json::to_vec(&state).expect("the value serializes to canonical JSON bytes");
-    let view =
-        babylon_practice_contract::organizer_view(&config, &state, config.controlled_actor_id)
-            .expect("the fixture call `organizer_view` succeeds for the authored inputs");
-    assert!(state.observations.len() > 8);
+    let view = babylon_practice_contract::organizer_view(
+        &config,
+        &state,
+        &journal,
+        config.controlled_actor_id,
+    )
+    .expect("the fixture call `organizer_view` succeeds for the authored inputs");
+    assert!(
+        journal
+            .periods
+            .iter()
+            .flat_map(|entries| &entries.observations)
+            .count()
+            > 8
+    );
     assert!(
         view.observations.len() <= 11,
         "eight recent reports plus at most three report kinds"
@@ -1908,7 +2013,11 @@ pub(crate) fn recent_observations_preserve_latest_distinct_reports_and_complete_
     assert_eq!(
         serde_json::to_value(&view).expect("the value serializes to JSON")
             ["total_observation_count"],
-        state.observations.len()
+        journal
+            .periods
+            .iter()
+            .flat_map(|entries| &entries.observations)
+            .count()
     );
     assert_eq!(
         serde_json::to_vec(&state).expect("the value serializes to canonical JSON bytes"),
@@ -1921,9 +2030,13 @@ pub(crate) fn organizer_view_refuses_unsupported_history_format_without_counts()
     let config = config();
     let state = babylon_practice_contract::initial_organizer_state(&config)
         .expect("the authored config admits an opening organizer state");
-    let view =
-        babylon_practice_contract::organizer_view(&config, &state, config.controlled_actor_id)
-            .expect("the fixture call `organizer_view` succeeds for the authored inputs");
+    let view = babylon_practice_contract::organizer_view(
+        &config,
+        &state,
+        &babylon_practice_contract::OrganizerPeriodJournal::empty(),
+        config.controlled_actor_id,
+    )
+    .expect("the fixture call `organizer_view` succeeds for the authored inputs");
     for field in ["total_observation_count", "total_receipt_count"] {
         let mut bytes = serde_json::to_value(&view).expect("the value serializes to JSON");
         bytes
@@ -1959,13 +2072,13 @@ pub(crate) fn partial_collection_epoch_refuses_previous_captures_and_roundtrips_
     let captured = config();
     let opening = babylon_practice_contract::initial_organizer_state(&captured)
         .expect("the authored config admits an opening organizer state");
-    assert_eq!(ORGANIZER_SCHEMA_VERSION, 7);
+    assert_eq!(ORGANIZER_SCHEMA_VERSION, 8);
     let config_bytes = babylon_practice_contract::encode_organizer_config(&captured)
         .expect("the fixture value encodes to its canonical bytes");
     let state_bytes = babylon_practice_contract::encode_organizer_state(&opening)
         .expect("the fixture value encodes to its canonical bytes");
     assert!(config_bytes.starts_with(b"babylon.organizer-config.v7\0"));
-    assert!(state_bytes.starts_with(b"babylon.organizer-state.v5\0"));
+    assert!(state_bytes.starts_with(b"babylon.organizer-state.v6\0"));
     assert_eq!(
         babylon_practice_contract::decode_organizer_config(&config_bytes)
             .expect("the canonical bytes decode into the declared type"),

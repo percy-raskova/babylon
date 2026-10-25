@@ -7,9 +7,9 @@ use super::OrganizerConfig;
 use super::OrganizerError;
 use super::OrganizerOutcome;
 use super::OrganizerPartnerResponse;
+use super::OrganizerPeriodJournalEntries;
 use super::OrganizerReceipt;
 use super::OrganizerRefusal;
-use super::OrganizerState;
 use super::OrganizerTimeBindingMode;
 use super::OrganizerTimeUse;
 use serde::{Deserialize, Serialize};
@@ -238,17 +238,17 @@ pub(super) fn acknowledge_collection(
 }
 pub(super) fn validate_collection_history(
     config: &OrganizerConfig,
-    state: &OrganizerState,
+    entries: &OrganizerPeriodJournalEntries,
 ) -> Result<(), OrganizerError> {
-    if state.collection_receipts.len() > 65_536
-        || state
+    if entries.collection_receipts.len() > 65_536
+        || entries
             .collection_receipts
             .windows(2)
             .any(|rows| rows[0].fact.period >= rows[1].fact.period)
     {
         return Err(OrganizerError::InvalidState);
     }
-    for row in &state.collection_receipts {
+    for row in &entries.collection_receipts {
         validate_organizer_collection_fact(config, &row.commitment, &row.fact)?;
         let mut expected = row.practice.clone();
         expected.outcome = OrganizerOutcome::NoAuthorizedPractice;
@@ -270,13 +270,13 @@ pub(super) fn validate_collection_history(
             || row.practice.commitment_id != Some(row.commitment.commitment_id)
             || row.practice.actor_id != row.fact.actor_id
             || row.practice.period != row.fact.period
-            || row.fact.period > state.period
+            || row.fact.period > entries.period
             || row.practice.standing_work
             || row.practice.partner_actor_id.is_some()
             || row.practice.partner_response != OrganizerPartnerResponse::NotRequested
             || !row.practice.observation_ids.is_empty()
             || row.practice.contact_product_id.is_some()
-            || state
+            || entries
                 .receipts
                 .iter()
                 .filter(|receipt| **receipt == row.practice)
@@ -286,12 +286,12 @@ pub(super) fn validate_collection_history(
             return Err(OrganizerError::InvalidState);
         }
     }
-    for receipt in state
+    for receipt in entries
         .receipts
         .iter()
         .filter(|row| row.choice == OrganizerChoice::Collect)
     {
-        if state
+        if entries
             .collection_receipts
             .iter()
             .filter(|row| row.practice == *receipt)
@@ -307,11 +307,11 @@ pub(super) fn validate_collection_history(
 // here; ordinary and delayed political allocation then debits residual capacity.
 pub(super) fn remaining_collection_pledge(
     config: &OrganizerConfig,
-    state: &OrganizerState,
+    entries: &OrganizerPeriodJournalEntries,
     period: u64,
 ) -> Result<OrganizerConfig, OrganizerError> {
     let mut remaining = config.clone();
-    for row in state
+    for row in entries
         .collection_receipts
         .iter()
         .filter(|row| row.fact.period == period && row.fact.performed_hours > 0)
@@ -358,64 +358,4 @@ fn required_transfer_ordinal<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<u32>, D::Error> {
     Option::<u32>::deserialize(deserializer)
-}
-
-pub(super) fn validate_collection_state_shape(
-    state: &OrganizerState,
-) -> Result<(), OrganizerError> {
-    if state.collection_receipts.len() > 65_536
-        || state
-            .collection_receipts
-            .windows(2)
-            .any(|pair| pair[0].fact.period >= pair[1].fact.period)
-    {
-        return Err(OrganizerError::SizeLimit);
-    }
-    for row in &state.collection_receipts {
-        super::contract::validate_organizer_commitment(&row.commitment)?;
-        super::contract::validate_organizer_receipt(&row.practice)?;
-        let fact = &row.fact;
-        let paid = matches!(
-            fact.outcome,
-            OrganizerCollectionOutcome::Collected | OrganizerCollectionOutcome::PartiallyCollected
-        );
-        if row.commitment.command.choice != OrganizerChoice::Collect
-            || row.practice.choice != OrganizerChoice::Collect
-            || fact.period == 0
-            || fact.period > state.period
-            || fact.admitted_period != row.commitment.command.expected_period
-            || fact.period != row.commitment.resolves_period
-            || fact.original_commitment_id != row.commitment.commitment_id
-            || fact.command_nonce != row.commitment.command.nonce
-            || fact.actor_id != row.commitment.command.actor_id
-            || fact.requested_cash_micros <= 0
-            || fact.contributor_id == 0
-            || [
-                fact.mandate_id,
-                fact.source_hash,
-                fact.household_principal_id,
-                fact.organization_account_id,
-                fact.labor_unit_id,
-            ]
-            .contains(&[0; 32])
-            || (fact.outcome == OrganizerCollectionOutcome::Collected
-                && fact.collected_cash_micros != fact.requested_cash_micros)
-            || (fact.outcome == OrganizerCollectionOutcome::PartiallyCollected
-                && (fact.collected_cash_micros <= 0
-                    || fact.collected_cash_micros >= fact.requested_cash_micros))
-            || (paid
-                && (fact.performed_hours == 0
-                    || fact.transfer_ordinal.is_none()
-                    || fact.transfer_ordinal == Some(u32::MAX)
-                    || fact.contribution_use_id != contribution_id(fact)))
-            || (!paid
-                && (fact.collected_cash_micros != 0
-                    || fact.performed_hours != 0
-                    || fact.transfer_ordinal.is_some()
-                    || fact.contribution_use_id != [0; 32]))
-        {
-            return Err(OrganizerError::CollectionSupportMismatch);
-        }
-    }
-    Ok(())
 }

@@ -53,6 +53,9 @@ pub(super) fn refusal(value: OrganizerRefusal) -> &'static str {
             "The recipient has not consented to receive this gift."
         }
         OrganizerRefusal::PendingAidConflict => "A different aid commitment is already pending.",
+        OrganizerRefusal::HouseholdTimeAlreadySpent => {
+            "Those household hours were already committed to a resolved period."
+        }
         OrganizerRefusal::StandingWorkPaused => "Standing work is already paused.",
         OrganizerRefusal::StandingWorkAlreadyActive => "Standing work is already authorized.",
         OrganizerRefusal::InvalidCommand => {

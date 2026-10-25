@@ -6,6 +6,7 @@ use super::{
 };
 use crate::organizer_archive::CapturedOrganizerProjection;
 use crate::organizer_runtime::CapturedOrganizerCommand;
+use babylon_practice_contract::OrganizerPeriodJournalEntries;
 use babylon_practice_contract::{OrganizerConfig, OrganizerState};
 use postgres::Row;
 use std::borrow::Cow;
@@ -160,11 +161,12 @@ fn admit_actions(
     }
     let commitment = command.as_ref().map(|(commitment, _)| commitment);
     let receipt = register
-        .organizer_state()
-        .and_then(|state| {
-            state
-                .receipts
+        .organizer_journal()
+        .and_then(|journal| {
+            journal
+                .periods
                 .iter()
+                .flat_map(OrganizerPeriodJournalEntries::receipts)
                 .find(|row| row.actor_id == config.controlled_actor_id && row.period == tick)
         })
         .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;

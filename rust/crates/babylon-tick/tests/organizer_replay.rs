@@ -48,6 +48,7 @@ use babylon_practice_contract::OrganizerInquiry;
 use babylon_practice_contract::OrganizerParticipant;
 use babylon_practice_contract::OrganizerPartner;
 use babylon_practice_contract::OrganizerPartnerPolicy;
+use babylon_practice_contract::OrganizerPeriodJournal;
 use babylon_practice_contract::OrganizerReport;
 use babylon_practice_contract::OrganizerTimeBindingMode;
 use babylon_practice_contract::ORGANIZER_SCHEMA_VERSION;
@@ -381,7 +382,7 @@ fn try_session(
         .expect("the authored config admits an opening organizer state");
     let material = MaterialWorldRegister::try_new(&catalog, 0, material_state)
         .expect("the authored fixture satisfies the constructor invariants")
-        .with_organizer(&catalog, config, state)
+        .with_organizer(&catalog, config, state, OrganizerPeriodJournal::empty())
         .expect("the fixture builder accepts the authored options");
     MaterialReplaySession::new(
         graph,
@@ -496,9 +497,12 @@ fn idle_workplace_without_a_production_commitment_closes_and_reports_zero_work()
         (2, 0, 0)
     );
     assert!(matches!(
-        organizer
-            .observations
-            .last()
+        second
+            .material()
+            .register()
+            .organizer_journal()
+            .and_then(|journal| journal.latest())
+            .and_then(|entries| entries.observations.last())
             .expect("the fixture sequence is non-empty")
             .report,
         OrganizerReport::ReducedWork {
@@ -517,9 +521,12 @@ fn idle_workplace_without_a_production_commitment_closes_and_reports_zero_work()
         .register()
         .organizer_state()
         .expect("the fixture register carries organizer state");
-    let observed = organizer
-        .observations
-        .last()
+    let observed = third
+        .material()
+        .register()
+        .organizer_journal()
+        .and_then(|journal| journal.latest())
+        .and_then(|entries| entries.observations.last())
         .expect("the fixture sequence is non-empty");
     assert_eq!((observed.observed_period, observed.acquired_period), (2, 3));
     assert!(matches!(
@@ -604,10 +611,9 @@ fn distinct_rulings_change_organizer_receipts_and_preserve_identical_material_re
         .map(|(_, row)| {
             row.material()
                 .register()
-                .organizer_state()
-                .expect("the fixture register carries organizer state")
-                .receipts
-                .last()
+                .organizer_journal()
+                .and_then(|journal| journal.latest())
+                .and_then(|entries| entries.receipts.last())
                 .expect("the fixture sequence is non-empty")
                 .hours_spent
         })
@@ -665,22 +671,15 @@ fn rejected_commit_publishes_nothing_and_identical_pending_input_retries_determi
     assert_eq!(*retry.identity(), expected_identity);
     commit(&mut session, &mut sink, retry);
     assert_eq!(session.completed_tick(), 1);
-    assert_eq!(
-        session
-            .material()
-            .organizer_state()
-            .expect("the fixture register carries organizer state")
-            .receipts
-            .len(),
-        1
-    );
-    assert_eq!(
-        session
-            .material()
-            .organizer_state()
-            .expect("the fixture register carries organizer state")
-            .receipts[0]
-            .hours_spent,
-        8
-    );
+    let journal = session
+        .material()
+        .organizer_journal()
+        .expect("the fixture register carries organizer journal");
+    let receipts = journal
+        .latest()
+        .expect("the fixture resolves one period")
+        .receipts
+        .clone();
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].hours_spent, 8);
 }

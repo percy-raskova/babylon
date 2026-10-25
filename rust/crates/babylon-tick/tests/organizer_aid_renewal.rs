@@ -365,8 +365,9 @@ fn market_then_aid(cut: MarketProvisionCut) {
     organizer_aid_fixture::commit(&mut session, &mut sink, candidate);
     let organizer = session
         .material()
-        .organizer_state()
-        .expect("the fixture register carries organizer state");
+        .organizer_journal()
+        .and_then(|journal| journal.latest())
+        .expect("the fixture register carries organizer journal entries");
     assert_eq!(
         organizer
             .aid_receipts

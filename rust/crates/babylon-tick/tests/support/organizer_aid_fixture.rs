@@ -91,6 +91,7 @@ use babylon_practice_contract::OrganizerHouseholdBinding;
 use babylon_practice_contract::OrganizerParticipant;
 use babylon_practice_contract::OrganizerPartner;
 use babylon_practice_contract::OrganizerPartnerPolicy;
+use babylon_practice_contract::OrganizerPeriodJournal;
 use babylon_practice_contract::OrganizerTimeBindingMode;
 use babylon_practice_contract::ORGANIZER_SCHEMA_VERSION;
 use babylon_tick::h3_runtime::MichiganDynamicHexFoundation;
@@ -859,7 +860,7 @@ pub(crate) fn try_session(
         .expect("the authored config admits an opening organizer state");
     let material = MaterialWorldRegister::try_new(&catalog, 0, opening)
         .expect("the authored fixture satisfies the constructor invariants")
-        .with_organizer(&catalog, config, state)
+        .with_organizer(&catalog, config, state, OrganizerPeriodJournal::empty())
         .expect("the fixture builder accepts the authored options");
     MaterialReplaySession::new(
         graph,

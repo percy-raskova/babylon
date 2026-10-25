@@ -11,6 +11,7 @@ use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::content_digest;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_practice_contract::OrganizerPeriodJournal;
 use babylon_tick::material_replay::PreparedMaterialTick;
 use babylon_tick::material_replay::{MaterialReplayError, MaterialReplaySession};
 use babylon_tick::material_state::{MaterialGeography, MaterialState};
@@ -774,6 +775,7 @@ fn captured_source_refuses_changed_tick_zero_organizer_agreements() {
             .expect("the fixture register carries organizer config")
             .clone(),
         changed,
+        OrganizerPeriodJournal::empty(),
     )
     .expect("the fixture builder accepts the authored options");
     let graph = runtime::reconstruct_graph_foundation_session(original.graph_foundation()).expect(

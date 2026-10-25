@@ -6,9 +6,9 @@ use babylon_kernel::replay::ReplaySessionId;
 
 use babylon_kernel::content_digest;
 use babylon_practice_contract::{
-    OrderedPracticeActionBatch, OrganizerChoice, OrganizerCommand, OrganizerConfig, OrganizerState,
-    PracticeIntent, MAX_PRACTICE_INTENT_CANONICAL_BYTES, MAX_RESOLVED_PRACTICE_BATCH_ITEMS,
-    ORDERED_PRACTICE_ACTION_BATCH_DOMAIN_BYTES,
+    OrderedPracticeActionBatch, OrganizerChoice, OrganizerCommand, OrganizerConfig,
+    OrganizerPeriodJournal, OrganizerState, PracticeIntent, MAX_PRACTICE_INTENT_CANONICAL_BYTES,
+    MAX_RESOLVED_PRACTICE_BATCH_ITEMS, ORDERED_PRACTICE_ACTION_BATCH_DOMAIN_BYTES,
 };
 use std::result::Result as StdResult;
 
@@ -18,6 +18,7 @@ pub(in crate::material_runtime) fn reconstruct(
     config: &OrganizerConfig,
     prior: &OrganizerState,
     current: &OrganizerState,
+    journal: &OrganizerPeriodJournal,
     session: &ReplaySessionId,
     tick: u64,
     bytes: &[u8],
@@ -29,7 +30,10 @@ pub(in crate::material_runtime) fn reconstruct(
     if current.period != tick {
         return Err(MaterialRuntimeError::InvalidCheckpoint);
     }
-    let mut receipts = current
+    let entries = journal
+        .latest()
+        .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
+    let mut receipts = entries
         .receipts
         .iter()
         .filter(|row| row.actor_id == config.controlled_actor_id && row.period == tick);

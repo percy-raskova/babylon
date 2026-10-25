@@ -5,7 +5,7 @@
 use super::{StorageError, MAX_BYTES};
 use crate::state_storage::layout;
 
-pub(super) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
+pub(super) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v5\0";
 const STATE_DOMAIN: &[u8] = babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES;
 const STATE_VERSION: u16 = babylon_material_circuit::MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION;
 #[derive(Clone, Debug)]
@@ -239,7 +239,7 @@ pub(super) fn sections(bytes: &[u8]) -> Result<Vec<Section>, StorageError> {
     }
     let mut register = Cursor::new(bytes);
     register.expect(REGISTER_DOMAIN)?;
-    if register.number(4)? != 4 {
+    if register.number(4)? != 5 {
         return Err(StorageError::Version);
     }
     let tick = register.number(8)?;
@@ -263,7 +263,8 @@ pub(super) fn sections(bytes: &[u8]) -> Result<Vec<Section>, StorageError> {
     parser.state(tick)?;
     let start = register.pos;
     if register.tag(&[0, 1])? == 1 {
-        for _ in 0..2 {
+        // Config, compact state and the retained evidence window.
+        for _ in 0..3 {
             let size = register.number(8)?;
             register.take(size)?;
         }

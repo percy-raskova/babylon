@@ -89,6 +89,7 @@ use babylon_material_circuit::WageAccrualReceipt;
 use babylon_practice_contract::OrganizerAidSupport;
 use babylon_practice_contract::OrganizerCollectionFact;
 use babylon_practice_contract::OrganizerCommitment;
+use babylon_practice_contract::OrganizerPeriodJournal;
 use babylon_practice_contract::OrganizerPeriodTimeResources;
 use babylon_practice_contract::{
     OrganizerConfig, OrganizerError, OrganizerState, OrganizerWorkplaceFacts,
@@ -99,7 +100,7 @@ use std::fmt::Result as FmtResult;
 use std::ops::Deref;
 use std::sync::Arc;
 
-pub(crate) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
+pub(crate) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v5\0";
 
 pub(crate) const NOMINAL_DOMAIN: &[u8] = b"babylon.nominal-material-world.v3\0";
 
@@ -215,7 +216,7 @@ impl SharedCanonicalBytes {
 pub struct MaterialWorldRegister {
     completed_tick: u64,
     state: MaterialCircuitState,
-    organizer: Option<(OrganizerConfig, OrganizerState)>,
+    organizer: Option<(OrganizerConfig, OrganizerState, OrganizerPeriodJournal)>,
     canonical_bytes: SharedCanonicalBytes,
     /// Digest of the immutable catalog that admitted this register's state frame.
     catalog_digest: [u8; 32],
@@ -291,7 +292,7 @@ impl MaterialWorldRegister {
         catalog: &MaterialCatalog,
         completed_tick: u64,
         state: MaterialCircuitState,
-        organizer: Option<(OrganizerConfig, OrganizerState)>,
+        organizer: Option<(OrganizerConfig, OrganizerState, OrganizerPeriodJournal)>,
     ) -> Result<Self, MaterialWorldError> {
         if completed_tick
             .checked_add(1)
@@ -310,7 +311,7 @@ impl MaterialWorldRegister {
         catalog: &MaterialCatalog,
         completed_tick: u64,
         state: MaterialCircuitState,
-        organizer: Option<(OrganizerConfig, OrganizerState)>,
+        organizer: Option<(OrganizerConfig, OrganizerState, OrganizerPeriodJournal)>,
         state_bytes: &[u8],
     ) -> Result<Self, MaterialWorldError> {
         let organizer_bytes = encode_bound_organizer(completed_tick, &state, organizer.as_ref())?;
@@ -322,7 +323,7 @@ impl MaterialWorldRegister {
             .ok_or(MaterialWorldError::Arithmetic)?;
         let mut bytes = bounded_bytes(length, MAX_MATERIAL_WORLD_REGISTER_BYTES)?;
         bytes.extend_from_slice(REGISTER_DOMAIN);
-        bytes.extend_from_slice(&4_u32.to_be_bytes());
+        bytes.extend_from_slice(&5_u32.to_be_bytes());
         bytes.extend_from_slice(&completed_tick.to_be_bytes());
         bytes.extend_from_slice(
             &u64::try_from(state_bytes.len())
@@ -350,23 +351,30 @@ impl MaterialWorldRegister {
         catalog: &MaterialCatalog,
         config: OrganizerConfig,
         state: OrganizerState,
+        journal: OrganizerPeriodJournal,
     ) -> Result<Self, MaterialWorldError> {
         Self::build(
             catalog,
             self.completed_tick,
             self.state,
-            Some((config, state)),
+            Some((config, state, journal)),
         )
     }
 
     #[must_use]
     pub fn organizer_config(&self) -> Option<&OrganizerConfig> {
-        self.organizer.as_ref().map(|(config, _)| config)
+        self.organizer.as_ref().map(|(config, _, _)| config)
     }
 
     #[must_use]
     pub fn organizer_state(&self) -> Option<&OrganizerState> {
-        self.organizer.as_ref().map(|(_, state)| state)
+        self.organizer.as_ref().map(|(_, state, _)| state)
+    }
+
+    /// Retained exact organizer evidence for the encode-time journal window.
+    #[must_use]
+    pub fn organizer_journal(&self) -> Option<&OrganizerPeriodJournal> {
+        self.organizer.as_ref().map(|(_, _, journal)| journal)
     }
     #[must_use]
     pub const fn completed_tick(&self) -> u64 {
@@ -421,7 +429,7 @@ impl MaterialWorldRegister {
             return Err(MaterialWorldError::Wire);
         }
         let start = REGISTER_DOMAIN.len();
-        if bytes[start..start + 4] != 4_u32.to_be_bytes() {
+        if bytes[start..start + 4] != 5_u32.to_be_bytes() {
             return Err(MaterialWorldError::Wire);
         }
         let tick = u64::from_be_bytes(
@@ -453,10 +461,14 @@ impl MaterialWorldRegister {
                 let state = babylon_practice_contract::decode_organizer_state(
                     take_organizer_section(&mut remaining)?,
                 )?;
+                let journal = babylon_practice_contract::decode_organizer_journal(
+                    &config,
+                    take_organizer_section(&mut remaining)?,
+                )?;
                 if !remaining.is_empty() {
                     return Err(MaterialWorldError::Wire);
                 }
-                Some((config, state))
+                Some((config, state, journal))
             }
             _ => return Err(MaterialWorldError::Wire),
         };
@@ -583,10 +595,13 @@ impl PreparedMaterialWorld {
         catalog: &MaterialCatalog,
         config: OrganizerConfig,
         organizer: OrganizerState,
+        journal: OrganizerPeriodJournal,
     ) -> Result<(), MaterialWorldError> {
+        let entries = journal.latest().ok_or(MaterialWorldError::Wire)?;
         let uses = organizer_time::uses(
             &config,
             &organizer,
+            entries,
             self.register.completed_tick,
             &self.register.state,
         )?;
@@ -603,7 +618,7 @@ impl PreparedMaterialWorld {
             catalog,
             self.register.completed_tick,
             state,
-            Some((config, organizer)),
+            Some((config, organizer, journal)),
         )?;
         Ok(())
     }
@@ -617,12 +632,13 @@ impl PreparedMaterialWorld {
         catalog: &MaterialCatalog,
         config: OrganizerConfig,
         state: OrganizerState,
+        journal: OrganizerPeriodJournal,
     ) -> Result<(), MaterialWorldError> {
         self.register = MaterialWorldRegister::build(
             catalog,
             self.register.completed_tick,
             self.register.state.clone(),
-            Some((config, state)),
+            Some((config, state, journal)),
         )?;
         Ok(())
     }
@@ -647,14 +663,14 @@ impl PreparedMaterialWorld {
 pub(crate) fn encode_bound_organizer(
     completed_tick: u64,
     circuit: &MaterialCircuitState,
-    organizer: Option<&(OrganizerConfig, OrganizerState)>,
+    organizer: Option<&(OrganizerConfig, OrganizerState, OrganizerPeriodJournal)>,
 ) -> Result<Vec<u8>, MaterialWorldError> {
-    let Some((config, state)) = organizer else {
+    let Some((config, state, journal)) = organizer else {
         return Ok(vec![0]);
     };
     organizer_collection::validate_binding(config, circuit)?;
-    organizer_collection::current(config, state, circuit, completed_tick)?;
-    babylon_practice_contract::validate_organizer_pair(config, state)?;
+    organizer_collection::current(config, state, journal, circuit, completed_tick)?;
+    babylon_practice_contract::validate_organizer_journal(config, state, journal)?;
     if state.period != completed_tick {
         return Err(MaterialWorldError::PeriodMismatch);
     }
@@ -662,6 +678,7 @@ pub(crate) fn encode_bound_organizer(
     for bytes in [
         babylon_practice_contract::encode_organizer_config(config)?,
         babylon_practice_contract::encode_organizer_state(state)?,
+        babylon_practice_contract::encode_organizer_journal(config, journal)?,
     ] {
         result.extend_from_slice(
             &u64::try_from(bytes.len())
@@ -840,6 +857,168 @@ pub(crate) fn encode_handling_receipts(
     Ok(())
 }
 
+macro_rules! encode_receipt_family_rows {
+    ($tag:expr, $source:expr, $tick:expr, $bytes:expr) => {
+        match $tag {
+            0 => {
+                for row in &$source.production {
+                    $bytes.extend_from_slice(&row.process_id.as_bytes());
+                    $bytes.extend_from_slice(&row.site_id.as_bytes());
+                    $bytes.extend_from_slice(&row.planned_batches.to_be_bytes());
+                    $bytes.extend_from_slice(&row.produced_batches.to_be_bytes());
+                }
+            }
+            1 => {
+                for row in &$source.dispatches {
+                    $bytes.extend_from_slice(&row.lot_id.as_bytes());
+                    $bytes.extend_from_slice(&row.order_id.as_bytes());
+                    $bytes.extend_from_slice(&row.route_id.as_bytes());
+                    $bytes.extend_from_slice(&row.quantity.to_be_bytes());
+                    $bytes.extend_from_slice(&row.final_arrival_period.to_be_bytes());
+                }
+            }
+            2 => {
+                for row in &$source.losses {
+                    $bytes.extend_from_slice(&row.lot_id.as_bytes());
+                    $bytes.extend_from_slice(&row.order_id.as_bytes());
+                    $bytes.extend_from_slice(&row.route_id.as_bytes());
+                    $bytes.extend_from_slice(&row.stage_index.to_be_bytes());
+                    $bytes.extend_from_slice(&row.quantity.to_be_bytes());
+                }
+            }
+            3 => {
+                for row in &$source.arrivals {
+                    $bytes.extend_from_slice(&row.order_id.as_bytes());
+                    $bytes.extend_from_slice(&row.quantity.to_be_bytes());
+                }
+            }
+            4 => {
+                for row in &$source.deliveries {
+                    $bytes.extend_from_slice(&row.order_id.as_bytes());
+                    $bytes.extend_from_slice(&row.quantity.to_be_bytes());
+                }
+            }
+            5 => {
+                for row in &$source.realizations {
+                    $bytes.extend_from_slice(&row.order_id.as_bytes());
+                    $bytes.extend_from_slice(&row.quantity.to_be_bytes());
+                }
+            }
+            6 => encode_handling_receipts(&$source.handling, &mut $bytes)?,
+            7 => {
+                for row in &$source.local_fulfillments {
+                    $bytes.extend_from_slice(&row.order_id.as_bytes());
+                    $bytes.extend_from_slice(&row.retailer_site_id.as_bytes());
+                    $bytes.extend_from_slice(&row.demand_principal_id.as_bytes());
+                    $bytes.extend_from_slice(&row.good_id.as_bytes());
+                    $bytes.extend_from_slice(&row.unit_id.as_bytes());
+                    $bytes.extend_from_slice(&row.quantity.to_be_bytes());
+                }
+            }
+            8 => {
+                for row in &$source.local_transfers {
+                    $bytes.extend_from_slice(&row.order_id.as_bytes());
+                    $bytes.extend_from_slice(&row.supplier_site_id.as_bytes());
+                    $bytes.extend_from_slice(&row.buyer_site_id.as_bytes());
+                    $bytes.extend_from_slice(&row.good_id.as_bytes());
+                    $bytes.extend_from_slice(&row.unit_id.as_bytes());
+                    $bytes.extend_from_slice(&row.quantity.to_be_bytes());
+                }
+            }
+            9 => {
+                if let Some(row) = &$source.maintenance {
+                    maintenance_receipt::encode(row, $tick, &mut $bytes)?;
+                }
+            }
+            10 => {
+                for row in &$source.money_transfers {
+                    monetary_receipt::encode_transfer(row, &mut $bytes)?;
+                }
+            }
+            11 => {
+                for row in &$source.wage_accruals {
+                    monetary_receipt::encode_accrual(row, $tick, &mut $bytes)?;
+                }
+            }
+            12 => {
+                for row in &$source.labor_use {
+                    monetary_receipt::encode_labor(row, $tick, &mut $bytes)?;
+                }
+            }
+            13 => {
+                for row in &$source.household_demand {
+                    recurring_receipt::encode_demand(row, $tick, &mut $bytes)?;
+                }
+            }
+            14 => {
+                for row in &$source.household_consumption {
+                    recurring_receipt::encode_consumption(row, $tick, &mut $bytes)?;
+                }
+            }
+            15 => {
+                for row in &$source.procurement {
+                    recurring_receipt::encode_procurement(row, $tick, &mut $bytes)?;
+                }
+            }
+            16 => {
+                for row in &$source.production_plans {
+                    recurring_receipt::encode_plan(row, $tick, &mut $bytes)?;
+                }
+            }
+            17 => {
+                for row in &$source.prices {
+                    recurring_receipt::encode_price(row, $tick, &mut $bytes)?;
+                }
+            }
+            18 => income_receipt::encode(&$source.income, $tick, &mut $bytes)?,
+            19 => service_receipt::encode_performance(
+                &$source.service_performance,
+                $tick,
+                &mut $bytes,
+            )?,
+            20 => {
+                service_receipt::encode_households(&$source.household_services, $tick, &mut $bytes)?
+            }
+            21 => service_receipt::encode_markets(&$source.service_markets, $tick, &mut $bytes)?,
+            22 => service_receipt::encode_outputs(&$source.service_outputs, $tick, &mut $bytes)?,
+            23 => financial_receipt::encode_public_budgets(
+                &$source.public_budgets,
+                $tick,
+                &mut $bytes,
+            )?,
+            24 => financial_receipt::encode_taxes(&$source.taxes, $tick, &mut $bytes)?,
+            25 => {
+                financial_receipt::encode_distributions(&$source.distributions, $tick, &mut $bytes)?
+            }
+            26 => {
+                financial_receipt::encode_contributions(&$source.contributions, $tick, &mut $bytes)?
+            }
+            27 => {
+                for row in &$source.staffing_members {
+                    workforce_receipt::encode_staffing(row, $tick, &mut $bytes)?;
+                }
+            }
+            28 => {
+                for row in &$source.member_labor_use {
+                    workforce_receipt::encode_attendance(row, $tick, &mut $bytes)?;
+                }
+            }
+            29 => {
+                equipment_receipt::encode_installation(&$source.installation, $tick, &mut $bytes)?;
+            }
+            30 => equipment_receipt::encode_wear(&$source.equipment_wear, $tick, &mut $bytes)?,
+            31 => equipment_receipt::encode_investment(&$source.investment, $tick, &mut $bytes)?,
+            32 => {
+                installation_decision::encode(&$source.installation_decisions, $tick, &mut $bytes)?;
+            }
+            33 => household_time_receipt::encode(&$source.household_time, $tick, &mut $bytes)?,
+            34 => aid_receipt::encode(&$source.aid, $tick, &mut $bytes)?,
+            35 => collection_receipt::encode(&$source.collections, $tick, &mut $bytes)?,
+            _ => unreachable!("the thirty-five material receipt families are closed"),
+        }
+    };
+}
+
 #[allow(
     clippy::too_many_lines,
     reason = "one match arm per closed receipt family keeps each family's encoder beside the shared cursor"
@@ -983,176 +1162,76 @@ pub(crate) fn encode_material_receipts(
                 .map_err(|_| MaterialWorldError::Arithmetic)?
                 .to_be_bytes(),
         );
-        match tag {
-            0 => {
-                for row in &transition.production {
-                    bytes.extend_from_slice(&row.process_id.as_bytes());
-                    bytes.extend_from_slice(&row.site_id.as_bytes());
-                    bytes.extend_from_slice(&row.planned_batches.to_be_bytes());
-                    bytes.extend_from_slice(&row.produced_batches.to_be_bytes());
-                }
-            }
-            1 => {
-                for row in &transition.dispatches {
-                    bytes.extend_from_slice(&row.lot_id.as_bytes());
-                    bytes.extend_from_slice(&row.order_id.as_bytes());
-                    bytes.extend_from_slice(&row.route_id.as_bytes());
-                    bytes.extend_from_slice(&row.quantity.to_be_bytes());
-                    bytes.extend_from_slice(&row.final_arrival_period.to_be_bytes());
-                }
-            }
-            2 => {
-                for row in &transition.losses {
-                    bytes.extend_from_slice(&row.lot_id.as_bytes());
-                    bytes.extend_from_slice(&row.order_id.as_bytes());
-                    bytes.extend_from_slice(&row.route_id.as_bytes());
-                    bytes.extend_from_slice(&row.stage_index.to_be_bytes());
-                    bytes.extend_from_slice(&row.quantity.to_be_bytes());
-                }
-            }
-            3 => {
-                for row in &transition.arrivals {
-                    bytes.extend_from_slice(&row.order_id.as_bytes());
-                    bytes.extend_from_slice(&row.quantity.to_be_bytes());
-                }
-            }
-            4 => {
-                for row in &transition.deliveries {
-                    bytes.extend_from_slice(&row.order_id.as_bytes());
-                    bytes.extend_from_slice(&row.quantity.to_be_bytes());
-                }
-            }
-            5 => {
-                for row in &transition.realizations {
-                    bytes.extend_from_slice(&row.order_id.as_bytes());
-                    bytes.extend_from_slice(&row.quantity.to_be_bytes());
-                }
-            }
-            6 => encode_handling_receipts(&transition.handling, &mut bytes)?,
-            7 => {
-                for row in &transition.local_fulfillments {
-                    bytes.extend_from_slice(&row.order_id.as_bytes());
-                    bytes.extend_from_slice(&row.retailer_site_id.as_bytes());
-                    bytes.extend_from_slice(&row.demand_principal_id.as_bytes());
-                    bytes.extend_from_slice(&row.good_id.as_bytes());
-                    bytes.extend_from_slice(&row.unit_id.as_bytes());
-                    bytes.extend_from_slice(&row.quantity.to_be_bytes());
-                }
-            }
-            8 => {
-                for row in &transition.local_transfers {
-                    bytes.extend_from_slice(&row.order_id.as_bytes());
-                    bytes.extend_from_slice(&row.supplier_site_id.as_bytes());
-                    bytes.extend_from_slice(&row.buyer_site_id.as_bytes());
-                    bytes.extend_from_slice(&row.good_id.as_bytes());
-                    bytes.extend_from_slice(&row.unit_id.as_bytes());
-                    bytes.extend_from_slice(&row.quantity.to_be_bytes());
-                }
-            }
-            9 => {
-                if let Some(row) = &transition.maintenance {
-                    maintenance_receipt::encode(row, tick, &mut bytes)?;
-                }
-            }
-            10 => {
-                for row in &transition.money_transfers {
-                    monetary_receipt::encode_transfer(row, &mut bytes)?;
-                }
-            }
-            11 => {
-                for row in &transition.wage_accruals {
-                    monetary_receipt::encode_accrual(row, tick, &mut bytes)?;
-                }
-            }
-            12 => {
-                for row in &transition.labor_use {
-                    monetary_receipt::encode_labor(row, tick, &mut bytes)?;
-                }
-            }
-            13 => {
-                for row in &transition.household_demand {
-                    recurring_receipt::encode_demand(row, tick, &mut bytes)?;
-                }
-            }
-            14 => {
-                for row in &transition.household_consumption {
-                    recurring_receipt::encode_consumption(row, tick, &mut bytes)?;
-                }
-            }
-            15 => {
-                for row in &transition.procurement {
-                    recurring_receipt::encode_procurement(row, tick, &mut bytes)?;
-                }
-            }
-            16 => {
-                for row in &transition.production_plans {
-                    recurring_receipt::encode_plan(row, tick, &mut bytes)?;
-                }
-            }
-            17 => {
-                for row in &transition.prices {
-                    recurring_receipt::encode_price(row, tick, &mut bytes)?;
-                }
-            }
-            18 => income_receipt::encode(&transition.income, tick, &mut bytes)?,
-            19 => service_receipt::encode_performance(
-                &transition.service_performance,
-                tick,
-                &mut bytes,
-            )?,
-            20 => service_receipt::encode_households(
-                &transition.household_services,
-                tick,
-                &mut bytes,
-            )?,
-            21 => service_receipt::encode_markets(&transition.service_markets, tick, &mut bytes)?,
-            22 => service_receipt::encode_outputs(&transition.service_outputs, tick, &mut bytes)?,
-            23 => financial_receipt::encode_public_budgets(
-                &transition.public_budgets,
-                tick,
-                &mut bytes,
-            )?,
-            24 => financial_receipt::encode_taxes(&transition.taxes, tick, &mut bytes)?,
-            25 => financial_receipt::encode_distributions(
-                &transition.distributions,
-                tick,
-                &mut bytes,
-            )?,
-            26 => financial_receipt::encode_contributions(
-                &transition.contributions,
-                tick,
-                &mut bytes,
-            )?,
-            27 => {
-                for row in &transition.staffing_members {
-                    workforce_receipt::encode_staffing(row, tick, &mut bytes)?;
-                }
-            }
-            28 => {
-                for row in &transition.member_labor_use {
-                    workforce_receipt::encode_attendance(row, tick, &mut bytes)?;
-                }
-            }
-            29 => {
-                equipment_receipt::encode_installation(&transition.installation, tick, &mut bytes)?;
-            }
-            30 => equipment_receipt::encode_wear(&transition.equipment_wear, tick, &mut bytes)?,
-            31 => equipment_receipt::encode_investment(&transition.investment, tick, &mut bytes)?,
-            32 => {
-                installation_decision::encode(
-                    &transition.installation_decisions,
-                    tick,
-                    &mut bytes,
-                )?;
-            }
-            33 => household_time_receipt::encode(&transition.household_time, tick, &mut bytes)?,
-            34 => aid_receipt::encode(&transition.aid, tick, &mut bytes)?,
-            35 => collection_receipt::encode(&transition.collections, tick, &mut bytes)?,
-            _ => unreachable!("the thirty-five material receipt families are closed"),
-        }
+        encode_receipt_family_rows!(tag, transition, tick, &mut bytes);
     }
     debug_assert_eq!(bytes.len(), length);
     Ok(bytes)
+}
+
+/// Encode one closed receipt family exactly as the committed V18 frame does.
+///
+/// The permanent-journal extractor hashes this deterministic row encoding for
+/// rows it summarizes rather than retains.
+///
+/// # Errors
+///
+/// Refuses a zero tick, a family tag outside the closed 1..=36 registry, or any
+/// family encoder fault.
+pub fn receipt_family_bytes(
+    tick: u64,
+    receipts: &MaterialTickReceipts,
+    family: u8,
+) -> Result<Vec<u8>, MaterialWorldError> {
+    if tick == 0 || !(1..=36).contains(&family) {
+        return Err(MaterialWorldError::Wire);
+    }
+    let mut bytes = Vec::new();
+    encode_receipt_family_rows!(usize::from(family - 1), receipts, tick, &mut bytes);
+    Ok(bytes)
+}
+
+/// Exact committed row count of one closed receipt family.
+#[must_use]
+pub fn receipt_family_rows(receipts: &MaterialTickReceipts, family: u8) -> usize {
+    match family {
+        1 => receipts.production.len(),
+        2 => receipts.dispatches.len(),
+        3 => receipts.losses.len(),
+        4 => receipts.arrivals.len(),
+        5 => receipts.deliveries.len(),
+        6 => receipts.realizations.len(),
+        7 => receipts.handling.len(),
+        8 => receipts.local_fulfillments.len(),
+        9 => receipts.local_transfers.len(),
+        10 => usize::from(receipts.maintenance.is_some()),
+        11 => receipts.money_transfers.len(),
+        12 => receipts.wage_accruals.len(),
+        13 => receipts.labor_use.len(),
+        14 => receipts.household_demand.len(),
+        15 => receipts.household_consumption.len(),
+        16 => receipts.procurement.len(),
+        17 => receipts.production_plans.len(),
+        18 => receipts.prices.len(),
+        19 => receipts.income.len(),
+        20 => receipts.service_performance.len(),
+        21 => receipts.household_services.len(),
+        22 => receipts.service_markets.len(),
+        23 => receipts.service_outputs.len(),
+        24 => receipts.public_budgets.len(),
+        25 => receipts.taxes.len(),
+        26 => receipts.distributions.len(),
+        27 => receipts.contributions.len(),
+        28 => receipts.staffing_members.len(),
+        29 => receipts.member_labor_use.len(),
+        30 => receipts.installation.len(),
+        31 => receipts.equipment_wear.len(),
+        32 => receipts.investment.len(),
+        33 => receipts.installation_decisions.len(),
+        34 => receipts.household_time.len(),
+        35 => receipts.aid.len(),
+        36 => receipts.collections.len(),
+        _ => 0,
+    }
 }
 
 /// Typed material evidence decoded only from an exact committed V18 receipt family.
@@ -1750,15 +1829,20 @@ pub fn validate_retained_collection(
     if register.completed_tick() != receipts.resolve_tick {
         return Err(MaterialWorldError::PeriodMismatch);
     }
-    match (register.organizer_config(), register.organizer_state()) {
-        (Some(config), Some(organizer)) => organizer_collection::retained(
+    match (
+        register.organizer_config(),
+        register.organizer_state(),
+        register.organizer_journal(),
+    ) {
+        (Some(config), Some(organizer), Some(journal)) => organizer_collection::retained(
             config,
             organizer,
+            journal,
             &receipts.collections,
             register.state(),
             receipts.resolve_tick,
         ),
-        (None, None) if receipts.collections.is_empty() => Ok(()),
+        (None, None, None) if receipts.collections.is_empty() => Ok(()),
         _ => Err(MaterialWorldError::Wire),
     }
 }

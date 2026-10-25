@@ -2116,7 +2116,8 @@ where
             .opening
             .organizer_config()
             .zip(inputs.opening.organizer_state())
-            .map(|(config, state)| (config, state, inputs.commitment))
+            .zip(inputs.opening.organizer_journal())
+            .map(|((config, state), journal)| (config, state, journal, inputs.commitment))
     });
     let mut organizer_reduced = None;
     let mut organizer_completed = false;
@@ -2186,12 +2187,13 @@ where
                         format!("organizer invocation {id} exhausted its fuel budget"),
                     )
                 })?;
-            let (config, opening, commitment) = organizer_opening.ok_or_else(|| {
-                transaction_error(
-                    identity,
-                    format!("organizer rule {id} requires one bound organizer host"),
-                )
-            })?;
+            let (config, opening, opening_journal, commitment) =
+                organizer_opening.ok_or_else(|| {
+                    transaction_error(
+                        identity,
+                        format!("organizer rule {id} requires one bound organizer host"),
+                    )
+                })?;
             let candidate = material.as_mut().ok_or_else(|| {
                 transaction_error(
                     identity,
@@ -2249,7 +2251,7 @@ where
                         babylon_practice_contract::resolve_organizer_practice_with_time(
                             config,
                             opening,
-                            &reduced,
+                            &reduced.state,
                             facts,
                             commitment,
                             &resources,
@@ -2260,12 +2262,28 @@ where
                         )
                     } else {
                         babylon_practice_contract::resolve_organizer_practice(
-                            config, opening, &reduced, facts, commitment,
+                            config,
+                            opening,
+                            &reduced.state,
+                            facts,
+                            commitment,
                         )
                     }
                     .map_err(|error| {
                         transaction_error(identity, format!("organizer practice refused: {error}"))
                     })?;
+                    let mut journal = opening_journal.clone();
+                    let mut entries = reduced.journal;
+                    entries
+                        .extend(next.journal)
+                        .and_then(|()| journal.append(entries))
+                        .map_err(|error| {
+                            transaction_error(
+                                identity,
+                                format!("organizer journal refused: {error}"),
+                            )
+                        })?;
+                    let next = next.state;
                     let catalog = organizer_catalog.ok_or_else(|| {
                         transaction_error(
                             identity,
@@ -2273,9 +2291,14 @@ where
                         )
                     })?;
                     let sealed = if household_bound {
-                        candidate.set_organizer_with_household_time(catalog, config.clone(), next)
+                        candidate.set_organizer_with_household_time(
+                            catalog,
+                            config.clone(),
+                            next,
+                            journal,
+                        )
                     } else {
-                        candidate.set_organizer(catalog, config.clone(), next)
+                        candidate.set_organizer(catalog, config.clone(), next, journal)
                     };
                     sealed.map_err(|error| {
                         transaction_error(identity, format!("organizer register refused: {error}"))
@@ -2501,9 +2524,10 @@ where
     let action_outcomes = executed
         .material
         .as_ref()
-        .and_then(|material| material.register().organizer_state())
-        .map(|state| {
-            babylon_practice_contract::organizer_period_receipts(state, state.period)
+        .and_then(|material| material.register().organizer_journal())
+        .and_then(|journal| journal.latest())
+        .map(|entries| {
+            babylon_practice_contract::organizer_period_receipts(entries)
                 .cloned()
                 .collect::<Vec<_>>()
         })

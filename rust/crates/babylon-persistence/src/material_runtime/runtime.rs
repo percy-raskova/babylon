@@ -1,6 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::{envelope, observer_actions, open, runtime_checkpoint, MaterialComponentIdentity};
+use babylon_practice_contract::OrganizerPeriodJournalEntries;
 
 use super::observer_endpoints::AuthenticatedPreviousMaterialTick;
 
@@ -2111,11 +2112,15 @@ pub(crate) fn authenticated_organizer_actions(
     }
     let commitment = command.map(|(commitment, _)| commitment);
     let receipt = register
-        .organizer_state()
-        .and_then(|state| {
-            state.receipts.iter().find(|receipt| {
-                receipt.actor_id == config.controlled_actor_id && receipt.period == tick
-            })
+        .organizer_journal()
+        .and_then(|journal| {
+            journal
+                .periods
+                .iter()
+                .flat_map(OrganizerPeriodJournalEntries::receipts)
+                .find(|receipt| {
+                    receipt.actor_id == config.controlled_actor_id && receipt.period == tick
+                })
         })
         .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
     if receipt.commitment_id != commitment.as_ref().map(|input| input.commitment_id) {
@@ -2199,10 +2204,15 @@ pub(crate) fn observer_organizer_actions(
         .register
         .organizer_state()
         .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
+    let journal = stored
+        .register
+        .organizer_journal()
+        .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
     observer_actions::reconstruct(
         config,
         &prior,
         current,
+        journal,
         components.session_id(),
         tick,
         bytes,

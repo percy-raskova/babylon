@@ -11,7 +11,7 @@ use babylon_material_circuit::{
 };
 use babylon_practice_contract::{
     OrganizerAidKind, OrganizerAidSupport, OrganizerConfig, OrganizerGiftConsent,
-    OrganizerPendingAidPractice, OrganizerReceipt, OrganizerState,
+    OrganizerPendingAidPractice, OrganizerPeriodJournalEntries, OrganizerReceipt,
 };
 use serde::{Deserialize, Serialize};
 type Result<T> = std::result::Result<T, RuntimeSessionErrorCode>;
@@ -333,11 +333,11 @@ fn transport(
         stages,
     })
 }
-pub(super) fn resolutions(state: &OrganizerState) -> Vec<OrganizerAidResolution> {
-    state
+pub(super) fn resolutions(entries: &OrganizerPeriodJournalEntries) -> Vec<OrganizerAidResolution> {
+    entries
         .aid_receipts
         .iter()
-        .filter(|r| r.practice.period == state.period)
+        .filter(|r| r.practice.period == entries.period)
         .map(|r| OrganizerAidResolution {
             pending: pending(&r.authorization),
             support: r.support.clone(),

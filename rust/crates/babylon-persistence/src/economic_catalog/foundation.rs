@@ -9,6 +9,7 @@ use crate::{CampaignFoundation, FoundationContentBundle};
 
 use crate::RustPersistenceRuntimeError;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+use babylon_practice_contract::OrganizerPeriodJournal;
 use babylon_tick::material_world::MaterialWorldRegister;
 
 impl CapturedEconomicCatalog {
@@ -38,7 +39,12 @@ impl CapturedEconomicCatalog {
         if let Some(config) = &catalog.input.organizer {
             let state = babylon_practice_contract::initial_organizer_state(config)
                 .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
-            register = register.with_organizer(&compiled.catalog, config.clone(), state)?;
+            register = register.with_organizer(
+                &compiled.catalog,
+                config.clone(),
+                state,
+                OrganizerPeriodJournal::empty(),
+            )?;
         }
         let spec = MaterialFoundationSpec {
             preset_id: catalog.input.preset_id.clone(),

@@ -9,6 +9,7 @@ use super::schema::{Cursor, Section};
 use super::{offers, register, schema};
 use crate::michigan_content::MichiganContentPreset;
 use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_practice_contract::OrganizerPeriodJournal;
 use babylon_tick::material_world::MaterialWorldRegister;
 
 use crate::production_projection::recurring_fixture as recurring_control;
@@ -89,7 +90,12 @@ fn current_organizer_bytes_are_retained_instead_of_assuming_empty_trailer() {
     let organizer = babylon_practice_contract::initial_organizer_state(&config)
         .expect("the authored config admits an opening organizer state");
     let register = register
-        .with_organizer(foundation.material_catalog(), config, organizer)
+        .with_organizer(
+            foundation.material_catalog(),
+            config,
+            organizer,
+            OrganizerPeriodJournal::empty(),
+        )
         .expect("the fixture builder accepts the authored options");
     let base = register.canonical_bytes();
     assert!(register.organizer_config().is_some());
@@ -590,8 +596,9 @@ fn local_grant_canonical_state_and_complete_receipt_package_inverse() {
         &candidate
             .material()
             .register()
-            .organizer_state()
-            .expect("the fixture register carries organizer state")
+            .organizer_journal()
+            .and_then(|journal| journal.latest())
+            .expect("the fixture register carries organizer journal entries")
             .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -621,8 +628,9 @@ fn local_grant_canonical_state_and_complete_receipt_package_inverse() {
     assert_eq!(
         session
             .material()
-            .organizer_state()
-            .expect("the fixture register carries organizer state")
+            .organizer_journal()
+            .and_then(|journal| journal.latest())
+            .expect("the fixture register carries organizer journal entries")
             .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -650,8 +658,9 @@ fn assert_aid_dispatch(candidate: &Candidate, accepted: &OrganizerCommitment) ->
     }
     assert_retained_aid_postings(
         &first_state
-            .organizer_state()
-            .expect("the fixture register carries organizer state")
+            .organizer_journal()
+            .and_then(|journal| journal.latest())
+            .expect("the fixture register carries organizer journal entries")
             .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -763,9 +772,15 @@ fn assert_aid_arrival(
         .register()
         .organizer_state()
         .expect("the fixture register carries organizer state");
+    let completed_entries = candidate
+        .material()
+        .register()
+        .organizer_journal()
+        .and_then(|journal| journal.latest())
+        .expect("the fixture register carries organizer journal entries");
     assert!(completed.pending_aid.is_empty());
     assert_eq!(
-        completed
+        completed_entries
             .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -775,7 +790,7 @@ fn assert_aid_arrival(
         *accepted
     );
     assert_eq!(
-        completed
+        completed_entries
             .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -784,7 +799,7 @@ fn assert_aid_arrival(
         1
     );
     assert_eq!(
-        completed
+        completed_entries
             .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -793,7 +808,7 @@ fn assert_aid_arrival(
         2
     );
     assert_retained_aid_postings(
-        &completed
+        &completed_entries
             .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -804,7 +819,15 @@ fn assert_aid_arrival(
         i128::from(arrived) * 3,
         refunded,
     );
-    completed.aid_receipts.len()
+    candidate
+        .material()
+        .register()
+        .organizer_journal()
+        .expect("the fixture register carries organizer journal")
+        .periods
+        .iter()
+        .map(|entries| entries.aid_receipts.len())
+        .sum::<usize>()
 }
 
 fn routed_aid_package_sequence(loss_ppm: u32, arrived: u64, refunded: i128) {
@@ -853,10 +876,12 @@ fn routed_aid_package_sequence(loss_ppm: u32, arrived: u64, refunded: i128) {
         third
             .material()
             .register()
-            .organizer_state()
-            .expect("the fixture register carries organizer state")
-            .aid_receipts
-            .len(),
+            .organizer_journal()
+            .expect("the fixture register carries organizer journal")
+            .periods
+            .iter()
+            .map(|entries| entries.aid_receipts.len())
+            .sum::<usize>(),
         terminal_count
     );
     assert_eq!(opening, immutable);

@@ -31,10 +31,12 @@ mod types;
 pub use types::{
     OrganizerAgreement, OrganizerChoice, OrganizerCommand, OrganizerCommitment, OrganizerConfig,
     OrganizerContactProduct, OrganizerContribution, OrganizerError, OrganizerHouseholdBinding,
-    OrganizerInquiry, OrganizerMaterialSupport, OrganizerObservation, OrganizerOutcome,
-    OrganizerParticipant, OrganizerPartner, OrganizerPartnerPolicy, OrganizerPartnerResponse,
-    OrganizerPauseReason, OrganizerPosition, OrganizerPreview, OrganizerReceipt, OrganizerRefusal,
-    OrganizerReport, OrganizerStandingWork, OrganizerState, OrganizerTimeBindingMode,
-    OrganizerTimeUse, OrganizerView, OrganizerWorkplaceFacts, ORGANIZER_RECENT_OBSERVATIONS,
+    OrganizerInquiry, OrganizerLearnedAuthority, OrganizerMaterialSupport, OrganizerObservation,
+    OrganizerOutcome, OrganizerParticipant, OrganizerPartner, OrganizerPartnerPolicy,
+    OrganizerPartnerResponse, OrganizerPauseReason, OrganizerPeriodJournal,
+    OrganizerPeriodJournalEntries, OrganizerPeriodTimeWitness, OrganizerPosition, OrganizerPreview,
+    OrganizerReceipt, OrganizerRefusal, OrganizerReport, OrganizerStandingWork, OrganizerState,
+    OrganizerTimeBindingMode, OrganizerTimeUse, OrganizerView, OrganizerWorkplaceFacts,
+    ResolvedOrganizerPeriod, ORGANIZER_JOURNAL_PERIODS, ORGANIZER_RECENT_OBSERVATIONS,
     ORGANIZER_RECENT_RECEIPTS, ORGANIZER_SCHEMA_VERSION,
 };

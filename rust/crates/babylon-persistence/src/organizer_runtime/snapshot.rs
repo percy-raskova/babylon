@@ -19,7 +19,7 @@ use babylon_kernel::clock::CampaignDuration;
 use babylon_material_circuit::MaterialCatalog;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_practice_contract::OrganizerCollectionResolution;
-use babylon_practice_contract::OrganizerState;
+use babylon_practice_contract::OrganizerPeriodJournal;
 use postgres::Row;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,20 +48,30 @@ pub(crate) fn aid_snapshot_matches(
     let state = register
         .organizer_state()
         .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
-    Ok(
-        babylon_practice_contract::organizer_view(config, state, config.controlled_actor_id)
-            .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?
-            == snapshot.view
-            && material_preview::projections(catalog, register.state(), config, state.period)?
-                == snapshot.aid
-            && state
-                .pending_aid
-                .iter()
-                .map(material_preview::pending)
-                .collect::<Vec<_>>()
-                == snapshot.pending_aid
-            && material_preview::resolutions(state) == snapshot.aid_resolutions,
+    let journal = register
+        .organizer_journal()
+        .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
+    Ok(babylon_practice_contract::organizer_view(
+        config,
+        state,
+        journal,
+        config.controlled_actor_id,
     )
+    .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?
+        == snapshot.view
+        && material_preview::projections(catalog, register.state(), config, state.period)?
+            == snapshot.aid
+        && state
+            .pending_aid
+            .iter()
+            .map(material_preview::pending)
+            .collect::<Vec<_>>()
+            == snapshot.pending_aid
+        && journal
+            .latest()
+            .map(material_preview::resolutions)
+            .unwrap_or_default()
+            == snapshot.aid_resolutions)
 }
 
 pub(crate) fn captured_organizer_snapshot(
@@ -76,8 +86,16 @@ pub(crate) fn captured_organizer_snapshot(
     let state = register
         .organizer_state()
         .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
-    let view = babylon_practice_contract::organizer_view(config, state, config.controlled_actor_id)
-        .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
+    let journal = register
+        .organizer_journal()
+        .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
+    let view = babylon_practice_contract::organizer_view(
+        config,
+        state,
+        journal,
+        config.controlled_actor_id,
+    )
+    .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
     Ok(OrganizerSnapshot {
         aid: material_preview::projections(catalog, register.state(), config, state.period)?,
         pending_aid: state
@@ -85,9 +103,12 @@ pub(crate) fn captured_organizer_snapshot(
             .iter()
             .map(material_preview::pending)
             .collect(),
-        aid_resolutions: material_preview::resolutions(state),
+        aid_resolutions: journal
+            .latest()
+            .map(material_preview::resolutions)
+            .unwrap_or_default(),
         collection: collection_preview::projection(register.state(), config, state.period)?,
-        collection_resolutions: collection_history(state, &view),
+        collection_resolutions: collection_history(journal, &view),
         view,
         pending,
         duration,
@@ -97,12 +118,13 @@ pub(crate) fn captured_organizer_snapshot(
 // Collection amounts and outcomes follow the actor's retained practice
 // receipts, joined to their original command and period.
 pub(crate) fn collection_history(
-    state: &OrganizerState,
+    journal: &OrganizerPeriodJournal,
     view: &OrganizerView,
 ) -> Vec<OrganizerCollectionResolution> {
-    state
-        .collection_receipts
+    journal
+        .periods
         .iter()
+        .flat_map(|entries| &entries.collection_receipts)
         .filter(|row| {
             row.practice.actor_id == view.actor_id
                 && row.fact.period <= view.period
@@ -474,6 +496,9 @@ mod collection_history_tests {
             register
                 .organizer_state()
                 .expect("the fixture register carries organizer state"),
+            register
+                .organizer_journal()
+                .expect("the fixture register carries organizer journal"),
             config.controlled_actor_id,
         )
         .expect("the fixture call `organizer_view` succeeds for the authored inputs")
@@ -488,8 +513,9 @@ mod collection_history_tests {
         fixture::commit(&mut session, &mut sink, first);
         let original = session
             .material()
-            .organizer_state()
-            .expect("the fixture register carries organizer state")
+            .organizer_journal()
+            .and_then(|journal| journal.latest())
+            .expect("the fixture register carries organizer journal entries")
             .collection_receipts[0]
             .clone();
         assert_eq!(original.fact.requested_cash_micros, 8);
@@ -504,8 +530,8 @@ mod collection_history_tests {
             collection_history(
                 session
                     .material()
-                    .organizer_state()
-                    .expect("the fixture register carries organizer state"),
+                    .organizer_journal()
+                    .expect("the fixture register carries organizer journal"),
                 &current_view(session.material()),
             ),
             vec![original.clone()],
@@ -518,9 +544,9 @@ mod collection_history_tests {
         )
         .expect("the committed canonical bytes decode");
         assert_eq!(reopened, *session.material());
-        let state = reopened
-            .organizer_state()
-            .expect("the fixture register carries organizer state");
+        let journal = reopened
+            .organizer_journal()
+            .expect("the fixture register carries organizer journal");
         let view = current_view(&reopened);
         assert_eq!(view.period, 2);
         assert!(view
@@ -532,7 +558,7 @@ mod collection_history_tests {
                 && row.period == original.fact.period
                 && row.commitment_id == Some(accepted.commitment_id)
         }));
-        assert_eq!(collection_history(state, &view), vec![original]);
+        assert_eq!(collection_history(journal, &view), vec![original]);
     }
 
     #[test]
@@ -548,15 +574,22 @@ mod collection_history_tests {
             session.material().canonical_bytes().to_vec(),
         )
         .expect("the committed canonical bytes decode");
-        let state = reopened
-            .organizer_state()
-            .expect("the fixture register carries organizer state");
-        assert_eq!(state.collection_receipts.len(), 1);
-        assert!(collection_history(state, &opening_view).is_empty());
+        let journal = reopened
+            .organizer_journal()
+            .expect("the fixture register carries organizer journal");
+        assert_eq!(
+            journal
+                .periods
+                .iter()
+                .map(|entries| entries.collection_receipts.len())
+                .sum::<usize>(),
+            1
+        );
+        assert!(collection_history(journal, &opening_view).is_empty());
         // Restrict only the presentation window, never the canonical successful
         // receipt. A fact outside retained practice IDs must not be disclosed.
         let mut no_retained_receipts = current_view(&reopened);
         no_retained_receipts.receipts.clear();
-        assert!(collection_history(state, &no_retained_receipts).is_empty());
+        assert!(collection_history(journal, &no_retained_receipts).is_empty());
     }
 }

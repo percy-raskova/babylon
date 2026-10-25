@@ -8,6 +8,7 @@ use crate::{
     ArchiveProducerOutcome, ArchiveSignal, ArchiveSubject, ArchiveSubjectKind,
     PendingArchiveReceipt, SemanticArchiveError,
 };
+use babylon_practice_contract::OrganizerPeriodJournalEntries;
 
 use crate::archive;
 use crate::material_runtime::ArchiveFoundationCandidate;
@@ -147,12 +148,19 @@ pub(crate) fn insert_projection(
     let state = register
         .organizer_state()
         .ok_or(MaterialRuntimeError::OrganizerStorage)?;
+    let journal = register
+        .organizer_journal()
+        .ok_or(MaterialRuntimeError::OrganizerStorage)?;
     if state.period != 0 {
         validate_subjects(client, campaign, config)?;
     }
     let actor = config.controlled_actor_id.to_string();
     insert_subjects(client, campaign, config)?;
-    for observation in &state.observations {
+    for observation in journal
+        .periods
+        .iter()
+        .flat_map(|entries| entries.observations.iter())
+    {
         if observation.actor_id != config.controlled_actor_id {
             continue;
         }
@@ -179,10 +187,10 @@ pub(crate) fn insert_projection(
         )
         .map_err(archive_error)?;
     }
-    let organizer_receipts = state
-        .receipts
+    let organizer_receipts = journal
+        .periods
         .iter()
-        .chain(state.aid_receipts.iter().map(|row| &row.practice));
+        .flat_map(OrganizerPeriodJournalEntries::receipts);
     for receipt in organizer_receipts {
         if receipt.actor_id != config.controlled_actor_id {
             continue;
@@ -547,6 +555,10 @@ pub(crate) fn capture_organizer_pages(
 }
 
 impl CapturedOrganizerPages {
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one ordered render joins every retained organizer evidence family into its page batch"
+    )]
     pub(crate) fn admit_and_render(
         self,
         cached: Option<ArchiveFoundationCandidate>,
@@ -569,7 +581,7 @@ impl CapturedOrganizerPages {
         let (register, admitted) = captured.admit(cached).map_err(archive_register_error)?;
         let _render_timing = Timing::start(Stage::ArchiveOrganizerRendering, self.tick);
         let subjects = self.subjects;
-        let Some(state) = register.organizer_state() else {
+        let Some(_state) = register.organizer_state() else {
             return Ok((
                 ArchiveProducerOutcome::new(
                     ArchiveDirtyBatch::try_new(
@@ -584,22 +596,31 @@ impl CapturedOrganizerPages {
         };
         let total = subjects.len();
         let mut pages = Vec::new();
-        let mut observations = state.observations.iter().collect::<Vec<_>>();
-        observations.sort_by_key(|row| (row.acquired_period, row.observation_id));
-        let mut receipts = state
-            .receipts
+        let journal = register
+            .organizer_journal()
+            .ok_or(SemanticArchiveError::StoredPageMismatch)?;
+        let mut observations = journal
+            .periods
             .iter()
-            .chain(state.aid_receipts.iter().map(|row| &row.practice))
+            .flat_map(|entries| entries.observations.iter())
+            .collect::<Vec<_>>();
+        observations.sort_by_key(|row| (row.acquired_period, row.observation_id));
+        let mut receipts = journal
+            .periods
+            .iter()
+            .flat_map(OrganizerPeriodJournalEntries::receipts)
             .collect::<Vec<_>>();
         receipts.sort_by_key(|row| (row.period, row.receipt_id));
-        let aid_by_receipt: BTreeMap<_, _> = state
-            .aid_receipts
+        let aid_by_receipt: BTreeMap<_, _> = journal
+            .periods
             .iter()
+            .flat_map(|entries| entries.aid_receipts.iter())
             .map(|row| (row.practice.receipt_id, row))
             .collect();
-        let collection_by_receipt: BTreeMap<_, _> = state
-            .collection_receipts
+        let collection_by_receipt: BTreeMap<_, _> = journal
+            .periods
             .iter()
+            .flat_map(|entries| entries.collection_receipts.iter())
             .map(|row| (row.practice.receipt_id, row))
             .collect();
         for row in subjects.into_iter().take(page_budget) {
@@ -801,14 +822,15 @@ impl CapturedOrganizerProjection {
         let Some(config) = register.organizer_config() else {
             return Ok(());
         };
-        let state = register
-            .organizer_state()
+        let journal = register
+            .organizer_journal()
             .ok_or(MaterialRuntimeError::OrganizerStorage)?;
         validate_captured_subjects(&self.subjects, config)?;
         let observed = &self.observations;
-        let mut expected = state
-            .observations
+        let mut expected = journal
+            .periods
             .iter()
+            .flat_map(|entries| entries.observations.iter())
             .filter(|row| row.actor_id == config.controlled_actor_id)
             .collect::<Vec<_>>();
         expected.sort_by_key(|row| row.observation_id);
@@ -819,10 +841,10 @@ impl CapturedOrganizerProjection {
             validate_observation_row(row, expected)?;
         }
         let receipts = &self.receipts;
-        let mut expected = state
-            .receipts
+        let mut expected = journal
+            .periods
             .iter()
-            .chain(state.aid_receipts.iter().map(|row| &row.practice))
+            .flat_map(OrganizerPeriodJournalEntries::receipts)
             .filter(|row| row.actor_id == config.controlled_actor_id)
             .collect::<Vec<_>>();
         expected.sort_by_key(|row| row.receipt_id);

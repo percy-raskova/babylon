@@ -8,7 +8,7 @@ use babylon_material_circuit::{
 };
 use babylon_practice_contract::{
     OrganizerChoice, OrganizerCollectionFact, OrganizerCollectionOutcome, OrganizerCommitment,
-    OrganizerConfig, OrganizerGiftConsent, OrganizerState,
+    OrganizerConfig, OrganizerGiftConsent, OrganizerPeriodJournal, OrganizerState,
 };
 use std::result::Result as StdResult;
 
@@ -130,15 +130,17 @@ pub(super) fn support(
 pub(super) fn retained(
     config: &OrganizerConfig,
     organizer: &OrganizerState,
+    journal: &OrganizerPeriodJournal,
     rows: &[CollectionReceipt],
     state: &MaterialCircuitState,
     period: u64,
 ) -> Result<()> {
     babylon_practice_contract::validate_organizer_pair(config, organizer)?;
     collection_receipt::validate_state(rows, state)?;
-    let retained: Vec<_> = organizer
-        .collection_receipts
+    let retained: Vec<_> = journal
+        .periods
         .iter()
+        .flat_map(|entries| &entries.collection_receipts)
         .filter(|row| row.fact.period == period)
         .collect();
     if retained.len() != rows.len() {
@@ -155,17 +157,19 @@ pub(super) fn retained(
 pub(super) fn current(
     config: &OrganizerConfig,
     organizer: &OrganizerState,
+    journal: &OrganizerPeriodJournal,
     material: &MaterialCircuitState,
     period: u64,
 ) -> Result<()> {
-    if organizer
-        .collection_receipts
+    if let Some(entries) = journal
+        .periods
         .iter()
-        .any(|row| row.fact.period == period)
+        .find(|entries| entries.period == period)
+        .filter(|entries| !entries.collection_receipts.is_empty())
     {
         // The common adapter authenticates exact original resolution and time
         // before choosing which ordinary uses still need consuming.
-        super::organizer_time::uses(config, organizer, period, material)?;
+        super::organizer_time::uses(config, organizer, entries, period, material)?;
     }
     Ok(())
 }

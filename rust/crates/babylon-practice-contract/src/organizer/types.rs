@@ -13,7 +13,10 @@ use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
 /// Current organizer representation. Older representations are unsupported.
-pub const ORGANIZER_SCHEMA_VERSION: u16 = 7;
+pub const ORGANIZER_SCHEMA_VERSION: u16 = 8;
+
+/// Retained evidence periods for one actor-safe organizer journal window.
+pub const ORGANIZER_JOURNAL_PERIODS: usize = 13;
 
 /// Whole organizer-hours are Designed participant time commitments, not jobs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,6 +162,8 @@ pub enum OrganizerRefusal {
     AidUnavailable,
     AidReceivingRefused,
     PendingAidConflict,
+    /// This household hour identity was already debited in the witnessed period.
+    HouseholdTimeAlreadySpent,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -284,6 +289,63 @@ pub struct OrganizerContactProduct {
     pub actor_id: u64,
     pub partner_actor_id: u64,
     pub produced_period: u64,
+    /// Journal sequence of the creation receipt once permanent evidence exists.
+    pub origin_journal_seq: Option<u64>,
+}
+
+/// Compact current learned-authority index, one row per subject/source/report.
+///
+/// Exact observations remain in the permanent journal; this row keeps only the
+/// causal value a later inquiry needs without retaining the observation vector.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrganizerLearnedAuthority {
+    pub observation_id: [u8; 32],
+    pub receipt_id: Option<[u8; 32]>,
+    pub subject_id: u64,
+    pub source_actor_id: u64,
+    pub observed_period: u64,
+    pub acquired_period: u64,
+    pub report: OrganizerReport,
+}
+
+impl OrganizerLearnedAuthority {
+    /// Rebuild the exact observation this compact row stands for.
+    #[must_use]
+    pub fn observation(&self, actor_id: u64) -> OrganizerObservation {
+        OrganizerObservation {
+            observation_id: self.observation_id,
+            actor_id,
+            subject_id: self.subject_id,
+            source_actor_id: self.source_actor_id,
+            observed_period: self.observed_period,
+            acquired_period: self.acquired_period,
+            receipt_id: self.receipt_id,
+            report: self.report.clone(),
+        }
+    }
+
+    /// Stable report kind, used to deduplicate the current index.
+    #[must_use]
+    pub const fn report_kind(&self) -> u8 {
+        match self.report {
+            OrganizerReport::Work { .. } => 0,
+            OrganizerReport::ReducedWork { .. } => 1,
+            OrganizerReport::Maintenance { .. } => 2,
+        }
+    }
+}
+
+/// Exact household-hour debit witness for the last resolved period.
+///
+/// The contribution-use identities are the same identities the material time
+/// book charges, so a replay that would spend an already-committed household
+/// hour can be refused even after the original receipts leave live state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrganizerPeriodTimeWitness {
+    pub period: u64,
+    pub contribution_use_ids: Vec<[u8; 32]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -312,6 +374,7 @@ pub struct OrganizerReceipt {
     pub time_use: Vec<OrganizerTimeUse>,
 }
 
+/// Causal current authority. Historical evidence lives in the period journal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OrganizerState {
@@ -319,14 +382,125 @@ pub struct OrganizerState {
     pub period: u64,
     pub standing: OrganizerStandingWork,
     pub agreements: Vec<OrganizerAgreement>,
-    pub observations: Vec<OrganizerObservation>,
-    pub receipts: Vec<OrganizerReceipt>,
     pub pending_aid: Vec<OrganizerPendingAidPractice>,
-    pub collection_receipts: Vec<OrganizerCollectionResolution>,
-    pub aid_receipts: Vec<OrganizerAidResolutionReceipt>,
     pub contact_products: Vec<OrganizerContactProduct>,
+    /// Durable compact anti-double-spend tombstones; creations may be gone.
     pub consumed_product_ids: Vec<[u8; 32]>,
     pub last_workplace_facts: Option<OrganizerWorkplaceFacts>,
+    pub learned_authority_index: Vec<OrganizerLearnedAuthority>,
+    pub last_period_time_witness: Option<OrganizerPeriodTimeWitness>,
+}
+
+/// Exact evidence produced by one resolved organizer period.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrganizerPeriodJournalEntries {
+    pub period: u64,
+    pub observations: Vec<OrganizerObservation>,
+    pub receipts: Vec<OrganizerReceipt>,
+    pub collection_receipts: Vec<OrganizerCollectionResolution>,
+    pub aid_receipts: Vec<OrganizerAidResolutionReceipt>,
+}
+
+impl OrganizerPeriodJournalEntries {
+    /// Empty evidence for the supplied period.
+    #[must_use]
+    pub const fn new(period: u64) -> Self {
+        Self {
+            period,
+            observations: vec![],
+            receipts: vec![],
+            collection_receipts: vec![],
+            aid_receipts: vec![],
+        }
+    }
+
+    /// Ordinary and aid-resolution receipts in production order.
+    pub fn receipts(&self) -> impl Iterator<Item = &OrganizerReceipt> {
+        self.receipts
+            .iter()
+            .chain(self.aid_receipts.iter().map(|row| &row.practice))
+    }
+
+    /// Whether this period's evidence is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.observations.is_empty()
+            && self.receipts.is_empty()
+            && self.collection_receipts.is_empty()
+            && self.aid_receipts.is_empty()
+    }
+
+    /// Merge two evidence sets for the same period in causal execution order.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OrganizerError::PeriodMismatch`] when the periods differ.
+    pub fn extend(&mut self, other: Self) -> Result<(), OrganizerError> {
+        if self.period != other.period {
+            return Err(OrganizerError::PeriodMismatch);
+        }
+        self.observations.extend(other.observations);
+        self.receipts.extend(other.receipts);
+        self.collection_receipts.extend(other.collection_receipts);
+        self.aid_receipts.extend(other.aid_receipts);
+        Ok(())
+    }
+}
+
+/// Retained organizer evidence ordered by strictly increasing period.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrganizerPeriodJournal {
+    pub periods: Vec<OrganizerPeriodJournalEntries>,
+}
+
+impl OrganizerPeriodJournal {
+    /// Empty journal window.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self { periods: vec![] }
+    }
+
+    /// Append one resolved period, refusing to rewrite an existing period.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OrganizerError::PeriodMismatch`] when the new period does not
+    /// extend the strictly increasing retained sequence.
+    pub fn append(&mut self, entries: OrganizerPeriodJournalEntries) -> Result<(), OrganizerError> {
+        if self
+            .periods
+            .last()
+            .is_some_and(|row| row.period >= entries.period)
+        {
+            return Err(OrganizerError::PeriodMismatch);
+        }
+        self.periods.push(entries);
+        Ok(())
+    }
+
+    /// Latest retained period evidence.
+    #[must_use]
+    pub fn latest(&self) -> Option<&OrganizerPeriodJournalEntries> {
+        self.periods.last()
+    }
+}
+
+/// One resolved organizer period: compact causal authority plus exact evidence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResolvedOrganizerPeriod {
+    pub state: OrganizerState,
+    pub journal: OrganizerPeriodJournalEntries,
+}
+
+impl std::ops::Deref for ResolvedOrganizerPeriod {
+    type Target = OrganizerState;
+
+    fn deref(&self) -> &OrganizerState {
+        &self.state
+    }
 }
 
 /// Designed presentation bounds; canonical organizer history remains complete.

@@ -79,7 +79,7 @@ fn assert_managed_equipment(opening: &EconomicOpening) {
     else {
         panic!("national play requires managed equipment, not permanent nameplate capacity");
     };
-    assert!(equipment.pending.is_empty());
+    assert!(opening.equipment_position.pending.is_empty());
     assert_eq!(
         equipment.bindings.len(),
         opening
@@ -107,8 +107,8 @@ fn assert_managed_equipment(opening: &EconomicOpening) {
             .contains(&StaffingWorkSource::Installation(policy.process_id)));
         assert!(policy.maximum_hours_per_period <= pool.labor_force() * 160);
     }
-    assert_eq!(carrying.len(), equipment.cohorts.len());
-    for cohort in &equipment.cohorts {
+    assert_eq!(carrying.len(), opening.equipment_position.cohorts.len());
+    for cohort in &opening.equipment_position.cohorts {
         let value = carrying[&EquipmentAssetId::Installed(cohort.id)];
         let owner = bindings[&cohort.process_id].site_id;
         assert_eq!(value.owner, owner);

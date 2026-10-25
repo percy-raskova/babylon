@@ -2,12 +2,12 @@
 use super::{ExperimentError, ExperimentProfile, Result, SimulationExperimentV1, StartingSnapshot};
 use crate::material_runtime::{MaterialFoundationSpec, MaterialRuntimeFoundation};
 use babylon_material_circuit::{
-    BacklogRow, CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InventoryRow,
-    LogisticsNodeId, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, RouteId, RouteStage,
-    RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute, SupplierTransport, UnitId,
+    CapacityReservations, CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InventoryRow,
+    LogisticsNodeId, MaterialCatalog, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow,
+    RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute,
+    SupplierTransport, UnitId, UNSEALED_CATALOG_DIGEST,
 };
 use babylon_tick::material_staffing::StaffingComposition;
-use babylon_tick::material_world::MaterialWorldRegister;
 
 use super::setup::FreightSetup;
 use crate::michigan_defines::MichiganDefines;
@@ -143,7 +143,7 @@ impl CapturedFreight {
         clippy::too_many_lines,
         reason = "`state` keeps one authored sequence in a single place"
     )] // Keep the complete closed inventory boundary visible together.
-    fn state(&self) -> Result<MaterialCircuitState> {
+    fn content(&self) -> Result<(MaterialCatalog, MaterialCircuitState)> {
         self.validate()?;
         let source = source_id();
         let destination = destination_id();
@@ -154,9 +154,8 @@ impl CapturedFreight {
         let order = OrderId::from_bytes(id("finite-import-order"));
         let from = LogisticsNodeId::from_bytes(id("canadian-inventory-terminal"));
         let to = LogisticsNodeId::from_bytes(id("detroit-port-entry-terminal"));
-        let state = MaterialCircuitState {
-            capacity_supply: CapacitySupply::FiniteSchedule,
-            period: 1,
+        let catalog = MaterialCatalog::try_new(MaterialCatalog {
+            capacity_policy: CapacitySupply::FiniteSchedule,
             site_logistics_nodes: vec![
                 SiteLogisticsNode {
                     site_id: source,
@@ -170,18 +169,6 @@ impl CapturedFreight {
             process_outputs: vec![],
             input_coefficients: vec![],
             labor_coefficients: vec![],
-            capacities: vec![],
-            labor: vec![],
-            production_commitments: vec![],
-            merchants: vec![],
-            handling_coefficients: vec![],
-            final_demand_principals: vec![],
-            final_demand_orders: vec![],
-            accounting: CircuitAccounting::PhysicalControl,
-            maintenance_binding: None,
-            maintenance_service: None,
-            service_connections: vec![],
-            service_orders: vec![],
             commodities: vec![CommodityDefinition {
                 good_id: good,
                 unit_id: unit,
@@ -205,6 +192,28 @@ impl CapturedFreight {
                 travel_periods: self.travel_periods,
                 loss_ppm: 0,
             }],
+            merchants: vec![],
+            handling_coefficients: vec![],
+            maintenance_binding: None,
+            aid_mandates: vec![],
+            household_time_policy: vec![],
+            service_inputs: vec![],
+            household_needs: vec![],
+            catalog_digest: UNSEALED_CATALOG_DIGEST,
+        })
+        .map_err(|_| ExperimentError::Content)?;
+        let state = MaterialCircuitState {
+            period: 1,
+            service_connections: vec![],
+            service_orders: vec![],
+            capacities: vec![],
+            labor: vec![],
+            production_commitments: vec![],
+            final_demand_principals: vec![],
+            final_demand_orders: vec![],
+            accounting: CircuitAccounting::PhysicalControl,
+            maintenance_service: None,
+            capacity_reservations: CapacityReservations::default(),
             route_stage_capacities: vec![RouteStageCapacity {
                 route_id: route,
                 stage_index: 0,
@@ -237,10 +246,6 @@ impl CapturedFreight {
                 delivered: 0,
                 realized: 0,
             }],
-            backlog: vec![BacklogRow {
-                order_id: order,
-                quantity: self.ordered_kg,
-            }],
             freight: vec![],
             corridor_capacities: (1..=self.experiment.horizon)
                 .map(|period| {
@@ -252,11 +257,11 @@ impl CapturedFreight {
                 })
                 .collect::<Result<Vec<_>>>()?,
         };
-        babylon_material_circuit::decode_material_circuit_state(
-            &babylon_material_circuit::encode_material_circuit_state(&state)
-                .map_err(|_| ExperimentError::Content)?,
-        )
-        .map_err(|_| ExperimentError::Content)
+        let encoding = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
+            .map_err(|_| ExperimentError::Content)?;
+        let state = babylon_material_circuit::decode_material_circuit_state(&catalog, &encoding)
+            .map_err(|_| ExperimentError::Content)?;
+        Ok((catalog, state))
     }
 }
 fn scenario() -> String {
@@ -271,7 +276,7 @@ fn scenario() -> String {
 pub(super) fn foundation(spec: &SimulationExperimentV1) -> Result<MaterialRuntimeFoundation> {
     let captured = new_capture(spec)?;
     let defines = captured.bytes()?;
-    let state = captured.state()?;
+    let (_, state) = captured.content()?;
     let (graph, bundle) = crate::michigan_economy::foundation_from_sources_with_seed(
         &scenario(),
         RULES,
@@ -294,11 +299,10 @@ pub(super) fn foundation(spec: &SimulationExperimentV1) -> Result<MaterialRuntim
     )
     .map_err(|_| ExperimentError::Foundation)
 }
-pub(super) fn validate_authority(
+pub(super) fn admitted_material(
     graph: &CampaignFoundation,
-    register: &MaterialWorldRegister,
     spec: &MaterialFoundationSpec,
-) -> Result<StaffingComposition> {
+) -> Result<(MaterialCatalog, MaterialCircuitState, StaffingComposition)> {
     let bytes = graph.content_bundle().defines_bytes();
     if bytes.len() > super::MAX_EXPERIMENT_INPUT_BYTES {
         return Err(ExperimentError::Content);
@@ -313,12 +317,13 @@ pub(super) fn validate_authority(
         || graph.rng_seed() != ReplaySeed::new(captured.experiment.seed)
         || graph.content_bundle().scenario_source_bytes() != scenario().as_bytes()
         || graph.content_bundle().rule_source_bytes() != RULES.as_bytes()
-        || register.organizer_config().is_some()
-        || register.state() != &captured.state()?
     {
         return Err(ExperimentError::Foundation);
     }
-    StaffingComposition::inventory_only(register.state()).map_err(|_| ExperimentError::Foundation)
+    let (catalog, state) = captured.content()?;
+    let staffing = StaffingComposition::inventory_only(&catalog, &state)
+        .map_err(|_| ExperimentError::Foundation)?;
+    Ok((catalog, state, staffing))
 }
 
 pub(super) fn resolved_setup(bytes: &[u8]) -> Result<FreightSetup> {

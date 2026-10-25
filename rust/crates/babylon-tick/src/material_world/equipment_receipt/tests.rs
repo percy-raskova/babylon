@@ -1,3 +1,8 @@
+//! Receipt conformance for the shared equipment fixture.
+#![allow(
+    dead_code,
+    reason = "the shared equipment fixture exposes helpers this receipt target does not call"
+)]
 use crate::material_world::equipment_receipt::Currency;
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::AidBook;
@@ -59,9 +64,9 @@ include!("../../../../babylon-material-circuit/tests/support/equipment_fixture.r
 
 #[test]
 fn actual_equipment_close_receipts_roundtrip_with_wip_installation_wages_and_wear() {
-    let mut state = opening();
+    let (catalog, mut state) = opening();
     for period in 1..=5 {
-        let transition = babylon_material_circuit::advance_material_circuit(&state)
+        let transition = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
         let bytes = super::super::encode_material_receipts(period, &transition)
             .expect("the fixture value encodes to its canonical bytes");
@@ -74,12 +79,12 @@ fn actual_equipment_close_receipts_roundtrip_with_wip_installation_wages_and_wea
         assert!(super::super::decode_material_receipts(&bytes[..bytes.len() - 1]).is_err());
         state = transition.state;
     }
-    assert!(equipment(&state).cohorts.is_empty());
+    assert!(position(&state).cohorts.is_empty());
     assert_eq!(equipment_cost(&state), money(0));
     assert_eq!(stock_cost(&state, good(4)), money(44));
-    let mut state = opening();
-    configure_investment(&mut state, 100, -10);
-    let transition = babylon_material_circuit::advance_material_circuit(&state)
+    let (mut catalog, mut state) = opening();
+    configure_investment(&mut catalog, &mut state, 100, -10);
+    let transition = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let bytes = super::super::encode_material_receipts(1, &transition)
         .expect("the fixture value encodes to its canonical bytes");
@@ -93,8 +98,10 @@ fn actual_equipment_close_receipts_roundtrip_with_wip_installation_wages_and_wea
 
 #[test]
 fn equipment_receipt_refuses_invalid_work_cost_partitions_duplicates_and_old_version() {
-    let mut transition = babylon_material_circuit::advance_material_circuit(&opening())
-        .expect("the authored material state advances one period");
+    let (catalog, opening_state) = opening();
+    let mut transition =
+        babylon_material_circuit::advance_material_circuit(&catalog, &opening_state)
+            .expect("the authored material state advances one period");
     let original = transition.clone();
     transition.installation[0].used_hours = 1;
     assert!(super::super::encode_material_receipts(1, &transition).is_err());
@@ -106,13 +113,13 @@ fn equipment_receipt_refuses_invalid_work_cost_partitions_duplicates_and_old_ver
     transition = original;
     transition.installation[0].closing_carrying = money(27);
     assert!(super::super::encode_material_receipts(1, &transition).is_err());
-    let mut state = opening();
+    let mut state = opening_state;
     for _ in 0..3 {
-        state = babylon_material_circuit::advance_material_circuit(&state)
+        state = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period")
             .state;
     }
-    let mut transition = babylon_material_circuit::advance_material_circuit(&state)
+    let mut transition = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     transition.equipment_wear[0].closing_carrying = money(0);
     assert!(super::super::encode_material_receipts(4, &transition).is_err());
@@ -122,14 +129,14 @@ fn equipment_receipt_refuses_invalid_work_cost_partitions_duplicates_and_old_ver
 
 #[test]
 fn goods_cost_from_real_equipment_close_roundtrips_and_restart_does_not_reuse_it() {
-    let mut state = opening();
+    let (catalog, mut state) = opening();
     for _ in 0..3 {
-        state = babylon_material_circuit::advance_material_circuit(&state)
+        state = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period")
             .state;
     }
     configure_output_quote(&mut state);
-    let transition = babylon_material_circuit::advance_material_circuit(&state)
+    let transition = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let bytes = super::super::encode_material_receipts(4, &transition)
         .expect("the fixture value encodes to its canonical bytes");
@@ -140,15 +147,16 @@ fn goods_cost_from_real_equipment_close_roundtrips_and_restart_does_not_reuse_it
     assert_eq!(decoded.prices[0].cost.carrying_cost, money(29));
     assert_eq!(decoded.prices[0].reason, PriceDecision::CostPressure);
     let restored = babylon_material_circuit::decode_material_circuit_state(
-        &babylon_material_circuit::encode_material_circuit_state(&transition.state)
+        &catalog,
+        &babylon_material_circuit::encode_material_circuit_state(&catalog, &transition.state)
             .expect("the canonical material state encodes"),
     )
     .expect("the canonical material bytes decode");
-    let next = babylon_material_circuit::advance_material_circuit(&restored)
+    let next = babylon_material_circuit::advance_material_circuit(&catalog, &restored)
         .expect("the authored material state advances one period");
     assert_eq!(
         next,
-        babylon_material_circuit::advance_material_circuit(&transition.state)
+        babylon_material_circuit::advance_material_circuit(&catalog, &transition.state)
             .expect("the authored material state advances one period")
     );
     assert_eq!(next.prices[0].cost.basis, GoodsPriceCostBasis::Unavailable);
@@ -164,7 +172,8 @@ fn goods_cost_from_real_equipment_close_roundtrips_and_restart_does_not_reuse_it
 
 #[test]
 fn installation_decisions_roundtrip_and_refuse_false_starts_positions_and_old_format() {
-    let original = babylon_material_circuit::advance_material_circuit(&opening())
+    let (catalog, opening_state) = opening();
+    let original = babylon_material_circuit::advance_material_circuit(&catalog, &opening_state)
         .expect("the authored material state advances one period");
     let bytes = super::super::encode_material_receipts(1, &original)
         .expect("the fixture value encodes to its canonical bytes");

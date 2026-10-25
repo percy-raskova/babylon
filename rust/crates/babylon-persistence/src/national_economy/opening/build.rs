@@ -33,6 +33,7 @@ use crate::national_household_time_allocation::HouseholdTimeAllocationError;
 use crate::national_resident_allocation;
 use aid::NationalAidCapture;
 use babylon_material_circuit::AidBook;
+use babylon_material_circuit::EquipmentPosition;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::MaterialCircuitError;
@@ -254,6 +255,7 @@ impl<'a> Builder<'a> {
                 institutions: FinancialInstitutions::empty(),
                 equity: vec![],
                 equipment: vec![],
+                equipment_position: EquipmentPosition::default(),
                 capacity: CatalogCapacity::Rolling(RollingProcessSupply::CapturedNameplate(vec![])),
                 policies: CatalogPolicies {
                     aid: AidBook::default(),

@@ -79,6 +79,7 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
         true,
     );
     let opening = super::projections(
+        session.catalog(),
         session.material().state(),
         session
             .material()
@@ -91,6 +92,7 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
     assert_eq!(opening[0].period, 0);
     assert_eq!(opening[0].time, None);
     assert!(super::projections(
+        session.catalog(),
         session.material().state(),
         session
             .material()
@@ -107,6 +109,7 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
     fixture::commit(&mut session, &mut sink, second);
     let register = session.material();
     let preview = super::projections(
+        session.catalog(),
         register.state(),
         register
             .organizer_config()

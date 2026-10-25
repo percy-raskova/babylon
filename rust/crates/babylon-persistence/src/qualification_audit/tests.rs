@@ -70,8 +70,13 @@ fn serialized_boundary_binds_every_fold_to_seed_and_current_receipt() {
             Sha256::digest(prepared.material().receipt_bytes()).as_slice()
         );
         let renewal_evidence = if tick == 1 {
-            let audit = production_renewal::Audit::seed(register.state(), tick, register.digest())
-                .expect("the fixture seeds the authored rows");
+            let audit = production_renewal::Audit::seed(
+                session.catalog(),
+                register.state(),
+                tick,
+                register.digest(),
+            )
+            .expect("the fixture seeds the authored rows");
             let evidence = audit
                 .evidence()
                 .expect("the fixture call `evidence` succeeds for the authored inputs");
@@ -150,7 +155,7 @@ fn serialized_boundary_binds_every_fold_to_seed_and_current_receipt() {
             assert_ne!(facts["tick_content_hash"], prior);
         }
         session
-            .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_| {
+            .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_, _| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
             .expect("the prepared period commits");

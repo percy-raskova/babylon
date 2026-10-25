@@ -3,7 +3,8 @@
 use super::{lifecycle, ProductionProjectionError};
 use babylon_material_circuit::ProductionReceipt;
 use babylon_material_circuit::{
-    AccountId, CommodityKind, GoodId, MaterialCircuitState, ProcessId, SiteId, UnitId,
+    AccountId, CommodityKind, GoodId, MaterialCatalog, MaterialCircuitState, ProcessId, SiteId,
+    UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,8 +13,8 @@ type Result<T> = StdResult<T, ProductionProjectionError>;
 type GrantKey = (AccountId, GoodId, UnitId);
 type OutputKey = (SiteId, GoodId, UnitId);
 
-pub(super) fn service_kinds(state: &MaterialCircuitState) -> BTreeSet<(GoodId, UnitId)> {
-    state
+pub(super) fn service_kinds(catalog: &MaterialCatalog) -> BTreeSet<(GoodId, UnitId)> {
+    catalog
         .commodities
         .iter()
         .filter(|r| matches!(r.kind, CommodityKind::PeriodService { .. }))
@@ -32,16 +33,15 @@ fn nonzero<K: Ord>(map: BTreeMap<K, u64>) -> BTreeMap<K, u64> {
 }
 
 pub(super) fn validate(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
 ) -> Result<()> {
-    if prior.commodities != current.commodities
-        || prior.service_connections != current.service_connections
-    {
+    if prior.service_connections != current.service_connections {
         return Err(ProductionProjectionError::State);
     }
-    let kinds = service_kinds(prior);
+    let kinds = service_kinds(catalog);
     if prior
         .inventory
         .iter()
@@ -87,8 +87,8 @@ pub(super) fn validate(
             row.used_quantity,
         )?;
     }
-    validate_outputs(prior, receipt, &production, &kinds, performed)?;
-    let mut expected_use = recipe_use(prior, &production, &kinds)?;
+    validate_outputs(catalog, prior, receipt, &production, &kinds, performed)?;
+    let mut expected_use = recipe_use(catalog, &production, &kinds)?;
     household_use(prior, receipt, &kinds, &grants, &mut expected_use)?;
     if nonzero(used) != nonzero(expected_use) {
         return Err(ProductionProjectionError::State);
@@ -96,13 +96,14 @@ pub(super) fn validate(
     Ok(())
 }
 fn validate_outputs(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
     production: &BTreeMap<ProcessId, &ProductionReceipt>,
     kinds: &BTreeSet<(GoodId, UnitId)>,
     performed: BTreeMap<OutputKey, u64>,
 ) -> Result<()> {
-    let mut expected: BTreeMap<_, _> = prior
+    let mut expected: BTreeMap<_, _> = catalog
         .process_outputs
         .iter()
         .filter(|r| kinds.contains(&(r.good_id, r.unit_id)))
@@ -137,17 +138,17 @@ fn validate_outputs(
     Ok(())
 }
 fn recipe_use(
-    prior: &MaterialCircuitState,
+    catalog: &MaterialCatalog,
     production: &BTreeMap<ProcessId, &ProductionReceipt>,
     kinds: &BTreeSet<(GoodId, UnitId)>,
 ) -> Result<BTreeMap<GrantKey, u64>> {
-    let sites: BTreeMap<_, _> = prior
+    let sites: BTreeMap<_, _> = catalog
         .process_outputs
         .iter()
         .map(|r| (r.process_id, r.site_id))
         .collect();
     let mut result = BTreeMap::new();
-    for input in &prior.input_coefficients {
+    for input in &catalog.input_coefficients {
         if !kinds.contains(&(input.good_id, input.unit_id)) {
             continue;
         }

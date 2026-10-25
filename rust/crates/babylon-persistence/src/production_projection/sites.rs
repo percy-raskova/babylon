@@ -15,7 +15,8 @@ use babylon_material_circuit::InventoryRow;
 use babylon_material_circuit::ProcessOutput;
 use babylon_material_circuit::ProductionReceipt;
 use babylon_material_circuit::{
-    CommodityKind, GoodId, MaterialCircuitState, MerchantRole, ProcessId, SiteId, UnitId,
+    CommodityKind, GoodId, MaterialCatalog, MaterialCircuitState, MerchantRole, ProcessId, SiteId,
+    UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::BTreeMap;
@@ -36,18 +37,19 @@ pub(crate) struct Quantities<'a> {
 }
 impl<'a> Quantities<'a> {
     pub(crate) fn new(
+        catalog: &'a MaterialCatalog,
         state: &'a MaterialCircuitState,
         receipt: Option<&'a MaterialTickReceipts>,
     ) -> Self {
         let mut inputs = BTreeMap::<_, BTreeMap<_, _>>::new();
-        for row in &state.input_coefficients {
+        for row in &catalog.input_coefficients {
             inputs
                 .entry(row.process_id)
                 .or_default()
                 .insert((row.good_id, row.unit_id), row.quantity_per_batch);
         }
         let mut labor_requirements = BTreeMap::<_, BTreeMap<_, _>>::new();
-        for row in &state.labor_coefficients {
+        for row in &catalog.labor_coefficients {
             labor_requirements
                 .entry(row.process_id)
                 .or_default()
@@ -58,7 +60,7 @@ impl<'a> Quantities<'a> {
             stocks.entry(row.site_id).or_default().push(row);
         }
         let mut suppliers = BTreeMap::<_, Vec<_>>::new();
-        for row in &state.supplier_routes {
+        for row in &catalog.supplier_routes {
             suppliers
                 .entry((row.buyer_site_id, row.good_id, row.unit_id))
                 .or_default()
@@ -86,7 +88,7 @@ impl<'a> Quantities<'a> {
                 .iter()
                 .map(|r| ((r.site_id, r.good_id, r.unit_id), r.quantity))
                 .collect(),
-            outputs: state
+            outputs: catalog
                 .process_outputs
                 .iter()
                 .map(|r| (r.process_id, r))
@@ -103,7 +105,7 @@ impl<'a> Quantities<'a> {
                 .filter(|r| r.period == state.period)
                 .map(|r| ((r.site_id, r.unit_id), r.available))
                 .collect(),
-            kinds: state
+            kinds: catalog
                 .commodities
                 .iter()
                 .map(|r| ((r.good_id, r.unit_id), r.kind))
@@ -115,11 +117,12 @@ impl<'a> Quantities<'a> {
 
 pub(super) fn project(
     metadata: &Metadata<'_>,
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     receipt: Option<&MaterialTickReceipts>,
 ) -> Result<Vec<ProductionSite>> {
-    let q = Quantities::new(state, receipt);
-    let merchants: BTreeMap<_, _> = state.merchants.iter().map(|r| (r.site_id, r)).collect();
+    let q = Quantities::new(catalog, state, receipt);
+    let merchants: BTreeMap<_, _> = catalog.merchants.iter().map(|r| (r.site_id, r)).collect();
     if merchants.len()
         != metadata
             .sites
@@ -153,7 +156,7 @@ pub(super) fn project(
                 MerchantRole::Retail => ProductionSiteRole::Retail,
             });
         }
-        if state
+        if catalog
             .maintenance_binding
             .as_ref()
             .is_some_and(|b| b.provider_site_id == site.site_id)
@@ -194,7 +197,7 @@ pub(super) fn project(
         });
     }
     if q.outputs.len() != metadata.processes.len()
-        || result.iter().map(|r| r.processes.len()).sum::<usize>() != state.process_outputs.len()
+        || result.iter().map(|r| r.processes.len()).sum::<usize>() != catalog.process_outputs.len()
     {
         return Err(ProductionProjectionError::Content);
     }

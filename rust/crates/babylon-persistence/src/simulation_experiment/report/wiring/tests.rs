@@ -144,7 +144,7 @@ fn captured_selection_and_real_first_period_cover_each_admitted_profile() {
                 .find(|r| r.family == "production")
                 .expect("the fixture holds the searched element")
                 .captured_rows,
-            count(foundation.initial_register().state().process_outputs.len())
+            count(foundation.material_catalog().process_outputs.len())
                 .expect("the fixture call `count` succeeds for the authored inputs")
         );
         assert!(manifest

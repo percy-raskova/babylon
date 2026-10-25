@@ -127,7 +127,8 @@ fn opening_witness(
         .good("metal_parts")
         .expect("the fixture catalog holds the addressed good");
     let initial = foundation.initial_register().state();
-    let binding = initial
+    let binding = foundation
+        .material_catalog()
         .maintenance_binding
         .as_ref()
         .expect("the fixture set the optional field before this read");
@@ -274,11 +275,10 @@ fn failed_commit_retry(
     let physical = candidate.material().register().clone();
     let receipts = candidate.material().receipt_bytes().to_vec();
     assert!(matches!(
-        session.commit_prepared_and_publish(
-            sink,
-            candidate,
-            |_| Err::<ReplayCommitDisposition, _>("refused")
-        ),
+        session.commit_prepared_and_publish(sink, candidate, |_, _| Err::<
+            ReplayCommitDisposition,
+            _,
+        >("refused")),
         Err(MaterialCommitError::Commit("refused"))
     ));
     assert_eq!(session.completed_tick(), 0);
@@ -418,8 +418,9 @@ fn qualify_case(base: &MichiganMaterialCatalog, case: Case) {
                     graph.result_stable_graph(),
                     graph.material_state_rows(),
                     graph.result_registers().canonical_bytes(),
-                    MaterialWorldRegister::decode(
-                        candidate.material().register().canonical_bytes(),
+                    MaterialWorldRegister::decode_external(
+                        restored.catalog(),
+                        candidate.material().register().canonical_bytes().to_vec(),
                     )
                     .expect("the committed canonical bytes decode"),
                 )
@@ -442,13 +443,13 @@ fn qualify_case(base: &MichiganMaterialCatalog, case: Case) {
                 candidate.graph_report().report().audit_receipts
             );
             restored
-                .commit_prepared_and_publish(&mut replay_sink, replay, |_| {
+                .commit_prepared_and_publish(&mut replay_sink, replay, |_, _| {
                     Ok::<_, ()>(ReplayCommitDisposition::Committed)
                 })
                 .expect("the prepared period commits");
         }
         uninterrupted
-            .commit_prepared_and_publish(&mut sink, candidate, |_| {
+            .commit_prepared_and_publish(&mut sink, candidate, |_, _| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
             .expect("the prepared period commits");

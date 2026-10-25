@@ -5,6 +5,8 @@ use super::{IdentityEntry, IdentityKind, TypedLookup};
 
 use super::offers;
 
+use babylon_material_circuit::MaterialCatalog;
+
 use babylon_tick::material_world::{
     MaterialWorldRegister, SharedCanonicalBytes, MAX_MATERIAL_WORLD_REGISTER_BYTES,
 };
@@ -96,11 +98,12 @@ impl OpeningRegister {
             lookup: Arc::new(lookup),
         })
     }
-    /// Admit canonical opening bytes once for standalone codec tooling.
+    /// Admit canonical opening bytes once against their admitting catalog.
     /// # Errors
     /// Refuses invalid canonical input or a non-opening register.
-    pub fn from_canonical(bytes: &[u8]) -> Result<Self, StorageError> {
-        let register = MaterialWorldRegister::decode(bytes).map_err(|_| StorageError::Canonical)?;
+    pub fn from_canonical(catalog: &MaterialCatalog, bytes: &[u8]) -> Result<Self, StorageError> {
+        let register = MaterialWorldRegister::decode_external(catalog, bytes.to_vec())
+            .map_err(|_| StorageError::Canonical)?;
         Self::from_opening(&register)
     }
     #[must_use]
@@ -132,7 +135,9 @@ impl OpeningRegister {
         field: usize,
         expected: IdentityKind,
     ) -> Result<[u8; 32], StorageError> {
-        if ![2, 27, 32, 33, 35, 38, 63].contains(&section) {
+        // Only closed recipe sources that still live in the opening state; the
+        // definition rows moved to the immutable catalog with the state split.
+        if ![27, 32, 33, 35, 38].contains(&section) {
             return Err(StorageError::Layout);
         }
         let shape = super::layout::layout(section).ok_or(StorageError::Layout)?;
@@ -785,13 +790,14 @@ pub(crate) fn restore_section(
 // Retain the typed register produced by complete canonical admission.
 // Callers cannot replace it with an unchecked framing/header read.
 pub(crate) fn decode_admitted(
+    catalog: &MaterialCatalog,
     opening: &OpeningRegister,
     package: &[u8],
     lookup: &TypedLookup,
     expected_lookup_chain: [u8; 32],
 ) -> Result<MaterialWorldRegister, StorageError> {
     let result = restore_register(opening, package, lookup, expected_lookup_chain)?;
-    MaterialWorldRegister::decode_owned(result).map_err(|_| StorageError::Canonical)
+    MaterialWorldRegister::decode_external(catalog, result).map_err(|_| StorageError::Canonical)
 }
 
 pub(crate) fn decode_against_admitted(

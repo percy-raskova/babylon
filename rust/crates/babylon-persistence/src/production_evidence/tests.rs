@@ -132,7 +132,7 @@ fn published_observations() -> &'static [ObserverEconomySnapshot] {
             )
             .expect("the fixture call `compose` succeeds for the authored inputs");
             let (ack, _) = session
-                .commit_prepared_and_publish(&mut sink, prepared, |_| {
+                .commit_prepared_and_publish(&mut sink, prepared, |_, _| {
                     Ok::<_, ()>(ReplayCommitDisposition::Committed)
                 })
                 .expect("the prepared period commits");

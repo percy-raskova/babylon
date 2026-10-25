@@ -473,7 +473,7 @@ fn continuous_campaign_admits_explicit_duration_without_a_numeric_stop() {
         .create_foundation(&catalog)
         .expect("the authored catalog builds the foundation");
     assert!(matches!(
-        foundation.initial_register().state().capacity_supply,
+        foundation.material_catalog().capacity_policy,
         babylon_material_circuit::CapacitySupply::Rolling(_)
     ));
     assert!(foundation

@@ -8,6 +8,7 @@ use crate::material_storage::OpeningRegister;
 
 use babylon_graph::stable_state::StableGraphState;
 use babylon_kernel::clock::CampaignDuration;
+use babylon_material_circuit::MaterialCatalog;
 
 use babylon_tick::material_staffing::StaffingComposition;
 use babylon_tick::material_world::MaterialWorldRegister;
@@ -106,6 +107,11 @@ impl EconomicContentAdmission {
     pub fn initial_register(&self) -> &MaterialWorldRegister {
         self.foundation.initial_register()
     }
+    /// The one immutable definition set every period of this campaign borrows.
+    #[must_use]
+    pub fn material_catalog(&self) -> &MaterialCatalog {
+        self.foundation.material_catalog()
+    }
     #[must_use]
     pub fn staffing(&self) -> &StaffingComposition {
         self.foundation.labor()
@@ -183,6 +189,14 @@ pub struct EconomicContentHandle(
     // STYLE-EXCEPTION(EXC-04): one admitted foundation is shared across worker and reader threads.
     Arc<EconomicContentAdmission>,
 );
+impl EconomicContentHandle {
+    /// The one immutable definition set this admission shares with every clone.
+    #[must_use]
+    pub fn material_catalog(&self) -> &MaterialCatalog {
+        self.0.material_catalog()
+    }
+}
+
 impl EconomicContentHandle {
     pub(crate) fn new(admission: EconomicContentAdmission) -> Self {
         // STYLE-EXCEPTION(EXC-04): first shared owner of the admitted foundation.
@@ -319,4 +333,38 @@ pub fn admit_economic_content(
     }
     admitted.validate_header(duration, content, foundation, tick)?;
     Ok(admitted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::michigan_content::MichiganContentPreset;
+    use crate::michigan_material::MichiganDeliveryPreset;
+
+    fn admission() -> EconomicContentAdmission {
+        EconomicContentAdmission::from_foundation(
+            MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+                .create_foundation(&crate::test_support::catalog())
+                .expect("the shipped numeric fixture founds a campaign"),
+        )
+        .expect("the admitted foundation carries the economic catalog")
+    }
+
+    #[test]
+    fn economic_content_handle_shares_one_material_catalog_across_clones() {
+        let handle = EconomicContentHandle::new(admission());
+        let clone = handle.clone();
+        assert!(std::ptr::eq(
+            handle.material_catalog(),
+            clone.material_catalog()
+        ));
+        assert_eq!(
+            handle.material_catalog().catalog_digest,
+            handle.initial_register().catalog_digest()
+        );
+        assert_eq!(
+            handle.material_catalog(),
+            handle.foundation().material_catalog()
+        );
+    }
 }

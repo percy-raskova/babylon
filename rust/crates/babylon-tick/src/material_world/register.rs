@@ -55,7 +55,7 @@ use babylon_material_circuit::UnitId;
 use babylon_material_circuit::MAX_ROUTE_STAGES_PER_ROUTE;
 
 use babylon_material_circuit::{
-    MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition,
+    MaterialCatalog, MaterialCircuitError, MaterialCircuitState, MaterialCircuitTransition,
 };
 
 use babylon_kernel::content_digest;
@@ -217,6 +217,8 @@ pub struct MaterialWorldRegister {
     state: MaterialCircuitState,
     organizer: Option<(OrganizerConfig, OrganizerState)>,
     canonical_bytes: SharedCanonicalBytes,
+    /// Digest of the immutable catalog that admitted this register's state frame.
+    catalog_digest: [u8; 32],
     digest: [u8; 32],
 }
 
@@ -257,13 +259,36 @@ impl MaterialWorldRegister {
     /// # Errors
     /// Refuses invalid circuit state, period mismatch, overflow or aggregate byte bound.
     pub fn try_new(
+        catalog: &MaterialCatalog,
         completed_tick: u64,
         state: MaterialCircuitState,
     ) -> Result<Self, MaterialWorldError> {
-        Self::build(completed_tick, state, None)
+        Self::build(catalog, completed_tick, state, None)
+    }
+
+    /// Admit one engine-produced canonical successor without a second decode pass.
+    ///
+    /// The caller supplies the immutable catalog and a state that already passed
+    /// the engine's own canonical admission. This path encodes the state exactly
+    /// once to mint the register bytes; it never drops the candidate and decodes
+    /// it again merely to recover the value it already owns.
+    /// # Errors
+    /// Refuses a zero period, an invalid circuit state under the catalog, or the
+    /// aggregate register byte bound.
+    pub fn from_validated_candidate(
+        catalog: &MaterialCatalog,
+        state: MaterialCircuitState,
+    ) -> Result<Self, MaterialWorldError> {
+        let completed_tick = state
+            .period
+            .checked_sub(1)
+            .ok_or(MaterialWorldError::PeriodMismatch)?;
+        let state_bytes = babylon_material_circuit::encode_material_circuit_state(catalog, &state)?;
+        Self::assemble(catalog, completed_tick, state, None, &state_bytes)
     }
 
     fn build(
+        catalog: &MaterialCatalog,
         completed_tick: u64,
         state: MaterialCircuitState,
         organizer: Option<(OrganizerConfig, OrganizerState)>,
@@ -275,13 +300,14 @@ impl MaterialWorldRegister {
         {
             return Err(MaterialWorldError::PeriodMismatch);
         }
-        let state_bytes = babylon_material_circuit::encode_material_circuit_state(&state)?;
+        let state_bytes = babylon_material_circuit::encode_material_circuit_state(catalog, &state)?;
         drop(state);
-        let state = babylon_material_circuit::decode_material_circuit_state(&state_bytes)?;
-        Self::assemble(completed_tick, state, organizer, &state_bytes)
+        let state = babylon_material_circuit::decode_material_circuit_state(catalog, &state_bytes)?;
+        Self::assemble(catalog, completed_tick, state, organizer, &state_bytes)
     }
 
     fn assemble(
+        catalog: &MaterialCatalog,
         completed_tick: u64,
         state: MaterialCircuitState,
         organizer: Option<(OrganizerConfig, OrganizerState)>,
@@ -311,6 +337,7 @@ impl MaterialWorldRegister {
             state,
             organizer,
             canonical_bytes: SharedCanonicalBytes::from_vec(bytes),
+            catalog_digest: catalog.catalog_digest,
             digest,
         })
     }
@@ -320,10 +347,16 @@ impl MaterialWorldRegister {
     /// Refuses invalid content/state, mismatched periods, or aggregate byte limits.
     pub fn with_organizer(
         self,
+        catalog: &MaterialCatalog,
         config: OrganizerConfig,
         state: OrganizerState,
     ) -> Result<Self, MaterialWorldError> {
-        Self::build(self.completed_tick, self.state, Some((config, state)))
+        Self::build(
+            catalog,
+            self.completed_tick,
+            self.state,
+            Some((config, state)),
+        )
     }
 
     #[must_use]
@@ -356,22 +389,30 @@ impl MaterialWorldRegister {
     pub const fn digest(&self) -> [u8; 32] {
         self.digest
     }
-
-    /// Decode the exact complete register, including canonical state revalidation.
-    /// # Errors
-    /// Refuses unsupported/truncated/trailing/noncanonical bytes and invalid state.
-    pub fn decode(bytes: &[u8]) -> Result<Self, MaterialWorldError> {
-        Self::decode_canonical(Cow::Borrowed(bytes))
+    /// Digest of the immutable catalog this register was admitted under.
+    #[must_use]
+    pub const fn catalog_digest(&self) -> [u8; 32] {
+        self.catalog_digest
     }
 
-    /// Decode an owned canonical register without retaining a second byte owner.
+    /// Decode stored or external register bytes against their admitting catalog.
+    ///
+    /// External bytes carry no definitions; the campaign's captured catalog is
+    /// the only provenance that can authenticate them, so the caller supplies it.
     /// # Errors
-    /// Refuses unsupported/truncated/trailing/noncanonical bytes and invalid state.
-    pub fn decode_owned(bytes: Vec<u8>) -> Result<Self, MaterialWorldError> {
-        Self::decode_canonical(Cow::Owned(bytes))
+    /// Refuses unsupported/truncated/trailing/noncanonical bytes, a foreign
+    /// catalog digest and invalid state.
+    pub fn decode_external(
+        catalog: &MaterialCatalog,
+        bytes: Vec<u8>,
+    ) -> Result<Self, MaterialWorldError> {
+        Self::decode_canonical(catalog, Cow::Owned(bytes))
     }
 
-    fn decode_canonical(bytes: Cow<'_, [u8]>) -> Result<Self, MaterialWorldError> {
+    fn decode_canonical(
+        catalog: &MaterialCatalog,
+        bytes: Cow<'_, [u8]>,
+    ) -> Result<Self, MaterialWorldError> {
         let header = REGISTER_DOMAIN.len() + 20;
         if bytes.len() < header
             || bytes.len() > MAX_MATERIAL_WORLD_REGISTER_BYTES
@@ -419,13 +460,14 @@ impl MaterialWorldRegister {
             }
             _ => return Err(MaterialWorldError::Wire),
         };
-        let state = babylon_material_circuit::decode_material_circuit_state(state_bytes)?;
+        let state = babylon_material_circuit::decode_material_circuit_state(catalog, state_bytes)?;
         if tick.checked_add(1).ok_or(MaterialWorldError::Arithmetic)? != state.period {
             return Err(MaterialWorldError::PeriodMismatch);
         }
         // Validate the same canonical circuit and bound organizer as construction,
         // without assembling a second full outer register during admission.
-        let canonical_state = babylon_material_circuit::encode_material_circuit_state(&state)?;
+        let canonical_state =
+            babylon_material_circuit::encode_material_circuit_state(catalog, &state)?;
         let canonical_organizer = encode_bound_organizer(tick, &state, organizer.as_ref())?;
         let canonical_length = header
             .checked_add(canonical_state.len())
@@ -449,6 +491,7 @@ impl MaterialWorldRegister {
             state,
             organizer,
             canonical_bytes,
+            catalog_digest: catalog.catalog_digest,
             digest,
         })
     }
@@ -458,14 +501,18 @@ impl MaterialWorldRegister {
     /// dispatch and following-period commitments in its governed order.
     /// # Errors
     /// Refuses any circuit or receipt encoding failure without changing this owner.
-    pub fn prepare_next(&self) -> Result<PreparedMaterialWorld, MaterialWorldError> {
-        let transition = babylon_material_circuit::advance_material_circuit(&self.state)?;
-        self.prepare_transition(transition, None)
+    pub fn prepare_next(
+        &self,
+        catalog: &MaterialCatalog,
+    ) -> Result<PreparedMaterialWorld, MaterialWorldError> {
+        let transition = babylon_material_circuit::advance_material_circuit(catalog, &self.state)?;
+        self.prepare_transition(catalog, transition, None)
     }
 
     /// Seal the result of the shared closed-period planner on this exact opening.
     pub(crate) fn prepare_transition(
         &self,
+        catalog: &MaterialCatalog,
         transition: MaterialCircuitTransition,
         commitment: Option<&OrganizerCommitment>,
     ) -> Result<PreparedMaterialWorld, MaterialWorldError> {
@@ -475,7 +522,7 @@ impl MaterialWorldRegister {
         let receipts = encode_material_receipts(self.state.period, &transition)?;
         let organizer_facts = self
             .organizer_config()
-            .map(|config| organizer_workplace_facts(config, &self.state, &transition))
+            .map(|config| organizer_workplace_facts(config, catalog, &self.state, &transition))
             .transpose()?;
         let organizer_aid_support = match (self.organizer_config(), self.organizer_state()) {
             (Some(config), Some(organizer)) => {
@@ -494,11 +541,7 @@ impl MaterialWorldRegister {
             None if transition.collections.is_empty() => None,
             None => return Err(MaterialWorldError::Wire),
         };
-        let next = self
-            .completed_tick
-            .checked_add(1)
-            .ok_or(MaterialWorldError::Arithmetic)?;
-        let register = Self::try_new(next, transition.state)?;
+        let register = Self::from_validated_candidate(catalog, transition.state)?;
         Ok(PreparedMaterialWorld {
             prior_digest: self.digest,
             register,
@@ -537,6 +580,7 @@ impl PreparedMaterialWorld {
 
     pub(crate) fn set_organizer_with_household_time(
         &mut self,
+        catalog: &MaterialCatalog,
         config: OrganizerConfig,
         organizer: OrganizerState,
     ) -> Result<(), MaterialWorldError> {
@@ -548,6 +592,7 @@ impl PreparedMaterialWorld {
         )?;
         let mut state = self.register.state.clone();
         babylon_material_circuit::consume_household_contributions(
+            catalog,
             &mut state,
             self.register.completed_tick,
             &uses,
@@ -555,6 +600,7 @@ impl PreparedMaterialWorld {
         // Contributions debit a separate ledger; the material time partition is
         // still the gross supply actually closed before later political work.
         self.register = MaterialWorldRegister::build(
+            catalog,
             self.register.completed_tick,
             state,
             Some((config, organizer)),
@@ -568,10 +614,12 @@ impl PreparedMaterialWorld {
 
     pub(crate) fn set_organizer(
         &mut self,
+        catalog: &MaterialCatalog,
         config: OrganizerConfig,
         state: OrganizerState,
     ) -> Result<(), MaterialWorldError> {
         self.register = MaterialWorldRegister::build(
+            catalog,
             self.register.completed_tick,
             self.register.state.clone(),
             Some((config, state)),
@@ -643,11 +691,12 @@ pub(crate) fn take_organizer_section<'a>(
 
 pub(crate) fn organizer_workplace_facts(
     config: &OrganizerConfig,
+    catalog: &MaterialCatalog,
     opening: &MaterialCircuitState,
     transition: &MaterialCircuitTransition,
 ) -> Result<OrganizerWorkplaceFacts, MaterialWorldError> {
     let process_id = babylon_material_circuit::ProcessId::from_bytes(config.workplace_process_id);
-    let output = opening
+    let output = catalog
         .process_outputs
         .iter()
         .find(|row| row.process_id == process_id)
@@ -657,14 +706,14 @@ pub(crate) fn organizer_workplace_facts(
         .iter()
         .find(|row| row.process_id == process_id)
         .map_or(0, |receipt| receipt.produced_batches);
-    let labor = opening
+    let labor = catalog
         .labor_coefficients
         .iter()
         .find(|row| row.process_id == process_id)
         .ok_or(MaterialWorldError::Wire)?;
     let (maintenance_enabled_batches, maintenance_consumed_batches, maintenance_expired_batches) =
         match (
-            &opening.maintenance_binding,
+            &catalog.maintenance_binding,
             &opening.maintenance_service,
             &transition.maintenance,
         ) {
@@ -687,7 +736,7 @@ pub(crate) fn organizer_workplace_facts(
             }
             _ => return Err(MaterialWorldError::Wire),
         };
-    let mass = opening
+    let mass = catalog
         .commodities
         .iter()
         .find(|row| row.good_id == output.good_id && row.unit_id == output.unit_id)
@@ -697,7 +746,8 @@ pub(crate) fn organizer_workplace_facts(
         .ok_or(MaterialWorldError::Arithmetic)?;
     let output_grams = u128::from(produced_units)
         .checked_mul(u128::from(
-            mass.grams_per_unit()
+            catalog
+                .grams_per_unit(mass.good_id, mass.unit_id)
                 .map_err(|_| MaterialWorldError::Wire)?,
         ))
         .ok_or(MaterialWorldError::Arithmetic)?;

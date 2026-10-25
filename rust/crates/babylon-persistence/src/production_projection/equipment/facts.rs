@@ -8,8 +8,8 @@ use babylon_kernel::currency::Currency;
 
 use babylon_material_circuit::{
     CapacitySupply, CircuitAccounting, EquipmentAssetId, EquipmentBinding, EquipmentDefinition,
-    EquipmentDefinitionId, GoodId, MaterialCircuitState, ProcessId, ProductiveEquipment,
-    RollingProcessSupply, SiteId, UnitId,
+    EquipmentDefinitionId, GoodId, MaterialCatalog, MaterialCircuitState, ProcessId,
+    ProductiveEquipment, RollingProcessSupply, SiteId, UnitId,
 };
 
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -34,9 +34,9 @@ pub(in crate::production_projection) struct EquipmentFacts {
 }
 
 pub(in crate::production_projection) fn get(
-    state: &MaterialCircuitState,
+    catalog: &MaterialCatalog,
 ) -> Option<&ProductiveEquipment> {
-    match &state.capacity_supply {
+    match &catalog.capacity_policy {
         CapacitySupply::Rolling(s) => match &s.processes {
             RollingProcessSupply::Equipment(e) => Some(e),
             RollingProcessSupply::CapturedNameplate(_) => None,
@@ -93,55 +93,52 @@ impl<'a> Definitions<'a> {
 }
 
 pub(in crate::production_projection) fn validate(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
 ) -> Result<EquipmentFacts> {
-    let (before, after) = match (get(prior), get(current)) {
-        (None, None)
-            if receipt.installation.is_empty()
-                && receipt.equipment_wear.is_empty()
-                && receipt.investment.is_empty()
-                && receipt.installation_decisions.is_empty() =>
+    let Some(equipment) = get(catalog) else {
+        if receipt.installation.is_empty()
+            && receipt.equipment_wear.is_empty()
+            && receipt.investment.is_empty()
+            && receipt.installation_decisions.is_empty()
         {
-            return Ok(EquipmentFacts::default())
+            return Ok(EquipmentFacts::default());
         }
-        (Some(a), Some(b)) => (a, b),
-        _ => return Err(ProductionProjectionError::State),
+        return Err(ProductionProjectionError::State);
     };
-    if prior.period.checked_add(1) != Some(current.period)
-        || receipt.resolve_tick != prior.period
-        || before.definitions != after.definitions
-        || before.bindings != after.bindings
-        || before.installation_inputs != after.installation_inputs
-        || before.installation_policies != after.installation_policies
-        || before.investment_policies != after.investment_policies
-    {
+    if prior.period.checked_add(1) != Some(current.period) || receipt.resolve_tick != prior.period {
         return Err(ProductionProjectionError::State);
     }
-    let definitions = Definitions::new(before)?;
+    let position = &prior.capacity_reservations.equipment;
+    let closing = &current.capacity_reservations.equipment;
+    let definitions = Definitions::new(equipment)?;
     let mut assets = asset_book(prior)?;
-    let mut cohorts = wear::reconcile(prior, before, receipt, &definitions, &mut assets)?;
-    decisions::validate(prior, before, receipt, &definitions, &cohorts)?;
+    let mut cohorts = wear::reconcile(prior, position, receipt, &definitions, &mut assets)?;
+    decisions::validate(prior, position, equipment, receipt, &definitions, &cohorts)?;
     let (pending, facts) = installation::reconcile(
         prior,
-        before,
+        position,
+        equipment,
         receipt,
         &definitions,
         &mut assets,
         &mut cohorts,
     )?;
-    let closing_cohorts: BTreeMap<_, _> = after.cohorts.iter().map(|r| (r.id, r.clone())).collect();
-    let closing_pending: BTreeMap<_, _> = after.pending.iter().map(|r| (r.id, r.clone())).collect();
-    if closing_cohorts.len() != after.cohorts.len()
-        || closing_pending.len() != after.pending.len()
+    let closing_cohorts: BTreeMap<_, _> =
+        closing.cohorts.iter().map(|r| (r.id, r.clone())).collect();
+    let closing_pending: BTreeMap<_, _> =
+        closing.pending.iter().map(|r| (r.id, r.clone())).collect();
+    if closing_cohorts.len() != closing.cohorts.len()
+        || closing_pending.len() != closing.pending.len()
         || cohorts != closing_cohorts
         || pending != closing_pending
         || assets != asset_book(current)?
     {
         return Err(ProductionProjectionError::State);
     }
-    validate_capacity(current)?;
+    validate_capacity(catalog, current)?;
     Ok(facts)
 }
 
@@ -185,14 +182,15 @@ pub(in crate::production_projection) fn add_cost<K: Ord>(
 }
 
 pub(in crate::production_projection) fn validate_capacity(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
 ) -> Result<()> {
-    let CapacitySupply::Rolling(supply) = &state.capacity_supply else {
+    let CapacitySupply::Rolling(supply) = &catalog.capacity_policy else {
         return Err(ProductionProjectionError::State);
     };
     let expected: BTreeMap<_, _> = supply
         .processes
-        .capacities(state.period)
+        .capacities(&state.capacity_reservations.equipment.cohorts, state.period)
         .map_err(|_| ProductionProjectionError::State)?
         .into_iter()
         .map(|r| ((r.site_id, r.process_id), r.batches_per_period))

@@ -29,7 +29,7 @@ use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::clock::CampaignDuration;
 use babylon_kernel::content_digest;
 use babylon_material_circuit::{
-    AidResolveInput, AidTransport, CircuitAccounting, MaterialCircuitError,
+    AidResolveInput, AidTransport, CircuitAccounting, MaterialCatalog, MaterialCircuitError,
 };
 use babylon_practice_contract::{OrderedPracticeActionBatch, OrganizerCommitment};
 use std::fmt::Formatter;
@@ -86,6 +86,7 @@ impl From<MaterialStaffingError> for MaterialBaseError {
 }
 
 pub(crate) struct MaterialBaseInputs<'a> {
+    pub(crate) catalog: &'a MaterialCatalog,
     pub(crate) opening: &'a MaterialWorldRegister,
     pub(crate) labor: &'a StaffingComposition,
     pub(crate) commitment: Option<&'a OrganizerCommitment>,
@@ -209,6 +210,7 @@ impl MaterialBaseInputs<'_> {
                 _ => return Err(MaterialWorldError::Wire.into()),
             };
             let closed = babylon_material_circuit::close_material_period_with_support(
+                self.catalog,
                 self.opening.state(),
                 &aid_inputs,
                 &collection_inputs,
@@ -218,7 +220,7 @@ impl MaterialBaseInputs<'_> {
                 .iter()
                 .map(|row| row.pool().clone())
                 .collect::<Vec<_>>();
-            let requests = closed.staffing_requests(&bindings)?;
+            let requests = closed.staffing_requests(self.catalog, &bindings)?;
             let effects = material_staffing::apply_material_staffing(
                 graph,
                 context,
@@ -227,13 +229,14 @@ impl MaterialBaseInputs<'_> {
                 &requests,
             )?;
             let mut transition = closed.finish_with_workforce(
+                self.catalog,
                 effects.next_labor().to_vec(),
                 effects.next_member_labor().to_vec(),
             )?;
             transition.staffing_members = effects.member_receipts().to_vec();
             Ok((
                 self.opening
-                    .prepare_transition(transition, self.commitment)?,
+                    .prepare_transition(self.catalog, transition, self.commitment)?,
                 Some(effects),
             ))
         }
@@ -415,6 +418,7 @@ impl IdentifiedMaterialTick {
 pub struct MaterialReplaySession<G> {
     graph: ReplayTickSession<G>,
     material: MaterialWorldRegister,
+    catalog: MaterialCatalog,
     foundation_digest: [u8; 32],
     duration: CampaignDuration,
     labor: StaffingComposition,
@@ -454,6 +458,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
     pub fn new(
         graph: ReplayTickSession<G>,
         material: MaterialWorldRegister,
+        catalog: MaterialCatalog,
         foundation_digest: [u8; 32],
         duration: CampaignDuration,
         labor: StaffingComposition,
@@ -464,12 +469,16 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         if duration.validate().is_err() {
             return Err(MaterialReplayError::Horizon);
         }
+        if material.catalog_digest() != catalog.catalog_digest {
+            return Err(MaterialReplayError::Material(MaterialWorldError::Wire));
+        }
         graph.validate_material_cycle()?;
         graph.validate_organizer_cycle(material.organizer_state().is_some())?;
         graph.validate_staffing_ownership()?;
         Ok(Self {
             graph,
             material,
+            catalog,
             foundation_digest,
             duration,
             labor,
@@ -482,6 +491,11 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
     #[must_use]
     pub const fn material(&self) -> &MaterialWorldRegister {
         &self.material
+    }
+    /// The immutable definitions this session advances beneath.
+    #[must_use]
+    pub fn catalog(&self) -> &MaterialCatalog {
+        &self.catalog
     }
     #[must_use]
     pub const fn completed_tick(&self) -> u64 {
@@ -543,6 +557,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         let (graph, material) = self.graph.prepare_material_advance(
             actions,
             MaterialBaseInputs {
+                catalog: &self.catalog,
                 opening: &self.material,
                 labor: &self.labor,
                 commitment,
@@ -561,6 +576,9 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         })
     }
     /// Preflight all owners, commit once, then publish both components using only infallible moves.
+    ///
+    /// The callback receives this session's admitting catalog, so a durable
+    /// writer can authenticate the stored frame without a second catalog owner.
     /// # Errors
     /// Returns a stale/allocation preflight or the durable operation's precise error.
     pub fn commit_prepared_and_publish<E, F>(
@@ -570,7 +588,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         commit: F,
     ) -> Result<(IdentifiedMaterialTick, ReplayCommitDisposition), MaterialCommitError<E>>
     where
-        F: FnOnce(&IdentifiedMaterialTick) -> Result<ReplayCommitDisposition, E>,
+        F: FnOnce(&IdentifiedMaterialTick, &MaterialCatalog) -> Result<ReplayCommitDisposition, E>,
     {
         if prepared.material.prior_digest() != self.material.digest()
             || prepared.identity.foundation_digest != self.foundation_digest
@@ -582,7 +600,9 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         }
         let (_, disposition) = self
             .graph
-            .commit_prepared_and_publish(sink, prepared.graph, |_| commit(&prepared.identity))
+            .commit_prepared_and_publish(sink, prepared.graph, |_| {
+                commit(&prepared.identity, &self.catalog)
+            })
             .map_err(|error| match error {
                 PreparedReplayCommitError::Preflight(error) => {
                     MaterialCommitError::Preflight(MaterialReplayError::Graph(error))
@@ -606,7 +626,10 @@ impl MaterialReplaySession<HypergraphStore> {
         material: MaterialWorldRegister,
     ) -> Result<(), MaterialReplayError> {
         let tick = material.completed_tick();
-        if tick == 0 || !self.duration.contains(tick) {
+        if tick == 0
+            || !self.duration.contains(tick)
+            || material.catalog_digest() != self.catalog.catalog_digest
+        {
             return Err(MaterialReplayError::Horizon);
         }
         let tick = i64::try_from(tick).map_err(|_| MaterialReplayError::Identity)?;

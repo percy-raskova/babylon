@@ -18,7 +18,7 @@ use fixture::Session;
 use uuid::Uuid;
 
 fn snapshot(session: &Session) -> OrganizerSnapshot {
-    audit::material_disclosure(session.material(), session.duration())
+    audit::material_disclosure(session.catalog(), session.material(), session.duration())
         .expect("the fixture call `material_disclosure` succeeds for the authored inputs")
 }
 fn start(
@@ -69,7 +69,7 @@ fn start(
     .expect("the organizer preview builds");
     let mut audit = Audit::default();
     audit
-        .open(session.material(), &before)
+        .open(session.catalog(), session.material(), &before)
         .expect("the fixture opens the authored source");
     (session, audit, before, preview, commitment)
 }
@@ -149,7 +149,7 @@ fn real_configured_aid_separates_consumption_from_independent_participation() {
         assert_eq!(audit.report()["accepted_original_commands"], 1);
         let (admitted, after) = advance(&mut session, Some(&commitment));
         let fact = audit
-            .read(&admitted, session.material(), &after)
+            .read(session.catalog(), &admitted, session.material(), &after)
             .expect("the fixture reader returns its authored facts");
         assert_eq!(after.aid_resolutions[0].practice.outcome, outcome);
         assert!(fact
@@ -177,7 +177,7 @@ fn original_remote_offer_survives_arrival_without_repeated_dispatch_charges() {
         .expect("the fixture call `accept` succeeds for the authored inputs");
     let (first, after) = advance(&mut session, Some(&commitment));
     audit
-        .read(&first, session.material(), &after)
+        .read(session.catalog(), &first, session.material(), &after)
         .expect("the fixture reader returns its authored facts");
     assert_eq!(
         after.aid_resolutions[0].practice.outcome,
@@ -185,7 +185,7 @@ fn original_remote_offer_survives_arrival_without_repeated_dispatch_charges() {
     );
     let (second, after) = advance(&mut session, None);
     let fact = audit
-        .read(&second, session.material(), &after)
+        .read(session.catalog(), &second, session.material(), &after)
         .expect("the fixture reader returns its authored facts");
     assert_eq!(
         after.aid_resolutions[0].practice.outcome,
@@ -215,14 +215,14 @@ fn another_campaign_cannot_replace_the_opening_or_advance_an_empty_prefix() {
         false,
     );
     assert_eq!(
-        audit.open(other.material(), &snapshot(&other)),
+        audit.open(other.catalog(), other.material(), &snapshot(&other)),
         Err(Refusal::Identity)
     );
     let (admitted, after) = advance(&mut other, None);
     assert!(admitted.receipts.aid.is_empty());
     assert_eq!(
         audit
-            .read(&admitted, other.material(), &after)
+            .read(other.catalog(), &admitted, other.material(), &after)
             .expect_err("the malformed read request is refused"),
         Refusal::Identity
     );
@@ -283,7 +283,7 @@ fn late_refusal_does_not_publish_a_partial_aid_fold() {
     let original = audit.report();
     assert_eq!(
         audit
-            .read(&admitted, session.material(), &after)
+            .read(session.catalog(), &admitted, session.material(), &after)
             .expect_err("the malformed read request is refused"),
         Refusal::OriginalOffer
     );
@@ -301,18 +301,18 @@ fn late_refusal_does_not_publish_a_partial_aid_fold() {
         .contributor_id += 1;
     assert_eq!(
         audit
-            .read(&crossed, session.material(), &after)
+            .read(session.catalog(), &crossed, session.material(), &after)
             .expect_err("the malformed read request is refused"),
         Refusal::Time
     );
     assert_eq!(audit.report(), original);
     audit
-        .read(&admitted, session.material(), &after)
+        .read(session.catalog(), &admitted, session.material(), &after)
         .expect("the fixture reader returns its authored facts");
     let original = audit.report();
     assert_eq!(
         audit
-            .read(&admitted, session.material(), &after)
+            .read(session.catalog(), &admitted, session.material(), &after)
             .expect_err("the malformed read request is refused"),
         Refusal::Period
     );

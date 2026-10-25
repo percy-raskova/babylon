@@ -5,8 +5,8 @@ use super::lifecycle::PeriodOrders;
 use super::ProductionProjectionError;
 use crate::production_observation::ProductionOutboundKind;
 use babylon_material_circuit::{
-    GoodId, MaterialCircuitState, OrderId, OutboundOrderId, RouteId, SiteId, SupplierRoute,
-    SupplierTransport, UnitId,
+    GoodId, MaterialCatalog, MaterialCircuitState, OrderId, OutboundOrderId, RouteId, SiteId,
+    SupplierRoute, SupplierTransport, UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::BTreeMap;
@@ -29,8 +29,8 @@ pub(super) struct OutboundFact {
     pub grams_per_unit: u64,
 }
 
-pub(super) fn mass(state: &MaterialCircuitState, good: GoodId, unit: UnitId) -> Result<u64> {
-    let mut rows = state
+pub(super) fn mass(catalog: &MaterialCatalog, good: GoodId, unit: UnitId) -> Result<u64> {
+    let mut rows = catalog
         .commodities
         .iter()
         .filter(|row| row.good_id == good && row.unit_id == unit);
@@ -43,6 +43,7 @@ pub(super) fn mass(state: &MaterialCircuitState, good: GoodId, unit: UnitId) -> 
 }
 
 pub(super) fn completed_facts(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
@@ -50,20 +51,15 @@ pub(super) fn completed_facts(
     if prior.period.checked_add(1) != Some(current.period) || receipt.resolve_tick != prior.period {
         return Err(ProductionProjectionError::History);
     }
-    if !same_rows(&prior.supplier_routes, &current.supplier_routes)
-        || !same_rows(&prior.commodities, &current.commodities)
-        || !same_rows(&prior.merchants, &current.merchants)
-        || !same_rows(&prior.handling_coefficients, &current.handling_coefficients)
-        || !same_rows(
-            &prior.final_demand_principals,
-            &current.final_demand_principals,
-        )
-    {
+    if !same_rows(
+        &prior.final_demand_principals,
+        &current.final_demand_principals,
+    ) {
         return Err(ProductionProjectionError::State);
     }
-    let orders = super::lifecycle::join(prior, current, receipt)?;
-    let mut facts = delivery_facts(prior, &orders, receipt)?;
-    facts.extend(final_facts(prior, &orders, receipt)?);
+    let orders = super::lifecycle::join(catalog, prior, current, receipt)?;
+    let mut facts = delivery_facts(catalog, &orders, receipt)?;
+    facts.extend(final_facts(catalog, &orders, receipt)?);
     Ok(facts)
 }
 
@@ -77,11 +73,9 @@ pub(super) fn same_rows<T: Clone + Ord>(before: &[T], after: &[T]) -> bool {
 
 type RelationKey = (SiteId, SiteId, GoodId, UnitId);
 
-fn supplier_relations(
-    prior: &MaterialCircuitState,
-) -> Result<BTreeMap<RelationKey, &SupplierRoute>> {
+fn supplier_relations(catalog: &MaterialCatalog) -> Result<BTreeMap<RelationKey, &SupplierRoute>> {
     let mut relations = BTreeMap::new();
-    for r in &prior.supplier_routes {
+    for r in &catalog.supplier_routes {
         if relations
             .insert(
                 (r.buyer_site_id, r.supplier_site_id, r.good_id, r.unit_id),
@@ -96,7 +90,7 @@ fn supplier_relations(
 }
 
 fn delivery_facts(
-    prior: &MaterialCircuitState,
+    catalog: &MaterialCatalog,
     orders: &PeriodOrders,
     receipt: &MaterialTickReceipts,
 ) -> Result<Vec<OutboundFact>> {
@@ -123,7 +117,7 @@ fn delivery_facts(
             return Err(ProductionProjectionError::State);
         }
     }
-    let relations = supplier_relations(prior)?;
+    let relations = supplier_relations(catalog)?;
     let mut facts = Vec::new();
     for (order, _) in orders.deliveries.values().filter(|(row, _)| {
         !orders
@@ -192,7 +186,7 @@ fn delivery_facts(
                 .ordered
                 .checked_sub(closing.shipped)
                 .ok_or(ProductionProjectionError::State)?,
-            grams_per_unit: mass(prior, order.good_id, order.unit_id)?,
+            grams_per_unit: mass(catalog, order.good_id, order.unit_id)?,
         });
     }
     if !next.is_empty() || !dispatches.is_empty() || !local.is_empty() {
@@ -202,7 +196,7 @@ fn delivery_facts(
 }
 
 fn final_facts(
-    prior: &MaterialCircuitState,
+    catalog: &MaterialCatalog,
     orders: &PeriodOrders,
     receipt: &MaterialTickReceipts,
 ) -> Result<Vec<OutboundFact>> {
@@ -265,7 +259,7 @@ fn final_facts(
                 .ordered
                 .checked_sub(closing.fulfilled)
                 .ok_or(ProductionProjectionError::State)?,
-            grams_per_unit: mass(prior, order.good_id, order.unit_id)?,
+            grams_per_unit: mass(catalog, order.good_id, order.unit_id)?,
         });
     }
     if !next.is_empty() || !movements.is_empty() {

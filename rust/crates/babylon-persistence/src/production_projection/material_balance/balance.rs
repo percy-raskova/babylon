@@ -6,7 +6,7 @@ use crate::michigan_material::MichiganMaterialCatalog;
 use std::collections::{BTreeMap, BTreeSet};
 
 use babylon_material_circuit::{
-    GoodId, MaterialCircuitState, OrderId, OrderRow, ProcessId, SiteId, UnitId,
+    GoodId, MaterialCatalog, MaterialCircuitState, OrderId, OrderRow, ProcessId, SiteId, UnitId,
 };
 
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -108,11 +108,12 @@ pub(in crate::production_projection) struct Movement {
 #[cfg(test)]
 pub(in crate::production_projection) fn project_material_balance(
     catalog: &MichiganMaterialCatalog,
+    material_catalog: &MaterialCatalog,
     current: &MaterialCircuitState,
     prior: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
 ) -> Result<Option<CompletedMaterialBalance>, ProductionProjectionError> {
-    project_with_labels(current, prior, receipt, |good, unit| {
+    project_with_labels(material_catalog, current, prior, receipt, |good, unit| {
         catalog
             .goods()
             .iter()
@@ -122,12 +123,13 @@ pub(in crate::production_projection) fn project_material_balance(
 }
 
 pub(in crate::production_projection) fn project_with_labels(
+    catalog: &MaterialCatalog,
     current: &MaterialCircuitState,
     prior: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
     labels: impl Fn(GoodId, UnitId) -> Option<(String, String)>,
 ) -> Result<Option<CompletedMaterialBalance>, ProductionProjectionError> {
-    let maintenance = super::super::maintenance::completed(current, prior, receipt)?;
+    let maintenance = super::super::maintenance::completed(catalog, current, prior, receipt)?;
     let (prior, receipt) = match (prior, receipt) {
         (None, None) if current.period == 1 => return Ok(None),
         (Some(prior), Some(receipt))
@@ -139,18 +141,23 @@ pub(in crate::production_projection) fn project_with_labels(
         }
         _ => return Err(ProductionProjectionError::History),
     };
-    super::super::outbound::completed_facts(prior, current, receipt)?;
-    super::super::services::validate(prior, current, receipt)?;
-    let equipment = super::super::equipment::validate(prior, current, receipt)?;
-    let processes = process_map(prior)?;
-    let joined = super::super::lifecycle::join(prior, current, receipt)?;
+    super::super::outbound::completed_facts(catalog, prior, current, receipt)?;
+    super::super::services::validate(catalog, prior, current, receipt)?;
+    let equipment = super::super::equipment::validate(catalog, prior, current, receipt)?;
+    let processes = process_map(catalog)?;
+    let joined = super::super::lifecycle::join(catalog, prior, current, receipt)?;
     let orders = order_map(joined.deliveries.values().map(|(before, _)| before))?;
-    if processes != process_map(current)? {
-        return Err(ProductionProjectionError::State);
-    }
     let mut ledger = inventory_ledger(prior, current)?;
-    add_production(prior, receipt, &processes, &mut ledger)?;
-    add_transport(prior, current, receipt, &orders, &joined, &mut ledger)?;
+    add_production(catalog, prior, receipt, &processes, &mut ledger)?;
+    add_transport(
+        catalog,
+        prior,
+        current,
+        receipt,
+        &orders,
+        &joined,
+        &mut ledger,
+    )?;
     add_final_demand(prior, receipt, &mut ledger)?;
     if let Some(done) = maintenance {
         let binding = &done.binding;
@@ -183,10 +190,10 @@ pub(in crate::production_projection) fn project_with_labels(
 }
 
 pub(in crate::production_projection) fn process_map(
-    state: &MaterialCircuitState,
+    catalog: &MaterialCatalog,
 ) -> Result<Processes, ProductionProjectionError> {
     let mut processes = Processes::new();
-    for row in &state.process_outputs {
+    for row in &catalog.process_outputs {
         if row.quantity_per_batch == 0
             || processes
                 .insert(
@@ -202,7 +209,7 @@ pub(in crate::production_projection) fn process_map(
             return Err(ProductionProjectionError::State);
         }
     }
-    for row in &state.input_coefficients {
+    for row in &catalog.input_coefficients {
         let process = processes
             .get_mut(&row.process_id)
             .ok_or(ProductionProjectionError::State)?;
@@ -271,6 +278,7 @@ pub(in crate::production_projection) fn inventory_ledger(
 }
 
 pub(in crate::production_projection) fn add_production(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
     processes: &Processes,
@@ -288,7 +296,7 @@ pub(in crate::production_projection) fn add_production(
             return Err(ProductionProjectionError::State);
         }
     }
-    let services = super::super::services::service_kinds(prior);
+    let services = super::super::services::service_kinds(catalog);
     // Declared but idle durable principals have honest zero-flow rows.
     for process in processes.values() {
         if !services.contains(&(process.output.1, process.output.2)) {
@@ -338,6 +346,7 @@ pub(in crate::production_projection) fn add_production(
 }
 
 pub(in crate::production_projection) fn add_transport(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
@@ -355,7 +364,7 @@ pub(in crate::production_projection) fn add_transport(
             .or_default();
     }
     add_dispatches(current, receipt, orders, &mut movements, ledger)?;
-    add_losses(prior, receipt, orders, &mut movements)?;
+    add_losses(catalog, prior, receipt, orders, &mut movements)?;
     add_local_transfers(receipt, orders, &mut movements, ledger)?;
     for row in &receipt.arrivals {
         let principal = orders
@@ -469,18 +478,19 @@ pub(in crate::production_projection) fn add_dispatches(
 }
 
 pub(in crate::production_projection) fn add_losses(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
     orders: &Orders,
     movements: &mut Movements,
 ) -> Result<(), ProductionProjectionError> {
     let lots: BTreeMap<_, _> = prior.freight.iter().map(|lot| (lot.lot_id, lot)).collect();
-    let legs: BTreeMap<_, _> = prior
+    let legs: BTreeMap<_, _> = catalog
         .route_stages
         .iter()
         .map(|leg| ((leg.route_id, leg.stage_index), leg))
         .collect();
-    if lots.len() != prior.freight.len() || legs.len() != prior.route_stages.len() {
+    if lots.len() != prior.freight.len() || legs.len() != catalog.route_stages.len() {
         return Err(ProductionProjectionError::State);
     }
     let mut seen = BTreeSet::new();

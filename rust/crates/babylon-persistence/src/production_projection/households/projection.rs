@@ -347,7 +347,7 @@ mod tests {
                 4,
             ),
         ] {
-            let mut opening = super::super::super::recurring_fixture::opening();
+            let (catalog, mut opening) = super::super::super::recurring_fixture::materials();
             let CircuitAccounting::Monetary(economy) = &mut opening.accounting else {
                 panic!("monetary control");
             };
@@ -358,10 +358,10 @@ mod tests {
             recurring.households[0].kind = kind;
             recurring.households[0].households = count;
             recurring.household_needs[0].basis = basis;
-            let opening = MaterialWorldRegister::try_new(0, opening)
+            let opening = MaterialWorldRegister::try_new(&catalog, 0, opening)
                 .expect("the authored fixture satisfies the constructor invariants");
             let next = opening
-                .prepare_next()
+                .prepare_next(&catalog)
                 .expect("the fixture prepares the authored state");
             let mut receipts = material_world::decode_material_receipts(next.receipt_bytes())
                 .expect("the canonical bytes decode into the declared type");

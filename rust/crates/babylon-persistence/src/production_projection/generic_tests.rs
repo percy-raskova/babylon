@@ -18,13 +18,14 @@ fn actual_captured_control_projects_from_common_opening_and_source_identity() {
         .opening
         .compile()
         .expect("the authored scenario compiles");
-    let register = MaterialWorldRegister::try_new(0, compiled.state)
+    let register = MaterialWorldRegister::try_new(&compiled.catalog, 0, compiled.state)
         .expect("the authored fixture satisfies the constructor invariants");
-    let history = OrderHistory::from_opening(register.state())
+    let history = OrderHistory::from_opening(&compiled.catalog, register.state())
         .expect("the opening register admits its sections");
     let view = source.view();
-    let snapshot = super::project_economic_current(view, &register, None, None, &history)
-        .expect("the fixture projection accepts the authored input");
+    let snapshot =
+        super::project_economic_current(view, &compiled.catalog, &register, None, None, &history)
+            .expect("the fixture projection accepts the authored input");
     assert_eq!(
         snapshot.content_authority_sha256,
         michigan_economy::digest_hex(&view.source_digest)
@@ -41,7 +42,14 @@ fn actual_captured_control_projects_from_common_opening_and_source_identity() {
     let mut bad_view = view;
     bad_view.opening = &forged;
     assert!(matches!(
-        super::project_economic_current(bad_view, &register, None, None, &history),
+        super::project_economic_current(
+            bad_view,
+            &compiled.catalog,
+            &register,
+            None,
+            None,
+            &history
+        ),
         Err(ProductionProjectionError::Content | ProductionProjectionError::State)
     ));
 }
@@ -74,9 +82,9 @@ fn native_source_view_keeps_foreign_scope_and_suppressed_jobs_without_michigan_l
         .parse()
         .expect("the authored literal parses as the declared type");
     let compiled = opening.compile().expect("the authored scenario compiles");
-    let register = MaterialWorldRegister::try_new(0, compiled.state)
+    let register = MaterialWorldRegister::try_new(&compiled.catalog, 0, compiled.state)
         .expect("the authored fixture satisfies the constructor invariants");
-    let history = OrderHistory::from_opening(register.state())
+    let history = OrderHistory::from_opening(&compiled.catalog, register.state())
         .expect("the opening register admits its sections");
     let mut view = source.view();
     view.opening = &opening;
@@ -93,8 +101,9 @@ fn native_source_view_keeps_foreign_scope_and_suppressed_jobs_without_michigan_l
         transport: crate::national_transport::national_transport_reference()
             .expect("the transport reference fixture loads"),
     };
-    let snapshot = super::project_economic_current(view, &register, None, None, &history)
-        .expect("the fixture projection accepts the authored input");
+    let snapshot =
+        super::project_economic_current(view, &compiled.catalog, &register, None, None, &history)
+            .expect("the fixture projection accepts the authored input");
     let domestic = snapshot
         .sites
         .iter()

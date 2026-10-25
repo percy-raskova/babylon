@@ -16,6 +16,7 @@ use crate::identity::CampaignId;
 use crate::material_runtime::{DurableMaterialRuntime, MaterialRuntimeError};
 use crate::runtime_session::RuntimeSessionErrorCode;
 use babylon_kernel::clock::CampaignDuration;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_practice_contract::OrganizerCollectionResolution;
 use babylon_practice_contract::OrganizerState;
@@ -37,6 +38,7 @@ pub struct OrganizerSnapshot {
 
 /// Bind received aid disclosures to the exact authenticated material register.
 pub(crate) fn aid_snapshot_matches(
+    catalog: &MaterialCatalog,
     register: &babylon_tick::material_world::MaterialWorldRegister,
     snapshot: &OrganizerSnapshot,
 ) -> Result<bool, RuntimeSessionErrorCode> {
@@ -50,7 +52,7 @@ pub(crate) fn aid_snapshot_matches(
         babylon_practice_contract::organizer_view(config, state, config.controlled_actor_id)
             .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?
             == snapshot.view
-            && material_preview::projections(register.state(), config, state.period)?
+            && material_preview::projections(catalog, register.state(), config, state.period)?
                 == snapshot.aid
             && state
                 .pending_aid
@@ -63,6 +65,7 @@ pub(crate) fn aid_snapshot_matches(
 }
 
 pub(crate) fn captured_organizer_snapshot(
+    catalog: &MaterialCatalog,
     register: &babylon_tick::material_world::MaterialWorldRegister,
     pending: Option<OrganizerCommitment>,
     duration: CampaignDuration,
@@ -76,7 +79,7 @@ pub(crate) fn captured_organizer_snapshot(
     let view = babylon_practice_contract::organizer_view(config, state, config.controlled_actor_id)
         .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
     Ok(OrganizerSnapshot {
-        aid: material_preview::projections(register.state(), config, state.period)?,
+        aid: material_preview::projections(catalog, register.state(), config, state.period)?,
         pending_aid: state
             .pending_aid
             .iter()
@@ -254,7 +257,12 @@ impl DurableMaterialRuntime {
                 .ok_or(RuntimeSessionErrorCode::CommitRefused)?,
         )
         .map_err(|error| classify(&error))?;
-        captured_organizer_snapshot(register, pending, self.session().duration())
+        captured_organizer_snapshot(
+            self.session().catalog(),
+            register,
+            pending,
+            self.session().duration(),
+        )
     }
     /// Preview a ruling from the current actor-safe knowledge and commitments.
     /// # Errors
@@ -375,6 +383,7 @@ mod collection_history_tests {
         let foundation =
             crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds");
         let base = fixture::authored_session(foundation, fixture::config(), false, false);
+        let catalog = base.catalog().clone();
         let mut material = base.material().state().clone();
         let CircuitAccounting::Monetary(economy) = &mut material.accounting else {
             panic!("monetary collection fixture");
@@ -447,7 +456,10 @@ mod collection_history_tests {
                 fixture::PRODUCTS,
                 fixture::PRACTICE,
             ),
-            material,
+            fixture::Materials {
+                catalog,
+                state: material,
+            },
             config,
         )
         .expect("the fixture opens a session")
@@ -500,8 +512,11 @@ mod collection_history_tests {
         );
         let later = fixture::prepare(&session, None);
         fixture::commit(&mut session, &mut sink, later);
-        let reopened = MaterialWorldRegister::decode(session.material().canonical_bytes())
-            .expect("the committed canonical bytes decode");
+        let reopened = MaterialWorldRegister::decode_external(
+            session.catalog(),
+            session.material().canonical_bytes().to_vec(),
+        )
+        .expect("the committed canonical bytes decode");
         assert_eq!(reopened, *session.material());
         let state = reopened
             .organizer_state()
@@ -528,8 +543,11 @@ mod collection_history_tests {
         let first = fixture::prepare(&session, Some(&accepted));
         let mut sink = CollectingSink::default();
         fixture::commit(&mut session, &mut sink, first);
-        let reopened = MaterialWorldRegister::decode(session.material().canonical_bytes())
-            .expect("the committed canonical bytes decode");
+        let reopened = MaterialWorldRegister::decode_external(
+            session.catalog(),
+            session.material().canonical_bytes().to_vec(),
+        )
+        .expect("the committed canonical bytes decode");
         let state = reopened
             .organizer_state()
             .expect("the fixture register carries organizer state");

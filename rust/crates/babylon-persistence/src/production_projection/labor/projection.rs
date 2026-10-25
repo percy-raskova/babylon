@@ -4,7 +4,7 @@ use super::attendance;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use babylon_material_circuit::{MaterialCircuitState, ProcessId, SiteId, UnitId};
+use babylon_material_circuit::{MaterialCatalog, MaterialCircuitState, ProcessId, SiteId, UnitId};
 
 use babylon_tick::material_world::MaterialTickReceipts;
 
@@ -34,35 +34,23 @@ pub(in crate::production_projection) struct LaborTotals {
 }
 
 pub(in crate::production_projection) fn project_labor_accounts(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     opening: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
 ) -> Result<Vec<ProductionLaborAccount>, ProductionProjectionError> {
-    let maintenance = super::super::maintenance::completed(state, opening, receipt)?;
-    let next = budgets(state)?;
+    let maintenance = super::super::maintenance::completed(catalog, state, opening, receipt)?;
+    let next = budgets(catalog, state)?;
     let (prior, totals) = match (opening, receipt) {
         (None, None) if state.period == 1 => (None, Totals::new()),
         (Some(prior), Some(receipt))
             if prior.period.checked_add(1) == Some(state.period)
                 && receipt.resolve_tick == prior.period =>
         {
-            if !super::super::outbound::same_rows(
-                &prior.labor_coefficients,
-                &state.labor_coefficients,
-            ) || !super::super::outbound::same_rows(
-                &prior.process_outputs,
-                &state.process_outputs,
-            ) || !super::super::outbound::same_rows(&prior.merchants, &state.merchants)
-                || !super::super::outbound::same_rows(
-                    &prior.handling_coefficients,
-                    &state.handling_coefficients,
-                )
-            {
-                return Err(ProductionProjectionError::State);
-            }
-            let available = budgets(prior)?;
-            let equipment = super::super::equipment::validate(prior, state, receipt)?;
-            let totals = completed_totals(prior, receipt, maintenance, &available, &equipment)?;
+            let available = budgets(catalog, prior)?;
+            let equipment = super::super::equipment::validate(catalog, prior, state, receipt)?;
+            let totals =
+                completed_totals(catalog, prior, receipt, maintenance, &available, &equipment)?;
             (Some(available), totals)
         }
         _ => return Err(ProductionProjectionError::History),
@@ -112,6 +100,7 @@ pub(in crate::production_projection) fn project_labor_accounts(
 
 /// Missing sparse capacity is zero; a duplicated principal is never summed.
 pub(in crate::production_projection) fn budgets(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
 ) -> Result<Budgets, ProductionProjectionError> {
     let mut result = Budgets::new();
@@ -123,15 +112,15 @@ pub(in crate::production_projection) fn budgets(
             return Err(ProductionProjectionError::State);
         }
     }
-    for (key, _) in process_labor(state)?.into_values() {
+    for (key, _) in process_labor(catalog)?.into_values() {
         result.entry(key).or_insert(0);
     }
-    for merchant in &state.merchants {
+    for merchant in &catalog.merchants {
         result
             .entry((merchant.site_id, merchant.labor_unit_id))
             .or_insert(0);
     }
-    if let Some(binding) = &state.maintenance_binding {
+    if let Some(binding) = &catalog.maintenance_binding {
         result
             .entry((binding.provider_site_id, binding.labor_unit_id))
             .or_insert(0);
@@ -140,13 +129,14 @@ pub(in crate::production_projection) fn budgets(
 }
 
 pub(in crate::production_projection) fn completed_totals(
+    catalog: &MaterialCatalog,
     opening: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
     maintenance: Option<&MaintenanceReceipt>,
     available: &Budgets,
     equipment: &EquipmentFacts,
 ) -> Result<Totals, ProductionProjectionError> {
-    let sources = process_labor(opening)?;
+    let sources = process_labor(catalog)?;
     let mut processes = BTreeMap::<ProcessId, (Principal, u64, u64)>::new();
     for plan in &opening.production_commitments {
         let (key, coefficient) = sources
@@ -178,7 +168,7 @@ pub(in crate::production_projection) fn completed_totals(
     if !processes.is_empty() {
         return Err(ProductionProjectionError::State);
     }
-    add_handling_time(opening, receipt, &mut totals)?;
+    add_handling_time(catalog, receipt, &mut totals)?;
     if let Some(done) = maintenance {
         let account = totals
             .entry((done.binding.provider_site_id, done.binding.labor_unit_id))
@@ -199,16 +189,16 @@ pub(in crate::production_projection) fn completed_totals(
 }
 
 pub(in crate::production_projection) fn add_handling_time(
-    opening: &MaterialCircuitState,
+    catalog: &MaterialCatalog,
     receipt: &MaterialTickReceipts,
     totals: &mut Totals,
 ) -> Result<(), ProductionProjectionError> {
-    let merchants: BTreeMap<_, _> = opening
+    let merchants: BTreeMap<_, _> = catalog
         .merchants
         .iter()
         .map(|row| (row.site_id, row.labor_unit_id))
         .collect();
-    if merchants.len() != opening.merchants.len() {
+    if merchants.len() != catalog.merchants.len() {
         return Err(ProductionProjectionError::State);
     }
     let mut seen = BTreeSet::new();
@@ -232,18 +222,18 @@ pub(in crate::production_projection) fn add_handling_time(
 
 /// One checked immutable lookup replaces a coefficient scan for every process.
 pub(in crate::production_projection) fn process_labor(
-    state: &MaterialCircuitState,
+    catalog: &MaterialCatalog,
 ) -> Result<BTreeMap<ProcessId, (Principal, u64)>, ProductionProjectionError> {
-    let mut coefficients: BTreeMap<_, _> = state
+    let mut coefficients: BTreeMap<_, _> = catalog
         .labor_coefficients
         .iter()
         .map(|row| (row.process_id, (row.unit_id, row.quantity_per_batch)))
         .collect();
-    if coefficients.len() != state.labor_coefficients.len() {
+    if coefficients.len() != catalog.labor_coefficients.len() {
         return Err(ProductionProjectionError::State);
     }
     let mut result = BTreeMap::new();
-    for row in &state.process_outputs {
+    for row in &catalog.process_outputs {
         let (unit, quantity) = coefficients
             .remove(&row.process_id)
             .ok_or(ProductionProjectionError::State)?;

@@ -2,6 +2,7 @@
 use super::{Configuration, Scope};
 use crate::observer::{ObservationContext, ObserverSession};
 use babylon_kernel::clock::CampaignDuration;
+use babylon_persistence::economic_content::EconomicContentHandle;
 use babylon_persistence::observer_reader::CommittedMaterialReceipts;
 use babylon_persistence::qualification_audit::aid;
 use babylon_persistence::qualification_audit::aid::{
@@ -98,10 +99,12 @@ impl Custody {
 
     pub(super) fn recovered_register(
         &self,
+        admission: &EconomicContentHandle,
         register: &MaterialWorldRegister,
         duration: CampaignDuration,
     ) -> Result<(), String> {
-        let actual = aid::material_disclosure(register, duration).map_err(|e| e.to_string())?;
+        let actual = aid::material_disclosure(admission.material_catalog(), register, duration)
+            .map_err(|e| e.to_string())?;
         if self.material.as_ref() != Some(&actual) {
             return Err("native restored aid material differs from its original disclosure".into());
         }
@@ -110,6 +113,7 @@ impl Custody {
 
     pub(super) fn open(
         &mut self,
+        admission: &EconomicContentHandle,
         register: &MaterialWorldRegister,
         scope: &Scope,
         duration: CampaignDuration,
@@ -119,9 +123,10 @@ impl Custody {
         {
             return Err("native aid opening campaign differs".into());
         }
-        let material = aid::material_disclosure(register, duration).map_err(|e| e.to_string())?;
+        let material = aid::material_disclosure(admission.material_catalog(), register, duration)
+            .map_err(|e| e.to_string())?;
         self.audit
-            .open(register, &material)
+            .open(admission.material_catalog(), register, &material)
             .map_err(|e| e.to_string())?;
         self.material = Some(material);
         Ok(())
@@ -305,14 +310,16 @@ impl Custody {
 
     pub(super) fn read(
         &mut self,
+        admission: &EconomicContentHandle,
         admitted: &CommittedMaterialReceipts,
         register: &MaterialWorldRegister,
         duration: CampaignDuration,
     ) -> Result<Boundary, String> {
-        let after = aid::material_disclosure(register, duration).map_err(|e| e.to_string())?;
+        let after = aid::material_disclosure(admission.material_catalog(), register, duration)
+            .map_err(|e| e.to_string())?;
         let fact = self
             .audit
-            .read(admitted, register, &after)
+            .read(admission.material_catalog(), admitted, register, &after)
             .map_err(|e| e.to_string())?;
         self.material = Some(after);
         self.status = None;

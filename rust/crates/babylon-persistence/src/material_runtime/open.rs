@@ -98,7 +98,13 @@ pub(super) fn restore<C>(
             .to_owned();
         let components = MaterialComponentIdentity::from_foundation(&foundation.graph_foundation);
         Some(checkpoint.admit(
-            MaterialReadAuthority::cold(&scope, digest, &components, &lookup),
+            MaterialReadAuthority::cold(
+                &scope,
+                digest,
+                &components,
+                &lookup,
+                foundation.material_catalog(),
+            ),
             MaterialEnvelopeRead::CanonicalBytes,
         )?)
     } else {

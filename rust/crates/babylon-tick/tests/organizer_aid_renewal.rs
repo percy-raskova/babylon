@@ -27,6 +27,8 @@ use babylon_material_circuit::CorridorId;
 use babylon_material_circuit::HistoricalCostBook;
 use babylon_material_circuit::HouseholdDemandReceipt;
 use babylon_material_circuit::HouseholdNeedBasis;
+use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MonetaryBook;
 use babylon_material_circuit::MoneyLocation;
@@ -37,6 +39,7 @@ use babylon_material_circuit::UnitId;
 use babylon_practice_contract::{OrganizerChoice, OrganizerOutcome};
 use babylon_tick::material_world;
 use babylon_tick::material_world::{MaterialTickReceipts, MaterialWorldRegister};
+use organizer_aid_fixture::Materials;
 
 fn paid_handoff(rows: &MaterialTickReceipts, d: &HouseholdDemandReceipt) -> u64 {
     let actual = rows
@@ -120,12 +123,12 @@ struct Provision {
     donor_consumed: u64,
 }
 
-fn produced_food(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u64 {
+fn produced_food(rows: &MaterialTickReceipts, catalog: &MaterialCatalog) -> u64 {
     rows.production
         .iter()
         .filter(|r| r.site_id == organizer_aid_fixture::site(2))
         .map(|r| {
-            let recipe = state
+            let recipe = catalog
                 .process_outputs
                 .iter()
                 .find(|o| o.process_id == r.process_id && o.site_id == r.site_id)
@@ -194,6 +197,7 @@ fn paid_supply(rows: &MaterialTickReceipts, state: &MaterialCircuitState) -> u64
 }
 fn read_provision(
     rows: &MaterialTickReceipts,
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     proof: &mut Provision,
 ) {
@@ -203,7 +207,7 @@ fn read_provision(
     );
     proof.produced = proof
         .produced
-        .checked_add(produced_food(rows, state))
+        .checked_add(produced_food(rows, catalog))
         .expect("the fixture arithmetic stays in range");
     proof.supplier_paid = proof
         .supplier_paid
@@ -234,7 +238,12 @@ fn market_preparation(session: &mut Session, sink: &mut CollectingSink, cut: Mar
         let candidate = organizer_aid_fixture::prepare(session, None);
         let rows = material_world::decode_material_receipts(candidate.material().receipt_bytes())
             .expect("the canonical bytes decode into the declared type");
-        read_provision(&rows, session.material().state(), &mut proof);
+        read_provision(
+            &rows,
+            session.catalog(),
+            session.material().state(),
+            &mut proof,
+        );
         organizer_aid_fixture::commit(session, sink, candidate);
     }
     if matches!(cut, MarketProvisionCut::None) {
@@ -328,7 +337,7 @@ fn actual_gift(rows: &MaterialTickReceipts, positive: bool) {
 fn market_then_aid(cut: MarketProvisionCut) {
     let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
         .expect("the Michigan hex foundation builds");
-    let state = market_aid_opening(cut);
+    let Materials { catalog, state } = market_aid_opening(cut);
     assert!(state
         .inventory
         .iter()
@@ -340,7 +349,7 @@ fn market_then_aid(cut: MarketProvisionCut) {
     let mut session = organizer_aid_fixture::try_session(
         foundation,
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
-        state,
+        Materials { catalog, state },
         config,
     )
     .expect("the fixture opens a session");
@@ -371,8 +380,11 @@ fn market_then_aid(cut: MarketProvisionCut) {
             OrganizerOutcome::AidNotProvisioned
         }
     );
-    let restored = MaterialWorldRegister::decode(session.material().canonical_bytes())
-        .expect("the committed canonical bytes decode");
+    let restored = MaterialWorldRegister::decode_external(
+        session.catalog(),
+        session.material().canonical_bytes().to_vec(),
+    )
+    .expect("the committed canonical bytes decode");
     assert_eq!(restored, *session.material());
     let CircuitAccounting::Monetary(e) = &session.material().state().accounting else {
         unreachable!()
@@ -418,8 +430,11 @@ enum MarketProvisionCut {
     Production,
 }
 
-fn market_aid_opening(cut: MarketProvisionCut) -> MaterialCircuitState {
-    let mut state = organizer_aid_fixture::aid_opening(false);
+fn market_aid_opening(cut: MarketProvisionCut) -> Materials {
+    let Materials {
+        mut catalog,
+        mut state,
+    } = organizer_aid_fixture::aid_opening(false);
     state
         .inventory
         .iter_mut()
@@ -489,5 +504,17 @@ fn market_aid_opening(cut: MarketProvisionCut) -> MaterialCircuitState {
             .filter(|r| r.process_id == process(2))
             .for_each(|r| r.available_batches = 0);
     }
-    state
+    let CircuitAccounting::Monetary(e) = &state.accounting else {
+        unreachable!()
+    };
+    catalog.aid_mandates.clone_from(&e.aid.mandates);
+    if let Some(recurring) = &e.recurring {
+        catalog
+            .household_needs
+            .clone_from(&recurring.household_needs);
+    }
+    if let HouseholdTimeAccounting::Modeled(time) = &e.household_time {
+        catalog.household_time_policy.clone_from(&time.policies);
+    }
+    Materials { catalog, state }
 }

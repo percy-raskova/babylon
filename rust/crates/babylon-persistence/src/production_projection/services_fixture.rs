@@ -6,19 +6,20 @@ use babylon_material_circuit::GoodId;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::LaborCompensation;
 use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::OrderId;
 use babylon_material_circuit::ProcessId;
 use babylon_material_circuit::SiteId;
 use babylon_material_circuit::StaffingMemberId;
 use babylon_material_circuit::UnitId;
 use babylon_material_circuit::{
-    AccountId, AttendancePlan, CapacityRow, CapacitySupply, CashAccount, CircuitAccounting,
-    CommodityDefinition, CommodityKind, EmploymentTerms, FinalDemandPrincipal, HistoricalCostBook,
-    HouseholdCohort, HouseholdNeed, HouseholdPurchasePolicy, InputOutputCoefficient, InventoryRow,
-    LaborCapacityRow, LaborCoefficient, MaterialCircuitState, MaterialPurchase, MonetaryBook,
-    MonetaryCircuit, PricePolicy, ProcessOutput, ProductionCommitment, ProductionDemandPolicy,
-    RecurringEconomy, SellerOffer, ServiceConnection, ServiceInputPolicy, ServiceOrder,
-    ServiceStage, SiteLogisticsNode, StockCarryingValue,
+    AccountId, AttendancePlan, CapacityReservations, CapacityRow, CapacitySupply, CashAccount,
+    CircuitAccounting, CommodityDefinition, CommodityKind, EmploymentTerms, FinalDemandPrincipal,
+    HistoricalCostBook, HouseholdCohort, HouseholdNeed, HouseholdPurchasePolicy,
+    InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, MaterialCircuitState,
+    MaterialPurchase, MonetaryBook, MonetaryCircuit, PricePolicy, ProcessOutput,
+    ProductionCommitment, ProductionDemandPolicy, RecurringEconomy, SellerOffer, ServiceConnection,
+    ServiceInputPolicy, ServiceOrder, ServiceStage, SiteLogisticsNode, StockCarryingValue,
 };
 
 fn site(n: u8) -> SiteId {
@@ -178,7 +179,7 @@ fn input_coefficients() -> Vec<InputOutputCoefficient> {
     ]
 }
 
-pub(super) fn opening() -> MaterialCircuitState {
+pub(super) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
     let inventory = vec![
         InventoryRow {
             site_id: site(1),
@@ -193,13 +194,9 @@ pub(super) fn opening() -> MaterialCircuitState {
             quantity: 0,
         },
     ];
-    MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
-        period: 1,
-        accounting: accounting(&inventory),
+    let catalog = MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
         commodities: commodities(),
-        service_connections: service_connections(),
-        service_orders: vec![],
         site_logistics_nodes: (1..=3)
             .map(|n| SiteLogisticsNode {
                 site_id: site(n),
@@ -225,10 +222,23 @@ pub(super) fn opening() -> MaterialCircuitState {
             .collect(),
         supplier_routes: vec![],
         route_stages: vec![],
+        merchants: vec![],
+        handling_coefficients: vec![],
+        maintenance_binding: None,
+        aid_mandates: Vec::new(),
+        household_time_policy: Vec::new(),
+        service_inputs: Vec::new(),
+        household_needs: Vec::new(),
+        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
+    };
+    let state = MaterialCircuitState {
+        period: 1,
+        accounting: accounting(&inventory),
+        service_connections: service_connections(),
+        service_orders: vec![],
         route_stage_capacities: vec![],
         inventory,
         orders: vec![],
-        backlog: vec![],
         freight: vec![],
         corridor_capacities: vec![],
         capacities: (1..=3)
@@ -255,8 +265,6 @@ pub(super) fn opening() -> MaterialCircuitState {
                 planned_batches: if n == 1 { 2 } else { 1 },
             })
             .collect(),
-        merchants: vec![],
-        handling_coefficients: vec![],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
             location: "county:26163"
@@ -264,15 +272,25 @@ pub(super) fn opening() -> MaterialCircuitState {
                 .expect("the authored literal parses as the declared type"),
         }],
         final_demand_orders: vec![],
-        maintenance_binding: None,
         maintenance_service: None,
-    }
+        capacity_reservations: CapacityReservations::default(),
+    };
+    (catalog, state)
 }
-pub(super) fn funded(mut state: MaterialCircuitState) -> MaterialCircuitState {
+
+pub(super) fn opening() -> MaterialCircuitState {
+    materials().1
+}
+
+pub(super) fn funded(
+    catalog: &MaterialCatalog,
+    mut state: MaterialCircuitState,
+) -> MaterialCircuitState {
     for (id, provider, buyer, commodity, price) in
         [(1, 1, 2, 1, 2), (2, 1, 3, 1, 2), (3, 2, 3, 2, 3)]
     {
         state = babylon_material_circuit::admit_material_purchase(
+            catalog,
             &state,
             MaterialPurchase::Service(ServiceOrder {
                 order_id: OrderId::from_bytes([id; 32]),
@@ -291,7 +309,10 @@ pub(super) fn funded(mut state: MaterialCircuitState) -> MaterialCircuitState {
     state
 }
 
-pub(super) fn recurring(mut state: MaterialCircuitState) -> MaterialCircuitState {
+pub(super) fn recurring(
+    materials: (MaterialCatalog, MaterialCircuitState),
+) -> (MaterialCatalog, MaterialCircuitState) {
+    let (mut catalog, mut state) = materials;
     state.inventory[0].quantity = 3;
     state.capacities[0].available_batches = 4;
     state.capacities[1].available_batches = 3;
@@ -379,7 +400,12 @@ pub(super) fn recurring(mut state: MaterialCircuitState) -> MaterialCircuitState
             .expect("the fixture holds the searched element")
             .available;
     }
-    state
+    // Nested definition rows stay mirrored while the engine reads both owners.
+    catalog.service_inputs = service_inputs();
+    if let Some(recurring) = &e.recurring {
+        catalog.household_needs = recurring.household_needs.clone();
+    }
+    (catalog, state)
 }
 
 fn service_inputs() -> Vec<ServiceInputPolicy> {

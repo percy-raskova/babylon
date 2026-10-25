@@ -28,7 +28,7 @@ fn money(n: i128) -> Currency {
     Currency::from_micro_units(n)
 }
 fn financial_session() -> Session {
-    let mut state = crate::paid_material();
+    let crate::Materials { catalog, mut state } = crate::paid_material();
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         panic!("paid")
     };
@@ -97,8 +97,12 @@ fn financial_session() -> Session {
             amount: money(5),
         }],
     };
-    crate::try_session_with_material(MATERIAL_CYCLE, crate::staffed_labor(), state)
-        .expect("the fixture opens a session with material")
+    crate::try_session_with_material(
+        MATERIAL_CYCLE,
+        crate::staffed_labor(),
+        crate::Materials { catalog, state },
+    )
+    .expect("the fixture opens a session with material")
 }
 #[test]
 fn public_ownership_receipts_survive_failed_commit_and_staffed_checkpoint_replay() {
@@ -112,9 +116,11 @@ fn public_ownership_receipts_survive_failed_commit_and_staffed_checkpoint_replay
     assert_eq!(receipts.public_budgets[0].unfunded, money(10));
     let identity = *candidate.identity();
     assert!(session
-        .commit_prepared_and_publish(&mut sink, candidate, |_| Err::<ReplayCommitDisposition, _>(
-            "financial refusal"
-        ))
+        .commit_prepared_and_publish(
+            &mut sink,
+            candidate,
+            |_, _| Err::<ReplayCommitDisposition, _>("financial refusal")
+        )
         .is_err());
     assert_eq!(crate::live(&session, &sink), before);
     let retry = crate::prepare(&session);
@@ -134,7 +140,8 @@ fn public_ownership_receipts_survive_failed_commit_and_staffed_checkpoint_replay
             &graph,
             &graph_material,
             &registers,
-            MaterialWorldRegister::decode(&material).expect("the committed canonical bytes decode"),
+            MaterialWorldRegister::decode_external(session.catalog(), material.clone())
+                .expect("the committed canonical bytes decode"),
         )
         .expect("the committed checkpoint restores");
     let mut restored_sink = CollectingSink::default();

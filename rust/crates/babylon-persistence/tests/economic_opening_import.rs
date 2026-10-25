@@ -24,10 +24,13 @@ fn control_import_preserves_exact_goods_orders_and_staffing() {
         assert!(opening.employment.is_empty());
         let compiled = opening.compile().expect("the authored scenario compiles");
         assert_eq!(
-            compiled.state.process_outputs.len(),
+            compiled.catalog.process_outputs.len(),
             catalog.processes().len()
         );
-        assert_eq!(compiled.state.supplier_routes.len(), catalog.routes().len());
+        assert_eq!(
+            compiled.catalog.supplier_routes.len(),
+            catalog.routes().len()
+        );
         assert_eq!(compiled.state.orders.len(), catalog.routes().len());
         assert_eq!(
             compiled.staffing.bindings().len(),
@@ -162,12 +165,12 @@ fn captured_control_restarts_and_advances_through_the_same_three_period_circuit(
             right.material().receipt_bytes()
         );
         direct
-            .commit_prepared_and_publish(&mut CollectingSink::default(), left, |_| {
+            .commit_prepared_and_publish(&mut CollectingSink::default(), left, |_, _| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
             .expect("the prepared period commits");
         restart
-            .commit_prepared_and_publish(&mut CollectingSink::default(), right, |_| {
+            .commit_prepared_and_publish(&mut CollectingSink::default(), right, |_, _| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
             .expect("the prepared period commits");

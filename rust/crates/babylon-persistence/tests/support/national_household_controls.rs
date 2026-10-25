@@ -344,8 +344,9 @@ pub fn assert_admitted_state(opening: &EconomicOpening, aid: &NationalAidCapture
         .compile()
         .expect("complete current household opening must admit");
     eprintln!("current common admission: {:?}", start.elapsed());
-    let state_bytes = babylon_material_circuit::encode_material_circuit_state(&compiled.state)
-        .expect("the canonical material state encodes");
+    let state_bytes =
+        babylon_material_circuit::encode_material_circuit_state(&compiled.catalog, &compiled.state)
+            .expect("the canonical material state encodes");
     let CircuitAccounting::Monetary(e) = &compiled.state.accounting else {
         panic!("national monetary circuit");
     };
@@ -386,7 +387,7 @@ pub fn assert_admitted_state(opening: &EconomicOpening, aid: &NationalAidCapture
     );
     drop(state_bytes);
     let start = Instant::now();
-    let register = MaterialWorldRegister::try_new(0, compiled.state)
+    let register = MaterialWorldRegister::try_new(&compiled.catalog, 0, compiled.state)
         .expect("complete current opening register must admit");
     eprintln!(
         "current register bytes: {}, elapsed: {:?}",

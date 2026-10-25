@@ -4,8 +4,8 @@ use super::lifecycle::PeriodOrders;
 use super::ProductionProjectionError;
 use babylon_material_circuit::OrderRow;
 use babylon_material_circuit::{
-    FinalDemandOrder, FinalDemandPrincipalId, GoodId, MaterialCircuitState, OrderId, RouteId,
-    SiteId, UnitId,
+    FinalDemandOrder, FinalDemandPrincipalId, GoodId, MaterialCatalog, MaterialCircuitState,
+    OrderId, RouteId, SiteId, UnitId,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::result::Result as StdResult;
@@ -45,12 +45,12 @@ pub(crate) struct OrderHistory {
     pub retired_final: BTreeMap<(FinalDemandPrincipalId, GoodId, UnitId), FinalTotals>,
 }
 impl OrderHistory {
-    pub fn from_opening(state: &MaterialCircuitState) -> Result<Self> {
+    pub fn from_opening(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> Result<Self> {
         if state.period != 1 {
             return Err(ProductionProjectionError::History);
         }
         let mut routes = BTreeMap::new();
-        for row in &state.supplier_routes {
+        for row in &catalog.supplier_routes {
             if routes
                 .insert(
                     (
@@ -190,7 +190,12 @@ impl OrderHistory {
     }
 
     /// Retain only the single lifecycle validator's completed witnesses.
-    pub fn record(&mut self, prior: &MaterialCircuitState, period: &PeriodOrders) -> Result<()> {
+    pub fn record(
+        &mut self,
+        catalog: &MaterialCatalog,
+        prior: &MaterialCircuitState,
+        period: &PeriodOrders,
+    ) -> Result<()> {
         self.retire(prior)?;
         let prior_delivery: BTreeSet<_> = prior.orders.iter().map(|r| r.order_id).collect();
         let prior_final: BTreeSet<_> = prior
@@ -203,7 +208,7 @@ impl OrderHistory {
         {
             return Err(ProductionProjectionError::History);
         }
-        let routes: BTreeMap<_, _> = prior
+        let routes: BTreeMap<_, _> = catalog
             .supplier_routes
             .iter()
             .map(|r| {
@@ -213,7 +218,7 @@ impl OrderHistory {
                 )
             })
             .collect();
-        if routes.len() != prior.supplier_routes.len() {
+        if routes.len() != catalog.supplier_routes.len() {
             return Err(ProductionProjectionError::State);
         }
         for (&id, (before, after)) in &period.deliveries {

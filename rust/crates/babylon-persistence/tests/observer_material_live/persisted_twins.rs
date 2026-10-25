@@ -11,6 +11,7 @@ use babylon_persistence::observer_reader::ObserverEconomySnapshot;
 use babylon_persistence::production_observation::ProductionSnapshot;
 
 use babylon_material_circuit::CapacityRow;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_persistence::material_storage::LookupAnchor;
 use babylon_persistence::production_observation::FreightOrderIndex;
 use babylon_tick::material_world;
@@ -160,10 +161,11 @@ impl RunPair {
 pub(super) fn stored_canonical_material(
     connection: &mut Client,
     campaign: CampaignId,
+    catalog: &MaterialCatalog,
     tick: u64,
 ) -> (Vec<u8>, Vec<u8>) {
     let base:Vec<u8>=connection.query_one("SELECT initial_register_bytes FROM public.v_observer_material_foundation_v1 WHERE campaign_id=$1::uuid",&[campaign.as_uuid()]).expect("the seeded row is present exactly once").get(0);
-    let opening = babylon_persistence::material_storage::seed(&base)
+    let opening = babylon_persistence::material_storage::seed(catalog, &base)
         .expect("the fixture seeds the authored rows");
     let mut chain = babylon_persistence::material_storage::initial_lookup_chain(&opening)
         .expect("the opening register builds its first lookup chain");
@@ -199,6 +201,7 @@ pub(super) fn stored_canonical_material(
     let register: &[u8] = row.get(0);
     let receipts: &[u8] = row.get(1);
     babylon_persistence::material_storage::decode(
+        catalog,
         &opening,
         tick,
         register,
@@ -221,6 +224,7 @@ fn authenticated_receipts(
     let (register, bytes) = stored_canonical_material(
         connection,
         runtime.campaign_id(),
+        runtime.session().catalog(),
         u64::try_from(tick).expect("the fixture value fits the target range"),
     );
     assert_eq!(register, runtime.session().material().canonical_bytes());
@@ -669,25 +673,30 @@ fn persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arriva
     let mut standard = RunPair::create(&target, MichiganDeliveryPreset::Standard, 325_001);
     let mut delayed = RunPair::create(&target, MichiganDeliveryPreset::Delayed, 325_003);
     let initial = standard.uninterrupted.session().material().state();
-    let mut normalized = delayed.uninterrupted.session().material().state().clone();
+    let normalized_state = delayed.uninterrupted.session().material().state().clone();
+    let normalized_catalog = delayed.uninterrupted.session().catalog().clone();
     let catalog = crate::test_support::catalog();
     let sheet = catalog
         .routes()
         .iter()
         .find(|route| route.key == "sheet-transfer")
         .expect("the fixture holds the searched element");
-    let delayed_leg = normalized
+    let mut normalized_catalog = normalized_catalog;
+    let delayed_leg = normalized_catalog
         .route_stages
         .iter_mut()
         .find(|leg| leg.route_id == sheet.id())
         .expect("the fixture holds the searched element");
     assert_eq!(delayed_leg.travel_periods, 3);
     delayed_leg.travel_periods = 1;
-    assert_eq!(*initial, normalized);
+    assert_eq!(
+        normalized_state,
+        standard.uninterrupted.session().material().state().clone()
+    );
     let capacities = initial.capacities.clone();
     assert!(!capacities.is_empty());
     assert!(capacities.iter().all(|row| row.period == 1));
-    assert!(matches!(&initial.capacity_supply,
+    assert!(matches!(&normalized_catalog.capacity_policy,
         babylon_material_circuit::CapacitySupply::Rolling(rows)
             if matches!(&rows.processes, babylon_material_circuit::RollingProcessSupply::CapturedNameplate(_))));
     assert_eq!(

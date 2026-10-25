@@ -1,31 +1,31 @@
 use babylon_material_circuit::EquipmentPosition;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::MaterialCatalog;
-fn money(n: i128) -> Currency {
+pub(crate) fn money(n: i128) -> Currency {
     Currency::from_micro_units(n)
 }
-fn site() -> SiteId {
+pub(crate) fn site() -> SiteId {
     SiteId::from_bytes([1; 32])
 }
-fn process() -> ProcessId {
+pub(crate) fn process() -> ProcessId {
     ProcessId::from_bytes([1; 32])
 }
-fn household() -> FinalDemandPrincipalId {
+pub(crate) fn household() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([9; 32])
 }
-fn good(n: u8) -> GoodId {
+pub(crate) fn good(n: u8) -> GoodId {
     GoodId::from_bytes([n; 32])
 }
-fn unit() -> UnitId {
+pub(crate) fn unit() -> UnitId {
     UnitId::from_bytes([7; 32])
 }
-fn hours() -> UnitId {
+pub(crate) fn hours() -> UnitId {
     UnitId::from_bytes([8; 32])
 }
-fn definition() -> EquipmentDefinitionId {
+pub(crate) fn definition() -> EquipmentDefinitionId {
     EquipmentDefinitionId::from_bytes([1; 32])
 }
-fn opening_assets() -> (MonetaryBook, HistoricalCostBook) {
+pub(crate) fn opening_assets() -> (MonetaryBook, HistoricalCostBook) {
     let book = MonetaryBook::open(vec![
         CashAccount {
             id: AccountId::Site(site()),
@@ -51,7 +51,7 @@ fn opening_assets() -> (MonetaryBook, HistoricalCostBook) {
         .expect("the fixture opens the authored source");
     (book, costs)
 }
-fn opening_capacity() -> (CapacitySupply, EquipmentPosition) {
+pub(crate) fn opening_capacity() -> (CapacitySupply, EquipmentPosition) {
     let policy = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
         processes: RollingProcessSupply::Equipment(Box::new(ProductiveEquipment {
             definitions: vec![EquipmentDefinition {
@@ -86,7 +86,7 @@ fn opening_capacity() -> (CapacitySupply, EquipmentPosition) {
     }));
     (policy, EquipmentPosition::default())
 }
-fn opening_accounting(
+pub(crate) fn opening_accounting(
     book: MonetaryBook,
     costs: HistoricalCostBook,
     schedules: &[LaborCapacityRow],
@@ -116,7 +116,7 @@ fn opening_accounting(
         }],
     }))
 }
-fn opening() -> (MaterialCatalog, MaterialCircuitState) {
+pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
     let (book, costs) = opening_assets();
     let (capacity_policy, equipment) = opening_capacity();
     let schedules: Vec<_> = [0, 2, 1, 2, 1, 0, 0, 0]
@@ -216,19 +216,19 @@ fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         state,
     )
 }
-fn economy(state: &MaterialCircuitState) -> &MonetaryCircuit {
+pub(crate) fn economy(state: &MaterialCircuitState) -> &MonetaryCircuit {
     let CircuitAccounting::Monetary(e) = &state.accounting else {
         panic!("paid")
     };
     e
 }
-fn economy_mut(state: &mut MaterialCircuitState) -> &mut MonetaryCircuit {
+pub(crate) fn economy_mut(state: &mut MaterialCircuitState) -> &mut MonetaryCircuit {
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         panic!("paid")
     };
     e
 }
-fn equipment(catalog: &MaterialCatalog) -> &ProductiveEquipment {
+pub(crate) fn equipment(catalog: &MaterialCatalog) -> &ProductiveEquipment {
     let CapacitySupply::Rolling(s) = &catalog.capacity_policy else {
         panic!("rolling")
     };
@@ -237,14 +237,14 @@ fn equipment(catalog: &MaterialCatalog) -> &ProductiveEquipment {
     };
     e
 }
-fn position(state: &MaterialCircuitState) -> &EquipmentPosition {
+pub(crate) fn position(state: &MaterialCircuitState) -> &EquipmentPosition {
     &state.capacity_reservations.equipment
 }
-fn position_mut(state: &mut MaterialCircuitState) -> &mut EquipmentPosition {
+pub(crate) fn position_mut(state: &mut MaterialCircuitState) -> &mut EquipmentPosition {
     &mut state.capacity_reservations.equipment
 }
 /// Rebuild one catalog with a changed equipment definition set.
-fn rebuild(
+pub(crate) fn rebuild(
     catalog: &MaterialCatalog,
     mutate: impl FnOnce(&mut ProductiveEquipment),
 ) -> MaterialCatalog {
@@ -264,7 +264,7 @@ fn rebuild(
     rebuilt.catalog_digest = [0; 32];
     MaterialCatalog::try_new(rebuilt).expect("the rebuilt fixture catalog is valid")
 }
-fn equipment_cost(state: &MaterialCircuitState) -> Currency {
+pub(crate) fn equipment_cost(state: &MaterialCircuitState) -> Currency {
     economy(state)
         .costs
         .snapshot()
@@ -275,7 +275,7 @@ fn equipment_cost(state: &MaterialCircuitState) -> Currency {
                 .expect("the fixture arithmetic stays in range")
         })
 }
-fn stock_cost(state: &MaterialCircuitState, id: GoodId) -> Currency {
+pub(crate) fn stock_cost(state: &MaterialCircuitState, id: GoodId) -> Currency {
     economy(state)
         .costs
         .snapshot()
@@ -285,7 +285,7 @@ fn stock_cost(state: &MaterialCircuitState, id: GoodId) -> Currency {
         .expect("the fixture holds the searched element")
         .amount
 }
-fn configure_investment(
+pub(crate) fn configure_investment(
     catalog: &mut MaterialCatalog,
     state: &mut MaterialCircuitState,
     cash: i128,
@@ -366,7 +366,7 @@ fn configure_investment(
         last_household_consumption_period: 0,
     }));
 }
-fn configure_investment_supply(catalog: &mut MaterialCatalog, state: &mut MaterialCircuitState) {
+pub(crate) fn configure_investment_supply(catalog: &mut MaterialCatalog, state: &mut MaterialCircuitState) {
     let seller = SiteId::from_bytes([2; 32]);
     let route = RouteId::from_bytes([2; 32]);
     let corridor = CorridorId::from_bytes([2; 32]);
@@ -431,7 +431,7 @@ fn configure_investment_supply(catalog: &mut MaterialCatalog, state: &mut Materi
         }];
     });
 }
-fn configure_output_quote(state: &mut MaterialCircuitState) {
+pub(crate) fn configure_output_quote(state: &mut MaterialCircuitState) {
     let period = state.period;
     economy_mut(state).recurring = Some(Box::new(RecurringEconomy {
         service_inputs: vec![],

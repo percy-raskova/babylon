@@ -1,8 +1,10 @@
 //! Conservative terminal-window witness controls; these do not change mechanics.
 use babylon_kernel::currency::Currency;
+use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::FreightLotId;
 use babylon_material_circuit::GoodId;
+use babylon_material_circuit::LaborCoefficient;
 use babylon_material_circuit::OrderId;
 use babylon_material_circuit::ProcessId;
 use babylon_material_circuit::RouteId;
@@ -13,11 +15,11 @@ use babylon_material_circuit::{
     CashAccount, CircuitAccounting, CommodityDefinition, CommodityKind, DeliveryReceipt,
     FinancialInstitutions, HistoricalCostBook, HouseholdConsumptionReceipt, HouseholdDemandReceipt,
     HouseholdPurchasePolicy, HouseholdStock, HouseholdTimeAccounting, InventoryRow,
-    LocalRetailFulfillmentReceipt, LocalTransferReceipt, MaterialCircuitState, MonetaryBook,
-    MonetaryCircuit, MoneyLocation, MoneyPosting, MoneyTransferPurpose, MoneyTransferReceipt,
-    OrderAccessMode, OrderRow, OutboundOrderId, ProcessOutput, ProcurementReceipt,
-    ProductionReceipt, PurchaseEscrow, RealizationReceipt, RecurringEconomy, ReplenishmentPolicy,
-    RoutedFreightLot,
+    LocalRetailFulfillmentReceipt, LocalTransferReceipt, MaterialCatalog, MaterialCircuitState,
+    MonetaryBook, MonetaryCircuit, MoneyLocation, MoneyPosting, MoneyTransferPurpose,
+    MoneyTransferReceipt, OrderAccessMode, OrderRow, OutboundOrderId, ProcessOutput,
+    ProcurementReceipt, ProductionReceipt, PurchaseEscrow, RealizationReceipt, RecurringEconomy,
+    ReplenishmentPolicy, RoutedFreightLot,
 };
 use babylon_persistence::qualification_audit::production_renewal as national_production_renewal;
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -141,11 +143,9 @@ fn accounting(retailer: u8) -> CircuitAccounting {
         employment: vec![],
     }))
 }
-fn seed(retailer: u8, opening: u64) -> MaterialCircuitState {
-    MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
-        period: 40,
-        accounting: accounting(retailer),
+fn seed(retailer: u8, opening: u64) -> (MaterialCatalog, MaterialCircuitState) {
+    let catalog = MaterialCatalog::try_new(MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![],
         process_outputs: vec![ProcessOutput {
             process_id: process(),
@@ -155,16 +155,33 @@ fn seed(retailer: u8, opening: u64) -> MaterialCircuitState {
             quantity_per_batch: 1,
         }],
         input_coefficients: vec![],
-        labor_coefficients: vec![],
+        labor_coefficients: vec![LaborCoefficient {
+            process_id: process(),
+            unit_id: unit(),
+            quantity_per_batch: 1,
+        }],
         commodities: vec![CommodityDefinition {
             good_id: good(),
             unit_id: unit(),
             kind: CommodityKind::Storable { grams_per_unit: 1 },
         }],
-        service_connections: vec![],
-        service_orders: vec![],
         supplier_routes: vec![],
         route_stages: vec![],
+        merchants: vec![],
+        handling_coefficients: vec![],
+        maintenance_binding: None,
+        aid_mandates: vec![],
+        household_time_policy: vec![],
+        service_inputs: vec![],
+        household_needs: vec![],
+        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
+    })
+    .expect("the fixture catalog canonicalizes");
+    let state = MaterialCircuitState {
+        period: 40,
+        accounting: accounting(retailer),
+        service_connections: vec![],
+        service_orders: vec![],
         route_stage_capacities: vec![],
         inventory: vec![InventoryRow {
             site_id: site(1),
@@ -173,19 +190,17 @@ fn seed(retailer: u8, opening: u64) -> MaterialCircuitState {
             quantity: opening,
         }],
         orders: vec![],
-        backlog: vec![],
         freight: vec![],
         corridor_capacities: vec![],
         capacities: vec![],
         labor: vec![],
         production_commitments: vec![],
-        merchants: vec![],
-        handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
-        maintenance_binding: None,
         maintenance_service: None,
-    }
+        capacity_reservations: CapacityReservations::default(),
+    };
+    (catalog, state)
 }
 fn transfer(
     r: &mut MaterialTickReceipts,
@@ -343,8 +358,8 @@ fn supply(r: &mut MaterialTickReceipts, supplier: u8, q: u64, local: bool) {
 }
 #[test]
 fn opening_stock_only_has_no_production_renewal() {
-    let mut audit =
-        Audit::seed(&seed(1, 10), 39, [7; 32]).expect("the fixture seeds the authored rows");
+    let mut audit = Audit::seed(&seed(1, 10).0, &seed(1, 10).1, 39, [7; 32])
+        .expect("the fixture seeds the authored rows");
     let mut r = receipts(40);
     retail(&mut r, 1, 10);
     let e = audit
@@ -356,8 +371,8 @@ fn opening_stock_only_has_no_production_renewal() {
 #[test]
 fn renewed_output_reaches_paid_households_through_local_and_routed_supply() {
     for local in [true, false] {
-        let mut audit =
-            Audit::seed(&seed(2, 0), 39, [7; 32]).expect("the fixture seeds the authored rows");
+        let mut audit = Audit::seed(&seed(2, 0).0, &seed(2, 0).1, 39, [7; 32])
+            .expect("the fixture seeds the authored rows");
         let mut r = receipts(40);
         output(&mut r, 10);
         supply(&mut r, 1, 10, local);
@@ -380,8 +395,9 @@ fn renewed_output_reaches_paid_households_through_local_and_routed_supply() {
 }
 #[test]
 fn receipt_order_does_not_attribute_lots_or_change_window_bound() {
-    let state = seed(2, 0);
-    let mut a = Audit::seed(&state, 39, [7; 32]).expect("the fixture seeds the authored rows");
+    let (catalog, state) = seed(2, 0);
+    let mut a =
+        Audit::seed(&catalog, &state, 39, [7; 32]).expect("the fixture seeds the authored rows");
     let mut b = a.clone();
     let mut r = receipts(40);
     output(&mut r, 10);
@@ -403,8 +419,8 @@ fn receipt_order_does_not_attribute_lots_or_change_window_bound() {
 }
 #[test]
 fn unknown_incoming_stock_cannot_supply_a_positive_production_claim() {
-    let mut audit =
-        Audit::seed(&seed(2, 0), 39, [7; 32]).expect("the fixture seeds the authored rows");
+    let mut audit = Audit::seed(&seed(2, 0).0, &seed(2, 0).1, 39, [7; 32])
+        .expect("the fixture seeds the authored rows");
     let mut r = receipts(40);
     output(&mut r, 10);
     supply(&mut r, 1, 10, true);
@@ -420,8 +436,9 @@ fn unknown_incoming_stock_cannot_supply_a_positive_production_claim() {
 }
 #[test]
 fn payment_and_crossed_units_refuse_without_publishing_candidate() {
-    let state = seed(2, 0);
-    let mut audit = Audit::seed(&state, 39, [7; 32]).expect("the fixture seeds the authored rows");
+    let (catalog, state) = seed(2, 0);
+    let mut audit =
+        Audit::seed(&catalog, &state, 39, [7; 32]).expect("the fixture seeds the authored rows");
     let before = audit
         .evidence()
         .expect("the fixture call `evidence` succeeds for the authored inputs");
@@ -459,10 +476,10 @@ fn payment_and_crossed_units_refuse_without_publishing_candidate() {
 }
 #[test]
 fn no_usable_producer_is_explicitly_incomplete() {
-    let mut state = seed(2, 0);
-    state.process_outputs.clear();
+    let (mut catalog, state) = seed(2, 0);
+    catalog.process_outputs.clear();
     assert_eq!(
-        Audit::seed(&state, 39, [7; 32])
+        Audit::seed(&catalog, &state, 39, [7; 32])
             .expect("the fixture seeds the authored rows")
             .evidence()
             .expect("the fixture call `evidence` succeeds for the authored inputs")
@@ -473,7 +490,7 @@ fn no_usable_producer_is_explicitly_incomplete() {
 
 #[test]
 fn aid_and_initial_household_stock_are_unproven_consumption_allowances() {
-    let mut state = seed(1, 0);
+    let (catalog, mut state) = seed(1, 0);
     let CircuitAccounting::Monetary(book) = &mut state.accounting else {
         panic!("monetary fixture");
     };
@@ -487,7 +504,8 @@ fn aid_and_initial_household_stock_are_unproven_consumption_allowances() {
             unit_id: unit(),
             quantity: 4,
         });
-    let mut audit = Audit::seed(&state, 39, [7; 32]).expect("the fixture seeds the authored rows");
+    let mut audit =
+        Audit::seed(&catalog, &state, 39, [7; 32]).expect("the fixture seeds the authored rows");
     let mut r = receipts(40);
     output(&mut r, 10);
     retail(&mut r, 1, 10);
@@ -516,8 +534,9 @@ fn aid_and_initial_household_stock_are_unproven_consumption_allowances() {
 }
 #[test]
 fn direct_producer_retailer_needs_paid_handoff_and_actual_consumption() {
+    let (catalog, state) = seed(1, 3);
     let mut audit =
-        Audit::seed(&seed(1, 3), 39, [7; 32]).expect("the fixture seeds the authored rows");
+        Audit::seed(&catalog, &state, 39, [7; 32]).expect("the fixture seeds the authored rows");
     let mut r = receipts(40);
     output(&mut r, 10);
     retail(&mut r, 1, 10);
@@ -534,7 +553,7 @@ fn direct_producer_retailer_needs_paid_handoff_and_actual_consumption() {
 
 #[test]
 fn seed_transit_is_an_allowance_once() {
-    let mut state = seed(2, 0);
+    let (catalog, mut state) = seed(2, 0);
     let id = babylon_material_circuit::recurring_procurement_order_id(
         39,
         site(2),
@@ -583,7 +602,8 @@ fn seed_transit_is_an_allowance_once() {
         unit_id: unit(),
         quantity: 10,
     });
-    let mut audit = Audit::seed(&state, 39, [7; 32]).expect("the fixture seeds the authored rows");
+    let mut audit =
+        Audit::seed(&catalog, &state, 39, [7; 32]).expect("the fixture seeds the authored rows");
     let mut r = receipts(40);
     output(&mut r, 20);
     supply(&mut r, 1, 20, true);
@@ -615,9 +635,10 @@ fn seed_transit_is_an_allowance_once() {
 }
 #[test]
 fn noncontiguous_period_and_checked_overflow_refuse_atomically() {
-    let mut state = seed(1, 0);
-    state.process_outputs[0].quantity_per_batch = 2;
-    let mut audit = Audit::seed(&state, 39, [7; 32]).expect("the fixture seeds the authored rows");
+    let (mut catalog, state) = seed(1, 0);
+    catalog.process_outputs[0].quantity_per_batch = 2;
+    let mut audit =
+        Audit::seed(&catalog, &state, 39, [7; 32]).expect("the fixture seeds the authored rows");
     let before = audit
         .evidence()
         .expect("the fixture call `evidence` succeeds for the authored inputs");
@@ -645,8 +666,8 @@ fn noncontiguous_period_and_checked_overflow_refuse_atomically() {
 
 #[test]
 fn omitted_ninth_output_cannot_borrow_later_retained_production() {
-    let mut state = seed(1, 0);
-    state.process_outputs = (1..=9)
+    let (mut catalog, state) = seed(1, 0);
+    catalog.process_outputs = (1..=9)
         .map(|id| ProcessOutput {
             process_id: ProcessId::from_bytes([id; 32]),
             site_id: site(1),
@@ -655,7 +676,8 @@ fn omitted_ninth_output_cannot_borrow_later_retained_production() {
             quantity_per_batch: 1,
         })
         .collect();
-    let mut audit = Audit::seed(&state, 39, [7; 32]).expect("the fixture seeds the authored rows");
+    let mut audit =
+        Audit::seed(&catalog, &state, 39, [7; 32]).expect("the fixture seeds the authored rows");
     let mut sold = receipts(40);
     sold.production.push(ProductionReceipt {
         process_id: ProcessId::from_bytes([9; 32]),

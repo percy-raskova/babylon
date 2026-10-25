@@ -17,6 +17,7 @@ use babylon_bsl::identity_codec::StableBslValue;
 use babylon_graph::stable_element::StableElementKey;
 use babylon_graph::stable_state;
 use babylon_graph::stable_state::StableGraphState;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::StaffingMemberBinding;
 use babylon_tick::choice_receipt::ChoiceReceiptRef;
 use babylon_tick::material_staffing::StaffingComposition;
@@ -50,6 +51,7 @@ impl Window {
 
 struct PublishedFixture {
     composition: StaffingComposition,
+    catalog: MaterialCatalog,
     windows: Vec<Window>,
 }
 
@@ -62,6 +64,7 @@ fn fixture() -> &'static PublishedFixture {
             .create_foundation(&crate::test_support::catalog())
             .expect("the authored catalog builds the foundation");
         let composition = foundation.labor().clone();
+        let catalog = foundation.material_catalog().clone();
         let mut session = foundation
             .into_session()
             .expect("the fixture opens a session");
@@ -115,7 +118,7 @@ fn fixture() -> &'static PublishedFixture {
                     .collect(),
             };
             session
-                .commit_prepared_and_publish(&mut sink, prepared, |_| {
+                .commit_prepared_and_publish(&mut sink, prepared, |_, _| {
                     Ok::<_, ()>(ReplayCommitDisposition::Committed)
                 })
                 .expect("the prepared period commits");
@@ -131,6 +134,7 @@ fn fixture() -> &'static PublishedFixture {
         }
         PublishedFixture {
             composition,
+            catalog,
             windows,
         }
     })
@@ -591,16 +595,24 @@ fn next_labor_budget_and_pool_conservation_cannot_be_invented() {
         })
         .expect("the fixture holds the searched element")
         .available += 1;
-    changed.register = MaterialWorldRegister::try_new(changed.register.completed_tick(), state)
-        .expect("the authored fixture satisfies the constructor invariants");
+    changed.register = MaterialWorldRegister::try_new(
+        &fixture().catalog,
+        changed.register.completed_tick(),
+        state,
+    )
+    .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(changed.project(), Err(ProductionProjectionError::State));
     let mut changed = original.clone();
     let mut state = changed.register.state().clone();
     state
         .labor
         .retain(|row| row.site_id != pool.site_id() || row.unit_id != pool.unit_id());
-    changed.register = MaterialWorldRegister::try_new(changed.register.completed_tick(), state)
-        .expect("the authored fixture satisfies the constructor invariants");
+    changed.register = MaterialWorldRegister::try_new(
+        &fixture().catalog,
+        changed.register.completed_tick(),
+        state,
+    )
+    .expect("the authored fixture satisfies the constructor invariants");
     assert_eq!(changed.project(), Err(ProductionProjectionError::State));
     let mut changed = original;
     let event = &mut changed.events[0];

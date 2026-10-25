@@ -559,7 +559,7 @@ fn assert_commit_refusal_preserves_candidate(reference: &mut Session) {
     let bytes = candidate.material().receipt_bytes().to_vec();
     let digest = candidate.identity().tick_content_hash();
     let mut sink = CollectingSink::default();
-    let refused = reference.commit_prepared_and_publish(&mut sink, candidate, |_| {
+    let refused = reference.commit_prepared_and_publish(&mut sink, candidate, |_, _| {
         Err::<ReplayCommitDisposition, _>("refused before marker")
     });
     assert!(matches!(

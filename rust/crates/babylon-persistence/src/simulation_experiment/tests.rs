@@ -183,7 +183,7 @@ fn freight_is_a_real_foreign_inventory_boundary_with_bound_orders_and_no_county_
         .create_foundation()
         .expect("the authored catalog builds the foundation");
     let state = f.initial_register().state();
-    assert!(state.process_outputs.is_empty());
+    assert!(f.material_catalog().process_outputs.is_empty());
     assert!(f.labor().bindings().is_empty());
     assert_eq!(state.orders.len(), 1);
     assert_eq!(state.orders[0].ordered, 8_545_260_204);
@@ -220,8 +220,11 @@ fn freight_is_a_real_foreign_inventory_boundary_with_bound_orders_and_no_county_
             available: 1,
         });
     assert!(
-        babylon_tick::material_staffing::StaffingComposition::inventory_only(&contaminated)
-            .is_err()
+        babylon_tick::material_staffing::StaffingComposition::inventory_only(
+            f.material_catalog(),
+            &contaminated
+        )
+        .is_err()
     );
 }
 #[test]

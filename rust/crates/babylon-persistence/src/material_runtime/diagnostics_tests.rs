@@ -24,7 +24,7 @@ fn foundation() -> MaterialRuntimeFoundation {
 fn runtime() -> DurableMaterialRuntime {
     let foundation = foundation();
     let opening_bytes = foundation.initial_register().shared_canonical_bytes();
-    let lookup = material_storage::seed(opening_bytes.as_slice())
+    let lookup = material_storage::seed(foundation.material_catalog(), opening_bytes.as_slice())
         .expect("the fixture seeds the authored rows");
     let lookup_chain = material_storage::initial_lookup_chain(&lookup)
         .expect("the opening register builds its first lookup chain");
@@ -74,7 +74,7 @@ fn publish(runtime: &mut DurableMaterialRuntime) -> CommittedTickReceipt {
     assert_eq!(receipt.fired(), candidate.graph_report().report().fired);
     let (ack, _) = runtime
         .session
-        .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_| {
+        .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_, _| {
             Ok::<_, Infallible>(ReplayCommitDisposition::Committed)
         })
         .expect("the prepared period commits");

@@ -1,4 +1,6 @@
-//! Compiled current state19 rows: fixed widths, bounds and typed identity fields.
+//! Compiled current state-frame rows: fixed widths, bounds and typed identity fields.
+//! The authored definition rows this table once carried now live in the
+//! immutable `MaterialCatalog`, so no current state frame emits their ids.
 use super::{IdentityKind as K, StorageError};
 #[derive(Clone, Copy, Debug)]
 pub(super) enum FieldKind {
@@ -20,61 +22,6 @@ pub(super) struct Layout {
 }
 macro_rules! fixed {($id:expr,$width:expr,$maximum:expr,[$(($offset:expr,$kind:expr)),*]) => {($id,Layout{width:$width,maximum:$maximum,fields:&[$(Field{offset:$offset,kind:$kind}),*]})};}
 const LAYOUTS: &[(u16, Layout)] = &[
-    fixed!(
-        2,
-        64,
-        65_536,
-        [(0, Identity(K::Site)), (32, Identity(K::LogisticsNode))]
-    ), // site_logistics_nodes
-    fixed!(
-        3,
-        136,
-        65_536,
-        [
-            (0, Identity(K::Process)),
-            (32, Identity(K::Site)),
-            (64, Identity(K::Good)),
-            (96, Identity(K::Unit))
-        ]
-    ), // process_outputs
-    fixed!(
-        4,
-        104,
-        131_072,
-        [
-            (0, Identity(K::Process)),
-            (32, Identity(K::Good)),
-            (64, Identity(K::Unit))
-        ]
-    ), // input_coefficients
-    fixed!(
-        5,
-        72,
-        65_536,
-        [(0, Identity(K::Process)), (32, Identity(K::Unit))]
-    ), // labor_coefficients
-    fixed!(
-        7,
-        161,
-        262_144,
-        [
-            (0, Identity(K::Site)),
-            (32, Identity(K::Site)),
-            (64, Identity(K::Good)),
-            (96, Identity(K::Unit)),
-            (128, Identity(K::Route))
-        ]
-    ), // supplier_routes
-    fixed!(
-        8,
-        104,
-        65_536,
-        [
-            (0, Identity(K::Route)),
-            (34, Identity(K::LogisticsNode)),
-            (66, Identity(K::LogisticsNode))
-        ]
-    ), // route_stages
     fixed!(
         9,
         66,
@@ -103,7 +50,6 @@ const LAYOUTS: &[(u16, Layout)] = &[
             (129, Identity(K::Unit))
         ]
     ), // orders
-    fixed!(12, 40, 131_072, [(0, Identity(K::Order))]), // backlog
     fixed!(
         13,
         250,
@@ -137,26 +83,6 @@ const LAYOUTS: &[(u16, Layout)] = &[
         65_536,
         [(0, Identity(K::Process)), (32, Identity(K::Site))]
     ), // production_commitments
-    fixed!(
-        18,
-        103,
-        65_536,
-        [
-            (0, Identity(K::Site)),
-            (39, Identity(K::Corridor)),
-            (71, Identity(K::Unit))
-        ]
-    ), // merchants
-    fixed!(
-        19,
-        104,
-        65_536,
-        [
-            (0, Identity(K::Site)),
-            (32, Identity(K::Good)),
-            (64, Identity(K::Unit))
-        ]
-    ), // handling_coefficients
     fixed!(20, 38, 65_536, [(0, Identity(K::FinalDemandPrincipal))]), // final_demand_principals
     fixed!(
         21,
@@ -170,7 +96,7 @@ const LAYOUTS: &[(u16, Layout)] = &[
             (128, Identity(K::Unit))
         ]
     ), // final_demand_orders
-    fixed!(24, 49, 131_072, [(1, Account)]),            // cash.accounts
+    fixed!(24, 49, 131_072, [(1, Account)]),              // cash.accounts
     fixed!(
         25,
         139,
@@ -261,7 +187,7 @@ const LAYOUTS: &[(u16, Layout)] = &[
             (96, Identity(K::Unit))
         ]
     ), // recurring.service_inputs
-    fixed!(39, 81, 131_072, [(1, Account)]),            // cost.accounts
+    fixed!(39, 81, 131_072, [(1, Account)]),              // cost.accounts
     fixed!(
         40,
         113,
@@ -285,9 +211,9 @@ const LAYOUTS: &[(u16, Layout)] = &[
         131_072,
         [(1, EquipmentAsset), (33, Identity(K::Site))]
     ), // cost.equipment
-    fixed!(44, 39, 65_536, [(1, Account)]),             // financial.locations
+    fixed!(44, 39, 65_536, [(1, Account)]),               // financial.locations
     fixed!(45, 73, 131_072, [(0, Identity(K::Site)), (33, Account)]), // financial.ownership
-    fixed!(46, 66, 65_536, [(0, Identity(K::Site))]),   // financial.distributions
+    fixed!(46, 66, 65_536, [(0, Identity(K::Site))]),     // financial.distributions
     fixed!(
         47,
         84,
@@ -322,37 +248,6 @@ const LAYOUTS: &[(u16, Layout)] = &[
     ), // household_time.receipts
     fixed!(54, 96, 65_536, [(40, Identity(K::FinalDemandPrincipal))]), // household_time.contributions
     fixed!(
-        57,
-        152,
-        65_536,
-        [
-            (0, Identity(K::EquipmentDefinition)),
-            (32, Identity(K::Good)),
-            (64, Identity(K::Unit)),
-            (112, Identity(K::Unit))
-        ]
-    ), // equipment.definitions
-    fixed!(
-        58,
-        96,
-        65_536,
-        [
-            (0, Identity(K::Process)),
-            (32, Identity(K::Site)),
-            (64, Identity(K::EquipmentDefinition))
-        ]
-    ), // equipment.bindings
-    fixed!(
-        59,
-        104,
-        65_536,
-        [
-            (0, Identity(K::EquipmentDefinition)),
-            (32, Identity(K::Good)),
-            (64, Identity(K::Unit))
-        ]
-    ), // equipment.installation_inputs
-    fixed!(
         60,
         88,
         65_536,
@@ -367,14 +262,6 @@ const LAYOUTS: &[(u16, Layout)] = &[
         65_536,
         [(0, Identity(K::Installation)), (32, Identity(K::Process))]
     ), // equipment.pending
-    fixed!(62, 57, 65_536, [(0, Identity(K::Process))]), // equipment.installation_policies
-    fixed!(
-        63,
-        106,
-        65_536,
-        [(0, Identity(K::Process)), (32, Identity(K::Site))]
-    ), // equipment.investment_policies
-    fixed!(64, 40, 65_536, [(0, Identity(K::Corridor))]), // capacity.shared
     fixed!(65, 48, 65_536, [(8, Identity(K::Corridor))]), // capacity.future_reservations
     fixed!(
         66,
@@ -400,12 +287,6 @@ const LAYOUTS: &[(u16, Layout)] = &[
         ]
     ), // service_orders
     fixed!(
-        68,
-        72,
-        65_536,
-        [(0, Identity(K::Process)), (32, Identity(K::Site))]
-    ),
-    fixed!(
         71,
         282,
         65_536,
@@ -430,7 +311,7 @@ const LAYOUTS: &[(u16, Layout)] = &[
             (65, Identity(K::FinalDemandPrincipal)),
             (97, Identity(K::FinalDemandPrincipal))
         ]
-    ), // aid.cash_reserves
+    ), // aid.cash_reserves,
 ];
 pub(super) fn layout(id: u16) -> Option<Layout> {
     LAYOUTS

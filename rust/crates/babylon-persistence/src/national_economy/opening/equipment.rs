@@ -6,10 +6,10 @@ use babylon_kernel::currency::Currency;
 use babylon_kernel::content_digest;
 use babylon_material_circuit::{
     EquipmentAssetId, EquipmentBinding, EquipmentCarryingValue, EquipmentCohortId,
-    EquipmentDefinition, EquipmentDefinitionId, InstallationInput, InstallationPolicy,
-    InstallationTarget, InstalledEquipmentCohort, InvestmentPolicy, ProductiveEquipment,
-    RollingProcessSupply, StaffingPoolBinding, StaffingWorkSource, SupplierRoute,
-    SupplierTransport,
+    EquipmentDefinition, EquipmentDefinitionId, EquipmentPosition, InstallationInput,
+    InstallationPolicy, InstallationTarget, InstalledEquipmentCohort, InvestmentPolicy,
+    ProductiveEquipment, RollingProcessSupply, StaffingPoolBinding, StaffingWorkSource,
+    SupplierRoute, SupplierTransport,
 };
 use markets::Preferences;
 use markets::Providers;
@@ -27,11 +27,10 @@ pub(super) fn wire(
         definitions: vec![definition.clone()],
         bindings: vec![],
         installation_inputs: vec![],
-        cohorts: vec![],
-        pending: vec![],
         installation_policies: vec![],
         investment_policies: vec![],
     };
+    let mut position = EquipmentPosition::default();
     for (key, coefficient) in &builder.policy.equipment.installation_inputs {
         let good = builder.commodity(key)?;
         equipment.installation_inputs.push(InstallationInput {
@@ -43,7 +42,7 @@ pub(super) fn wire(
     }
     let actors: Vec<_> = builder.actors.values().cloned().collect();
     for actor in actors.into_iter().filter(|a| a.process_id.is_some()) {
-        opening_asset(builder, &actor, &definition, &mut equipment)?;
+        opening_asset(builder, &actor, &definition, &mut equipment, &mut position)?;
         policies(
             builder,
             &actor,
@@ -55,9 +54,10 @@ pub(super) fn wire(
         )?;
     }
     equipment.bindings.sort_unstable_by_key(|r| r.process_id);
-    equipment
+    position
         .cohorts
         .sort_unstable_by_key(|r| (r.process_id, r.id));
+    position.pending.sort_unstable_by_key(|r| r.id);
     equipment
         .installation_inputs
         .sort_unstable_by_key(|r| (r.definition_id, r.good_id, r.unit_id));
@@ -69,6 +69,7 @@ pub(super) fn wire(
         .sort_unstable_by_key(|r| r.process_id);
     bind_installation_work(builder, &equipment)?;
     builder.opening.equipment.sort_unstable_by_key(|r| r.asset);
+    builder.opening.equipment_position = position;
     builder.opening.capacity =
         CatalogCapacity::Rolling(RollingProcessSupply::Equipment(Box::new(equipment)));
     Ok(())
@@ -134,6 +135,7 @@ fn opening_asset(
     actor: &ActorContext,
     definition: &EquipmentDefinition,
     equipment: &mut ProductiveEquipment,
+    position: &mut EquipmentPosition,
 ) -> Result<()> {
     let process = actor.process_id.ok_or(NationalOpeningError::Identity)?;
     equipment.bindings.push(EquipmentBinding {
@@ -159,7 +161,7 @@ fn opening_asset(
     let mut identity = b"NationalOpeningEquipmentV1\0".to_vec();
     identity.extend_from_slice(&process.as_bytes());
     let id = EquipmentCohortId::from_bytes(content_digest::sha256_of(&identity));
-    equipment.cohorts.push(InstalledEquipmentCohort {
+    position.cohorts.push(InstalledEquipmentCohort {
         id,
         process_id: process,
         units,

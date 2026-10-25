@@ -4,9 +4,7 @@ use super::{Error as StorageError, OpeningRegister, MAX_LOOKUP_BYTES};
 use crate::organizer_aid_fixture::Session;
 use crate::state_storage::{IdentityEntry, IdentityKind as K};
 use babylon_kernel::content_digest;
-use babylon_material_circuit::{
-    AccountId, FinalDemandPrincipalId, GoodId, ProcessId, SiteId, UnitId,
-};
+use babylon_material_circuit::{AccountId, FinalDemandPrincipalId, GoodId, SiteId, UnitId};
 use std::collections::BTreeMap;
 use std::result::Result as StdResult;
 
@@ -31,18 +29,21 @@ const HOUSEHOLD: u8 = 128;
 const PROCUREMENT: u8 = 129;
 const SERVICE_SITE: u8 = 130;
 const SERVICE_HOUSEHOLD: u8 = 131;
-const EQUIPMENT: u8 = 132;
 const SHIFT: u8 = 133;
+/// Reserved wire tag: the staffing-pool framing omits its period field. The
+/// pool definition rows now live in the immutable catalog, so no current
+/// recipe emits this tag and a package carrying it refuses with [`Error::Recipe`].
 const POOL: u8 = 134;
 const FREIGHT: u8 = 135;
-const RECIPES: [(u8, u16); 7] = [
+/// Lookup recipes whose source rows stay in the opening register. Equipment and
+/// pool definitions moved to the immutable catalog with the state split, and an
+/// opening register no longer reads them; those additions are stored literally.
+const RECIPES: [(u8, u16); 5] = [
     (HOUSEHOLD, 32),
     (PROCUREMENT, 35),
     (SERVICE_SITE, 38),
     (SERVICE_HOUSEHOLD, 33),
-    (EQUIPMENT, 63),
     (SHIFT, 27),
-    (POOL, 2),
 ];
 fn failure(error: Error) -> StorageError {
     StorageError::Descriptor(error)
@@ -103,10 +104,6 @@ fn row_value(
                 UnitId::from_bytes(field(3, K::Unit)?),
             )
         }
-        EQUIPMENT => babylon_material_circuit::equipment_purchase_order_id(
-            period,
-            ProcessId::from_bytes(field(0, K::Process)?),
-        ),
         SHIFT => {
             // The public member_shift_id constructor hashes only these four typed identities.
             let mut bytes = b"babylon.member-funded-attendance.v1\0".to_vec();
@@ -119,15 +116,6 @@ fn row_value(
             }
             return Ok(IdentityEntry {
                 kind: K::Shift,
-                bytes: content_digest::sha256_of(&bytes),
-            });
-        }
-        POOL => {
-            // Only exact matches from the admitted national producer use this recipe.
-            let mut bytes = b"NationalStaffingPoolV1\0".to_vec();
-            bytes.extend_from_slice(&field(0, K::Site)?);
-            return Ok(IdentityEntry {
-                kind: K::StaffingPool,
                 bytes: content_digest::sha256_of(&bytes),
             });
         }
@@ -388,20 +376,20 @@ mod tests {
             Err(StateError::Layout)
         );
         assert_eq!(
-            opening.recipe_row_identity(2, 0, 0, K::Unit),
+            opening.recipe_row_identity(27, 0, 0, K::Unit),
             Err(StateError::IdentityKind)
         );
         let count = opening
-            .section(2)
+            .section(27)
             .expect("the fixture call `section` succeeds for the authored inputs")
             .1
             .expect("the fixture value `1` is present before this read");
         assert_eq!(
-            opening.recipe_row_identity(2, count, 0, K::Site),
+            opening.recipe_row_identity(27, count, 0, K::StaffingMember),
             Err(StateError::LookupIndex)
         );
         assert_eq!(
-            opening.recipe_row_identity(2, 0, 99, K::Site),
+            opening.recipe_row_identity(27, 0, 99, K::StaffingMember),
             Err(StateError::Layout)
         );
     }

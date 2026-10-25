@@ -11,6 +11,7 @@ use crate::state_storage::{IdentityEntry, OpeningRegister, StorageError, TypedLo
 use crate::storage_compression;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_kernel::content_digest;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::material_world::MaterialWorldRegister;
 use babylon_tick::replay_session::ReplayCommitDisposition;
@@ -41,6 +42,7 @@ fn actual_two_periods_reload_independently_without_retaining_historic_lookup() {
     assert!(std::ptr::eq(shared.lookup(), opening.lookup()));
     let mut chain = register::initial_lookup_chain(&opening)
         .expect("the opening register builds its first lookup chain");
+    let catalog = foundation.material_catalog().clone();
     let mut session = foundation
         .into_session()
         .expect("the fixture opens a session");
@@ -72,10 +74,11 @@ fn actual_two_periods_reload_independently_without_retaining_historic_lookup() {
         .expect("the committed lookup table reads");
         assert_eq!(loaded.lookup.entries(), encoded.lookup.entries());
         // Raw-byte tooling admission follows the same final typed encoder.
-        let raw_opening = OpeningRegister::from_canonical(base.canonical_bytes())
+        let raw_opening = OpeningRegister::from_canonical(&catalog, base.canonical_bytes())
             .expect("the canonical bytes admit the value");
-        let raw_current = MaterialWorldRegister::decode(current.canonical_bytes())
-            .expect("the committed canonical bytes decode");
+        let raw_current =
+            MaterialWorldRegister::decode_external(&catalog, current.canonical_bytes().to_vec())
+                .expect("the committed canonical bytes decode");
         let mut independent = state_storage::encode_register_with_opening(
             &raw_opening,
             &raw_current,
@@ -91,13 +94,20 @@ fn actual_two_periods_reload_independently_without_retaining_historic_lookup() {
         shortened[offset..offset + 4].copy_from_slice(&0_u32.to_be_bytes());
         shortened[offset + 4..offset + 36].copy_from_slice(&content_digest::sha256_of(&[]));
         assert_eq!(
-            state_storage::decode_admitted(&opening, &shortened, &loaded.lookup, loaded.chain)
-                .expect_err("the malformed admitted bytes are refused"),
+            state_storage::decode_admitted(
+                &catalog,
+                &opening,
+                &shortened,
+                &loaded.lookup,
+                loaded.chain
+            )
+            .expect_err("the malformed admitted bytes are refused"),
             StorageError::ParentMismatch
         );
 
         assert_eq!(
             decode(
+                &catalog,
                 &opening,
                 period,
                 &encoded.register_storage_bytes,
@@ -137,7 +147,7 @@ fn actual_two_periods_reload_independently_without_retaining_historic_lookup() {
         );
         chain = loaded.chain;
         session
-            .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_| {
+            .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_, _| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
             .expect("the prepared period commits");
@@ -381,6 +391,7 @@ fn original_canonical_state_does_not_admit_a_changed_storage_chain() {
         .expect("the authored catalog builds the foundation");
     let opening = OpeningRegister::from_opening(foundation.initial_register())
         .expect("the opening register admits its sections");
+    let catalog = foundation.material_catalog().clone();
     let session = foundation
         .into_session()
         .expect("the fixture opens a session");
@@ -402,6 +413,7 @@ fn original_canonical_state_does_not_admit_a_changed_storage_chain() {
     wrong[0] ^= 1;
     assert_eq!(
         decode(
+            &catalog,
             &opening,
             1,
             &encoded.register_storage_bytes,
@@ -414,6 +426,7 @@ fn original_canonical_state_does_not_admit_a_changed_storage_chain() {
     );
     assert_eq!(
         decode(
+            &catalog,
             &opening,
             1,
             &encoded.register_storage_bytes,
@@ -452,7 +465,7 @@ fn encode_refuses_independently_valid_receipt_from_another_tick() {
     babylon_tick::material_world::decode_material_receipts(&previous_receipts)
         .expect("the canonical bytes decode into the declared type");
     session
-        .commit_prepared_and_publish(&mut CollectingSink::default(), first, |_| {
+        .commit_prepared_and_publish(&mut CollectingSink::default(), first, |_, _| {
             Ok::<_, ()>(ReplayCommitDisposition::Committed)
         })
         .expect("the prepared period commits");
@@ -491,6 +504,7 @@ fn admitted_current_receipt_is_not_typed_decoded_again_for_endpoint_framing() {
     let foundation = MichiganContentPreset::FourWeekStandard
         .create_foundation(&crate::test_support::catalog())
         .expect("the authored catalog builds the foundation");
+    let catalog = foundation.material_catalog().clone();
     let session = foundation
         .into_session()
         .expect("the fixture opens a session");
@@ -520,6 +534,7 @@ fn admitted_current_receipt_is_not_typed_decoded_again_for_endpoint_framing() {
     .expect("the committed lookup table reads");
     let before = crate::receipt_storage::typed_admission_count();
     let history = register::decode_typed(
+        &catalog,
         &opening,
         1,
         &encoded.register_storage_bytes,
@@ -529,6 +544,7 @@ fn admitted_current_receipt_is_not_typed_decoded_again_for_endpoint_framing() {
     )
     .expect("the canonical bytes decode into the declared type");
     let endpoint = register::decode_typed_with_witness(
+        &catalog,
         &opening,
         1,
         &encoded.register_storage_bytes,
@@ -549,8 +565,9 @@ fn admitted_current_receipt_is_not_typed_decoded_again_for_endpoint_framing() {
         1,
         "the complete reader must reuse the already admitted current typed receipt"
     );
-    assert_receipt_witness_refusals(&opening, &encoded, &loaded, &history);
+    assert_receipt_witness_refusals(&catalog, &opening, &encoded, &loaded, &history);
     let cold = register::decode_typed(
+        &catalog,
         &opening,
         1,
         &encoded.register_storage_bytes,
@@ -566,6 +583,7 @@ fn admitted_current_receipt_is_not_typed_decoded_again_for_endpoint_framing() {
 }
 
 fn assert_receipt_witness_refusals(
+    catalog: &MaterialCatalog,
     opening: &OpeningRegister,
     encoded: &EncodedMaterial,
     loaded: &DecodedPeriodLookup,
@@ -578,6 +596,7 @@ fn assert_receipt_witness_refusals(
     };
     let restored = |tick, package: &[u8], chain| {
         register::decode_typed_with_witness(
+            catalog,
             opening,
             tick,
             &encoded.register_storage_bytes,

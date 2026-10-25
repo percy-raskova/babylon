@@ -22,6 +22,7 @@ use babylon_material_circuit::CommodityDefinition;
 use babylon_material_circuit::CorridorCapacity;
 use babylon_material_circuit::EmploymentTerms;
 use babylon_material_circuit::EquipmentCarryingValue;
+use babylon_material_circuit::EquipmentPosition;
 use babylon_material_circuit::EquityCarryingValue;
 use babylon_material_circuit::FinalDemandOrder;
 use babylon_material_circuit::FinalDemandPrincipal;
@@ -266,6 +267,8 @@ pub struct EconomicOpening {
     pub equity: Vec<EquityCarryingValue>,
     /// Exact carrying amounts for installed equipment and pending installation.
     pub equipment: Vec<EquipmentCarryingValue>,
+    /// Opening installed and pending equipment position; never a catalog definition.
+    pub equipment_position: EquipmentPosition,
     pub capacity: CatalogCapacity,
     pub policies: CatalogPolicies,
     pub logistics: CatalogLogistics,

@@ -21,6 +21,7 @@ use super::artifacts;
 use super::artifacts::Result;
 use super::run;
 use super::run::{Case, PERIODS};
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::RouteId;
 use babylon_tick::material_world;
 
@@ -444,11 +445,12 @@ fn transit(state: &MaterialCircuitState, route: RouteId) -> Vec<Transit> {
 }
 
 fn regional_route_capacity(
+    material: &MaterialCatalog,
     opening: &MaterialCircuitState,
     route: RouteId,
     grams_per_unit: u64,
 ) -> Result<(u16, u64)> {
-    let stages: Vec<_> = opening
+    let stages: Vec<_> = material
         .route_stages
         .iter()
         .filter(|stage| stage.route_id == route)
@@ -480,6 +482,7 @@ fn regional_route_capacity(
 
 fn routes(
     case: &Case,
+    material: &MaterialCatalog,
     opening: &MaterialCircuitState,
     closing: &MaterialCircuitState,
     receipts: &MaterialTickReceipts,
@@ -530,7 +533,7 @@ fn routes(
                 .checked_sub(prior.shipped)
                 .ok_or_else(|| artifacts::contract("order shipped exceeds ordered"))?;
             let (travel_periods, capacity) =
-                regional_route_capacity(opening, route.id(), good.grams_per_unit)?;
+                regional_route_capacity(material, opening, route.id(), good.grams_per_unit)?;
             Ok(RouteRow {
                 route: route.key.clone(),
                 route_id: run::hex(&route.id().as_bytes()),
@@ -624,6 +627,7 @@ fn conserved(case: &Case, state: &MaterialCircuitState) -> Result<(u64, u64)> {
 
 pub fn period(
     case: &Case,
+    material: &MaterialCatalog,
     opening: &MaterialCircuitState,
     candidate: &PreparedMaterialTick<HypergraphStore>,
 ) -> Result<PeriodRow> {
@@ -636,7 +640,7 @@ pub fn period(
         return Err(artifacts::contract("observation period alignment failed"));
     }
     let processes = processes(case, opening, closing, &receipts, staffing(candidate)?)?;
-    let routes = routes(case, opening, closing, &receipts, &processes)?;
+    let routes = routes(case, material, opening, closing, &receipts, &processes)?;
     let (metal, food) = conserved(case, closing)?;
     Ok(PeriodRow {
         schema: "MichiganDeliveryStockPeriodV1",

@@ -3,18 +3,19 @@ use super::super::equipment::Definitions;
 use super::{PeriodOrders, ProductionProjectionError, Result};
 use babylon_material_circuit::EquipmentDefinition;
 use babylon_material_circuit::{
-    AccountId, InvestmentReceipt, MaterialCircuitState, OrderAccessMode, OrderRow, OutboundOrderId,
-    PurchaseEscrow,
+    AccountId, InvestmentReceipt, MaterialCatalog, MaterialCircuitState, OrderAccessMode, OrderRow,
+    OutboundOrderId, PurchaseEscrow,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::BTreeMap;
 pub(super) fn admit(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
     orders: &mut PeriodOrders,
     admissions: &mut BTreeMap<OutboundOrderId, PurchaseEscrow>,
 ) -> Result<()> {
-    let Some(equipment) = super::super::equipment::get(prior) else {
+    let Some(equipment) = super::super::equipment::get(catalog) else {
         return if receipt.investment.is_empty() {
             Ok(())
         } else {

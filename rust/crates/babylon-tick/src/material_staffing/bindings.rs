@@ -1,6 +1,7 @@
 //! Immutable resident-to-workplace joins; mutable people live only in the graph.
 use super::MaterialStaffingError;
 use babylon_graph::stable_element::StableElementKey;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::{
     StaffingError, StaffingMemberBinding, StaffingPoolBinding, MAX_MATERIAL_CIRCUIT_ROWS,
@@ -153,16 +154,19 @@ impl StaffingComposition {
     /// Admit a deliberately unstaffed inventory boundary.
     /// # Errors
     /// Refuses any labor-consuming material activity or budget.
-    pub fn inventory_only(state: &MaterialCircuitState) -> Result<Self, MaterialStaffingError> {
-        if !state.process_outputs.is_empty()
-            || !state.input_coefficients.is_empty()
-            || !state.labor_coefficients.is_empty()
+    pub fn inventory_only(
+        catalog: &MaterialCatalog,
+        state: &MaterialCircuitState,
+    ) -> Result<Self, MaterialStaffingError> {
+        if !catalog.process_outputs.is_empty()
+            || !catalog.input_coefficients.is_empty()
+            || !catalog.labor_coefficients.is_empty()
             || !state.capacities.is_empty()
             || !state.production_commitments.is_empty()
             || !state.labor.is_empty()
-            || !state.merchants.is_empty()
-            || !state.handling_coefficients.is_empty()
-            || state.maintenance_binding.is_some()
+            || !catalog.merchants.is_empty()
+            || !catalog.handling_coefficients.is_empty()
+            || catalog.maintenance_binding.is_some()
             || state.maintenance_service.is_some()
         {
             return Err(MaterialStaffingError::InventoryHasLabor);

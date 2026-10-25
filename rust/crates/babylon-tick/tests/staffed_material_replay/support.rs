@@ -25,8 +25,8 @@ use babylon_kernel::tick_content_hash::RefDigest;
 use babylon_kernel::content_digest::ContentDigest;
 
 use babylon_material_circuit::{
-    BacklogRow, CapacityRow, CommodityDefinition, CorridorCapacity, CorridorId, GoodId,
-    InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
+    CapacityRow, CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InputOutputCoefficient,
+    InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId, MaterialCatalog,
     MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId, ProcessOutput, RouteId,
     RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode, StaffingPolicy, StaffingPoolBinding,
     StaffingPoolId, StaffingWorkSource, SupplierRoute, SupplierTransport, UnitId,
@@ -57,6 +57,7 @@ use babylon_bsl::canonical_ast;
 use babylon_bsl::rule_pipeline;
 use babylon_kernel::content_digest;
 use babylon_material_circuit::AidBook;
+use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::FinancialInstitutions;
 use babylon_material_circuit::HistoricalCostBook;
@@ -157,10 +158,15 @@ pub(crate) fn labor(period: u64, available: u64) -> LaborCapacityRow {
     }
 }
 
-pub(crate) fn opening() -> MaterialCircuitState {
-    let mut state = MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
-        period: 1,
+/// One authored definition set and its opening quantities.
+pub(crate) struct Materials {
+    pub(crate) catalog: MaterialCatalog,
+    pub(crate) state: MaterialCircuitState,
+}
+
+pub(crate) fn opening() -> Materials {
+    let catalog = MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2]
             .map(|id| SiteLogisticsNode {
                 site_id: site(id),
@@ -185,11 +191,6 @@ pub(crate) fn opening() -> MaterialCircuitState {
             unit_id: unit(1),
             quantity_per_batch: 40,
         }],
-        supplier_routes: Vec::new(),
-        route_stages: Vec::new(),
-        route_stage_capacities: Vec::new(),
-        service_connections: vec![],
-        service_orders: vec![],
         commodities: [1, 2]
             .map(|id| CommodityDefinition {
                 good_id: good(id),
@@ -199,6 +200,22 @@ pub(crate) fn opening() -> MaterialCircuitState {
                 },
             })
             .to_vec(),
+        supplier_routes: Vec::new(),
+        route_stages: Vec::new(),
+        merchants: Vec::new(),
+        handling_coefficients: Vec::new(),
+        maintenance_binding: None,
+        aid_mandates: Vec::new(),
+        household_time_policy: Vec::new(),
+        service_inputs: Vec::new(),
+        household_needs: Vec::new(),
+        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
+    };
+    let mut state = MaterialCircuitState {
+        period: 1,
+        route_stage_capacities: Vec::new(),
+        service_connections: vec![],
+        service_orders: vec![],
         inventory: vec![InventoryRow {
             site_id: site(2),
             good_id: good(1),
@@ -206,7 +223,6 @@ pub(crate) fn opening() -> MaterialCircuitState {
             quantity: 4,
         }],
         orders: Vec::new(),
-        backlog: Vec::new(),
         freight: Vec::new(),
         corridor_capacities: Vec::new(),
         capacities: (1..=8)
@@ -219,23 +235,22 @@ pub(crate) fn opening() -> MaterialCircuitState {
             .collect(),
         labor: vec![labor(1, 160)],
         production_commitments: Vec::new(),
-        merchants: Vec::new(),
-        handling_coefficients: Vec::new(),
         final_demand_principals: Vec::new(),
         final_demand_orders: Vec::new(),
         accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
-        maintenance_binding: None,
         maintenance_service: None,
+        capacity_reservations: CapacityReservations::default(),
     };
-    install_freight(&mut state);
-    state
+    let mut catalog = catalog;
+    install_freight(&mut catalog, &mut state);
+    Materials { catalog, state }
 }
 
-pub(crate) fn install_freight(state: &mut MaterialCircuitState) {
+pub(crate) fn install_freight(catalog: &mut MaterialCatalog, state: &mut MaterialCircuitState) {
     let route = RouteId::from_bytes([1; 32]);
     let corridor = CorridorId::from_bytes([1; 32]);
     let order = OrderId::from_bytes([1; 32]);
-    state.supplier_routes.push(SupplierRoute {
+    catalog.supplier_routes.push(SupplierRoute {
         transport_kind: SupplierTransport::Staged,
         buyer_site_id: site(1),
         supplier_site_id: site(2),
@@ -243,7 +258,7 @@ pub(crate) fn install_freight(state: &mut MaterialCircuitState) {
         unit_id: unit(2),
         route_id: route,
     });
-    state.route_stages.push(RouteStage {
+    catalog.route_stages.push(RouteStage {
         route_id: route,
         stage_index: 0,
         from_node_id: LogisticsNodeId::from_bytes([2; 32]),
@@ -268,10 +283,6 @@ pub(crate) fn install_freight(state: &mut MaterialCircuitState) {
         lost: 0,
         delivered: 0,
         realized: 0,
-    });
-    state.backlog.push(BacklogRow {
-        order_id: order,
-        quantity: 4,
     });
     state.corridor_capacities.push(CorridorCapacity {
         corridor_id: corridor,
@@ -331,8 +342,11 @@ pub(crate) fn try_session_with_authored_rules(
 pub(crate) fn try_session_with_material(
     rules: &str,
     labor: StaffingComposition,
-    material: MaterialCircuitState,
+    material: Materials,
 ) -> Result<Session, MaterialReplayError> {
+    let Materials { catalog, state } = material;
+    let catalog = MaterialCatalog::try_new(catalog)
+        .expect("the authored definitions canonicalize before admission");
     let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
         .expect("the Michigan hex foundation builds");
     let (_, parsed) =
@@ -358,8 +372,9 @@ pub(crate) fn try_session_with_material(
     .map_err(MaterialReplayError::Graph)?;
     MaterialReplaySession::new(
         graph,
-        MaterialWorldRegister::try_new(0, material)
+        MaterialWorldRegister::try_new(&catalog, 0, state)
             .expect("the authored fixture satisfies the constructor invariants"),
+        catalog,
         content_digest::sha256_of(b"staffed-replay-fixture-foundation"),
         babylon_kernel::clock::CampaignDuration::Finite { final_period: 7 },
         labor,
@@ -370,13 +385,14 @@ pub(crate) fn session(rules: &str) -> Session {
     try_session(rules, staffed_labor()).expect("the fixture opens a session")
 }
 
-pub(crate) fn paid_material() -> MaterialCircuitState {
+pub(crate) fn paid_material() -> Materials {
     use babylon_kernel::currency::Currency;
     use babylon_material_circuit::{
         AccountId, CashAccount, CircuitAccounting, EmploymentTerms, FinalDemandPrincipal,
         FinalDemandPrincipalId, MonetaryBook, MonetaryCircuit, OutboundOrderId, PurchaseEscrow,
     };
-    let mut material = opening();
+    let Materials { catalog, mut state } = opening();
+    let material = &mut state;
     let household = FinalDemandPrincipalId::from_bytes([30; 32]);
     material.final_demand_principals.push(FinalDemandPrincipal {
         id: household,
@@ -461,7 +477,7 @@ pub(crate) fn paid_material() -> MaterialCircuitState {
             }],
         }
     }));
-    material
+    Materials { catalog, state }
 }
 
 pub(crate) fn paid_session() -> Session {
@@ -580,7 +596,7 @@ pub(crate) fn commit(
     candidate: Candidate,
 ) -> IdentifiedMaterialTick {
     session
-        .commit_prepared_and_publish(sink, candidate, |_| {
+        .commit_prepared_and_publish(sink, candidate, |_, _| {
             Ok::<_, &'static str>(ReplayCommitDisposition::Committed)
         })
         .expect("the prepared period commits")
@@ -786,8 +802,12 @@ pub(crate) fn one_empty_period_holds_then_releases_and_real_arrival_rehires_for_
     );
     assert!(session.material().state().freight.is_empty());
     assert_eq!(
-        session.material().state().backlog,
-        vec![BacklogRow {
+        session
+            .material()
+            .state()
+            .derived_backlog()
+            .expect("the admitted orders keep an exact backlog"),
+        vec![babylon_material_circuit::BacklogRow {
             order_id: OrderId::from_bytes([1; 32]),
             quantity: 0,
         }]
@@ -810,7 +830,7 @@ pub(crate) fn prepared_and_failed_commit_publish_nothing_and_retry_has_identical
     let expected = *candidate.identity();
     let expected_graph = candidate.graph_report().result_stable_graph().clone();
     let expected_physical = candidate.material().register().clone();
-    let error = session.commit_prepared_and_publish(&mut sink, candidate, |identity| {
+    let error = session.commit_prepared_and_publish(&mut sink, candidate, |identity, _| {
         assert_eq!(identity, &expected);
         Err::<ReplayCommitDisposition, _>("durable commit refused")
     });
@@ -879,7 +899,7 @@ pub(crate) fn wage_and_dispatch_candidate_is_atomic_and_restarts_through_paid_ar
     assert_eq!(household.net_income, Currency::from_micro_units(160));
     assert_eq!(receipts.money_transfers.len(), 2);
     let expected = *candidate.identity();
-    let refused = session.commit_prepared_and_publish(&mut sink, candidate, |_| {
+    let refused = session.commit_prepared_and_publish(&mut sink, candidate, |_, _| {
         Err::<ReplayCommitDisposition, _>("paid commit refused")
     });
     assert!(matches!(
@@ -904,7 +924,8 @@ pub(crate) fn wage_and_dispatch_candidate_is_atomic_and_restarts_through_paid_ar
             &graph,
             &graph_material,
             &registers,
-            MaterialWorldRegister::decode(&material).expect("the committed canonical bytes decode"),
+            MaterialWorldRegister::decode_external(session.catalog(), material.clone())
+                .expect("the committed canonical bytes decode"),
         )
         .expect("the committed checkpoint restores");
     let mut restored_sink = CollectingSink::default();
@@ -1092,7 +1113,8 @@ pub(crate) fn same_version_checkpoint_restores_retention_and_replays_arrival_wit
             &graph,
             &graph_material,
             &registers,
-            MaterialWorldRegister::decode(&physical).expect("the committed canonical bytes decode"),
+            MaterialWorldRegister::decode_external(restored.catalog(), physical.clone())
+                .expect("the committed canonical bytes decode"),
         )
         .expect("the committed checkpoint restores");
     assert_people(&restored, 0.0, 1.0, 0.0);
@@ -1215,8 +1237,11 @@ pub(crate) fn admitted_checkpoint_refusal_preserves_both_owners_and_valid_retry_
     let registers = graph.result_registers().canonical_bytes();
     let mut damaged_registers = registers.to_vec();
     damaged_registers[0] ^= 1;
-    let admitted = MaterialWorldRegister::decode(candidate.material().register().canonical_bytes())
-        .expect("the committed canonical bytes decode");
+    let admitted = MaterialWorldRegister::decode_external(
+        original.catalog(),
+        candidate.material().register().canonical_bytes().to_vec(),
+    )
+    .expect("the committed canonical bytes decode");
     let mut resumed = session(WITNESS);
     let resumed_sink = CollectingSink::default();
     let before = live(&resumed, &resumed_sink);
@@ -1236,8 +1261,11 @@ pub(crate) fn admitted_checkpoint_refusal_preserves_both_owners_and_valid_retry_
     ));
     assert_eq!(live(&resumed, &resumed_sink), before);
 
-    let opening = MaterialWorldRegister::decode(resumed.material().canonical_bytes())
-        .expect("the committed canonical bytes decode");
+    let opening = MaterialWorldRegister::decode_external(
+        resumed.catalog(),
+        resumed.material().canonical_bytes().to_vec(),
+    )
+    .expect("the committed canonical bytes decode");
     assert!(matches!(
         resumed.restore_full_checkpoint(
             graph.result_stable_graph(),
@@ -1249,8 +1277,11 @@ pub(crate) fn admitted_checkpoint_refusal_preserves_both_owners_and_valid_retry_
     ));
     assert_eq!(live(&resumed, &resumed_sink), before);
 
-    let admitted = MaterialWorldRegister::decode(candidate.material().register().canonical_bytes())
-        .expect("the committed canonical bytes decode");
+    let admitted = MaterialWorldRegister::decode_external(
+        original.catalog(),
+        candidate.material().register().canonical_bytes().to_vec(),
+    )
+    .expect("the committed canonical bytes decode");
     resumed
         .restore_full_checkpoint(
             graph.result_stable_graph(),

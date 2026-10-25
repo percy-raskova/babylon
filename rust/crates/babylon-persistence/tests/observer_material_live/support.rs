@@ -37,6 +37,7 @@ use std::sync::{Mutex, Once};
 
 use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_persistence::material_storage::LookupAnchor;
 use babylon_persistence::michigan_material::MichiganMaterialCatalog;
 use babylon_persistence::observer_reader;
@@ -905,7 +906,7 @@ pub(crate) fn live_material_observer_preserves_history_and_denies_preview_blob_a
             .expect("the authored catalog builds the foundation"),
     )
     .expect("the test database creates the fixture campaign");
-    assert_single_foundation_storage(&target.writer, campaign);
+    assert_single_foundation_storage(&target.writer, campaign, runtime.session().catalog());
     babylon_persistence::install_reader_role(&target.writer)
         .expect("the test database installs the reader role");
     observer_reader::provision_observer_role(&target.writer)
@@ -1016,7 +1017,13 @@ pub(crate) fn live_material_observer_preserves_history_and_denies_preview_blob_a
         .writer
         .connect(NoTls)
         .expect("the test database accepts the connection");
-    assert_corrupted_register_is_rejected(&mut connection, &observer, campaign, &mut cursor);
+    assert_corrupted_register_is_rejected(
+        &mut connection,
+        &observer,
+        campaign,
+        runtime.session().catalog(),
+        &mut cursor,
+    );
 
     let known_role = known_config
         .get_user()
@@ -1231,6 +1238,7 @@ pub(crate) fn assert_corrupted_register_is_rejected(
     connection: &mut Client,
     observer: &ObserverEconomyReader,
     campaign: CampaignId,
+    catalog: &MaterialCatalog,
     cursor: &mut Option<ObserverMaterialCursor>,
 ) {
     // A syntactically valid stored register mutation cannot retain its committed identity.
@@ -1238,7 +1246,7 @@ pub(crate) fn assert_corrupted_register_is_rejected(
         "SELECT initial_register_bytes FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1",
         &[campaign.as_uuid()],
     ).expect("the seeded row is present exactly once").get(0);
-    let opening = babylon_persistence::material_storage::seed(&base)
+    let opening = babylon_persistence::material_storage::seed(catalog, &base)
         .expect("the fixture seeds the authored rows");
     let rows = connection.query(
         "SELECT resolve_tick, register_storage_bytes, receipt_storage_bytes, lookup_delta_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1 AND resolve_tick<=18 ORDER BY resolve_tick",
@@ -1265,6 +1273,7 @@ pub(crate) fn assert_corrupted_register_is_rejected(
             let package: Vec<u8> = row.get(1);
             let receipt_package: Vec<u8> = row.get(2);
             let (canonical, receipts) = babylon_persistence::material_storage::decode(
+                catalog,
                 &opening,
                 18,
                 &package,
@@ -1273,11 +1282,11 @@ pub(crate) fn assert_corrupted_register_is_rejected(
                 lookup.chain,
             )
             .expect("the committed canonical bytes decode");
-            let register = MaterialWorldRegister::decode(&canonical)
+            let register = MaterialWorldRegister::decode_external(catalog, canonical.clone())
                 .expect("the committed canonical bytes decode");
             let mut state = register.state().clone();
             state.inventory[0].quantity += 1;
-            let corrupt = MaterialWorldRegister::try_new(18, state)
+            let corrupt = MaterialWorldRegister::try_new(catalog, 18, state)
                 .expect("the authored fixture satisfies the constructor invariants");
             let encoded = babylon_persistence::material_storage::encode(
                 &corrupt,
@@ -1290,6 +1299,7 @@ pub(crate) fn assert_corrupted_register_is_rejected(
             assert_eq!(encoded.lookup.entries(), lookup.lookup.entries());
             let (reconstructed, preserved_receipts) =
                 babylon_persistence::material_storage::decode(
+                    catalog,
                     &opening,
                     18,
                     &encoded.register_storage_bytes,
@@ -2003,7 +2013,11 @@ mod current_authority {
     }
 }
 
-pub(crate) fn assert_single_foundation_storage(writer: &Config, campaign: CampaignId) {
+pub(crate) fn assert_single_foundation_storage(
+    writer: &Config,
+    campaign: CampaignId,
+    catalog: &MaterialCatalog,
+) {
     let mut storage = writer
         .connect(NoTls)
         .expect("the test database accepts the connection");
@@ -2018,7 +2032,7 @@ pub(crate) fn assert_single_foundation_storage(writer: &Config, campaign: Campai
         "SELECT initial_register_bytes FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1", &[campaign.as_uuid()]
     ).expect("the seeded row is present exactly once").get(0);
     assert_eq!(
-        MaterialWorldRegister::decode(&captured)
+        MaterialWorldRegister::decode_external(catalog, captured.clone())
             .expect("the committed canonical bytes decode")
             .completed_tick(),
         0
@@ -2037,8 +2051,12 @@ pub(crate) fn assert_captured_foundation_denied(known: &Config) {
         .is_err());
 }
 
-pub(crate) fn self_consistent_changed_period_lookup(base: &[u8], delta: &[u8]) -> Vec<u8> {
-    let opening = babylon_persistence::material_storage::seed(base)
+pub(crate) fn self_consistent_changed_period_lookup(
+    catalog: &MaterialCatalog,
+    base: &[u8],
+    delta: &[u8],
+) -> Vec<u8> {
+    let opening = babylon_persistence::material_storage::seed(catalog, base)
         .expect("the fixture seeds the authored rows");
     let c0 = babylon_persistence::material_storage::initial_lookup_chain(&opening)
         .expect("the opening register builds its first lookup chain");
@@ -2154,7 +2172,8 @@ pub(crate) fn cold_restart_and_history_refuse_corrupt_or_missing_earlier_period_
         "SELECT initial_register_bytes FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1::uuid",
         &[campaign.as_uuid()],
     ).expect("the seeded row is present exactly once").get(0);
-    let self_consistent = self_consistent_changed_period_lookup(&base, &delta);
+    let self_consistent =
+        self_consistent_changed_period_lookup(runtime.session().catalog(), &base, &delta);
     assert_eq!(writer.execute(
         "UPDATE babylon_state.material_tick_v3 SET lookup_delta_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=1",
         &[campaign.as_uuid(), &self_consistent],

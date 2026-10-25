@@ -225,9 +225,14 @@ pub fn run_case(case: &Case, mut emit: impl FnMut(&PeriodRow) -> Result<()>) -> 
                 "expected exactly one deterministic material/period invocation",
             ));
         }
-        let row = observe::period(case, session.material().state(), &candidate)?;
+        let row = observe::period(
+            case,
+            session.catalog(),
+            session.material().state(),
+            &candidate,
+        )?;
         session
-            .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_| {
+            .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_, _| {
                 Ok::<_, Infallible>(ReplayCommitDisposition::Committed)
             })
             .map_err(|error| artifacts::contract(format!("local publication: {error:?}")))?;

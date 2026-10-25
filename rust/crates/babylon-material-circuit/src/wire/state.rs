@@ -32,7 +32,10 @@ pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
     62, 17, 215, 105, 29, 5, 33, 240, 237, 203, 127,
 ];
 
-pub(crate) const SCHEMA_VERSION: u16 = 20;
+/// Published schema version of one canonical material-circuit state frame.
+pub const MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION: u16 = 20;
+
+pub(crate) const SCHEMA_VERSION: u16 = MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION;
 
 impl From<CursorError> for MaterialCircuitError {
     fn from(value: CursorError) -> Self {

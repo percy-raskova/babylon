@@ -294,7 +294,7 @@ fn advance_reference(reference: &mut MaterialReplaySession<HypergraphStore>) {
         .prepare_advance(&actions)
         .expect("the session prepares the authored advance");
     reference
-        .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_| {
+        .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_, _| {
             Ok::<_, ()>(ReplayCommitDisposition::Committed)
         })
         .expect("the prepared period commits");

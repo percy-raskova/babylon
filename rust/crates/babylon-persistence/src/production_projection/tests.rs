@@ -144,11 +144,15 @@ fn projection_provenance_uses_the_saved_campaign_horizon() {
         .expect("the committed canonical bytes decode");
     let snapshot = projection::project_economic_current(
         decoded.view(),
+        foundation.material_catalog(),
         foundation.initial_register(),
         None,
         None,
-        &OrderHistory::from_opening(foundation.initial_register().state())
-            .expect("the opening register admits its sections"),
+        &OrderHistory::from_opening(
+            foundation.material_catalog(),
+            foundation.initial_register().state(),
+        )
+        .expect("the opening register admits its sections"),
     )
     .expect("the fixture projection accepts the authored input");
     assert_eq!(
@@ -183,7 +187,7 @@ fn period_three(preset: MichiganDeliveryPreset) -> ProductionSnapshot {
         ));
         opening = Some(session.material().clone());
         session
-            .commit_prepared_and_publish(&mut CollectingSink::default(), next, |_| {
+            .commit_prepared_and_publish(&mut CollectingSink::default(), next, |_, _| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
             .expect("the prepared period commits");
@@ -382,8 +386,9 @@ fn shared_physical_definitions_equal_actual_closed_material_route_rows() {
     let index = PhysicalRouteIndex::try_new(&snapshot)
         .expect("the authored fixture satisfies the constructor invariants");
     let actual = next.material().register().state();
-    assert_eq!(snapshot.routes.len(), actual.supplier_routes.len());
-    for supplier in &actual.supplier_routes {
+    let catalog = session.catalog();
+    assert_eq!(snapshot.routes.len(), catalog.supplier_routes.len());
+    for supplier in &catalog.supplier_routes {
         let relation = snapshot
             .routes
             .iter()
@@ -400,7 +405,7 @@ fn shared_physical_definitions_equal_actual_closed_material_route_rows() {
         let definition = index
             .get(relation)
             .expect("the fixture holds the addressed entry");
-        let expected: Vec<_> = actual
+        let expected: Vec<_> = catalog
             .route_stages
             .iter()
             .filter(|row| row.route_id == supplier.route_id)

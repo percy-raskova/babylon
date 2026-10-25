@@ -2110,6 +2110,7 @@ where
     let mut committed_events = Vec::new();
     let mut choice_by_sample_subject = HashMap::new();
     let mut material = None;
+    let organizer_catalog = material_base.as_ref().map(|inputs| inputs.catalog);
     let organizer_opening = material_base.as_ref().and_then(|inputs| {
         inputs
             .opening
@@ -2265,10 +2266,16 @@ where
                     .map_err(|error| {
                         transaction_error(identity, format!("organizer practice refused: {error}"))
                     })?;
+                    let catalog = organizer_catalog.ok_or_else(|| {
+                        transaction_error(
+                            identity,
+                            "organizer register requires one bound material catalog".to_owned(),
+                        )
+                    })?;
                     let sealed = if household_bound {
-                        candidate.set_organizer_with_household_time(config.clone(), next)
+                        candidate.set_organizer_with_household_time(catalog, config.clone(), next)
                     } else {
-                        candidate.set_organizer(config.clone(), next)
+                        candidate.set_organizer(catalog, config.clone(), next)
                     };
                     sealed.map_err(|error| {
                         transaction_error(identity, format!("organizer register refused: {error}"))

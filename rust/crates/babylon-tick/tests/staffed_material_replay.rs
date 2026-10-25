@@ -17,6 +17,7 @@ mod financial;
 #[path = "staffed_material_replay/support.rs"]
 mod support;
 
+pub(crate) use support::Materials;
 use support::{
     commit, good, live, owned_checkpoint_rows, paid_material, prepare, process, resident_member,
     site, staffed_labor, subject, try_session_with_material, unit, Session, MATERIAL_CYCLE,
@@ -24,8 +25,8 @@ use support::{
 
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_material_circuit::{
-    CorridorCapacity, CorridorId, MaterialCircuitState, StaffingPolicy, StaffingPoolBinding,
-    StaffingPoolId, StaffingWorkSource,
+    CorridorCapacity, CorridorId, StaffingPolicy, StaffingPoolBinding, StaffingPoolId,
+    StaffingWorkSource,
 };
 use babylon_tick::material_replay::MaterialCommitError;
 use babylon_tick::material_staffing::{StaffingComposition, StaffingNodeBinding};

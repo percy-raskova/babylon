@@ -13,11 +13,13 @@ use babylon_tick::material_staffing::STAFFING_COMPOSITION_ID;
 use babylon_tick::material_world::MaterialTickReceipts;
 use babylon_tick::replay_session::SuccessfulEvent;
 
+use babylon_material_circuit::MaterialCatalog;
 use babylon_tick::material_world;
 use std::collections::BTreeMap;
 
 pub fn period(
     catalog: &MichiganMaterialCatalog,
+    material: &MaterialCatalog,
     opening: &MaterialCircuitState,
     candidate: &PreparedMaterialTick<HypergraphStore>,
     capacity_key: &str,
@@ -77,7 +79,7 @@ pub fn period(
         ),
         register_bytes: register.canonical_bytes().len(),
         receipt_bytes: candidate.material().receipt_bytes().len(),
-        maximum_family_rows: maximum_rows(closing),
+        maximum_family_rows: maximum_rows(material, closing),
         selected_capacity_opening_grams: opening_grams,
         selected_capacity_reserved_grams: reserved,
         processes: processes(catalog, opening, &receipts)?,
@@ -361,26 +363,25 @@ fn final_demand(
         })
         .collect()
 }
-fn maximum_rows(state: &MaterialCircuitState) -> usize {
+fn maximum_rows(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> usize {
     [
-        state.site_logistics_nodes.len(),
-        state.process_outputs.len(),
-        state.input_coefficients.len(),
-        state.labor_coefficients.len(),
-        state.commodities.len(),
-        state.supplier_routes.len(),
-        state.route_stages.len(),
+        catalog.site_logistics_nodes.len(),
+        catalog.process_outputs.len(),
+        catalog.input_coefficients.len(),
+        catalog.labor_coefficients.len(),
+        catalog.commodities.len(),
+        catalog.supplier_routes.len(),
+        catalog.route_stages.len(),
         state.route_stage_capacities.len(),
         state.inventory.len(),
         state.orders.len(),
-        state.backlog.len(),
         state.freight.len(),
         state.corridor_capacities.len(),
         state.capacities.len(),
         state.labor.len(),
         state.production_commitments.len(),
-        state.merchants.len(),
-        state.handling_coefficients.len(),
+        catalog.merchants.len(),
+        catalog.handling_coefficients.len(),
         state.final_demand_principals.len(),
         state.final_demand_orders.len(),
     ]

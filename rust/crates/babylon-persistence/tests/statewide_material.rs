@@ -5,7 +5,8 @@ use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::content_digest::sha256_of;
 use babylon_material_circuit::{
-    GoodId, MaterialCircuitState, MerchantRole, OrderId, SiteId, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
+    GoodId, MaterialCatalog, MaterialCircuitState, MerchantRole, OrderId, SiteId, UnitId,
+    MAX_MATERIAL_CIRCUIT_ROWS,
 };
 use babylon_persistence::material_runtime::MAX_MATERIAL_FOUNDATION_BYTES;
 use babylon_persistence::michigan_content::MichiganContentPreset;
@@ -152,6 +153,7 @@ fn stock_and_transit(state: &MaterialCircuitState) -> Goods {
 }
 
 fn assert_goods_conserved(
+    material: &MaterialCatalog,
     opening: &MaterialCircuitState,
     closing: &MaterialCircuitState,
     receipts: &MaterialTickReceipts,
@@ -159,7 +161,7 @@ fn assert_goods_conserved(
     let mut available = stock_and_transit(opening);
     let mut accounted = stock_and_transit(closing);
     for receipt in &receipts.production {
-        let output = opening
+        let output = material
             .process_outputs
             .iter()
             .find(|row| row.process_id == receipt.process_id)
@@ -169,7 +171,7 @@ fn assert_goods_conserved(
             .entry((output.good_id, output.unit_id))
             .or_default() +=
             u128::from(output.quantity_per_batch) * u128::from(receipt.produced_batches);
-        for input in opening
+        for input in material
             .input_coefficients
             .iter()
             .filter(|row| row.process_id == receipt.process_id)
@@ -255,10 +257,14 @@ fn assert_order_accounts(
     }
 }
 
-fn assert_opening_labor_limits(opening: &MaterialCircuitState, receipts: &MaterialTickReceipts) {
+fn assert_opening_labor_limits(
+    material: &MaterialCatalog,
+    opening: &MaterialCircuitState,
+    receipts: &MaterialTickReceipts,
+) {
     let mut used: BTreeMap<(SiteId, UnitId), u128> = BTreeMap::new();
     for receipt in &receipts.production {
-        let coefficient = opening
+        let coefficient = material
             .labor_coefficients
             .iter()
             .find(|row| row.process_id == receipt.process_id)
@@ -269,7 +275,7 @@ fn assert_opening_labor_limits(opening: &MaterialCircuitState, receipts: &Materi
             u128::from(receipt.produced_batches) * u128::from(coefficient.quantity_per_batch);
     }
     for receipt in &receipts.handling {
-        let merchant = opening
+        let merchant = material
             .merchants
             .iter()
             .find(|row| row.site_id == receipt.site_id)
@@ -291,26 +297,25 @@ fn assert_opening_labor_limits(opening: &MaterialCircuitState, receipts: &Materi
     }
 }
 
-fn maximum_row_count(state: &MaterialCircuitState) -> usize {
+fn maximum_row_count(material: &MaterialCatalog, state: &MaterialCircuitState) -> usize {
     [
-        state.site_logistics_nodes.len(),
-        state.process_outputs.len(),
-        state.input_coefficients.len(),
-        state.labor_coefficients.len(),
-        state.commodities.len(),
-        state.supplier_routes.len(),
-        state.route_stages.len(),
+        material.site_logistics_nodes.len(),
+        material.process_outputs.len(),
+        material.input_coefficients.len(),
+        material.labor_coefficients.len(),
+        material.commodities.len(),
+        material.supplier_routes.len(),
+        material.route_stages.len(),
         state.route_stage_capacities.len(),
         state.inventory.len(),
         state.orders.len(),
-        state.backlog.len(),
         state.freight.len(),
         state.corridor_capacities.len(),
         state.capacities.len(),
         state.labor.len(),
         state.production_commitments.len(),
-        state.merchants.len(),
-        state.handling_coefficients.len(),
+        material.merchants.len(),
+        material.handling_coefficients.len(),
         state.final_demand_principals.len(),
         state.final_demand_orders.len(),
     ]
@@ -342,7 +347,7 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
     let mut fulfilled = BTreeMap::new();
     let mut maximum_register_bytes = session.material().canonical_bytes().len();
     let mut maximum_receipt_bytes = 0;
-    let mut maximum_rows = maximum_row_count(session.material().state());
+    let mut maximum_rows = maximum_row_count(session.catalog(), session.material().state());
     let mut dispatch_count = 0;
     let mut local_count = 0;
     let advancing = Instant::now();
@@ -355,25 +360,33 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
         assert_eq!(receipts.resolve_tick, period);
         let register = prepared.material().register();
         assert_eq!(
-            MaterialWorldRegister::decode(register.canonical_bytes())
-                .expect("the committed canonical bytes decode"),
+            MaterialWorldRegister::decode_external(
+                session.catalog(),
+                register.canonical_bytes().to_vec()
+            )
+            .expect("the committed canonical bytes decode"),
             *register
         );
         maximum_register_bytes = maximum_register_bytes.max(register.canonical_bytes().len());
         maximum_receipt_bytes = maximum_receipt_bytes.max(bytes.len());
-        maximum_rows = maximum_rows.max(maximum_row_count(register.state()));
-        assert_goods_conserved(session.material().state(), register.state(), &receipts);
+        maximum_rows = maximum_rows.max(maximum_row_count(session.catalog(), register.state()));
+        assert_goods_conserved(
+            session.catalog(),
+            session.material().state(),
+            register.state(),
+            &receipts,
+        );
         assert_order_accounts(
             session.material().state(),
             register.state(),
             &receipts,
             &mut fulfilled,
         );
-        assert_opening_labor_limits(session.material().state(), &receipts);
+        assert_opening_labor_limits(session.catalog(), session.material().state(), &receipts);
         dispatch_count += receipts.dispatches.len();
         local_count += receipts.local_transfers.len();
         session
-            .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_| {
+            .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_, _| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
             .expect("the prepared period commits");
@@ -383,7 +396,7 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
     assert!(maximum_rows < MAX_MATERIAL_CIRCUIT_ROWS);
     assert!(dispatch_count > 0 && local_count > 0 && !fulfilled.is_empty());
     let state = session.material().state();
-    let unsold = unsold_merchandise(state);
+    let unsold = unsold_merchandise(session.catalog(), state);
     assert!(unsold.values().any(|quantity| *quantity > 0));
     let named_unsold = named_goods(&catalog, &unsold);
     let unfilled = state
@@ -412,8 +425,8 @@ fn synthetic_statewide_roster_completes_sixteen_authenticated_periods_with_nativ
     );
 }
 
-fn unsold_merchandise(state: &MaterialCircuitState) -> Goods {
-    let merchants: BTreeMap<_, _> = state
+fn unsold_merchandise(material: &MaterialCatalog, state: &MaterialCircuitState) -> Goods {
+    let merchants: BTreeMap<_, _> = material
         .merchants
         .iter()
         .map(|m| (m.site_id, m.role))
@@ -448,10 +461,11 @@ fn captured_session(catalog: &MichiganMaterialCatalog) -> (Session, usize) {
         83
     );
     let state = foundation.initial_register().state();
-    assert_eq!(state.site_logistics_nodes.len(), 397);
-    assert_eq!(state.process_outputs.len(), 233);
-    assert_eq!(state.merchants.len(), 166);
-    assert_eq!(state.supplier_routes.len(), catalog.routes().len());
+    let catalog_rows = foundation.material_catalog();
+    assert_eq!(catalog_rows.site_logistics_nodes.len(), 397);
+    assert_eq!(catalog_rows.process_outputs.len(), 233);
+    assert_eq!(catalog_rows.merchants.len(), 166);
+    assert_eq!(catalog_rows.supplier_routes.len(), catalog.routes().len());
     assert_eq!(state.final_demand_orders.len(), 233);
     assert_eq!(state.labor.len(), 397);
     let admitted = economic_content::admit_economic_content(

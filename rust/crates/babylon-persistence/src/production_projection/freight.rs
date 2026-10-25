@@ -19,4 +19,4 @@ use projection::{
 };
 
 use super::ProductionProjectionError;
-use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::{MaterialCatalog, MaterialCircuitState};

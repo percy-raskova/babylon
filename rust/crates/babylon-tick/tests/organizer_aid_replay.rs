@@ -15,6 +15,7 @@ use babylon_graph::state_hash::CanonicalState;
 use babylon_material_circuit::AidResolveInput;
 use babylon_material_circuit::CollectionResolveInput;
 use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
 use babylon_material_circuit::UnitId;
@@ -342,8 +343,11 @@ fn delivered_consumed_support_funds_only_actual_independent_coordination() {
             used
         );
     }
-    let recovered = MaterialWorldRegister::decode(session.material().canonical_bytes())
-        .expect("the committed canonical bytes decode");
+    let recovered = MaterialWorldRegister::decode_external(
+        session.catalog(),
+        session.material().canonical_bytes().to_vec(),
+    )
+    .expect("the committed canonical bytes decode");
     assert_eq!(recovered, *session.material());
 }
 
@@ -373,7 +377,7 @@ fn failed_gift_tick_publishes_nothing_and_exact_retry_preserves_receipt_identity
     let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
     let expected = *candidate.identity();
     let mut sink = CollectingSink::default();
-    let result = session.commit_prepared_and_publish(&mut sink, candidate, |_| {
+    let result = session.commit_prepared_and_publish(&mut sink, candidate, |_, _| {
         Err::<ReplayCommitDisposition, _>("injected durable failure")
     });
     assert!(matches!(
@@ -446,8 +450,11 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
         .any(|r| r.outcome == AidOutcome::Granted));
     let mut sink = CollectingSink::default();
     organizer_aid_fixture::commit(&mut session, &mut sink, first);
-    let saved = MaterialWorldRegister::decode(session.material().canonical_bytes())
-        .expect("the committed canonical bytes decode");
+    let saved = MaterialWorldRegister::decode_external(
+        session.catalog(),
+        session.material().canonical_bytes().to_vec(),
+    )
+    .expect("the committed canonical bytes decode");
     assert_eq!(saved, *session.material());
     let waiting = saved
         .organizer_state()
@@ -521,8 +528,11 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
             .sum::<u64>();
         assert!(used <= available);
     }
-    let recovered = MaterialWorldRegister::decode(session.material().canonical_bytes())
-        .expect("the committed canonical bytes decode");
+    let recovered = MaterialWorldRegister::decode_external(
+        session.catalog(),
+        session.material().canonical_bytes().to_vec(),
+    )
+    .expect("the committed canonical bytes decode");
     assert_eq!(recovered, *session.material());
 }
 
@@ -534,6 +544,7 @@ fn workplace_report_converts_declared_mass_exactly_without_requiring_one_kg_unit
     cfg.participants.retain(|row| row.contributor_id != 204);
     let mut material = organizer_aid_fixture::opening();
     material
+        .catalog
         .commodities
         .iter_mut()
         .find(|r| r.good_id == organizer_aid_fixture::good(1))
@@ -570,6 +581,7 @@ fn workplace_report_refuses_nonintegral_kg_instead_of_rounding() {
     cfg.participants.retain(|row| row.contributor_id != 204);
     let mut material = organizer_aid_fixture::opening();
     material
+        .catalog
         .commodities
         .iter_mut()
         .find(|row| row.good_id == organizer_aid_fixture::good(1))
@@ -664,6 +676,7 @@ fn collection_control_session(protected_target: u64, no_time: bool) -> Session {
         no_time,
         false,
     );
+    let catalog = base.catalog().clone();
     let mut opening = base.material().state().clone();
     let CircuitAccounting::Monetary(e) = &mut opening.accounting else {
         unreachable!()
@@ -678,7 +691,10 @@ fn collection_control_session(protected_target: u64, no_time: bool) -> Session {
     organizer_aid_fixture::try_session(
         foundation,
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
-        opening,
+        organizer_aid_fixture::Materials {
+            catalog,
+            state: opening,
+        },
         collection_config_for_control(),
     )
     .expect("the fixture opens a session")
@@ -897,6 +913,7 @@ fn collection_savings_control(no_attendance: bool) -> Session {
         false,
         false,
     );
+    let catalog = base.catalog().clone();
     let mut state = base.material().state().clone();
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         unreachable!()
@@ -956,7 +973,7 @@ fn collection_savings_control(no_attendance: bool) -> Session {
     organizer_aid_fixture::try_session(
         foundation,
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
-        state,
+        organizer_aid_fixture::Materials { catalog, state },
         serde_json::from_value(cfg).expect("the JSON value matches the declared type"),
     )
     .expect("the fixture opens a session")
@@ -1109,16 +1126,20 @@ fn opening_collection_projection_requires_exact_existing_payer_and_labor_unit() 
         false,
         false,
     );
+    let catalog = base.catalog().clone();
     let material = base.material().state().clone();
     let good = collection_config_for_control();
-    assert!(MaterialWorldRegister::try_new(0, material.clone())
-        .expect("the authored fixture satisfies the constructor invariants")
-        .with_organizer(
-            good.clone(),
-            initial_organizer_state(&good)
-                .expect("the authored config admits an opening organizer state")
-        )
-        .is_ok());
+    assert!(
+        MaterialWorldRegister::try_new(&catalog, 0, material.clone())
+            .expect("the authored fixture satisfies the constructor invariants")
+            .with_organizer(
+                &catalog,
+                good.clone(),
+                initial_organizer_state(&good)
+                    .expect("the authored config admits an opening organizer state")
+            )
+            .is_ok()
+    );
     for field in ["organization_account_id", "labor_unit_id"] {
         let mut value = serde_json::to_value(&good).expect("the value serializes to JSON");
         value["collection"][field] =
@@ -1128,9 +1149,10 @@ fn opening_collection_projection_requires_exact_existing_payer_and_labor_unit() 
         babylon_practice_contract::validate_organizer_config(&changed)
             .expect("the authored organizer config passes validation");
         assert!(
-            MaterialWorldRegister::try_new(0, material.clone())
+            MaterialWorldRegister::try_new(&catalog, 0, material.clone())
                 .expect("the authored fixture satisfies the constructor invariants")
                 .with_organizer(
+                    &catalog,
                     changed.clone(),
                     initial_organizer_state(&changed)
                         .expect("the authored config admits an opening organizer state")
@@ -1222,7 +1244,10 @@ fn partial_collection_preserves_protected_floor_and_matches_actual_transfer_and_
         michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
             .expect("the Michigan hex foundation builds"),
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
-        base.material().state().clone(),
+        organizer_aid_fixture::Materials {
+            catalog: base.catalog().clone(),
+            state: base.material().state().clone(),
+        },
         cfg,
     )
     .expect("the fixture opens a session");
@@ -1361,7 +1386,10 @@ fn capped_collection_session(cap: i128, floor: i128) -> Session {
         michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
             .expect("the Michigan hex foundation builds"),
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
-        base.material().state().clone(),
+        organizer_aid_fixture::Materials {
+            catalog: base.catalog().clone(),
+            state: base.material().state().clone(),
+        },
         config,
     )
     .expect("the fixture opens a session")
@@ -1457,8 +1485,11 @@ fn collection_independent_consent_and_fixed_pledge_gate_admission_and_material_c
         } else {
             input.pledged_hours = 1;
         }
-        let closed = close_collection_control(session.material().state(), &[], &[input])
-            .expect("the fixture call `close_collection_control` succeeds for the authored inputs");
+        let closed =
+            close_collection_control(session.catalog(), session.material().state(), &[], &[input])
+                .expect(
+                    "the fixture call `close_collection_control` succeeds for the authored inputs",
+                );
         let row = &closed.collections[0];
         assert_eq!(row.collected.micro_units(), 0);
         assert_eq!(row.performed_hours, 0);
@@ -1510,7 +1541,7 @@ fn collection_zero_eligible_cash_and_missing_actual_time_refuse_without_spending
 }
 
 #[test]
-fn owned_register_reopen_adopts_authenticated_bytes_and_rejects_wire_changes() {
+fn external_register_reopen_adopts_authenticated_bytes_and_rejects_wire_changes() {
     let mut session = capped_collection_session(8, 2);
     let accepted = organizer_aid_fixture::commitment(&session, OrganizerChoice::Collect);
     let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
@@ -1518,10 +1549,11 @@ fn owned_register_reopen_adopts_authenticated_bytes_and_rejects_wire_changes() {
     let canonical = session.material().canonical_bytes();
     let input = canonical.to_vec();
     let allocation = input.as_ptr();
-    let owned =
-        MaterialWorldRegister::decode_owned(input).expect("the owned canonical bytes decode");
-    let borrowed =
-        MaterialWorldRegister::decode(canonical).expect("the committed canonical bytes decode");
+    let catalog = session.catalog().clone();
+    let owned = MaterialWorldRegister::decode_external(&catalog, input)
+        .expect("the canonical bytes decode");
+    let borrowed = MaterialWorldRegister::decode_external(&catalog, canonical.to_vec())
+        .expect("the committed canonical bytes decode");
     assert_eq!(owned, borrowed);
     assert_eq!(owned, *session.material());
     assert_eq!(owned.digest(), session.material().digest());
@@ -1541,33 +1573,18 @@ fn owned_register_reopen_adopts_authenticated_bytes_and_rejects_wire_changes() {
     for offset in [0, domain, domain + 11, domain + 19, canonical.len() - 1] {
         let mut invalid = canonical.to_vec();
         invalid[offset] ^= 1;
-        let expected =
-            MaterialWorldRegister::decode(&invalid).expect_err("the malformed bytes are refused");
-        assert_eq!(
-            MaterialWorldRegister::decode_owned(invalid)
-                .expect_err("`decode_owned` rejects the malformed bytes"),
-            expected
-        );
+        MaterialWorldRegister::decode_external(&catalog, invalid)
+            .expect_err("the malformed bytes are refused");
     }
     for length in [0, domain + 19, canonical.len() - 1] {
         let invalid = canonical[..length].to_vec();
-        let expected =
-            MaterialWorldRegister::decode(&invalid).expect_err("the malformed bytes are refused");
-        assert_eq!(
-            MaterialWorldRegister::decode_owned(invalid)
-                .expect_err("`decode_owned` rejects the malformed bytes"),
-            expected
-        );
+        MaterialWorldRegister::decode_external(&catalog, invalid)
+            .expect_err("the malformed bytes are refused");
     }
     let mut trailing = canonical.to_vec();
     trailing.push(0);
-    let expected =
-        MaterialWorldRegister::decode(&trailing).expect_err("the malformed bytes are refused");
-    assert_eq!(
-        MaterialWorldRegister::decode_owned(trailing)
-            .expect_err("`decode_owned` rejects the malformed bytes"),
-        expected
-    );
+    MaterialWorldRegister::decode_external(&catalog, trailing)
+        .expect_err("the malformed bytes are refused");
 }
 
 #[test]
@@ -1590,7 +1607,7 @@ fn partial_collection_failure_exact_retry_and_reopen_publish_one_original_receip
     let expected_bytes = candidate.material().receipt_bytes().to_vec();
     let mut sink = CollectingSink::default();
     assert!(matches!(
-        session.commit_prepared_and_publish(&mut sink, candidate, |_| {
+        session.commit_prepared_and_publish(&mut sink, candidate, |_, _| {
             Err::<ReplayCommitDisposition, _>("injected collection durable failure")
         }),
         Err(babylon_tick::material_replay::MaterialCommitError::Commit(
@@ -1619,8 +1636,11 @@ fn partial_collection_failure_exact_retry_and_reopen_publish_one_original_receip
     assert_eq!(*retry.identity(), expected);
     assert_eq!(retry.material().receipt_bytes(), expected_bytes);
     organizer_aid_fixture::commit(&mut session, &mut sink, retry);
-    let reopened = MaterialWorldRegister::decode(session.material().canonical_bytes())
-        .expect("the committed canonical bytes decode");
+    let reopened = MaterialWorldRegister::decode_external(
+        session.catalog(),
+        session.material().canonical_bytes().to_vec(),
+    )
+    .expect("the committed canonical bytes decode");
     assert_eq!(reopened, *session.material());
     let organizer = reopened
         .organizer_state()
@@ -1738,7 +1758,7 @@ fn collection_duplicate_and_unfunded_due_commitment_never_mint_a_second_transfer
     conflicting.command_nonce = [8; 16];
     for second in [input.clone(), conflicting] {
         assert!(matches!(
-            close_collection_control(opening, &[], &[input.clone(), second],),
+            close_collection_control(session.catalog(), opening, &[], &[input.clone(), second],),
             Err(MaterialCircuitError::RowLimit)
         ));
         assert_eq!(*opening, before);
@@ -1774,7 +1794,7 @@ fn collection_duplicate_and_unfunded_due_commitment_never_mint_a_second_transfer
         issuer_site_id: organizer_aid_fixture::site(1),
         amount: organizer_aid_fixture::money(8),
     });
-    let closed = close_collection_control(&due, &[], &[input])
+    let closed = close_collection_control(session.catalog(), &due, &[], &[input])
         .expect("the fixture call `close_collection_control` succeeds for the authored inputs");
     assert_eq!(
         closed.collections[0].outcome,
@@ -1789,12 +1809,14 @@ fn collection_duplicate_and_unfunded_due_commitment_never_mint_a_second_transfer
 }
 
 fn close_collection_control(
+    catalog: &MaterialCatalog,
     opening: &MaterialCircuitState,
     aid: &[AidResolveInput],
     collection: &[CollectionResolveInput],
 ) -> Result<MaterialCircuitTransition, babylon_material_circuit::MaterialCircuitError> {
-    let closed =
-        babylon_material_circuit::close_material_period_with_support(opening, aid, collection)?;
+    let closed = babylon_material_circuit::close_material_period_with_support(
+        catalog, opening, aid, collection,
+    )?;
     let next_labor = opening
         .labor
         .iter()
@@ -1810,7 +1832,7 @@ fn close_collection_control(
         .filter(|row| row.period == closed.next_period())
         .cloned()
         .collect();
-    closed.finish_with_workforce(next_labor, next_member_labor)
+    closed.finish_with_workforce(catalog, next_labor, next_member_labor)
 }
 
 #[allow(
@@ -1972,8 +1994,11 @@ fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
         organizer_aid_fixture::money(100)
     );
     assert_eq!(
-        MaterialWorldRegister::decode(session.material().canonical_bytes())
-            .expect("the committed canonical bytes decode"),
+        MaterialWorldRegister::decode_external(
+            session.catalog(),
+            session.material().canonical_bytes().to_vec(),
+        )
+        .expect("the committed canonical bytes decode"),
         *session.material()
     );
 }

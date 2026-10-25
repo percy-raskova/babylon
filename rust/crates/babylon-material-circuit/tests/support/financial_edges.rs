@@ -37,9 +37,9 @@ fn retained(state: &mut MaterialCircuitState, earnings: i128) {
 
 #[test]
 fn maximum_currency_distribution_conserves_every_remainder_without_multiplication_overflow() {
-    let mut state = crate::opening([i128::MAX, 0, 0, 0, 0]);
+    let (catalog, mut state) = crate::opening([i128::MAX, 0, 0, 0, 0]);
     retained(&mut state, i128::MAX);
-    let t = babylon_material_circuit::advance_material_circuit(&state)
+    let t = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let third = i128::MAX / 3;
     assert_eq!(t.distributions[0].paid, crate::money(third + 1));
@@ -57,11 +57,13 @@ fn maximum_currency_distribution_conserves_every_remainder_without_multiplicatio
 
 #[test]
 fn equity_backed_retained_income_cannot_be_distributed_without_cash() {
-    let mut state = crate::opening([0, 0, 0, 0, 0]);
+    let (catalog, mut state) = crate::opening([0, 0, 0, 0, 0]);
     let other = SiteId::from_bytes([2; 32]);
-    state.site_logistics_nodes.push(SiteLogisticsNode {
-        site_id: other,
-        node_id: LogisticsNodeId::from_bytes([2; 32]),
+    let catalog = crate::resealed(catalog, |catalog| {
+        catalog.site_logistics_nodes.push(SiteLogisticsNode {
+            site_id: other,
+            node_id: LogisticsNodeId::from_bytes([2; 32]),
+        });
     });
     let e = crate::economy_mut(&mut state);
     let mut cash = e.book.snapshot();
@@ -84,7 +86,7 @@ fn equity_backed_retained_income_cannot_be_distributed_without_cash() {
         shares: 1,
     });
     retained(&mut state, 7);
-    let t = babylon_material_circuit::advance_material_circuit(&state)
+    let t = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert!(t
         .distributions
@@ -101,35 +103,35 @@ fn equity_backed_retained_income_cannot_be_distributed_without_cash() {
 
 #[test]
 fn ownership_requires_explicit_claim_and_descriptors_independent_of_foreign_location() {
-    let state = crate::opening([0, 0, 0, 0, 0]);
-    let t = babylon_material_circuit::advance_material_circuit(&state)
+    let (catalog, state) = crate::opening([0, 0, 0, 0, 0]);
+    let t = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert!(t.taxes.is_empty());
     let mut duplicate = state.clone();
     let f = &mut crate::economy_mut(&mut duplicate).financial;
     f.ownership.push(f.ownership[0].clone());
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&duplicate),
+        babylon_material_circuit::advance_material_circuit(&catalog, &duplicate),
         Err(MaterialCircuitError::DuplicateRow)
     );
     let mut missing = state;
     crate::economy_mut(&mut missing).financial.locations.pop();
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&missing),
+        babylon_material_circuit::advance_material_circuit(&catalog, &missing),
         Err(MaterialCircuitError::FinancialInvariant)
     );
 }
 
 #[test]
 fn financial_state_wire_refuses_old_schema_noncanonical_claims_and_truncation() {
-    let state = crate::opening([7, 0, 0, 0, 0]);
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+    let (catalog, state) = crate::opening([7, 0, 0, 0, 0]);
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     let mut old = bytes.clone();
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     old[version..version + 2].copy_from_slice(&11_u16.to_be_bytes());
     assert_eq!(
-        decode_material_circuit_state(&old),
+        decode_material_circuit_state(&catalog, &old),
         Err(MaterialCircuitError::WireVersion)
     );
     // Seven counted financial tables; three 39-byte locations and two 73-byte claims,
@@ -140,22 +142,24 @@ fn financial_state_wire_refuses_old_schema_noncanonical_claims_and_truncation() 
         let mut reversed = bytes.clone();
         reversed[start..start + width * 2].rotate_left(width);
         assert_eq!(
-            decode_material_circuit_state(&reversed),
+            decode_material_circuit_state(&catalog, &reversed),
             Err(MaterialCircuitError::WireNoncanonical)
         );
     }
     for end in 0..bytes.len() {
-        assert!(decode_material_circuit_state(&bytes[..end]).is_err());
+        assert!(decode_material_circuit_state(&catalog, &bytes[..end]).is_err());
     }
 }
 
 #[test]
 fn incoming_distribution_cannot_fund_another_issuer_until_the_next_period() {
-    let mut state = crate::opening([7, 0, 0, 0, 0]);
+    let (catalog, mut state) = crate::opening([7, 0, 0, 0, 0]);
     let other = SiteId::from_bytes([2; 32]);
-    state.site_logistics_nodes.push(SiteLogisticsNode {
-        site_id: other,
-        node_id: LogisticsNodeId::from_bytes([2; 32]),
+    let catalog = crate::resealed(catalog, |catalog| {
+        catalog.site_logistics_nodes.push(SiteLogisticsNode {
+            site_id: other,
+            node_id: LogisticsNodeId::from_bytes([2; 32]),
+        });
     });
     let e = crate::economy_mut(&mut state);
     let mut book = e.book.snapshot();
@@ -205,7 +209,7 @@ fn incoming_distribution_cannot_fund_another_issuer_until_the_next_period() {
             period_cap: crate::money(100),
             cash_floor: crate::money(0),
         });
-    let first = babylon_material_circuit::advance_material_circuit(&state)
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(first.distributions[0].paid, crate::money(7));
     assert_eq!(first.distributions[1].paid, crate::money(0));
@@ -216,7 +220,7 @@ fn incoming_distribution_cannot_fund_another_issuer_until_the_next_period() {
             .expect("the fixture book holds the payer account"),
         crate::money(0)
     );
-    let next = babylon_material_circuit::advance_material_circuit(&first.state)
+    let next = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
         .expect("the authored material state advances one period");
     assert_eq!(next.distributions[1].paid, crate::money(7));
     assert_eq!(

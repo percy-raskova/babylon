@@ -19,6 +19,7 @@ use babylon_material_circuit::HouseholdPurchasePolicy;
 use babylon_material_circuit::InstitutionLocation;
 use babylon_material_circuit::LaborCoefficient;
 use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MonetaryBook;
@@ -58,9 +59,14 @@ fn workplace(n: usize) -> SiteId {
 fn public_id(n: usize) -> PublicAccountId {
     PublicAccountId::from_bytes(identity(n))
 }
-fn empty_accounts(sites: usize, households: usize, publics: usize) -> MaterialCircuitState {
-    let mut state = crate::opening([0; 5]);
-    state.site_logistics_nodes = (0..sites)
+fn empty_accounts(
+    sites: usize,
+    households: usize,
+    publics: usize,
+) -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = crate::opening([0; 5]);
+    let mut catalog = catalog;
+    catalog.site_logistics_nodes = (0..sites)
         .map(|n| SiteLogisticsNode {
             site_id: workplace(n),
             node_id: LogisticsNodeId::from_bytes(identity(n)),
@@ -94,15 +100,20 @@ fn empty_accounts(sites: usize, households: usize, publics: usize) -> MaterialCi
             location: EconomicLocation::Foreign(ForeignCounterpart::Canada),
         })
         .collect();
-    state
+    catalog.catalog_digest = [0; 32];
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog is valid");
+    (catalog, state)
 }
-fn canonical_roundtrip(state: &MaterialCircuitState) -> MaterialCircuitState {
-    let bytes = babylon_material_circuit::encode_material_circuit_state(state)
+fn canonical_roundtrip(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+) -> MaterialCircuitState {
+    let bytes = babylon_material_circuit::encode_material_circuit_state(catalog, state)
         .expect("all admitted rows must encode");
-    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes)
+    let restored = babylon_material_circuit::decode_material_circuit_state(catalog, &bytes)
         .expect("all encoded rows must decode");
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&restored)
+        babylon_material_circuit::encode_material_circuit_state(catalog, &restored)
             .expect("the canonical material state encodes"),
         bytes
     );
@@ -117,10 +128,10 @@ fn canonical_roundtrip(state: &MaterialCircuitState) -> MaterialCircuitState {
     assert!(crate::economy(&restored).member_labor.is_empty());
     restored
 }
-fn service_needs() -> MaterialCircuitState {
+fn service_needs() -> (MaterialCatalog, MaterialCircuitState) {
     // Four distinct native services per explicit one-person household. No stock,
     // cash, employment, service orders or performed work is created by admission.
-    let mut state = empty_accounts(1, POLICY_LIMIT / 4, 0);
+    let (mut catalog, mut state) = empty_accounts(1, POLICY_LIMIT / 4, 0);
     let unit = UnitId::from_bytes(identity(1));
     let hours = UnitId::from_bytes(identity(2));
     let mut rows = RecurringEconomy {
@@ -169,12 +180,15 @@ fn service_needs() -> MaterialCircuitState {
             });
         }
     }
-    declare_services(&mut state, &mut rows, unit, hours);
+    declare_services(&mut catalog, &mut rows, unit, hours);
+    catalog.household_needs.clone_from(&rows.household_needs);
+    catalog.catalog_digest = [0; 32];
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog is valid");
     crate::economy_mut(&mut state).recurring = Some(Box::new(rows));
-    state
+    (catalog, state)
 }
 fn declare_services(
-    state: &mut MaterialCircuitState,
+    catalog: &mut MaterialCatalog,
     rows: &mut RecurringEconomy,
     unit: UnitId,
     hours: UnitId,
@@ -182,21 +196,21 @@ fn declare_services(
     for commodity in 0..4 {
         let good = GoodId::from_bytes(identity(commodity));
         let process = ProcessId::from_bytes(identity(commodity));
-        state.commodities.push(CommodityDefinition {
+        catalog.commodities.push(CommodityDefinition {
             good_id: good,
             unit_id: unit,
             kind: CommodityKind::PeriodService {
                 stage: ServiceStage::UtilityProvision,
             },
         });
-        state.process_outputs.push(ProcessOutput {
+        catalog.process_outputs.push(ProcessOutput {
             process_id: process,
             site_id: workplace(0),
             good_id: good,
             unit_id: unit,
             quantity_per_batch: 1,
         });
-        state.labor_coefficients.push(LaborCoefficient {
+        catalog.labor_coefficients.push(LaborCoefficient {
             process_id: process,
             unit_id: hours,
             quantity_per_batch: 1,
@@ -218,8 +232,8 @@ fn declare_services(
 }
 #[test]
 fn household_policy_bound_preserves_every_need_and_purchase_and_checks_the_tail() {
-    let state = service_needs();
-    let restored = canonical_roundtrip(&state);
+    let (catalog, state) = service_needs();
+    let restored = canonical_roundtrip(&catalog, &state);
     let rows = crate::economy(&restored)
         .recurring
         .as_ref()
@@ -249,7 +263,7 @@ fn household_policy_bound_preserves_every_need_and_purchase_and_checks_the_tail(
             r.household_needs[POLICY_LIMIT - 1] = r.household_needs[0].clone();
         }
         assert_eq!(
-            babylon_material_circuit::encode_material_circuit_state(&duplicate),
+            babylon_material_circuit::encode_material_circuit_state(&catalog, &duplicate),
             Err(MaterialCircuitError::DuplicateRow)
         );
         let mut excess = restored.clone();
@@ -263,20 +277,20 @@ fn household_policy_bound_preserves_every_need_and_purchase_and_checks_the_tail(
             r.household_needs.push(r.household_needs[0].clone());
         }
         assert_eq!(
-            babylon_material_circuit::encode_material_circuit_state(&excess),
+            babylon_material_circuit::encode_material_circuit_state(&catalog, &excess),
             Err(MaterialCircuitError::RowLimit)
         );
     }
     let mut disconnected = restored;
     disconnected.service_connections.pop();
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&disconnected),
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &disconnected),
         Err(MaterialCircuitError::ServiceInvariant)
     );
 }
 #[test]
 fn household_ownership_bound_preserves_all_claims_and_exact_equity_keys() {
-    let mut state = empty_accounts(2, POLICY_LIMIT / 2, 0);
+    let (catalog, mut state) = empty_accounts(2, POLICY_LIMIT / 2, 0);
     let e = crate::economy_mut(&mut state);
     e.financial.ownership = (0..2)
         .flat_map(|issuer| {
@@ -299,7 +313,7 @@ fn household_ownership_bound_preserves_all_claims_and_exact_equity_keys() {
         .collect();
     e.costs = HistoricalCostBook::open(&e.book, vec![], vec![], equity, vec![])
         .expect("every captured owner claim has a carrying row");
-    let restored = canonical_roundtrip(&state);
+    let restored = canonical_roundtrip(&catalog, &state);
     let e = crate::economy(&restored);
     assert_eq!(e.financial.ownership.len(), POLICY_LIMIT);
     assert_eq!(e.costs.snapshot().equity.len(), POLICY_LIMIT);
@@ -307,14 +321,14 @@ fn household_ownership_bound_preserves_all_claims_and_exact_equity_keys() {
     let rows = &mut crate::economy_mut(&mut duplicate).financial.ownership;
     rows[POLICY_LIMIT - 1] = rows[0].clone();
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&duplicate),
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &duplicate),
         Err(MaterialCircuitError::DuplicateRow)
     );
     let mut excess = restored.clone();
     let rows = &mut crate::economy_mut(&mut excess).financial.ownership;
     rows.push(rows[0].clone());
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&excess),
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &excess),
         Err(MaterialCircuitError::RowLimit)
     );
     let mut snapshot = e.costs.snapshot();
@@ -333,7 +347,7 @@ fn household_ownership_bound_preserves_all_claims_and_exact_equity_keys() {
 #[test]
 fn household_tax_bound_is_one_policy_per_account_including_the_last_payer() {
     // Two captured public recipients can tax each other; no payer taxes itself.
-    let mut state = empty_accounts(65_534, 65_536, 2);
+    let (catalog, mut state) = empty_accounts(65_534, 65_536, 2);
     let e = crate::economy_mut(&mut state);
     e.financial.taxes = e
         .book
@@ -349,7 +363,7 @@ fn household_tax_bound_is_one_policy_per_account_including_the_last_payer() {
         })
         .collect();
     assert_eq!(e.financial.taxes.len(), POLICY_LIMIT);
-    let restored = canonical_roundtrip(&state);
+    let restored = canonical_roundtrip(&catalog, &state);
     assert_eq!(
         crate::economy(&restored).financial.taxes.len(),
         POLICY_LIMIT
@@ -358,14 +372,14 @@ fn household_tax_bound_is_one_policy_per_account_including_the_last_payer() {
     let rows = &mut crate::economy_mut(&mut duplicate).financial.taxes;
     rows[POLICY_LIMIT - 1] = rows[0].clone();
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&duplicate),
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &duplicate),
         Err(MaterialCircuitError::DuplicateRow)
     );
     let mut excess = restored;
     let rows = &mut crate::economy_mut(&mut excess).financial.taxes;
     rows.push(rows[0].clone());
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&excess),
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &excess),
         Err(MaterialCircuitError::RowLimit)
     );
 }

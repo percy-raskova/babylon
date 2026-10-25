@@ -2,6 +2,7 @@
 use std::collections::BTreeMap;
 
 use crate::valuation::CostClose;
+use crate::MaterialCatalog;
 use crate::SellerOffer;
 use crate::{
     CircuitAccounting, GoodId, HouseholdDemandReceipt, MaterialCircuitError, MaterialCircuitState,
@@ -110,6 +111,7 @@ fn add(rows: &mut BTreeMap<StockKey, u64>, key: StockKey, quantity: u64) -> Resu
 }
 
 pub(crate) fn update_prices(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     demand: &[HouseholdDemandReceipt],
     costs: &CostClose,
@@ -152,7 +154,7 @@ pub(crate) fn update_prices(
     };
     let mut receipts = Vec::new();
     for offer in &mut recurring.offers {
-        if state.commodities.iter().any(|r| {
+        if catalog.commodities.iter().any(|r| {
             (r.good_id, r.unit_id) == (offer.good_id, offer.unit_id)
                 && matches!(r.kind, crate::CommodityKind::PeriodService { .. })
         }) {

@@ -1,6 +1,7 @@
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::HistoricalCostBook;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialPurchase;
@@ -10,10 +11,13 @@ use babylon_material_circuit::OutboundOrderId;
 use babylon_material_circuit::PurchaseEscrow;
 use babylon_material_circuit::ServiceOrder;
 use babylon_material_circuit::StockCarryingValue;
+use babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES;
 use babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS;
 
 const SERVICE_LIMIT: usize = 2 * MAX_MATERIAL_CIRCUIT_ROWS;
 const SERVICE_ORDER_BYTES: usize = 32 + 8 + 32 + 33 + 32 + 32 + 8;
+const SERVICE_ORDERS_START: usize =
+    MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1 + 2 + 32 + 8 + 4 + 3 * (32 + 33 + 32 + 32);
 
 fn order_id(index: usize) -> OrderId {
     let mut bytes = [0; 32];
@@ -35,8 +39,8 @@ fn order(index: usize) -> ServiceOrder {
         quantity: 1,
     }
 }
-fn reserved_orders(count: usize) -> MaterialCircuitState {
-    let mut state = crate::opening();
+fn reserved_orders(count: usize) -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = crate::opening();
     state.service_orders = (0..count).map(order).collect();
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         unreachable!()
@@ -75,13 +79,14 @@ fn reserved_orders(count: usize) -> MaterialCircuitState {
         vec![],
     )
     .expect("the fixture opens the authored source");
-    state
+    (catalog, state)
 }
 
 #[test]
 fn service_principals_reach_the_named_bound_and_refuse_the_next_purchase() {
-    let before = reserved_orders(SERVICE_LIMIT - 1);
+    let (catalog, before) = reserved_orders(SERVICE_LIMIT - 1);
     let (full, _) = babylon_material_circuit::admit_material_purchase(
+        &catalog,
         &before,
         MaterialPurchase::Service(order(SERVICE_LIMIT - 1)),
         crate::money(1),
@@ -90,38 +95,39 @@ fn service_principals_reach_the_named_bound_and_refuse_the_next_purchase() {
     assert_eq!(full.service_orders.len(), SERVICE_LIMIT);
     assert_eq!(
         babylon_material_circuit::admit_material_purchase(
+            &catalog,
             &full,
             MaterialPurchase::Service(order(SERVICE_LIMIT)),
             crate::money(1)
         ),
         Err(MaterialCircuitError::RowLimit)
     );
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&full)
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &full)
         .expect("the canonical material state encodes");
-    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes)
+    let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
         .expect("the canonical material bytes decode");
     assert_eq!(restored, full);
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&restored)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &restored)
             .expect("the canonical material state encodes"),
         bytes
     );
-    let last = bytes.len() - SERVICE_ORDER_BYTES;
+    let last = SERVICE_ORDERS_START + 4 + SERVICE_LIMIT * SERVICE_ORDER_BYTES - SERVICE_ORDER_BYTES;
     let mut duplicate = bytes.clone();
     duplicate.copy_within(last - SERVICE_ORDER_BYTES..last, last);
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&duplicate),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &duplicate),
         Err(MaterialCircuitError::DuplicateRow)
     );
     let mut excess = bytes;
-    let count_offset = excess.len() - SERVICE_LIMIT * SERVICE_ORDER_BYTES - 4;
+    let count_offset = SERVICE_ORDERS_START;
     excess[count_offset..count_offset + 4].copy_from_slice(
         &u32::try_from(SERVICE_LIMIT + 1)
             .expect("the fixture value fits the target range")
             .to_be_bytes(),
     );
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&excess),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &excess),
         Err(MaterialCircuitError::WireLimit)
     );
 }

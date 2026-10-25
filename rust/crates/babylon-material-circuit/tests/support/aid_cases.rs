@@ -25,6 +25,7 @@ use babylon_material_circuit::HouseholdTimeCommitment;
 use babylon_material_circuit::HouseholdTimePolicy;
 use babylon_material_circuit::HouseholdUnmetTimeBurden;
 use babylon_material_circuit::InstitutionLocation;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
@@ -38,8 +39,8 @@ use babylon_material_circuit::StockCarryingValue;
 fn recipient() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([76; 32])
 }
-fn aid_opening(routed: bool) -> MaterialCircuitState {
-    let mut state = crate::opening();
+fn aid_opening(routed: bool) -> (MaterialCatalog, MaterialCircuitState) {
+    let (mut catalog, mut state) = crate::opening();
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: recipient(),
         location: state.final_demand_principals[0].location,
@@ -126,7 +127,9 @@ fn aid_opening(routed: bool) -> MaterialCircuitState {
         mandates: vec![mandate(routed)],
         freight: vec![],
     };
-    state
+    catalog.aid_mandates.clone_from(&economy.aid.mandates);
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    (catalog, state)
 }
 fn input(quantity: u64) -> AidResolveInput {
     AidResolveInput {
@@ -139,10 +142,11 @@ fn input(quantity: u64) -> AidResolveInput {
     }
 }
 fn close_aid(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     inputs: &[AidResolveInput],
 ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
-    babylon_material_circuit::advance_material_circuit_with_aid(state, inputs)
+    babylon_material_circuit::advance_material_circuit_with_aid(catalog, state, inputs)
 }
 fn consumed(
     rows: &MaterialCircuitTransition,
@@ -156,13 +160,14 @@ fn consumed(
 
 #[test]
 fn local_gift_conserves_cash_and_basis_without_a_sale_and_debits_actual_time() {
-    let state = aid_opening(false);
-    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+    let (catalog, state) = aid_opening(false);
+    let before = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
-    let ordinary = close_aid(&state, &[]).expect("the fixture closes the pending aid");
-    let gifted = close_aid(&state, &[input(2)]).expect("the fixture closes the pending aid");
+    let ordinary = close_aid(&catalog, &state, &[]).expect("the fixture closes the pending aid");
+    let gifted =
+        close_aid(&catalog, &state, &[input(2)]).expect("the fixture closes the pending aid");
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&state)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
             .expect("the canonical material state encodes"),
         before
     );
@@ -221,14 +226,16 @@ fn local_gift_conserves_cash_and_basis_without_a_sale_and_debits_actual_time() {
     };
     assert_eq!(time.contributions[0].contribution.hours, 4);
     let restarted = babylon_material_circuit::decode_material_circuit_state(
-        &babylon_material_circuit::encode_material_circuit_state(&gifted.state)
+        &catalog,
+        &babylon_material_circuit::encode_material_circuit_state(&catalog, &gifted.state)
             .expect("the canonical material state encodes"),
     )
     .expect("the canonical material bytes decode");
     assert_eq!(restarted, gifted.state);
     assert_eq!(
         close_aid(
-            &babylon_material_circuit::decode_material_circuit_state(&before)
+            &catalog,
+            &babylon_material_circuit::decode_material_circuit_state(&catalog, &before)
                 .expect("the canonical material bytes decode"),
             &[input(2)]
         )
@@ -243,7 +250,7 @@ fn local_gift_conserves_cash_and_basis_without_a_sale_and_debits_actual_time() {
     reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
 )]
 fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival() {
-    let mut state = aid_opening(true);
+    let (catalog, mut state) = aid_opening(true);
     let total = crate::economy(&state)
         .book
         .total_cash_and_reserves()
@@ -292,7 +299,8 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
         .iter_mut()
         .filter(|r| r.corridor_id == crate::corridor(2))
         .for_each(|r| r.available_grams = 2);
-    let first = close_aid(&state, &[input(2)]).expect("the fixture closes the pending aid");
+    let first =
+        close_aid(&catalog, &state, &[input(2)]).expect("the fixture closes the pending aid");
     assert_eq!(consumed(&first, recipient()).consumed_quantity, 0);
     assert!(!first.dispatches.is_empty());
     let commercial = first
@@ -358,11 +366,12 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
         crate::money(0)
     );
     let restored = babylon_material_circuit::decode_material_circuit_state(
-        &babylon_material_circuit::encode_material_circuit_state(&first.state)
+        &catalog,
+        &babylon_material_circuit::encode_material_circuit_state(&catalog, &first.state)
             .expect("the canonical material state encodes"),
     )
     .expect("the canonical material bytes decode");
-    let second = close_aid(&restored, &[]).expect("the fixture closes the pending aid");
+    let second = close_aid(&catalog, &restored, &[]).expect("the fixture closes the pending aid");
     assert_eq!(consumed(&second, recipient()).consumed_quantity, 1);
     assert_eq!(
         crate::economy(&second.state)
@@ -381,15 +390,18 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
 
 #[test]
 fn physical_loss_refunds_donor_cash_and_never_grants_phantom_food() {
-    let mut state = aid_opening(true);
-    state
+    let (mut catalog, state) = aid_opening(true);
+    catalog
         .route_stages
         .iter_mut()
         .find(|r| r.route_id == crate::route(2))
         .expect("the fixture holds the searched element")
         .loss_ppm = 1_000_000;
-    let first = close_aid(&state, &[input(2)]).expect("the fixture closes the pending aid");
-    let second = close_aid(&first.state, &[]).expect("the fixture closes the pending aid");
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let first =
+        close_aid(&catalog, &state, &[input(2)]).expect("the fixture closes the pending aid");
+    let second =
+        close_aid(&catalog, &first.state, &[]).expect("the fixture closes the pending aid");
     assert_eq!(consumed(&second, recipient()).consumed_quantity, 0);
     assert_eq!(
         crate::economy(&second.state)
@@ -408,7 +420,7 @@ fn physical_loss_refunds_donor_cash_and_never_grants_phantom_food() {
 
 #[test]
 fn generic_residual_protects_own_food_and_shared_actor_aliases_cannot_double_spend() {
-    let mut state = aid_opening(false);
+    let (catalog, mut state) = aid_opening(false);
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
         panic!("monetary");
     };
@@ -419,7 +431,8 @@ fn generic_residual_protects_own_food_and_shared_actor_aliases_cannot_double_spe
     let mut alias = input(2);
     alias.mandate_id = [93; 32];
     alias.donor_actor = 11;
-    let result = close_aid(&state, &[input(2), alias]).expect("the fixture closes the pending aid");
+    let result = close_aid(&catalog, &state, &[input(2), alias])
+        .expect("the fixture closes the pending aid");
     assert_eq!(consumed(&result, crate::household()).consumed_quantity, 4);
     assert_eq!(
         result
@@ -449,33 +462,33 @@ fn generic_residual_protects_own_food_and_shared_actor_aliases_cannot_double_spe
 
 #[test]
 fn stale_changed_duplicate_and_uncaptured_aid_refuse_atomically() {
-    let state = aid_opening(false);
-    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+    let (catalog, state) = aid_opening(false);
+    let before = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     let mut stale_input = input(2);
     stale_input.admitted_period = 1;
     assert_eq!(
-        close_aid(&state, &[stale_input]),
+        close_aid(&catalog, &state, &[stale_input]),
         Err(MaterialCircuitError::PeriodInvariant)
     );
     let mut changed = input(2);
     changed.source_hash = [94; 32];
     assert_eq!(
-        close_aid(&state, &[changed]),
+        close_aid(&catalog, &state, &[changed]),
         Err(MaterialCircuitError::AidAuthority)
     );
     assert_eq!(
-        close_aid(&state, &[input(2), input(2)]),
+        close_aid(&catalog, &state, &[input(2), input(2)]),
         Err(MaterialCircuitError::AidAuthority)
     );
     let mut absent = input(2);
     absent.mandate_id = [95; 32];
     assert_eq!(
-        close_aid(&state, &[absent]),
+        close_aid(&catalog, &state, &[absent]),
         Err(MaterialCircuitError::AidAuthority)
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&state)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
             .expect("the canonical material state encodes"),
         before
     );
@@ -487,7 +500,7 @@ fn stale_changed_duplicate_and_uncaptured_aid_refuse_atomically() {
     reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
 )]
 fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner() {
-    let mut state = aid_opening(false);
+    let (catalog, mut state) = aid_opening(false);
     let total = crate::economy(&state)
         .book
         .total_cash_and_reserves()
@@ -542,7 +555,7 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
     );
     // A cash namespace alone is not authenticated institution geography.
     assert_eq!(
-        close_aid(&state, &[input(4)]),
+        close_aid(&catalog, &state, &[input(4)]),
         Err(MaterialCircuitError::FinancialInvariant)
     );
     let location = state
@@ -566,7 +579,8 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
     assert_eq!(after_funding, crate::money(0));
     // Four authorized units compete for supply; the original organization cash
     // funds only two. Residual physical capacity cannot re-admit unfunded units.
-    let result = close_aid(&state, &[input(4)]).expect("the fixture closes the pending aid");
+    let result =
+        close_aid(&catalog, &state, &[input(4)]).expect("the fixture closes the pending aid");
     let donor_postings = result
         .money_transfers
         .iter()
@@ -674,9 +688,10 @@ fn mandate(routed: bool) -> AidMandate {
 
 #[test]
 fn serialized_pending_gift_refuses_invented_arrival_cash_owner_and_principal() {
+    let (catalog, opening) = aid_opening(true);
     let first =
-        close_aid(&aid_opening(true), &[input(2)]).expect("the fixture closes the pending aid");
-    let before = babylon_material_circuit::encode_material_circuit_state(&first.state)
+        close_aid(&catalog, &opening, &[input(2)]).expect("the fixture closes the pending aid");
+    let before = babylon_material_circuit::encode_material_circuit_state(&catalog, &first.state)
         .expect("the canonical material state encodes");
     let mut wrong_arrival = first.state.clone();
     let CircuitAccounting::Monetary(accounts) = &mut wrong_arrival.accounting else {
@@ -684,7 +699,7 @@ fn serialized_pending_gift_refuses_invented_arrival_cash_owner_and_principal() {
     };
     accounts.aid.freight[0].stage_arrival_period += 1;
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&wrong_arrival),
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &wrong_arrival),
         Err(MaterialCircuitError::AidInvariant)
     );
     let mut wrong_owner = first.state.clone();
@@ -696,7 +711,7 @@ fn serialized_pending_gift_refuses_invented_arrival_cash_owner_and_principal() {
     accounts.book =
         MonetaryBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&wrong_owner),
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &wrong_owner),
         Err(MaterialCircuitError::AidInvariant)
     );
     let mut wrong_principal = first.state.clone();
@@ -705,22 +720,22 @@ fn serialized_pending_gift_refuses_invented_arrival_cash_owner_and_principal() {
     };
     accounts.aid.freight[0].commitment_id = OrderId::from_bytes([97; 32]);
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&wrong_principal),
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &wrong_principal),
         Err(MaterialCircuitError::AidInvariant)
     );
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&before)
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &before)
             .expect("the canonical material bytes decode"),
         first.state
     );
     let mut trailing = before;
     trailing.push(0);
-    assert!(babylon_material_circuit::decode_material_circuit_state(&trailing).is_err());
+    assert!(babylon_material_circuit::decode_material_circuit_state(&catalog, &trailing).is_err());
 }
 
 #[test]
 fn donor_own_food_need_is_protected_even_when_requested_time_and_cash_are_available() {
-    let mut state = aid_opening(false);
+    let (catalog, mut state) = aid_opening(false);
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
         panic!("monetary");
     };
@@ -730,7 +745,8 @@ fn donor_own_food_need_is_protected_even_when_requested_time_and_cash_are_availa
         .expect("the fixture set the optional field before this borrow")
         .household_stocks[0]
         .quantity = 5;
-    let result = close_aid(&state, &[input(2)]).expect("the fixture closes the pending aid");
+    let result =
+        close_aid(&catalog, &state, &[input(2)]).expect("the fixture closes the pending aid");
     assert_eq!(consumed(&result, crate::household()).consumed_quantity, 4);
     assert_eq!(consumed(&result, crate::household()).unmet_quantity, 0);
     let grant = result

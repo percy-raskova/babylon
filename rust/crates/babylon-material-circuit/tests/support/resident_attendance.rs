@@ -10,6 +10,7 @@ use babylon_material_circuit::FinalDemandPrincipal;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::HistoricalCostBook;
 use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialPurchase;
 use babylon_material_circuit::MemberLaborCapacityRow;
@@ -23,8 +24,8 @@ fn other_household() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([77; 32])
 }
 
-fn mixed(second: LaborCompensation) -> MaterialCircuitState {
-    let mut state = crate::opening();
+fn mixed(second: LaborCompensation) -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = crate::opening();
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: other_household(),
         location: "county:26099"
@@ -77,13 +78,13 @@ fn mixed(second: LaborCompensation) -> MaterialCircuitState {
             available_hours: 2,
         },
     ];
-    state
+    (catalog, state)
 }
 
 #[test]
 fn two_resident_payees_receive_only_their_own_funded_attendance() {
-    let state = mixed(LaborCompensation::Wage(crate::money(2)));
-    let closed = babylon_material_circuit::advance_material_circuit(&state)
+    let (catalog, state) = mixed(LaborCompensation::Wage(crate::money(2)));
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(
         closed
@@ -126,13 +127,15 @@ fn owner_and_family_hours_do_real_work_without_wages_or_ownership_claims() {
         LaborCompensation::WorkingOwner,
         LaborCompensation::UnpaidFamily,
     ] {
+        let (catalog, opening) = mixed(mode);
         let (state, _) = babylon_material_circuit::admit_material_purchase(
-            &mixed(mode),
+            &catalog,
+            &opening,
             MaterialPurchase::LocalFinalDemand(crate::retail()),
             crate::money(4),
         )
         .expect("the fixture admits the authored purchase");
-        let closed = babylon_material_circuit::advance_material_circuit(&state)
+        let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
         assert_eq!(closed.local_fulfillments[0].quantity, 2);
         assert_eq!(closed.wage_accruals.len(), 1);
@@ -160,12 +163,12 @@ fn owner_and_family_hours_do_real_work_without_wages_or_ownership_claims() {
 
 #[test]
 fn conflicting_member_hours_refuse_before_payroll_or_goods_change() {
-    let mut state = mixed(LaborCompensation::WorkingOwner);
+    let (catalog, mut state) = mixed(LaborCompensation::WorkingOwner);
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         unreachable!()
     };
     economy.member_labor[1].available_hours += 1;
     let original = state.clone();
-    assert!(babylon_material_circuit::advance_material_circuit(&state).is_err());
+    assert!(babylon_material_circuit::advance_material_circuit(&catalog, &state).is_err());
     assert_eq!(state, original);
 }

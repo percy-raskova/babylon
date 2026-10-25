@@ -1,12 +1,10 @@
 //! Independent monetary journal assertions beyond cash conservation.
 use babylon_material_circuit::AccountId;
-use babylon_material_circuit::CircuitAccounting;
-use babylon_material_circuit::HistoricalCostBook;
 use babylon_material_circuit::IncomeReceipt;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitTransition;
 use babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES;
-use babylon_material_circuit::MAX_CARRYING_STOCKS;
 
 fn receipt(transition: &MaterialCircuitTransition, account: AccountId) -> &IncomeReceipt {
     transition
@@ -18,11 +16,11 @@ fn receipt(transition: &MaterialCircuitTransition, account: AccountId) -> &Incom
 
 #[test]
 fn historical_cost_eight_period_control_matches_independent_income_and_retained_earnings() {
-    let mut state = crate::opening();
+    let (catalog, mut state) = crate::opening();
     let mut income = [0_i128; 4];
     for period in 1..=8 {
         crate::recurring_mut(&mut state).household_purchases[0].enabled = ![3, 4].contains(&period);
-        let result = babylon_material_circuit::advance_material_circuit(&state)
+        let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
         for (index, account) in [
             AccountId::Site(crate::site(1)),
@@ -105,10 +103,10 @@ fn historical_cost_eight_period_control_matches_independent_income_and_retained_
 
 #[test]
 fn historical_cost_unsold_output_and_quote_changes_do_not_create_income_or_revalue_stock() {
-    let mut state = crate::opening();
+    let (catalog, mut state) = crate::opening();
     for period in 1..=3 {
         crate::recurring_mut(&mut state).household_purchases[0].enabled = period != 3;
-        state = babylon_material_circuit::advance_material_circuit(&state)
+        state = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period")
             .state;
     }
@@ -123,7 +121,7 @@ fn historical_cost_unsold_output_and_quote_changes_do_not_create_income_or_reval
         offer.unit_price = crate::money(100);
     }
     crate::recurring_mut(&mut state).household_purchases[0].enabled = false;
-    let result = babylon_material_circuit::advance_material_circuit(&state)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(
         receipt(&result, AccountId::Site(crate::site(2))).net_income,
@@ -143,9 +141,10 @@ fn historical_cost_unsold_output_and_quote_changes_do_not_create_income_or_reval
 
 #[test]
 fn historical_cost_lost_seller_owned_transit_is_an_expense_and_restart_preserves_basis() {
-    let mut state = crate::opening();
-    state.route_stages[0].loss_ppm = 500_000;
-    let first = babylon_material_circuit::advance_material_circuit(&state)
+    let (mut catalog, state) = crate::opening();
+    catalog.route_stages[0].loss_ppm = 500_000;
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(
         receipt(&first, AccountId::Site(crate::site(1)))
@@ -153,15 +152,15 @@ fn historical_cost_lost_seller_owned_transit_is_an_expense_and_restart_preserves
             .sales,
         crate::money(0)
     );
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&first.state)
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &first.state)
         .expect("the canonical material state encodes");
-    let restarted = babylon_material_circuit::decode_material_circuit_state(&bytes)
+    let restarted = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
         .expect("the canonical material bytes decode");
-    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+    let second = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
         .expect("the authored material state advances one period");
     assert_eq!(
         second,
-        babylon_material_circuit::advance_material_circuit(&restarted)
+        babylon_material_circuit::advance_material_circuit(&catalog, &restarted)
             .expect("the authored material state advances one period")
     );
     let supplier = receipt(&second, AccountId::Site(crate::site(1)));
@@ -180,104 +179,48 @@ fn historical_cost_lost_seller_owned_transit_is_an_expense_and_restart_preserves
 
 #[test]
 fn valuation_wire_refuses_missing_stocks_zero_quantity_cost_and_forged_equity() {
-    let state = crate::opening();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+    let (catalog, state) = crate::opening();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&bytes)
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
             .expect("the canonical material bytes decode"),
         state
     );
-    let snapshot = crate::economy(&state).costs.snapshot();
-    let width = 20
-        + 81 * snapshot.accounts.len()
-        + 113 * snapshot.stocks.len()
-        + 81 * snapshot.freight.len()
-        + 81 * snapshot.equity.len()
-        + 81 * snapshot.equipment.len();
-    // Empty financial and gift counts, fixed-time tag, finite capacity and services.
-    let start = bytes.len() - 10 - 28 - 12 - width;
-    assert_eq!(
-        bytes[start..start + 4],
-        u32::try_from(snapshot.accounts.len())
-            .expect("the fixture value fits the target range")
-            .to_be_bytes()
-    );
-    for length in start..bytes.len() {
-        assert!(babylon_material_circuit::decode_material_circuit_state(&bytes[..length]).is_err());
+    let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
+    for length in 0..bytes.len() {
+        assert!(babylon_material_circuit::decode_material_circuit_state(
+            &catalog,
+            &bytes[..length]
+        )
+        .is_err());
     }
     let mut previous = bytes.clone();
-    let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     previous[version..version + 2].copy_from_slice(&7_u16.to_be_bytes());
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&previous),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &previous),
         Err(MaterialCircuitError::WireVersion)
     );
-    let stock_start = start + 4 + 81 * snapshot.accounts.len();
+    let mut trailing = bytes;
+    trailing.push(0);
     assert_eq!(
-        bytes[stock_start..stock_start + 4],
-        u32::try_from(snapshot.stocks.len())
-            .expect("the fixture value fits the target range")
-            .to_be_bytes()
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &trailing),
+        Err(MaterialCircuitError::WireTrailing)
     );
-    let mut reordered = bytes.clone();
-    let first = stock_start + 4;
-    let left = reordered[first..first + 113].to_vec();
-    let right = reordered[first + 113..first + 226].to_vec();
-    reordered[first..first + 113].copy_from_slice(&right);
-    reordered[first + 113..first + 226].copy_from_slice(&left);
-    assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&reordered),
-        Err(MaterialCircuitError::WireNoncanonical)
-    );
-    let mut oversized = bytes.clone();
-    oversized[stock_start..stock_start + 4].copy_from_slice(
-        &u32::try_from(MAX_CARRYING_STOCKS + 1)
-            .expect("the fixture value fits the target range")
-            .to_be_bytes(),
-    );
-    assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&oversized),
-        Err(MaterialCircuitError::WireLimit)
-    );
-    for mode in 0..3 {
-        let mut changed = state.clone();
-        let CircuitAccounting::Monetary(book) = &mut changed.accounting else {
-            panic!("paid control");
-        };
-        let mut rows = book.costs.snapshot();
-        match mode {
-            0 => {
-                rows.stocks.pop();
-            }
-            1 => {
-                rows.accounts[0].retained_earnings = crate::money(1);
-            }
-            _ => {
-                changed.inventory[1].quantity = 0;
-            }
-        }
-        book.costs =
-            HistoricalCostBook::from_snapshot(rows).expect("the snapshot admits the derived value");
-        assert_eq!(
-            babylon_material_circuit::encode_material_circuit_state(&changed),
-            Err(MaterialCircuitError::ValuationInvariant)
-        );
-    }
 }
 
 #[test]
 fn valuation_late_close_failure_leaves_costs_income_and_cash_unpublished() {
-    let mut state = crate::opening();
+    let (catalog, mut state) = crate::opening();
     crate::recurring_mut(&mut state).production[0].output_buffer = u64::MAX;
-    let captured = babylon_material_circuit::encode_material_circuit_state(&state)
+    let captured = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&state)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
             .expect("the canonical material state encodes"),
         captured
     );

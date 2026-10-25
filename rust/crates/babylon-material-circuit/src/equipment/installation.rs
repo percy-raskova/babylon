@@ -12,7 +12,7 @@ use super::ProductiveEquipment;
 use super::Result;
 use crate::inventory::InventoryLedger;
 use crate::valuation::CostClose;
-use crate::{AccountId, SiteId, StaffingWorkSource, UnitId};
+use crate::{AccountId, EquipmentPosition, MaterialCatalog, SiteId, StaffingWorkSource, UnitId};
 use babylon_kernel::currency::Currency;
 
 use super::InstallationDecisionReceipt;
@@ -48,21 +48,22 @@ fn material_requirements(
 }
 fn start_projects(
     state: &MaterialCircuitState,
-    e: &mut ProductiveEquipment,
+    content: &ProductiveEquipment,
+    position: &mut EquipmentPosition,
     inventory: &mut InventoryLedger,
     eligible: &mut InventoryLedger,
     costs: &mut CostClose,
 ) -> Result<InstallationStarts> {
     let period = state.period;
     let mut starts = BTreeMap::new();
-    let mut decisions = e
+    let mut decisions = content
         .installation_policies
         .iter()
-        .map(|p| super::choice::decision(state, e, p))
+        .map(|p| super::choice::decision(state, content, position, p))
         .collect::<Result<Vec<_>>>()?;
-    for (policy, decision) in e.installation_policies.iter().zip(&mut decisions) {
-        let (binding, d) = e.definition(policy.process_id)?;
-        let materials = material_requirements(e, d);
+    for (policy, decision) in content.installation_policies.iter().zip(&mut decisions) {
+        let (binding, d) = content.definition(policy.process_id)?;
+        let materials = material_requirements(content, d);
         let units = materials.iter().fold(
             policy
                 .maximum_started_units_per_period
@@ -82,7 +83,7 @@ fn start_projects(
         if units == 0 {
             continue;
         }
-        if e.pending.len() >= crate::MAX_MATERIAL_CIRCUIT_ROWS {
+        if position.pending.len() >= crate::MAX_MATERIAL_CIRCUIT_ROWS {
             return Err(MaterialCircuitError::RowLimit);
         }
         let hours = units
@@ -119,7 +120,7 @@ fn start_projects(
         }
         costs.installation_start(id, binding.site_id, value)?;
         starts.insert(id, value);
-        e.pending.push(PendingInstallation {
+        position.pending.push(PendingInstallation {
             id,
             process_id: policy.process_id,
             units,
@@ -141,34 +142,43 @@ pub(crate) struct InstallationClose {
     pub decisions: Vec<InstallationDecisionReceipt>,
 }
 pub(crate) fn install(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     costs: &mut CostClose,
 ) -> Result<InstallationClose> {
-    let Some(mut e) = super::get(state).cloned() else {
+    let Some(content) = catalog.equipment_content() else {
         return Ok(InstallationClose {
             work: vec![],
             decisions: vec![],
         });
     };
-    e.cohorts.retain(|c| c.remaining_service_batches > 0);
+    let mut position = std::mem::take(super::position_mut(state));
+    position.cohorts.retain(|c| c.remaining_service_batches > 0);
     let period = state.period;
     let next = period
         .checked_add(1)
         .ok_or(MaterialCircuitError::Arithmetic)?;
     let mut eligible = super::choice::eligible_inventory(state)?;
     let mut inventory = inventory::take_inventory(state);
-    let admission = start_projects(state, &mut e, &mut inventory, &mut eligible, costs)?;
+    let admission = start_projects(
+        state,
+        content,
+        &mut position,
+        &mut inventory,
+        &mut eligible,
+        costs,
+    )?;
     let starts = admission.costs;
-    e.pending.sort_by_key(|r| (r.process_id, r.id));
-    let mut budgets: BTreeMap<_, _> = e
+    position.pending.sort_by_key(|r| (r.process_id, r.id));
+    let mut budgets: BTreeMap<_, _> = content
         .installation_policies
         .iter()
         .map(|p| (p.process_id, p.maximum_hours_per_period))
         .collect();
-    let pending = std::mem::take(&mut e.pending);
+    let pending = std::mem::take(&mut position.pending);
     let mut receipts = Vec::with_capacity(pending.len());
     for mut p in pending {
-        let (b, d) = e.definition(p.process_id)?;
+        let (b, d) = content.definition(p.process_id)?;
         let site = b.site_id;
         let unit = d.installation_labor_unit_id;
         let labor = state
@@ -214,28 +224,13 @@ pub(crate) fn install(
         row.validate()?;
         receipts.push(row);
         if p.remaining_hours == 0 {
-            if e.cohorts.len() >= crate::MAX_MATERIAL_CIRCUIT_ROWS {
-                return Err(MaterialCircuitError::RowLimit);
-            }
-            let life = p
-                .units
-                .checked_mul(d.service_batches_per_unit)
-                .ok_or(MaterialCircuitError::Arithmetic)?;
-            let id = EquipmentCohortId::from_bytes(p.id.as_bytes());
-            costs.installation_complete(p.id, id)?;
-            e.cohorts.push(InstalledEquipmentCohort {
-                id,
-                process_id: p.process_id,
-                units: p.units,
-                remaining_service_batches: life,
-                usable_from_period: next,
-            });
+            finish_project(&mut position, &p, d, next, costs)?;
         } else {
-            e.pending.push(p);
+            position.pending.push(p);
         }
     }
-    super::canonicalize(&mut e);
-    *super::get_mut(state).ok_or(MaterialCircuitError::EquipmentInvariant)? = e;
+    super::canonicalize_position(&mut position);
+    *super::position_mut(state) = position;
     inventory::publish_inventory(state, inventory);
     receipts.sort_by_key(|r| (r.process_id, r.id));
     Ok(InstallationClose {
@@ -243,25 +238,57 @@ pub(crate) fn install(
         decisions: admission.decisions,
     })
 }
+fn finish_project(
+    position: &mut EquipmentPosition,
+    project: &PendingInstallation,
+    definition: &EquipmentDefinition,
+    next: u64,
+    costs: &mut CostClose,
+) -> Result<()> {
+    if position.cohorts.len() >= crate::MAX_MATERIAL_CIRCUIT_ROWS {
+        return Err(MaterialCircuitError::RowLimit);
+    }
+    let life = project
+        .units
+        .checked_mul(definition.service_batches_per_unit)
+        .ok_or(MaterialCircuitError::Arithmetic)?;
+    let id = EquipmentCohortId::from_bytes(project.id.as_bytes());
+    costs.installation_complete(project.id, id)?;
+    position.cohorts.push(InstalledEquipmentCohort {
+        id,
+        process_id: project.process_id,
+        units: project.units,
+        remaining_service_batches: life,
+        usable_from_period: next,
+    });
+    Ok(())
+}
+
 /// Installation requests survive zero productive capacity and do not consume it.
 pub(crate) fn work_requests(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
 ) -> Result<Vec<(StaffingWorkSource, SiteId, UnitId, u64)>> {
-    let Some(e) = super::get(state) else {
+    let Some(content) = catalog.equipment_content() else {
         return Ok(vec![]);
     };
+    let position = super::position(state);
     let mut inventory = super::choice::eligible_inventory(state)?;
-    let mut result = Vec::with_capacity(e.installation_policies.len());
-    for p in &e.installation_policies {
-        let (b, d) = e.definition(p.process_id)?;
-        let lo = e.pending.partition_point(|r| r.process_id < p.process_id);
-        let hi = e.pending.partition_point(|r| r.process_id <= p.process_id);
-        let mut hours = e.pending[lo..hi].iter().try_fold(0_u64, |n, r| {
+    let mut result = Vec::with_capacity(content.installation_policies.len());
+    for p in &content.installation_policies {
+        let (b, d) = content.definition(p.process_id)?;
+        let lo = position
+            .pending
+            .partition_point(|r| r.process_id < p.process_id);
+        let hi = position
+            .pending
+            .partition_point(|r| r.process_id <= p.process_id);
+        let mut hours = position.pending[lo..hi].iter().try_fold(0_u64, |n, r| {
             n.checked_add(r.remaining_hours)
                 .ok_or(MaterialCircuitError::Arithmetic)
         })?;
-        let materials = material_requirements(e, d);
-        let decision = super::choice::decision(state, e, p)?;
+        let materials = material_requirements(content, d);
+        let decision = super::choice::decision(state, content, position, p)?;
         let possible = materials.iter().fold(
             p.maximum_started_units_per_period
                 .min(decision.requested_units),

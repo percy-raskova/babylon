@@ -12,6 +12,7 @@ pub use collection::{
     collection_contribution_id, CollectionOutcome, CollectionReceipt, CollectionResolveInput,
 };
 mod capacity;
+mod catalog;
 mod equipment;
 mod financial;
 mod household_time;
@@ -33,13 +34,14 @@ pub use accounts::{
     MoneyTransferReceipt, OrganizationAccountId, PublicAccountId, PurchaseEscrow,
     PurchaseMovementReceipt, ShiftId, ShiftState, WageAccrualReceipt,
 };
+pub use catalog::{MaterialCatalog, UNSEALED_CATALOG_DIGEST};
 pub use equipment::{
     equipment_installation_id, equipment_purchase_order_id, EquipmentAssetId, EquipmentBinding,
     EquipmentCarryingValue, EquipmentCohortId, EquipmentDefinition, EquipmentDefinitionId,
-    EquipmentWearReceipt, InstallationDecisionReceipt, InstallationId, InstallationInput,
-    InstallationPolicy, InstallationReceipt, InstallationTarget, InstalledEquipmentCohort,
-    InvestmentPolicy, InvestmentReceipt, PendingInstallation, ProductiveEquipment,
-    RollingProcessSupply,
+    EquipmentPosition, EquipmentWearReceipt, InstallationDecisionReceipt, InstallationId,
+    InstallationInput, InstallationPolicy, InstallationReceipt, InstallationTarget,
+    InstalledEquipmentCohort, InvestmentPolicy, InvestmentReceipt, PendingInstallation,
+    ProductiveEquipment, RollingProcessSupply,
 };
 pub use financial::{
     validate_distribution_receipts, CapitalContributionOrder, CapitalContributionReceipt,

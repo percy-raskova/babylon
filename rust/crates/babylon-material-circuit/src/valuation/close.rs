@@ -15,6 +15,7 @@ use crate::HouseholdConsumptionReceipt;
 use crate::LaborUseReceipt;
 use crate::LocalTransferReceipt;
 use crate::MaintenanceReceipt;
+use crate::MaterialCatalog;
 use crate::ServicePerformanceReceipt;
 use crate::{
     AccountId, CircuitAccounting, FinalDemandOrder, FreightLotId, MaterialCircuitError,
@@ -89,7 +90,7 @@ impl CostClose {
 
     pub(crate) fn output(
         &mut self,
-        state: &MaterialCircuitState,
+        catalog: &MaterialCatalog,
         output: &ProcessOutput,
         batches: u64,
         inputs: Currency,
@@ -100,11 +101,11 @@ impl CostClose {
         let Some(active) = &mut self.active else {
             return Ok(());
         };
-        let labor_index = state
+        let labor_index = catalog
             .labor_coefficients
             .binary_search_by_key(&output.process_id, |r| r.process_id)
             .map_err(|_| MaterialCircuitError::ProcessInvariant)?;
-        let labor = &state.labor_coefficients[labor_index];
+        let labor = &catalog.labor_coefficients[labor_index];
         let hours = labor
             .quantity_per_batch
             .checked_mul(batches)
@@ -623,7 +624,11 @@ impl CostClose {
         Ok(())
     }
 
-    pub(crate) fn finish(self, state: &mut MaterialCircuitState) -> Result<Vec<IncomeReceipt>> {
+    pub(crate) fn finish(
+        self,
+        catalog: &MaterialCatalog,
+        state: &mut MaterialCircuitState,
+    ) -> Result<Vec<IncomeReceipt>> {
         let Some(mut active) = self.active else {
             return Ok(vec![]);
         };
@@ -671,7 +676,7 @@ impl CostClose {
             return Err(MaterialCircuitError::ValuationInvariant);
         };
         economy.costs = active.book;
-        super::validation::validate(state)?;
+        super::validation::validate(catalog, state)?;
         Ok(receipts)
     }
 }

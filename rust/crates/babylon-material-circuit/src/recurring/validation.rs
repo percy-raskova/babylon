@@ -8,6 +8,7 @@ use crate::{
     MAX_MATERIAL_CIRCUIT_ROWS,
 };
 
+use crate::MaterialCatalog;
 use crate::MonetaryCircuit;
 use std::collections::{BTreeMap, BTreeSet};
 use std::result::Result as StdResult;
@@ -63,6 +64,7 @@ pub(crate) fn row_limits(rows: &RecurringEconomy) -> Result<()> {
 }
 
 pub(crate) fn validate_households(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     rows: &RecurringEconomy,
 ) -> Result<()> {
@@ -95,7 +97,7 @@ pub(crate) fn validate_households(
     })?;
     let stored_need_keys: BTreeSet<_> = need_keys
         .iter()
-        .filter(|key| !crate::services::is_service(state, key.1, key.2))
+        .filter(|key| !crate::services::is_service(catalog, key.1, key.2))
         .copied()
         .collect();
     if stock_keys != stored_need_keys
@@ -121,14 +123,14 @@ pub(crate) fn validate_households(
         .iter()
         .map(|r| (r.site_id, r.good_id, r.unit_id))
         .collect();
-    let merchants: BTreeMap<_, _> = state.merchants.iter().map(|r| (r.site_id, r)).collect();
-    let handling: BTreeSet<_> = state
+    let merchants: BTreeMap<_, _> = catalog.merchants.iter().map(|r| (r.site_id, r)).collect();
+    let handling: BTreeSet<_> = catalog
         .handling_coefficients
         .iter()
         .map(|r| (r.site_id, r.good_id, r.unit_id))
         .collect();
     for policy in &rows.household_purchases {
-        if crate::services::is_service(state, policy.good_id, policy.unit_id) {
+        if crate::services::is_service(catalog, policy.good_id, policy.unit_id) {
             let connection = crate::ServiceConnection {
                 provider_site_id: policy.retailer_site_id,
                 buyer: AccountId::Household(policy.principal_id),
@@ -164,14 +166,14 @@ pub(crate) fn validate_households(
     Ok(())
 }
 
-pub(crate) fn validate_offers(state: &MaterialCircuitState, rows: &RecurringEconomy) -> Result<()> {
+pub(crate) fn validate_offers(catalog: &MaterialCatalog, rows: &RecurringEconomy) -> Result<()> {
     unique(&rows.offers, |r| (r.site_id, r.good_id, r.unit_id))?;
-    let sites: BTreeSet<_> = state
+    let sites: BTreeSet<_> = catalog
         .site_logistics_nodes
         .iter()
         .map(|r| r.site_id)
         .collect();
-    let goods: BTreeSet<_> = state
+    let goods: BTreeSet<_> = catalog
         .commodities
         .iter()
         .map(|r| (r.good_id, r.unit_id))
@@ -204,13 +206,14 @@ pub(crate) fn validate_offers(state: &MaterialCircuitState, rows: &RecurringEcon
 }
 
 pub(crate) fn validate_firm_policies(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     rows: &RecurringEconomy,
 ) -> Result<()> {
     unique(&rows.replenishment, |r| {
         (r.buyer_site_id, r.supplier_site_id, r.good_id, r.unit_id)
     })?;
-    let routes: BTreeSet<_> = state
+    let routes: BTreeSet<_> = catalog
         .supplier_routes
         .iter()
         .map(|r| (r.buyer_site_id, r.supplier_site_id, r.good_id, r.unit_id))
@@ -235,10 +238,10 @@ pub(crate) fn validate_firm_policies(
         }
     }
     let processes = unique(&rows.production, |r| r.process_id)?;
-    unique(&state.process_outputs, |r| {
+    unique(&catalog.process_outputs, |r| {
         (r.site_id, r.good_id, r.unit_id)
     })?;
-    let outputs: BTreeMap<_, _> = state
+    let outputs: BTreeMap<_, _> = catalog
         .process_outputs
         .iter()
         .map(|r| (r.process_id, r.site_id))
@@ -259,7 +262,7 @@ pub(crate) fn validate_firm_policies(
 }
 
 /// Validate a canonical opening; intermediate household phases remain detached.
-pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
+pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> Result<()> {
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
         return Ok(());
     };
@@ -276,9 +279,9 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
     {
         return Err(MaterialCircuitError::PeriodInvariant);
     }
-    validate_households(state, rows)?;
-    validate_offers(state, rows)?;
-    validate_firm_policies(state, rows)?;
+    validate_households(catalog, state, rows)?;
+    validate_offers(catalog, rows)?;
+    validate_firm_policies(catalog, state, rows)?;
     for household in &rows.households {
         economy
             .book

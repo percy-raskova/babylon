@@ -26,6 +26,7 @@ use babylon_material_circuit::CollectionReceipt;
 use babylon_material_circuit::CollectionResolveInput;
 use babylon_material_circuit::HouseholdCohort;
 use babylon_material_circuit::IncomeReceipt;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
@@ -58,7 +59,7 @@ struct ControlTotals {
 
 #[test]
 fn four_period_collection_aid_savings_and_protected_service_control() {
-    let mut state = control::opening();
+    let (mut catalog, mut state) = control::opening();
     let original_cohorts = assert_opening_accounting(&state);
     let mut totals = ControlTotals::default();
     for (
@@ -75,7 +76,7 @@ fn four_period_collection_aid_savings_and_protected_service_control() {
         (3, 11_063_200_000, 400_000, 8, 1406, 432, 15_048_000_000),
         (4, 135_200_000, 400_000, 8, 1408, 432, 10_928_000_000),
     ] {
-        state = control::controlled_opening(state);
+        (catalog, state) = control::controlled_opening(catalog, state);
         assert_eq!(state.period, period);
         let gifts = if period == 2 {
             vec![control::aid(period)]
@@ -87,7 +88,7 @@ fn four_period_collection_aid_savings_and_protected_service_control() {
         } else {
             vec![control::collection(period)]
         };
-        let completed = close_and_reexecute(&state, &gifts, &collections);
+        let completed = close_and_reexecute(&catalog, &state, &gifts, &collections);
         let expected = PeriodExpectation {
             period,
             expected_cash,
@@ -109,7 +110,7 @@ fn four_period_collection_aid_savings_and_protected_service_control() {
         } else {
             assert_collection_identity_and_outcome(&completed, &collections, period);
         }
-        assert_canonical_closed_state(&completed);
+        assert_canonical_closed_state(&catalog, &completed);
         state = completed.state;
     }
     assert_four_period_reconciliation(&state, &totals);
@@ -144,28 +145,29 @@ fn assert_opening_accounting(state: &MaterialCircuitState) -> Vec<HouseholdCohor
 }
 
 fn close_and_reexecute(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     gifts: &[AidResolveInput],
     collections: &[CollectionResolveInput],
 ) -> MaterialCircuitTransition {
     let period = state.period;
-    let before = babylon_material_circuit::encode_material_circuit_state(state)
+    let before = babylon_material_circuit::encode_material_circuit_state(catalog, state)
         .expect("the canonical material state encodes");
-    let mut completed = control::close(state, gifts, collections)
+    let mut completed = control::close(catalog, state, gifts, collections)
         .expect("the fixture call `close` succeeds for the authored inputs");
 
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(state)
+        babylon_material_circuit::encode_material_circuit_state(catalog, state)
             .expect("the canonical material state encodes"),
         before
     );
-    let decoded = babylon_material_circuit::decode_material_circuit_state(&before)
+    let decoded = babylon_material_circuit::decode_material_circuit_state(catalog, &before)
         .expect("the canonical material bytes decode");
-    let mut repeated = control::close(&decoded, gifts, collections)
+    let mut repeated = control::close(catalog, &decoded, gifts, collections)
         .expect("the fixture call `close` succeeds for the authored inputs");
     if period == 2 {
-        control::coordinate(&mut completed);
-        control::coordinate(&mut repeated);
+        control::coordinate(catalog, &mut completed);
+        control::coordinate(catalog, &mut repeated);
     }
     assert_eq!(repeated, completed);
 
@@ -544,11 +546,11 @@ fn assert_full_collection(completed: &MaterialCircuitTransition, result: &Collec
     assert_eq!(organization_income.statement.gift_income, result.collected);
 }
 
-fn assert_canonical_closed_state(completed: &MaterialCircuitTransition) {
-    let saved = babylon_material_circuit::encode_material_circuit_state(&completed.state)
+fn assert_canonical_closed_state(catalog: &MaterialCatalog, completed: &MaterialCircuitTransition) {
+    let saved = babylon_material_circuit::encode_material_circuit_state(catalog, &completed.state)
         .expect("the canonical material state encodes");
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&saved)
+        babylon_material_circuit::decode_material_circuit_state(catalog, &saved)
             .expect("the canonical material bytes decode"),
         completed.state
     );
@@ -602,15 +604,13 @@ fn assert_four_period_reconciliation(state: &MaterialCircuitState, totals: &Cont
 
 #[test]
 fn removing_first_collection_severs_later_aid_from_empty_organization() {
-    let first = control::close(&control::opening(), &[], &[])
+    let (catalog, opening) = control::opening();
+    let first = control::close(&catalog, &opening, &[], &[])
         .expect("the fixture call `close` succeeds for the authored inputs");
     assert_eq!(cash(&first.state, control::organization()), 0);
-    let second = control::close(
-        &control::controlled_opening(first.state),
-        &[control::aid(2)],
-        &[],
-    )
-    .expect("the fixture call `close` succeeds for the authored inputs");
+    let (catalog, controlled) = control::controlled_opening(catalog, first.state);
+    let second = control::close(&catalog, &controlled, &[control::aid(2)], &[])
+        .expect("the fixture call `close` succeeds for the authored inputs");
     assert!(!second
         .aid
         .iter()
@@ -638,26 +638,27 @@ fn removing_first_collection_severs_later_aid_from_empty_organization() {
 
 #[test]
 fn invalid_late_collection_keeps_opening_and_exact_retry_unchanged() {
-    let state = control::opening();
-    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+    let (catalog, state) = control::opening();
+    let before = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     let mut invalid = control::collection(1);
     invalid.source_hash = [0; 32];
     assert_eq!(
-        control::close(&state, &[], &[invalid]),
+        control::close(&catalog, &state, &[], &[invalid]),
         Err(MaterialCircuitError::CollectionInvariant)
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&state)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
             .expect("the canonical material state encodes"),
         before
     );
     let accepted = control::collection(1);
-    let expected = control::close(&state, &[], std::slice::from_ref(&accepted))
+    let expected = control::close(&catalog, &state, &[], std::slice::from_ref(&accepted))
         .expect("the fixture call `close` succeeds for the authored inputs");
     assert_eq!(
         control::close(
-            &babylon_material_circuit::decode_material_circuit_state(&before)
+            &catalog,
+            &babylon_material_circuit::decode_material_circuit_state(&catalog, &before)
                 .expect("the canonical material bytes decode"),
             &[],
             &[accepted]
@@ -666,7 +667,7 @@ fn invalid_late_collection_keeps_opening_and_exact_retry_unchanged() {
         expected
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&state)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
             .expect("the canonical material state encodes"),
         before
     );

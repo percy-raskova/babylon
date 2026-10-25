@@ -1,6 +1,7 @@
 //! Admission spends existing cash; physical handoff and period consumption differ.
 
 use super::{HouseholdConsumptionReceipt, HouseholdDemandReceipt, RecurringEconomy, Result};
+use crate::MaterialCatalog;
 use crate::{
     AccountId, CircuitAccounting, FinalDemandOrder, FinalDemandPrincipalId, GoodId,
     LocalRetailFulfillmentReceipt, MaterialCircuitError, MaterialCircuitState, MonetaryBook,
@@ -59,10 +60,11 @@ fn household_phase(rows: &RecurringEconomy, period: u64) -> Result<()> {
 /// Admit once after payroll, sharing real cash in household/good/unit order.
 /// Only completed staging is installed, including its admission cursor.
 pub(crate) fn admit_household_orders(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     transfers: &mut Vec<MoneyTransferReceipt>,
 ) -> Result<Vec<HouseholdDemandReceipt>> {
-    super::validate(state)?;
+    super::validate(catalog, state)?;
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         return Ok(vec![]);
     };

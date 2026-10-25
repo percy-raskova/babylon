@@ -3,34 +3,32 @@
 use super::EquipmentBinding;
 use super::EquipmentDefinition;
 use super::ProductiveEquipment;
-use super::RollingProcessSupply;
 
+use crate::RollingProcessSupply;
 use crate::{
-    CapacitySupply, InstalledProcessCapacity, MaterialCircuitError, MaterialCircuitState, ProcessId,
+    EquipmentPosition, InstalledEquipmentCohort, InstalledProcessCapacity, MaterialCircuitError,
+    MaterialCircuitState, ProcessId,
 };
 use std::ops::Range;
 use std::result::Result as StdResult;
 
 pub(crate) type Result<T> = StdResult<T, MaterialCircuitError>;
 
-pub(crate) fn get(state: &MaterialCircuitState) -> Option<&ProductiveEquipment> {
-    match &state.capacity_supply {
-        CapacitySupply::Rolling(r) => match &r.processes {
-            RollingProcessSupply::Equipment(e) => Some(e),
-            RollingProcessSupply::CapturedNameplate(_) => None,
-        },
-        CapacitySupply::FiniteSchedule => None,
-    }
+/// Installed cohorts belonging to one process, in canonical order.
+pub(crate) fn cohorts_for(
+    cohorts: &[InstalledEquipmentCohort],
+    process: ProcessId,
+) -> Range<usize> {
+    cohorts.partition_point(|r| r.process_id < process)
+        ..cohorts.partition_point(|r| r.process_id <= process)
 }
 
-pub(crate) fn get_mut(state: &mut MaterialCircuitState) -> Option<&mut ProductiveEquipment> {
-    match &mut state.capacity_supply {
-        CapacitySupply::Rolling(r) => match &mut r.processes {
-            RollingProcessSupply::Equipment(e) => Some(e),
-            RollingProcessSupply::CapturedNameplate(_) => None,
-        },
-        CapacitySupply::FiniteSchedule => None,
-    }
+pub(crate) fn position_mut(state: &mut MaterialCircuitState) -> &mut EquipmentPosition {
+    &mut state.capacity_reservations.equipment
+}
+
+pub(crate) fn position(state: &MaterialCircuitState) -> &EquipmentPosition {
+    &state.capacity_reservations.equipment
 }
 
 impl ProductiveEquipment {
@@ -49,9 +47,39 @@ impl ProductiveEquipment {
             .map_err(|_| MaterialCircuitError::EquipmentInvariant)?;
         Ok((b, &self.definitions[i]))
     }
-    pub(crate) fn cohorts_for(&self, process: ProcessId) -> Range<usize> {
-        self.cohorts.partition_point(|r| r.process_id < process)
-            ..self.cohorts.partition_point(|r| r.process_id <= process)
+
+    /// Exact gross current-period supply from installed cohorts.
+    ///
+    /// # Errors
+    /// Refuses a missing binding or an overflowing aggregate.
+    pub(crate) fn capacities(
+        &self,
+        cohorts: &[InstalledEquipmentCohort],
+        period: u64,
+    ) -> Result<Vec<InstalledProcessCapacity>> {
+        let mut rows = Vec::with_capacity(self.bindings.len());
+        for binding in &self.bindings {
+            let (_, definition) = self.definition(binding.process_id)?;
+            let mut capacity = 0_u64;
+            for cohort in &cohorts[cohorts_for(cohorts, binding.process_id)] {
+                if cohort.usable_from_period <= period {
+                    let nameplate = cohort
+                        .units
+                        .checked_mul(definition.batches_per_unit_per_period)
+                        .ok_or(MaterialCircuitError::Arithmetic)?;
+                    capacity = capacity
+                        .checked_add(nameplate.min(cohort.remaining_service_batches))
+                        .ok_or(MaterialCircuitError::Arithmetic)?;
+                }
+            }
+            rows.push(InstalledProcessCapacity {
+                process_id: binding.process_id,
+                site_id: binding.site_id,
+                batches_per_period: capacity,
+            });
+        }
+        rows.sort_by_key(|r| (r.site_id, r.process_id));
+        Ok(rows)
     }
 }
 
@@ -59,34 +87,14 @@ impl RollingProcessSupply {
     /// Exact gross current-period supply, with one captured owner.
     /// # Errors
     /// Refuses missing bindings or overflowing aggregate capacity.
-    pub fn capacities(&self, period: u64) -> Result<Vec<InstalledProcessCapacity>> {
+    pub fn capacities(
+        &self,
+        cohorts: &[InstalledEquipmentCohort],
+        period: u64,
+    ) -> Result<Vec<InstalledProcessCapacity>> {
         match self {
             Self::CapturedNameplate(rows) => Ok(rows.clone()),
-            Self::Equipment(e) => {
-                let mut rows = Vec::with_capacity(e.bindings.len());
-                for b in &e.bindings {
-                    let (_, d) = e.definition(b.process_id)?;
-                    let mut capacity = 0_u64;
-                    for c in &e.cohorts[e.cohorts_for(b.process_id)] {
-                        if c.usable_from_period <= period {
-                            let nameplate = c
-                                .units
-                                .checked_mul(d.batches_per_unit_per_period)
-                                .ok_or(MaterialCircuitError::Arithmetic)?;
-                            capacity = capacity
-                                .checked_add(nameplate.min(c.remaining_service_batches))
-                                .ok_or(MaterialCircuitError::Arithmetic)?;
-                        }
-                    }
-                    rows.push(InstalledProcessCapacity {
-                        process_id: b.process_id,
-                        site_id: b.site_id,
-                        batches_per_period: capacity,
-                    });
-                }
-                rows.sort_by_key(|r| (r.site_id, r.process_id));
-                Ok(rows)
-            }
+            Self::Equipment(content) => content.capacities(cohorts, period),
         }
     }
 }

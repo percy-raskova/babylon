@@ -1,7 +1,7 @@
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::AidBook;
-use babylon_material_circuit::BacklogRow;
+use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CashAccount;
 use babylon_material_circuit::CircuitAccounting;
@@ -21,6 +21,7 @@ use babylon_material_circuit::InventoryRow;
 use babylon_material_circuit::LaborCapacityRow;
 use babylon_material_circuit::LaborCompensation;
 use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialPurchase;
@@ -46,6 +47,7 @@ use babylon_material_circuit::StockCarryingValue;
 use babylon_material_circuit::SupplierRoute;
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::UnitId;
+use babylon_material_circuit::UNSEALED_CATALOG_DIGEST;
 
 fn money(value: i128) -> Currency {
     Currency::from_micro_units(value)
@@ -74,168 +76,181 @@ fn hours() -> UnitId {
     clippy::too_many_lines,
     reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
 )]
-fn opening() -> MaterialCircuitState {
+fn opening() -> (MaterialCatalog, MaterialCircuitState) {
     let route = RouteId::from_bytes([7; 32]);
     let corridor = CorridorId::from_bytes([8; 32]);
     let handling = CorridorId::from_bytes([9; 32]);
-    MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
-        period: 1,
-        accounting: CircuitAccounting::Monetary(Box::new({
-            let book = MonetaryBook::open(vec![
-                CashAccount {
-                    id: AccountId::Site(source()),
-                    cash: money(0),
-                },
-                CashAccount {
-                    id: AccountId::Site(store()),
-                    cash: money(8),
-                },
-                CashAccount {
-                    id: AccountId::Household(household()),
-                    cash: money(16),
-                },
-            ])
-            .expect("the fixture opens the authored source");
-            MonetaryCircuit {
-                aid: AidBook::default(),
-
-                household_time: HouseholdTimeAccounting::NotModeled,
-                financial: FinancialInstitutions::empty(),
-                costs: HistoricalCostBook::open(
-                    &book,
-                    [source(), store()]
-                        .into_iter()
-                        .map(|owner| StockCarryingValue {
-                            owner: AccountId::Site(owner),
-                            good_id: good(),
-                            unit_id: unit(),
-                            amount: money(0),
-                        })
-                        .collect(),
-                    vec![],
-                    vec![],
-                    vec![],
-                )
-                .expect("the fixture opens the authored source"),
-                book,
-                recurring: None,
-                member_labor: vec![MemberLaborCapacityRow {
-                    member_id: StaffingMemberId::from_bytes(store().as_bytes()),
-                    period: 1,
-                    available_hours: 4,
-                }],
-                employment: vec![EmploymentTerms {
-                    member_id: StaffingMemberId::from_bytes(store().as_bytes()),
-                    site_id: store(),
-                    unit_id: hours(),
-                    payee: household(),
-                    compensation: LaborCompensation::Wage(money(1)),
-                }],
-            }
-        })),
-        site_logistics_nodes: vec![
-            SiteLogisticsNode {
-                site_id: source(),
-                node_id: LogisticsNodeId::from_bytes([1; 32]),
-            },
-            SiteLogisticsNode {
-                site_id: store(),
-                node_id: LogisticsNodeId::from_bytes([2; 32]),
-            },
-        ],
-        process_outputs: vec![],
-        input_coefficients: vec![],
-        labor_coefficients: vec![],
-        service_connections: vec![],
-        service_orders: vec![],
-        commodities: vec![CommodityDefinition {
-            good_id: good(),
-            unit_id: unit(),
-            kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
-        }],
-        supplier_routes: vec![SupplierRoute {
-            buyer_site_id: store(),
-            supplier_site_id: source(),
-            good_id: good(),
-            unit_id: unit(),
-            route_id: route,
-            transport_kind: SupplierTransport::Staged,
-        }],
-        route_stages: vec![RouteStage {
-            route_id: route,
-            stage_index: 0,
-            from_node_id: LogisticsNodeId::from_bytes([1; 32]),
-            to_node_id: LogisticsNodeId::from_bytes([2; 32]),
-            travel_periods: 1,
-            loss_ppm: 0,
-        }],
-        route_stage_capacities: vec![RouteStageCapacity {
-            route_id: route,
-            stage_index: 0,
-            corridor_id: corridor,
-        }],
-        inventory: vec![
-            InventoryRow {
-                site_id: source(),
-                good_id: good(),
-                unit_id: unit(),
-                quantity: 4,
-            },
-            InventoryRow {
-                site_id: store(),
-                good_id: good(),
-                unit_id: unit(),
-                quantity: 4,
-            },
-        ],
-        orders: vec![],
-        backlog: vec![],
-        freight: vec![],
-        corridor_capacities: vec![
-            CorridorCapacity {
-                corridor_id: corridor,
-                period: 1,
-                available_grams: 4,
-            },
-            CorridorCapacity {
-                corridor_id: handling,
-                period: 1,
-                available_grams: 4,
-            },
-        ],
-        capacities: vec![],
-        labor: vec![LaborCapacityRow {
-            site_id: store(),
-            unit_id: hours(),
+    {
+        let state = MaterialCircuitState {
+            capacity_reservations: CapacityReservations::default(),
             period: 1,
-            available: 4,
-        }],
-        production_commitments: vec![],
-        merchants: vec![MerchantHandling {
-            site_id: store(),
-            location: "county:26163"
-                .parse()
-                .expect("the authored literal parses as the declared type"),
-            role: MerchantRole::Retail,
-            capacity_id: handling,
-            labor_unit_id: hours(),
-        }],
-        handling_coefficients: vec![MerchantHandlingCoefficient {
-            site_id: store(),
-            good_id: good(),
-            unit_id: unit(),
-            hours_per_unit: 1,
-        }],
-        final_demand_principals: vec![FinalDemandPrincipal {
-            id: household(),
-            location: "county:26163"
-                .parse()
-                .expect("the authored literal parses as the declared type"),
-        }],
-        final_demand_orders: vec![],
-        maintenance_binding: None,
-        maintenance_service: None,
+            accounting: CircuitAccounting::Monetary(Box::new({
+                let book = MonetaryBook::open(vec![
+                    CashAccount {
+                        id: AccountId::Site(source()),
+                        cash: money(0),
+                    },
+                    CashAccount {
+                        id: AccountId::Site(store()),
+                        cash: money(8),
+                    },
+                    CashAccount {
+                        id: AccountId::Household(household()),
+                        cash: money(16),
+                    },
+                ])
+                .expect("the fixture opens the authored source");
+                MonetaryCircuit {
+                    aid: AidBook::default(),
+
+                    household_time: HouseholdTimeAccounting::NotModeled,
+                    financial: FinancialInstitutions::empty(),
+                    costs: HistoricalCostBook::open(
+                        &book,
+                        [source(), store()]
+                            .into_iter()
+                            .map(|owner| StockCarryingValue {
+                                owner: AccountId::Site(owner),
+                                good_id: good(),
+                                unit_id: unit(),
+                                amount: money(0),
+                            })
+                            .collect(),
+                        vec![],
+                        vec![],
+                        vec![],
+                    )
+                    .expect("the fixture opens the authored source"),
+                    book,
+                    recurring: None,
+                    member_labor: vec![MemberLaborCapacityRow {
+                        member_id: StaffingMemberId::from_bytes(store().as_bytes()),
+                        period: 1,
+                        available_hours: 4,
+                    }],
+                    employment: vec![EmploymentTerms {
+                        member_id: StaffingMemberId::from_bytes(store().as_bytes()),
+                        site_id: store(),
+                        unit_id: hours(),
+                        payee: household(),
+                        compensation: LaborCompensation::Wage(money(1)),
+                    }],
+                }
+            })),
+            service_connections: vec![],
+            service_orders: vec![],
+            route_stage_capacities: vec![RouteStageCapacity {
+                route_id: route,
+                stage_index: 0,
+                corridor_id: corridor,
+            }],
+            inventory: vec![
+                InventoryRow {
+                    site_id: source(),
+                    good_id: good(),
+                    unit_id: unit(),
+                    quantity: 4,
+                },
+                InventoryRow {
+                    site_id: store(),
+                    good_id: good(),
+                    unit_id: unit(),
+                    quantity: 4,
+                },
+            ],
+            orders: vec![],
+            freight: vec![],
+            corridor_capacities: vec![
+                CorridorCapacity {
+                    corridor_id: corridor,
+                    period: 1,
+                    available_grams: 4,
+                },
+                CorridorCapacity {
+                    corridor_id: handling,
+                    period: 1,
+                    available_grams: 4,
+                },
+            ],
+            capacities: vec![],
+            labor: vec![LaborCapacityRow {
+                site_id: store(),
+                unit_id: hours(),
+                period: 1,
+                available: 4,
+            }],
+            production_commitments: vec![],
+            final_demand_principals: vec![FinalDemandPrincipal {
+                id: household(),
+                location: "county:26163"
+                    .parse()
+                    .expect("the authored literal parses as the declared type"),
+            }],
+            final_demand_orders: vec![],
+            maintenance_service: None,
+        };
+        (
+            MaterialCatalog::try_new(MaterialCatalog {
+                capacity_policy: CapacitySupply::FiniteSchedule,
+                site_logistics_nodes: vec![
+                    SiteLogisticsNode {
+                        site_id: source(),
+                        node_id: LogisticsNodeId::from_bytes([1; 32]),
+                    },
+                    SiteLogisticsNode {
+                        site_id: store(),
+                        node_id: LogisticsNodeId::from_bytes([2; 32]),
+                    },
+                ],
+                process_outputs: vec![],
+                input_coefficients: vec![],
+                labor_coefficients: vec![],
+                commodities: vec![CommodityDefinition {
+                    good_id: good(),
+                    unit_id: unit(),
+                    kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+                }],
+                supplier_routes: vec![SupplierRoute {
+                    buyer_site_id: store(),
+                    supplier_site_id: source(),
+                    good_id: good(),
+                    unit_id: unit(),
+                    route_id: route,
+                    transport_kind: SupplierTransport::Staged,
+                }],
+                route_stages: vec![RouteStage {
+                    route_id: route,
+                    stage_index: 0,
+                    from_node_id: LogisticsNodeId::from_bytes([1; 32]),
+                    to_node_id: LogisticsNodeId::from_bytes([2; 32]),
+                    travel_periods: 1,
+                    loss_ppm: 0,
+                }],
+                merchants: vec![MerchantHandling {
+                    site_id: store(),
+                    location: "county:26163"
+                        .parse()
+                        .expect("the authored literal parses as the declared type"),
+                    role: MerchantRole::Retail,
+                    capacity_id: handling,
+                    labor_unit_id: hours(),
+                }],
+                handling_coefficients: vec![MerchantHandlingCoefficient {
+                    site_id: store(),
+                    good_id: good(),
+                    unit_id: unit(),
+                    hours_per_unit: 1,
+                }],
+                maintenance_binding: None,
+                aid_mandates: Vec::new(),
+                household_time_policy: Vec::new(),
+                service_inputs: Vec::new(),
+                household_needs: Vec::new(),
+                catalog_digest: UNSEALED_CATALOG_DIGEST,
+            })
+            .expect("the authored fixture catalog is valid"),
+            state,
+        )
     }
 }
 
@@ -276,14 +291,16 @@ fn book(state: &MaterialCircuitState) -> &MonetaryBook {
 
 #[test]
 fn dispatch_keeps_escrow_and_restart_settles_only_actual_arrival() {
+    let (catalog, opening) = opening();
     let (state, reservation) = babylon_material_circuit::admit_material_purchase(
-        &opening(),
+        &catalog,
+        &opening,
         MaterialPurchase::Delivery(delivery()),
         money(1),
     )
     .expect("the fixture admits the authored purchase");
     assert_eq!(reservation.debit.delta, money(-4));
-    let closed = babylon_material_circuit::advance_material_circuit(&state)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(closed.dispatches[0].quantity, 4);
     assert_eq!(
@@ -304,15 +321,16 @@ fn dispatch_keeps_escrow_and_restart_settles_only_actual_arrival() {
     assert_eq!(closed.labor_use[0].used_hours, 0);
     assert_eq!(closed.labor_use[0].paid_idle_hours, 4);
     let restored = babylon_material_circuit::decode_material_circuit_state(
-        &babylon_material_circuit::encode_material_circuit_state(&closed.state)
+        &catalog,
+        &babylon_material_circuit::encode_material_circuit_state(&catalog, &closed.state)
             .expect("the canonical material state encodes"),
     )
     .expect("the canonical material bytes decode");
-    let arrived = babylon_material_circuit::advance_material_circuit(&restored)
+    let arrived = babylon_material_circuit::advance_material_circuit(&catalog, &restored)
         .expect("the authored material state advances one period");
     assert_eq!(
         arrived,
-        babylon_material_circuit::advance_material_circuit(&closed.state)
+        babylon_material_circuit::advance_material_circuit(&catalog, &closed.state)
             .expect("the authored material state advances one period")
     );
     assert_eq!(arrived.arrivals[0].quantity, 4);
@@ -332,13 +350,15 @@ fn dispatch_keeps_escrow_and_restart_settles_only_actual_arrival() {
 
 #[test]
 fn actual_local_handoff_pays_seller_and_reports_paid_idle_separately() {
+    let (catalog, opening) = opening();
     let (state, _) = babylon_material_circuit::admit_material_purchase(
-        &opening(),
+        &catalog,
+        &opening,
         MaterialPurchase::LocalFinalDemand(retail()),
         money(4),
     )
     .expect("the fixture admits the authored purchase");
-    let closed = babylon_material_circuit::advance_material_circuit(&state)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let buyer = closed
         .income
@@ -384,20 +404,18 @@ fn actual_local_handoff_pays_seller_and_reports_paid_idle_separately() {
 
 #[test]
 fn missing_or_wrong_beneficiary_escrow_refuses_the_whole_material_close() {
-    let mut unfunded = opening();
+    let (catalog, mut unfunded) = opening();
     unfunded.orders.push(delivery());
-    unfunded.backlog.push(BacklogRow {
-        order_id: delivery().order_id,
-        quantity: 4,
-    });
     let unchanged = unfunded.clone();
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&unfunded),
+        babylon_material_circuit::advance_material_circuit(&catalog, &unfunded),
         Err(MaterialCircuitError::PurchaseInvariant)
     );
     assert_eq!(unfunded, unchanged);
+    let (catalog, fresh) = opening();
     let (mut wrong, _) = babylon_material_circuit::admit_material_purchase(
-        &opening(),
+        &catalog,
+        &fresh,
         MaterialPurchase::Delivery(delivery()),
         money(1),
     )
@@ -410,17 +428,18 @@ fn missing_or_wrong_beneficiary_escrow_refuses_the_whole_material_close() {
     economy.book =
         MonetaryBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&wrong),
+        babylon_material_circuit::advance_material_circuit(&catalog, &wrong),
         Err(MaterialCircuitError::PurchaseInvariant)
     );
 }
 
 #[test]
 fn purchase_admission_cannot_spend_the_same_cash_twice_or_leave_an_order_behind() {
-    let state = opening();
+    let (catalog, state) = opening();
     let unchanged = state.clone();
     assert_eq!(
         babylon_material_circuit::admit_material_purchase(
+            &catalog,
             &state,
             MaterialPurchase::Delivery(delivery()),
             money(3)
@@ -429,12 +448,13 @@ fn purchase_admission_cannot_spend_the_same_cash_twice_or_leave_an_order_behind(
     );
     assert_eq!(state, unchanged);
     let (funded, _) = babylon_material_circuit::admit_material_purchase(
+        &catalog,
         &state,
         MaterialPurchase::Delivery(delivery()),
         money(2),
     )
     .expect("the fixture admits the authored purchase");
-    let closed = babylon_material_circuit::advance_material_circuit(&funded)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &funded)
         .expect("the authored material state advances one period");
     assert!(closed.wage_accruals.is_empty());
     assert_eq!(closed.labor_use[0].funded_hours, 0);
@@ -449,17 +469,19 @@ fn purchase_admission_cannot_spend_the_same_cash_twice_or_leave_an_order_behind(
 
 #[test]
 fn freight_loss_refunds_buyer_and_never_becomes_seller_income() {
-    let mut state = opening();
-    state.route_stages[0].loss_ppm = 500_000;
+    let (mut catalog, state) = opening();
+    catalog.route_stages[0].loss_ppm = 500_000;
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let (state, _) = babylon_material_circuit::admit_material_purchase(
+        &catalog,
         &state,
         MaterialPurchase::Delivery(delivery()),
         money(1),
     )
     .expect("the fixture admits the authored purchase");
-    let dispatched = babylon_material_circuit::advance_material_circuit(&state)
+    let dispatched = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
-    let arrived = babylon_material_circuit::advance_material_circuit(&dispatched.state)
+    let arrived = babylon_material_circuit::advance_material_circuit(&catalog, &dispatched.state)
         .expect("the authored material state advances one period");
     assert_eq!(arrived.losses[0].quantity, 2);
     assert_eq!(arrived.arrivals[0].quantity, 2);
@@ -485,7 +507,7 @@ fn freight_loss_refunds_buyer_and_never_becomes_seller_income() {
 
 #[test]
 fn previously_earned_wages_survive_restart_and_payment_does_not_accrue_them_again() {
-    let mut state = opening();
+    let (catalog, mut state) = opening();
     state.period = 2;
     for row in &mut state.labor {
         row.period = 2;
@@ -536,11 +558,12 @@ fn previously_earned_wages_survive_restart_and_payment_does_not_accrue_them_agai
         money(3)
     );
     let restored = babylon_material_circuit::decode_material_circuit_state(
-        &babylon_material_circuit::encode_material_circuit_state(&state)
+        &catalog,
+        &babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
             .expect("the canonical material state encodes"),
     )
     .expect("the canonical material bytes decode");
-    let closed = babylon_material_circuit::advance_material_circuit(&restored)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &restored)
         .expect("the authored material state advances one period");
     assert_eq!(closed.wage_accruals.len(), 1);
     assert_eq!(closed.wage_accruals[0].period, 2);
@@ -570,19 +593,22 @@ fn previously_earned_wages_survive_restart_and_payment_does_not_accrue_them_agai
 
 #[test]
 fn goods_and_a_funded_buyer_do_not_substitute_for_employer_working_cash() {
+    let (catalog, opening) = opening();
     let (state, _) = babylon_material_circuit::admit_material_purchase(
-        &opening(),
+        &catalog,
+        &opening,
         MaterialPurchase::Delivery(delivery()),
         money(2),
     )
     .expect("the fixture admits the authored purchase");
     let (state, _) = babylon_material_circuit::admit_material_purchase(
+        &catalog,
         &state,
         MaterialPurchase::LocalFinalDemand(retail()),
         money(4),
     )
     .expect("the fixture admits the authored purchase");
-    let closed = babylon_material_circuit::advance_material_circuit(&state)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert!(closed.local_fulfillments.is_empty());
     assert_eq!(closed.state.final_demand_orders[0].fulfilled, 0);
@@ -615,7 +641,7 @@ fn goods_and_a_funded_buyer_do_not_substitute_for_employer_working_cash() {
 
 #[test]
 fn a_failure_after_attendance_cannot_publish_wages_or_cash() {
-    let mut state = opening();
+    let (catalog, mut state) = opening();
     state.period = u64::MAX;
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         unreachable!()
@@ -629,7 +655,7 @@ fn a_failure_after_attendance_cannot_publish_wages_or_cash() {
     }
     let before = state.clone();
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(state, before);
@@ -643,28 +669,31 @@ fn a_failure_after_attendance_cannot_publish_wages_or_cash() {
 
 #[test]
 fn paid_delivery_cannot_reopen_as_an_unrealized_physical_quantity() {
+    let (catalog, opening) = opening();
     let (state, _) = babylon_material_circuit::admit_material_purchase(
-        &opening(),
+        &catalog,
+        &opening,
         MaterialPurchase::Delivery(delivery()),
         money(1),
     )
     .expect("the fixture admits the authored purchase");
-    let dispatched = babylon_material_circuit::advance_material_circuit(&state)
+    let dispatched = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
-    let mut arrived = babylon_material_circuit::advance_material_circuit(&dispatched.state)
-        .expect("the authored material state advances one period")
-        .state;
+    let mut arrived =
+        babylon_material_circuit::advance_material_circuit(&catalog, &dispatched.state)
+            .expect("the authored material state advances one period")
+            .state;
     assert_eq!(arrived.orders[0].realized, 4);
     arrived.orders[0].realized = 0;
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&arrived),
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &arrived),
         Err(MaterialCircuitError::PurchaseInvariant)
     );
 }
 
 #[test]
 fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash_creation() {
-    let mut state = opening();
+    let (mut catalog, mut state) = opening();
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         panic!("paid control");
     };
@@ -685,14 +714,16 @@ fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash
     )
     .expect("the fixture opens the authored source");
     state.corridor_capacities[0].available_grams = 3;
-    state.route_stages[0].loss_ppm = 333_334;
+    catalog.route_stages[0].loss_ppm = 333_334;
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let (state, _) = babylon_material_circuit::admit_material_purchase(
+        &catalog,
         &state,
         MaterialPurchase::Delivery(delivery()),
         money(2),
     )
     .expect("the fixture admits the authored purchase");
-    let first = babylon_material_circuit::advance_material_circuit(&state)
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let CircuitAccounting::Monetary(book) = &first.state.accounting else {
         panic!("paid control");
@@ -708,7 +739,7 @@ fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash
             .amount,
         money(2)
     );
-    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+    let second = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
         .expect("the authored material state advances one period");
     let row = second
         .income

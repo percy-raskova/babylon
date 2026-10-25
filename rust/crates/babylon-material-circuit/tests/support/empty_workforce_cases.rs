@@ -11,6 +11,7 @@ use babylon_material_circuit::HouseholdCohort;
 use babylon_material_circuit::HouseholdKind;
 use babylon_material_circuit::HouseholdStock;
 use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MemberLaborCapacityRow;
@@ -92,7 +93,8 @@ fn assert_zero_attendance(state: &MaterialCircuitState) {
 
 #[test]
 fn empty_workplaces_cannot_turn_stock_and_funded_demand_into_free_work_after_restart() {
-    let mut state = empty_workforce(crate::opening());
+    let (catalog, opening) = crate::opening();
+    let mut state = empty_workforce(opening);
     let inventory = state.inventory.clone();
     let cash = crate::economy(&state)
         .book
@@ -100,15 +102,15 @@ fn empty_workplaces_cannot_turn_stock_and_funded_demand_into_free_work_after_res
         .expect("the fixture book totals without overflow");
     for period in 1..=3 {
         let before = state.clone();
-        let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
             .expect("the canonical material state encodes");
-        let restarted = babylon_material_circuit::decode_material_circuit_state(&bytes)
+        let restarted = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
             .expect("the canonical material bytes decode");
-        let result = babylon_material_circuit::advance_material_circuit(&state)
+        let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
         assert_eq!(
             result,
-            babylon_material_circuit::advance_material_circuit(&restarted)
+            babylon_material_circuit::advance_material_circuit(&catalog, &restarted)
                 .expect("the authored material state advances one period")
         );
         assert_eq!(state, before);
@@ -157,7 +159,8 @@ fn empty_workplaces_cannot_turn_stock_and_funded_demand_into_free_work_after_res
 
 #[test]
 fn an_empty_shared_producer_and_merchant_can_request_work_without_inventing_people() {
-    let mut state = empty_workforce(crate::producer_retail_opening());
+    let (catalog, opening) = crate::producer_retail_opening();
+    let mut state = empty_workforce(opening);
     crate::recurring_mut(&mut state).production[0].output_buffer = 4;
     let bindings = [
         (
@@ -197,10 +200,10 @@ fn an_empty_shared_producer_and_merchant_can_request_work_without_inventing_peop
             .collect(),
     )
     .expect("the authored fixture satisfies the constructor invariants");
-    let closed = babylon_material_circuit::close_material_period(&state)
+    let closed = babylon_material_circuit::close_material_period(&catalog, &state)
         .expect("the material period closes");
     let requests = closed
-        .staffing_requests(&bindings)
+        .staffing_requests(&catalog, &bindings)
         .expect("the fixture staffing requests are present");
     assert_eq!(requests.len(), 4);
     assert_eq!(
@@ -219,7 +222,7 @@ fn an_empty_shared_producer_and_merchant_can_request_work_without_inventing_peop
         .all(|r| r.closing_employed() == 0 && r.closing_reserve() == 0 && r.hires() == 0));
     assert!(staffed.next_labor().iter().all(|r| r.available == 0));
     let result = closed
-        .finish_with_workforce(staffed.next_labor().to_vec(), vec![])
+        .finish_with_workforce(&catalog, staffed.next_labor().to_vec(), vec![])
         .expect("the fixture call `finish_with_workforce` succeeds for the authored inputs");
     assert_zero_attendance(&result.state);
     assert!(result.state.production_commitments.is_empty());
@@ -229,11 +232,12 @@ fn an_empty_shared_producer_and_merchant_can_request_work_without_inventing_peop
 
 #[test]
 fn a_memberless_attendance_plan_cannot_claim_positive_hours() {
-    let mut state = empty_workforce(crate::opening());
+    let (catalog, opening) = crate::opening();
+    let mut state = empty_workforce(opening);
     crate::recurring_mut(&mut state).attendance[2].planned_hours = 1;
     let before = state.clone();
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(MaterialCircuitError::PayrollInvariant)
     );
     assert_eq!(state, before);
@@ -241,20 +245,21 @@ fn a_memberless_attendance_plan_cannot_claim_positive_hours() {
 
 #[test]
 fn a_memberless_attendance_plan_requires_its_explicit_current_zero_budget() {
-    let mut state = empty_workforce(crate::opening());
+    let (catalog, opening) = crate::opening();
+    let mut state = empty_workforce(opening);
     state
         .labor
         .retain(|r| !(r.site_id == crate::site(3) && r.period == 1));
     let before = state.clone();
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(MaterialCircuitError::PayrollInvariant)
     );
     assert_eq!(state, before);
 }
 
-fn split_retail_members() -> MaterialCircuitState {
-    let mut state = crate::opening();
+fn split_retail_members() -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = crate::opening();
     let second = FinalDemandPrincipalId::from_bytes([77; 32]);
     let member = StaffingMemberId::from_bytes([77; 32]);
     state.final_demand_principals.push(FinalDemandPrincipal {
@@ -335,25 +340,26 @@ fn split_retail_members() -> MaterialCircuitState {
     });
     accounts.costs = HistoricalCostBook::open(&accounts.book, stock, vec![], vec![], vec![])
         .expect("the fixture opens the authored source");
-    state
+    (catalog, state)
 }
 
 #[test]
 fn multiple_resident_members_share_one_workplace_plan_and_keep_their_own_wages() {
-    let mut state = split_retail_members();
+    let (catalog, mut state) = split_retail_members();
     let opening_cash = crate::economy(&state)
         .book
         .total_cash_and_reserves()
         .expect("the fixture book totals without overflow");
     for period in 1..=2 {
-        let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
             .expect("the canonical material state encodes");
-        let result = babylon_material_circuit::advance_material_circuit(&state)
+        let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
         assert_eq!(
             result,
             babylon_material_circuit::advance_material_circuit(
-                &babylon_material_circuit::decode_material_circuit_state(&bytes)
+                &catalog,
+                &babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
                     .expect("the canonical material bytes decode")
             )
             .expect("the authored material state advances one period")

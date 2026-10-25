@@ -14,14 +14,19 @@ use babylon_material_circuit::HouseholdNeed;
 use babylon_material_circuit::HouseholdNeedBasis;
 use babylon_material_circuit::HouseholdPurchasePolicy;
 use babylon_material_circuit::HouseholdStock;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MonetaryBook;
 use babylon_material_circuit::StockCarryingValue;
 use babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES;
 
-fn place(state: &mut MaterialCircuitState, location: EconomicLocation) {
-    for row in &mut state.merchants {
+fn place(
+    catalog: &mut MaterialCatalog,
+    state: &mut MaterialCircuitState,
+    location: EconomicLocation,
+) {
+    for row in &mut catalog.merchants {
         row.location = location;
     }
     for row in &mut state.final_demand_principals {
@@ -42,14 +47,15 @@ fn national_foreign_and_dependency_locations_use_the_same_paid_consumption_close
         .chain(ForeignCounterpart::ALL.map(EconomicLocation::Foreign))
         .chain(UsDependency::ALL.map(EconomicLocation::Dependency));
     for location in locations {
-        let mut state = crate::opening();
-        place(&mut state, location);
-        let encoded = babylon_material_circuit::encode_material_circuit_state(&state)
+        let (mut catalog, mut state) = crate::opening();
+        place(&mut catalog, &mut state, location);
+        catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+        let encoded = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
             .expect("the canonical material state encodes");
-        let restored = babylon_material_circuit::decode_material_circuit_state(&encoded)
+        let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &encoded)
             .expect("the canonical material bytes decode");
         assert_eq!(restored.final_demand_principals[0].location, location);
-        let close = babylon_material_circuit::advance_material_circuit(&restored)
+        let close = babylon_material_circuit::advance_material_circuit(&catalog, &restored)
             .expect("the authored material state advances one period");
         assert_eq!(close.household_consumption[0].consumed_quantity, 4);
         let CircuitAccounting::Monetary(economy) = &close.state.accounting else {
@@ -76,8 +82,8 @@ fn national_foreign_and_dependency_locations_use_the_same_paid_consumption_close
 #[test]
 fn separately_accounted_household_cohorts_can_share_one_market_location() {
     let location = EconomicLocation::Foreign(ForeignCounterpart::Canada);
-    let mut state = crate::opening();
-    place(&mut state, location);
+    let (mut catalog, mut state) = crate::opening();
+    place(&mut catalog, &mut state, location);
     let second = FinalDemandPrincipalId::from_bytes([2; 32]);
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: second,
@@ -119,13 +125,15 @@ fn separately_accounted_household_cohorts_can_share_one_market_location() {
         unit_id: crate::units(),
         quantity: 0,
     });
-    recurring.household_needs.push(HouseholdNeed {
+    let need = HouseholdNeed {
         principal_id: second,
         good_id: crate::good(2),
         unit_id: crate::units(),
         basis: HouseholdNeedBasis::Persons,
         units_per_basis: 1,
-    });
+    };
+    recurring.household_needs.push(need.clone());
+    catalog.household_needs.push(need);
     recurring.household_purchases.push(HouseholdPurchasePolicy {
         principal_id: second,
         retailer_site_id: crate::site(3),
@@ -135,7 +143,8 @@ fn separately_accounted_household_cohorts_can_share_one_market_location() {
         maximum_purchase: 1,
         enabled: true,
     });
-    let close = babylon_material_circuit::advance_material_circuit(&state)
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let close = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(close.household_consumption.len(), 2);
     assert_eq!(
@@ -168,11 +177,11 @@ fn separately_accounted_household_cohorts_can_share_one_market_location() {
 
 #[test]
 fn a_local_retail_order_cannot_skip_an_international_delivery() {
-    let mut state = crate::opening();
+    let (catalog, mut state) = crate::opening();
     state.final_demand_principals[0].location =
         EconomicLocation::Foreign(ForeignCounterpart::Canada);
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state)
+        babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect_err("the invalid material state is refused"),
         MaterialCircuitError::FinalDemandInvariant
     );
@@ -180,8 +189,8 @@ fn a_local_retail_order_cannot_skip_an_international_delivery() {
 
 #[test]
 fn material_wire_refuses_invalid_locations_and_the_previous_state_format() {
-    let state = crate::opening();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+    let (catalog, state) = crate::opening();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     let pattern = state.final_demand_principals[0].location.canonical_bytes();
     let offsets: Vec<_> = bytes
@@ -191,8 +200,8 @@ fn material_wire_refuses_invalid_locations_and_the_previous_state_format() {
         .collect();
     assert_eq!(
         offsets.len(),
-        2,
-        "the control has one merchant and one buyer"
+        1,
+        "the compact state carries only the demand principal's location"
     );
     for offset in offsets {
         for malformed in [
@@ -203,7 +212,7 @@ fn material_wire_refuses_invalid_locations_and_the_previous_state_format() {
             let mut changed = bytes.clone();
             changed[offset..offset + 6].copy_from_slice(&malformed);
             assert_eq!(
-                babylon_material_circuit::decode_material_circuit_state(&changed)
+                babylon_material_circuit::decode_material_circuit_state(&catalog, &changed)
                     .expect_err("`decode_material_circuit_state` rejects the malformed bytes"),
                 MaterialCircuitError::WireEnum
             );
@@ -211,11 +220,11 @@ fn material_wire_refuses_invalid_locations_and_the_previous_state_format() {
     }
     let mut previous = bytes;
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
-    assert_eq!(&previous[version..version + 2], &19_u16.to_be_bytes());
-    for unsupported in [14_u16, 15, 16, 17, 18] {
+    assert_eq!(&previous[version..version + 2], &20_u16.to_be_bytes());
+    for unsupported in [14_u16, 15, 16, 17, 18, 19] {
         previous[version..version + 2].copy_from_slice(&unsupported.to_be_bytes());
         assert_eq!(
-            babylon_material_circuit::decode_material_circuit_state(&previous),
+            babylon_material_circuit::decode_material_circuit_state(&catalog, &previous),
             Err(MaterialCircuitError::WireVersion)
         );
     }

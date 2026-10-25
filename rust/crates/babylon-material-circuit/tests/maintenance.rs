@@ -1,7 +1,7 @@
 //! A bounded maintenance dependency conserves parts and hours across period closes.
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::AidBook;
-use babylon_material_circuit::BacklogRow;
+use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacityRow;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CashAccount;
@@ -25,6 +25,7 @@ use babylon_material_circuit::LaborCompensation;
 use babylon_material_circuit::LogisticsNodeId;
 use babylon_material_circuit::MaintenanceBinding;
 use babylon_material_circuit::MaintenanceService;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
@@ -54,6 +55,7 @@ use babylon_material_circuit::SupplierRoute;
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::UnitId;
 use babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES;
+use babylon_material_circuit::UNSEALED_CATALOG_DIGEST;
 
 fn site(id: u8) -> SiteId {
     SiteId::from_bytes([id; 32])
@@ -71,131 +73,144 @@ fn process() -> ProcessId {
     clippy::too_many_lines,
     reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
 )]
-fn opening(parts: u64, provider_hours: u64) -> MaterialCircuitState {
-    MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
-        period: 1,
-        site_logistics_nodes: (1..=3)
-            .map(|id| SiteLogisticsNode {
-                site_id: site(id),
-                node_id: LogisticsNodeId::from_bytes([id; 32]),
-            })
-            .collect(),
-        process_outputs: vec![ProcessOutput {
-            process_id: process(),
-            site_id: site(1),
-            good_id: good(2),
-            unit_id: unit(1),
-            quantity_per_batch: 60,
-        }],
-        input_coefficients: vec![InputOutputCoefficient {
-            process_id: process(),
-            good_id: good(1),
-            unit_id: unit(1),
-            quantity_per_batch: 80,
-        }],
-        labor_coefficients: vec![LaborCoefficient {
-            process_id: process(),
-            unit_id: unit(2),
-            quantity_per_batch: 60,
-        }],
-        service_connections: vec![],
-        service_orders: vec![],
-        commodities: vec![
-            CommodityDefinition {
-                good_id: good(1),
-                unit_id: unit(1),
-                kind: babylon_material_circuit::CommodityKind::Storable {
-                    grams_per_unit: 1000,
+fn opening(parts: u64, provider_hours: u64) -> (MaterialCatalog, MaterialCircuitState) {
+    {
+        let state = MaterialCircuitState {
+            capacity_reservations: CapacityReservations::default(),
+            period: 1,
+            service_connections: vec![],
+            service_orders: vec![],
+            route_stage_capacities: vec![],
+            inventory: vec![
+                InventoryRow {
+                    site_id: site(1),
+                    good_id: good(1),
+                    unit_id: unit(1),
+                    quantity: 2560,
                 },
-            },
-            CommodityDefinition {
-                good_id: good(2),
-                unit_id: unit(1),
-                kind: babylon_material_circuit::CommodityKind::Storable {
-                    grams_per_unit: 1000,
+                InventoryRow {
+                    site_id: site(2),
+                    good_id: good(2),
+                    unit_id: unit(1),
+                    quantity: parts,
                 },
-            },
-        ],
-        supplier_routes: vec![],
-        route_stages: vec![],
-        route_stage_capacities: vec![],
-        inventory: vec![
-            InventoryRow {
-                site_id: site(1),
-                good_id: good(1),
-                unit_id: unit(1),
-                quantity: 2560,
-            },
-            InventoryRow {
-                site_id: site(2),
-                good_id: good(2),
-                unit_id: unit(1),
-                quantity: parts,
-            },
-        ],
-        orders: vec![],
-        backlog: vec![],
-        freight: vec![],
-        corridor_capacities: vec![],
-        capacities: (1..=6)
-            .map(|period| CapacityRow {
+            ],
+            orders: vec![],
+            freight: vec![],
+            corridor_capacities: vec![],
+            capacities: (1..=6)
+                .map(|period| CapacityRow {
+                    process_id: process(),
+                    site_id: site(1),
+                    period,
+                    available_batches: 16,
+                })
+                .collect(),
+            labor: (1..=6)
+                .flat_map(|period| {
+                    [
+                        LaborCapacityRow {
+                            site_id: site(1),
+                            unit_id: unit(2),
+                            period,
+                            available: 1280,
+                        },
+                        LaborCapacityRow {
+                            site_id: site(2),
+                            unit_id: unit(2),
+                            period,
+                            available: provider_hours,
+                        },
+                    ]
+                })
+                .collect(),
+            production_commitments: vec![ProductionCommitment {
                 process_id: process(),
                 site_id: site(1),
-                period,
+                period: 1,
+                planned_batches: 16,
+            }],
+            final_demand_principals: vec![],
+            final_demand_orders: vec![],
+            accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
+            maintenance_service: Some(MaintenanceService {
+                period: 1,
                 available_batches: 16,
-            })
-            .collect(),
-        labor: (1..=6)
-            .flat_map(|period| {
-                [
-                    LaborCapacityRow {
-                        site_id: site(1),
-                        unit_id: unit(2),
-                        period,
-                        available: 1280,
+            }),
+        };
+        (
+            MaterialCatalog::try_new(MaterialCatalog {
+                capacity_policy: CapacitySupply::FiniteSchedule,
+                site_logistics_nodes: (1..=3)
+                    .map(|id| SiteLogisticsNode {
+                        site_id: site(id),
+                        node_id: LogisticsNodeId::from_bytes([id; 32]),
+                    })
+                    .collect(),
+                process_outputs: vec![ProcessOutput {
+                    process_id: process(),
+                    site_id: site(1),
+                    good_id: good(2),
+                    unit_id: unit(1),
+                    quantity_per_batch: 60,
+                }],
+                input_coefficients: vec![InputOutputCoefficient {
+                    process_id: process(),
+                    good_id: good(1),
+                    unit_id: unit(1),
+                    quantity_per_batch: 80,
+                }],
+                labor_coefficients: vec![LaborCoefficient {
+                    process_id: process(),
+                    unit_id: unit(2),
+                    quantity_per_batch: 60,
+                }],
+                commodities: vec![
+                    CommodityDefinition {
+                        good_id: good(1),
+                        unit_id: unit(1),
+                        kind: babylon_material_circuit::CommodityKind::Storable {
+                            grams_per_unit: 1000,
+                        },
                     },
-                    LaborCapacityRow {
-                        site_id: site(2),
-                        unit_id: unit(2),
-                        period,
-                        available: provider_hours,
+                    CommodityDefinition {
+                        good_id: good(2),
+                        unit_id: unit(1),
+                        kind: babylon_material_circuit::CommodityKind::Storable {
+                            grams_per_unit: 1000,
+                        },
                     },
-                ]
+                ],
+                supplier_routes: vec![],
+                route_stages: vec![],
+                merchants: vec![],
+                handling_coefficients: vec![],
+                maintenance_binding: Some(MaintenanceBinding {
+                    provider_site_id: site(2),
+                    consumer_process_id: process(),
+                    spare_good_id: good(2),
+                    spare_unit_id: unit(1),
+                    labor_unit_id: unit(2),
+                    spare_units_per_job: 1,
+                    labor_units_per_job: 10,
+                    enabled_batches_per_job: 1,
+                    maximum_jobs_per_period: 16,
+                }),
+                aid_mandates: Vec::new(),
+                household_time_policy: Vec::new(),
+                service_inputs: Vec::new(),
+                household_needs: Vec::new(),
+                catalog_digest: UNSEALED_CATALOG_DIGEST,
             })
-            .collect(),
-        production_commitments: vec![ProductionCommitment {
-            process_id: process(),
-            site_id: site(1),
-            period: 1,
-            planned_batches: 16,
-        }],
-        merchants: vec![],
-        handling_coefficients: vec![],
-        final_demand_principals: vec![],
-        final_demand_orders: vec![],
-        accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
-        maintenance_binding: Some(MaintenanceBinding {
-            provider_site_id: site(2),
-            consumer_process_id: process(),
-            spare_good_id: good(2),
-            spare_unit_id: unit(1),
-            labor_unit_id: unit(2),
-            spare_units_per_job: 1,
-            labor_units_per_job: 10,
-            enabled_batches_per_job: 1,
-            maximum_jobs_per_period: 16,
-        }),
-        maintenance_service: Some(MaintenanceService {
-            period: 1,
-            available_batches: 16,
-        }),
+            .expect("the authored fixture catalog is valid"),
+            state,
+        )
     }
 }
-fn restock(state: &mut MaterialCircuitState) {
+fn restock(catalog: &mut MaterialCatalog, state: &mut MaterialCircuitState) {
     for (id, buyer, quantity) in [(1, 2, 256), (2, 3, 3840)] {
         let order_id = OrderId::from_bytes([id; 32]);
-        state.supplier_routes.push(SupplierRoute {
+        catalog.supplier_routes.push(SupplierRoute {
             buyer_site_id: site(buyer),
             supplier_site_id: site(1),
             good_id: good(2),
@@ -216,7 +231,6 @@ fn restock(state: &mut MaterialCircuitState) {
             delivered: 0,
             realized: 0,
         });
-        state.backlog.push(BacklogRow { order_id, quantity });
     }
 }
 fn people(provider_employed: u64) -> StaffingState {
@@ -250,24 +264,25 @@ fn people(provider_employed: u64) -> StaffingState {
     .expect("the authored fixture satisfies the constructor invariants")
 }
 fn staffed(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     people: &StaffingState,
 ) -> (MaterialCircuitTransition, StaffingTransition) {
-    let closed =
-        babylon_material_circuit::close_material_period(state).expect("the material period closes");
+    let closed = babylon_material_circuit::close_material_period(catalog, state)
+        .expect("the material period closes");
     let bindings: Vec<_> = people
         .pools()
         .iter()
         .map(|pool| pool.binding().clone())
         .collect();
     let requests = closed
-        .staffing_requests(&bindings)
+        .staffing_requests(catalog, &bindings)
         .expect("the fixture staffing requests are present");
     let staffing = babylon_material_circuit::advance_staffing(people, &requests)
         .expect("the fixture staffing advances");
     (
         closed
-            .finish_with_labor(staffing.next_labor().to_vec())
+            .finish_with_labor(catalog, staffing.next_labor().to_vec())
             .expect("the fixture completes with labor"),
         staffing,
     )
@@ -290,10 +305,10 @@ fn stock(state: &MaterialCircuitState, site_id: SiteId, good_id: GoodId) -> u64 
 #[test]
 fn four_cases_bind_labor_and_parts_then_rehire_and_recover() {
     for (parts, employed) in [(256, 1), (256, 0), (0, 1), (0, 0)] {
-        let mut state = opening(parts, employed * 160);
-        restock(&mut state);
+        let (mut catalog, mut state) = opening(parts, employed * 160);
+        restock(&mut catalog, &mut state);
         let original = state.clone();
-        let (first, staff1) = staffed(&state, &people(employed));
+        let (first, staff1) = staffed(&catalog, &state, &people(employed));
         let receipt = first
             .maintenance
             .as_ref()
@@ -322,7 +337,7 @@ fn four_cases_bind_labor_and_parts_then_rehire_and_recover() {
             parts - receipt.completed_jobs + 60
         );
         assert_eq!(staff1.state().pools()[1].employed(), 1);
-        let (second, staff2) = staffed(&first.state, staff1.state());
+        let (second, staff2) = staffed(&catalog, &first.state, staff1.state());
         assert_eq!(
             produced(&second),
             if parts > 0 && employed > 0 { 960 } else { 0 }
@@ -336,7 +351,7 @@ fn four_cases_bind_labor_and_parts_then_rehire_and_recover() {
                     .completed_jobs,
                 16
             );
-            let (third, _) = staffed(&second.state, staff2.state());
+            let (third, _) = staffed(&catalog, &second.state, staff2.state());
             assert_eq!(produced(&third), 960);
         }
         assert_eq!(state, original, "detached close must not mutate its input");
@@ -345,14 +360,15 @@ fn four_cases_bind_labor_and_parts_then_rehire_and_recover() {
 
 #[test]
 fn whole_jobs_debit_exact_inputs_and_expire_unused_service() {
-    let mut state = opening(7, 19);
-    state
+    let (mut catalog, mut state) = opening(7, 19);
+    catalog
         .maintenance_binding
         .as_mut()
         .expect("the fixture set the optional field before this borrow")
         .spare_units_per_job = 3;
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state.production_commitments[0].planned_batches = 4;
-    let result = babylon_material_circuit::advance_material_circuit(&state)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let receipt = result
         .maintenance
@@ -386,13 +402,13 @@ fn whole_jobs_debit_exact_inputs_and_expire_unused_service() {
 
 #[test]
 fn expired_or_absent_service_never_enables_current_production_or_suppresses_demand() {
-    let mut state = opening(256, 160);
+    let (catalog, mut state) = opening(256, 160);
     state
         .maintenance_service
         .as_mut()
         .expect("the fixture set the optional field before this borrow")
         .available_batches = 0;
-    let first = babylon_material_circuit::advance_material_circuit(&state)
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(produced(&first), 0);
     assert_eq!(
@@ -413,7 +429,7 @@ fn expired_or_absent_service_never_enables_current_production_or_suppresses_dema
     );
     assert_eq!(
         produced(
-            &babylon_material_circuit::advance_material_circuit(&first.state)
+            &babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
                 .expect("the authored material state advances one period")
         ),
         960
@@ -426,7 +442,7 @@ fn expired_or_absent_service_never_enables_current_production_or_suppresses_dema
         .as_mut()
         .expect("the fixture set the optional field before this borrow")
         .available_batches = 16;
-    let result = babylon_material_circuit::advance_material_circuit(&state)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let receipt = result
         .maintenance
@@ -451,14 +467,14 @@ fn expired_or_absent_service_never_enables_current_production_or_suppresses_dema
 
 #[test]
 fn maintenance_capacity_is_per_period_and_demand_precedes_its_limit() {
-    let mut state = opening(256, 1000);
+    let (catalog, mut state) = opening(256, 1000);
     state.production_commitments.clear();
     state.inventory[0].quantity = 80 * 40;
     state
         .capacities
         .iter_mut()
         .for_each(|row| row.available_batches = 40);
-    let result = babylon_material_circuit::advance_material_circuit(&state)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let receipt = result
         .maintenance
@@ -476,7 +492,7 @@ fn maintenance_capacity_is_per_period_and_demand_precedes_its_limit() {
 
 #[test]
 fn zero_service_and_zero_employment_preserve_both_staffing_requests() {
-    let mut state = opening(0, 0);
+    let (catalog, mut state) = opening(0, 0);
     state
         .maintenance_service
         .as_mut()
@@ -485,7 +501,7 @@ fn zero_service_and_zero_employment_preserve_both_staffing_requests() {
     for row in &mut state.labor {
         row.available = 0;
     }
-    let closed = babylon_material_circuit::close_material_period(&state)
+    let closed = babylon_material_circuit::close_material_period(&catalog, &state)
         .expect("the material period closes");
     let bindings: Vec<_> = people(0)
         .pools()
@@ -493,7 +509,7 @@ fn zero_service_and_zero_employment_preserve_both_staffing_requests() {
         .map(|pool| pool.binding().clone())
         .collect();
     let requests = closed
-        .staffing_requests(&bindings)
+        .staffing_requests(&catalog, &bindings)
         .expect("the fixture staffing requests are present");
     assert_eq!(requests[0].hours(), 960);
     assert_eq!(requests[1].hours(), 160);
@@ -501,111 +517,135 @@ fn zero_service_and_zero_employment_preserve_both_staffing_requests() {
 
 #[test]
 fn canonical_replay_and_restart_preserve_maintenance_and_reject_old_version() {
-    let mut state = opening(256, 160);
-    restock(&mut state);
-    let expected = babylon_material_circuit::advance_material_circuit(&state)
+    let (mut catalog, mut state) = opening(256, 160);
+    restock(&mut catalog, &mut state);
+    let expected = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     state.inventory.reverse();
     state.labor.reverse();
     state.capacities.reverse();
     state.orders.reverse();
-    state.backlog.reverse();
-    state.supplier_routes.reverse();
+    catalog.supplier_routes.reverse();
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state)
+        babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period"),
         expected
     );
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&expected.state)
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &expected.state)
         .expect("the canonical material state encodes");
-    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes)
+    let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
         .expect("the canonical material bytes decode");
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&restored),
-        babylon_material_circuit::advance_material_circuit(&expected.state)
+        babylon_material_circuit::advance_material_circuit(&catalog, &restored),
+        babylon_material_circuit::advance_material_circuit(&catalog, &expected.state)
     );
     let mut obsolete = bytes;
     let offset = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     obsolete[offset..offset + 2].copy_from_slice(&3_u16.to_be_bytes());
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&obsolete),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &obsolete),
         Err(MaterialCircuitError::WireVersion)
     );
 }
 
 #[test]
 fn invalid_maintenance_bindings_and_overflow_refuse_atomically() {
-    let state = opening(256, 160);
-    for mutate in [
-        |row: &mut MaterialCircuitState| row.maintenance_service = None,
-        |row: &mut MaterialCircuitState| row.maintenance_binding = None,
-        |row: &mut MaterialCircuitState| {
-            row.maintenance_service
-                .as_mut()
-                .expect("the fixture set the optional field before this borrow")
-                .period = 2;
-        },
-        |row: &mut MaterialCircuitState| {
-            row.maintenance_binding
-                .as_mut()
-                .expect("the fixture set the optional field before this borrow")
-                .provider_site_id = site(1);
-        },
-        |row: &mut MaterialCircuitState| {
-            row.maintenance_binding
-                .as_mut()
-                .expect("the fixture set the optional field before this borrow")
-                .consumer_process_id = ProcessId::from_bytes([9; 32]);
-        },
-        |row: &mut MaterialCircuitState| {
-            row.maintenance_binding
+    let (catalog, state) = opening(256, 160);
+    let definition_mutations: &[fn(&mut MaterialCatalog)] = &[
+        |c| {
+            c.maintenance_binding
                 .as_mut()
                 .expect("the fixture set the optional field before this borrow")
                 .spare_units_per_job = 0;
         },
-        |row: &mut MaterialCircuitState| {
-            row.maintenance_binding
+        |c| {
+            c.maintenance_binding
                 .as_mut()
                 .expect("the fixture set the optional field before this borrow")
                 .labor_units_per_job = 0;
         },
-        |row: &mut MaterialCircuitState| {
-            row.maintenance_binding
+        |c| {
+            c.maintenance_binding
                 .as_mut()
                 .expect("the fixture set the optional field before this borrow")
                 .enabled_batches_per_job = 0;
         },
-        |row: &mut MaterialCircuitState| {
-            row.maintenance_binding
+        |c| {
+            c.maintenance_binding
                 .as_mut()
                 .expect("the fixture set the optional field before this borrow")
                 .maximum_jobs_per_period = 0;
         },
-    ] {
-        let mut invalid = state.clone();
+    ];
+    for mutate in definition_mutations {
+        let mut invalid = catalog.clone();
         mutate(&mut invalid);
-        let original = invalid.clone();
         assert_eq!(
-            babylon_material_circuit::advance_material_circuit(&invalid),
+            MaterialCatalog::try_new(invalid),
             Err(MaterialCircuitError::MaintenanceInvariant)
         );
-        assert_eq!(invalid, original);
     }
-    let mut overflow = state;
+    let mut overflow = catalog.clone();
     overflow
         .maintenance_binding
         .as_mut()
         .expect("the fixture set the optional field before this borrow")
         .enabled_batches_per_job = u64::MAX;
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&overflow),
+        MaterialCatalog::try_new(overflow),
         Err(MaterialCircuitError::Arithmetic)
+    );
+    let mut unbound = catalog.clone();
+    unbound.maintenance_binding = None;
+    assert_eq!(
+        babylon_material_circuit::advance_material_circuit(&unbound, &state),
+        Err(MaterialCircuitError::MaintenanceInvariant)
+    );
+    let relational_mutations: &[fn(&mut MaterialCatalog)] = &[
+        |c| {
+            c.maintenance_binding
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .provider_site_id = site(1);
+        },
+        |c| {
+            c.maintenance_binding
+                .as_mut()
+                .expect("the fixture set the optional field before this borrow")
+                .consumer_process_id = ProcessId::from_bytes([9; 32]);
+        },
+    ];
+    for mutate in relational_mutations {
+        let mut invalid = catalog.clone();
+        mutate(&mut invalid);
+        let invalid = MaterialCatalog::try_new(invalid).expect("the changed catalog is valid");
+        assert_eq!(
+            babylon_material_circuit::advance_material_circuit(&invalid, &state),
+            Err(MaterialCircuitError::MaintenanceInvariant)
+        );
+    }
+    let mut state_service = state.clone();
+    state_service.maintenance_service = None;
+    assert_eq!(
+        babylon_material_circuit::advance_material_circuit(&catalog, &state_service),
+        Err(MaterialCircuitError::MaintenanceInvariant)
+    );
+    let mut late_service = state;
+    late_service
+        .maintenance_service
+        .as_mut()
+        .expect("the fixture set the optional field before this borrow")
+        .period = 2;
+    assert_eq!(
+        babylon_material_circuit::advance_material_circuit(&catalog, &late_service),
+        Err(MaterialCircuitError::MaintenanceInvariant)
     );
 }
 
 #[test]
 fn due_freight_supplies_jobs_before_local_outbound_credits() {
-    let mut state = opening(0, 160);
+    let (mut catalog, mut state) = opening(0, 160);
     let order_id = OrderId::from_bytes([4; 32]);
     let route_id = RouteId::from_bytes([4; 32]);
     let corridor_id = CorridorId::from_bytes([4; 32]);
@@ -628,11 +668,7 @@ fn due_freight_supplies_jobs_before_local_outbound_credits() {
         delivered: 0,
         realized: 0,
     });
-    state.backlog.push(BacklogRow {
-        order_id,
-        quantity: 17,
-    });
-    state.supplier_routes.push(SupplierRoute {
+    catalog.supplier_routes.push(SupplierRoute {
         buyer_site_id: site(2),
         supplier_site_id: site(3),
         good_id: good(2),
@@ -640,7 +676,7 @@ fn due_freight_supplies_jobs_before_local_outbound_credits() {
         route_id,
         transport_kind: SupplierTransport::Staged,
     });
-    state.route_stages.push(RouteStage {
+    catalog.route_stages.push(RouteStage {
         route_id,
         stage_index: 0,
         from_node_id: LogisticsNodeId::from_bytes([3; 32]),
@@ -658,7 +694,8 @@ fn due_freight_supplies_jobs_before_local_outbound_credits() {
         period: 1,
         available_grams: 17_000,
     });
-    let first = babylon_material_circuit::advance_material_circuit(&state)
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(
         first
@@ -669,7 +706,7 @@ fn due_freight_supplies_jobs_before_local_outbound_credits() {
         0
     );
     assert_eq!(first.dispatches[0].quantity, 17);
-    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+    let second = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
         .expect("the authored material state advances one period");
     let receipt = second
         .maintenance
@@ -691,7 +728,7 @@ fn due_freight_supplies_jobs_before_local_outbound_credits() {
     assert_eq!(stock(&second.state, site(2), good(2)), 1);
     assert_eq!(
         produced(
-            &babylon_material_circuit::advance_material_circuit(&second.state)
+            &babylon_material_circuit::advance_material_circuit(&catalog, &second.state)
                 .expect("the authored material state advances one period")
         ),
         960
@@ -700,8 +737,8 @@ fn due_freight_supplies_jobs_before_local_outbound_credits() {
 
 #[test]
 fn resource_sharing_is_refused_instead_of_imposing_hidden_priority() {
-    let state = opening(256, 160);
-    let mut shared_process = state.clone();
+    let (mut catalog, state) = opening(256, 160);
+    let mut shared_process = catalog.clone();
     let other = ProcessId::from_bytes([9; 32]);
     shared_process.process_outputs.push(ProcessOutput {
         process_id: other,
@@ -722,8 +759,9 @@ fn resource_sharing_is_refused_instead_of_imposing_hidden_priority() {
         unit_id: unit(2),
         quantity_per_batch: 1,
     });
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&shared_process),
+        babylon_material_circuit::advance_material_circuit(&shared_process, &state),
         Err(MaterialCircuitError::MaintenanceInvariant)
     );
     for (supplier, material) in [(site(2), good(2)), (site(1), good(1))] {
@@ -742,12 +780,8 @@ fn resource_sharing_is_refused_instead_of_imposing_hidden_priority() {
             delivered: 0,
             realized: 0,
         });
-        shared_order.backlog.push(BacklogRow {
-            order_id,
-            quantity: 1,
-        });
         assert_eq!(
-            babylon_material_circuit::advance_material_circuit(&shared_order),
+            babylon_material_circuit::advance_material_circuit(&catalog, &shared_order),
             Err(MaterialCircuitError::MaintenanceInvariant)
         );
     }
@@ -755,11 +789,11 @@ fn resource_sharing_is_refused_instead_of_imposing_hidden_priority() {
 
 #[test]
 fn failed_later_outbound_credit_publishes_no_maintenance_or_debits() {
-    let mut state = opening(u64::MAX, 160);
-    restock(&mut state);
+    let (mut catalog, mut state) = opening(u64::MAX, 160);
+    restock(&mut catalog, &mut state);
     let original = state.clone();
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(state, original);
@@ -767,7 +801,7 @@ fn failed_later_outbound_credit_publishes_no_maintenance_or_debits() {
 
 #[test]
 fn unrepresentable_maintenance_demand_does_not_disappear_with_zero_resources() {
-    let mut state = opening(0, 0);
+    let (mut catalog, mut state) = opening(0, 0);
     state
         .maintenance_service
         .as_mut()
@@ -775,20 +809,21 @@ fn unrepresentable_maintenance_demand_does_not_disappear_with_zero_resources() {
         .available_batches = 0;
     state.production_commitments.clear();
     state.inventory[0].quantity = u64::MAX;
-    state.input_coefficients[0].quantity_per_batch = 1;
-    state.labor_coefficients[0].quantity_per_batch = 1;
+    catalog.input_coefficients[0].quantity_per_batch = 1;
+    catalog.labor_coefficients[0].quantity_per_batch = 1;
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     for row in &mut state.capacities {
         row.available_batches = u64::MAX;
     }
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(MaterialCircuitError::Arithmetic)
     );
 }
 
 #[test]
 fn idle_consumer_and_provider_rehire_after_later_material_arrival() {
-    let mut state = opening(256, 160);
+    let (mut catalog, mut state) = opening(256, 160);
     for period in [7, 8] {
         state.capacities.push(CapacityRow {
             process_id: process(),
@@ -819,11 +854,7 @@ fn idle_consumer_and_provider_rehire_after_later_material_arrival() {
         delivered: 0,
         realized: 0,
     });
-    state.backlog.push(BacklogRow {
-        order_id,
-        quantity: 1280,
-    });
-    state.supplier_routes.push(SupplierRoute {
+    catalog.supplier_routes.push(SupplierRoute {
         buyer_site_id: site(1),
         supplier_site_id: site(3),
         good_id: good(1),
@@ -831,7 +862,7 @@ fn idle_consumer_and_provider_rehire_after_later_material_arrival() {
         route_id,
         transport_kind: SupplierTransport::Staged,
     });
-    state.route_stages.push(RouteStage {
+    catalog.route_stages.push(RouteStage {
         route_id,
         stage_index: 0,
         from_node_id: LogisticsNodeId::from_bytes([3; 32]),
@@ -849,12 +880,13 @@ fn idle_consumer_and_provider_rehire_after_later_material_arrival() {
         period: 1,
         available_grams: 1_280_000,
     });
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let mut staff = people(1);
     let mut output = Vec::new();
     let mut jobs = Vec::new();
     let mut employment = Vec::new();
     for _ in 1..=7 {
-        let (transition, next_staff) = staffed(&state, &staff);
+        let (transition, next_staff) = staffed(&catalog, &state, &staff);
         output.push(produced(&transition));
         jobs.push(
             transition
@@ -880,32 +912,38 @@ fn idle_consumer_and_provider_rehire_after_later_material_arrival() {
 
 #[test]
 fn spare_quantity_and_labor_time_cannot_share_a_unit() {
-    let mut state = opening(256, 160);
-    state
+    let (catalog, mut state) = opening(256, 160);
+    let mut shared_unit = catalog.clone();
+    shared_unit
         .maintenance_binding
         .as_mut()
         .expect("the fixture set the optional field before this borrow")
         .labor_unit_id = unit(1);
+    assert_eq!(
+        MaterialCatalog::try_new(shared_unit),
+        Err(MaterialCircuitError::MaintenanceInvariant)
+    );
     for row in &mut state.labor {
         if row.site_id == site(2) {
             row.unit_id = unit(1);
         }
     }
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(MaterialCircuitError::MaintenanceInvariant)
     );
 }
 
 #[test]
 fn spare_parts_independently_limit_positive_whole_jobs() {
-    let mut state = opening(7, 160);
-    state
+    let (mut catalog, state) = opening(7, 160);
+    catalog
         .maintenance_binding
         .as_mut()
         .expect("the fixture set the optional field before this borrow")
         .spare_units_per_job = 3;
-    let result = babylon_material_circuit::advance_material_circuit(&state)
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let receipt = result
         .maintenance
@@ -921,10 +959,10 @@ fn spare_parts_independently_limit_positive_whole_jobs() {
     assert_eq!(result.state.production_commitments[0].planned_batches, 2);
 }
 
-fn paid_maintenance_opening() -> MaterialCircuitState {
+fn paid_maintenance_opening() -> (MaterialCatalog, MaterialCircuitState) {
     use babylon_kernel::currency::Currency;
     let money = Currency::from_micro_units;
-    let mut state = opening(2, 20);
+    let (catalog, mut state) = opening(2, 20);
     let payee = FinalDemandPrincipalId::from_bytes([7; 32]);
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: payee,
@@ -1000,15 +1038,15 @@ fn paid_maintenance_opening() -> MaterialCircuitState {
             .collect(),
         recurring: None,
     }));
-    state
+    (catalog, state)
 }
 
 #[test]
 fn historical_cost_maintenance_and_idle_work_are_expenses_not_output_assets() {
     use babylon_kernel::currency::Currency;
     let money = Currency::from_micro_units;
-    let state = paid_maintenance_opening();
-    let closed = babylon_material_circuit::advance_material_circuit(&state)
+    let (catalog, state) = paid_maintenance_opening();
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let producer = &closed
         .income

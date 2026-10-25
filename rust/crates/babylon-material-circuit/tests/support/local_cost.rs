@@ -11,6 +11,7 @@ use babylon_material_circuit::FinancialInstitutions;
 use babylon_material_circuit::HistoricalCostBook;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::LaborCapacityRow;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialPurchase;
 use babylon_material_circuit::MonetaryBook;
@@ -115,18 +116,18 @@ fn local_cost_economy() -> MonetaryCircuit {
     }
 }
 
-fn local_cost_opening() -> MaterialCircuitState {
-    let mut state = crate::opening();
+fn local_cost_opening() -> (MaterialCatalog, MaterialCircuitState) {
+    let (mut catalog, mut state) = crate::opening();
     state.accounting = CircuitAccounting::Monetary(Box::new(local_cost_economy()));
     state.inventory = vec![inventory(1, 2, 1), inventory(2, 2, 1)];
-    state.process_outputs.clear();
-    state.input_coefficients.clear();
-    state.labor_coefficients.clear();
+    catalog.process_outputs.clear();
+    catalog.input_coefficients.clear();
+    catalog.labor_coefficients.clear();
     state.capacities.clear();
     state.production_commitments.clear();
-    state.route_stages.clear();
+    catalog.route_stages.clear();
     state.route_stage_capacities.clear();
-    state.supplier_routes = [(1, 2), (2, 3)]
+    catalog.supplier_routes = [(1, 2), (2, 3)]
         .into_iter()
         .map(|(supplier, buyer)| SupplierRoute {
             supplier_site_id: crate::site(supplier),
@@ -137,8 +138,9 @@ fn local_cost_opening() -> MaterialCircuitState {
             transport_kind: SupplierTransport::Local,
         })
         .collect();
-    state.merchants[0].site_id = crate::site(2);
-    state.handling_coefficients[0].site_id = crate::site(2);
+    catalog.merchants[0].site_id = crate::site(2);
+    catalog.handling_coefficients[0].site_id = crate::site(2);
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state.corridor_capacities = (1..=2)
         .map(|period| CorridorCapacity {
             corridor_id: crate::corridor(3),
@@ -167,18 +169,20 @@ fn local_cost_opening() -> MaterialCircuitState {
         delivered: 0,
         realized: 0,
     };
-    babylon_material_circuit::admit_material_purchase(
+    let (state, _) = babylon_material_circuit::admit_material_purchase(
+        &catalog,
         &state,
         MaterialPurchase::Delivery(order),
         crate::money(9),
     )
-    .expect("the fixture admits the authored purchase")
-    .0
+    .expect("the fixture admits the authored purchase");
+    (catalog, state)
 }
 
 #[test]
 fn historical_cost_deferred_local_acquisition_does_not_reprice_second_pass_sales() {
-    let closed = babylon_material_circuit::advance_material_circuit(&local_cost_opening())
+    let (catalog, opening) = local_cost_opening();
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("the authored material state advances one period");
     assert_eq!(closed.local_transfers.len(), 2);
     assert_eq!(closed.procurement[0].admitted_quantity, 1);

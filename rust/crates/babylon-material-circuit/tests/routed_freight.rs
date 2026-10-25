@@ -1,12 +1,14 @@
+use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::FreightLotId;
 use babylon_material_circuit::{
-    BacklogRow, CapacityRow, CommodityDefinition, CorridorCapacity, CorridorId, GoodId,
-    InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
+    CapacityRow, CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InputOutputCoefficient,
+    InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId, MaterialCatalog,
     MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId, ProcessOutput, RouteId,
     RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute, SupplierTransport,
     UnitId, MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES, MAX_ROUTE_STAGES_PER_ROUTE,
+    UNSEALED_CATALOG_DIGEST,
 };
 
 fn site(byte: u8) -> SiteId {
@@ -51,28 +53,73 @@ const BUYER_NODE: u8 = 7;
 const CORRIDOR: u8 = 8;
 const ROUTE: u8 = 9;
 
-fn base_state() -> MaterialCircuitState {
-    MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
-        period: 1,
+fn base_state() -> (MaterialCatalog, MaterialCircuitState) {
+    {
+        let state = MaterialCircuitState {
+            capacity_reservations: CapacityReservations::default(),
+            period: 1,
+            final_demand_principals: vec![],
+            final_demand_orders: vec![],
+            accounting: CircuitAccounting::PhysicalControl,
+            maintenance_service: None,
+            service_connections: vec![],
+            service_orders: vec![],
+            route_stage_capacities: vec![RouteStageCapacity {
+                route_id: route(ROUTE),
+                stage_index: 0,
+                corridor_id: corridor(CORRIDOR),
+            }],
+            inventory: vec![
+                InventoryRow {
+                    site_id: site(SUPPLIER),
+                    good_id: good(GOODS),
+                    unit_id: unit(GOODS_UNIT),
+                    quantity: 10,
+                },
+                InventoryRow {
+                    site_id: site(BUYER),
+                    good_id: good(GOODS),
+                    unit_id: unit(GOODS_UNIT),
+                    quantity: 0,
+                },
+            ],
+            orders: vec![OrderRow {
+                order_id: order(ORDER),
+                access_mode: OrderAccessMode::CommoditySale,
+                buyer_site_id: site(BUYER),
+                supplier_site_id: site(SUPPLIER),
+                good_id: good(GOODS),
+                unit_id: unit(GOODS_UNIT),
+                ordered: 6,
+                shipped: 0,
+                lost: 0,
+                delivered: 0,
+                realized: 0,
+            }],
+            freight: Vec::new(),
+            corridor_capacities: vec![CorridorCapacity {
+                corridor_id: corridor(CORRIDOR),
+                period: 1,
+                available_grams: 4,
+            }],
+            capacities: Vec::new(),
+            labor: Vec::new(),
+            production_commitments: Vec::new(),
+        };
+        (base_catalog(), state)
+    }
+}
+
+fn base_catalog() -> MaterialCatalog {
+    MaterialCatalog::try_new(MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
-        final_demand_principals: vec![],
-        final_demand_orders: vec![],
-        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
-        maintenance_service: None,
-        service_connections: vec![],
-        service_orders: vec![],
         commodities: vec![CommodityDefinition {
             good_id: good(GOODS),
             unit_id: unit(GOODS_UNIT),
             kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
-        }],
-        route_stage_capacities: vec![RouteStageCapacity {
-            route_id: route(ROUTE),
-            stage_index: 0,
-            corridor_id: corridor(CORRIDOR),
         }],
         site_logistics_nodes: vec![
             SiteLogisticsNode {
@@ -103,47 +150,13 @@ fn base_state() -> MaterialCircuitState {
             travel_periods: 1,
             loss_ppm: 0,
         }],
-        inventory: vec![
-            InventoryRow {
-                site_id: site(SUPPLIER),
-                good_id: good(GOODS),
-                unit_id: unit(GOODS_UNIT),
-                quantity: 10,
-            },
-            InventoryRow {
-                site_id: site(BUYER),
-                good_id: good(GOODS),
-                unit_id: unit(GOODS_UNIT),
-                quantity: 0,
-            },
-        ],
-        orders: vec![OrderRow {
-            order_id: order(ORDER),
-            access_mode: OrderAccessMode::CommoditySale,
-            buyer_site_id: site(BUYER),
-            supplier_site_id: site(SUPPLIER),
-            good_id: good(GOODS),
-            unit_id: unit(GOODS_UNIT),
-            ordered: 6,
-            shipped: 0,
-            lost: 0,
-            delivered: 0,
-            realized: 0,
-        }],
-        backlog: vec![BacklogRow {
-            order_id: order(ORDER),
-            quantity: 6,
-        }],
-        freight: Vec::new(),
-        corridor_capacities: vec![CorridorCapacity {
-            corridor_id: corridor(CORRIDOR),
-            period: 1,
-            available_grams: 4,
-        }],
-        capacities: Vec::new(),
-        labor: Vec::new(),
-        production_commitments: Vec::new(),
-    }
+        aid_mandates: Vec::new(),
+        household_time_policy: Vec::new(),
+        service_inputs: Vec::new(),
+        household_needs: Vec::new(),
+        catalog_digest: UNSEALED_CATALOG_DIGEST,
+    })
+    .expect("the authored fixture catalog is valid")
 }
 
 fn inventory_quantity(state: &MaterialCircuitState, site_id: SiteId) -> u64 {
@@ -156,18 +169,19 @@ fn inventory_quantity(state: &MaterialCircuitState, site_id: SiteId) -> u64 {
 
 #[test]
 fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
-    let mut state = two_route_state();
-    state.site_logistics_nodes[2].node_id = node(BUYER_NODE);
-    state.supplier_routes[1].route_id = route(ROUTE);
-    state.route_stages.truncate(1);
+    let (mut catalog, mut state) = two_route_state();
+    catalog.site_logistics_nodes[2].node_id = node(BUYER_NODE);
+    catalog.supplier_routes[1].route_id = route(ROUTE);
+    catalog.route_stages.truncate(1);
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state.route_stage_capacities.truncate(1);
     state.corridor_capacities.truncate(1);
     state.corridor_capacities[0].available_grams = 10;
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("distinct buyers may share their captured logistics access point");
-    let opening = babylon_material_circuit::decode_material_circuit_state(&bytes)
+    let opening = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
         .expect("the canonical material bytes decode");
-    let dispatched = babylon_material_circuit::advance_material_circuit(&opening)
+    let dispatched = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("the authored material state advances one period");
     assert_eq!(dispatched.state.freight.len(), 2);
     assert_eq!(
@@ -181,7 +195,7 @@ fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
     assert_eq!(inventory_quantity(&dispatched.state, site(SUPPLIER)), 2);
     assert_eq!(inventory_quantity(&dispatched.state, site(BUYER)), 0);
     assert_eq!(inventory_quantity(&dispatched.state, site(12)), 0);
-    let arrived = babylon_material_circuit::advance_material_circuit(&dispatched.state)
+    let arrived = babylon_material_circuit::advance_material_circuit(&catalog, &dispatched.state)
         .expect("the authored material state advances one period");
     assert!(arrived.state.freight.is_empty());
     assert_eq!(inventory_quantity(&arrived.state, site(SUPPLIER)), 2);
@@ -189,30 +203,30 @@ fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
     assert_eq!(inventory_quantity(&arrived.state, site(12)), 4);
     assert_eq!(opening.inventory, state.inventory);
 
-    let mut duplicate_site = opening.clone();
+    let mut duplicate_site = catalog.clone();
     duplicate_site
         .site_logistics_nodes
         .push(duplicate_site.site_logistics_nodes[0].clone());
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&duplicate_site),
+        MaterialCatalog::try_new(duplicate_site),
         Err(babylon_material_circuit::MaterialCircuitError::DuplicateRow)
     );
-    let mut wrong_endpoint = opening;
+    let mut wrong_endpoint = catalog.clone();
     wrong_endpoint.site_logistics_nodes[2].node_id = node(99);
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&wrong_endpoint),
+        MaterialCatalog::try_new(wrong_endpoint),
         Err(babylon_material_circuit::MaterialCircuitError::RouteInvariant)
     );
 }
 
-fn two_leg_state(second_leg_capacity: u64) -> MaterialCircuitState {
-    let mut state = base_state();
+fn two_leg_state(second_leg_capacity: u64) -> (MaterialCatalog, MaterialCircuitState) {
+    let (mut catalog, mut state) = base_state();
     let middle = node(10);
-    state.route_stages = vec![
+    catalog.route_stages = vec![
         RouteStage {
             to_node_id: middle,
             loss_ppm: 250_000,
-            ..state.route_stages[0].clone()
+            ..catalog.route_stages[0].clone()
         },
         RouteStage {
             route_id: route(ROUTE),
@@ -239,21 +253,22 @@ fn two_leg_state(second_leg_capacity: u64) -> MaterialCircuitState {
             available_grams: second_leg_capacity,
         },
     ];
-    state
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    (catalog, state)
 }
 
-fn two_route_state() -> MaterialCircuitState {
-    let mut state = base_state();
+fn two_route_state() -> (MaterialCatalog, MaterialCircuitState) {
+    let (mut catalog, mut state) = base_state();
     let second_buyer = site(12);
     let second_node = node(13);
     let second_order = order(14);
     let second_route = route(15);
     state.inventory[0].quantity = 12;
-    state.site_logistics_nodes.push(SiteLogisticsNode {
+    catalog.site_logistics_nodes.push(SiteLogisticsNode {
         site_id: second_buyer,
         node_id: second_node,
     });
-    state.supplier_routes.push(SupplierRoute {
+    catalog.supplier_routes.push(SupplierRoute {
         transport_kind: SupplierTransport::Staged,
         buyer_site_id: second_buyer,
         supplier_site_id: site(SUPPLIER),
@@ -266,7 +281,7 @@ fn two_route_state() -> MaterialCircuitState {
         stage_index: 0,
         corridor_id: corridor(16),
     });
-    state.route_stages.push(RouteStage {
+    catalog.route_stages.push(RouteStage {
         route_id: second_route,
         stage_index: 0,
         from_node_id: node(SUPPLIER_NODE),
@@ -293,21 +308,18 @@ fn two_route_state() -> MaterialCircuitState {
         delivered: 0,
         realized: 0,
     });
-    state.backlog.push(BacklogRow {
-        order_id: second_order,
-        quantity: 4,
-    });
     state.corridor_capacities.push(CorridorCapacity {
         corridor_id: corridor(16),
         period: 1,
         available_grams: 4,
     });
-    state
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    (catalog, state)
 }
 
-fn route_depth_state(leg_count: usize) -> MaterialCircuitState {
-    let mut state = base_state();
-    state.route_stages = (0..leg_count)
+fn route_depth_state(leg_count: usize) -> (MaterialCatalog, MaterialCircuitState) {
+    let (mut catalog, mut state) = base_state();
+    catalog.route_stages = (0..leg_count)
         .map(|index| RouteStage {
             route_id: route(ROUTE),
             stage_index: u16::try_from(index).expect("test route index must fit"),
@@ -343,7 +355,7 @@ fn route_depth_state(leg_count: usize) -> MaterialCircuitState {
             available_grams: 4,
         })
         .collect();
-    state
+    (catalog, state)
 }
 
 fn shipped_for(state: &MaterialCircuitState, order_id: OrderId) -> u64 {
@@ -356,14 +368,18 @@ fn shipped_for(state: &MaterialCircuitState, order_id: OrderId) -> u64 {
 
 #[test]
 fn corridor_capacity_bounds_routed_dispatch() {
-    let outcome = babylon_material_circuit::advance_material_circuit(&base_state())
+    let (catalog, opening) = base_state();
+    let outcome = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("period one must close");
 
     assert_eq!(outcome.state.period, 2);
     assert_eq!(outcome.state.orders[0].shipped, 4);
     assert_eq!(outcome.state.orders[0].delivered, 0);
     assert_eq!(outcome.state.orders[0].realized, 0);
-    assert_eq!(outcome.state.backlog[0].quantity, 2);
+    assert_eq!(
+        outcome.state.derived_backlog().expect("derived backlog")[0].quantity,
+        2
+    );
     assert_eq!(inventory_quantity(&outcome.state, site(SUPPLIER)), 6);
     assert_eq!(inventory_quantity(&outcome.state, site(BUYER)), 0);
     assert_eq!(outcome.dispatches.len(), 1);
@@ -376,9 +392,10 @@ fn corridor_capacity_bounds_routed_dispatch() {
 
 #[test]
 fn final_route_arrival_credits_inventory_before_realization() {
-    let first = babylon_material_circuit::advance_material_circuit(&base_state())
+    let (catalog, opening) = base_state();
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("period one must close");
-    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+    let second = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
         .expect("period two must close");
 
     assert!(second.state.freight.is_empty());
@@ -392,22 +409,26 @@ fn final_route_arrival_credits_inventory_before_realization() {
 
 #[test]
 fn missing_supplier_route_remains_backlog() {
-    let mut state = base_state();
-    state.supplier_routes.clear();
+    let (mut catalog, state) = base_state();
+    catalog.supplier_routes.clear();
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
 
-    let outcome = babylon_material_circuit::advance_material_circuit(&state)
+    let outcome = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("a missing routed supplier relation is a material shortage");
 
     assert!(outcome.dispatches.is_empty());
     assert!(outcome.state.freight.is_empty());
     assert_eq!(outcome.state.orders[0].shipped, 0);
-    assert_eq!(outcome.state.backlog[0].quantity, 6);
+    assert_eq!(
+        outcome.state.derived_backlog().expect("derived backlog")[0].quantity,
+        6
+    );
     assert_eq!(inventory_quantity(&outcome.state, site(SUPPLIER)), 10);
 }
 
 #[test]
 fn capacity_for_an_unknown_corridor_refuses() {
-    let mut state = base_state();
+    let (catalog, mut state) = base_state();
     state.corridor_capacities.push(CorridorCapacity {
         corridor_id: corridor(99),
         period: 1,
@@ -415,44 +436,50 @@ fn capacity_for_an_unknown_corridor_refuses() {
     });
 
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(babylon_material_circuit::MaterialCircuitError::CapacityInvariant)
     );
 }
 
 #[test]
 fn freight_lot_identity_must_bind_order_and_dispatch_period() {
-    let first = babylon_material_circuit::advance_material_circuit(&base_state())
+    let (catalog, opening) = base_state();
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("period one must close");
     let mut state = first.state;
     state.freight[0].lot_id = FreightLotId::from_bytes([77; 32]);
 
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(babylon_material_circuit::MaterialCircuitError::FreightInvariant)
     );
 }
 
 #[test]
 fn freight_leg_arrival_must_match_the_reserved_route_schedule() {
-    let first = babylon_material_circuit::advance_material_circuit(&base_state())
+    let (catalog, opening) = base_state();
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("period one must close");
     let mut state = first.state;
     state.freight[0].stage_arrival_period = 3;
 
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(babylon_material_circuit::MaterialCircuitError::FreightInvariant)
     );
 }
 
 #[test]
 fn future_leg_capacity_limits_origin_dispatch() {
-    let outcome = babylon_material_circuit::advance_material_circuit(&two_leg_state(2))
+    let (catalog, opening) = two_leg_state(2);
+    let outcome = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("two-leg route must close");
 
     assert_eq!(outcome.state.orders[0].shipped, 2);
-    assert_eq!(outcome.state.backlog[0].quantity, 4);
+    assert_eq!(
+        outcome.state.derived_backlog().expect("derived backlog")[0].quantity,
+        4
+    );
     assert_eq!(outcome.state.freight[0].quantity, 2);
     assert_eq!(outcome.dispatches[0].final_arrival_period, 3);
     assert_eq!(inventory_quantity(&outcome.state, site(SUPPLIER)), 8);
@@ -462,9 +489,10 @@ fn future_leg_capacity_limits_origin_dispatch() {
 
 #[test]
 fn completed_leg_loss_remains_attributed_before_final_delivery() {
-    let first = babylon_material_circuit::advance_material_circuit(&two_leg_state(4))
+    let (catalog, opening) = two_leg_state(4);
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("period one must close");
-    let second = babylon_material_circuit::advance_material_circuit(&first.state)
+    let second = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
         .expect("period two must close");
 
     assert_eq!(second.losses.len(), 1);
@@ -475,7 +503,7 @@ fn completed_leg_loss_remains_attributed_before_final_delivery() {
     assert_eq!(second.state.freight[0].current_stage_index, 1);
     assert_eq!(second.state.freight[0].stage_arrival_period, 3);
 
-    let third = babylon_material_circuit::advance_material_circuit(&second.state)
+    let third = babylon_material_circuit::advance_material_circuit(&catalog, &second.state)
         .expect("period three must close");
     assert!(third.state.freight.is_empty());
     assert_eq!(third.state.orders[0].shipped, 4);
@@ -487,30 +515,31 @@ fn completed_leg_loss_remains_attributed_before_final_delivery() {
 
 #[test]
 fn final_arrival_can_form_and_execute_following_period_production() {
-    let mut state = base_state();
-    state.commodities.push(CommodityDefinition {
+    let (mut catalog, mut state) = base_state();
+    catalog.commodities.push(CommodityDefinition {
         good_id: good(19),
         unit_id: unit(GOODS_UNIT),
         kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
     });
-    state.process_outputs.push(ProcessOutput {
+    catalog.process_outputs.push(ProcessOutput {
         process_id: process(18),
         site_id: site(BUYER),
         good_id: good(19),
         unit_id: unit(GOODS_UNIT),
         quantity_per_batch: 5,
     });
-    state.input_coefficients.push(InputOutputCoefficient {
+    catalog.input_coefficients.push(InputOutputCoefficient {
         process_id: process(18),
         good_id: good(GOODS),
         unit_id: unit(GOODS_UNIT),
         quantity_per_batch: 2,
     });
-    state.labor_coefficients.push(LaborCoefficient {
+    catalog.labor_coefficients.push(LaborCoefficient {
         process_id: process(18),
         unit_id: unit(20),
         quantity_per_batch: 1,
     });
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state.capacities.push(CapacityRow {
         process_id: process(18),
         site_id: site(BUYER),
@@ -524,14 +553,14 @@ fn final_arrival_can_form_and_execute_following_period_production() {
         available: 2,
     });
 
-    let dispatch = babylon_material_circuit::advance_material_circuit(&state)
+    let dispatch = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("dispatch period must close");
     assert!(dispatch.state.production_commitments.is_empty());
-    let arrival = babylon_material_circuit::advance_material_circuit(&dispatch.state)
+    let arrival = babylon_material_circuit::advance_material_circuit(&catalog, &dispatch.state)
         .expect("arrival period must close");
     assert_eq!(arrival.state.production_commitments.len(), 1);
     assert_eq!(arrival.state.production_commitments[0].planned_batches, 2);
-    let production = babylon_material_circuit::advance_material_circuit(&arrival.state)
+    let production = babylon_material_circuit::advance_material_circuit(&catalog, &arrival.state)
         .expect("production period must close");
 
     assert_eq!(production.production.len(), 1);
@@ -551,23 +580,20 @@ fn final_arrival_can_form_and_execute_following_period_production() {
 
 #[test]
 fn route_depth_accepts_the_designed_maximum_and_refuses_plus_one() {
-    assert!(
-        babylon_material_circuit::advance_material_circuit(&route_depth_state(
-            MAX_ROUTE_STAGES_PER_ROUTE
-        ))
-        .is_ok()
-    );
+    let (catalog, opening) = route_depth_state(MAX_ROUTE_STAGES_PER_ROUTE);
+    let catalog = MaterialCatalog::try_new(catalog).expect("the authored fixture catalog is valid");
+    assert!(babylon_material_circuit::advance_material_circuit(&catalog, &opening).is_ok());
+    let (too_deep, _) = route_depth_state(MAX_ROUTE_STAGES_PER_ROUTE + 1);
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&route_depth_state(
-            MAX_ROUTE_STAGES_PER_ROUTE + 1
-        )),
+        MaterialCatalog::try_new(too_deep),
         Err(babylon_material_circuit::MaterialCircuitError::RouteInvariant)
     );
 }
 
 #[test]
 fn arrival_overflow_refuses_atomically_without_mutating_the_opening_state() {
-    let dispatch = babylon_material_circuit::advance_material_circuit(&base_state())
+    let (catalog, base) = base_state();
+    let dispatch = babylon_material_circuit::advance_material_circuit(&catalog, &base)
         .expect("dispatch period must close");
     let mut opening = dispatch.state;
     let buyer_inventory = opening
@@ -576,15 +602,16 @@ fn arrival_overflow_refuses_atomically_without_mutating_the_opening_state() {
         .find(|row| row.site_id == site(BUYER))
         .expect("buyer inventory must exist");
     buyer_inventory.quantity = u64::MAX;
-    let opening_digest = babylon_material_circuit::material_circuit_state_digest(&opening)
-        .expect("opening must hash");
+    let opening_digest =
+        babylon_material_circuit::material_circuit_state_digest(&catalog, &opening)
+            .expect("opening must hash");
 
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&opening),
+        babylon_material_circuit::advance_material_circuit(&catalog, &opening),
         Err(babylon_material_circuit::MaterialCircuitError::Arithmetic)
     );
     assert_eq!(
-        babylon_material_circuit::material_circuit_state_digest(&opening)
+        babylon_material_circuit::material_circuit_state_digest(&catalog, &opening)
             .expect("opening must remain valid"),
         opening_digest
     );
@@ -592,12 +619,13 @@ fn arrival_overflow_refuses_atomically_without_mutating_the_opening_state() {
 
 #[test]
 fn current_decoder_refuses_domain_version_truncation_and_trailing_bytes() {
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&base_state())
+    let (catalog, state) = base_state();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("base state must encode");
     let mut wrong_domain = bytes.clone();
     wrong_domain[0] ^= 1;
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&wrong_domain),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &wrong_domain),
         Err(babylon_material_circuit::MaterialCircuitError::WireDomain)
     );
 
@@ -605,30 +633,35 @@ fn current_decoder_refuses_domain_version_truncation_and_trailing_bytes() {
     let mut wrong_version = bytes.clone();
     wrong_version[version_index + 1] = 3;
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&wrong_version),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &wrong_version),
         Err(babylon_material_circuit::MaterialCircuitError::WireVersion)
     );
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&bytes[..bytes.len() - 1]),
+        babylon_material_circuit::decode_material_circuit_state(
+            &catalog,
+            &bytes[..bytes.len() - 1]
+        ),
         Err(babylon_material_circuit::MaterialCircuitError::WireTruncated)
     );
     let mut trailing = bytes;
     trailing.push(0);
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&trailing),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &trailing),
         Err(babylon_material_circuit::MaterialCircuitError::WireTrailing)
     );
 }
 
 #[test]
 fn severed_corridor_changes_only_its_routed_inventory_and_realization() {
-    let full = babylon_material_circuit::advance_material_circuit(&two_route_state())
+    let (catalog, full_opening) = two_route_state();
+    let full = babylon_material_circuit::advance_material_circuit(&catalog, &full_opening)
         .expect("both routes must close");
-    let mut severed_state = two_route_state();
+    let (severed_catalog, mut severed_state) = two_route_state();
+    let catalog = severed_catalog;
     severed_state
         .corridor_capacities
         .retain(|row| row.corridor_id != corridor(CORRIDOR));
-    let severed = babylon_material_circuit::advance_material_circuit(&severed_state)
+    let severed = babylon_material_circuit::advance_material_circuit(&catalog, &severed_state)
         .expect("severed route must close");
 
     assert_eq!(shipped_for(&full.state, order(ORDER)), 4);
@@ -636,10 +669,11 @@ fn severed_corridor_changes_only_its_routed_inventory_and_realization() {
     assert_eq!(shipped_for(&full.state, order(14)), 4);
     assert_eq!(shipped_for(&severed.state, order(14)), 4);
 
-    let full_arrival = babylon_material_circuit::advance_material_circuit(&full.state)
+    let full_arrival = babylon_material_circuit::advance_material_circuit(&catalog, &full.state)
         .expect("full arrival must close");
-    let severed_arrival = babylon_material_circuit::advance_material_circuit(&severed.state)
-        .expect("severed arrival must close");
+    let severed_arrival =
+        babylon_material_circuit::advance_material_circuit(&catalog, &severed.state)
+            .expect("severed arrival must close");
     assert_eq!(shipped_for(&full_arrival.state, order(ORDER)), 4);
     assert_eq!(
         full_arrival
@@ -689,28 +723,24 @@ fn proportional_base_and_shared_corridor_residual_conserve_permutations() {
         for corridor_available in 0_u64..=10 {
             for first_requested in 1_u64..=5 {
                 for second_requested in 1_u64..=5 {
-                    let mut state = base_state();
+                    let (catalog, mut state) = base_state();
                     state.inventory[0].quantity = available;
                     state.corridor_capacities[0].available_grams = corridor_available;
                     state.orders[0].ordered = first_requested;
-                    state.backlog[0].quantity = first_requested;
                     state.orders.push(OrderRow {
                         order_id: order(17),
                         ordered: second_requested,
                         ..state.orders[0].clone()
                     });
-                    state.backlog.push(BacklogRow {
-                        order_id: order(17),
-                        quantity: second_requested,
-                    });
                     let mut reversed = state.clone();
                     reversed.orders.reverse();
-                    reversed.backlog.reverse();
 
-                    let outcome = babylon_material_circuit::advance_material_circuit(&state)
-                        .expect("allocation must close");
-                    let twin = babylon_material_circuit::advance_material_circuit(&reversed)
-                        .expect("permuted allocation must close");
+                    let outcome =
+                        babylon_material_circuit::advance_material_circuit(&catalog, &state)
+                            .expect("allocation must close");
+                    let twin =
+                        babylon_material_circuit::advance_material_circuit(&catalog, &reversed)
+                            .expect("permuted allocation must close");
                     let effective = available.min(corridor_available);
                     let total_requested = first_requested + second_requested;
                     let expected_first = if effective >= total_requested {
@@ -736,8 +766,14 @@ fn proportional_base_and_shared_corridor_residual_conserve_permutations() {
                         available
                     );
                     assert_eq!(
-                        babylon_material_circuit::material_circuit_state_digest(&outcome.state),
-                        babylon_material_circuit::material_circuit_state_digest(&twin.state)
+                        babylon_material_circuit::material_circuit_state_digest(
+                            &catalog,
+                            &outcome.state
+                        ),
+                        babylon_material_circuit::material_circuit_state_digest(
+                            &catalog,
+                            &twin.state
+                        )
                     );
                 }
             }

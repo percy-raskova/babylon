@@ -13,6 +13,7 @@ use babylon_material_circuit::HouseholdTimeBook;
 use babylon_material_circuit::HouseholdTimeCommitment;
 use babylon_material_circuit::HouseholdTimePolicy;
 use babylon_material_circuit::HouseholdUnmetTimeBurden;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialPurchase;
 use babylon_material_circuit::OrderId;
@@ -27,8 +28,8 @@ use babylon_material_circuit::ServiceOrder;
     clippy::too_many_lines,
     reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
 )]
-fn time_service_opening(input: u64) -> MaterialCircuitState {
-    let mut state = crate::opening();
+fn time_service_opening(input: u64) -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = crate::opening();
     state.inventory[0].quantity = input;
     state.service_connections.push(ServiceConnection {
         provider_site_id: crate::site(2),
@@ -39,7 +40,7 @@ fn time_service_opening(input: u64) -> MaterialCircuitState {
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         unreachable!()
     };
-    economy.recurring = Some(Box::new(RecurringEconomy {
+    let recurring = RecurringEconomy {
         service_inputs: vec![],
         households: vec![HouseholdCohort {
             principal_id: crate::household(),
@@ -92,30 +93,41 @@ fn time_service_opening(input: u64) -> MaterialCircuitState {
             .collect(),
         last_household_admission_period: 0,
         last_household_consumption_period: 0,
-    }));
+    };
+    let needs = recurring.household_needs.clone();
+    let inputs = recurring.service_inputs.clone();
+    economy.recurring = Some(Box::new(recurring));
+    let time_policy = HouseholdTimePolicy {
+        principal_id: crate::household(),
+        labor_unit_id: crate::unit(9),
+        eligible_persons: 4,
+        hours_per_eligible_person: 8,
+        protected: HouseholdTimeCommitment {
+            basis: HouseholdNeedBasis::Households,
+            hours_per_basis: 2,
+        },
+        routine_provisioning: HouseholdTimeCommitment {
+            basis: HouseholdNeedBasis::Households,
+            hours_per_basis: 3,
+        },
+        unmet_burdens: vec![HouseholdUnmetTimeBurden {
+            good_id: crate::good(2),
+            unit_id: crate::unit(2),
+            hours_per_unmet_unit: 5,
+        }],
+    };
     economy.household_time = HouseholdTimeAccounting::Modeled(
-        HouseholdTimeBook::new(vec![HouseholdTimePolicy {
-            principal_id: crate::household(),
-            labor_unit_id: crate::unit(9),
-            eligible_persons: 4,
-            hours_per_eligible_person: 8,
-            protected: HouseholdTimeCommitment {
-                basis: HouseholdNeedBasis::Households,
-                hours_per_basis: 2,
-            },
-            routine_provisioning: HouseholdTimeCommitment {
-                basis: HouseholdNeedBasis::Households,
-                hours_per_basis: 3,
-            },
-            unmet_burdens: vec![HouseholdUnmetTimeBurden {
-                good_id: crate::good(2),
-                unit_id: crate::unit(2),
-                hours_per_unmet_unit: 5,
-            }],
-        }])
-        .expect("the constructor accepts the authored fixture arguments"),
+        HouseholdTimeBook::new(vec![time_policy.clone()])
+            .expect("the constructor accepts the authored fixture arguments"),
     );
-    babylon_material_circuit::admit_material_purchase(
+    let mut catalog = catalog;
+    catalog.household_time_policy = vec![time_policy];
+    catalog.household_needs = needs;
+    catalog.service_inputs = inputs;
+    catalog.catalog_digest = [0; 32];
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let state = babylon_material_circuit::admit_material_purchase(
+        &catalog,
         &state,
         MaterialPurchase::Service(ServiceOrder {
             order_id: OrderId::from_bytes([1; 32]),
@@ -129,14 +141,17 @@ fn time_service_opening(input: u64) -> MaterialCircuitState {
         crate::money(2),
     )
     .expect("the fixture admits the authored purchase")
-    .0
+    .0;
+    (catalog, state)
 }
 
 #[test]
 fn household_service_performance_relaxes_only_its_actual_unmet_time_burden() {
-    let supplied = babylon_material_circuit::advance_material_circuit(&time_service_opening(1))
+    let (catalog, opening) = time_service_opening(1);
+    let supplied = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("the authored material state advances one period");
-    let interrupted = babylon_material_circuit::advance_material_circuit(&time_service_opening(0))
+    let (catalog, opening) = time_service_opening(0);
+    let interrupted = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("the authored material state advances one period");
     assert_eq!(supplied.household_services[0].satisfied_quantity, 1);
     assert_eq!(interrupted.household_services[0].unmet_quantity, 1);

@@ -9,6 +9,7 @@ use babylon_material_circuit::HouseholdNeedBasis;
 use babylon_material_circuit::HouseholdPurchasePolicy;
 use babylon_material_circuit::InventoryRow;
 use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialPurchase;
@@ -55,7 +56,7 @@ fn household_service_need_uses_the_selected_basis_at_admission_and_consumption()
         (HouseholdNeedBasis::Persons, 4),
         (HouseholdNeedBasis::Households, 1),
     ] {
-        let mut state = recurring(crate::opening());
+        let (catalog, mut state) = recurring(crate::opening());
         let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
             panic!("the control must pay for actual services");
         };
@@ -66,7 +67,9 @@ fn household_service_need_uses_the_selected_basis_at_admission_and_consumption()
         rows.households[0].persons = 4;
         rows.household_needs[0].basis = basis;
         rows.household_purchases[0].maximum_purchase = 4;
-        let close = babylon_material_circuit::advance_material_circuit(&state)
+        let needs = rows.household_needs.clone();
+        let catalog = resealed(catalog, |catalog| catalog.household_needs = needs);
+        let close = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
         let receipt = &close.household_services[0];
         assert_eq!(receipt.required_quantity, expected);
@@ -88,7 +91,23 @@ fn household_service_need_uses_the_selected_basis_at_admission_and_consumption()
     clippy::too_many_lines,
     reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
 )]
-pub(super) fn recurring(mut state: MaterialCircuitState) -> MaterialCircuitState {
+fn resealed(
+    catalog: MaterialCatalog,
+    mutate: impl FnOnce(&mut MaterialCatalog),
+) -> MaterialCatalog {
+    let mut catalog = catalog;
+    mutate(&mut catalog);
+    catalog.catalog_digest = [0; 32];
+    MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid")
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+)]
+pub(super) fn recurring(
+    (catalog, mut state): (MaterialCatalog, MaterialCircuitState),
+) -> (MaterialCatalog, MaterialCircuitState) {
     state.inventory[0].quantity = 3;
     state.capacities[0].available_batches = 4;
     state.capacities[1].available_batches = 3;
@@ -105,7 +124,7 @@ pub(super) fn recurring(mut state: MaterialCircuitState) -> MaterialCircuitState
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         panic!()
     };
-    e.recurring = Some(Box::new(RecurringEconomy {
+    let recurring = RecurringEconomy {
         service_inputs: vec![
             ServiceInputPolicy {
                 buyer_site_id: crate::site(2),
@@ -206,13 +225,22 @@ pub(super) fn recurring(mut state: MaterialCircuitState) -> MaterialCircuitState
             .collect(),
         last_household_admission_period: 0,
         last_household_consumption_period: 0,
-    }));
+    };
+    let mut catalog = catalog;
+    catalog.service_inputs.clone_from(&recurring.service_inputs);
+    catalog
+        .household_needs
+        .clone_from(&recurring.household_needs);
+    catalog.catalog_digest = [0; 32];
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    e.recurring = Some(Box::new(recurring));
     sync_member_hours(&mut state);
-    state
+    (catalog, state)
 }
 #[test]
 fn service_household_satisfaction_has_no_pantry_or_retailer_requirement() {
-    let closed = babylon_material_circuit::advance_material_circuit(&recurring(crate::opening()))
+    let (catalog, state) = recurring(crate::opening());
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert!(closed.household_consumption.is_empty());
     assert!(closed.household_demand.is_empty());
@@ -249,8 +277,8 @@ fn service_household_satisfaction_has_no_pantry_or_retailer_requirement() {
 }
 #[test]
 fn service_quotes_distinguish_funded_unmet_cost_pressure_and_spare_capacity() {
-    let base = recurring(crate::opening());
-    let spare = babylon_material_circuit::advance_material_circuit(&base)
+    let (catalog, base) = recurring(crate::opening());
+    let spare = babylon_material_circuit::advance_material_circuit(&catalog, &base)
         .expect("the authored material state advances one period");
     let u = &spare.service_markets[0];
     assert_eq!(
@@ -271,7 +299,7 @@ fn service_quotes_distinguish_funded_unmet_cost_pressure_and_spare_capacity() {
     );
     let mut scarce = base.clone();
     scarce.inventory[0].quantity = 2;
-    let closed = babylon_material_circuit::advance_material_circuit(&scarce)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &scarce)
         .expect("the authored material state advances one period");
     let u = &closed.service_markets[0];
     assert!(u.admitted_quantity > u.performed_quantity);
@@ -284,7 +312,7 @@ fn service_quotes_distinguish_funded_unmet_cost_pressure_and_spare_capacity() {
         panic!()
     };
     e.employment[0].compensation = LaborCompensation::Wage(crate::money(3));
-    let closed = babylon_material_circuit::advance_material_circuit(&costly)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &costly)
         .expect("the authored material state advances one period");
     let u = &closed.service_markets[0];
     assert_eq!(
@@ -298,9 +326,10 @@ fn service_quotes_distinguish_funded_unmet_cost_pressure_and_spare_capacity() {
 }
 #[test]
 fn future_service_reserve_retains_accepted_quote_through_current_price_change_and_restart() {
-    let state = recurring(crate::opening());
+    let (catalog, state) = recurring(crate::opening());
     let id = OrderId::from_bytes([99; 32]);
     let (state, _) = babylon_material_circuit::admit_material_purchase(
+        &catalog,
         &state,
         MaterialPurchase::Service(ServiceOrder {
             order_id: id,
@@ -314,7 +343,7 @@ fn future_service_reserve_retains_accepted_quote_through_current_price_change_an
         crate::money(2),
     )
     .expect("the fixture admits the authored purchase");
-    let closed = babylon_material_circuit::advance_material_circuit(&state)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let CircuitAccounting::Monetary(e) = &closed.state.accounting else {
         panic!()
@@ -335,21 +364,23 @@ fn future_service_reserve_retains_accepted_quote_through_current_price_change_an
         crate::money(1)
     );
     assert_eq!(closed.state.service_orders.len(), 1);
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&closed.state)
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &closed.state)
         .expect("the canonical material state encodes");
     assert_eq!(
-        decode_material_circuit_state(&bytes).expect("the canonical material bytes decode"),
+        decode_material_circuit_state(&catalog, &bytes)
+            .expect("the canonical material bytes decode"),
         closed.state
     );
 }
 #[test]
 fn purchased_unused_service_is_expensed_and_unsold_provider_capacity_does_not_work() {
-    let mut state = crate::opening();
+    let (catalog, mut state) = crate::opening();
     state.inventory[0].quantity = 2;
     state
         .production_commitments
         .retain(|r| r.process_id != crate::process(3));
-    let closed = babylon_material_circuit::advance_material_circuit(&crate::funded(state))
+    let funded = crate::funded(&catalog, state);
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &funded)
         .expect("the authored material state advances one period");
     let f = closed
         .income
@@ -363,7 +394,8 @@ fn purchased_unused_service_is_expensed_and_unsold_provider_capacity_does_not_wo
         .iter()
         .filter(|r| r.buyer == AccountId::Site(crate::site(3)))
         .all(|r| r.used_quantity == 0 && r.unused_quantity == 1));
-    let closed = babylon_material_circuit::advance_material_circuit(&crate::opening())
+    let (catalog, opening) = crate::opening();
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("the authored material state advances one period");
     assert!(closed.production.iter().all(|r| r.produced_batches == 0));
     assert!(closed.labor_use.iter().all(|r| r.used_hours == 0));
@@ -374,14 +406,14 @@ fn purchased_unused_service_is_expensed_and_unsold_provider_capacity_does_not_wo
 }
 #[test]
 fn service_wire_refuses_old_version_and_late_planning_overflow_is_atomic() {
-    let mut state = recurring(crate::opening());
-    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+    let (catalog, mut state) = recurring(crate::opening());
+    let before = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     let mut old = before.clone();
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     old[version..version + 2].copy_from_slice(&8_u16.to_be_bytes());
     assert_eq!(
-        decode_material_circuit_state(&old),
+        decode_material_circuit_state(&catalog, &old),
         Err(MaterialCircuitError::WireVersion)
     );
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
@@ -392,15 +424,18 @@ fn service_wire_refuses_old_version_and_late_planning_overflow_is_atomic() {
         .expect("the fixture set the optional field before this borrow")
         .production[2]
         .output_buffer = u64::MAX;
-    state.supplier_routes.push(SupplierRoute {
-        buyer_site_id: crate::site(1),
-        supplier_site_id: crate::site(3),
-        good_id: crate::good(3),
-        unit_id: crate::unit(3),
-        route_id: RouteId::from_bytes([99; 32]),
-        transport_kind: SupplierTransport::Local,
+    let catalog = resealed(catalog, |catalog| {
+        catalog.supplier_routes.push(SupplierRoute {
+            buyer_site_id: crate::site(1),
+            supplier_site_id: crate::site(3),
+            good_id: crate::good(3),
+            unit_id: crate::unit(3),
+            route_id: RouteId::from_bytes([99; 32]),
+            transport_kind: SupplierTransport::Local,
+        });
     });
     state = babylon_material_circuit::admit_material_purchase(
+        &catalog,
         &state,
         MaterialPurchase::Delivery(OrderRow {
             order_id: OrderId::from_bytes([88; 32]),
@@ -420,14 +455,14 @@ fn service_wire_refuses_old_version_and_late_planning_overflow_is_atomic() {
     .expect("the fixture admits the authored purchase")
     .0;
     // The goods planner overflows only after service work and settlement have run detached.
-    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+    let before = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&state)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
             .expect("the canonical material state encodes"),
         before
     );
@@ -435,11 +470,11 @@ fn service_wire_refuses_old_version_and_late_planning_overflow_is_atomic() {
 
 #[test]
 fn current_production_withdrawal_removes_b2b_service_requests() {
-    let mut state = recurring(crate::opening());
+    let (catalog, mut state) = recurring(crate::opening());
     state
         .production_commitments
         .retain(|r| r.process_id != crate::process(3));
-    let closed = babylon_material_circuit::advance_material_circuit(&state)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let firm_requests: Vec<_> = closed
         .service_performance
@@ -453,13 +488,15 @@ fn current_production_withdrawal_removes_b2b_service_requests() {
 }
 #[test]
 fn utility_and_goods_stages_share_the_same_site_labor_residual() {
-    let mut state = crate::opening();
-    state.process_outputs[2].site_id = crate::site(1);
+    let (catalog, mut state) = crate::opening();
+    let catalog = resealed(catalog, |catalog| {
+        catalog.process_outputs[2].site_id = crate::site(1);
+        catalog
+            .input_coefficients
+            .retain(|r| !(r.process_id == crate::process(3) && r.good_id == crate::good(1)));
+    });
     state.capacities[2].site_id = crate::site(1);
     state.production_commitments[2].site_id = crate::site(1);
-    state
-        .input_coefficients
-        .retain(|r| !(r.process_id == crate::process(3) && r.good_id == crate::good(1)));
     state.labor.retain(|r| r.site_id != crate::site(3));
     state.labor[0].available = 1;
     state.inventory[1].site_id = crate::site(1);
@@ -493,6 +530,7 @@ fn utility_and_goods_stages_share_the_same_site_labor_residual() {
     sync_member_hours(&mut state);
     for (id, provider, buyer, commodity, price) in [(11, 1, 2, 1, 1), (12, 2, 1, 2, 2)] {
         state = babylon_material_circuit::admit_material_purchase(
+            &catalog,
             &state,
             MaterialPurchase::Service(ServiceOrder {
                 order_id: OrderId::from_bytes([id; 32]),
@@ -508,7 +546,7 @@ fn utility_and_goods_stages_share_the_same_site_labor_residual() {
         .expect("the fixture admits the authored purchase")
         .0;
     }
-    let closed = babylon_material_circuit::advance_material_circuit(&state)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(
         closed
@@ -539,7 +577,7 @@ fn utility_and_goods_stages_share_the_same_site_labor_residual() {
     );
     state.labor[0].available = 2;
     sync_member_hours(&mut state);
-    let closed = babylon_material_circuit::advance_material_circuit(&state)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(
         closed
@@ -552,9 +590,13 @@ fn utility_and_goods_stages_share_the_same_site_labor_residual() {
     );
 }
 
-fn batch_opening(mut state: MaterialCircuitState) -> MaterialCircuitState {
+fn batch_opening(
+    (catalog, mut state): (MaterialCatalog, MaterialCircuitState),
+) -> (MaterialCatalog, MaterialCircuitState) {
+    let catalog = resealed(catalog, |catalog| {
+        catalog.process_outputs[0].quantity_per_batch = 4;
+    });
     state.inventory[0].quantity = 1;
-    state.process_outputs[0].quantity_per_batch = 4;
     state.labor[0].available = 1;
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         panic!()
@@ -575,14 +617,14 @@ fn batch_opening(mut state: MaterialCircuitState) -> MaterialCircuitState {
         state.production_commitments[1].planned_batches = 1;
     }
     sync_member_hours(&mut state);
-    state
+    (catalog, state)
 }
 #[test]
 fn service_batches_expire_unallocated_output_at_exact_remaining_cost() {
-    let closed = babylon_material_circuit::advance_material_circuit(&crate::funded(batch_opening(
-        crate::opening(),
-    )))
-    .expect("the authored material state advances one period");
+    let (catalog, state) = batch_opening(crate::opening());
+    let state = crate::funded(&catalog, state);
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+        .expect("the authored material state advances one period");
     assert_eq!(closed.production[0].produced_batches, 1);
     let output = &closed.service_outputs[0];
     assert_eq!(
@@ -620,19 +662,19 @@ fn service_batches_expire_unallocated_output_at_exact_remaining_cost() {
         .iter()
         .all(|r| r.good_id != crate::good(1) && r.good_id != crate::good(2)));
     assert!(closed.state.freight.is_empty());
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&closed.state)
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &closed.state)
         .expect("the canonical material state encodes");
     assert_eq!(
-        decode_material_circuit_state(&bytes).expect("the canonical material bytes decode"),
+        decode_material_circuit_state(&catalog, &bytes)
+            .expect("the canonical material bytes decode"),
         closed.state
     );
 }
 #[test]
 fn service_quote_cost_evidence_includes_unallocated_batch_output() {
-    let closed = babylon_material_circuit::advance_material_circuit(&batch_opening(recurring(
-        crate::opening(),
-    )))
-    .expect("the authored material state advances one period");
+    let (catalog, state) = batch_opening(recurring(crate::opening()));
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+        .expect("the authored material state advances one period");
     let u = &closed.service_markets[0];
     assert_eq!(
         (u.performed_quantity, u.direct_cost, u.next_price, u.reason),
@@ -647,12 +689,14 @@ fn service_quote_cost_evidence_includes_unallocated_batch_output() {
 
 #[test]
 fn same_stage_peer_acquisition_cannot_mix_into_unsold_provider_cost() {
-    let mut state = batch_opening(crate::opening());
-    state.process_outputs[1].good_id = crate::good(1);
-    state.process_outputs[1].unit_id = crate::unit(1);
-    state.process_outputs[1].quantity_per_batch = 4;
-    state.input_coefficients[1].good_id = crate::good(4);
-    state.input_coefficients[1].unit_id = crate::unit(4);
+    let (catalog, mut state) = batch_opening(crate::opening());
+    let catalog = resealed(catalog, |catalog| {
+        catalog.process_outputs[1].good_id = crate::good(1);
+        catalog.process_outputs[1].unit_id = crate::unit(1);
+        catalog.process_outputs[1].quantity_per_batch = 4;
+        catalog.input_coefficients[1].good_id = crate::good(4);
+        catalog.input_coefficients[1].unit_id = crate::unit(4);
+    });
     state
         .production_commitments
         .retain(|r| r.process_id != crate::process(3));
@@ -686,6 +730,7 @@ fn same_stage_peer_acquisition_cannot_mix_into_unsold_provider_cost() {
         .collect();
     for (provider, price) in [(1, 2), (2, 3)] {
         state = babylon_material_circuit::admit_material_purchase(
+            &catalog,
             &state,
             MaterialPurchase::Service(ServiceOrder {
                 order_id: OrderId::from_bytes([provider; 32]),
@@ -701,7 +746,7 @@ fn same_stage_peer_acquisition_cannot_mix_into_unsold_provider_cost() {
         .expect("the fixture admits the authored purchase")
         .0;
     }
-    let closed = babylon_material_circuit::advance_material_circuit(&state)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(
         closed
@@ -752,8 +797,10 @@ fn prebooked_services_cover_recurring_need_before_any_new_purchase() {
             ),
         ),
     ] {
+        let (catalog, state) = recurring(crate::opening());
         let (state, _) = babylon_material_circuit::admit_material_purchase(
-            &recurring(crate::opening()),
+            &catalog,
+            &state,
             MaterialPurchase::Service(ServiceOrder {
                 order_id: prebooked_id,
                 performance_period: 1,
@@ -766,7 +813,7 @@ fn prebooked_services_cover_recurring_need_before_any_new_purchase() {
             crate::money(1),
         )
         .expect("the fixture admits the authored purchase");
-        let closed = babylon_material_circuit::advance_material_circuit(&state)
+        let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
         let rows: Vec<_> = closed
             .service_performance
@@ -802,7 +849,7 @@ fn prebooked_services_cover_recurring_need_before_any_new_purchase() {
 
 #[test]
 fn prebooked_household_service_retains_its_price_and_is_not_purchased_twice() {
-    let mut state = recurring(crate::opening());
+    let (catalog, mut state) = recurring(crate::opening());
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         panic!()
     };
@@ -828,6 +875,7 @@ fn prebooked_household_service_retains_its_price_and_is_not_purchased_twice() {
         crate::unit(2),
     );
     let (state, _) = babylon_material_circuit::admit_material_purchase(
+        &catalog,
         &state,
         MaterialPurchase::Service(ServiceOrder {
             order_id: id,
@@ -841,7 +889,7 @@ fn prebooked_household_service_retains_its_price_and_is_not_purchased_twice() {
         crate::money(1),
     )
     .expect("the fixture admits the authored purchase");
-    let closed = babylon_material_circuit::advance_material_circuit(&state)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let rows: Vec<_> = closed
         .service_performance

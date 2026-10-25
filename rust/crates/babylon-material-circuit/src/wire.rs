@@ -2,6 +2,8 @@
 
 mod accounting;
 
+mod catalog;
+
 mod aid;
 
 mod capacity;
@@ -24,6 +26,7 @@ mod valuation;
 #[path = "wire/state.rs"]
 mod state;
 
+pub(crate) use state::catalog_bytes;
 pub(crate) use state::Cursor;
 use state::{append_bounded_rows, append_rows, decode_bounded_rows, decode_rows};
 #[cfg(test)]

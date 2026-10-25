@@ -9,7 +9,7 @@ use crate::GoodId;
 use crate::ProcessId;
 use crate::SiteId;
 use crate::UnitId;
-use crate::{CircuitAccounting, MaterialCircuitError, MaterialCircuitState};
+use crate::{CircuitAccounting, EquipmentPosition, MaterialCircuitError, MaterialCircuitState};
 
 pub(super) fn sale_commitments(state: &MaterialCircuitState) -> Result<InventoryLedger> {
     let mut rows = InventoryLedger::new();
@@ -80,10 +80,11 @@ pub(super) fn planned_batches(state: &MaterialCircuitState, process: ProcessId) 
 
 pub(super) fn decision(
     state: &MaterialCircuitState,
-    e: &ProductiveEquipment,
+    content: &ProductiveEquipment,
+    position: &EquipmentPosition,
     p: &InstallationPolicy,
 ) -> Result<InstallationDecisionReceipt> {
-    let (binding, definition) = e.definition(p.process_id)?;
+    let (binding, definition) = content.definition(p.process_id)?;
     let planned = planned_batches(state, p.process_id);
     let target = match p.target {
         InstallationTarget::FixedUnits(units) => units,
@@ -92,16 +93,20 @@ pub(super) fn decision(
             .div_ceil(definition.batches_per_unit_per_period)
             .max(replacement_units),
     };
-    let installed = e.cohorts[e.cohorts_for(p.process_id)]
+    let installed = position.cohorts[super::cohorts_for(&position.cohorts, p.process_id)]
         .iter()
         .filter(|r| r.remaining_service_batches > 0)
         .try_fold(0_u64, |n, r| {
             n.checked_add(r.units)
                 .ok_or(MaterialCircuitError::Arithmetic)
         })?;
-    let lo = e.pending.partition_point(|r| r.process_id < p.process_id);
-    let hi = e.pending.partition_point(|r| r.process_id <= p.process_id);
-    let pending = e.pending[lo..hi].iter().try_fold(0_u64, |n, r| {
+    let lo = position
+        .pending
+        .partition_point(|r| r.process_id < p.process_id);
+    let hi = position
+        .pending
+        .partition_point(|r| r.process_id <= p.process_id);
+    let pending = position.pending[lo..hi].iter().try_fold(0_u64, |n, r| {
         n.checked_add(r.units)
             .ok_or(MaterialCircuitError::Arithmetic)
     })?;

@@ -11,6 +11,7 @@ use babylon_material_circuit::HouseholdCohort;
 use babylon_material_circuit::HouseholdKind;
 use babylon_material_circuit::HouseholdNeedBasis;
 use babylon_material_circuit::HouseholdStock;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MonetaryBook;
@@ -31,8 +32,8 @@ fn second_household() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([76; 32])
 }
 
-fn split_existing_household() -> MaterialCircuitState {
-    let mut state = crate::opening();
+fn split_existing_household() -> (MaterialCatalog, MaterialCircuitState) {
+    let (mut catalog, mut state) = crate::opening();
     let second = second_household();
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: second,
@@ -62,7 +63,8 @@ fn split_existing_household() -> MaterialCircuitState {
     });
     let mut need = recurring.household_needs[0].clone();
     need.principal_id = second;
-    recurring.household_needs.push(need);
+    recurring.household_needs.push(need.clone());
+    catalog.household_needs.push(need);
     recurring.household_purchases[0].target_closing_stock = 6;
     recurring.household_purchases[0].maximum_purchase = 3;
     let mut purchase = recurring.household_purchases[0].clone();
@@ -91,12 +93,13 @@ fn split_existing_household() -> MaterialCircuitState {
     });
     accounts.costs = HistoricalCostBook::open(&accounts.book, stocks, vec![], vec![], vec![])
         .expect("the fixture opens the authored source");
-    state
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    (catalog, state)
 }
 
 #[test]
 fn a_no_earner_budget_can_exhaust_while_its_neighbor_receives_actual_wages() {
-    let mut state = split_existing_household();
+    let (catalog, mut state) = split_existing_household();
     let household_controls = crate::economy(&state)
         .recurring
         .as_ref()
@@ -115,11 +118,11 @@ fn a_no_earner_budget_can_exhaust_while_its_neighbor_receives_actual_wages() {
             .expect("the fixture book totals without overflow"),
         crate::money(24)
     );
-    let mut result = babylon_material_circuit::advance_material_circuit(&state)
+    let mut result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     for _ in 0..2 {
         state = result.state;
-        result = babylon_material_circuit::advance_material_circuit(&state)
+        result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
     }
     let deprived = result
@@ -167,36 +170,37 @@ fn a_no_earner_budget_can_exhaust_while_its_neighbor_receives_actual_wages() {
 
 #[test]
 fn separate_budget_consumption_and_payroll_survive_canonical_restart() {
-    let first = babylon_material_circuit::advance_material_circuit(&split_existing_household())
+    let (catalog, opening) = split_existing_household();
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("the authored material state advances one period");
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&first.state)
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &first.state)
         .expect("the canonical material state encodes");
-    let reopened = babylon_material_circuit::decode_material_circuit_state(&bytes)
+    let reopened = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
         .expect("the canonical material bytes decode");
-    let live = babylon_material_circuit::advance_material_circuit(&first.state)
+    let live = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
         .expect("the authored material state advances one period");
-    let resumed = babylon_material_circuit::advance_material_circuit(&reopened)
+    let resumed = babylon_material_circuit::advance_material_circuit(&catalog, &reopened)
         .expect("the authored material state advances one period");
     assert_eq!(live, resumed);
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&live.state)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &live.state)
             .expect("the canonical material state encodes"),
-        babylon_material_circuit::encode_material_circuit_state(&resumed.state)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &resumed.state)
             .expect("the canonical material state encodes")
     );
 }
 
 #[test]
 fn collective_residents_consume_person_based_needs_without_fake_households() {
-    let mut state = crate::opening();
+    let (catalog, mut state) = crate::opening();
     let recurring = crate::recurring_mut(&mut state);
     recurring.households[0].kind = HouseholdKind::CollectiveResidence;
     recurring.households[0].households = 0;
-    let encoded = babylon_material_circuit::encode_material_circuit_state(&state)
+    let encoded = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
-    let reopened = babylon_material_circuit::decode_material_circuit_state(&encoded)
+    let reopened = babylon_material_circuit::decode_material_circuit_state(&catalog, &encoded)
         .expect("the canonical material bytes decode");
-    let result = babylon_material_circuit::advance_material_circuit(&reopened)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &reopened)
         .expect("the authored material state advances one period");
     assert_eq!(result.household_consumption[0].required_quantity, 4);
     assert_eq!(result.household_consumption[0].consumed_quantity, 4);
@@ -213,28 +217,28 @@ fn collective_residents_consume_person_based_needs_without_fake_households() {
 
 #[test]
 fn zero_households_require_explicit_collective_kind_and_no_household_basis_need() {
-    let mut ordinary = crate::opening();
+    let (catalog, mut ordinary) = crate::opening();
     crate::recurring_mut(&mut ordinary).households[0].households = 0;
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&ordinary),
+        babylon_material_circuit::advance_material_circuit(&catalog, &ordinary),
         Err(MaterialCircuitError::FinalDemandInvariant)
     );
-    let mut collective = crate::opening();
+    let (catalog, mut collective) = crate::opening();
     let recurring = crate::recurring_mut(&mut collective);
     recurring.households[0].kind = HouseholdKind::CollectiveResidence;
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&collective),
+        babylon_material_circuit::advance_material_circuit(&catalog, &collective),
         Err(MaterialCircuitError::FinalDemandInvariant)
     );
     let recurring = crate::recurring_mut(&mut collective);
     recurring.households[0].households = 0;
     recurring.household_needs[0].basis = HouseholdNeedBasis::Households;
-    assert!(babylon_material_circuit::advance_material_circuit(&collective).is_err());
+    assert!(babylon_material_circuit::advance_material_circuit(&catalog, &collective).is_err());
 }
 
 #[test]
 fn reserve_hiring_preserves_the_resident_budget_identity_and_counts() {
-    let state = split_existing_household();
+    let (_catalog, state) = split_existing_household();
     let cohorts = crate::economy(&state)
         .recurring
         .as_ref()
@@ -325,7 +329,7 @@ fn reserve_hiring_preserves_the_resident_budget_identity_and_counts() {
 
 #[test]
 fn captured_ownership_pays_its_own_budget_without_becoming_wage_income() {
-    let mut state = split_existing_household();
+    let (catalog, mut state) = split_existing_household();
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
         unreachable!()
     };
@@ -364,7 +368,7 @@ fn captured_ownership_pays_its_own_budget_without_becoming_wage_income() {
     let mut paid_to_owner = 0;
     let mut actual_wages = 0;
     for _ in 0..8 {
-        let closed = babylon_material_circuit::advance_material_circuit(&state)
+        let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
         assert!(closed
             .wage_accruals
@@ -416,8 +420,8 @@ fn captured_ownership_pays_its_own_budget_without_becoming_wage_income() {
 
 #[test]
 fn household_kind_is_explicit_in_canonical_bytes_and_unknown_tags_are_refused() {
-    let state = split_existing_household();
-    let encoded = babylon_material_circuit::encode_material_circuit_state(&state)
+    let (catalog, state) = split_existing_household();
+    let encoded = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     let mut row = vec![1]; // current Ordinary tag, followed by the exact counted principal
     row.extend_from_slice(&second_household().as_bytes());
@@ -433,14 +437,15 @@ fn household_kind_is_explicit_in_canonical_bytes_and_unknown_tags_are_refused() 
     let mut forged = encoded.clone();
     forged[position] = 255;
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&forged),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &forged),
         Err(MaterialCircuitError::WireEnum)
     );
     assert!(babylon_material_circuit::decode_material_circuit_state(
+        &catalog,
         &encoded[..position + row.len() - 1]
     )
     .is_err());
-    let restored = babylon_material_circuit::decode_material_circuit_state(&encoded)
+    let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &encoded)
         .expect("the canonical material bytes decode");
     assert_eq!(
         crate::economy(&restored)
@@ -455,7 +460,7 @@ fn household_kind_is_explicit_in_canonical_bytes_and_unknown_tags_are_refused() 
             .households
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&restored)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &restored)
             .expect("the canonical material state encodes"),
         encoded
     );

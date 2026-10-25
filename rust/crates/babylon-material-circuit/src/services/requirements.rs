@@ -7,6 +7,7 @@ use super::ServiceStage;
 
 use crate::inventory::InventoryLedger;
 use crate::CircuitAccounting;
+use crate::MaterialCatalog;
 use crate::SiteId;
 use crate::{GoodId, MaterialCircuitError, MaterialCircuitState, ProcessOutput, UnitId};
 use std::collections::BTreeMap;
@@ -26,43 +27,40 @@ impl CommodityDefinition {
     }
 }
 
-pub(crate) fn kind(
-    state: &MaterialCircuitState,
-    good: GoodId,
-    unit: UnitId,
-) -> Result<CommodityKind> {
-    state
+pub(crate) fn kind(catalog: &MaterialCatalog, good: GoodId, unit: UnitId) -> Result<CommodityKind> {
+    catalog
         .commodities
         .binary_search_by_key(&(good, unit), |r| (r.good_id, r.unit_id))
         .ok()
-        .map(|i| state.commodities[i].kind)
+        .map(|i| catalog.commodities[i].kind)
         .ok_or(MaterialCircuitError::MassInvariant)
 }
 
 pub(crate) fn stage(
-    state: &MaterialCircuitState,
+    catalog: &MaterialCatalog,
     output: &ProcessOutput,
 ) -> Result<Option<ServiceStage>> {
-    Ok(match kind(state, output.good_id, output.unit_id)? {
+    Ok(match kind(catalog, output.good_id, output.unit_id)? {
         CommodityKind::Storable { .. } => None,
         CommodityKind::PeriodService { stage } => Some(stage),
     })
 }
 
-pub(crate) fn is_service(state: &MaterialCircuitState, good: GoodId, unit: UnitId) -> bool {
+pub(crate) fn is_service(catalog: &MaterialCatalog, good: GoodId, unit: UnitId) -> bool {
     matches!(
-        kind(state, good, unit),
+        kind(catalog, good, unit),
         Ok(CommodityKind::PeriodService { .. })
     )
 }
 
 /// Planning may count a finite requested grant; actual work must obtain it anew.
 pub(crate) fn planning_grants(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     period: u64,
     inventory: &mut InventoryLedger,
 ) -> Result<()> {
-    let requirements = input_requirements(state, true)?;
+    let requirements = input_requirements(catalog, state, true)?;
     let mut future = BTreeMap::new();
     for order in &state.service_orders {
         if order.performance_period == period {
@@ -75,15 +73,13 @@ pub(crate) fn planning_grants(
             }
         }
     }
-    if let CircuitAccounting::Monetary(e) = &state.accounting {
-        if let Some(r) = &e.recurring {
-            for policy in &r.service_inputs {
-                crate::inventory::credit_inventory(
-                    &mut future,
-                    (policy.buyer_site_id, policy.good_id, policy.unit_id),
-                    required_input(&requirements, policy),
-                )?;
-            }
+    if matches!(state.accounting, CircuitAccounting::Monetary(_)) {
+        for policy in &catalog.service_inputs {
+            crate::inventory::credit_inventory(
+                &mut future,
+                (policy.buyer_site_id, policy.good_id, policy.unit_id),
+                required_input(&requirements, policy),
+            )?;
         }
     }
     for (key, q) in future {
@@ -96,10 +92,11 @@ pub(crate) type InputRequirements = BTreeMap<(SiteId, GoodId, UnitId), u128>;
 
 /// Build once per planning boundary; coefficients preserve their declared native units.
 pub(crate) fn input_requirements(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     next_plan: bool,
 ) -> Result<InputRequirements> {
-    let owners: BTreeMap<_, _> = state
+    let owners: BTreeMap<_, _> = catalog
         .process_outputs
         .iter()
         .map(|o| (o.process_id, o.site_id))
@@ -127,8 +124,8 @@ pub(crate) fn input_requirements(
             .collect()
     };
     let mut result = InputRequirements::new();
-    for coefficient in &state.input_coefficients {
-        if !is_service(state, coefficient.good_id, coefficient.unit_id) {
+    for coefficient in &catalog.input_coefficients {
+        if !is_service(catalog, coefficient.good_id, coefficient.unit_id) {
             continue;
         }
         let site = *owners

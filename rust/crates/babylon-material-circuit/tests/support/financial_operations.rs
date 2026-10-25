@@ -21,6 +21,7 @@ use babylon_material_circuit::InventoryRow;
 use babylon_material_circuit::LaborCapacityRow;
 use babylon_material_circuit::LaborCoefficient;
 use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
@@ -44,14 +45,15 @@ use babylon_material_circuit::StockCarryingValue;
 use babylon_material_circuit::TaxBasis;
 use babylon_material_circuit::TaxPolicy;
 use babylon_material_circuit::UnitId;
-fn service_opening(cash: [i128; 5]) -> MaterialCircuitState {
-    let mut state = crate::opening(cash);
+fn service_opening(cash: [i128; 5]) -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = crate::opening(cash);
     let process = ProcessId::from_bytes([1; 32]);
     let service = GoodId::from_bytes([1; 32]);
     let input = GoodId::from_bytes([2; 32]);
     let native = UnitId::from_bytes([1; 32]);
     let hours = UnitId::from_bytes([9; 32]);
-    state.commodities = vec![
+    let mut catalog = catalog;
+    catalog.commodities = vec![
         CommodityDefinition {
             good_id: service,
             unit_id: native,
@@ -71,20 +73,20 @@ fn service_opening(cash: [i128; 5]) -> MaterialCircuitState {
         unit_id: native,
         quantity: 1,
     }];
-    state.process_outputs = vec![ProcessOutput {
+    catalog.process_outputs = vec![ProcessOutput {
         process_id: process,
         site_id: crate::site(),
         good_id: service,
         unit_id: native,
         quantity_per_batch: 1,
     }];
-    state.input_coefficients = vec![InputOutputCoefficient {
+    catalog.input_coefficients = vec![InputOutputCoefficient {
         process_id: process,
         good_id: input,
         unit_id: native,
         quantity_per_batch: 1,
     }];
-    state.labor_coefficients = vec![LaborCoefficient {
+    catalog.labor_coefficients = vec![LaborCoefficient {
         process_id: process,
         unit_id: hours,
         quantity_per_batch: 1,
@@ -114,6 +116,7 @@ fn service_opening(cash: [i128; 5]) -> MaterialCircuitState {
         unit_id: native,
     }];
     configure_service_money(
+        &mut catalog,
         crate::economy_mut(&mut state),
         process,
         service,
@@ -121,9 +124,12 @@ fn service_opening(cash: [i128; 5]) -> MaterialCircuitState {
         native,
         hours,
     );
-    state
+    catalog.catalog_digest = [0; 32];
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog is valid");
+    (catalog, state)
 }
 fn configure_service_money(
+    catalog: &mut MaterialCatalog,
     e: &mut MonetaryCircuit,
     process: ProcessId,
     service: GoodId,
@@ -157,7 +163,7 @@ fn configure_service_money(
         vec![],
     )
     .expect("the fixture opens the authored source");
-    e.recurring = Some(Box::new(RecurringEconomy {
+    let recurring = RecurringEconomy {
         service_inputs: vec![],
         households: vec![HouseholdCohort {
             kind: babylon_material_circuit::HouseholdKind::Ordinary,
@@ -204,7 +210,11 @@ fn configure_service_money(
         }],
         last_household_admission_period: 0,
         last_household_consumption_period: 0,
-    }));
+    };
+    catalog
+        .household_needs
+        .clone_from(&recurring.household_needs);
+    e.recurring = Some(Box::new(recurring));
 }
 fn income(t: &MaterialCircuitTransition, account: AccountId) -> &IncomeReceipt {
     t.income
@@ -214,7 +224,7 @@ fn income(t: &MaterialCircuitTransition, account: AccountId) -> &IncomeReceipt {
 }
 #[test]
 fn operating_income_tax_and_foreign_owner_payout_match_independent_journal() {
-    let mut state = service_opening([2, 13, 0, 0, 0]);
+    let (catalog, mut state) = service_opening([2, 13, 0, 0, 0]);
     let f = &mut crate::economy_mut(&mut state).financial;
     f.taxes.push(TaxPolicy {
         payer: AccountId::Site(crate::site()),
@@ -229,7 +239,7 @@ fn operating_income_tax_and_foreign_owner_payout_match_independent_journal() {
         period_cap: crate::money(100),
         cash_floor: crate::money(0),
     });
-    let t = babylon_material_circuit::advance_material_circuit(&state)
+    let t = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let issuer = income(&t, AccountId::Site(crate::site()));
     assert_eq!(issuer.statement.sales, crate::money(15));
@@ -298,7 +308,7 @@ fn operating_income_tax_and_foreign_owner_payout_match_independent_journal() {
 }
 #[test]
 fn public_provider_funding_reaches_actual_work_and_service_and_withdrawal_severs_it() {
-    let mut state = service_opening([0, 13, 0, 0, 2]);
+    let (catalog, mut state) = service_opening([0, 13, 0, 0, 2]);
     let f = &mut crate::economy_mut(&mut state).financial;
     f.public_budgets.push(PublicBudget {
         public_account: crate::treasury(),
@@ -312,7 +322,7 @@ fn public_provider_funding_reaches_actual_work_and_service_and_withdrawal_severs
         priority: 0,
         amount_per_period: crate::money(2),
     });
-    let funded = babylon_material_circuit::advance_material_circuit(&state)
+    let funded = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(funded.production[0].produced_batches, 1);
     assert_eq!(funded.household_services[0].satisfied_quantity, 1);
@@ -323,7 +333,7 @@ fn public_provider_funding_reaches_actual_work_and_service_and_withdrawal_severs
         crate::money(2)
     );
     crate::economy_mut(&mut state).financial.public_budgets[0].period_cap = crate::money(0);
-    let withdrawn = babylon_material_circuit::advance_material_circuit(&state)
+    let withdrawn = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(withdrawn.production[0].produced_batches, 0);
     assert_eq!(withdrawn.household_services[0].unmet_quantity, 1);
@@ -338,7 +348,7 @@ fn public_provider_funding_reaches_actual_work_and_service_and_withdrawal_severs
 }
 #[test]
 fn tax_shortfall_records_current_uncollected_amount_without_minting_debt() {
-    let mut state = service_opening([2, 13, 0, 0, 0]);
+    let (catalog, mut state) = service_opening([2, 13, 0, 0, 0]);
     crate::economy_mut(&mut state)
         .financial
         .taxes
@@ -349,7 +359,7 @@ fn tax_shortfall_records_current_uncollected_amount_without_minting_debt() {
             rate_bps: 10000,
             cash_floor: crate::money(14),
         });
-    let t = babylon_material_circuit::advance_material_circuit(&state)
+    let t = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(t.taxes[0].assessed, crate::money(9));
     assert_eq!(t.taxes[0].collected, crate::money(1));
@@ -377,7 +387,7 @@ fn tax_shortfall_records_current_uncollected_amount_without_minting_debt() {
 }
 #[test]
 fn late_financial_overflow_leaves_all_opening_cash_and_equity_unchanged() {
-    let mut state = crate::opening([0, 0, 1, 0, 0]);
+    let (catalog, mut state) = crate::opening([0, 0, 1, 0, 0]);
     let e = crate::economy_mut(&mut state);
     let mut values = e.costs.snapshot();
     values.equity[0].amount = crate::money(i128::MAX - 1);
@@ -408,14 +418,14 @@ fn late_financial_overflow_leaves_all_opening_cash_and_equity_unchanged() {
         issuer_site_id: crate::site(),
         amount: crate::money(1),
     });
-    let before = babylon_material_circuit::encode_material_circuit_state(&state)
+    let before = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(MaterialCircuitError::Arithmetic)
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&state)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
             .expect("the canonical material state encodes"),
         before
     );

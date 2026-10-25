@@ -407,14 +407,24 @@ pub enum FaultPoint {
 pub struct SqliteCampaignStore;
 
 impl SqliteCampaignStore {
-    /// Create one campaign database at a path that does not already exist.
+    /// Create one campaign database at a path that holds no committed campaign.
+    ///
+    /// The path is refused only when it already holds a committed
+    /// `save_manifest` row. A creation that crashed before `create_inner`
+    /// commits its single transaction (the one that ends with `save_manifest`)
+    /// leaves partial database files and a stale lock record, and no reader could
+    /// open them. That path is reclaimed instead of dead-ended: the campaign lock
+    /// is taken first, so a live writer still refuses with
+    /// [`SaveError::CampaignLocked`] and only a dead owner's record is recovered;
+    /// then the path is re-checked for a committed manifest and, when absent, the
+    /// partial database files are removed before creation starts from empty.
     ///
     /// # Errors
     ///
-    /// Refuses an occupied path, a lock record another live owner holds, a
-    /// payload outside its table allowance, or a `SQLite` failure. A failed
-    /// creation removes the partial database it just made so the path stays
-    /// usable.
+    /// Refuses a path holding a committed campaign, a lock record another live
+    /// owner holds, a payload outside its table allowance, or a `SQLite`
+    /// failure. A failed creation removes the partial database it just made so
+    /// the path stays usable.
     #[allow(
         clippy::needless_pass_by_value,
         reason = "the published boundary admits the captured content and opening by value"
@@ -434,13 +444,24 @@ impl SqliteCampaignStore {
                 reason: "the opening needs at least one state chunk",
             });
         }
-        if path.exists() {
+        if recorded_campaign_id_at(path)?.is_some() {
             return Err(SaveError::CampaignExists {
                 path: path.to_path_buf(),
             });
         }
 
         let lock = CampaignLock::acquire(path, captured.campaign_id)?;
+        // Re-check under the lock: only an owner that held this lock can commit a
+        // manifest, so a campaign that appeared between the check and the lock is
+        // still refused rather than replaced.
+        if recorded_campaign_id_at(path)?.is_some() {
+            return Err(SaveError::CampaignExists {
+                path: path.to_path_buf(),
+            });
+        }
+        // No committed manifest root exists and no live owner holds the path, so
+        // whatever is here is the remains of an interrupted creation.
+        remove_database_files(path);
         match create_inner(path, &captured, &opening) {
             Ok(parts) => Ok(CampaignHandle {
                 connection: parts.connection,
@@ -679,7 +700,7 @@ impl CampaignHandle {
             raw_len: payload_len,
             raw_hash: payload_hash,
             previous_hash,
-        });
+        })?;
         chunks::write_journal_record(
             &transaction,
             &JournalRecordInput {
@@ -818,7 +839,7 @@ impl CampaignHandle {
                 raw_len: accepted.raw_len,
                 raw_hash: accepted.raw_hash,
                 previous_hash: journal_hash,
-            });
+            })?;
             chunks::write_journal_record(
                 &transaction,
                 &JournalRecordInput {
@@ -866,7 +887,7 @@ impl CampaignHandle {
                 raw_len: descriptor.raw_len,
                 raw_hash: descriptor.raw_hash,
                 previous_hash: journal_hash,
-            });
+            })?;
             chunks::write_journal_record(
                 &transaction,
                 &JournalRecordInput {
@@ -912,7 +933,7 @@ impl CampaignHandle {
                 raw_len: descriptor.raw_len,
                 raw_hash: descriptor.raw_hash,
                 previous_hash: knowledge_hash,
-            });
+            })?;
             transaction.execute(
                 "INSERT INTO knowledge_grant (
                     knowledge_seq, player_id, subject_kind, subject_id, grant_key,
@@ -1151,7 +1172,7 @@ impl CampaignHandle {
             })?,
             raw_hash: content_digest::sha256_of(&stored.payload),
             previous_hash: hash_from_row("knowledge_grant", &stored.previous_hash)?,
-        });
+        })?;
         if entry_hash != hash_from_row("knowledge_grant", &stored.entry_hash)? {
             return Err(SaveError::CorruptPayload {
                 table: "knowledge_grant",
@@ -1418,15 +1439,34 @@ fn committed_campaign_id(path: &Path) -> Result<CampaignId, SaveError> {
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )?;
     connection.busy_timeout(schema::BUSY_TIMEOUT)?;
+    recorded_campaign_id(&connection)?.ok_or(SaveError::CorruptManifest {
+        reason: "the campaign manifest is missing",
+    })
+}
+
+/// Read the committed campaign identity of a path, if any, with write access.
+///
+/// Creation uses this probe because a crashed creation may still have a
+/// write-ahead log to recover, which a read-only open cannot do. An absent path,
+/// a path without `save_manifest`, or a `save_manifest` without its single row
+/// all report `None` and are therefore reclaimable.
+fn recorded_campaign_id_at(path: &Path) -> Result<Option<CampaignId>, SaveError> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let connection = Connection::open(path)?;
+    connection.busy_timeout(schema::BUSY_TIMEOUT)?;
+    recorded_campaign_id(&connection)
+}
+
+fn recorded_campaign_id(connection: &Connection) -> Result<Option<CampaignId>, SaveError> {
     let tables: i64 = connection.query_row(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'save_manifest'",
         [],
         |row| row.get(0),
     )?;
     if tables == 0 {
-        return Err(SaveError::CorruptManifest {
-            reason: "the campaign manifest is missing",
-        });
+        return Ok(None);
     }
     let recorded: Option<Vec<u8>> = connection
         .query_row(
@@ -1436,15 +1476,20 @@ fn committed_campaign_id(path: &Path) -> Result<CampaignId, SaveError> {
         )
         .optional()?;
     let Some(bytes) = recorded else {
-        return Err(SaveError::CorruptManifest {
-            reason: "the campaign manifest row is missing",
-        });
+        return Ok(None);
     };
     let identity = hash16(&bytes)?;
-    Ok(CampaignId::from_uuid(Uuid::from_bytes(identity)))
+    Ok(Some(CampaignId::from_uuid(Uuid::from_bytes(identity))))
 }
 
-fn load_current_root(
+/// Load the restart root one snapshot manifest declares and authenticate every
+/// chunk it reaches.
+///
+/// # Errors
+///
+/// Refuses a manifest that disagrees with its links, a missing or foreign chunk,
+/// or a chunk whose decoded bytes do not match its declared length and hash.
+pub(super) fn load_current_root(
     connection: &Connection,
     snapshot: &SnapshotHeader,
 ) -> Result<(CurrentRoot, u64), SaveError> {
@@ -2210,7 +2255,7 @@ fn admitted_content_hash(entries: &[AdmittedContentEntry]) -> Result<[u8; 32], S
     bytes.u32(count(entries.len(), "content entry count")?);
     for entry in entries {
         bytes.i64(entry.kind.code());
-        bytes.blob(&entry.key);
+        bytes.blob(&entry.key)?;
         bytes.u32(entry.ordinal);
         bytes.u32(count(entry.bytes.len(), "content entry length")?);
         bytes.hash(content_digest::sha256_of(&entry.bytes));
@@ -2231,7 +2276,12 @@ pub(super) struct JournalInput<'a> {
     pub(super) previous_hash: [u8; 32],
 }
 
-pub(super) fn journal_entry_hash(input: &JournalInput<'_>) -> [u8; 32] {
+/// Hash one journal record's canonical identity.
+///
+/// # Errors
+///
+/// Refuses a subject identity or record key wider than its `u32` length prefix.
+pub(super) fn journal_entry_hash(input: &JournalInput<'_>) -> Result<[u8; 32], SaveError> {
     let mut bytes = CanonicalBytes::new(JOURNAL_DOMAIN);
     bytes.u64(input.journal_seq);
     bytes.i64(input.kind.code());
@@ -2247,7 +2297,7 @@ pub(super) fn journal_entry_hash(input: &JournalInput<'_>) -> [u8; 32] {
         Some((kind, id)) => {
             bytes.u8(1);
             bytes.i64(kind.code());
-            bytes.blob(id);
+            bytes.blob(id)?;
         }
         None => bytes.u8(0),
     }
@@ -2261,14 +2311,14 @@ pub(super) fn journal_entry_hash(input: &JournalInput<'_>) -> [u8; 32] {
     match input.record_key {
         Some(key) => {
             bytes.u8(1);
-            bytes.blob(key);
+            bytes.blob(key)?;
         }
         None => bytes.u8(0),
     }
     bytes.u32(input.raw_len);
     bytes.hash(input.raw_hash);
     bytes.hash(input.previous_hash);
-    bytes.finish()
+    Ok(bytes.finish())
 }
 
 pub(super) struct KnowledgeInput<'a> {
@@ -2284,19 +2334,24 @@ pub(super) struct KnowledgeInput<'a> {
     pub(super) previous_hash: [u8; 32],
 }
 
-pub(super) fn knowledge_entry_hash(input: &KnowledgeInput<'_>) -> [u8; 32] {
+/// Hash one earned grant's canonical identity.
+///
+/// # Errors
+///
+/// Refuses a subject identity wider than its `u32` length prefix.
+pub(super) fn knowledge_entry_hash(input: &KnowledgeInput<'_>) -> Result<[u8; 32], SaveError> {
     let mut bytes = CanonicalBytes::new(KNOWLEDGE_DOMAIN);
     bytes.u64(input.knowledge_seq);
     bytes.raw(&input.player_id);
     bytes.i64(input.subject_kind.code());
-    bytes.blob(input.subject_id);
+    bytes.blob(input.subject_id)?;
     bytes.i64(input.grant_key);
     bytes.u64(input.acquired_period);
     bytes.u64(input.source_journal_seq);
     bytes.u32(input.raw_len);
     bytes.hash(input.raw_hash);
     bytes.hash(input.previous_hash);
-    bytes.finish()
+    Ok(bytes.finish())
 }
 
 fn encode_manifest(
@@ -2447,10 +2502,13 @@ impl CanonicalBytes {
         self.0.extend_from_slice(&value.to_be_bytes());
     }
 
-    fn blob(&mut self, bytes: &[u8]) {
-        let length = u32::try_from(bytes.len()).expect("admitted field width fits u32");
+    fn blob(&mut self, bytes: &[u8]) -> Result<(), SaveError> {
+        let length = u32::try_from(bytes.len()).map_err(|_| SaveError::Arithmetic {
+            field: "canonical blob length",
+        })?;
         self.u32(length);
         self.0.extend_from_slice(bytes);
+        Ok(())
     }
 
     fn hash(&mut self, hash: [u8; 32]) {

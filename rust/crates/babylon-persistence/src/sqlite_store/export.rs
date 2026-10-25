@@ -2,11 +2,15 @@
 //!
 //! Export uses `SQLite`'s online backup mechanism into a reserved temporary file,
 //! then reopens that file read-only and checks `integrity_check`, the exact
-//! nine-table schema, the committed manifest identity and every stored payload
-//! hash. Only a verified copy is renamed onto the destination; a failed attempt
-//! removes its temporary file and leaves the source untouched.
+//! nine-table schema, the committed manifest identity, the current restart root
+//! (manifest, chunk links and chunk bytes), and every stored payload hash. Only a
+//! verified copy is linked onto a destination name that is still free, after the
+//! file is synced and before the parent directory is synced, so a published
+//! export is crash-durable and an existing destination is never overwritten. A
+//! failed attempt removes its temporary file and leaves the source untouched.
 
 use std::fs;
+use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -117,6 +121,19 @@ pub(super) fn backup_to(source: &Connection, target: &Path) -> Result<(), SaveEr
         let backup = Backup::new(source, &mut destination)?;
         backup.run_to_completion(64, Duration::ZERO, None)?;
     }
+    // The copy inherits the source's write-ahead header, so it would carry
+    // `-wal`/`-shm` sidecars beside it. Switch it back to rollback mode: `SQLite`
+    // then checkpoints and removes both sidecars, leaving one standalone file
+    // that a single link can publish.
+    let mode: String =
+        destination.query_row("PRAGMA journal_mode = DELETE", [], |row| row.get(0))?;
+    if !mode.eq_ignore_ascii_case("delete") {
+        return Err(SaveError::PragmaMismatch {
+            pragma: "journal_mode",
+            expected: "delete",
+            actual: mode,
+        });
+    }
     Ok(())
 }
 
@@ -156,6 +173,16 @@ pub(super) fn verify_export(
     {
         return Err(SaveError::ExportIdentityMismatch);
     }
+    // Re-run the restart-root load the opener performs: the snapshot manifest,
+    // its chunk links and every reached chunk byte must agree, so the verifier
+    // proves the export opens a root rather than merely parses.
+    let (root, _chunk_reads) = owner::load_current_root(&connection, &snapshot)?;
+    if root.period != expected.period
+        || root.world_hash != expected.world_hash
+        || root.state_hash != expected.state_hash
+    {
+        return Err(SaveError::ExportIdentityMismatch);
+    }
     verify_all_payloads(&connection)?;
     let page_count: i64 = connection.query_row("PRAGMA page_count", [], |row| row.get(0))?;
     Ok(ExportEvidence {
@@ -163,14 +190,51 @@ pub(super) fn verify_export(
     })
 }
 
-/// Atomically publish the verified temporary database at its destination.
+/// Publish the verified temporary database at its destination.
+///
+/// The verified file is synced to stable storage first. Publication is a hard
+/// link, which creates the destination name only when it is still free, so a
+/// destination that appears after [`temporary_path`]'s check is refused rather
+/// than overwritten. The parent directory is synced afterwards so the new
+/// entry survives a crash, and the temporary name is unlinked last.
 pub(super) fn publish(temporary: &Path, destination: &Path) -> Result<u64, SaveError> {
-    fs::rename(temporary, destination)?;
+    sync_file(temporary)?;
+    match fs::hard_link(temporary, destination) {
+        Ok(()) => {}
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+            return Err(SaveError::ExportDestinationExists);
+        }
+        Err(error) => return Err(SaveError::Io(error)),
+    }
+    remove_if_present(temporary);
+    sync_directory(destination)?;
     Ok(fs::metadata(destination)?.len())
 }
 
-/// Remove a temporary export file, ignoring an already absent path.
+/// Flush one file's bytes and metadata to stable storage.
+fn sync_file(path: &Path) -> Result<(), SaveError> {
+    File::open(path)?.sync_all()?;
+    Ok(())
+}
+
+/// Flush one published directory entry to stable storage.
+fn sync_directory(path: &Path) -> Result<(), SaveError> {
+    let directory = path.parent().unwrap_or_else(|| Path::new("."));
+    File::open(directory)?.sync_all()?;
+    Ok(())
+}
+
+/// Remove a temporary export database and its `-wal`/`-shm` sidecars.
 pub(super) fn remove_if_present(path: &Path) {
+    remove_one(path);
+    for suffix in ["-wal", "-shm"] {
+        let mut sidecar = path.as_os_str().to_os_string();
+        sidecar.push(suffix);
+        remove_one(&PathBuf::from(sidecar));
+    }
+}
+
+fn remove_one(path: &Path) {
     if let Err(error) = fs::remove_file(path) {
         debug_assert_eq!(error.kind(), ErrorKind::NotFound);
     }
@@ -287,7 +351,7 @@ fn verify_journal(connection: &Connection) -> Result<(), SaveError> {
             })?,
             raw_hash: content_digest::sha256_of(&decoded),
             previous_hash: hash32("permanent_journal", &row.get::<_, Vec<u8>>(12)?)?,
-        });
+        })?;
         if entry_hash != hash32("permanent_journal", &row.get::<_, Vec<u8>>(13)?)? {
             return Err(SaveError::CorruptPayload {
                 table: "permanent_journal",
@@ -340,7 +404,7 @@ fn verify_knowledge(connection: &Connection) -> Result<(), SaveError> {
             })?,
             raw_hash: content_digest::sha256_of(&payload),
             previous_hash: hash32("knowledge_grant", &row.get::<_, Vec<u8>>(8)?)?,
-        });
+        })?;
         if entry_hash != hash32("knowledge_grant", &row.get::<_, Vec<u8>>(9)?)? {
             return Err(SaveError::CorruptPayload {
                 table: "knowledge_grant",

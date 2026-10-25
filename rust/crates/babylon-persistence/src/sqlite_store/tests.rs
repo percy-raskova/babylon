@@ -34,6 +34,7 @@ use super::codec::MAX_PERMANENT_JOURNAL_BYTES;
 use super::codec::MAX_SERVICE_STATE_BYTES;
 use super::codec::MAX_STATE_CHUNK_BYTES;
 use super::codec::MONEY_BYTES;
+use super::export;
 use super::lock;
 use super::lock::CampaignLock;
 use super::lock::LOCK_RECORD_BYTES;
@@ -1433,6 +1434,65 @@ fn raw_connection(database: &Path) -> Connection {
     Connection::open(database).expect("the campaign database opens raw")
 }
 
+/// Return every resolution column of one subject's journal records in order.
+fn subject_resolution_rows(
+    database: &Path,
+    kind: SubjectKind,
+    id: &[u8],
+) -> Vec<(u64, Option<u64>, Option<u64>)> {
+    let connection = raw_connection(database);
+    let mut statement = connection
+        .prepare(
+            "SELECT journal_seq, resolved_period, resolution_seq FROM permanent_journal
+             WHERE subject_kind = ?1 AND subject_id = ?2 ORDER BY journal_seq",
+        )
+        .expect("the subject journal list queries");
+    let rows = statement
+        .query_map(params![kind.code(), id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<i64>>(1)?,
+                row.get::<_, Option<i64>>(2)?,
+            ))
+        })
+        .expect("the subject journal rows read");
+    rows.map(|row| {
+        let (seq, resolved_period, resolution_seq) = row.expect("the subject row is readable");
+        (
+            u64::try_from(seq).expect("a journal sequence is non-negative"),
+            resolved_period.map(|value| u64::try_from(value).expect("a period is non-negative")),
+            resolution_seq.map(|value| u64::try_from(value).expect("a sequence is non-negative")),
+        )
+    })
+    .collect()
+}
+
+/// How far an interrupted `create_inner` got before its crash.
+#[derive(Clone, Copy)]
+enum PartialCreation {
+    /// The crash landed before the schema installed, leaving an empty file.
+    EmptyFile,
+    /// The crash landed after the schema and before the manifest commit.
+    SchemaOnly,
+}
+
+/// Reproduce the files an interrupted `create_inner` leaves behind.
+fn interrupted_creation(database: &Path, partial: PartialCreation) {
+    match partial {
+        PartialCreation::SchemaOnly => {
+            let connection = Connection::open(database).expect("the partial database file opens");
+            schema::configure_connection(&connection).expect("the partial database is configured");
+            schema::install_schema(&connection).expect("the partial schema installs");
+            // A crash before `create_inner`'s manifest commit leaves the schema
+            // and no committed root, which is exactly this state.
+        }
+        PartialCreation::EmptyFile => {
+            fs::write(database, b"").expect("the empty partial database file is writable");
+        }
+    }
+    write_lock_record(database, u32::MAX, campaign_id());
+}
+
 #[test]
 #[allow(
     clippy::too_many_lines,
@@ -2507,5 +2567,209 @@ fn recovery_claim_held_by_a_live_owner_refuses() {
             Err(SaveError::LockRecoveryBusy { .. })
         ),
         "a live recovery claim serializes takeover"
+    );
+}
+
+#[test]
+fn create_reclaims_an_interrupted_creation_instead_of_dead_ending_the_path() {
+    let root = TempRoot::new();
+
+    // A crash after the schema installed but before the manifest committed.
+    let schema_database = root.path("schema-only.sqlite3");
+    interrupted_creation(&schema_database, PartialCreation::SchemaOnly);
+    assert!(
+        matches!(
+            SqliteCampaignStore::open(&schema_database, build_identity()),
+            Err(SaveError::CorruptManifest { .. })
+        ),
+        "an interrupted creation has no committed root to open"
+    );
+    let handle =
+        SqliteCampaignStore::create(&schema_database, admitted_content(), admitted_opening())
+            .expect("a dead owner's interrupted creation is reclaimed by create");
+    let raw = raw_connection(&schema_database);
+    assert_eq!(
+        count(&raw, "save_manifest"),
+        1,
+        "the reclaimed path commits exactly one manifest root"
+    );
+    assert_eq!(
+        count(&raw, "content_entry"),
+        2,
+        "the reclaimed path holds exactly the newly admitted content"
+    );
+    assert_eq!(
+        count(&raw, "permanent_journal"),
+        0,
+        "no journal record survives an interrupted creation"
+    );
+    drop(raw);
+    drop(handle);
+    let reopened = SqliteCampaignStore::open(&schema_database, build_identity())
+        .expect("the reclaimed campaign cold reopens");
+    assert_eq!(reopened.current().period, 0);
+    drop(reopened);
+
+    // A crash before the schema installed leaves an empty file behind.
+    let empty_database = root.path("empty.sqlite3");
+    interrupted_creation(&empty_database, PartialCreation::EmptyFile);
+    let reclaimed =
+        SqliteCampaignStore::create(&empty_database, admitted_content(), admitted_opening())
+            .expect("an empty partial creation is reclaimed by create");
+    drop(reclaimed);
+    assert!(
+        SqliteCampaignStore::open(&empty_database, build_identity()).is_ok(),
+        "the reclaimed campaign opens"
+    );
+}
+
+#[test]
+fn prior_subject_resolution_is_persisted_and_survives_cold_reopen() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("the campaign is created once");
+    let first = handle
+        .commit(prepared(
+            1,
+            world_identity(0),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(1))],
+            vec![journal(
+                JournalKind::PlayerReceipt,
+                Some((SubjectKind::Shipment, b"freight-wayne-1")),
+                b"freight-notice",
+            )],
+            Vec::new(),
+        ))
+        .expect("period one journals the unresolved freight subject");
+    let second = handle
+        .commit(prepared(
+            2,
+            first.world_hash,
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(2))],
+            vec![resolving_journal(
+                JournalKind::PeriodSummary,
+                (SubjectKind::Shipment, b"freight-wayne-1"),
+                b"freight-delivered",
+            )],
+            Vec::new(),
+        ))
+        .expect("the period-two record resolves the prior freight subject");
+    assert_eq!(
+        second.journal_tail_seq,
+        first.journal_tail_seq + 1,
+        "the resolution is the only period-two journal record"
+    );
+    let assert_freight = |rows: &[(u64, Option<u64>, Option<u64>)]| {
+        assert_eq!(rows.len(), 2, "the freight subject owns two records");
+        assert_eq!(rows[0].0, first.journal_tail_seq);
+        assert_eq!(
+            rows[0].1,
+            Some(2),
+            "the earlier freight record resolved in period two"
+        );
+        assert_eq!(
+            rows[0].2,
+            Some(second.journal_tail_seq),
+            "the earlier freight record names the period-two resolution"
+        );
+        assert_eq!(rows[1].0, second.journal_tail_seq);
+        assert_eq!(rows[1].1, None, "the resolving record stays unresolved");
+        assert_eq!(rows[1].2, None);
+    };
+    assert_freight(&subject_resolution_rows(
+        &database,
+        SubjectKind::Shipment,
+        b"freight-wayne-1",
+    ));
+    drop(handle);
+
+    let reopened =
+        SqliteCampaignStore::open(&database, build_identity()).expect("the campaign cold reopens");
+    assert_eq!(reopened.current().period, 2);
+    assert_freight(&subject_resolution_rows(
+        &database,
+        SubjectKind::Shipment,
+        b"freight-wayne-1",
+    ));
+}
+
+#[test]
+fn publication_refuses_a_destination_that_appears_after_the_check() {
+    let root = TempRoot::new();
+    let temporary = root.path("verified.tmp");
+    fs::write(&temporary, b"verified backup").expect("the verified temporary file is writable");
+    let destination = root.path("published.sqlite3");
+    fs::write(&destination, b"someone else's save").expect("the late destination is writable");
+
+    assert!(
+        matches!(
+            export::publish(&temporary, &destination),
+            Err(SaveError::ExportDestinationExists)
+        ),
+        "publication refuses a destination that appeared after the reservation"
+    );
+    assert_eq!(
+        fs::read(&destination).expect("the destination is readable"),
+        b"someone else's save",
+        "a refused publication never overwrites the destination"
+    );
+    assert!(
+        temporary.exists(),
+        "the refused publication keeps its temporary file for the caller"
+    );
+}
+
+#[test]
+fn export_refuses_a_broken_snapshot_chunk_link() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("the campaign is created once");
+    handle
+        .commit(prepared(
+            1,
+            world_identity(0),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(1))],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect("period one commits");
+
+    // Break the committed link behind the already-open handle, so only the export
+    // verifier can catch it.
+    let raw = raw_connection(&database);
+    raw.execute(
+        "DELETE FROM snapshot_chunk WHERE snapshot_id = (
+             SELECT current_snapshot_id FROM save_manifest WHERE id = 1
+         )",
+        [],
+    )
+    .expect("the test breaks the committed chunk link");
+    drop(raw);
+
+    let destination = root.path("refused.sqlite3");
+    match handle.export_save(&destination) {
+        Err(SaveError::CorruptManifest { reason }) => assert_eq!(
+            reason, "the snapshot manifest declares chunks it does not reach",
+            "the verifier re-runs the restart-root load"
+        ),
+        other => panic!("an export with a broken chunk link must refuse: {other:?}"),
+    }
+    assert!(!destination.exists(), "a refused export publishes nothing");
+    let leftovers: Vec<String> = fs::read_dir(&root.0)
+        .expect("the campaign root is readable")
+        .map(|entry| {
+            entry
+                .expect("the directory entry reads")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .filter(|name| name.contains(".export-"))
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "a refused export removes its temporary file: {leftovers:?}"
     );
 }

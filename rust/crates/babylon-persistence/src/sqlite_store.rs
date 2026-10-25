@@ -4,15 +4,18 @@
 //! This module publishes the single-owner campaign database: the exact
 //! nine-table `STRICT` schema, the closed versioned integer registries, the
 //! canonical binary codecs, the bounded chunk table, the task-scoped campaign
-//! file lock, the create/open/accept/commit lifecycle owner and the verified
-//! online backup export.
+//! file lock, the create/open/accept/commit lifecycle owner, the verified
+//! online backup export, the fog-safe scoped player query and the demand-driven
+//! Archive service record.
 
+pub mod archive_service;
 pub mod chunks;
 pub mod codec;
 pub mod export;
 pub mod journal_extract;
 pub mod lock;
 pub mod owner;
+pub mod query;
 pub mod replay;
 pub mod retention;
 pub mod schema;
@@ -20,6 +23,14 @@ pub mod schema;
 #[cfg(test)]
 mod tests;
 
+pub use archive_service::DossierCompletion;
+pub use archive_service::DossierRequest;
+pub use archive_service::PublicationDisposition;
+pub use archive_service::PublishedDossierReceipt;
+pub use archive_service::ServiceDisposition;
+pub use archive_service::ServiceError;
+pub use archive_service::ServiceReceipt;
+pub use archive_service::MAX_PENDING_DOSSIERS;
 pub use chunks::read_state_chunk;
 pub use chunks::write_content_entry;
 pub use chunks::write_journal_record;
@@ -69,11 +80,13 @@ pub use owner::AdmittedContent;
 pub use owner::AdmittedContentEntry;
 pub use owner::AdmittedOpening;
 pub use owner::BuildIdentity;
+pub use owner::CampaignHandle;
 pub use owner::CommandError;
 pub use owner::CommitKind;
 pub use owner::CommittedPeriod;
 pub use owner::CurrentChunk;
 pub use owner::CurrentRoot;
+pub use owner::DurableTails;
 #[cfg(test)]
 pub use owner::FaultPoint;
 pub use owner::PlayerCommand;
@@ -87,6 +100,27 @@ pub use owner::MAX_CONTENT_KEY_BYTES;
 pub use owner::MAX_KNOWLEDGE_PAYLOAD_BYTES;
 pub use owner::MAX_SNAPSHOT_CHUNKS;
 pub use owner::MAX_SUBJECT_ID_BYTES;
+pub use query::AcceptedCommitment;
+pub use query::CountySummary;
+pub use query::CurrentCommitment;
+pub use query::EarnedDossier;
+pub use query::HistoryCursor;
+pub use query::HistoryEntry;
+pub use query::HistoryPage;
+pub use query::JournalEntryRef;
+pub use query::MapSummary;
+pub use query::PlayerBody;
+pub use query::PlayerQuery;
+pub use query::PlayerResult;
+pub use query::PlayerScope;
+pub use query::ReadCost;
+pub use query::ReadError;
+pub use query::SubjectCount;
+pub use query::SubjectFact;
+pub use query::SubjectRelationship;
+pub use query::DEFAULT_HISTORY_LIMIT;
+pub use query::MAX_HISTORY_LIMIT;
+pub use query::MAX_RELATIONSHIP_RECORDS;
 pub use replay::RecentDetailRow;
 pub use replay::ReplayError;
 pub use replay::ReplayedChoiceReceipt;

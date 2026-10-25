@@ -41,6 +41,12 @@ use uuid::Uuid;
 
 use crate::identity::CampaignId;
 use crate::sqlite_runtime_pin;
+use crate::sqlite_store::archive_service;
+use crate::sqlite_store::archive_service::DossierCompletion;
+use crate::sqlite_store::archive_service::DossierRequest;
+use crate::sqlite_store::archive_service::PublishedDossierReceipt;
+use crate::sqlite_store::archive_service::ServiceError;
+use crate::sqlite_store::archive_service::ServiceReceipt;
 use crate::sqlite_store::chunks;
 use crate::sqlite_store::chunks::ChunkSection;
 use crate::sqlite_store::chunks::ContentEntryKind;
@@ -57,6 +63,14 @@ use crate::sqlite_store::export::ExportIdentity;
 use crate::sqlite_store::export::VerifiedExport;
 use crate::sqlite_store::lock::CampaignLock;
 use crate::sqlite_store::lock::SaveError;
+use crate::sqlite_store::query;
+use crate::sqlite_store::query::HistoryCursor;
+use crate::sqlite_store::query::HistoryPage;
+use crate::sqlite_store::query::PlayerQuery;
+use crate::sqlite_store::query::PlayerResult;
+use crate::sqlite_store::query::PlayerScope;
+use crate::sqlite_store::query::ReadBoundary;
+use crate::sqlite_store::query::ReadError;
 use crate::sqlite_store::replay;
 use crate::sqlite_store::replay::RecentDetailRow;
 use crate::sqlite_store::replay::ReplayError;
@@ -339,6 +353,41 @@ pub struct CurrentRoot {
     pub chunks: Vec<CurrentChunk>,
 }
 
+/// Exact durable journal and knowledge tails of one campaign.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DurableTails {
+    journal_seq: u64,
+    journal_hash: [u8; 32],
+    knowledge_seq: u64,
+    knowledge_hash: [u8; 32],
+}
+
+impl DurableTails {
+    /// Return the durable journal tail sequence.
+    #[must_use]
+    pub const fn journal_seq(self) -> u64 {
+        self.journal_seq
+    }
+
+    /// Return the hash of the durable journal tail entry.
+    #[must_use]
+    pub const fn journal_hash(self) -> [u8; 32] {
+        self.journal_hash
+    }
+
+    /// Return the durable knowledge tail sequence.
+    #[must_use]
+    pub const fn knowledge_seq(self) -> u64 {
+        self.knowledge_seq
+    }
+
+    /// Return the hash of the durable knowledge tail entry.
+    #[must_use]
+    pub const fn knowledge_hash(self) -> [u8; 32] {
+        self.knowledge_hash
+    }
+}
+
 /// Why the store refused a command acceptance.
 #[derive(Debug)]
 pub enum CommandError {
@@ -425,6 +474,8 @@ pub enum FaultPoint {
     AfterCommitBeforeAck,
     /// Abort during the online export before publication.
     DuringExport,
+    /// Abort after the durable dossier publication and before its acknowledgement.
+    AfterDossierBeforeAck,
 }
 
 /// Namespace for opening and creating campaigns in the embedded store.
@@ -1392,6 +1443,114 @@ impl CampaignHandle {
         record_key: &[u8],
     ) -> Result<Option<u64>, SaveError> {
         retention::journal_sequence_for_record(&self.connection, kind, record_key)
+    }
+
+    /// Return the durable journal and knowledge tails.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a missing or inconsistent committed manifest.
+    pub fn durable_tails(&self) -> Result<DurableTails, SaveError> {
+        let manifest = read_manifest(&self.connection)?;
+        Ok(DurableTails {
+            journal_seq: manifest.journal_tail_seq,
+            journal_hash: manifest.journal_tail_hash,
+            knowledge_seq: manifest.knowledge_tail_seq,
+            knowledge_hash: manifest.knowledge_tail_hash,
+        })
+    }
+
+    /// Answer one closed query inside one player scope.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a scope beyond the committed present, an unearned subject, a
+    /// malformed identity, a damaged stored payload, or a `SQLite` failure.
+    pub fn query(&self, scope: PlayerScope, query: PlayerQuery) -> Result<PlayerResult, ReadError> {
+        let manifest = read_manifest(&self.connection)?;
+        let boundary = ReadBoundary {
+            committed_period: self.current.period,
+            world_hash: self.current.world_hash,
+            manifest: &manifest,
+        };
+        query::execute(&self.connection, &boundary, scope, query)
+    }
+
+    /// Read one bounded page of the player's visible journal.
+    ///
+    /// Pages default to fifty records, cap at two hundred, and order by
+    /// `(period, journal_seq)`. A cursor continues strictly after the last
+    /// delivered record.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a scope beyond the committed present, a damaged stored payload, or
+    /// a `SQLite` failure.
+    pub fn history(
+        &self,
+        scope: PlayerScope,
+        cursor: Option<HistoryCursor>,
+        limit: u16,
+    ) -> Result<HistoryPage, ReadError> {
+        let manifest = read_manifest(&self.connection)?;
+        let boundary = ReadBoundary {
+            committed_period: self.current.period,
+            world_hash: self.current.world_hash,
+            manifest: &manifest,
+        };
+        query::history(&self.connection, &boundary, scope, cursor, limit)
+    }
+
+    /// Queue one demand-driven Archive dossier request.
+    ///
+    /// # Errors
+    ///
+    /// Refuses the 257th pending request, a stale request identity, a conflicting
+    /// identity, a knowledge prefix that is not on the stored chain, an unearned
+    /// subject, or a `SQLite` failure.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "the published Archive boundary admits one typed request by value"
+    )]
+    pub fn enqueue_archive_dossier(
+        &mut self,
+        request: DossierRequest,
+    ) -> Result<ServiceReceipt, ServiceError> {
+        archive_service::enqueue(&mut self.connection, self.current.period, &request)
+    }
+
+    /// Publish one completed Archive dossier and retire its pending request.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a stale expected service sequence, an unknown or conflicting
+    /// request, a knowledge prefix that is not on the stored chain, an unearned
+    /// subject, or a `SQLite` failure.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "the published Archive boundary admits one typed completion by value"
+    )]
+    pub fn complete_archive_dossier(
+        &mut self,
+        completion: DossierCompletion,
+    ) -> Result<PublishedDossierReceipt, ServiceError> {
+        let receipt =
+            archive_service::complete(&mut self.connection, self.current.period, &completion)?;
+        #[cfg(test)]
+        if self.fault.get() == Some(FaultPoint::AfterDossierBeforeAck) {
+            self.fault.set(None);
+            return Err(ServiceError::Store(SaveError::InjectedFault));
+        }
+        Ok(receipt)
+    }
+
+    /// Read every pending dossier request of this campaign.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a damaged service record or a `SQLite` failure.
+    pub fn pending_archive_dossiers(&self) -> Result<Vec<DossierRequest>, ServiceError> {
+        archive_service::pending(&self.connection)
     }
 
     /// Publish one verified online backup to a new destination.

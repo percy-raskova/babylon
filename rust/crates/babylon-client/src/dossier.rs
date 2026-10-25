@@ -9,6 +9,12 @@ use babylon_persistence::archive_revision::{
     ArchiveReadScope, ArchiveSearchState,
 };
 use babylon_persistence::identity::CampaignId;
+use babylon_persistence::sqlite_store::CampaignHandle;
+use babylon_persistence::sqlite_store::PlayerBody;
+use babylon_persistence::sqlite_store::PlayerQuery;
+use babylon_persistence::sqlite_store::PlayerScope;
+use babylon_persistence::sqlite_store::SubjectKind;
+use babylon_persistence::CampaignQueryReader;
 use babylon_persistence::{ArchiveAtom, ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader};
 
 use bevy::app::AppExit;
@@ -345,6 +351,191 @@ fn write_jsonl(out: &mut impl Write, value: &Value) -> Result<(), String> {
     writeln!(out, "{value}").map_err(|error| error.to_string())
 }
 
+/// Run one scoped headless command against an in-process campaign owner.
+///
+/// This is the local-campaign read surface: it answers the same headless
+/// commands the Archive reader answers, but every answer is a closed
+/// [`PlayerQuery`] inside one [`PlayerScope`] served from bounded rows. It never
+/// opens a second writer, so the process that owns the campaign stays the only
+/// one that can mutate it.
+#[must_use]
+pub fn run_scoped_headless(
+    invocation: &HeadlessInvocation,
+    handle: &CampaignHandle,
+    player_id: [u8; 8],
+) -> u8 {
+    match execute_scoped(invocation, handle, player_id) {
+        Ok(()) => 0,
+        Err(message) => {
+            eprintln!("babylon-client: {message}");
+            2
+        }
+    }
+}
+
+fn execute_scoped(
+    invocation: &HeadlessInvocation,
+    handle: &CampaignHandle,
+    player_id: [u8; 8],
+) -> Result<(), String> {
+    let reader = CampaignQueryReader::new(handle);
+    let scope = reader
+        .current_scope(player_id)
+        .map_err(|error| error.to_string())?;
+    let mut out = std::io::stdout().lock();
+    let row = match &invocation.command {
+        CliCommand::DossierShow { geoid } => scoped_dossier_row(reader, scope, geoid)?,
+        CliCommand::Changelog { geoid } => scoped_changelog_row(reader, scope, geoid)?,
+        CliCommand::EconomyStatus => scoped_map_row(reader, scope)?,
+        CliCommand::TickStatus => scoped_tick_row(reader, scope)?,
+        CliCommand::DossierSearch { .. } => {
+            return Err("search is not served by the local campaign query surface".into());
+        }
+    };
+    write_jsonl(&mut out, &row)?;
+    out.flush().map_err(|error| error.to_string())
+}
+
+/// Render one earned county dossier from the scoped query surface.
+fn scoped_dossier_row(
+    reader: CampaignQueryReader<'_>,
+    scope: PlayerScope,
+    geoid: &str,
+) -> Result<Value, String> {
+    let subject_id = county_subject_id(geoid)?;
+    let result = reader
+        .query(
+            scope,
+            PlayerQuery::EarnedDossier {
+                subject_kind: SubjectKind::County,
+                subject_id,
+                as_of_period: scope.as_of_period(),
+            },
+        )
+        .map_err(|error| error.to_string())?;
+    let PlayerBody::EarnedDossier(dossier) = &result.body else {
+        return Err("the campaign answered a different dossier projection".into());
+    };
+    Ok(json!({
+        "record": "county-dossier",
+        "schema_version": 2,
+        "source": "local-campaign",
+        "geoid": geoid,
+        "state": "ready",
+        "committed_period": result.committed_period,
+        "as_of_period": result.as_of_period,
+        "knowledge_seq": dossier.journal_seq,
+        "published_period": dossier.period,
+        "payload_sha256": hex_of(&dossier.payload),
+        "payload_utf8": std::str::from_utf8(&dossier.payload).ok(),
+        "chunks_visited": result.cost.chunks_visited(),
+        "rows_visited": result.cost.rows_visited(),
+    }))
+}
+
+/// Render the bounded history feed of one earned county.
+fn scoped_changelog_row(
+    reader: CampaignQueryReader<'_>,
+    scope: PlayerScope,
+    geoid: &str,
+) -> Result<Value, String> {
+    let subject_id = county_subject_id(geoid)?;
+    let page = reader
+        .history(scope, None, 0)
+        .map_err(|error| error.to_string())?;
+    let named = reader
+        .query(
+            scope,
+            PlayerQuery::KnownRelationship {
+                subject_kind: SubjectKind::County,
+                subject_id,
+            },
+        )
+        .map_err(|error| error.to_string())?;
+    let PlayerBody::Relationship(relationship) = &named.body else {
+        return Err("the campaign answered a different relationship projection".into());
+    };
+    Ok(json!({
+        "record": "archive-changes-page",
+        "schema_version": 1,
+        "source": "local-campaign",
+        "geoid": geoid,
+        "committed_period": page.committed_period,
+        "as_of_period": page.as_of_period,
+        "relations": relationship.records.iter().map(|record| json!({
+            "journal_seq": record.journal_seq,
+            "kind": format!("{:?}", record.kind),
+            "period": record.period,
+            "resolved_period": record.resolved_period,
+        })).collect::<Vec<_>>(),
+        "truncated": relationship.truncated,
+        "history_entries": page.entries.len(),
+        "has_more": page.next.is_some(),
+        "rows_visited": page.cost.rows_visited(),
+    }))
+}
+
+/// Render the scoped subject census of one campaign.
+fn scoped_map_row(reader: CampaignQueryReader<'_>, scope: PlayerScope) -> Result<Value, String> {
+    let result = reader
+        .query(scope, PlayerQuery::MapSummary)
+        .map_err(|error| error.to_string())?;
+    let PlayerBody::MapSummary(summary) = &result.body else {
+        return Err("the campaign answered a different map projection".into());
+    };
+    Ok(json!({
+        "record": "economy-status",
+        "schema_version": 2,
+        "source": "local-campaign",
+        "committed_period": result.committed_period,
+        "as_of_period": result.as_of_period,
+        "knowledge_seq": result.knowledge_seq,
+        "world_hash": hex_bytes(result.world_hash),
+        "known_subjects": summary.known_subjects.iter().map(|count| json!({
+            "subject_kind": format!("{:?}", count.kind),
+            "count": count.count,
+        })).collect::<Vec<_>>(),
+        "chunks_visited": result.cost.chunks_visited(),
+        "rows_visited": result.cost.rows_visited(),
+    }))
+}
+
+/// Render the committed identity of one campaign.
+fn scoped_tick_row(reader: CampaignQueryReader<'_>, scope: PlayerScope) -> Result<Value, String> {
+    let result = reader
+        .query(scope, PlayerQuery::MapSummary)
+        .map_err(|error| error.to_string())?;
+    let PlayerBody::MapSummary(_) = &result.body else {
+        return Err("the campaign answered a different map projection".into());
+    };
+    Ok(json!({
+        "record": "tick-status",
+        "source": "local-campaign",
+        "durable_tick": result.committed_period,
+        "campaign_id": reader.campaign_id().as_uuid().to_string(),
+        "world_hash": hex_bytes(result.world_hash),
+        "knowledge_seq": result.knowledge_seq,
+    }))
+}
+
+/// Return one five-digit county GEOID as its canonical subject bytes.
+fn county_subject_id(geoid: &str) -> Result<Vec<u8>, String> {
+    let bytes = geoid.as_bytes();
+    if bytes.len() != 5 || !bytes.iter().all(u8::is_ascii_digit) {
+        return Err(format!("`{geoid}` is not a five-digit county GEOID"));
+    }
+    Ok(bytes.to_vec())
+}
+
+fn hex_of(bytes: &[u8]) -> String {
+    let mut rendered = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(rendered, "{byte:02x}");
+    }
+    rendered
+}
+
 fn tick_status_row(
     reader: &SemanticArchiveReader,
     campaign_id: CampaignId,
@@ -520,5 +711,222 @@ mod tests {
         assert!(json["after"].is_null());
         assert_eq!(json["before"]["valid_tick"], 2);
         assert_eq!(json["publication_tick"], 3);
+    }
+}
+
+#[cfg(test)]
+mod scoped_campaign {
+    use super::*;
+    use babylon_kernel::content_digest;
+    use babylon_persistence::sqlite_store::AdmittedContent;
+    use babylon_persistence::sqlite_store::AdmittedContentEntry;
+    use babylon_persistence::sqlite_store::AdmittedOpening;
+    use babylon_persistence::sqlite_store::BuildIdentity;
+    use babylon_persistence::sqlite_store::ChunkSection;
+    use babylon_persistence::sqlite_store::ContentEntryKind;
+    use babylon_persistence::sqlite_store::DossierCompletion;
+    use babylon_persistence::sqlite_store::DossierRequest;
+    use babylon_persistence::sqlite_store::JournalKind;
+    use babylon_persistence::sqlite_store::PreparedJournalRecord;
+    use babylon_persistence::sqlite_store::PreparedKnowledgeGrant;
+    use babylon_persistence::sqlite_store::PreparedPeriod;
+    use babylon_persistence::sqlite_store::PreparedSubject;
+    use babylon_persistence::sqlite_store::SqliteCampaignStore;
+    use babylon_persistence::sqlite_store::StateChunk;
+    use std::fs;
+    use std::path::Path;
+    use std::path::PathBuf;
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
+    use uuid::Uuid;
+
+    const PLAYER: [u8; 8] = 42_u64.to_be_bytes();
+
+    struct TempRoot(PathBuf);
+
+    impl TempRoot {
+        fn new() -> Self {
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("the test clock is after the epoch")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "babylon-client-scoped-{}-{nanos}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).expect("the temporary campaign root is creatable");
+            Self(path)
+        }
+
+        fn path(&self, name: &str) -> PathBuf {
+            self.0.join(name)
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let result = fs::remove_dir_all(&self.0);
+            assert!(
+                result.is_ok(),
+                "the temporary campaign root must be removable"
+            );
+        }
+    }
+
+    fn county() -> PreparedSubject {
+        PreparedSubject {
+            kind: SubjectKind::County,
+            id: b"26163".to_vec(),
+        }
+    }
+
+    fn scoped_campaign(database: &Path) -> CampaignHandle {
+        let mut handle = SqliteCampaignStore::create(
+            database,
+            AdmittedContent {
+                campaign_id: CampaignId::from_uuid(Uuid::from_u128(0x5150)),
+                build: BuildIdentity::from_hash([7; 32]),
+                entries: vec![AdmittedContentEntry {
+                    kind: ContentEntryKind::CapturedSource,
+                    key: b"rules.bsl".to_vec(),
+                    ordinal: 0,
+                    bytes: b"captured source rules".to_vec(),
+                }],
+            },
+            AdmittedOpening {
+                world_hash: [0; 32],
+                state_hash: content_digest::sha256_of(b"register"),
+                chunks: vec![StateChunk {
+                    section: ChunkSection::WorldRegisters,
+                    ordinal: 0,
+                    bytes: b"register".to_vec(),
+                }],
+            },
+        )
+        .expect("the scoped campaign is created once");
+        let period = handle.current().period + 1;
+        handle
+            .commit(PreparedPeriod {
+                period,
+                expected_world_hash: handle.current().world_hash,
+                world_hash: content_digest::sha256_of(b"world-1"),
+                state_hash: content_digest::sha256_of(b"register"),
+                chunks: vec![StateChunk {
+                    section: ChunkSection::WorldRegisters,
+                    ordinal: 0,
+                    bytes: b"register".to_vec(),
+                }],
+                journal: vec![PreparedJournalRecord {
+                    kind: JournalKind::PlayerReceipt,
+                    subject: Some(county()),
+                    record_key: None,
+                    payload: b"county-receipt-1".to_vec(),
+                    resolves_prior_subject: false,
+                }],
+                knowledge: vec![PreparedKnowledgeGrant {
+                    player_id: PLAYER,
+                    subject: county(),
+                    grant_key: 1,
+                    payload: b"wayne-wage-fact".to_vec(),
+                }],
+                detail: Vec::new(),
+            })
+            .expect("the scoped period commits");
+        handle
+    }
+
+    fn publish_dossier(handle: &mut CampaignHandle) {
+        let tails = handle.durable_tails().expect("the durable tails read");
+        let receipt = handle
+            .enqueue_archive_dossier(
+                DossierRequest::new(1, PLAYER, county(), 1, tails.knowledge_hash())
+                    .expect("the request is inside its published bounds"),
+            )
+            .expect("the earned dossier is queued");
+        handle
+            .complete_archive_dossier(
+                DossierCompletion::new(
+                    1,
+                    PLAYER,
+                    county(),
+                    1,
+                    tails.knowledge_hash(),
+                    receipt.service_seq,
+                    b"county-dossier-v1".to_vec(),
+                )
+                .expect("the completion is inside its published bounds"),
+            )
+            .expect("the earned dossier publishes");
+    }
+
+    #[test]
+    fn scoped_headless_rows_render_only_earned_facts_from_bounded_rows() {
+        let root = TempRoot::new();
+        let database = root.path("campaign.sqlite3");
+        let mut handle = scoped_campaign(&database);
+        publish_dossier(&mut handle);
+
+        let reader = CampaignQueryReader::new(&handle);
+        let scope = reader
+            .current_scope(PLAYER)
+            .expect("the current scope binds to the durable tails");
+
+        let dossier =
+            scoped_dossier_row(reader, scope, "26163").expect("the county dossier renders");
+        assert_eq!(dossier["record"], "county-dossier");
+        assert_eq!(dossier["state"], "ready");
+        assert_eq!(dossier["payload_utf8"], "county-dossier-v1");
+        assert_eq!(dossier["chunks_visited"], 0);
+        assert_eq!(dossier["committed_period"], 1);
+
+        let map = scoped_map_row(reader, scope).expect("the scoped census renders");
+        assert_eq!(map["chunks_visited"], 0);
+        assert_eq!(map["known_subjects"][0]["subject_kind"], "County");
+        assert_eq!(map["known_subjects"][0]["count"], 1);
+
+        let changelog =
+            scoped_changelog_row(reader, scope, "26163").expect("the earned county feed renders");
+        assert_eq!(changelog["geoid"], "26163");
+        assert!(
+            changelog["relations"]
+                .as_array()
+                .is_some_and(|relations| !relations.is_empty()),
+            "the granted subject names at least one journal record"
+        );
+
+        let tick = scoped_tick_row(reader, scope).expect("the committed identity renders");
+        assert_eq!(tick["durable_tick"], 1);
+        assert_eq!(
+            tick["campaign_id"],
+            CampaignId::from_uuid(Uuid::from_u128(0x5150))
+                .as_uuid()
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn scoped_headless_rows_hide_a_dossier_before_its_journal_prefix() {
+        let root = TempRoot::new();
+        let database = root.path("campaign.sqlite3");
+        let mut handle = scoped_campaign(&database);
+        let tails_before = handle.durable_tails().expect("the durable tails read");
+        publish_dossier(&mut handle);
+
+        let reader = CampaignQueryReader::new(&handle);
+        let earlier = PlayerScope::new(
+            PLAYER,
+            1,
+            tails_before.knowledge_seq(),
+            tails_before.journal_seq(),
+        );
+        let refused = scoped_dossier_row(reader, earlier, "26163");
+        assert!(
+            refused.is_err(),
+            "a dossier published after the scope's journal prefix stays hidden"
+        );
+
+        let unknown = scoped_dossier_row(reader, earlier, "99999");
+        assert!(unknown.is_err(), "an unearned county has no row");
+        assert!(scoped_dossier_row(reader, earlier, "2616").is_err());
     }
 }

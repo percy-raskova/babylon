@@ -19,6 +19,11 @@ use uuid::Uuid;
 
 use crate::identity::CampaignId;
 
+use super::archive_service::DossierCompletion;
+use super::archive_service::DossierRequest;
+use super::archive_service::PublicationDisposition;
+use super::archive_service::ServiceDisposition;
+use super::archive_service::ServiceError;
 use super::chunks;
 use super::chunks::ChunkSection;
 use super::chunks::ContentEntryKind;
@@ -59,6 +64,11 @@ use super::owner::PreparedPeriod;
 use super::owner::PreparedSubject;
 use super::owner::SqliteCampaignStore;
 use super::owner::StateChunk;
+use super::query;
+use super::query::PlayerBody;
+use super::query::PlayerQuery;
+use super::query::PlayerScope;
+use super::query::ReadError;
 use super::replay::RecentDetailRow;
 use super::replay::ReplayError;
 use super::schema;
@@ -3448,4 +3458,1026 @@ fn recover_to_new_save_refuses_a_damaged_current_root() {
         !destination.exists(),
         "a refused recovery publishes no destination"
     );
+}
+
+//
+// Task 9 (`P5`): scoped `PlayerQuery`, `HistoryCursor` pagination and the
+// demand-driven `service_state` Archive. Every read below proves that a fact the
+// scope has not earned stays invisible, that a scoped selection visits a bounded
+// row set and no state chunk, and that dossier completion is idempotent by its
+// canonical record key across a lost acknowledgement.
+//
+
+/// Player identity used by the scoped-read contracts.
+const SCOPED_PLAYER: u64 = 42;
+
+fn scoped_player() -> [u8; 8] {
+    SCOPED_PLAYER.to_be_bytes()
+}
+
+fn scoped_campaign(database: &Path) -> CampaignHandle {
+    SqliteCampaignStore::create(database, admitted_content(), admitted_opening())
+        .expect("the scoped campaign is created once")
+}
+
+fn commit_with(
+    handle: &mut CampaignHandle,
+    journal: Vec<PreparedJournalRecord>,
+    knowledge: Vec<PreparedKnowledgeGrant>,
+) -> CommittedPeriod {
+    let period = handle.current().period + 1;
+    let candidate = long_candidate(period, handle.current().world_hash, journal, knowledge);
+    handle.commit(candidate).expect("the scoped period commits")
+}
+
+/// Bind one read to the exact durable tails the campaign has now.
+fn current_scope(handle: &CampaignHandle, player: [u8; 8]) -> PlayerScope {
+    let tails = handle.durable_tails().expect("the durable tails read");
+    PlayerScope::new(
+        player,
+        handle.current().period,
+        tails.knowledge_seq(),
+        tails.journal_seq(),
+    )
+}
+
+/// Bind one read to the tails one completed period recorded.
+fn frozen_scope(player: [u8; 8], period: &CommittedPeriod, as_of_period: u64) -> PlayerScope {
+    PlayerScope::new(
+        player,
+        as_of_period,
+        period.knowledge_tail_seq,
+        period.journal_tail_seq,
+    )
+}
+
+/// The canonical dossier record key the published contract names.
+fn canonical_dossier_key(
+    request_id: u64,
+    source_period: u64,
+    knowledge_prefix_hash: [u8; 32],
+    subject_kind: SubjectKind,
+    subject_id: &[u8],
+) -> Vec<u8> {
+    let mut key = Vec::new();
+    key.extend_from_slice(&request_id.to_be_bytes());
+    key.extend_from_slice(&source_period.to_be_bytes());
+    key.extend_from_slice(&knowledge_prefix_hash);
+    key.extend_from_slice(
+        &u32::try_from(subject_kind.code())
+            .expect("a closed subject kind fits its `u32` projection")
+            .to_be_bytes(),
+    );
+    key.extend_from_slice(
+        &u32::try_from(subject_id.len())
+            .expect("a bounded subject identity fits its `u32` prefix")
+            .to_be_bytes(),
+    );
+    key.extend_from_slice(subject_id);
+    key
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one contract scenario asserts every published boundary in order"
+)]
+fn player_query_county_and_workplace_reads_are_bounded() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = scoped_campaign(&database);
+    commit_with(
+        &mut handle,
+        vec![journal(
+            JournalKind::PlayerReceipt,
+            Some((SubjectKind::County, b"26163")),
+            b"county-receipt-1",
+        )],
+        vec![
+            knowledge(
+                SCOPED_PLAYER,
+                SubjectKind::County,
+                b"26163",
+                1,
+                b"wayne-wage-fact",
+            ),
+            knowledge(
+                SCOPED_PLAYER,
+                SubjectKind::Workplace,
+                b"wayne-assembly",
+                1,
+                b"workplace-staffing-fact",
+            ),
+            knowledge(
+                SCOPED_PLAYER + 1,
+                SubjectKind::County,
+                b"26163",
+                1,
+                b"another-player-fact",
+            ),
+        ],
+    );
+
+    let scope = current_scope(&handle, scoped_player());
+    let county = handle
+        .query(
+            scope,
+            PlayerQuery::CountySummary {
+                county_fips: *b"26163",
+            },
+        )
+        .expect("the earned county is disclosed");
+    assert_eq!(county.committed_period, 1);
+    assert_eq!(county.as_of_period, 1);
+    assert_eq!(
+        county.cost.chunks_visited(),
+        0,
+        "a scoped county read must never decode a state chunk"
+    );
+    assert!(
+        county.cost.rows_visited() <= 4,
+        "a scoped county read visits a bounded row set, saw {}",
+        county.cost.rows_visited()
+    );
+    match county.body {
+        PlayerBody::CountySummary(summary) => {
+            assert_eq!(summary.county_fips, *b"26163");
+            assert_eq!(summary.fact.payload, b"wayne-wage-fact".to_vec());
+            assert_eq!(summary.fact.knowledge_seq, 1);
+        }
+        other => panic!("a county query answers a county summary: {other:?}"),
+    }
+
+    let workplace = handle
+        .query(
+            scope,
+            PlayerQuery::KnownSubject {
+                subject_kind: SubjectKind::Workplace,
+                subject_id: b"wayne-assembly".to_vec(),
+            },
+        )
+        .expect("the earned workplace is disclosed");
+    assert_eq!(
+        workplace.cost.chunks_visited(),
+        0,
+        "a scoped workplace read must never decode a state chunk"
+    );
+    assert!(
+        workplace.cost.rows_visited() <= 4,
+        "a scoped workplace read visits a bounded row set, saw {}",
+        workplace.cost.rows_visited()
+    );
+
+    match handle.query(
+        scope,
+        PlayerQuery::KnownSubject {
+            subject_kind: SubjectKind::Place,
+            subject_id: b"detroit".to_vec(),
+        },
+    ) {
+        Err(ReadError::UndisclosedSubject) => {}
+        other => panic!("an unearned subject must stay hidden: {other:?}"),
+    }
+
+    let tails = handle.durable_tails().expect("the durable tails read");
+    let future = PlayerScope::new(
+        scoped_player(),
+        2,
+        tails.knowledge_seq(),
+        tails.journal_seq(),
+    );
+    match handle.query(future, PlayerQuery::MapSummary) {
+        Err(ReadError::FuturePeriod {
+            current: 1,
+            requested: 2,
+        }) => {}
+        other => panic!("a read beyond the committed present must refuse: {other:?}"),
+    }
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one contract scenario asserts every published boundary in order"
+)]
+fn player_query_hides_backdated_grants_from_earlier_views() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = scoped_campaign(&database);
+    let period_one = commit_with(
+        &mut handle,
+        vec![journal(
+            JournalKind::PlayerReceipt,
+            Some((SubjectKind::Observation, b"observation-1")),
+            b"observed-in-period-1",
+        )],
+        Vec::new(),
+    );
+    let period_two = commit_with(&mut handle, Vec::new(), Vec::new());
+    let period_three = commit_with(
+        &mut handle,
+        vec![journal(
+            JournalKind::PlayerReceipt,
+            Some((SubjectKind::County, b"26163")),
+            b"county-receipt-3",
+        )],
+        vec![knowledge(
+            SCOPED_PLAYER,
+            SubjectKind::County,
+            b"26163",
+            1,
+            b"observed-in-1-acquired-in-3",
+        )],
+    );
+
+    let player = scoped_player();
+    let at_period_one = frozen_scope(player, &period_one, 1);
+    match handle.query(
+        at_period_one,
+        PlayerQuery::CountySummary {
+            county_fips: *b"26163",
+        },
+    ) {
+        Err(ReadError::UndisclosedSubject) => {}
+        other => panic!("a grant acquired in period 3 stays hidden in a period-1 view: {other:?}"),
+    }
+    let summary = handle
+        .query(at_period_one, PlayerQuery::MapSummary)
+        .expect("the period-1 map summary is readable");
+    match summary.body {
+        PlayerBody::MapSummary(map) => assert!(
+            map.known_subjects.is_empty(),
+            "no subject is known at period 1: {:?}",
+            map.known_subjects
+        ),
+        other => panic!("a map query answers a map summary: {other:?}"),
+    }
+
+    let at_period_two = frozen_scope(player, &period_two, 2);
+    match handle.query(
+        at_period_two,
+        PlayerQuery::CountySummary {
+            county_fips: *b"26163",
+        },
+    ) {
+        Err(ReadError::UndisclosedSubject) => {}
+        other => panic!("a period-2 view cannot see a period-3 acquisition: {other:?}"),
+    }
+
+    let wide_prefix_narrow_journal = PlayerScope::new(
+        player,
+        1,
+        period_three.knowledge_tail_seq,
+        period_one.journal_tail_seq,
+    );
+    match handle.query(
+        wide_prefix_narrow_journal,
+        PlayerQuery::CountySummary {
+            county_fips: *b"26163",
+        },
+    ) {
+        Err(ReadError::UndisclosedSubject) => {}
+        other => panic!("the `source_journal_seq` bound alone must hide the grant: {other:?}"),
+    }
+
+    let narrow_prefix = PlayerScope::new(
+        player,
+        3,
+        period_three.knowledge_tail_seq.saturating_sub(1),
+        period_three.journal_tail_seq,
+    );
+    match handle.query(
+        narrow_prefix,
+        PlayerQuery::CountySummary {
+            county_fips: *b"26163",
+        },
+    ) {
+        Err(ReadError::UndisclosedSubject) => {}
+        other => panic!("a knowledge prefix before the grant must hide it: {other:?}"),
+    }
+
+    let current = current_scope(&handle, player);
+    handle
+        .accept_command(
+            PlayerCommand {
+                period: 4,
+                actor_id: player,
+                payload: b"next-period-organizer-command".to_vec(),
+            },
+            [5_u8; 16],
+        )
+        .expect("the next-period command is accepted");
+    let at_period_three = frozen_scope(player, &period_three, 3);
+    let hidden_commitment = handle
+        .query(at_period_three, PlayerQuery::CurrentCommitment)
+        .expect("the period-3 commitment view reads");
+    match hidden_commitment.body {
+        PlayerBody::Commitment(commitment) => assert!(
+            commitment.accepted.is_none(),
+            "a command accepted after the period-3 journal prefix stays hidden"
+        ),
+        other => panic!("a commitment query answers a commitment: {other:?}"),
+    }
+    let visible_commitment = handle
+        .query(
+            current_scope(&handle, player),
+            PlayerQuery::CurrentCommitment,
+        )
+        .expect("the current commitment view reads");
+    match visible_commitment.body {
+        PlayerBody::Commitment(commitment) => {
+            let accepted = commitment
+                .accepted
+                .expect("the current view discloses the standing command");
+            assert_eq!(accepted.period, 4);
+            assert_eq!(accepted.payload, b"next-period-organizer-command".to_vec());
+        }
+        other => panic!("a commitment query answers a commitment: {other:?}"),
+    }
+
+    let county = handle
+        .query(
+            current,
+            PlayerQuery::CountySummary {
+                county_fips: *b"26163",
+            },
+        )
+        .expect("the current view discloses the earned county");
+    match county.body {
+        PlayerBody::CountySummary(summary) => {
+            assert_eq!(
+                summary.fact.acquired_period, 3,
+                "disclosure uses the acquisition period, never the observation period"
+            );
+            assert_eq!(
+                summary.fact.payload,
+                b"observed-in-1-acquired-in-3".to_vec()
+            );
+        }
+        other => panic!("a county query answers a county summary: {other:?}"),
+    }
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one contract scenario asserts every published boundary in order"
+)]
+fn player_query_history_pages_default_fifty_and_cap_two_hundred() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = scoped_campaign(&database);
+    commit_with(
+        &mut handle,
+        vec![journal(
+            JournalKind::PlayerReceipt,
+            Some((SubjectKind::County, b"26163")),
+            b"county-receipt-1",
+        )],
+        vec![knowledge(
+            SCOPED_PLAYER,
+            SubjectKind::County,
+            b"26163",
+            1,
+            b"wayne-wage-fact",
+        )],
+    );
+    let mut records = Vec::new();
+    for ordinal in 0_u16..220 {
+        records.push(journal(
+            JournalKind::PlayerReceipt,
+            Some((SubjectKind::County, b"26163")),
+            format!("visible-receipt-{ordinal}").as_bytes(),
+        ));
+    }
+    for ordinal in 0_u16..5 {
+        records.push(journal(
+            JournalKind::PlayerReceipt,
+            Some((SubjectKind::County, b"99999")),
+            format!("ungranted-receipt-{ordinal}").as_bytes(),
+        ));
+    }
+    records.push(journal(
+        JournalKind::GovernedChoice,
+        None,
+        b"no-subject-no-actor",
+    ));
+    let _period_two = commit_with(&mut handle, records, Vec::new());
+
+    let scope = current_scope(&handle, scoped_player());
+    assert_eq!(query::DEFAULT_HISTORY_LIMIT, 50);
+    assert_eq!(query::MAX_HISTORY_LIMIT, 200);
+
+    let first = handle
+        .history(scope, None, 0)
+        .expect("the default history page reads");
+    assert_eq!(
+        first.entries.len(),
+        50,
+        "a zero limit selects the default fifty records"
+    );
+    assert!(first.next.is_some(), "a full page publishes its cursor");
+    assert!(
+        first
+            .entries
+            .iter()
+            .all(|entry| { entry.period == 2 || entry.period == 1 }),
+        "records outside the scope period are not selected"
+    );
+    assert!(
+        first
+            .entries
+            .windows(2)
+            .all(|pair| (pair[0].period, pair[0].journal_seq)
+                < (pair[1].period, pair[1].journal_seq)),
+        "a page is ordered by `(period, journal_seq)`"
+    );
+
+    let capped = handle
+        .history(scope, None, 5_000)
+        .expect("an oversized limit is capped");
+    assert_eq!(
+        capped.entries.len(),
+        200,
+        "a page never exceeds the two-hundred-record cap"
+    );
+    assert!(capped.next.is_some());
+
+    let mut seen = Vec::new();
+    let mut cursor = None;
+    loop {
+        let page = handle
+            .history(scope, cursor, 200)
+            .expect("every history page reads");
+        for entry in page.entries {
+            seen.push((entry.period, entry.journal_seq));
+        }
+        match page.next {
+            Some(next) => cursor = Some(next),
+            None => break,
+        }
+    }
+    assert_eq!(
+        seen.len(),
+        221,
+        "one period-1 receipt and 220 earned period-2 receipts are visible"
+    );
+    assert!(
+        seen.windows(2).all(|pair| pair[0] < pair[1]),
+        "pagination never repeats or reorders a record"
+    );
+    assert!(
+        !seen.iter().any(|(_, journal_seq)| *journal_seq == 0),
+        "every visible record carries a positive journal sequence"
+    );
+}
+
+#[test]
+fn archive_service_refuses_the_257th_pending_request() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = scoped_campaign(&database);
+    commit_with(
+        &mut handle,
+        vec![journal(
+            JournalKind::PlayerReceipt,
+            Some((SubjectKind::County, b"26163")),
+            b"county-receipt-1",
+        )],
+        vec![knowledge(
+            SCOPED_PLAYER,
+            SubjectKind::County,
+            b"26163",
+            1,
+            b"wayne-wage-fact",
+        )],
+    );
+    let tails = handle.durable_tails().expect("the durable tails read");
+    let subject_id = vec![b'2'; 1024];
+    match handle.enqueue_archive_dossier(
+        DossierRequest::new(
+            1,
+            scoped_player(),
+            PreparedSubject {
+                kind: SubjectKind::Observation,
+                id: subject_id.clone(),
+            },
+            1,
+            tails.knowledge_hash(),
+        )
+        .expect("the wide request is inside its published bounds"),
+    ) {
+        Err(ServiceError::UndisclosedSubject) => {}
+        other => panic!("a bounded identity cannot bypass the fog rule: {other:?}"),
+    }
+    for request_id in 1_u64..=256 {
+        let request = DossierRequest::new(
+            request_id,
+            scoped_player(),
+            PreparedSubject {
+                kind: SubjectKind::County,
+                id: b"26163".to_vec(),
+            },
+            1,
+            tails.knowledge_hash(),
+        )
+        .expect("the request is inside its published bounds");
+        let receipt = handle
+            .enqueue_archive_dossier(request)
+            .expect("every request inside the queue bound is accepted");
+        assert_eq!(receipt.disposition, ServiceDisposition::Queued);
+        assert_eq!(receipt.request_id, request_id);
+        assert_eq!(receipt.service_seq, request_id);
+    }
+
+    let overflow = DossierRequest::new(
+        257,
+        scoped_player(),
+        PreparedSubject {
+            kind: SubjectKind::County,
+            id: b"26163".to_vec(),
+        },
+        1,
+        tails.knowledge_hash(),
+    )
+    .expect("the refused request is still well formed");
+    match handle.enqueue_archive_dossier(overflow) {
+        Err(ServiceError::QueueFull { limit: 256 }) => {}
+        other => panic!("the 257th pending request must refuse: {other:?}"),
+    }
+
+    let duplicate = DossierRequest::new(
+        1,
+        scoped_player(),
+        PreparedSubject {
+            kind: SubjectKind::County,
+            id: b"26163".to_vec(),
+        },
+        1,
+        tails.knowledge_hash(),
+    )
+    .expect("the duplicate request is well formed");
+    let again = handle
+        .enqueue_archive_dossier(duplicate)
+        .expect("an identical pending request is idempotent even at the queue bound");
+    assert_eq!(again.disposition, ServiceDisposition::AlreadyPending);
+
+    let connection = read_connection(&database);
+    let raw_len: i64 = connection
+        .query_row(
+            "SELECT raw_len FROM service_state WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .expect("the service record is durable");
+    assert!(
+        usize::try_from(raw_len).expect("the recorded length is nonnegative")
+            <= MAX_SERVICE_STATE_BYTES,
+        "the service record stays inside its one-MiB allowance"
+    );
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one contract scenario asserts every published boundary in order"
+)]
+fn archive_service_dossier_completion_is_idempotent_across_a_lost_acknowledgement() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = scoped_campaign(&database);
+    let period_one = commit_with(
+        &mut handle,
+        vec![journal(
+            JournalKind::PlayerReceipt,
+            Some((SubjectKind::County, b"26163")),
+            b"county-receipt-1",
+        )],
+        vec![knowledge(
+            SCOPED_PLAYER,
+            SubjectKind::County,
+            b"26163",
+            1,
+            b"wayne-wage-fact",
+        )],
+    );
+    let tails = handle.durable_tails().expect("the durable tails read");
+    let prefix = tails.knowledge_hash();
+    let subject_id = b"26163".to_vec();
+    let receipt = handle
+        .enqueue_archive_dossier(
+            DossierRequest::new(
+                7,
+                scoped_player(),
+                PreparedSubject {
+                    kind: SubjectKind::County,
+                    id: subject_id.clone(),
+                },
+                1,
+                prefix,
+            )
+            .expect("the dossier request is inside its published bounds"),
+        )
+        .expect("the earned dossier is queued");
+
+    let completion = DossierCompletion::new(
+        receipt.request_id,
+        scoped_player(),
+        PreparedSubject {
+            kind: SubjectKind::County,
+            id: subject_id.clone(),
+        },
+        1,
+        prefix,
+        receipt.service_seq,
+        b"county-dossier-v1".to_vec(),
+    )
+    .expect("the completion is inside its published bounds");
+
+    handle.inject_fault(FaultPoint::AfterDossierBeforeAck);
+    match handle.complete_archive_dossier(completion.clone()) {
+        Err(ServiceError::Store(_)) => {}
+        other => panic!("the injected fault must abort the acknowledgement: {other:?}"),
+    }
+
+    let published = handle
+        .complete_archive_dossier(completion.clone())
+        .expect("the retried completion is idempotent");
+    assert_eq!(
+        published.disposition,
+        PublicationDisposition::AlreadyPublished
+    );
+    assert_eq!(
+        published.period, 2,
+        "the dossier is published at the next period boundary"
+    );
+    assert_eq!(
+        published.record_key,
+        canonical_dossier_key(7, 1, prefix, SubjectKind::County, &subject_id),
+        "the record key is the exact canonical concatenation"
+    );
+
+    let again = handle
+        .complete_archive_dossier(completion)
+        .expect("a matching retry republishes nothing");
+    assert_eq!(again.disposition, PublicationDisposition::AlreadyPublished);
+    assert_eq!(
+        again.journal_seq, published.journal_seq,
+        "a retry reuses the durable dossier record"
+    );
+
+    let connection = read_connection(&database);
+    let dossiers: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM permanent_journal WHERE kind = ?1 AND record_key = ?2",
+            params![JournalKind::Dossier.code(), &published.record_key],
+            |row| row.get(0),
+        )
+        .expect("the dossier row is countable");
+    assert_eq!(dossiers, 1, "one completion publishes exactly one record");
+
+    let scope = current_scope(&handle, scoped_player());
+    let earned = handle
+        .query(
+            scope,
+            PlayerQuery::EarnedDossier {
+                subject_kind: SubjectKind::County,
+                subject_id: subject_id.clone(),
+                as_of_period: 1,
+            },
+        )
+        .expect("the published dossier is readable at its publication period");
+    match earned.body {
+        PlayerBody::EarnedDossier(dossier) => {
+            assert_eq!(dossier.payload, b"county-dossier-v1".to_vec());
+            assert_eq!(dossier.journal_seq, published.journal_seq);
+        }
+        other => panic!("a dossier query answers an earned dossier: {other:?}"),
+    }
+
+    let earlier = frozen_scope(scoped_player(), &period_one, 1);
+    match handle.query(
+        earlier,
+        PlayerQuery::EarnedDossier {
+            subject_kind: SubjectKind::County,
+            subject_id: subject_id.clone(),
+            as_of_period: 1,
+        },
+    ) {
+        Err(ReadError::UndisclosedSubject) => {}
+        other => {
+            panic!("a dossier published at period 2 stays hidden in a period-1 view: {other:?}")
+        }
+    }
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one contract scenario asserts every published boundary in order"
+)]
+fn archive_service_refuses_unearned_or_stale_completions() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = scoped_campaign(&database);
+    commit_with(
+        &mut handle,
+        vec![journal(
+            JournalKind::PlayerReceipt,
+            Some((SubjectKind::County, b"26163")),
+            b"county-receipt-1",
+        )],
+        vec![knowledge(
+            SCOPED_PLAYER,
+            SubjectKind::County,
+            b"26163",
+            1,
+            b"wayne-wage-fact",
+        )],
+    );
+    let tails = handle.durable_tails().expect("the durable tails read");
+    let prefix = tails.knowledge_hash();
+
+    match handle.enqueue_archive_dossier(
+        DossierRequest::new(
+            1,
+            scoped_player(),
+            PreparedSubject {
+                kind: SubjectKind::County,
+                id: b"99999".to_vec(),
+            },
+            1,
+            prefix,
+        )
+        .expect("the unearned request is well formed"),
+    ) {
+        Err(ServiceError::UndisclosedSubject) => {}
+        other => panic!("an unearned dossier cannot be queued: {other:?}"),
+    }
+
+    match handle.enqueue_archive_dossier(
+        DossierRequest::new(
+            0,
+            scoped_player(),
+            PreparedSubject {
+                kind: SubjectKind::County,
+                id: b"26163".to_vec(),
+            },
+            1,
+            prefix,
+        )
+        .expect("the zero request is well formed"),
+    ) {
+        Err(ServiceError::InvalidField {
+            field: "request_id",
+            ..
+        }) => {}
+        other => panic!("a zero request id must refuse: {other:?}"),
+    }
+
+    let first = handle
+        .enqueue_archive_dossier(
+            DossierRequest::new(
+                1,
+                scoped_player(),
+                PreparedSubject {
+                    kind: SubjectKind::County,
+                    id: b"26163".to_vec(),
+                },
+                1,
+                prefix,
+            )
+            .expect("the request is well formed"),
+        )
+        .expect("the earned dossier is queued");
+    match handle.complete_archive_dossier(
+        DossierCompletion::new(
+            1,
+            scoped_player(),
+            PreparedSubject {
+                kind: SubjectKind::County,
+                id: b"26163".to_vec(),
+            },
+            1,
+            prefix,
+            first.service_seq.saturating_sub(1),
+            b"county-dossier-v1".to_vec(),
+        )
+        .expect("the stale completion is well formed"),
+    ) {
+        Err(ServiceError::ServiceSequence {
+            expected: 0,
+            actual: 1,
+        }) => {}
+        other => panic!("a stale expected service sequence must refuse: {other:?}"),
+    }
+
+    match handle.complete_archive_dossier(
+        DossierCompletion::new(
+            1,
+            scoped_player(),
+            PreparedSubject {
+                kind: SubjectKind::County,
+                id: b"26163".to_vec(),
+            },
+            1,
+            [9_u8; 32],
+            first.service_seq,
+            b"county-dossier-v1".to_vec(),
+        )
+        .expect("the fabricated prefix is well formed"),
+    ) {
+        Err(ServiceError::UnknownKnowledgePrefix) => {}
+        other => panic!("a knowledge prefix that is not on the chain must refuse: {other:?}"),
+    }
+
+    match handle.complete_archive_dossier(
+        DossierCompletion::new(
+            99,
+            scoped_player(),
+            PreparedSubject {
+                kind: SubjectKind::County,
+                id: b"26163".to_vec(),
+            },
+            1,
+            prefix,
+            first.service_seq,
+            b"unknown-request".to_vec(),
+        )
+        .expect("the unknown request is well formed"),
+    ) {
+        Err(ServiceError::UnknownRequest { request_id: 99 }) => {}
+        other => panic!("a completion for an unqueued request must refuse: {other:?}"),
+    }
+
+    let published = handle
+        .complete_archive_dossier(
+            DossierCompletion::new(
+                1,
+                scoped_player(),
+                PreparedSubject {
+                    kind: SubjectKind::County,
+                    id: b"26163".to_vec(),
+                },
+                1,
+                prefix,
+                first.service_seq,
+                b"county-dossier-v1".to_vec(),
+            )
+            .expect("the earned completion is well formed"),
+        )
+        .expect("the earned dossier publishes");
+    assert_eq!(published.disposition, PublicationDisposition::Published);
+    assert_eq!(published.service_seq, first.service_seq + 1);
+
+    match handle.enqueue_archive_dossier(
+        DossierRequest::new(
+            1,
+            scoped_player(),
+            PreparedSubject {
+                kind: SubjectKind::Observation,
+                id: b"observation-1".to_vec(),
+            },
+            1,
+            prefix,
+        )
+        .expect("the recycled request is well formed"),
+    ) {
+        Err(ServiceError::StaleRequestId { next_request_id: 1 }) => {}
+        other => panic!("a request id that does not advance must refuse: {other:?}"),
+    }
+
+    match handle.enqueue_archive_dossier(
+        DossierRequest::new(
+            2,
+            scoped_player(),
+            PreparedSubject {
+                kind: SubjectKind::County,
+                id: b"26163".to_vec(),
+            },
+            0,
+            prefix,
+        )
+        .expect("the backdated request is well formed"),
+    ) {
+        Err(ServiceError::UndisclosedSubject) => {}
+        other => panic!("a request cannot cite a period before its grant: {other:?}"),
+    }
+
+    let next = handle
+        .enqueue_archive_dossier(
+            DossierRequest::new(
+                2,
+                scoped_player(),
+                PreparedSubject {
+                    kind: SubjectKind::County,
+                    id: b"26163".to_vec(),
+                },
+                1,
+                prefix,
+            )
+            .expect("the second request is well formed"),
+        )
+        .expect("the second earned dossier is queued");
+    assert_eq!(next.request_id, 2);
+    assert_eq!(next.service_seq, published.service_seq + 1);
+
+    match handle.complete_archive_dossier(
+        DossierCompletion::new(
+            2,
+            scoped_player(),
+            PreparedSubject {
+                kind: SubjectKind::County,
+                id: b"26163".to_vec(),
+            },
+            0,
+            prefix,
+            next.service_seq,
+            b"backdated-dossier".to_vec(),
+        )
+        .expect("the backdated completion is well formed"),
+    ) {
+        Err(ServiceError::ConflictingRequest { request_id: 2 }) => {}
+        other => panic!("a completion cannot rewrite the pending source identity: {other:?}"),
+    }
+}
+
+#[test]
+fn archive_service_dossier_keeps_replay_and_export_intact() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = scoped_campaign(&database);
+    commit_with(
+        &mut handle,
+        vec![journal(
+            JournalKind::PlayerReceipt,
+            Some((SubjectKind::County, b"26163")),
+            b"county-receipt-1",
+        )],
+        vec![knowledge(
+            SCOPED_PLAYER,
+            SubjectKind::County,
+            b"26163",
+            1,
+            b"wayne-wage-fact",
+        )],
+    );
+    let period_two = commit_with(&mut handle, Vec::new(), Vec::new());
+    let period_three = commit_with(&mut handle, Vec::new(), Vec::new());
+
+    let tails = handle.durable_tails().expect("the durable tails read");
+    let receipt = handle
+        .enqueue_archive_dossier(
+            DossierRequest::new(
+                1,
+                scoped_player(),
+                PreparedSubject {
+                    kind: SubjectKind::County,
+                    id: b"26163".to_vec(),
+                },
+                1,
+                tails.knowledge_hash(),
+            )
+            .expect("the dossier request is well formed"),
+        )
+        .expect("the earned dossier is queued");
+    let published = handle
+        .complete_archive_dossier(
+            DossierCompletion::new(
+                receipt.request_id,
+                scoped_player(),
+                PreparedSubject {
+                    kind: SubjectKind::County,
+                    id: b"26163".to_vec(),
+                },
+                1,
+                tails.knowledge_hash(),
+                receipt.service_seq,
+                b"county-dossier-v1".to_vec(),
+            )
+            .expect("the dossier completion is well formed"),
+        )
+        .expect("the earned dossier publishes");
+    assert_eq!(
+        published.period, 4,
+        "a dossier recorded between summaries belongs to the next period boundary"
+    );
+
+    let cancel = AtomicBool::new(false);
+    let replay = handle
+        .replay_to_period(3, &cancel)
+        .expect("the retained period replays after a dossier publication");
+    assert_eq!(replay.world_hash, period_three.world_hash);
+    assert_eq!(period_two.period, 2);
+
+    let period_four = commit_with(&mut handle, Vec::new(), Vec::new());
+    let replay_four = handle
+        .replay_to_period(4, &cancel)
+        .expect("the next period replays across the dossier record");
+    assert_eq!(replay_four.world_hash, period_four.world_hash);
+
+    let export = handle
+        .export_save(&root.path("exported.sqlite3"))
+        .expect("the export verifies the published dossier and service record");
+    assert!(export.integrity_verified);
 }

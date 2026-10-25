@@ -5,6 +5,7 @@
 //! canonical frames and must return identical identities after a cold reopen.
 
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -78,6 +79,35 @@ fn period_frames(period: u64, label: &[u8]) -> (Vec<u8>, Vec<u8>) {
         frame(b"babylon.test.material-state.v1\0", period, label),
         frame(b"babylon.test.tick-receipts.v1\0", period, label),
     )
+}
+
+fn persisted_period_rows(database: &Path) -> (i64, i64, i64, i64) {
+    let connection = Connection::open(database).expect("the witness database opens raw");
+    let snapshot: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM snapshot WHERE period = 1",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("the test counts the aborted snapshot");
+    let journal: i64 = connection
+        .query_row("SELECT COUNT(*) FROM permanent_journal", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .expect("the test counts the journal records");
+    let knowledge: i64 = connection
+        .query_row("SELECT COUNT(*) FROM knowledge_grant", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .expect("the test counts the earned grants");
+    let manifest_period: i64 = connection
+        .query_row(
+            "SELECT current_period FROM save_manifest WHERE id = 1",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("the test reads the manifest period");
+    (snapshot, journal, knowledge, manifest_period)
 }
 
 fn assert_existing(receipt: &WitnessCommitReceipt, period: u64) {
@@ -583,6 +613,103 @@ fn sqlite_witness_crash_points_preserve_atomic_state_and_single_execution() {
         .export_online_backup(&destination)
         .expect("the source remains exportable after an interrupted export");
     assert!(published.integrity_verified, "the retried export verifies");
+}
+
+#[test]
+fn sqlite_witness_during_commit_fault_rolls_back_atomically() {
+    let root = TempRoot::new();
+    let database = root.database("campaign.sqlite");
+    let (foundation, initial_register) = opening();
+    let (register_one, receipts_one) = period_frames(1, b"period-one-state");
+    let source = [WitnessJournalEntry {
+        kind: WitnessJournalKind::ChoiceReceipt,
+        subject_kind: Some(b"choice-encounter"),
+        subject_id: Some(b"encounter-1"),
+        payload: b"choice-receipt-payload",
+    }];
+    let earned = [WitnessKnowledgeGrant {
+        player_id: 42,
+        subject_kind: b"county",
+        subject_id: b"michigan-wayne",
+        observed_period: 1,
+        payload: b"earned-county-fact".as_slice(),
+    }];
+    let period_one = commit_fixture(1, &register_one, &receipts_one, &source, &earned);
+
+    let mut store = SqliteWitnessStore::open_at(&database).expect("the witness opens");
+    store
+        .capture_opening(&foundation, &initial_register)
+        .expect("the opening is captured once");
+    let accepted = store
+        .accept_command(1, NONCE_ONE, b"command-inside-the-period-transaction")
+        .expect("the accepted command is durable before the period");
+    store.inject_fault(FaultPoint::DuringCommit);
+    let interrupted = store
+        .commit_period(&period_one)
+        .expect_err("the injected fault aborts inside the write transaction");
+    assert!(
+        matches!(interrupted, WitnessError::InjectedFault),
+        "the mid-transaction seam reports its injected fault"
+    );
+    assert!(
+        matches!(
+            store.read_scoped_subject(42, b"county", 1),
+            Err(WitnessError::FuturePeriod {
+                current: 0,
+                requested: 1
+            })
+        ),
+        "the aborted transaction leaves the committed present at the opening period"
+    );
+    drop(store);
+
+    let (snapshots, journal_rows, grants, manifest_period) = persisted_period_rows(&database);
+    assert_eq!(
+        snapshots, 0,
+        "the aborted transaction publishes no partial snapshot"
+    );
+    assert_eq!(
+        journal_rows, 1,
+        "only the accepted command record survives the rollback"
+    );
+    assert_eq!(
+        grants, 0,
+        "the aborted transaction publishes no partial knowledge grant"
+    );
+    assert_eq!(
+        manifest_period, 0,
+        "the aborted transaction leaves the manifest at the opening period"
+    );
+
+    let mut retried = SqliteWitnessStore::open_at(&database).expect("the witness cold reopens");
+    let committed = retried
+        .commit_period(&period_one)
+        .expect("the retry commits the whole period after a clean rollback");
+    assert_eq!(
+        committed.kind,
+        WitnessCommitKind::Inserted,
+        "the rolled-back period is inserted by the retry"
+    );
+    assert_eq!(
+        committed.journal_tail_seq,
+        accepted.acceptance_seq + 2,
+        "the retry appends exactly one command consumption and one journal record"
+    );
+    let replayed = retried
+        .commit_period(&period_one)
+        .expect("the committed period replays idempotently");
+    assert_existing(&replayed, 1);
+    assert_eq!(
+        replayed.journal_tail_hash, committed.journal_tail_hash,
+        "the retry leaves no second command consumption behind"
+    );
+    assert_eq!(
+        retried
+            .read_scoped_subject(42, b"county", 1)
+            .expect("the retried period discloses its earned fact"),
+        b"earned-county-fact".as_slice(),
+        "the retry stores the knowledge payload the rollback discarded"
+    );
 }
 
 #[test]

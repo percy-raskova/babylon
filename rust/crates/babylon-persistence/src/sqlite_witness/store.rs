@@ -535,6 +535,7 @@ impl From<std::io::Error> for WitnessError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum FaultPoint {
     BeforeCommit,
+    DuringCommit,
     AfterAcceptBeforeAck,
     AfterCommitBeforeAck,
     DuringExport,
@@ -1153,6 +1154,10 @@ impl SqliteWitnessStore {
                 &knowledge_hash[..]
             ],
         )?;
+        if self.fault.get() == Some(FaultPoint::DuringCommit) {
+            self.fault.set(None);
+            return Err(WitnessError::InjectedFault);
+        }
         transaction.execute(
             "UPDATE save_manifest SET
                 current_period = ?1, current_world_hash = ?2,

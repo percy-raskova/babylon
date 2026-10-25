@@ -70,6 +70,7 @@ mod semantic_vectors;
 mod spatial_reference_installer;
 pub mod spatial_reference_products;
 pub mod sqlite_runtime_pin;
+pub mod sqlite_witness;
 mod state_storage;
 mod storage_compression;
 mod stored_tick;

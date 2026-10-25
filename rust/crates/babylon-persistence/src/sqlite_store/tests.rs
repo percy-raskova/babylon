@@ -5,6 +5,7 @@
 //! the canonical numeric encodings, and the single-writer campaign lock.
 
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -36,6 +37,22 @@ use super::codec::MONEY_BYTES;
 use super::lock;
 use super::lock::CampaignLock;
 use super::lock::LOCK_RECORD_BYTES;
+use super::owner::AcceptanceKind;
+use super::owner::AdmittedContent;
+use super::owner::AdmittedContentEntry;
+use super::owner::AdmittedOpening;
+use super::owner::BuildIdentity;
+use super::owner::CommandError;
+use super::owner::CommitKind;
+use super::owner::CurrentRoot;
+use super::owner::FaultPoint;
+use super::owner::PlayerCommand;
+use super::owner::PreparedJournalRecord;
+use super::owner::PreparedKnowledgeGrant;
+use super::owner::PreparedPeriod;
+use super::owner::PreparedSubject;
+use super::owner::SqliteCampaignStore;
+use super::owner::StateChunk;
 use super::schema;
 use super::schema::SnapshotRole;
 use super::schema::BUSY_TIMEOUT;
@@ -804,7 +821,8 @@ fn payload_codecs_round_trip_every_budget_and_refuse_tampering() {
         PayloadBudget::PermanentJournal,
         PayloadBudget::ServiceState,
     ] {
-        let encoded = codec::encode_payload(budget, &raw).expect("the payload fits its budget");
+        let encoded =
+            codec::encode_chunk_payload(budget, &raw).expect("the payload fits its budget");
         assert_eq!(encoded.codec, budget.codec());
         assert_eq!(
             encoded.raw_len,
@@ -819,7 +837,7 @@ fn payload_codecs_round_trip_every_budget_and_refuse_tampering() {
             payload: &encoded.payload,
         };
         assert_eq!(
-            codec::decode_payload(budget, &stored).expect("the stored payload decodes"),
+            codec::decode_chunk_payload(budget, &stored).expect("the stored payload decodes"),
             raw
         );
 
@@ -829,7 +847,7 @@ fn payload_codecs_round_trip_every_budget_and_refuse_tampering() {
         };
         assert!(
             matches!(
-                codec::decode_payload(
+                codec::decode_chunk_payload(
                     budget,
                     &StoredPayload {
                         codec: other,
@@ -843,7 +861,7 @@ fn payload_codecs_round_trip_every_budget_and_refuse_tampering() {
 
         assert!(
             matches!(
-                codec::decode_payload(
+                codec::decode_chunk_payload(
                     budget,
                     &StoredPayload {
                         raw_len: stored.raw_len + 1,
@@ -857,7 +875,7 @@ fn payload_codecs_round_trip_every_budget_and_refuse_tampering() {
 
         assert!(
             matches!(
-                codec::decode_payload(
+                codec::decode_chunk_payload(
                     budget,
                     &StoredPayload {
                         raw_hash: [0; 32],
@@ -895,7 +913,7 @@ fn payload_budget_preflight_refuses_oversized_decoded_bytes() {
         let raw = vec![0_u8; limit + 1];
         assert!(
             matches!(
-                codec::encode_payload(budget, &raw),
+                codec::encode_chunk_payload(budget, &raw),
                 Err(SaveError::PayloadTooLarge { limit: refused, .. }) if refused == limit
             ),
             "{} refuses decoded bytes above {limit}",
@@ -1230,5 +1248,1264 @@ fn installed_schema_refuses_reinstallation_and_a_dropped_index() {
             })
         ),
         "open verification refuses a missing required index"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Task 6 (`P3b`): campaign lifecycle, lock recovery and `SqliteCampaignStore`.
+// ---------------------------------------------------------------------------
+
+const NONCE_ONE: [u8; 16] = [0x11; 16];
+const NONCE_TWO: [u8; 16] = [0x22; 16];
+const CAMPAIGN_UUID: u128 = 0x354;
+const BUILD_HASH: [u8; 32] = [0x5b; 32];
+
+fn campaign_id() -> CampaignId {
+    CampaignId::from_uuid(Uuid::from_u128(CAMPAIGN_UUID))
+}
+
+fn other_campaign_id() -> CampaignId {
+    CampaignId::from_uuid(Uuid::from_u128(0x999))
+}
+
+fn build_identity() -> BuildIdentity {
+    BuildIdentity::from_hash(BUILD_HASH)
+}
+
+fn frame(domain: &[u8], period: u64, body: &[u8]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(domain.len() + 8 + body.len());
+    bytes.extend_from_slice(domain);
+    bytes.extend_from_slice(&period.to_be_bytes());
+    bytes.extend_from_slice(body);
+    bytes
+}
+
+fn world_identity(period: u64) -> [u8; 32] {
+    content_digest::sha256_of(format!("world-identity-{period}").as_bytes())
+}
+
+fn register(period: u64) -> Vec<u8> {
+    frame(
+        b"babylon.test.material-state.v1\0",
+        period,
+        format!("register-{period}").as_bytes(),
+    )
+}
+
+fn graph(period: u64) -> Vec<u8> {
+    frame(
+        b"babylon.test.graph.v1\0",
+        period,
+        format!("graph-{period}").as_bytes(),
+    )
+}
+
+fn chunk(section: ChunkSection, ordinal: u32, bytes: Vec<u8>) -> StateChunk {
+    StateChunk {
+        section,
+        ordinal,
+        bytes,
+    }
+}
+
+fn admitted_content() -> AdmittedContent {
+    AdmittedContent {
+        campaign_id: campaign_id(),
+        build: build_identity(),
+        entries: vec![
+            AdmittedContentEntry {
+                kind: ContentEntryKind::CapturedSource,
+                key: b"rules.bsl".to_vec(),
+                ordinal: 0,
+                bytes: b"captured source rules".to_vec(),
+            },
+            AdmittedContentEntry {
+                kind: ContentEntryKind::CompiledDefinitions,
+                key: b"defines".to_vec(),
+                ordinal: 0,
+                bytes: b"compiled definitions".to_vec(),
+            },
+        ],
+    }
+}
+
+fn admitted_opening() -> AdmittedOpening {
+    let register_zero = register(0);
+    AdmittedOpening {
+        world_hash: world_identity(0),
+        state_hash: content_digest::sha256_of(&register_zero),
+        chunks: vec![
+            chunk(ChunkSection::WorldRegisters, 0, register_zero),
+            chunk(ChunkSection::StableGraph, 0, graph(0)),
+        ],
+    }
+}
+
+fn journal(
+    kind: JournalKind,
+    subject: Option<(SubjectKind, &[u8])>,
+    payload: &[u8],
+) -> PreparedJournalRecord {
+    PreparedJournalRecord {
+        kind,
+        subject: subject.map(|(kind, id)| PreparedSubject {
+            kind,
+            id: id.to_vec(),
+        }),
+        record_key: None,
+        payload: payload.to_vec(),
+        resolves_prior_subject: false,
+    }
+}
+
+fn resolving_journal(
+    kind: JournalKind,
+    subject: (SubjectKind, &[u8]),
+    payload: &[u8],
+) -> PreparedJournalRecord {
+    PreparedJournalRecord {
+        kind,
+        subject: Some(PreparedSubject {
+            kind: subject.0,
+            id: subject.1.to_vec(),
+        }),
+        record_key: None,
+        payload: payload.to_vec(),
+        resolves_prior_subject: true,
+    }
+}
+
+fn knowledge(
+    player: u64,
+    kind: SubjectKind,
+    id: &[u8],
+    grant_key: i64,
+    payload: &[u8],
+) -> PreparedKnowledgeGrant {
+    PreparedKnowledgeGrant {
+        player_id: player.to_be_bytes(),
+        subject: PreparedSubject {
+            kind,
+            id: id.to_vec(),
+        },
+        grant_key,
+        payload: payload.to_vec(),
+    }
+}
+
+fn prepared(
+    period: u64,
+    expected_world: [u8; 32],
+    chunks: Vec<StateChunk>,
+    journal: Vec<PreparedJournalRecord>,
+    knowledge: Vec<PreparedKnowledgeGrant>,
+) -> PreparedPeriod {
+    let state_hash = chunks
+        .first()
+        .map_or([0_u8; 32], |chunk| content_digest::sha256_of(&chunk.bytes));
+    PreparedPeriod {
+        period,
+        expected_world_hash: expected_world,
+        world_hash: world_identity(period),
+        state_hash,
+        chunks,
+        journal,
+        knowledge,
+    }
+}
+
+fn state_chunk_ids(root: &CurrentRoot, section: ChunkSection) -> Vec<i64> {
+    root.chunks
+        .iter()
+        .filter(|chunk| chunk.section == section)
+        .map(|chunk| chunk.chunk_id)
+        .collect()
+}
+
+fn write_lock_record(database: &Path, pid: u32, campaign: CampaignId) {
+    let mut record = [0_u8; LOCK_RECORD_BYTES];
+    record[..4].copy_from_slice(&pid.to_be_bytes());
+    record[4..].copy_from_slice(campaign.canonical_bytes());
+    fs::write(lock::lock_path(database), record).expect("the lock record is writable");
+}
+
+fn raw_connection(database: &Path) -> Connection {
+    Connection::open(database).expect("the campaign database opens raw")
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "one conformance scenario asserts the whole two-period trajectory"
+)]
+fn two_period_identities_survive_cold_reopen_and_export() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let opening = admitted_opening();
+    let opening_world = opening.world_hash;
+    let mut handle = SqliteCampaignStore::create(&database, admitted_content(), opening)
+        .expect("the campaign is created once");
+    assert_eq!(
+        handle.current().period,
+        0,
+        "a new campaign opens at period 0"
+    );
+    assert_eq!(handle.campaign_id(), &campaign_id());
+
+    let accepted = handle
+        .accept_command(
+            PlayerCommand {
+                period: 1,
+                actor_id: [42; 8],
+                payload: b"organizer-command-before-period-1".to_vec(),
+            },
+            NONCE_ONE,
+        )
+        .expect("the organizer command is durable before the advance");
+    assert_eq!(accepted.kind, AcceptanceKind::Inserted);
+
+    let graph_one = graph(1);
+    let first_candidate = prepared(
+        1,
+        opening_world,
+        vec![
+            chunk(ChunkSection::WorldRegisters, 0, register(1)),
+            chunk(ChunkSection::StableGraph, 0, graph_one.clone()),
+        ],
+        vec![
+            journal(
+                JournalKind::PlayerReceipt,
+                Some((SubjectKind::County, b"26163")),
+                b"county-wage-receipt",
+            ),
+            journal(
+                JournalKind::GovernedChoice,
+                Some((SubjectKind::Observation, b"choice-1")),
+                b"choice-receipt-payload",
+            ),
+        ],
+        vec![knowledge(
+            42,
+            SubjectKind::County,
+            b"michigan-wayne",
+            1,
+            b"earned-county-fact",
+        )],
+    );
+    let first = handle
+        .commit(first_candidate.clone())
+        .expect("period one commits with the accepted command");
+    assert_eq!(first.kind, CommitKind::Inserted);
+    assert_eq!(
+        first.world_hash, first_candidate.world_hash,
+        "the store preserves the caller's canonical world identity"
+    );
+    assert_eq!(
+        first.state_hash, first_candidate.state_hash,
+        "the store preserves the caller's canonical state identity"
+    );
+    let period_one_graph = state_chunk_ids(handle.current(), ChunkSection::StableGraph);
+
+    let conflicting = prepared(
+        1,
+        opening_world,
+        vec![
+            chunk(ChunkSection::WorldRegisters, 0, register(1)),
+            chunk(ChunkSection::StableGraph, 0, graph_one.clone()),
+        ],
+        vec![journal(
+            JournalKind::GovernedChoice,
+            Some((SubjectKind::Observation, b"choice-1")),
+            b"different-choice-payload",
+        )],
+        vec![knowledge(
+            42,
+            SubjectKind::County,
+            b"michigan-wayne",
+            1,
+            b"earned-county-fact",
+        )],
+    );
+    assert!(
+        matches!(
+            handle.commit(conflicting),
+            Err(SaveError::ConflictingPeriodCommit { period: 1 })
+        ),
+        "period one already holds one immutable canonical commitment"
+    );
+    assert_eq!(
+        handle
+            .read_granted_subject(
+                42_u64.to_be_bytes(),
+                SubjectKind::County,
+                b"michigan-wayne",
+                1
+            )
+            .expect("period one knowledge is disclosed at period one"),
+        b"earned-county-fact",
+        "the earned fact is readable at its acquisition period"
+    );
+
+    let second_candidate = prepared(
+        2,
+        first.world_hash,
+        vec![
+            chunk(ChunkSection::WorldRegisters, 0, register(2)),
+            chunk(ChunkSection::StableGraph, 0, graph_one),
+        ],
+        vec![journal(
+            JournalKind::PeriodSummary,
+            None,
+            b"period-two-summary",
+        )],
+        Vec::new(),
+    );
+    let second = handle
+        .commit(second_candidate.clone())
+        .expect("period two commits");
+    assert_eq!(second.kind, CommitKind::Inserted);
+    assert_eq!(
+        second.chunks_reused, 1,
+        "the unchanged StableGraph chunk shares its integer identity"
+    );
+    assert_eq!(
+        second.chunks_inserted, 1,
+        "the changed WorldRegisters chunk is inserted"
+    );
+    assert!(
+        second.journal_tail_seq > first.journal_tail_seq,
+        "period two extends the permanent journal"
+    );
+    assert_eq!(
+        state_chunk_ids(handle.current(), ChunkSection::StableGraph),
+        period_one_graph,
+        "unchanged (section, ordinal) chunks share the preceding chunk_id"
+    );
+    let replayed_second = handle
+        .commit(second_candidate)
+        .expect("an identical period two replay is idempotent");
+    assert_eq!(replayed_second.kind, CommitKind::Existing);
+    assert_eq!(
+        replayed_second.journal_tail_hash, second.journal_tail_hash,
+        "replay must not append a second period commit"
+    );
+    drop(handle);
+
+    let mut reopened =
+        SqliteCampaignStore::open(&database, build_identity()).expect("the campaign cold reopens");
+    assert_eq!(reopened.current().period, 2);
+    assert_eq!(reopened.current().world_hash, second.world_hash);
+    assert_eq!(reopened.current().state_hash, second.state_hash);
+    assert_eq!(reopened.current().journal_tail_seq, second.journal_tail_seq);
+    assert_eq!(
+        reopened.current().journal_tail_hash,
+        second.journal_tail_hash
+    );
+    assert_eq!(
+        reopened.opened_chunk_reads(),
+        u64::try_from(reopened.current().chunks.len()).expect("the chunk count fits"),
+        "opening reads exactly the chunks the current snapshot reaches"
+    );
+    let cold_one = reopened
+        .commit(prepared(
+            1,
+            opening_world,
+            vec![
+                chunk(ChunkSection::WorldRegisters, 0, register(1)),
+                chunk(ChunkSection::StableGraph, 0, graph(1)),
+            ],
+            vec![
+                journal(
+                    JournalKind::PlayerReceipt,
+                    Some((SubjectKind::County, b"26163")),
+                    b"county-wage-receipt",
+                ),
+                journal(
+                    JournalKind::GovernedChoice,
+                    Some((SubjectKind::Observation, b"choice-1")),
+                    b"choice-receipt-payload",
+                ),
+            ],
+            vec![knowledge(
+                42,
+                SubjectKind::County,
+                b"michigan-wayne",
+                1,
+                b"earned-county-fact",
+            )],
+        ))
+        .expect("the period one identity survives a cold reopen");
+    assert_eq!(cold_one.kind, CommitKind::Existing);
+    assert_eq!(cold_one.world_hash, first.world_hash);
+    assert_eq!(cold_one.journal_tail_hash, first.journal_tail_hash);
+
+    let exported = root.path("exported.sqlite3");
+    let report = reopened
+        .export_save(&exported)
+        .expect("the committed boundary exports online");
+    assert!(report.integrity_verified);
+    assert!(report.destination_bytes > 0);
+    assert!(report.page_count > 0);
+    assert_eq!(report.current_period, 2);
+    assert_eq!(report.journal_tail_hash, second.journal_tail_hash);
+
+    let exported_handle = SqliteCampaignStore::open(&exported, build_identity())
+        .expect("the published export opens independently");
+    assert_eq!(exported_handle.current().period, 2);
+    assert_eq!(
+        exported_handle.current().journal_tail_hash,
+        second.journal_tail_hash,
+        "the export preserves the journal tail identity"
+    );
+    assert_eq!(
+        exported_handle
+            .read_granted_subject(
+                42_u64.to_be_bytes(),
+                SubjectKind::County,
+                b"michigan-wayne",
+                2
+            )
+            .expect("the export preserves earned authority"),
+        b"earned-county-fact"
+    );
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one conformance scenario asserts every acceptance refusal"
+)]
+fn command_nonce_idempotency_and_single_commitment_refusal() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("the campaign is created once");
+
+    let first = handle
+        .accept_command(
+            PlayerCommand {
+                period: 1,
+                actor_id: [7; 8],
+                payload: b"equal-command-bytes".to_vec(),
+            },
+            NONCE_ONE,
+        )
+        .expect("the first commitment is accepted");
+    assert_eq!(first.kind, AcceptanceKind::Inserted);
+    let replay = handle
+        .accept_command(
+            PlayerCommand {
+                period: 1,
+                actor_id: [7; 8],
+                payload: b"equal-command-bytes".to_vec(),
+            },
+            NONCE_ONE,
+        )
+        .expect("the equal retry returns the original acceptance");
+    assert_eq!(replay.kind, AcceptanceKind::Existing);
+    assert_eq!(replay.acceptance_seq, first.acceptance_seq);
+    assert_eq!(replay.payload_hash, first.payload_hash);
+
+    assert!(
+        matches!(
+            handle.accept_command(
+                PlayerCommand {
+                    period: 1,
+                    actor_id: [7; 8],
+                    payload: b"different-command-bytes".to_vec(),
+                },
+                NONCE_ONE,
+            ),
+            Err(CommandError::ConflictingNonce)
+        ),
+        "one nonce cannot authenticate different bytes"
+    );
+    assert!(
+        matches!(
+            handle.accept_command(
+                PlayerCommand {
+                    period: 1,
+                    actor_id: [7; 8],
+                    payload: b"equal-command-bytes".to_vec(),
+                },
+                NONCE_TWO,
+            ),
+            Err(CommandError::PeriodCommitmentAlreadyAccepted { period: 1 })
+        ),
+        "a second distinct commitment for the period refuses even with another nonce"
+    );
+
+    let opening_world = handle.current().world_hash;
+    handle
+        .commit(prepared(
+            1,
+            opening_world,
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(1))],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect("period one commits with the accepted command");
+    let retried = handle
+        .accept_command(
+            PlayerCommand {
+                period: 1,
+                actor_id: [7; 8],
+                payload: b"equal-command-bytes".to_vec(),
+            },
+            NONCE_ONE,
+        )
+        .expect("the original acknowledgement replays after the advance");
+    assert_eq!(retried.kind, AcceptanceKind::Existing);
+    assert_eq!(retried.acceptance_seq, first.acceptance_seq);
+
+    handle.inject_fault(FaultPoint::AfterAcceptBeforeAck);
+    let lost = handle
+        .accept_command(
+            PlayerCommand {
+                period: 2,
+                actor_id: [7; 8],
+                payload: b"period-two-command".to_vec(),
+            },
+            NONCE_TWO,
+        )
+        .expect_err("the injected fault loses the acceptance acknowledgement");
+    assert!(
+        matches!(lost, CommandError::Store(SaveError::InjectedFault)),
+        "the acceptance seam reports its injected fault"
+    );
+    let reconciled = handle
+        .accept_command(
+            PlayerCommand {
+                period: 2,
+                actor_id: [7; 8],
+                payload: b"period-two-command".to_vec(),
+            },
+            NONCE_TWO,
+        )
+        .expect("the durable acceptance reconciles after the lost acknowledgement");
+    assert_eq!(reconciled.kind, AcceptanceKind::Existing);
+    assert_eq!(reconciled.period, 2);
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one conformance scenario asserts every disclosure refusal"
+)]
+fn scoped_read_refuses_undisclosed_or_future_acquired_fact() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("the campaign is created once");
+    handle
+        .commit(prepared(
+            1,
+            world_identity(0),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(1))],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect("period one commits without the future fact");
+    assert!(
+        matches!(
+            handle.read_granted_subject(
+                9_u64.to_be_bytes(),
+                SubjectKind::County,
+                b"michigan-wayne",
+                1
+            ),
+            Err(SaveError::UndisclosedSubject)
+        ),
+        "period one does not disclose a fact acquired later"
+    );
+
+    let observed = frame(
+        b"babylon.test.observation.v1\0",
+        1,
+        b"observed-in-period-one",
+    );
+    handle
+        .commit(prepared(
+            2,
+            world_identity(1),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(2))],
+            vec![journal(
+                JournalKind::GovernedChoice,
+                Some((SubjectKind::Observation, b"choice-2")),
+                b"choice-receipt-period-two",
+            )],
+            vec![knowledge(
+                9,
+                SubjectKind::County,
+                b"michigan-wayne",
+                1,
+                &observed,
+            )],
+        ))
+        .expect("period two commits the earned fact");
+    assert!(
+        matches!(
+            handle.read_granted_subject(
+                9_u64.to_be_bytes(),
+                SubjectKind::County,
+                b"michigan-wayne",
+                1
+            ),
+            Err(SaveError::UndisclosedSubject)
+        ),
+        "an observation period inside the payload does not disclose a period-two acquisition"
+    );
+    assert_eq!(
+        handle
+            .read_granted_subject(
+                9_u64.to_be_bytes(),
+                SubjectKind::County,
+                b"michigan-wayne",
+                2
+            )
+            .expect("the acquisition period discloses the fact"),
+        observed
+    );
+    assert!(matches!(
+        handle.read_granted_subject(
+            9_u64.to_be_bytes(),
+            SubjectKind::County,
+            b"michigan-wayne",
+            3
+        ),
+        Err(SaveError::FuturePeriod {
+            current: 2,
+            requested: 3
+        })
+    ));
+    assert!(matches!(
+        handle.read_granted_subject(
+            9_u64.to_be_bytes(),
+            SubjectKind::Place,
+            b"michigan-wayne",
+            2
+        ),
+        Err(SaveError::UndisclosedSubject)
+    ));
+    assert!(matches!(
+        handle.read_granted_subject(
+            10_u64.to_be_bytes(),
+            SubjectKind::County,
+            b"michigan-wayne",
+            2
+        ),
+        Err(SaveError::UndisclosedSubject)
+    ));
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one conformance scenario asserts every crash point"
+)]
+fn crash_points_preserve_atomic_state_and_single_execution() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("the campaign is created once");
+    handle
+        .accept_command(
+            PlayerCommand {
+                period: 1,
+                actor_id: [7; 8],
+                payload: b"command-before-the-crash".to_vec(),
+            },
+            NONCE_ONE,
+        )
+        .expect("the command is durable before the crash");
+    handle.inject_fault(FaultPoint::BeforeCommit);
+    let before = handle
+        .commit(prepared(
+            1,
+            world_identity(0),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(1))],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect_err("the injected fault aborts before the commit transaction");
+    assert!(matches!(before, SaveError::InjectedFault));
+    drop(handle);
+
+    let mut reopened =
+        SqliteCampaignStore::open(&database, build_identity()).expect("the witness cold reopens");
+    let after_crash = reopened
+        .commit(prepared(
+            1,
+            world_identity(0),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(1))],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect("a crash before commit leaves the accepted command reconstructible");
+    assert_eq!(after_crash.kind, CommitKind::Inserted);
+    let single = reopened
+        .commit(prepared(
+            1,
+            world_identity(0),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(1))],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect("the post-crash retry is idempotent");
+    assert_eq!(single.kind, CommitKind::Existing);
+    assert_eq!(single.journal_tail_hash, after_crash.journal_tail_hash);
+    assert_eq!(single.journal_tail_seq, after_crash.journal_tail_seq);
+    drop(reopened);
+
+    let mut lost_ack =
+        SqliteCampaignStore::open(&database, build_identity()).expect("the campaign reopens again");
+    lost_ack.inject_fault(FaultPoint::AfterCommitBeforeAck);
+    let lost = lost_ack
+        .commit(prepared(
+            2,
+            world_identity(1),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(2))],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect_err("the injected fault loses the acknowledgement");
+    assert!(matches!(lost, SaveError::InjectedFault));
+    drop(lost_ack);
+
+    let mut reconciled =
+        SqliteCampaignStore::open(&database, build_identity()).expect("the campaign reconciles");
+    assert_eq!(
+        reconciled.current().period,
+        2,
+        "the committed period survived the lost acknowledgement"
+    );
+    let reconciled_receipt = reconciled
+        .commit(prepared(
+            2,
+            world_identity(1),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(2))],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect("the committed period reconciles exactly");
+    assert_eq!(reconciled_receipt.kind, CommitKind::Existing);
+    let reconciled_again = reconciled
+        .commit(prepared(
+            2,
+            world_identity(1),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(2))],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect("the reconciled period stays idempotent");
+    assert_eq!(
+        reconciled_again.journal_tail_seq, reconciled_receipt.journal_tail_seq,
+        "reconciliation never performs the period twice"
+    );
+
+    let destination = root.path("interrupted.sqlite3");
+    reconciled.inject_fault(FaultPoint::DuringExport);
+    let interrupted = reconciled
+        .export_save(&destination)
+        .expect_err("the injected fault aborts the export before publication");
+    assert!(matches!(interrupted, SaveError::InjectedFault));
+    assert!(
+        !destination.exists(),
+        "an interrupted export publishes no partial destination"
+    );
+    let published = reconciled
+        .export_save(&destination)
+        .expect("the source remains exportable after an interrupted export");
+    assert!(published.integrity_verified);
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one conformance scenario asserts rollback and retry together"
+)]
+fn during_commit_fault_rolls_back_atomically() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("the campaign is created once");
+    let accepted = handle
+        .accept_command(
+            PlayerCommand {
+                period: 1,
+                actor_id: [7; 8],
+                payload: b"command-inside-the-period-transaction".to_vec(),
+            },
+            NONCE_ONE,
+        )
+        .expect("the accepted command is durable before the period");
+    handle.inject_fault(FaultPoint::DuringCommit);
+    let interrupted = handle
+        .commit(prepared(
+            1,
+            world_identity(0),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(1))],
+            vec![journal(
+                JournalKind::GovernedChoice,
+                Some((SubjectKind::Observation, b"choice-1")),
+                b"choice-receipt-payload",
+            )],
+            vec![knowledge(
+                42,
+                SubjectKind::County,
+                b"michigan-wayne",
+                1,
+                b"earned-county-fact",
+            )],
+        ))
+        .expect_err("the injected fault aborts inside the write transaction");
+    assert!(matches!(interrupted, SaveError::InjectedFault));
+    assert_eq!(
+        handle.current().period,
+        0,
+        "the aborted transaction leaves the committed present at the opening period"
+    );
+    assert!(matches!(
+        handle.read_granted_subject(
+            42_u64.to_be_bytes(),
+            SubjectKind::County,
+            b"michigan-wayne",
+            1
+        ),
+        Err(SaveError::FuturePeriod {
+            current: 0,
+            requested: 1
+        })
+    ));
+    drop(handle);
+
+    let raw = raw_connection(&database);
+    let committed_period: i64 = raw
+        .query_row(
+            "SELECT period FROM snapshot
+             WHERE snapshot_id = (SELECT current_snapshot_id FROM save_manifest WHERE id = 1)",
+            [],
+            |row| row.get(0),
+        )
+        .expect("the current snapshot is readable");
+    assert_eq!(
+        committed_period, 0,
+        "the aborted transaction leaves the manifest at the opening period"
+    );
+    assert_eq!(
+        count(&raw, "snapshot"),
+        1,
+        "the aborted transaction publishes no partial snapshot"
+    );
+    assert_eq!(
+        count(&raw, "permanent_journal"),
+        1,
+        "only the accepted command record survives the rollback"
+    );
+    assert_eq!(
+        count(&raw, "knowledge_grant"),
+        0,
+        "the aborted transaction publishes no partial knowledge grant"
+    );
+    drop(raw);
+
+    let mut retried =
+        SqliteCampaignStore::open(&database, build_identity()).expect("the campaign cold reopens");
+    let committed = retried
+        .commit(prepared(
+            1,
+            world_identity(0),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(1))],
+            vec![journal(
+                JournalKind::GovernedChoice,
+                Some((SubjectKind::Observation, b"choice-1")),
+                b"choice-receipt-payload",
+            )],
+            vec![knowledge(
+                42,
+                SubjectKind::County,
+                b"michigan-wayne",
+                1,
+                b"earned-county-fact",
+            )],
+        ))
+        .expect("the retry commits the whole period after a clean rollback");
+    assert_eq!(committed.kind, CommitKind::Inserted);
+    assert_eq!(
+        committed.journal_tail_seq,
+        accepted.acceptance_seq + 2,
+        "the retry appends exactly one command consumption and one journal record"
+    );
+    assert_eq!(
+        retried
+            .read_granted_subject(
+                42_u64.to_be_bytes(),
+                SubjectKind::County,
+                b"michigan-wayne",
+                1
+            )
+            .expect("the retried period discloses its earned fact"),
+        b"earned-county-fact"
+    );
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    reason = "one refusal scenario covers each admitted malformed input"
+)]
+fn refuses_truncated_payload_wrong_schema_and_inconsistent_candidates() {
+    let root = TempRoot::new();
+    let truncated_database = root.path("truncated.sqlite3");
+    let mut handle =
+        SqliteCampaignStore::create(&truncated_database, admitted_content(), admitted_opening())
+            .expect("the campaign is created once");
+    handle
+        .commit(prepared(
+            1,
+            world_identity(0),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(1))],
+            vec![journal(
+                JournalKind::GovernedChoice,
+                Some((SubjectKind::Observation, b"choice-1")),
+                b"choice-receipt-payload",
+            )],
+            vec![knowledge(
+                7,
+                SubjectKind::County,
+                b"michigan-wayne",
+                1,
+                b"stored-fact-payload",
+            )],
+        ))
+        .expect("period one commits the earned fact");
+    drop(handle);
+
+    let raw = raw_connection(&truncated_database);
+    raw.execute(
+        "UPDATE knowledge_grant SET payload = substr(payload, 1, length(payload) - 1)",
+        [],
+    )
+    .expect("the test truncates the stored knowledge payload");
+    drop(raw);
+    let reopened = SqliteCampaignStore::open(&truncated_database, build_identity())
+        .expect("the campaign reopens");
+    assert!(
+        matches!(
+            reopened.read_granted_subject(
+                7_u64.to_be_bytes(),
+                SubjectKind::County,
+                b"michigan-wayne",
+                1
+            ),
+            Err(SaveError::CorruptPayload {
+                table: "knowledge_grant",
+                ..
+            })
+        ),
+        "the stored entry hash detects truncation"
+    );
+
+    let version_database = root.path("version.sqlite3");
+    let version_store =
+        SqliteCampaignStore::create(&version_database, admitted_content(), admitted_opening())
+            .expect("the version campaign is created");
+    drop(version_store);
+    let raw = raw_connection(&version_database);
+    raw.pragma_update(None, "user_version", 99)
+        .expect("the test writes a wrong schema version");
+    drop(raw);
+    match SqliteCampaignStore::open(&version_database, build_identity()) {
+        Err(SaveError::SchemaVersion { expected, actual }) => {
+            assert_eq!(expected, SCHEMA_VERSION);
+            assert_eq!(actual, 99);
+        }
+        other => panic!("a wrong schema version must refuse: {other:?}"),
+    }
+
+    let input_database = root.path("input.sqlite3");
+    let mut input =
+        SqliteCampaignStore::create(&input_database, admitted_content(), admitted_opening())
+            .expect("the input campaign is created");
+    let base_chunks = vec![chunk(ChunkSection::WorldRegisters, 0, register(1))];
+    assert!(matches!(
+        input.commit(prepared(
+            1,
+            world_identity(0),
+            Vec::new(),
+            Vec::new(),
+            Vec::new()
+        )),
+        Err(SaveError::InvalidField {
+            field: "chunks",
+            ..
+        })
+    ));
+    let oversized = vec![0_u8; MAX_STATE_CHUNK_BYTES + 1];
+    assert!(matches!(
+        input.commit(prepared(
+            1,
+            world_identity(0),
+            vec![chunk(ChunkSection::WorldRegisters, 0, oversized)],
+            Vec::new(),
+            Vec::new(),
+        )),
+        Err(SaveError::PayloadTooLarge {
+            table: "state_chunk",
+            ..
+        })
+    ));
+    assert!(matches!(
+        input.commit(prepared(
+            1,
+            world_identity(0),
+            vec![
+                chunk(ChunkSection::WorldRegisters, 0, register(1)),
+                chunk(ChunkSection::WorldRegisters, 0, register(1)),
+            ],
+            Vec::new(),
+            Vec::new(),
+        )),
+        Err(SaveError::DuplicateChunkPosition {
+            section: 2,
+            ordinal: 0
+        })
+    ));
+    assert!(matches!(
+        input.commit(prepared(
+            1,
+            world_identity(0),
+            base_chunks.clone(),
+            Vec::new(),
+            vec![knowledge(
+                7,
+                SubjectKind::County,
+                b"michigan-wayne",
+                1,
+                b"stored-fact-payload",
+            )],
+        )),
+        Err(SaveError::KnowledgeSourceMissing)
+    ));
+    assert!(matches!(
+        input.commit(prepared(
+            1,
+            world_identity(0),
+            base_chunks.clone(),
+            vec![journal(JournalKind::PlayerReceipt, None, b"first-receipt",)],
+            vec![
+                knowledge(
+                    7,
+                    SubjectKind::County,
+                    b"michigan-wayne",
+                    1,
+                    b"first-fact-payload",
+                ),
+                knowledge(
+                    7,
+                    SubjectKind::County,
+                    b"michigan-wayne",
+                    1,
+                    b"second-fact-payload",
+                ),
+            ],
+        )),
+        Err(SaveError::DuplicateKnowledgeGrant)
+    ));
+    assert!(matches!(
+        input.commit(prepared(
+            1,
+            world_identity(0),
+            base_chunks.clone(),
+            vec![journal(
+                JournalKind::AcceptedCommand,
+                None,
+                b"forged-command-record",
+            )],
+            Vec::new(),
+        )),
+        Err(SaveError::ReservedJournalKind { code: 1 })
+    ));
+    assert!(matches!(
+        input.commit(prepared(
+            1,
+            world_identity(0),
+            base_chunks.clone(),
+            vec![resolving_journal(
+                JournalKind::PlayerReceipt,
+                (SubjectKind::Shipment, b"never-shipped"),
+                b"orphan-resolution",
+            )],
+            Vec::new(),
+        )),
+        Err(SaveError::UnresolvedSubjectMissing)
+    ));
+    assert!(matches!(
+        input.commit(prepared(
+            1,
+            content_digest::sha256_of(b"a different root"),
+            base_chunks.clone(),
+            Vec::new(),
+            Vec::new(),
+        )),
+        Err(SaveError::StaleRoot { .. })
+    ));
+    assert!(matches!(
+        input.commit(prepared(
+            3,
+            world_identity(0),
+            base_chunks,
+            Vec::new(),
+            Vec::new(),
+        )),
+        Err(SaveError::WrongPeriod {
+            expected: 1,
+            actual: 3
+        })
+    ));
+    drop(input);
+    assert!(matches!(
+        SqliteCampaignStore::create(&input_database, admitted_content(), admitted_opening()),
+        Err(SaveError::CampaignExists { .. })
+    ));
+    assert!(matches!(
+        SqliteCampaignStore::open(&input_database, BuildIdentity::from_hash([0_u8; 32])),
+        Err(SaveError::BuildMismatch { .. })
+    ));
+}
+
+#[test]
+fn open_refuses_a_tampered_current_chunk() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("the campaign is created once");
+    handle
+        .commit(prepared(
+            1,
+            world_identity(0),
+            vec![chunk(ChunkSection::WorldRegisters, 0, register(1))],
+            Vec::new(),
+            Vec::new(),
+        ))
+        .expect("period one commits");
+    drop(handle);
+
+    let raw = raw_connection(&database);
+    raw.execute(
+        "UPDATE state_chunk SET payload = x'00'
+         WHERE chunk_id = (
+             SELECT chunk_id FROM snapshot_chunk
+             JOIN snapshot USING (snapshot_id)
+             WHERE snapshot.role = 2 LIMIT 1
+         )",
+        [],
+    )
+    .expect("the test tampers with the current chunk");
+    drop(raw);
+    assert!(
+        matches!(
+            SqliteCampaignStore::open(&database, build_identity()),
+            Err(SaveError::CorruptPayload { .. })
+        ),
+        "opening authenticates every current chunk"
+    );
+}
+
+#[test]
+fn stale_lock_with_a_dead_owner_is_recovered_after_identity_check() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("the campaign is created once");
+    drop(handle);
+
+    write_lock_record(&database, u32::MAX, campaign_id());
+    let reopened = SqliteCampaignStore::open(&database, build_identity())
+        .expect("a dead owner's record is recovered");
+    let record = fs::read(lock::lock_path(&database)).expect("the recovered record is readable");
+    assert_eq!(
+        &record[..4],
+        &std::process::id().to_be_bytes(),
+        "recovery republishes this process as the owner"
+    );
+    drop(reopened);
+}
+
+#[test]
+fn stale_lock_for_another_campaign_is_not_recovered() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("the campaign is created once");
+    drop(handle);
+
+    write_lock_record(&database, u32::MAX, other_campaign_id());
+    match SqliteCampaignStore::open(&database, build_identity()) {
+        Err(SaveError::LockRecordMismatch { recorded, manifest }) => {
+            assert_eq!(recorded, other_campaign_id());
+            assert_eq!(manifest, campaign_id());
+        }
+        other => panic!("a mismatched stale owner must refuse: {other:?}"),
+    }
+    assert!(
+        lock::lock_path(&database).exists(),
+        "a mismatched record is not deleted"
+    );
+}
+
+#[test]
+fn live_lock_refuses_recovery() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("the campaign is created once");
+    drop(handle);
+
+    write_lock_record(&database, std::process::id(), campaign_id());
+    assert!(
+        matches!(
+            SqliteCampaignStore::open(&database, build_identity()),
+            Err(SaveError::CampaignLocked { owner_pid, .. }) if owner_pid == std::process::id()
+        ),
+        "a live owner always refuses"
+    );
+}
+
+#[test]
+fn stale_lock_without_a_database_is_recovered_by_create() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    write_lock_record(&database, u32::MAX, campaign_id());
+    let handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("a create crash before the database leaves a recoverable record");
+    drop(handle);
+    assert!(
+        SqliteCampaignStore::open(&database, build_identity()).is_ok(),
+        "the created campaign reopens"
+    );
+}
+
+#[test]
+fn recovery_claim_held_by_a_live_owner_refuses() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("the campaign is created once");
+    drop(handle);
+
+    write_lock_record(&database, u32::MAX, campaign_id());
+    let mut claim = lock::lock_path(&database).into_os_string();
+    claim.push(".recover");
+    fs::write(PathBuf::from(claim), std::process::id().to_be_bytes())
+        .expect("the recovery claim is writable");
+    assert!(
+        matches!(
+            SqliteCampaignStore::open(&database, build_identity()),
+            Err(SaveError::LockRecoveryBusy { .. })
+        ),
+        "a live recovery claim serializes takeover"
     );
 }

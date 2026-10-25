@@ -188,7 +188,10 @@ pub fn decode_choice_endpoint_u128(bytes: [u8; CHOICE_ENDPOINT_BYTES]) -> Result
 ///
 /// Refuses decoded bytes above the budget before any statement executes, and
 /// refuses a failed zstd frame construction.
-pub fn encode_payload(budget: PayloadBudget, raw: &[u8]) -> Result<EncodedPayload, SaveError> {
+pub fn encode_chunk_payload(
+    budget: PayloadBudget,
+    raw: &[u8],
+) -> Result<EncodedPayload, SaveError> {
     let limit = budget.max_decoded_bytes();
     if raw.len() > limit {
         return Err(SaveError::PayloadTooLarge {
@@ -225,7 +228,7 @@ pub fn encode_payload(budget: PayloadBudget, raw: &[u8]) -> Result<EncodedPayloa
 /// Refuses a decoded length above the budget before decompression, a codec
 /// outside the table's fixed selection, and any truncated, trailing, oversized
 /// or digest-mismatched stored bytes.
-pub fn decode_payload(
+pub fn decode_chunk_payload(
     budget: PayloadBudget,
     stored: &StoredPayload<'_>,
 ) -> Result<Vec<u8>, SaveError> {

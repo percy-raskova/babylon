@@ -44,6 +44,23 @@ impl ChunkSection {
     pub const fn code(self) -> i64 {
         self as i64
     }
+
+    /// Recover a closed section from its stored integer.
+    #[must_use]
+    pub const fn from_code(code: i64) -> Option<Self> {
+        match code {
+            1 => Some(Self::StableGraph),
+            2 => Some(Self::WorldRegisters),
+            3 => Some(Self::ResolverManifest),
+            4 => Some(Self::PreparedEnvironment),
+            5 => Some(Self::ReplaySessionIdentity),
+            6 => Some(Self::RngSeed),
+            7 => Some(Self::ContentDigest),
+            8 => Some(Self::ReferenceDigest),
+            9 => Some(Self::SemanticState),
+            _ => None,
+        }
+    }
 }
 
 /// Closed content-entry kind registry.
@@ -221,6 +238,20 @@ impl JournalKind {
     pub const fn code(self) -> i64 {
         self as i64
     }
+
+    /// Recover a closed journal kind from its stored integer.
+    #[must_use]
+    pub const fn from_code(code: i64) -> Option<Self> {
+        match code {
+            1 => Some(Self::AcceptedCommand),
+            2 => Some(Self::ResolvedBatch),
+            3 => Some(Self::GovernedChoice),
+            4 => Some(Self::PlayerReceipt),
+            5 => Some(Self::PeriodSummary),
+            6 => Some(Self::Dossier),
+            _ => None,
+        }
+    }
 }
 
 /// Closed subject registry shared by journal and knowledge indexes.
@@ -254,6 +285,24 @@ impl SubjectKind {
     #[must_use]
     pub const fn code(self) -> i64 {
         self as i64
+    }
+
+    /// Recover a closed subject kind from its stored integer.
+    #[must_use]
+    pub const fn from_code(code: i64) -> Option<Self> {
+        match code {
+            1 => Some(Self::Player),
+            2 => Some(Self::County),
+            3 => Some(Self::Place),
+            4 => Some(Self::Workplace),
+            5 => Some(Self::Organization),
+            6 => Some(Self::Product),
+            7 => Some(Self::Agreement),
+            8 => Some(Self::Shipment),
+            9 => Some(Self::Commitment),
+            10 => Some(Self::Observation),
+            _ => None,
+        }
     }
 }
 
@@ -303,7 +352,7 @@ pub fn write_state_chunk(
     ordinal: u32,
     raw: &[u8],
 ) -> Result<i64, SaveError> {
-    let encoded = codec::encode_payload(PayloadBudget::StateChunk, raw)?;
+    let encoded = codec::encode_chunk_payload(PayloadBudget::StateChunk, raw)?;
     connection.execute(
         "INSERT INTO state_chunk (section, ordinal, codec, raw_len, raw_hash, payload)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -340,7 +389,7 @@ pub fn read_state_chunk(connection: &Connection, chunk_id: i64) -> Result<Vec<u8
         raw_hash: hash_from_row("state_chunk", &raw_hash)?,
         payload: &payload,
     };
-    codec::decode_payload(PayloadBudget::StateChunk, &stored)
+    codec::decode_chunk_payload(PayloadBudget::StateChunk, &stored)
 }
 
 /// Insert one bounded immutable content or compiled-definition chunk.
@@ -363,7 +412,7 @@ pub fn write_content_entry(
             reason: "the entry key is empty",
         });
     }
-    let encoded = codec::encode_payload(PayloadBudget::ContentEntry, raw)?;
+    let encoded = codec::encode_chunk_payload(PayloadBudget::ContentEntry, raw)?;
     connection.execute(
         "INSERT INTO content_entry (kind, entry_key, ordinal, codec, raw_len, raw_hash, payload)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -393,7 +442,7 @@ pub fn write_recent_detail(
     ordinal: u32,
     raw: &[u8],
 ) -> Result<(), SaveError> {
-    let encoded = codec::encode_payload(PayloadBudget::RecentDetail, raw)?;
+    let encoded = codec::encode_chunk_payload(PayloadBudget::RecentDetail, raw)?;
     connection.execute(
         "INSERT INTO recent_detail (period, family, ordinal, codec, raw_len, raw_hash, payload)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -451,7 +500,7 @@ pub fn write_journal_record(
             reason: "the record key is empty",
         });
     }
-    let encoded = codec::encode_payload(PayloadBudget::PermanentJournal, record.payload)?;
+    let encoded = codec::encode_chunk_payload(PayloadBudget::PermanentJournal, record.payload)?;
     connection.execute(
         "INSERT INTO permanent_journal (
             journal_seq, kind, period, actor_id, subject_kind, subject_id, nonce, record_key,
@@ -477,7 +526,10 @@ pub fn write_journal_record(
     Ok(())
 }
 
-/// Replace the single bounded Archive service record at its expected sequence.
+/// Replace the single bounded Archive service record unconditionally.
+///
+/// The statement overwrites the sequence and payload rather than comparing an
+/// expected sequence; callers own the ordering check.
 ///
 /// # Errors
 ///
@@ -488,7 +540,7 @@ pub fn write_service_state(
     service_seq: u64,
     raw: &[u8],
 ) -> Result<(), SaveError> {
-    let encoded = codec::encode_payload(PayloadBudget::ServiceState, raw)?;
+    let encoded = codec::encode_chunk_payload(PayloadBudget::ServiceState, raw)?;
     connection.execute(
         "INSERT INTO service_state (id, service_seq, codec, raw_len, raw_hash, payload)
          VALUES (1, ?1, ?2, ?3, ?4, ?5)

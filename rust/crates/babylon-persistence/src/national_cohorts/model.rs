@@ -1,5 +1,7 @@
 use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::geography::CountyGeoid;
+use babylon_material_circuit::SiteId;
 
 /// Disjoint source grouping; `None` means unclassified evidence, never an executable function.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -11,6 +13,48 @@ pub struct CohortKey {
     /// Source ownership axis, independent of technical function.
     pub ownership: QcewOwnership,
 }
+/// One background workplace identity; owner site and source axes never blend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct WorkplaceCohortKey {
+    /// Exact owner site; two sites never share one background row.
+    pub site: SiteId,
+    /// Fixed county or bounded external location.
+    pub location: EconomicLocation,
+    /// Technical function, independent of ownership.
+    pub function: EconomicFunction,
+    /// Source ownership axis; `None` is an explicitly Designed workplace.
+    pub ownership: Option<QcewOwnership>,
+}
+impl WorkplaceCohortKey {
+    /// Pair one captured source cohort with its admitted site.
+    #[must_use]
+    pub fn source_backed(site: SiteId, key: CohortKey, location: EconomicLocation) -> Option<Self> {
+        if EconomicLocation::domestic_county(key.county).ok()? != location {
+            return None;
+        }
+        Some(Self {
+            site,
+            location,
+            function: key.function?,
+            ownership: Some(key.ownership),
+        })
+    }
+    /// Name a Designed workplace without inventing a QCEW ownership claim.
+    #[must_use]
+    pub const fn designed(
+        site: SiteId,
+        location: EconomicLocation,
+        function: EconomicFunction,
+    ) -> Self {
+        Self {
+            site,
+            location,
+            function,
+            ownership: None,
+        }
+    }
+}
+
 /// Availability of source jobs, payroll and weekly mean wage.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QcewDisclosure {

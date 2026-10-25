@@ -22,6 +22,8 @@ mod templates;
 #[path = "opening/build.rs"]
 mod build;
 
+mod detail;
+
 pub(super) use build::FUNCTIONS;
 use build::{amount, quantity, sum_amount, ActorContext, Builder, Result};
 pub use build::{

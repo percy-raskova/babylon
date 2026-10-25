@@ -1,15 +1,27 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use crate::national_household_allocation::{HouseholdBudgetKey, NationalHouseholdAllocation};
+use crate::national_household_allocation::{
+    HouseholdBudgetKey, HouseholdCohortKey, NationalHouseholdAllocation,
+};
 use crate::national_household_time_allocation::NationalHouseholdTimeAllocation;
 
+use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::geography::CountyGeoid;
 
-use babylon_material_circuit::{FinalDemandPrincipalId, MAX_MATERIAL_CIRCUIT_ROWS};
+use babylon_material_circuit::{
+    FinalDemandPrincipalId, GoodId, HouseholdTimeAccounting, HouseholdTimeBook,
+    OrganizationAccountId, SiteId, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
+};
 
+use crate::economic_catalog::{
+    EconomicHouseholdSeed, EconomicOpening, EconomicSiteSeed, EconomicSiteSource,
+    OpeningCommodityStock, ResidentStaffingMemberSeed,
+};
+use crate::national_cohorts::WorkplaceCohortKey;
 use crate::national_economy;
 use babylon_kernel::content_digest;
+use babylon_material_circuit::AccountId;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
@@ -291,4 +303,717 @@ pub(crate) fn refine_parent(
         margins: remaining,
     });
     Ok(leaves)
+}
+
+/// Authored foreground identities; the engine never infers them from a read.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ForegroundSelection {
+    /// Controlled or actionable organization accounts.
+    pub organizations: BTreeSet<OrganizationAccountId>,
+    /// Household principals that keep separately addressable identities.
+    pub household_principals: BTreeSet<FinalDemandPrincipalId>,
+    /// Workplaces owned by a foreground household or organization.
+    pub workplaces: BTreeSet<SiteId>,
+    /// Independently actionable partner workplaces.
+    pub partner_workplaces: BTreeSet<SiteId>,
+    /// Active shipment or commitment identities involving the foreground.
+    pub commitments: BTreeSet<[u8; 32]>,
+}
+
+/// Resolved foreground identities; every entry exists in the admitted opening.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ForegroundIdentities {
+    organizations: Vec<OrganizationAccountId>,
+    household_principals: Vec<FinalDemandPrincipalId>,
+    workplaces: Vec<SiteId>,
+    partner_workplaces: Vec<SiteId>,
+    commitments: Vec<[u8; 32]>,
+}
+impl ForegroundIdentities {
+    /// Organization accounts that keep separate authority.
+    #[must_use]
+    pub fn organizations(&self) -> &[OrganizationAccountId] {
+        &self.organizations
+    }
+    /// Household principals that keep separate wealth and time.
+    #[must_use]
+    pub fn household_principals(&self) -> &[FinalDemandPrincipalId] {
+        &self.household_principals
+    }
+    /// Workplaces owned by the controlled organization or household.
+    #[must_use]
+    pub fn workplaces(&self) -> &[SiteId] {
+        &self.workplaces
+    }
+    /// Independently actionable partner workplaces.
+    #[must_use]
+    pub fn partner_workplaces(&self) -> &[SiteId] {
+        &self.partner_workplaces
+    }
+    /// Active shipment and commitment identities.
+    #[must_use]
+    pub fn commitments(&self) -> &[[u8; 32]] {
+        &self.commitments
+    }
+}
+
+/// One retained commitment; in-flight goods with different terms never merge.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuthoredCommitment {
+    /// Stable commitment identity.
+    pub id: [u8; 32],
+    /// Donor or buyer principal.
+    pub donor: FinalDemandPrincipalId,
+    /// Recipient or seller principal.
+    pub recipient: FinalDemandPrincipalId,
+    /// Fixed destination location.
+    pub location: EconomicLocation,
+    /// Good retained in transit.
+    pub good_id: GoodId,
+    /// Unit retained in transit.
+    pub unit_id: UnitId,
+    /// Maximum commitment quantity.
+    pub maximum_quantity: u64,
+}
+
+/// Counted background household quantities; counts never imply individuals.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct HouseholdCohortCounts {
+    /// Resident persons.
+    pub persons: u64,
+    /// Occupied households, zero for collective residence.
+    pub households: u64,
+    /// Employed residents.
+    pub employed: u64,
+    /// Employed residents held in reserve.
+    pub reserve: u64,
+    /// Age-eligible residents.
+    pub eligible_persons: u64,
+    /// Available household hours after the captured commitments.
+    pub endowment_hours: u64,
+}
+
+/// One background household row; the individual county identity is retained.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BackgroundHouseholdCohort {
+    /// Exact owner, location and causal axes.
+    pub key: HouseholdCohortKey,
+    /// Counted margins and available time.
+    pub counts: HouseholdCohortCounts,
+    /// Opening cash owned by this principal.
+    pub opening_cash: Currency,
+    /// Pantry stock merged only within one (good, unit).
+    pub opening_stock: Vec<OpeningCommodityStock>,
+}
+
+/// One counted background workplace; establishments never become persons.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BackgroundWorkplaceCohort {
+    /// Exact owner site plus location, function and ownership axes.
+    pub key: WorkplaceCohortKey,
+    /// Employee residents assigned to the site.
+    pub employed: u64,
+    /// Assigned residents held in reserve.
+    pub reserve: u64,
+    /// Assigned resident labor force.
+    pub labor_force: u64,
+    /// Opening cash owned by the site.
+    pub opening_cash: Currency,
+    /// Stock merged only within one (good, unit).
+    pub opening_stock: Vec<OpeningCommodityStock>,
+}
+
+/// Exact conserved totals of one background population.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CohortConservation {
+    /// Resident persons.
+    pub persons: u64,
+    /// Occupied households.
+    pub households: u64,
+    /// Employed residents.
+    pub employed: u64,
+    /// Employed residents held in reserve.
+    pub reserve: u64,
+    /// Assigned resident labor force.
+    pub labor_force: u64,
+    /// Available household hours.
+    pub endowment_hours: u64,
+    /// Physical stock quantity.
+    pub stock_quantity: u64,
+    /// Stock carrying cost in micro-units.
+    pub stock_cost_micros: i128,
+    /// Cash in micro-units.
+    pub cash_micros: i128,
+}
+impl CohortConservation {
+    /// Add two independent totals without wrapping.
+    /// # Errors
+    /// Refuses checked overflow in any counted or monetary axis.
+    pub fn checked_add(self, other: Self) -> Result<Self, ConsolidationError> {
+        Ok(Self {
+            persons: self
+                .persons
+                .checked_add(other.persons)
+                .ok_or(ConsolidationError::Arithmetic)?,
+            households: self
+                .households
+                .checked_add(other.households)
+                .ok_or(ConsolidationError::Arithmetic)?,
+            employed: self
+                .employed
+                .checked_add(other.employed)
+                .ok_or(ConsolidationError::Arithmetic)?,
+            reserve: self
+                .reserve
+                .checked_add(other.reserve)
+                .ok_or(ConsolidationError::Arithmetic)?,
+            labor_force: self
+                .labor_force
+                .checked_add(other.labor_force)
+                .ok_or(ConsolidationError::Arithmetic)?,
+            endowment_hours: self
+                .endowment_hours
+                .checked_add(other.endowment_hours)
+                .ok_or(ConsolidationError::Arithmetic)?,
+            stock_quantity: self
+                .stock_quantity
+                .checked_add(other.stock_quantity)
+                .ok_or(ConsolidationError::Arithmetic)?,
+            stock_cost_micros: self
+                .stock_cost_micros
+                .checked_add(other.stock_cost_micros)
+                .ok_or(ConsolidationError::Arithmetic)?,
+            cash_micros: self
+                .cash_micros
+                .checked_add(other.cash_micros)
+                .ok_or(ConsolidationError::Arithmetic)?,
+        })
+    }
+}
+
+/// Conserved household and workplace totals of one authored partition.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DetailConservation {
+    /// Household population, work, stock and cash.
+    pub households: CohortConservation,
+    /// Workplace employment, stock and cash.
+    pub workplaces: CohortConservation,
+}
+impl DetailConservation {
+    /// Add two independent totals without wrapping.
+    /// # Errors
+    /// Refuses checked overflow in either population.
+    pub fn checked_add(self, other: Self) -> Result<Self, ConsolidationError> {
+        Ok(Self {
+            households: self.households.checked_add(other.households)?,
+            workplaces: self.workplaces.checked_add(other.workplaces)?,
+        })
+    }
+}
+
+/// Authored uneven national detail fixed at campaign initialization.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NationalDetailPartition {
+    foreground: ForegroundIdentities,
+    background_households: Vec<BackgroundHouseholdCohort>,
+    background_workplaces: Vec<BackgroundWorkplaceCohort>,
+    commitments: Vec<AuthoredCommitment>,
+    conservation: DetailConservation,
+}
+impl NationalDetailPartition {
+    /// Separately addressable foreground identities.
+    #[must_use]
+    pub const fn foreground(&self) -> &ForegroundIdentities {
+        &self.foreground
+    }
+    /// Counted background households, one row per retained owner.
+    #[must_use]
+    pub fn background_households(&self) -> &[BackgroundHouseholdCohort] {
+        &self.background_households
+    }
+    /// Counted background workplaces, one row per retained owner site.
+    #[must_use]
+    pub fn background_workplaces(&self) -> &[BackgroundWorkplaceCohort] {
+        &self.background_workplaces
+    }
+    /// Active foreground shipments and commitments.
+    #[must_use]
+    pub fn commitments(&self) -> &[AuthoredCommitment] {
+        &self.commitments
+    }
+    /// Exact totals the partition retains.
+    #[must_use]
+    pub const fn conservation(&self) -> DetailConservation {
+        self.conservation
+    }
+}
+
+/// Specific partition refusals; no inferred actor fills a missing identity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConsolidationError {
+    /// A foreground identity is absent from the admitted opening.
+    UnknownForeground,
+    /// A foreground identity was named twice under conflicting meaning.
+    DuplicateForeground,
+    /// A household row has no captured budget identity.
+    MissingBudget,
+    /// A household row has no captured time policy.
+    MissingTime,
+    /// The opening has no complete household or workplace roster.
+    SourceRoster,
+    /// An authored commitment is unselected or names a non-foreground principal.
+    Commitment,
+    /// Background and foreground rows do not reconstruct the source total.
+    Conservation,
+    /// A counted or monetary sum overflowed.
+    Arithmetic,
+}
+impl std::fmt::Display for ConsolidationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
+        write!(formatter, "national detail partition refused: {self:?}")
+    }
+}
+impl std::error::Error for ConsolidationError {}
+
+/// Split one admitted opening into authored foreground identities and counted background rows.
+/// The merge key always includes the owner, so equivalent-looking households, workplaces and
+/// in-flight goods with different principals or terms never blend.
+/// # Errors
+/// Refuses unknown or duplicate foreground identities, missing source rows, and any partition
+/// whose background and foreground totals do not reproduce the admitted source exactly.
+pub fn consolidate_background(
+    opening: &EconomicOpening,
+    household_budgets: &BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
+    time: &HouseholdTimeAccounting,
+    foreground: ForegroundSelection,
+    commitments: &[AuthoredCommitment],
+) -> Result<NationalDetailPartition, ConsolidationError> {
+    let HouseholdTimeAccounting::Modeled(book) = time else {
+        return Err(ConsolidationError::MissingTime);
+    };
+    let households = unique_households(opening)?;
+    let sites = unique_sites(opening)?;
+    let work = work_indexes(opening)?;
+    let time_rows = time_index(book)?;
+    if time_rows.len() != households.len() {
+        return Err(ConsolidationError::MissingTime);
+    }
+    validate_foreground(&foreground, opening, &households, &sites, commitments)?;
+    let expected = DetailConservation {
+        households: household_totals(&households, &work.households, &time_rows)?,
+        workplaces: workplace_totals(&sites, &work.workplaces)?,
+    };
+    let (background_households, foreground_households) = partition_households(
+        opening,
+        household_budgets,
+        &work.households,
+        &time_rows,
+        &foreground,
+    )?;
+    let (background_workplaces, foreground_workplaces) =
+        partition_workplaces(opening, &work.workplaces, &foreground)?;
+    let retained = DetailConservation {
+        households: foreground_households
+            .checked_add(background_household_total(&background_households)?)?,
+        workplaces: foreground_workplaces
+            .checked_add(background_workplace_total(&background_workplaces)?)?,
+    };
+    if retained != expected {
+        return Err(ConsolidationError::Conservation);
+    }
+    let mut authored = commitments.to_vec();
+    authored.sort_unstable_by_key(|row| row.id);
+    Ok(NationalDetailPartition {
+        foreground: ForegroundIdentities {
+            organizations: foreground.organizations.into_iter().collect(),
+            household_principals: foreground.household_principals.into_iter().collect(),
+            workplaces: foreground.workplaces.into_iter().collect(),
+            partner_workplaces: foreground.partner_workplaces.into_iter().collect(),
+            commitments: foreground.commitments.into_iter().collect(),
+        },
+        background_households,
+        background_workplaces,
+        commitments: authored,
+        conservation: expected,
+    })
+}
+
+struct WorkIndex {
+    households: BTreeMap<FinalDemandPrincipalId, (u64, u64, u64)>,
+    workplaces: BTreeMap<SiteId, (u64, u64, u64)>,
+}
+
+fn work_indexes(opening: &EconomicOpening) -> Result<WorkIndex, ConsolidationError> {
+    let mut households = BTreeMap::new();
+    let mut workplaces = BTreeMap::new();
+    for pool in &opening.staffing {
+        let site = workplaces.entry(pool.pool.site_id()).or_default();
+        for member in &pool.members {
+            let household = households.entry(member.member.household_id()).or_default();
+            add_work(household, member)?;
+            add_work(site, member)?;
+        }
+    }
+    Ok(WorkIndex {
+        households,
+        workplaces,
+    })
+}
+
+fn add_work(
+    totals: &mut (u64, u64, u64),
+    member: &ResidentStaffingMemberSeed,
+) -> Result<(), ConsolidationError> {
+    totals.0 = totals
+        .0
+        .checked_add(member.employed)
+        .ok_or(ConsolidationError::Arithmetic)?;
+    totals.1 = totals
+        .1
+        .checked_add(member.reserve)
+        .ok_or(ConsolidationError::Arithmetic)?;
+    totals.2 = totals
+        .2
+        .checked_add(member.member.labor_force())
+        .ok_or(ConsolidationError::Arithmetic)?;
+    Ok(())
+}
+
+fn time_index(
+    book: &HouseholdTimeBook,
+) -> Result<BTreeMap<FinalDemandPrincipalId, (u64, u64)>, ConsolidationError> {
+    book.policies
+        .iter()
+        .map(|policy| {
+            let hours = policy
+                .eligible_persons
+                .checked_mul(policy.hours_per_eligible_person)
+                .ok_or(ConsolidationError::Arithmetic)?;
+            Ok((policy.principal_id, (policy.eligible_persons, hours)))
+        })
+        .collect()
+}
+
+fn partition_households(
+    opening: &EconomicOpening,
+    household_budgets: &BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
+    work: &BTreeMap<FinalDemandPrincipalId, (u64, u64, u64)>,
+    time: &BTreeMap<FinalDemandPrincipalId, (u64, u64)>,
+    foreground: &ForegroundSelection,
+) -> Result<(Vec<BackgroundHouseholdCohort>, CohortConservation), ConsolidationError> {
+    let mut background = Vec::new();
+    let mut foreground_total = CohortConservation::default();
+    for household in &opening.households {
+        let counts = household_counts(
+            household.persons,
+            household.households,
+            work.get(&household.principal_id)
+                .copied()
+                .unwrap_or_default(),
+            time.get(&household.principal_id).copied(),
+        )?;
+        let stock = merge_stock(household.opening_stock.clone())?;
+        let row_total =
+            household_conservation(counts, household.opening_cash.micro_units(), &stock)?;
+        if foreground
+            .household_principals
+            .contains(&household.principal_id)
+        {
+            foreground_total = foreground_total.checked_add(row_total)?;
+            continue;
+        }
+        let budget = *household_budgets
+            .get(&household.principal_id)
+            .ok_or(ConsolidationError::MissingBudget)?;
+        background.push(BackgroundHouseholdCohort {
+            key: HouseholdCohortKey {
+                principal: household.principal_id,
+                location: household.location,
+                budget,
+            },
+            counts,
+            opening_cash: household.opening_cash,
+            opening_stock: stock,
+        });
+    }
+    background.sort_unstable_by_key(|row| row.key);
+    Ok((background, foreground_total))
+}
+
+fn partition_workplaces(
+    opening: &EconomicOpening,
+    work: &BTreeMap<SiteId, (u64, u64, u64)>,
+    foreground: &ForegroundSelection,
+) -> Result<(Vec<BackgroundWorkplaceCohort>, CohortConservation), ConsolidationError> {
+    let mut background = Vec::new();
+    let mut foreground_total = CohortConservation::default();
+    for site in &opening.sites {
+        let row = workplace_row(site, work)?;
+        if foreground.workplaces.contains(&site.site_id)
+            || foreground.partner_workplaces.contains(&site.site_id)
+        {
+            foreground_total = foreground_total.checked_add(workplace_conservation(&row)?)?;
+            continue;
+        }
+        background.push(row);
+    }
+    background.sort_unstable_by_key(|row| row.key);
+    Ok((background, foreground_total))
+}
+
+fn workplace_row(
+    site: &EconomicSiteSeed,
+    work: &BTreeMap<SiteId, (u64, u64, u64)>,
+) -> Result<BackgroundWorkplaceCohort, ConsolidationError> {
+    let (employed, reserve, labor_force) = work.get(&site.site_id).copied().unwrap_or_default();
+    Ok(BackgroundWorkplaceCohort {
+        key: workplace_key(site)?,
+        employed,
+        reserve,
+        labor_force,
+        opening_cash: site.opening_cash,
+        opening_stock: merge_stock(site.opening_stock.clone())?,
+    })
+}
+
+fn workplace_conservation(
+    row: &BackgroundWorkplaceCohort,
+) -> Result<CohortConservation, ConsolidationError> {
+    let (stock_quantity, stock_cost_micros) = stock_totals(&row.opening_stock)?;
+    Ok(CohortConservation {
+        employed: row.employed,
+        reserve: row.reserve,
+        labor_force: row.labor_force,
+        stock_quantity,
+        stock_cost_micros,
+        cash_micros: row.opening_cash.micro_units(),
+        ..CohortConservation::default()
+    })
+}
+
+fn background_household_total(
+    rows: &[BackgroundHouseholdCohort],
+) -> Result<CohortConservation, ConsolidationError> {
+    let mut totals = CohortConservation::default();
+    for row in rows {
+        totals = totals.checked_add(household_conservation(
+            row.counts,
+            row.opening_cash.micro_units(),
+            &row.opening_stock,
+        )?)?;
+    }
+    Ok(totals)
+}
+
+fn background_workplace_total(
+    rows: &[BackgroundWorkplaceCohort],
+) -> Result<CohortConservation, ConsolidationError> {
+    let mut totals = CohortConservation::default();
+    for row in rows {
+        totals = totals.checked_add(workplace_conservation(row)?)?;
+    }
+    Ok(totals)
+}
+
+fn unique_households(
+    opening: &EconomicOpening,
+) -> Result<BTreeMap<FinalDemandPrincipalId, &EconomicHouseholdSeed>, ConsolidationError> {
+    let mut rows = BTreeMap::new();
+    for household in &opening.households {
+        if rows.insert(household.principal_id, household).is_some() {
+            return Err(ConsolidationError::SourceRoster);
+        }
+    }
+    Ok(rows)
+}
+fn unique_sites(
+    opening: &EconomicOpening,
+) -> Result<BTreeMap<SiteId, &EconomicSiteSeed>, ConsolidationError> {
+    let mut rows = BTreeMap::new();
+    for site in &opening.sites {
+        if rows.insert(site.site_id, site).is_some() {
+            return Err(ConsolidationError::SourceRoster);
+        }
+    }
+    Ok(rows)
+}
+fn validate_foreground(
+    selection: &ForegroundSelection,
+    opening: &EconomicOpening,
+    households: &BTreeMap<FinalDemandPrincipalId, &EconomicHouseholdSeed>,
+    sites: &BTreeMap<SiteId, &EconomicSiteSeed>,
+    commitments: &[AuthoredCommitment],
+) -> Result<(), ConsolidationError> {
+    let organizations: BTreeSet<_> = opening
+        .institutional_cash
+        .iter()
+        .filter_map(|row| match row.id {
+            AccountId::Organization(account) => Some(account),
+            AccountId::Site(_) | AccountId::Household(_) | AccountId::Public(_) => None,
+        })
+        .collect();
+    if selection
+        .organizations
+        .iter()
+        .any(|account| !organizations.contains(account))
+        || selection
+            .household_principals
+            .iter()
+            .any(|principal| !households.contains_key(principal))
+        || selection
+            .workplaces
+            .iter()
+            .chain(&selection.partner_workplaces)
+            .any(|site| !sites.contains_key(site))
+    {
+        return Err(ConsolidationError::UnknownForeground);
+    }
+    let authored: BTreeMap<_, _> = commitments.iter().map(|row| (row.id, row)).collect();
+    if authored.len() != commitments.len() {
+        return Err(ConsolidationError::DuplicateForeground);
+    }
+    if selection.commitments.len() != authored.len() {
+        return Err(ConsolidationError::Commitment);
+    }
+    for id in &selection.commitments {
+        let row = authored.get(id).ok_or(ConsolidationError::Commitment)?;
+        if !selection.household_principals.contains(&row.donor)
+            || !selection.household_principals.contains(&row.recipient)
+        {
+            return Err(ConsolidationError::Commitment);
+        }
+    }
+    Ok(())
+}
+fn household_counts(
+    persons: u64,
+    households: u64,
+    (employed, reserve, _labor_force): (u64, u64, u64),
+    time: Option<(u64, u64)>,
+) -> Result<HouseholdCohortCounts, ConsolidationError> {
+    let (eligible_persons, endowment_hours) = time.ok_or(ConsolidationError::MissingTime)?;
+    Ok(HouseholdCohortCounts {
+        persons,
+        households,
+        employed,
+        reserve,
+        eligible_persons,
+        endowment_hours,
+    })
+}
+fn stock_totals(rows: &[OpeningCommodityStock]) -> Result<(u64, i128), ConsolidationError> {
+    let quantity = rows.iter().try_fold(0_u64, |total, row| {
+        total
+            .checked_add(row.amount.quantity)
+            .ok_or(ConsolidationError::Arithmetic)
+    })?;
+    let cost = rows.iter().try_fold(0_i128, |total, row| {
+        total
+            .checked_add(row.total_cost.micro_units())
+            .ok_or(ConsolidationError::Arithmetic)
+    })?;
+    Ok((quantity, cost))
+}
+fn household_conservation(
+    counts: HouseholdCohortCounts,
+    cash_micros: i128,
+    stock: &[OpeningCommodityStock],
+) -> Result<CohortConservation, ConsolidationError> {
+    let (stock_quantity, stock_cost_micros) = stock_totals(stock)?;
+    Ok(CohortConservation {
+        persons: counts.persons,
+        households: counts.households,
+        employed: counts.employed,
+        reserve: counts.reserve,
+        labor_force: counts
+            .employed
+            .checked_add(counts.reserve)
+            .ok_or(ConsolidationError::Arithmetic)?,
+        endowment_hours: counts.endowment_hours,
+        stock_quantity,
+        stock_cost_micros,
+        cash_micros,
+    })
+}
+fn household_totals(
+    households: &BTreeMap<FinalDemandPrincipalId, &EconomicHouseholdSeed>,
+    work: &BTreeMap<FinalDemandPrincipalId, (u64, u64, u64)>,
+    time: &BTreeMap<FinalDemandPrincipalId, (u64, u64)>,
+) -> Result<CohortConservation, ConsolidationError> {
+    let mut totals = CohortConservation::default();
+    for household in households.values() {
+        let counts = household_counts(
+            household.persons,
+            household.households,
+            work.get(&household.principal_id)
+                .copied()
+                .unwrap_or_default(),
+            time.get(&household.principal_id).copied(),
+        )?;
+        totals = totals.checked_add(household_conservation(
+            counts,
+            household.opening_cash.micro_units(),
+            &household.opening_stock,
+        )?)?;
+    }
+    Ok(totals)
+}
+fn workplace_totals(
+    sites: &BTreeMap<SiteId, &EconomicSiteSeed>,
+    work: &BTreeMap<SiteId, (u64, u64, u64)>,
+) -> Result<CohortConservation, ConsolidationError> {
+    let mut totals = CohortConservation::default();
+    for site in sites.values() {
+        let (employed, reserve, labor_force) = work.get(&site.site_id).copied().unwrap_or_default();
+        let (stock_quantity, stock_cost_micros) = stock_totals(&site.opening_stock)?;
+        totals = totals.checked_add(CohortConservation {
+            employed,
+            reserve,
+            labor_force,
+            stock_quantity,
+            stock_cost_micros,
+            cash_micros: site.opening_cash.micro_units(),
+            ..CohortConservation::default()
+        })?;
+    }
+    Ok(totals)
+}
+fn workplace_key(site: &EconomicSiteSeed) -> Result<WorkplaceCohortKey, ConsolidationError> {
+    match &site.source {
+        EconomicSiteSource::Qcew(key) => {
+            WorkplaceCohortKey::source_backed(site.site_id, *key, site.location)
+                .ok_or(ConsolidationError::SourceRoster)
+        }
+        EconomicSiteSource::MichiganSector { .. } | EconomicSiteSource::Designed { .. } => Ok(
+            WorkplaceCohortKey::designed(site.site_id, site.location, site.function),
+        ),
+    }
+}
+pub(super) fn merge_stock(
+    mut rows: Vec<OpeningCommodityStock>,
+) -> Result<Vec<OpeningCommodityStock>, ConsolidationError> {
+    rows.sort_unstable_by_key(|row| (row.amount.good_id, row.amount.unit_id));
+    let mut merged: Vec<OpeningCommodityStock> = Vec::with_capacity(rows.len());
+    for row in rows {
+        if let Some(last) = merged.last_mut() {
+            if (last.amount.good_id, last.amount.unit_id)
+                == (row.amount.good_id, row.amount.unit_id)
+            {
+                last.amount.quantity = last
+                    .amount
+                    .quantity
+                    .checked_add(row.amount.quantity)
+                    .ok_or(ConsolidationError::Arithmetic)?;
+                last.total_cost = Currency::from_micro_units(
+                    last.total_cost
+                        .micro_units()
+                        .checked_add(row.total_cost.micro_units())
+                        .ok_or(ConsolidationError::Arithmetic)?,
+                );
+                continue;
+            }
+        }
+        merged.push(row);
+    }
+    Ok(merged)
 }

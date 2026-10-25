@@ -13,7 +13,9 @@ mod parse;
 #[cfg(test)]
 mod tests;
 
-pub use model::{CohortKey, CohortReference, KnownSubtotal, QcewDisclosure, SourceMember};
+pub use model::{
+    CohortKey, CohortReference, KnownSubtotal, QcewDisclosure, SourceMember, WorkplaceCohortKey,
+};
 
 #[path = "national_cohorts/artifact.rs"]
 mod artifact;

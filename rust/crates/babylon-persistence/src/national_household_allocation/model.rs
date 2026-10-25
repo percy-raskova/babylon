@@ -1,4 +1,6 @@
+use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::geography::CountyGeoid;
+use babylon_material_circuit::FinalDemandPrincipalId;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
@@ -20,6 +22,26 @@ impl HouseholdBudgetKey {
     pub const fn owner_exposure(self) -> bool {
         matches!(self, Self::EarningOwner | Self::NoEarnerOwner)
     }
+    /// Whether the cohort carries a captured historical earning.
+    #[must_use]
+    pub const fn earning(self) -> bool {
+        matches!(self, Self::EarningNonowner | Self::EarningOwner)
+    }
+    /// Whether the cohort is collective residence rather than occupied households.
+    #[must_use]
+    pub const fn collective(self) -> bool {
+        matches!(self, Self::CollectiveResidence)
+    }
+    /// Whether the cohort is the explicit pooled foreign/dependency abstraction.
+    #[must_use]
+    pub const fn pooled_external(self) -> bool {
+        matches!(self, Self::PooledExternal)
+    }
+    /// Whether two budget rows may share one consolidated household cohort.
+    #[must_use]
+    pub const fn equivalent_for_consolidation(self, other: Self) -> bool {
+        self as u8 == other as u8
+    }
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
@@ -33,6 +55,16 @@ impl HouseholdBudgetKey {
     }
 }
 
+/// One separately addressable household owner at one fixed location.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct HouseholdCohortKey {
+    /// Exact owner identity; two counties never share one principal.
+    pub principal: FinalDemandPrincipalId,
+    /// Fixed county or bounded external location.
+    pub location: EconomicLocation,
+    /// Source earning and Designed ownership axes.
+    pub budget: HouseholdBudgetKey,
+}
 /// One counted budget cohort, never one object per household or person.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HouseholdBudgetAllocation {

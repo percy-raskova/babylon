@@ -27,7 +27,9 @@ use babylon_material_circuit::{
 };
 
 use crate::national_household_allocation;
-use crate::national_household_refinement::HouseholdRefinementError;
+use crate::national_household_refinement::{
+    ConsolidationError, HouseholdRefinementError, NationalDetailPartition,
+};
 use crate::national_household_time_allocation;
 use crate::national_household_time_allocation::HouseholdTimeAllocationError;
 use crate::national_resident_allocation;
@@ -54,6 +56,7 @@ pub enum NationalOpeningError {
     Households(HouseholdAllocationError),
     HouseholdTime(HouseholdTimeAllocationError),
     HouseholdRefinement(HouseholdRefinementError),
+    Detail(ConsolidationError),
     TimeAccount(MaterialCircuitError),
 }
 
@@ -201,9 +204,11 @@ pub fn build_national_opening(
         mandates: builder.aid.mandates.clone(),
         freight: vec![],
     };
+    let detail = super::detail::partition(&builder, &builder.aid)?;
     Ok(NationalOpening {
         opening: builder.opening,
         aid: builder.aid,
+        detail,
     })
 }
 
@@ -375,4 +380,6 @@ pub(in crate::national_economy) fn sum_amount(left: Currency, right: Currency) -
 pub struct NationalOpening {
     pub opening: EconomicOpening,
     pub aid: NationalAidCapture,
+    /// Authored foreground identities and conserved counted background cohorts.
+    pub detail: NationalDetailPartition,
 }

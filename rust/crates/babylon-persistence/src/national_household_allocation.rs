@@ -8,7 +8,7 @@ use allocation::allocate_county;
 use model::HouseholdCountyControls;
 pub use model::{
     CountyHouseholdAllocation, HouseholdAllocationError, HouseholdBudgetAllocation,
-    HouseholdBudgetKey, NationalHouseholdAllocation,
+    HouseholdBudgetKey, HouseholdCohortKey, NationalHouseholdAllocation,
 };
 pub use source::allocate_households;
 

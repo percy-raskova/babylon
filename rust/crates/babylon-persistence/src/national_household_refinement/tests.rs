@@ -1,27 +1,32 @@
 use super::refine;
 use super::refine::{
-    CohortConservation, DetailConservation, HouseholdLeafMargins, HouseholdRefinementError,
-    HouseholdRefinementSpec,
+    AuthoredCommitment, BackgroundHouseholdCohort, BackgroundWorkplaceCohort, CohortConservation,
+    ConsolidationError, DetailConservation, ForegroundSelection, HouseholdCohortCounts,
+    HouseholdLeafMargins, HouseholdRefinementError, HouseholdRefinementSpec,
 };
 use crate::economic_catalog::CommodityAmount;
 use crate::economic_catalog::CompiledEconomicOpening;
 use crate::economic_catalog::EconomicHouseholdSeed;
 use crate::economic_catalog::EconomicOpening;
 use crate::economic_catalog::EconomicSiteSeed;
+use crate::economic_catalog::EconomicSiteSource;
 use crate::economic_catalog::OpeningCommodityStock;
 use crate::national_cohorts;
+use crate::national_cohorts::WorkplaceCohortKey;
 use crate::national_counties;
 use crate::national_economy;
 use crate::national_economy::GameCommodity;
 use crate::national_economy::NationalAidCapture;
 use crate::national_economy::NationalGamePolicy;
 use crate::national_household_allocation::HouseholdBudgetKey;
+use crate::national_household_allocation::HouseholdCohortKey;
 use crate::national_household_refinement::NationalDetailPartition;
 use crate::national_households;
 use crate::national_resident_workforce;
 use crate::national_transport;
 use crate::world_reference;
 use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::EconomicFunction;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::economic_location::ForeignCounterpart;
 use babylon_kernel::economic_location::UsDependency;
@@ -711,6 +716,41 @@ fn contribution(
     }
 }
 #[test]
+fn household_endowment_is_gross_not_the_receipts_spendable_remainder() {
+    let fixture = national_fixture();
+    let cohort = fixture
+        .detail
+        .background_households()
+        .iter()
+        .find(|cohort| cohort.counts.endowment_hours > 1)
+        .expect("the national opening retains a background household endowment");
+    let principal = cohort.key.principal;
+    let gross = cohort.counts.endowment_hours;
+    let compiled = compiled_fixture();
+    let mut state = compiled.state.clone();
+    install_opening_receipts(&mut state);
+    let CircuitAccounting::Monetary(economy) = &state.accounting else {
+        panic!("the national opening uses the monetary circuit")
+    };
+    let HouseholdTimeAccounting::Modeled(book) = &economy.household_time else {
+        panic!("the national opening models household time")
+    };
+    let receipt = book
+        .receipts
+        .iter()
+        .find(|receipt| receipt.principal_id == principal)
+        .expect("every modeled background household closes one receipt");
+    assert_eq!(
+        receipt.endowment_hours, gross,
+        "the retained figure is the gross endowment, not the spendable remainder"
+    );
+    assert!(
+        receipt.contribution_available_hours < gross,
+        "protected and routine-provisioning commitments reduce the spendable figure"
+    );
+}
+
+#[test]
 fn two_organizations_cannot_spend_the_same_household_contribution_hour() {
     let compiled = compiled_fixture();
     let mut state = compiled.state.clone();
@@ -838,18 +878,58 @@ fn assert_route_bottleneck(opening: &EconomicOpening, route: RouteId) {
         "bottleneck pressure propagates through a corridor shared by two routes"
     );
 }
-fn assert_partition_roster(detail: &NationalDetailPartition, opening: &EconomicOpening) {
+fn expected_workplace_key(site: &EconomicSiteSeed) -> WorkplaceCohortKey {
+    match &site.source {
+        EconomicSiteSource::Qcew(key) => WorkplaceCohortKey::source_backed(*key, site.location)
+            .expect("the admitted QCEW site keeps its source county"),
+        EconomicSiteSource::MichiganSector { .. } | EconomicSiteSource::Designed { .. } => {
+            WorkplaceCohortKey::designed(site.location, site.function)
+        }
+    }
+}
+
+fn assert_household_identity_sets(detail: &NationalDetailPartition, opening: &EconomicOpening) {
     let foreground_households: BTreeSet<_> = detail
         .foreground()
         .household_principals()
         .iter()
         .copied()
         .collect();
+    let background_households: BTreeSet<_> = detail
+        .background_households()
+        .iter()
+        .map(|cohort| cohort.key.principal)
+        .collect();
+    assert_eq!(
+        background_households.len(),
+        detail.background_households().len(),
+        "one background row per household causal key"
+    );
+    assert!(
+        background_households.is_disjoint(&foreground_households),
+        "a foreground household principal cannot also be background"
+    );
+    let opening_households: BTreeSet<_> = opening
+        .households
+        .iter()
+        .map(|household| household.principal_id)
+        .collect();
+    assert_eq!(
+        background_households
+            .union(&foreground_households)
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        opening_households,
+        "background and foreground household identities partition the source roster"
+    );
     assert_eq!(
         detail.background_households().len() + foreground_households.len(),
         opening.households.len(),
-        "the partition neither creates nor drops a household actor"
+        "the authored opening has one household seed per causal key, so no household merge is possible"
     );
+}
+
+fn assert_workplace_identity_sets(detail: &NationalDetailPartition, opening: &EconomicOpening) {
     let foreground_sites: BTreeSet<_> = detail
         .foreground()
         .workplaces()
@@ -857,35 +937,77 @@ fn assert_partition_roster(detail: &NationalDetailPartition, opening: &EconomicO
         .chain(detail.foreground().partner_workplaces())
         .copied()
         .collect();
-    assert_eq!(
-        detail.background_workplaces().len() + foreground_sites.len(),
-        opening.sites.len(),
-        "the partition neither creates nor drops a workplace actor"
-    );
-    let site_ids: BTreeSet<_> = opening.sites.iter().map(|site| site.site_id).collect();
-    for cohort in detail.background_workplaces() {
-        assert!(
-            site_ids.contains(&cohort.key.site),
-            "every background workplace is an authored opening site"
-        );
-    }
-    let household_ids: BTreeSet<_> = opening
-        .households
+    let background_sites: u64 = detail
+        .background_workplaces()
         .iter()
-        .map(|household| household.principal_id)
+        .map(|cohort| cohort.sites)
+        .sum();
+    assert_eq!(
+        u64::try_from(foreground_sites.len())
+            .expect("the fixture site count fits the target range")
+            .checked_add(background_sites)
+            .expect("the fixture arithmetic stays in range"),
+        u64::try_from(opening.sites.len()).expect("the fixture site count fits the target range"),
+        "every admitted site is exactly one foreground identity or one counted background site"
+    );
+    let background_keys: BTreeMap<_, _> = detail
+        .background_workplaces()
+        .iter()
+        .map(|cohort| (cohort.key, cohort.sites))
         .collect();
-    for cohort in detail.background_households() {
+    assert_eq!(
+        background_keys.len(),
+        detail.background_workplaces().len(),
+        "one background row per workplace causal key"
+    );
+    let mut expected_keys = BTreeSet::new();
+    let mut represented = 0_u64;
+    for site in &opening.sites {
+        if foreground_sites.contains(&site.site_id) {
+            continue;
+        }
+        let key = expected_workplace_key(site);
         assert!(
-            household_ids.contains(&cohort.key.principal),
-            "every background household is an authored opening principal"
+            background_keys.contains_key(&key),
+            "every non-foreground site maps to its counted workplace key"
         );
+        expected_keys.insert(key);
+        represented = represented
+            .checked_add(1)
+            .expect("the fixture arithmetic stays in range");
     }
+    assert_eq!(
+        represented, background_sites,
+        "the key set and the retained site count conserve the same source sites"
+    );
+    assert_eq!(
+        background_keys.len(),
+        expected_keys.len(),
+        "background rows are exactly the distinct non-foreground causal keys"
+    );
+    assert_eq!(
+        background_sites
+            .checked_sub(
+                u64::try_from(background_keys.len())
+                    .expect("the fixture workplace count fits the target range")
+            )
+            .expect("the fixture arithmetic stays in range"),
+        2,
+        "two counties hold both a household-enterprise and a resident-employer fallback site \
+         with the same location/function/ownership, so those equivalent sites merge; all other \
+         non-foreground sites already have distinct causal keys"
+    );
+}
+
+fn assert_partition_identity_sets(detail: &NationalDetailPartition, opening: &EconomicOpening) {
+    assert_household_identity_sets(detail, opening);
+    assert_workplace_identity_sets(detail, opening);
 }
 #[test]
 fn cross_county_bottleneck_and_delayed_freight_keep_the_authored_actor_roster() {
     let fixture = national_fixture();
     assert_route_bottleneck(&fixture.opening, routed_route(fixture));
-    assert_partition_roster(&fixture.detail, &fixture.opening);
+    assert_partition_identity_sets(&fixture.detail, &fixture.opening);
 }
 
 fn stock(good: u8, unit: u8, quantity: u64, cost: i128) -> OpeningCommodityStock {
@@ -914,4 +1036,231 @@ fn equivalent_pantry_rows_merge_only_within_one_good_and_unit() {
     assert_eq!(merged[0].total_cost.micro_units(), 50);
     assert_eq!(merged[1].amount.unit_id, UnitId::from_bytes([2; 32]));
     assert_eq!(merged[2].amount.good_id, GoodId::from_bytes([2; 32]));
+}
+
+fn household_cohort(
+    key: HouseholdCohortKey,
+    persons: u64,
+    cash: i128,
+    quantity: u64,
+) -> BackgroundHouseholdCohort {
+    BackgroundHouseholdCohort {
+        key,
+        counts: HouseholdCohortCounts {
+            persons,
+            households: persons,
+            employed: 0,
+            reserve: 0,
+            eligible_persons: persons,
+            endowment_hours: persons
+                .checked_mul(10)
+                .expect("the fixture arithmetic stays in range"),
+        },
+        opening_cash: Currency::from_micro_units(cash),
+        opening_stock: vec![stock(1, 1, quantity, i128::from(quantity) * 10)],
+    }
+}
+
+fn workplace_cohort(
+    key: WorkplaceCohortKey,
+    employed: u64,
+    cash: i128,
+    quantity: u64,
+) -> BackgroundWorkplaceCohort {
+    BackgroundWorkplaceCohort {
+        key,
+        sites: 1,
+        employed,
+        reserve: 0,
+        labor_force: employed,
+        opening_cash: Currency::from_micro_units(cash),
+        opening_stock: vec![stock(2, 1, quantity, i128::from(quantity) * 10)],
+    }
+}
+
+#[test]
+fn background_rows_merge_only_equivalent_causal_keys() {
+    let location = EconomicLocation::domestic_county(county())
+        .expect("the fixture geoid names a domestic county");
+    let principal = FinalDemandPrincipalId::from_bytes([1; 32]);
+    let other = FinalDemandPrincipalId::from_bytes([2; 32]);
+    let key = HouseholdCohortKey {
+        principal,
+        location,
+        budget: HouseholdBudgetKey::EarningNonowner,
+    };
+    let same_key_other_persons = HouseholdCohortKey {
+        budget: HouseholdBudgetKey::NoEarnerNonowner,
+        ..key
+    };
+    let different_owner = HouseholdCohortKey {
+        principal: other,
+        ..key
+    };
+    let merged = refine::consolidate_household_rows(vec![
+        household_cohort(key, 2, 10, 2),
+        household_cohort(same_key_other_persons, 3, 5, 3),
+        household_cohort(different_owner, 4, 7, 4),
+    ])
+    .expect("the fixture household rows merge without overflow");
+    assert_eq!(
+        merged.len(),
+        3,
+        "a different owner or budget axis is not an equivalent causal key"
+    );
+    let merged = refine::consolidate_household_rows(vec![
+        household_cohort(key, 2, 10, 2),
+        household_cohort(key, 3, 5, 3),
+    ])
+    .expect("the fixture household rows merge without overflow");
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged[0].counts.persons, 5);
+    assert_eq!(merged[0].counts.eligible_persons, 5);
+    assert_eq!(merged[0].opening_cash.micro_units(), 15);
+    assert_eq!(merged[0].opening_stock.len(), 1);
+    assert_eq!(merged[0].opening_stock[0].amount.quantity, 5);
+    assert_eq!(merged[0].opening_stock[0].total_cost.micro_units(), 50);
+
+    let workplace = WorkplaceCohortKey::designed(location, EconomicFunction::Food);
+    let other_function = WorkplaceCohortKey::designed(location, EconomicFunction::Manufacturing);
+    let merged = refine::consolidate_workplace_rows(vec![
+        workplace_cohort(workplace, 2, 10, 2),
+        workplace_cohort(other_function, 3, 5, 3),
+        workplace_cohort(workplace, 4, 7, 4),
+    ])
+    .expect("the fixture workplace rows merge without overflow");
+    assert_eq!(
+        merged.len(),
+        2,
+        "a different function is not an equivalent workplace key"
+    );
+    let food = merged
+        .iter()
+        .find(|row| row.key == workplace)
+        .expect("the merged row keeps its causal key");
+    assert_eq!(food.sites, 2);
+    assert_eq!(food.employed, 6);
+    assert_eq!(food.labor_force, 6);
+    assert_eq!(food.opening_cash.micro_units(), 17);
+    assert_eq!(food.opening_stock.len(), 1);
+    assert_eq!(food.opening_stock[0].amount.quantity, 6);
+}
+
+fn consolidate(
+    opening: &EconomicOpening,
+    budgets: &BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
+    foreground: ForegroundSelection,
+    commitments: &[AuthoredCommitment],
+) -> Result<NationalDetailPartition, ConsolidationError> {
+    refine::consolidate_background(
+        opening,
+        budgets,
+        &opening.policies.household_time,
+        foreground,
+        commitments,
+    )
+}
+
+fn fixture_commitment(
+    donor: FinalDemandPrincipalId,
+    recipient: FinalDemandPrincipalId,
+) -> AuthoredCommitment {
+    AuthoredCommitment {
+        id: [9; 32],
+        donor,
+        recipient,
+        location: EconomicLocation::domestic_county(county())
+            .expect("the fixture geoid names a domestic county"),
+        good_id: GoodId::from_bytes([1; 32]),
+        unit_id: UnitId::from_bytes([1; 32]),
+        maximum_quantity: 1,
+    }
+}
+
+#[test]
+fn unknown_foreground_principal_is_refused() {
+    let fixture = national_fixture();
+    let mut foreground = ForegroundSelection::default();
+    foreground
+        .household_principals
+        .insert(FinalDemandPrincipalId::from_bytes([99; 32]));
+    assert_eq!(
+        consolidate(&fixture.opening, &BTreeMap::new(), foreground, &[]),
+        Err(ConsolidationError::UnknownForeground)
+    );
+}
+
+#[test]
+fn duplicate_commitment_identity_is_refused() {
+    let fixture = national_fixture();
+    let commitment = fixture_commitment(
+        FinalDemandPrincipalId::from_bytes([1; 32]),
+        FinalDemandPrincipalId::from_bytes([2; 32]),
+    );
+    let mut foreground = ForegroundSelection::default();
+    foreground.commitments.insert(commitment.id);
+    assert_eq!(
+        consolidate(
+            &fixture.opening,
+            &BTreeMap::new(),
+            foreground,
+            &[commitment.clone(), commitment],
+        ),
+        Err(ConsolidationError::DuplicateForeground)
+    );
+}
+
+#[test]
+fn commitment_without_a_foreground_counterparty_is_refused() {
+    let fixture = national_fixture();
+    let commitment = fixture_commitment(
+        FinalDemandPrincipalId::from_bytes([1; 32]),
+        FinalDemandPrincipalId::from_bytes([2; 32]),
+    );
+    let mut foreground = ForegroundSelection::default();
+    foreground.commitments.insert(commitment.id);
+    assert_eq!(
+        consolidate(
+            &fixture.opening,
+            &BTreeMap::new(),
+            foreground,
+            &[commitment],
+        ),
+        Err(ConsolidationError::Commitment)
+    );
+}
+
+#[test]
+fn background_household_without_a_captured_budget_is_refused() {
+    let fixture = national_fixture();
+    assert_eq!(
+        consolidate(
+            &fixture.opening,
+            &BTreeMap::new(),
+            ForegroundSelection::default(),
+            &[],
+        ),
+        Err(ConsolidationError::MissingBudget)
+    );
+}
+
+#[test]
+fn duplicate_source_household_identity_is_refused() {
+    let fixture = national_fixture();
+    let mut opening = fixture.opening.clone();
+    let duplicate = opening
+        .households
+        .first()
+        .expect("the national opening retains households")
+        .clone();
+    opening.households.push(duplicate);
+    assert_eq!(
+        consolidate(
+            &opening,
+            &BTreeMap::new(),
+            ForegroundSelection::default(),
+            &[]
+        ),
+        Err(ConsolidationError::SourceRoster)
+    );
 }

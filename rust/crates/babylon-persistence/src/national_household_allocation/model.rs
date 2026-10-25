@@ -65,6 +65,17 @@ pub struct HouseholdCohortKey {
     /// Source earning and Designed ownership axes.
     pub budget: HouseholdBudgetKey,
 }
+impl HouseholdCohortKey {
+    /// Whether two source rows share one counted background household cohort.
+    /// The owner, location and budget axes must all agree, so an owner and a
+    /// wage-dependent resident never pool cash or time.
+    #[must_use]
+    pub fn equivalent_for_consolidation(&self, other: &Self) -> bool {
+        self.principal.as_bytes() == other.principal.as_bytes()
+            && self.location.canonical_bytes() == other.location.canonical_bytes()
+            && self.budget.equivalent_for_consolidation(other.budget)
+    }
+}
 /// One counted budget cohort, never one object per household or person.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HouseholdBudgetAllocation {

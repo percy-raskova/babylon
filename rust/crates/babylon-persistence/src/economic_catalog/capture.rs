@@ -11,6 +11,7 @@ use super::control::MichiganSources;
 use crate::identity::CampaignId;
 use crate::michigan_material::MichiganMaterialCatalog;
 use crate::national_economy::NationalAidCapture;
+use crate::national_household_refinement::NationalDetailPartition;
 use crate::spatial_reference_products::SpatialReferenceProducts;
 use babylon_kernel::content_digest;
 use babylon_tick::h3_runtime::MichiganDynamicHexFoundation;
@@ -160,6 +161,16 @@ impl CapturedEconomicCatalog {
     pub fn national_aid_capture(&self) -> Option<&NationalAidCapture> {
         match &self.sources {
             CapturedSources::National(sources) => Some(&sources.aid),
+            CapturedSources::Michigan(_) => None,
+        }
+    }
+    /// Authored national detail partition held by the same admitted source owner.
+    /// The foundation content bundle stores this catalog, so the partition survives
+    /// foundation capture without regenerating the opening.
+    #[must_use]
+    pub fn national_detail(&self) -> Option<&NationalDetailPartition> {
+        match &self.sources {
+            CapturedSources::National(sources) => Some(&sources.detail),
             CapturedSources::Michigan(_) => None,
         }
     }
@@ -433,6 +444,23 @@ mod tests {
             CapturedEconomicCatalog::capture(super::super::preset::national_catalog_input(), None)
                 .expect("the fixture captures the authored state");
         previous_compiler_refuses(&catalog, "national-world-v4");
+    }
+    #[test]
+    fn national_catalog_retains_the_authored_detail_partition() {
+        let catalog =
+            CapturedEconomicCatalog::capture(super::super::preset::national_catalog_input(), None)
+                .expect("the national preset captures its admitted opening");
+        let detail = catalog
+            .national_detail()
+            .expect("the national source owner retains the authored partition");
+        assert!(!detail.background_households().is_empty());
+        assert!(!detail.background_workplaces().is_empty());
+        assert!(!detail.foreground().household_principals().is_empty());
+        assert_eq!(
+            detail.background_households().len() + detail.foreground().household_principals().len(),
+            catalog.opening().households.len(),
+            "foundation capture keeps the same conserved partition the opening published"
+        );
     }
     #[test]
     fn previous_michigan_control_v1_compiler_is_refused() {

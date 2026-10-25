@@ -15,9 +15,6 @@ use std::fmt::Result as FmtResult;
 /// Current organizer representation. Older representations are unsupported.
 pub const ORGANIZER_SCHEMA_VERSION: u16 = 8;
 
-/// Retained evidence periods for one actor-safe organizer journal window.
-pub const ORGANIZER_JOURNAL_PERIODS: usize = 13;
-
 /// Whole organizer-hours are Designed participant time commitments, not jobs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -289,8 +286,6 @@ pub struct OrganizerContactProduct {
     pub actor_id: u64,
     pub partner_actor_id: u64,
     pub produced_period: u64,
-    /// Journal sequence of the creation receipt once permanent evidence exists.
-    pub origin_journal_seq: Option<u64>,
 }
 
 /// Compact current learned-authority index, one row per subject/source/report.

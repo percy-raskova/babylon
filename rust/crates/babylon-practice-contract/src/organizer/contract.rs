@@ -246,7 +246,6 @@ pub fn validate_organizer_state(state: &OrganizerState) -> Result<(), OrganizerE
     for product in &state.contact_products {
         if product.produced_period == 0
             || product.produced_period > state.period
-            || product.origin_journal_seq == Some(0)
             || !product_ids.insert(product.product_id)
         {
             return Err(OrganizerError::InvalidState);
@@ -417,6 +416,10 @@ pub fn validate_organizer_journal(
         }
     }
     for row in &state.learned_authority_index {
+        // The retained evidence window is still unbounded (Task 8 owns the
+        // finite retention window), so every compact learned row must find its
+        // exact observation in retained evidence. Task 8 must either preserve
+        // the referenced evidence or amend this refusal when it prunes.
         let exact = observations
             .get(&row.observation_id)
             .is_some_and(|observation| {
@@ -451,6 +454,7 @@ pub fn validate_organizer_journal(
         }
     }
     super::aid::validate_completed_aid(state, latest)?;
+    super::aid::validate_aid_window(state, journal)?;
     Ok(())
 }
 
@@ -831,6 +835,20 @@ pub(super) fn learned_authority_index(
     rows.into_values().collect()
 }
 
+/// Exact household-hour identity charged by one organizer time use.
+#[must_use]
+pub fn household_contribution_use_id(
+    receipt_id: &[u8; 32],
+    actor_id: u64,
+    contributor_id: u64,
+) -> [u8; 32] {
+    let mut identity = b"babylon.organizer-household-contribution.v1\0".to_vec();
+    identity.extend_from_slice(receipt_id);
+    identity.extend_from_slice(&actor_id.to_be_bytes());
+    identity.extend_from_slice(&contributor_id.to_be_bytes());
+    content_digest::sha256_of(&identity)
+}
+
 /// Exact household-hour identities charged by one period's evidence.
 pub(super) fn charged_time_ids(entries: &OrganizerPeriodJournalEntries) -> BTreeSet<[u8; 32]> {
     let mut ids = BTreeSet::new();
@@ -840,11 +858,11 @@ pub(super) fn charged_time_ids(entries: &OrganizerPeriodJournalEntries) -> BTree
             continue;
         }
         for usage in &receipt.time_use {
-            let mut identity = b"babylon.organizer-household-contribution.v1\0".to_vec();
-            identity.extend_from_slice(&receipt.receipt_id);
-            identity.extend_from_slice(&usage.actor_id.to_be_bytes());
-            identity.extend_from_slice(&usage.contributor_id.to_be_bytes());
-            ids.insert(content_digest::sha256_of(&identity));
+            ids.insert(household_contribution_use_id(
+                &receipt.receipt_id,
+                usage.actor_id,
+                usage.contributor_id,
+            ));
         }
     }
     for row in &entries.collection_receipts {

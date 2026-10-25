@@ -581,7 +581,7 @@ impl CapturedOrganizerPages {
         let (register, admitted) = captured.admit(cached).map_err(archive_register_error)?;
         let _render_timing = Timing::start(Stage::ArchiveOrganizerRendering, self.tick);
         let subjects = self.subjects;
-        let Some(_state) = register.organizer_state() else {
+        if register.organizer_state().is_none() {
             return Ok((
                 ArchiveProducerOutcome::new(
                     ArchiveDirtyBatch::try_new(
@@ -593,7 +593,7 @@ impl CapturedOrganizerPages {
                 ),
                 Some(admitted),
             ));
-        };
+        }
         let total = subjects.len();
         let mut pages = Vec::new();
         let journal = register

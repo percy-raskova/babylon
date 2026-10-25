@@ -1020,7 +1020,6 @@ fn execute_practice(
                     actor_id: config.controlled_actor_id,
                     partner_actor_id: partner.actor_id,
                     produced_period: period,
-                    origin_journal_seq: None,
                 });
             } else {
                 receipt.outcome = OrganizerOutcome::ContactUncompleted;

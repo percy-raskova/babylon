@@ -6,9 +6,10 @@ use babylon_practice_contract::{
     OrganizerCollectionMandate, OrganizerCollectionOutcome, OrganizerCommitment, OrganizerConfig,
     OrganizerContribution, OrganizerError, OrganizerGiftConsent, OrganizerHouseholdBinding,
     OrganizerOutcome, OrganizerParticipant, OrganizerPartner, OrganizerPartnerPolicy,
-    OrganizerPartnerResponse, OrganizerPeriodTimeResources, OrganizerRefusal, OrganizerState,
-    OrganizerTimeBinding, OrganizerTimeBindingMode, OrganizerTimeUse, OrganizerWorkplaceFacts,
-    PracticeId, PracticeResourceAllocationMode, PracticeResourceCapacity, PracticeResourceId,
+    OrganizerPartnerResponse, OrganizerPeriodJournal, OrganizerPeriodJournalEntries,
+    OrganizerPeriodTimeResources, OrganizerRefusal, OrganizerState, OrganizerTimeBinding,
+    OrganizerTimeBindingMode, OrganizerTimeUse, OrganizerWorkplaceFacts, PracticeId,
+    PracticeResourceAllocationMode, PracticeResourceCapacity, PracticeResourceId,
     PracticeResourceOwner, PracticeTargetTag, ORGANIZER_SCHEMA_VERSION,
 };
 use std::collections::BTreeSet;
@@ -1000,6 +1001,69 @@ fn product_reduction_can_carry_pending_authorization_but_cannot_be_saved_before_
     );
 }
 
+#[test]
+fn dropped_aid_resolution_period_is_refused_by_the_window_chain() {
+    let (config, accepted, first) = remote_pending();
+    let waiting = support_for(
+        &config,
+        &accepted,
+        2,
+        OrganizerAidSupportStatus::AwaitingDelivery,
+    );
+    let second = babylon_practice_contract::resolve_organizer_period_with_time(
+        &config,
+        &first,
+        &support::facts(2, 160),
+        None,
+        &next_resources(&config, 2),
+        babylon_practice_contract::OrganizerMaterialSupport {
+            aid: &[waiting],
+            collection: None,
+        },
+    )
+    .expect("the second waiting period resolves");
+    let granted = support_for(
+        &config,
+        &accepted,
+        3,
+        OrganizerAidSupportStatus::Granted {
+            granted_quantity: 2,
+            consumed_quantity: 1,
+        },
+    );
+    let third = babylon_practice_contract::resolve_organizer_period_with_time(
+        &config,
+        &second,
+        &support::facts(3, 160),
+        None,
+        &next_resources(&config, 3),
+        babylon_practice_contract::OrganizerMaterialSupport {
+            aid: &[granted],
+            collection: None,
+        },
+    )
+    .expect("the terminal period resolves");
+    let mut complete = OrganizerPeriodJournal::empty();
+    for entries in [&first.journal, &second.journal, &third.journal] {
+        complete
+            .append(entries.clone())
+            .expect("the resolved periods extend the window");
+    }
+    babylon_practice_contract::validate_organizer_journal(&config, &third.state, &complete)
+        .expect("the complete consecutive chain validates");
+    let mut dropped = OrganizerPeriodJournal::empty();
+    for entries in [&first.journal, &third.journal] {
+        dropped
+            .append(entries.clone())
+            .expect("the shortened window is still ordered");
+    }
+    assert_eq!(
+        babylon_practice_contract::validate_organizer_journal(&config, &third.state, &dropped),
+        Err(OrganizerError::InvalidState),
+        "a silently dropped resolution period must refuse, not collapse the chain"
+    );
+}
+
 fn organizer_actual_time_uses(
     period_state: &ResolvedOrganizerPeriod,
     _period: u64,
@@ -1080,10 +1144,7 @@ fn current_aid_support_requires_actual_postings_and_exact_decimal_money() {
         .as_object_mut()
         .expect("the JSON fixture field is an object")
         .remove("material_postings");
-    assert!(
-        serde_json::from_value::<babylon_practice_contract::OrganizerPeriodJournalEntries>(entries)
-            .is_err()
-    );
+    assert!(serde_json::from_value::<OrganizerPeriodJournalEntries>(entries).is_err());
 
     let mut support = serde_json::to_value(&pending.journal.aid_receipts[0].support)
         .expect("the value serializes to JSON");

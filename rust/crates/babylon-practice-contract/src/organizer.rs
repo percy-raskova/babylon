@@ -37,6 +37,6 @@ pub use types::{
     OrganizerPeriodJournalEntries, OrganizerPeriodTimeWitness, OrganizerPosition, OrganizerPreview,
     OrganizerReceipt, OrganizerRefusal, OrganizerReport, OrganizerStandingWork, OrganizerState,
     OrganizerTimeBindingMode, OrganizerTimeUse, OrganizerView, OrganizerWorkplaceFacts,
-    ResolvedOrganizerPeriod, ORGANIZER_JOURNAL_PERIODS, ORGANIZER_RECENT_OBSERVATIONS,
-    ORGANIZER_RECENT_RECEIPTS, ORGANIZER_SCHEMA_VERSION,
+    ResolvedOrganizerPeriod, ORGANIZER_RECENT_OBSERVATIONS, ORGANIZER_RECENT_RECEIPTS,
+    ORGANIZER_SCHEMA_VERSION,
 };

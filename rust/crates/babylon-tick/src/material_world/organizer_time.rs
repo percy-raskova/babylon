@@ -186,12 +186,12 @@ pub(super) fn uses(
                     .ok_or(MaterialWorldError::Organizer(
                         OrganizerError::TimeBindingMismatch,
                     ))?;
-            let mut identity = b"babylon.organizer-household-contribution.v1\0".to_vec();
-            identity.extend_from_slice(&receipt.receipt_id);
-            identity.extend_from_slice(&usage.actor_id.to_be_bytes());
-            identity.extend_from_slice(&usage.contributor_id.to_be_bytes());
             result.push(HouseholdContributionUse {
-                use_id: content_digest::sha256_of(&identity),
+                use_id: babylon_practice_contract::household_contribution_use_id(
+                    &receipt.receipt_id,
+                    usage.actor_id,
+                    usage.contributor_id,
+                ),
                 principal_id,
                 actor_id: usage.actor_id,
                 contributor_id: usage.contributor_id,

@@ -8,6 +8,7 @@ use super::OrganizerError;
 use super::OrganizerOutcome;
 use super::OrganizerPartner;
 use super::OrganizerPartnerResponse;
+use super::OrganizerPeriodJournal;
 use super::OrganizerPeriodJournalEntries;
 use super::OrganizerReceipt;
 use super::OrganizerRefusal;
@@ -615,6 +616,20 @@ pub(super) fn validate_aid_history(
         if row.practice.period != entries.period {
             return Err(OrganizerError::InvalidState);
         }
+        // The first resolution of one gift belongs to its original dispatch
+        // period and is authorized by that period's ordinary scheduled receipt.
+        if row.practice.period == row.authorization.dispatch_period
+            && !entries.receipts.iter().any(|ordinary| {
+                ordinary.outcome == OrganizerOutcome::AidScheduled
+                    && ordinary.commitment_id
+                        == Some(row.authorization.gift.commitment.commitment_id)
+                    && ordinary.period == row.authorization.dispatch_period
+                    && ordinary.choice == row.authorization.gift.commitment.command.choice
+                    && ordinary.actor_id == row.authorization.gift.donor_actor_id
+            })
+        {
+            return Err(OrganizerError::InvalidState);
+        }
     }
     for receipt in entries.receipts() {
         if let Some(kind) = aid_kind(receipt.choice) {
@@ -711,6 +726,64 @@ pub(super) fn validate_completed_aid(
                 && row.practice.period == state.period
                 && row.practice.outcome == OrganizerOutcome::AidAwaitingSupport
         }) {
+            return Err(OrganizerError::InvalidState);
+        }
+    }
+    Ok(())
+}
+
+/// Validate the retained aid chain across periods and against compact state.
+///
+/// One gift resolves once per period from its dispatch period onward: no period
+/// may be dropped, no terminal receipt may continue, one authorization may not
+/// change, and every surviving pending gift must be the last non-terminal row
+/// of its own chain. Because [`validate_completed_aid`] requires the current
+/// period to re-resolve every pending gift, the former carried-reduction
+/// exemption cannot apply to a saveable state and is deliberately absent.
+pub(super) fn validate_aid_window(
+    state: &OrganizerState,
+    journal: &OrganizerPeriodJournal,
+) -> Result<(), OrganizerError> {
+    let mut histories = BTreeMap::<[u8; 32], (u64, bool, &OrganizerPendingAidPractice)>::new();
+    let mut last_key = None;
+    for entries in &journal.periods {
+        for row in &entries.aid_receipts {
+            let key = (row.practice.period, row.authorization.gift.kind);
+            if last_key.is_some_and(|previous| previous >= key) {
+                return Err(OrganizerError::InvalidState);
+            }
+            last_key = Some(key);
+            let id = row.authorization.gift.commitment.commitment_id;
+            let terminal = row.practice.outcome != OrganizerOutcome::AidAwaitingSupport;
+            if let Some((previous_period, was_terminal, authorization)) = histories.get(&id) {
+                if *was_terminal
+                    || previous_period.checked_add(1) != Some(row.practice.period)
+                    || *authorization != &row.authorization
+                {
+                    return Err(OrganizerError::InvalidState);
+                }
+            } else if row.practice.period != row.authorization.dispatch_period {
+                return Err(OrganizerError::InvalidState);
+            }
+            histories.insert(id, (row.practice.period, terminal, &row.authorization));
+        }
+    }
+    for pending in &state.pending_aid {
+        let id = pending.gift.commitment.commitment_id;
+        let Some((period, terminal, authorization)) = histories.get(&id) else {
+            return Err(OrganizerError::InvalidState);
+        };
+        if *terminal || *authorization != pending || *period != state.period {
+            return Err(OrganizerError::InvalidState);
+        }
+    }
+    for (id, (period, terminal, authorization)) in &histories {
+        if !terminal
+            && (*period != state.period
+                || !state.pending_aid.iter().any(|pending| {
+                    pending.gift.commitment.commitment_id == *id && authorization == &pending
+                }))
+        {
             return Err(OrganizerError::InvalidState);
         }
     }

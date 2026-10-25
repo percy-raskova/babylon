@@ -35,11 +35,14 @@ const RECORD_DOMAIN: &[u8] = b"babylon.permanent-journal-record.v1\0";
 /// Domain separator for background family summaries.
 const SUMMARY_DOMAIN: &[u8] = b"babylon.permanent-journal-family.v1\0";
 
+/// Domain separator for the collection resolution's compound record key.
+const COLLECTION_KEY_DOMAIN: &[u8] = b"babylon.organizer-collection-record-key.v1\0";
+
 /// Default ceiling on player-referenced records in one period.
 pub const MAX_EXTRACTED_RECORDS: usize = 4_096;
 
-/// Closed receipt-family count: 36 disposition families.
-pub const RECEIPT_FAMILIES: u8 = 36;
+/// Closed receipt-family count, sourced from the material register.
+pub const RECEIPT_FAMILIES: usize = material_world::RECEIPT_FAMILY_COUNT;
 
 /// Who and what this extraction treats as the player's causal evidence.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -84,6 +87,13 @@ impl ExtractionPolicy {
 
     fn owns_contributor(&self, contributor: u64) -> bool {
         self.contributor_ids.binary_search(&contributor).is_ok()
+    }
+
+    fn is_sorted(&self) -> bool {
+        fn strictly_increasing<T: Ord>(values: &[T]) -> bool {
+            values.windows(2).all(|pair| pair[0] < pair[1])
+        }
+        strictly_increasing(&self.contributor_ids) && strictly_increasing(&self.principal_ids)
     }
 }
 
@@ -169,6 +179,13 @@ pub fn extract_permanent_journal_entries(
             table: "permanent_journal",
             field: "max_records",
             reason: "the extraction policy retains no records",
+        });
+    }
+    if !policy.is_sorted() {
+        return Err(SaveError::InvalidField {
+            table: "permanent_journal",
+            field: "policy",
+            reason: "the extraction policy identities must be sorted and unique",
         });
     }
     let mut records = Vec::new();
@@ -287,7 +304,10 @@ pub fn extract_permanent_journal_entries(
         )
     });
     let mut summaries = Vec::new();
-    for family in 1..=RECEIPT_FAMILIES {
+    for index in 1..=RECEIPT_FAMILIES {
+        let family = u8::try_from(index).map_err(|_| SaveError::Arithmetic {
+            field: "receipt family",
+        })?;
         let rows = material_world::receipt_family_rows(receipts, family);
         let bytes =
             material_world::receipt_family_bytes(period, receipts, family).map_err(|_| {
@@ -407,10 +427,17 @@ fn collection_record(
         id: row.commitment.commitment_id.to_vec(),
     };
     let content_hash = record_hash(JournalKind::PlayerReceipt, Some(&subject), &payload);
+    // The ordinary Collect receipt already owns `practice.receipt_id`, so the
+    // resolution keeps its own compound key and both exact rows survive the
+    // UNIQUE(kind, record_key) index.
+    let mut key = Vec::from(COLLECTION_KEY_DOMAIN);
+    key.extend_from_slice(&row.commitment.commitment_id);
+    key.extend_from_slice(&row.fact.period.to_be_bytes());
+    key.extend_from_slice(&row.fact.contribution_use_id);
     Ok(ExtractedJournalRecord {
         kind: JournalKind::PlayerReceipt,
         subject: Some(subject),
-        record_key: Some(row.practice.receipt_id.to_vec()),
+        record_key: Some(content_digest::sha256_of(&key).to_vec()),
         actor_id: Some(policy.actor_id.to_be_bytes()),
         payload,
         content_hash,
@@ -617,9 +644,35 @@ mod tests {
     use babylon_material_circuit::FinalDemandPrincipalId;
     use babylon_material_circuit::HouseholdTimeReceipt;
     use babylon_material_circuit::UnitId;
+    use babylon_practice_contract::OrganizerAidCommitment;
+    use babylon_practice_contract::OrganizerAidKind;
+    use babylon_practice_contract::OrganizerAidMaterialPostings;
+    use babylon_practice_contract::OrganizerAidPartnerAuthorization;
+    use babylon_practice_contract::OrganizerAidResolutionReceipt;
+    use babylon_practice_contract::OrganizerAidSupport;
+    use babylon_practice_contract::OrganizerAidSupportStatus;
+    use babylon_practice_contract::OrganizerChoice;
+    use babylon_practice_contract::OrganizerCollectionFact;
+    use babylon_practice_contract::OrganizerCollectionOutcome;
+    use babylon_practice_contract::OrganizerCollectionResolution;
+    use babylon_practice_contract::OrganizerCommand;
+    use babylon_practice_contract::OrganizerCommitment;
+    use babylon_practice_contract::OrganizerInquiry;
     use babylon_practice_contract::OrganizerObservation;
+    use babylon_practice_contract::OrganizerOutcome;
+    use babylon_practice_contract::OrganizerPartnerResponse;
+    use babylon_practice_contract::OrganizerPendingAidPractice;
     use babylon_practice_contract::OrganizerPeriodJournalEntries;
+    use babylon_practice_contract::OrganizerReceipt;
     use babylon_practice_contract::OrganizerReport;
+    use babylon_practice_contract::OrganizerTimeUse;
+
+    use crate::sqlite_store::chunks;
+    use crate::sqlite_store::chunks::JournalRecordInput;
+    use crate::sqlite_store::chunks::JournalSubject;
+    use crate::sqlite_store::schema;
+    use rusqlite::Connection;
+    use std::collections::BTreeSet;
 
     fn empty_receipts(period: u64) -> MaterialTickReceipts {
         MaterialTickReceipts {
@@ -706,6 +759,158 @@ mod tests {
         }
     }
 
+    fn commitment(choice: OrganizerChoice, id: [u8; 32], period: u64) -> OrganizerCommitment {
+        OrganizerCommitment {
+            command: OrganizerCommand {
+                campaign_id: [1; 16],
+                actor_id: 101,
+                authority_id: [2; 16],
+                expected_period: period - 1,
+                content_digest: [3; 32],
+                resource_digest: [4; 32],
+                nonce: [5; 16],
+                choice,
+            },
+            resolves_period: period,
+            commitment_id: id,
+        }
+    }
+
+    fn receipt(
+        receipt_id: [u8; 32],
+        commitment_id: Option<[u8; 32]>,
+        actor_id: u64,
+        period: u64,
+        choice: OrganizerChoice,
+        outcome: OrganizerOutcome,
+        time_use: Vec<OrganizerTimeUse>,
+    ) -> OrganizerReceipt {
+        OrganizerReceipt {
+            receipt_id,
+            commitment_id,
+            actor_id,
+            period,
+            choice,
+            standing_work: false,
+            outcome,
+            hours_spent: time_use.iter().map(|row| row.hours).sum(),
+            partner_actor_id: None,
+            partner_response: OrganizerPartnerResponse::NotRequested,
+            observation_ids: vec![],
+            contact_product_id: None,
+            time_use,
+        }
+    }
+
+    fn collect_resolution(period: u64, practice_actor: u64) -> OrganizerCollectionResolution {
+        let commitment = commitment(OrganizerChoice::Collect, [21; 32], period);
+        OrganizerCollectionResolution {
+            fact: OrganizerCollectionFact {
+                period,
+                admitted_period: period - 1,
+                original_commitment_id: commitment.commitment_id,
+                command_nonce: [22; 16],
+                mandate_id: [23; 32],
+                source_hash: [24; 32],
+                actor_id: practice_actor,
+                contributor_id: 201,
+                household_principal_id: [7; 32],
+                organization_account_id: [25; 32],
+                labor_unit_id: [26; 32],
+                requested_cash_micros: 10,
+                collected_cash_micros: 5,
+                performed_hours: 2,
+                outcome: OrganizerCollectionOutcome::PartiallyCollected,
+                transfer_ordinal: Some(0),
+                contribution_use_id: [27; 32],
+            },
+            commitment,
+            practice: receipt(
+                [9; 32],
+                Some([21; 32]),
+                practice_actor,
+                period,
+                OrganizerChoice::Collect,
+                OrganizerOutcome::CollectionCompleted,
+                vec![],
+            ),
+        }
+    }
+
+    fn aid_resolution(
+        period: u64,
+        commitment_id: [u8; 32],
+        donor_actor_id: u64,
+        donor_principal_id: [u8; 32],
+        recipient_principal_id: [u8; 32],
+    ) -> OrganizerAidResolutionReceipt {
+        let gift = OrganizerAidCommitment {
+            commitment: commitment(OrganizerChoice::RemoteAid, commitment_id, period),
+            kind: OrganizerAidKind::Remote,
+            mandate_id: [12; 32],
+            source_hash: [13; 32],
+            donor_actor_id,
+            recipient_actor_id: 901,
+            donor_contributor_id: 902,
+            recipient_contributor_id: 903,
+            donor_principal_id,
+            recipient_principal_id,
+        };
+        let authorization = OrganizerPendingAidPractice {
+            gift,
+            material_commitment_id: [14; 32],
+            dispatch_period: period,
+            good_id: [15; 32],
+            unit_id: [16; 32],
+            partner_authorization: OrganizerAidPartnerAuthorization {
+                actor_id: 901,
+                authority_id: [17; 16],
+                authority_digest: [18; 32],
+                content_digest: [3; 32],
+                resource_digest: [4; 32],
+                target: [19; 32],
+            },
+        };
+        OrganizerAidResolutionReceipt {
+            support: OrganizerAidSupport {
+                original_commitment_id: commitment_id,
+                material_commitment_id: [14; 32],
+                mandate_id: [12; 32],
+                source_hash: [13; 32],
+                dispatch_period: period,
+                period,
+                recipient_principal_id,
+                good_id: [15; 32],
+                unit_id: [16; 32],
+                status: OrganizerAidSupportStatus::Granted {
+                    granted_quantity: 2,
+                    consumed_quantity: 1,
+                },
+                material_postings: OrganizerAidMaterialPostings {
+                    dispatched_quantity: 2,
+                    fulfillment_hours: 1,
+                    payer_cash_reserved_micros: 0,
+                    payer_cash_granted_micros: 0,
+                    payer_cash_refunded_micros: 0,
+                },
+            },
+            practice: receipt(
+                [28; 32],
+                Some(commitment_id),
+                donor_actor_id,
+                period,
+                OrganizerChoice::RemoteAid,
+                OrganizerOutcome::AidPracticeCompleted,
+                vec![OrganizerTimeUse {
+                    contributor_id: 201,
+                    actor_id: 901,
+                    hours: 3,
+                }],
+            ),
+            authorization,
+        }
+    }
+
     #[test]
     fn extraction_is_deterministic_and_covers_every_closed_family() {
         let receipts = empty_receipts(3);
@@ -716,7 +921,7 @@ mod tests {
             .expect("the empty period extracts deterministically");
         assert_eq!(first, second);
         assert!(first.records.is_empty());
-        assert_eq!(first.summaries.len(), usize::from(RECEIPT_FAMILIES));
+        assert_eq!(first.summaries.len(), RECEIPT_FAMILIES);
         for (index, summary) in first.summaries.iter().enumerate() {
             assert_eq!(usize::from(summary.family), index + 1);
             assert_eq!(summary.rows, 0);
@@ -817,5 +1022,213 @@ mod tests {
                 actual: 2
             })
         ));
+    }
+
+    #[test]
+    fn unsorted_policy_identities_are_refused() {
+        let entries = OrganizerPeriodJournalEntries::new(3);
+        let mut unsorted = policy();
+        unsorted.contributor_ids.insert(0, 999);
+        assert!(matches!(
+            extract_permanent_journal_entries(3, &unsorted, &empty_receipts(3), &entries),
+            Err(SaveError::InvalidField {
+                field: "policy",
+                ..
+            })
+        ));
+        let mut duplicate = policy();
+        duplicate.principal_ids.push([7; 32]);
+        assert!(matches!(
+            extract_permanent_journal_entries(3, &duplicate, &empty_receipts(3), &entries),
+            Err(SaveError::InvalidField {
+                field: "policy",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn organizer_receipts_are_retained_by_actor_or_contributor() {
+        let mut entries = OrganizerPeriodJournalEntries::new(3);
+        entries.receipts.push(receipt(
+            [31; 32],
+            Some([41; 32]),
+            101,
+            3,
+            OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
+            OrganizerOutcome::EvidenceObtained,
+            vec![],
+        ));
+        entries.receipts.push(receipt(
+            [32; 32],
+            None,
+            999,
+            3,
+            OrganizerChoice::Hold,
+            OrganizerOutcome::ContactCompleted,
+            vec![OrganizerTimeUse {
+                contributor_id: 201,
+                actor_id: 999,
+                hours: 4,
+            }],
+        ));
+        entries.receipts.push(receipt(
+            [33; 32],
+            None,
+            999,
+            3,
+            OrganizerChoice::Hold,
+            OrganizerOutcome::ContactCompleted,
+            vec![OrganizerTimeUse {
+                contributor_id: 777,
+                actor_id: 999,
+                hours: 4,
+            }],
+        ));
+        let extracted =
+            extract_permanent_journal_entries(3, &policy(), &empty_receipts(3), &entries)
+                .expect("the receipts extract");
+        let keys: BTreeSet<_> = extracted
+            .records
+            .iter()
+            .filter_map(|record| record.record_key.clone())
+            .collect();
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains([31; 32].as_slice()));
+        assert!(keys.contains([32; 32].as_slice()));
+        let observed = extracted
+            .records
+            .iter()
+            .find(|record| record.record_key.as_deref() == Some(&[31; 32][..]))
+            .expect("the direct actor receipt is retained");
+        assert_eq!(
+            observed.subject.as_ref().map(|row| row.kind),
+            Some(SubjectKind::Commitment)
+        );
+        assert_eq!(
+            observed.subject.as_ref().map(|row| row.id.clone()),
+            Some([41; 32].to_vec())
+        );
+        let contributed = extracted
+            .records
+            .iter()
+            .find(|record| record.record_key.as_deref() == Some(&[32; 32][..]))
+            .expect("the contributor-touched receipt is retained");
+        assert_eq!(
+            contributed.subject.as_ref().map(|row| row.kind),
+            Some(SubjectKind::Player)
+        );
+    }
+
+    #[test]
+    fn collections_are_retained_by_practice_or_fact_actor() {
+        let mut entries = OrganizerPeriodJournalEntries::new(3);
+        let touched = collect_resolution(3, 101);
+        entries.receipts.push(touched.practice.clone());
+        entries.collection_receipts.push(touched);
+        let untouched = collect_resolution(3, 999);
+        entries.collection_receipts.push(untouched);
+        let extracted =
+            extract_permanent_journal_entries(3, &policy(), &empty_receipts(3), &entries)
+                .expect("the collection rows extract");
+        assert_eq!(extracted.records.len(), 2);
+        let subjects: Vec<_> = extracted
+            .records
+            .iter()
+            .filter(|record| {
+                record
+                    .subject
+                    .as_ref()
+                    .is_some_and(|row| row.kind == SubjectKind::Commitment)
+            })
+            .filter_map(|record| record.subject.as_ref().map(|row| row.id.clone()))
+            .collect();
+        assert_eq!(
+            subjects,
+            vec![[21; 32].to_vec(), [21; 32].to_vec()],
+            "the ordinary Collect receipt and its exact resolution both name the commitment"
+        );
+    }
+
+    #[test]
+    fn aid_resolutions_are_retained_by_actor_or_principal() {
+        let mut entries = OrganizerPeriodJournalEntries::new(3);
+        entries
+            .aid_receipts
+            .push(aid_resolution(3, [51; 32], 999, [7; 32], [8; 32]));
+        entries
+            .aid_receipts
+            .push(aid_resolution(3, [52; 32], 101, [9; 32], [10; 32]));
+        entries
+            .aid_receipts
+            .push(aid_resolution(3, [53; 32], 999, [11; 32], [12; 32]));
+        let extracted =
+            extract_permanent_journal_entries(3, &policy(), &empty_receipts(3), &entries)
+                .expect("the aid resolutions extract");
+        let keys: Vec<_> = extracted
+            .records
+            .iter()
+            .filter_map(|record| record.record_key.clone())
+            .collect();
+        assert_eq!(
+            keys.len(),
+            2,
+            "the donor-principal and donor-actor rows are retained; the unrelated row is not"
+        );
+        assert!(extracted.records.iter().all(|record| {
+            record.subject.as_ref().is_some_and(|row| {
+                row.kind == SubjectKind::Commitment
+                    && (row.id == [51; 32].to_vec() || row.id == [52; 32].to_vec())
+            })
+        }));
+    }
+
+    #[test]
+    fn collect_receipt_and_resolution_commit_without_duplicate_record_keys() {
+        let mut entries = OrganizerPeriodJournalEntries::new(3);
+        let resolution = collect_resolution(3, 101);
+        entries.receipts.push(resolution.practice.clone());
+        entries.collection_receipts.push(resolution);
+        let extracted =
+            extract_permanent_journal_entries(3, &policy(), &empty_receipts(3), &entries)
+                .expect("the collect evidence extracts");
+        assert_eq!(extracted.records.len(), 2);
+        let connection = Connection::open_in_memory().expect("an in-memory campaign opens");
+        connection
+            .pragma_update(None, "auto_vacuum", 2)
+            .expect("the fresh database accepts incremental auto-vacuum");
+        schema::install_schema(&connection).expect("the nine-table STRICT schema installs");
+        for (index, record) in extracted.records.iter().enumerate() {
+            let subject = record.subject.as_ref().map(|row| JournalSubject {
+                kind: row.kind,
+                id: &row.id,
+            });
+            chunks::write_journal_record(
+                &connection,
+                &JournalRecordInput {
+                    journal_seq: u64::try_from(index).expect("the record index fits") + 1,
+                    kind: record.kind,
+                    period: 3,
+                    actor_id: record.actor_id,
+                    subject,
+                    nonce: None,
+                    record_key: record.record_key.as_deref(),
+                    payload: &record.payload,
+                    previous_hash: [0; 32],
+                    entry_hash: [0; 32],
+                },
+            )
+            .unwrap_or_else(|error| panic!("the extracted record commits: {error}"));
+        }
+        let keys: BTreeSet<_> = extracted
+            .records
+            .iter()
+            .filter_map(|record| record.record_key.clone())
+            .collect();
+        assert_eq!(
+            keys.len(),
+            extracted.records.len(),
+            "each retained record owns a distinct journal idempotency key"
+        );
     }
 }

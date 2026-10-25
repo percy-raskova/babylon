@@ -358,6 +358,15 @@ fn write_jsonl(out: &mut impl Write, value: &Value) -> Result<(), String> {
 /// [`PlayerQuery`] inside one [`PlayerScope`] served from bounded rows. It never
 /// opens a second writer, so the process that owns the campaign stays the only
 /// one that can mutate it.
+///
+/// No shipped path calls this yet: the binary's headless system still runs
+/// `run_headless` against the Archive reader, and a separate client process
+/// cannot legitimately open a campaign file. `SqliteCampaignStore::open`
+/// requires the caller's `BuildIdentity` (no producer exists before the runtime
+/// cutover) and the campaign lock admits a single owner. Wiring a `CliCommand`
+/// variant through this surface is therefore deferred to the runtime
+/// composition root in Task 13/14; until then only the client unit tests in this
+/// module exercise it.
 #[must_use]
 pub fn run_scoped_headless(
     invocation: &HeadlessInvocation,
@@ -428,7 +437,6 @@ fn scoped_dossier_row(
         "published_period": dossier.period,
         "payload_sha256": hex_of(&dossier.payload),
         "payload_utf8": std::str::from_utf8(&dossier.payload).ok(),
-        "chunks_visited": result.cost.chunks_visited(),
         "rows_visited": result.cost.rows_visited(),
     }))
 }
@@ -495,7 +503,6 @@ fn scoped_map_row(reader: CampaignQueryReader<'_>, scope: PlayerScope) -> Result
             "subject_kind": format!("{:?}", count.kind),
             "count": count.count,
         })).collect::<Vec<_>>(),
-        "chunks_visited": result.cost.chunks_visited(),
         "rows_visited": result.cost.rows_visited(),
     }))
 }
@@ -876,11 +883,16 @@ mod scoped_campaign {
         assert_eq!(dossier["record"], "county-dossier");
         assert_eq!(dossier["state"], "ready");
         assert_eq!(dossier["payload_utf8"], "county-dossier-v1");
-        assert_eq!(dossier["chunks_visited"], 0);
+        assert!(
+            dossier["rows_visited"]
+                .as_u64()
+                .is_some_and(|rows| rows <= 4),
+            "the dossier row decodes a bounded row set, saw {}",
+            dossier["rows_visited"]
+        );
         assert_eq!(dossier["committed_period"], 1);
 
         let map = scoped_map_row(reader, scope).expect("the scoped census renders");
-        assert_eq!(map["chunks_visited"], 0);
         assert_eq!(map["known_subjects"][0]["subject_kind"], "County");
         assert_eq!(map["known_subjects"][0]["count"], 1);
 

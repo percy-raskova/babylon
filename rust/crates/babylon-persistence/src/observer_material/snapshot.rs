@@ -4,15 +4,6 @@ use super::storage_witness;
 
 use crate::production_projection::diagnostics::{self, Stage};
 
-use crate::reader::CampaignQueryReader;
-use crate::sqlite_store::PlayerBody;
-use crate::sqlite_store::PlayerQuery;
-use crate::sqlite_store::PlayerScope;
-use crate::sqlite_store::ReadCost;
-use crate::sqlite_store::ReadError;
-use crate::sqlite_store::SaveError;
-use crate::sqlite_store::SubjectFact;
-
 use babylon_tick::material_replay::IdentifiedMaterialTick;
 use babylon_tick::material_world::{
     MaterialReceiptHandle, MaterialTickReceipts, MaterialWorldRegister,
@@ -1114,53 +1105,5 @@ mod opening_controls {
         cursor.history.register = MaterialRegisterBoundary::Foundation;
         drop(owner);
         assert!(cursor.opening_foundations(campaign).is_err());
-    }
-}
-
-/// One earned county summary read without the national projection.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ScopedCountyObservation {
-    /// Five-digit county FIPS identity.
-    pub county_fips: [u8; 5],
-    /// The earned fact that answers the read.
-    pub fact: SubjectFact,
-    /// Rows and state chunks the read visited.
-    pub cost: ReadCost,
-}
-
-// The player-knowledge projection belongs beside the material observer that owns
-// the national snapshot: this is the bounded alternative a scoped read uses
-// instead, so the same module states both the national builder and its refusal.
-impl CampaignQueryReader<'_> {
-    /// Read one earned county summary from bounded rows only.
-    ///
-    /// A scoped county read is the player-knowledge alternative to
-    /// [`material_observation`]: it visits no state chunk and never assembles the
-    /// national [`ProductionSnapshot`]. The returned payload is exactly the fact
-    /// the scope earned, with the acquisition identity that authorizes it.
-    ///
-    /// # Errors
-    ///
-    /// Refuses a scope beyond the committed present, an unearned county, or a
-    /// damaged stored payload.
-    pub fn county_summary(
-        &self,
-        scope: PlayerScope,
-        county_fips: [u8; 5],
-    ) -> Result<ScopedCountyObservation, ReadError> {
-        let result = self.query(scope, PlayerQuery::CountySummary { county_fips })?;
-        if result.cost.chunks_visited() != 0 {
-            return Err(ReadError::Store(SaveError::CorruptManifest {
-                reason: "a scoped county read decoded a state chunk",
-            }));
-        }
-        let PlayerBody::CountySummary(summary) = result.body else {
-            return Err(ReadError::UnexpectedProjection);
-        };
-        Ok(ScopedCountyObservation {
-            county_fips: summary.county_fips,
-            fact: summary.fact,
-            cost: result.cost,
-        })
     }
 }

@@ -3589,11 +3589,6 @@ fn player_query_county_and_workplace_reads_are_bounded() {
         .expect("the earned county is disclosed");
     assert_eq!(county.committed_period, 1);
     assert_eq!(county.as_of_period, 1);
-    assert_eq!(
-        county.cost.chunks_visited(),
-        0,
-        "a scoped county read must never decode a state chunk"
-    );
     assert!(
         county.cost.rows_visited() <= 4,
         "a scoped county read visits a bounded row set, saw {}",
@@ -3617,11 +3612,6 @@ fn player_query_county_and_workplace_reads_are_bounded() {
             },
         )
         .expect("the earned workplace is disclosed");
-    assert_eq!(
-        workplace.cost.chunks_visited(),
-        0,
-        "a scoped workplace read must never decode a state chunk"
-    );
     assert!(
         workplace.cost.rows_visited() <= 4,
         "a scoped workplace read visits a bounded row set, saw {}",
@@ -3652,6 +3642,29 @@ fn player_query_county_and_workplace_reads_are_bounded() {
             requested: 2,
         }) => {}
         other => panic!("a read beyond the committed present must refuse: {other:?}"),
+    }
+}
+
+#[test]
+fn scoped_query_module_has_no_chunk_or_national_projection_access() {
+    // A chunk decode would leave no trace in `ReadCost`: the counter sees rows
+    // only, so an assertion over it cannot fail when a read widens onto the
+    // chunk table. The bound is therefore structural — the scoped read module
+    // embeds its own source here and refuses every identifier that reaches a
+    // state chunk or the national projection.
+    let source = include_str!("query.rs");
+    for forbidden in [
+        "state_chunk",
+        "read_state_chunk",
+        "ChunkSection",
+        "ProductionSnapshot",
+        "material_observation",
+        "production_projection",
+    ] {
+        assert!(
+            !source.contains(forbidden),
+            "the scoped read path must not name `{forbidden}`"
+        );
     }
 }
 

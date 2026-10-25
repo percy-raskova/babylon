@@ -7,9 +7,11 @@
 //! journal prefix. The intersection of those bounds means an inconsistent scope
 //! can only over-restrict a read, never disclose a fact the scope has not earned.
 //!
-//! Reads select indexed rows only. [`ReadCost`] reports the rows and state chunks
-//! one read actually visited, and a scoped county or workplace selection never
-//! decodes a state chunk, so it can never assemble the national projection.
+//! Reads select indexed rows only. [`ReadCost`] counts the stored rows one read
+//! decoded, so a bounded-read assertion over it can fail when a read widens. A
+//! scoped county or workplace selection has no chunk-table access path at all:
+//! `sqlite_store::tests` proves that structurally over this module's source,
+//! because a counter for an access that never happens cannot measure anything.
 
 use rusqlite::params;
 use rusqlite::Connection;
@@ -43,20 +45,13 @@ pub const MAX_HISTORY_LIMIT: u16 = 200;
 /// Largest number of journal records one relationship projection returns.
 pub const MAX_RELATIONSHIP_RECORDS: usize = 256;
 
-/// Exact rows and state chunks one scoped read visited.
+/// Exact stored rows one scoped read decoded.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ReadCost {
-    chunks_visited: u32,
     rows_visited: u32,
 }
 
 impl ReadCost {
-    /// Return how many state chunks the read decoded.
-    #[must_use]
-    pub const fn chunks_visited(self) -> u32 {
-        self.chunks_visited
-    }
-
     /// Return how many stored rows the read decoded.
     #[must_use]
     pub const fn rows_visited(self) -> u32 {
@@ -413,7 +408,7 @@ pub struct PlayerResult {
     pub knowledge_seq: u64,
     /// Canonical world identity of the committed root.
     pub world_hash: [u8; 32],
-    /// Rows and state chunks the read visited.
+    /// Rows the read decoded.
     pub cost: ReadCost,
     /// The typed answer.
     pub body: PlayerBody,

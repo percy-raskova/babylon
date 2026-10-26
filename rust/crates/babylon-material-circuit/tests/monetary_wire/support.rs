@@ -371,7 +371,11 @@ pub(crate) fn monetary_tags_counts_and_invalid_currency_are_refused() {
     }
     for (count_offset, excess) in [
         (accounting + 1, 131_073_u32),
-        (purchases - 4, 327_681),
+        (
+            purchases - 4,
+            u32::try_from(babylon_material_circuit::MAX_MATERIAL_ORDER_PRINCIPALS + 1)
+                .expect("the purchase ceiling fits u32"),
+        ),
         (shifts - 4, 65_537),
         (shifts + 2 * SHIFT_BYTES, 131_073),
         (shifts + 2 * SHIFT_BYTES + 4 + 2 * EMPLOYMENT_BYTES, 131_073),

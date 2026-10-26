@@ -574,10 +574,14 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
     assert_eq!(
         digests
             .iter()
-            .map(|digest| digest
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>())
+            .map(|digest| {
+                use std::fmt::Write;
+                let mut text = String::with_capacity(digest.len().saturating_mul(2));
+                for byte in digest {
+                    write!(&mut text, "{byte:02x}").expect("writing to String cannot fail");
+                }
+                text
+            })
             .collect::<Vec<_>>(),
         expected_digests
     );

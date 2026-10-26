@@ -41,7 +41,7 @@ const LAYOUTS: &[(u16, Layout)] = &[
     fixed!(
         11,
         201,
-        131_072,
+        524_288,
         [
             (0, Identity(K::Order)),
             (33, Identity(K::Site)),
@@ -100,7 +100,7 @@ const LAYOUTS: &[(u16, Layout)] = &[
     fixed!(
         25,
         139,
-        327_680,
+        720_896,
         [(1, Identity(K::Order)), (34, Account), (67, Account)]
     ), // cash.purchases
     fixed!(

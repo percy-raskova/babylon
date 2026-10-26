@@ -18,6 +18,7 @@ use babylon_material_circuit::OrderRow;
 use babylon_material_circuit::OutboundOrderId;
 use babylon_material_circuit::PurchaseEscrow;
 use babylon_material_circuit::StockCarryingValue;
+use babylon_material_circuit::MAX_DELIVERY_ORDERS;
 use babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS;
 fn order_id(index: usize) -> OrderId {
     let mut bytes = [0; 32];
@@ -171,10 +172,9 @@ fn public_purchase_admission_preserves_each_physical_family_ceiling() {
     .expect("the fixture admits the authored purchase");
     assert_eq!(admitted.orders.len(), state.orders.len() + 1);
     let mut overbound = state;
-    overbound.orders.resize(
-        2 * MAX_MATERIAL_CIRCUIT_ROWS + 1,
-        overbound.orders[0].clone(),
-    );
+    overbound
+        .orders
+        .resize(MAX_DELIVERY_ORDERS + 1, overbound.orders[0].clone());
     assert_eq!(
         babylon_material_circuit::encode_material_circuit_state(&catalog, &overbound),
         Err(MaterialCircuitError::RowLimit)

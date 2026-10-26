@@ -6,7 +6,7 @@ use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::OrderId;
 use babylon_material_circuit::OrderRow;
 
-const DELIVERY_LIMIT: usize = 131_072;
+const DELIVERY_LIMIT: usize = babylon_material_circuit::MAX_DELIVERY_ORDERS;
 const ORDER_BYTES: usize = 32 + 1 + 4 * 32 + 5 * 8;
 
 fn order_id(index: usize) -> OrderId {

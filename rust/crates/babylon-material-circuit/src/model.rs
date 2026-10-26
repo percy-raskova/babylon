@@ -7,7 +7,12 @@ pub const MAX_MATERIAL_CIRCUIT_ROWS: usize = 65_536;
 /// Designed ceiling after the actual national close exceeded 65,536 service orders.
 pub const MAX_SERVICE_ORDERS: usize = 131_072;
 /// Designed ceiling after the actual national close exceeded 65,536 delivery orders.
-pub const MAX_DELIVERY_ORDERS: usize = 131_072;
+///
+/// PER-354 national qualification: 116,080 orders before the fourth close and
+/// 193,606 before the twelfth; the former 131,072 ceiling refuses the required
+/// 52/325-period horizon. The raised bound keeps a 2.7x margin over the
+/// measured twelfth-period book.
+pub const MAX_DELIVERY_ORDERS: usize = 524_288;
 /// Derived total of independently bounded delivery, retail and service principals.
 pub const MAX_MATERIAL_ORDER_PRINCIPALS: usize =
     MAX_DELIVERY_ORDERS + MAX_MATERIAL_CIRCUIT_ROWS + MAX_SERVICE_ORDERS;
@@ -247,7 +252,11 @@ pub struct RoutedDispatchReceipt {
 /// Bound on timed stages, independently of physical path length.
 pub const MAX_ROUTE_STAGES_PER_ROUTE: usize = 16;
 /// Designed bound on total order/resource requests during one freight close.
-pub const MAX_FREIGHT_RESOURCE_REQUESTS: usize = 1_114_112;
+///
+/// PER-354 national qualification: the twelfth close produced 1,114,113
+/// freight resource requests, one above the former bound. The raised bound
+/// keeps a 4x margin for the 52/325-period horizon.
+pub const MAX_FREIGHT_RESOURCE_REQUESTS: usize = 4_456_448;
 
 /// Transport attached to an internal supply relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

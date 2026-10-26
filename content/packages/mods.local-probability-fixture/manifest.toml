@@ -1,0 +1,19 @@
+format_version = 1
+id = "mods.local-probability-fixture"
+version = "1"
+content_abi = "babylon-content-v1"
+host_profile = "authored-graph-v1"
+dependencies = []
+replacements = []
+
+[[entrypoints]]
+source_id = "mods/local-probability-fixture/scenario"
+kind = "scenario"
+path = "scenario.bscn"
+sha256 = "b07a1e4af9f83cd47ed506b188cd03c9a5acaa0fa6b59874690aa1818dba0ad5"
+
+[[entrypoints]]
+source_id = "mods/local-probability-step/rules"
+kind = "rules"
+path = "rules.bsl"
+sha256 = "d88e3740042a710d473e0bca60f80adc70a0c3b8d450157338fbc3cd5f212d04"

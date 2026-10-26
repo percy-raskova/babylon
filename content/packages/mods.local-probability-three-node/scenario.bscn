@@ -1,0 +1,8 @@
+(scenario mods/local-probability-three-node
+  (deffield social-class/probability probability intensive)
+  (node first NodeType/SOCIAL_CLASS
+    (social-class/probability 0.25p))
+  (node second NodeType/SOCIAL_CLASS
+    (social-class/probability 0.5p))
+  (node third NodeType/SOCIAL_CLASS
+    (social-class/probability 0.125p)))

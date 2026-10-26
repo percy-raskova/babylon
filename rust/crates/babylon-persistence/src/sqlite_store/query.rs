@@ -170,6 +170,11 @@ pub enum ReadError {
     },
     /// The owner answered a different projection than the closed query names.
     UnexpectedProjection,
+    /// One authored-graph viewer payload is outside its exact published layout.
+    InvalidViewerFact {
+        /// Why the payload was refused.
+        reason: &'static str,
+    },
     /// The underlying store refused the read.
     Store(SaveError),
 }
@@ -209,6 +214,9 @@ impl std::fmt::Display for ReadError {
             ),
             Self::UnexpectedProjection => {
                 write!(formatter, "the campaign answered a different projection")
+            }
+            Self::InvalidViewerFact { reason } => {
+                write!(formatter, "the authored graph viewer fact was refused: {reason}")
             }
             Self::Store(error) => write!(formatter, "the scoped read was refused: {error}"),
         }
@@ -290,6 +298,224 @@ pub struct SubjectFact {
     pub source_journal_seq: u64,
     /// Exact canonical payload bytes.
     pub payload: Vec<u8>,
+}
+
+/// The one evidence label an authored-graph viewer fact publishes.
+pub const AUTHORED_GRAPH_EVIDENCE_LABEL: &str = "Designed";
+
+const AUTHORED_GRAPH_SUBJECT_DOMAIN: &[u8] = b"babylon.authored-graph.subject.v1\0";
+const AUTHORED_GRAPH_FACT_DOMAIN: &[u8] = b"babylon.authored-graph.viewer-fact.v1\0";
+const AUTHORED_GRAPH_FACT_LAYOUT: u8 = 1;
+const AUTHORED_GRAPH_EVIDENCE_DESIGNED: u8 = 1;
+const MAX_VIEWER_TEXT_BYTES: usize = 256;
+
+/// One authored-graph node fact the bounded graph viewer may disclose.
+///
+/// The fact is a read-only fixture disclosure, never an earned world
+/// observation: its payload carries the fixed [`AUTHORED_GRAPH_EVIDENCE_LABEL`]
+/// evidence label and its probability is exposed as exact binary64 bits.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthoredGraphNodeFact {
+    /// Stable authored identity (scenario scope plus local node name).
+    pub subject_id: Vec<u8>,
+    /// Authored scenario scope.
+    pub scenario_scope: String,
+    /// Authored node local name.
+    pub local_name: String,
+    /// Declared node type.
+    pub node_type: String,
+    /// Exact declared probability bits.
+    pub probability_bits: u64,
+    /// Fixed evidence label for this profile.
+    pub evidence: &'static str,
+}
+
+impl AuthoredGraphNodeFact {
+    /// Return the exact declared probability value.
+    #[must_use]
+    pub fn probability(&self) -> f64 {
+        f64::from_bits(self.probability_bits)
+    }
+}
+
+/// Encode the stable authored subject identity of one node.
+///
+/// # Errors
+///
+/// Refuses a scope or local name beyond its published text allowance.
+pub fn authored_graph_subject_id(
+    scenario_scope: &str,
+    local_name: &str,
+) -> Result<Vec<u8>, ReadError> {
+    let mut output = Vec::new();
+    output.extend_from_slice(AUTHORED_GRAPH_SUBJECT_DOMAIN);
+    push_text(&mut output, scenario_scope)?;
+    push_text(&mut output, local_name)?;
+    Ok(output)
+}
+
+/// Encode one authored-graph node fact payload.
+///
+/// # Errors
+///
+/// Refuses a scope, local name or node type beyond its published allowance.
+pub fn encode_authored_graph_node_fact(fact: &AuthoredGraphNodeFact) -> Result<Vec<u8>, ReadError> {
+    let mut output = Vec::new();
+    output.extend_from_slice(AUTHORED_GRAPH_FACT_DOMAIN);
+    output.push(AUTHORED_GRAPH_FACT_LAYOUT);
+    push_text(&mut output, &fact.scenario_scope)?;
+    push_text(&mut output, &fact.local_name)?;
+    push_text(&mut output, &fact.node_type)?;
+    output.extend_from_slice(&fact.probability_bits.to_be_bytes());
+    output.push(AUTHORED_GRAPH_EVIDENCE_DESIGNED);
+    Ok(output)
+}
+
+/// Decode one authored-graph node fact and bind it to its granted identity.
+///
+/// # Errors
+///
+/// Refuses a payload outside this exact layout, non-UTF-8 or oversized text, a
+/// non-finite probability, an unknown evidence label, trailing bytes, or a
+/// subject identity that disagrees with the decoded scope and local name.
+pub fn decode_authored_graph_node_fact(
+    subject_id: &[u8],
+    payload: &[u8],
+) -> Result<AuthoredGraphNodeFact, ReadError> {
+    let mut reader = ViewerReader::new(payload);
+    reader.expect(AUTHORED_GRAPH_FACT_DOMAIN)?;
+    if reader.u8()? != AUTHORED_GRAPH_FACT_LAYOUT {
+        return Err(ReadError::InvalidViewerFact {
+            reason: "the authored viewer fact declares an unsupported layout",
+        });
+    }
+    let scenario_scope = reader.text()?;
+    let local_name = reader.text()?;
+    let node_type = reader.text()?;
+    let probability_bits = reader.u64()?;
+    if !f64::from_bits(probability_bits).is_finite() {
+        return Err(ReadError::InvalidViewerFact {
+            reason: "the authored viewer probability is not finite",
+        });
+    }
+    if reader.u8()? != AUTHORED_GRAPH_EVIDENCE_DESIGNED {
+        return Err(ReadError::InvalidViewerFact {
+            reason: "the authored viewer fact carries an unknown evidence label",
+        });
+    }
+    if !reader.is_empty() {
+        return Err(ReadError::InvalidViewerFact {
+            reason: "the authored viewer fact carries trailing bytes",
+        });
+    }
+    if authored_graph_subject_id(&scenario_scope, &local_name)? != subject_id {
+        return Err(ReadError::InvalidViewerFact {
+            reason: "the authored viewer fact disagrees with its granted subject identity",
+        });
+    }
+    Ok(AuthoredGraphNodeFact {
+        subject_id: subject_id.to_vec(),
+        scenario_scope,
+        local_name,
+        node_type,
+        probability_bits,
+        evidence: AUTHORED_GRAPH_EVIDENCE_LABEL,
+    })
+}
+
+fn push_text(output: &mut Vec<u8>, value: &str) -> Result<(), ReadError> {
+    if value.is_empty() || value.len() > MAX_VIEWER_TEXT_BYTES {
+        return Err(ReadError::InvalidViewerFact {
+            reason: "the authored viewer text is empty or beyond its allowance",
+        });
+    }
+    let length = u32::try_from(value.len()).map_err(|_| ReadError::InvalidViewerFact {
+        reason: "the authored viewer text is wider than its length prefix",
+    })?;
+    output.extend_from_slice(&length.to_be_bytes());
+    output.extend_from_slice(value.as_bytes());
+    Ok(())
+}
+
+struct ViewerReader<'a> {
+    bytes: &'a [u8],
+    cursor: usize,
+}
+
+impl<'a> ViewerReader<'a> {
+    const fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, cursor: 0 }
+    }
+
+    fn take(&mut self, count: usize) -> Result<&'a [u8], ReadError> {
+        let end = self
+            .cursor
+            .checked_add(count)
+            .filter(|end| *end <= self.bytes.len())
+            .ok_or(ReadError::InvalidViewerFact {
+                reason: "the authored viewer fact is truncated",
+            })?;
+        let output = &self.bytes[self.cursor..end];
+        self.cursor = end;
+        Ok(output)
+    }
+
+    fn expect(&mut self, expected: &[u8]) -> Result<(), ReadError> {
+        if self.take(expected.len())? != expected {
+            return Err(ReadError::InvalidViewerFact {
+                reason: "the authored viewer fact carries the wrong domain tag",
+            });
+        }
+        Ok(())
+    }
+
+    fn u8(&mut self) -> Result<u8, ReadError> {
+        let [value] = self.take(1)? else {
+            return Err(ReadError::InvalidViewerFact {
+                reason: "the authored viewer fact is truncated",
+            });
+        };
+        Ok(*value)
+    }
+
+    fn u32(&mut self) -> Result<u32, ReadError> {
+        let bytes = self.take(4)?;
+        <[u8; 4]>::try_from(bytes)
+            .map(u32::from_be_bytes)
+            .map_err(|_| ReadError::InvalidViewerFact {
+                reason: "the authored viewer fact is truncated",
+            })
+    }
+
+    fn u64(&mut self) -> Result<u64, ReadError> {
+        let bytes = self.take(8)?;
+        <[u8; 8]>::try_from(bytes)
+            .map(u64::from_be_bytes)
+            .map_err(|_| ReadError::InvalidViewerFact {
+                reason: "the authored viewer fact is truncated",
+            })
+    }
+
+    fn text(&mut self) -> Result<String, ReadError> {
+        let length = usize::try_from(self.u32()?).map_err(|_| ReadError::InvalidViewerFact {
+            reason: "the authored viewer text length is out of range",
+        })?;
+        if length == 0 || length > MAX_VIEWER_TEXT_BYTES {
+            return Err(ReadError::InvalidViewerFact {
+                reason: "the authored viewer text is empty or beyond its allowance",
+            });
+        }
+        let bytes = self.take(length)?;
+        std::str::from_utf8(bytes)
+            .map(str::to_owned)
+            .map_err(|_| ReadError::InvalidViewerFact {
+                reason: "the authored viewer text is not UTF-8",
+            })
+    }
+
+    fn is_empty(&self) -> bool {
+        self.cursor == self.bytes.len()
+    }
 }
 
 /// One earned subject count inside a map summary.

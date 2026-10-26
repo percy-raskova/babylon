@@ -7,6 +7,8 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use babylon_bsl::causal_contract::EffectSignature;
+use babylon_bsl::causal_contract::EvidenceClass;
+use babylon_bsl::causal_contract::RuleRole;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::content_digest;
@@ -14,6 +16,7 @@ use babylon_material_circuit::InputOutputCoefficient;
 use babylon_material_circuit::UnitId;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::material_replay::MaterialReplaySession;
+use babylon_tick::replay_session::IdentifiedTickReport;
 use babylon_tick::replay_session::ReplayCommitDisposition;
 use rusqlite::Connection;
 
@@ -21,22 +24,33 @@ use crate::material_runtime::MaterialRuntimeFoundation;
 use crate::michigan_content::MichiganContentPreset;
 use crate::michigan_material::MichiganMaterialCatalog;
 use crate::michigan_material::MichiganMaterialProcess;
+use crate::sqlite_store::AuthoredGraphNodeFact;
 use crate::sqlite_store::BuildIdentity;
 use crate::sqlite_store::CampaignHandle;
 use crate::sqlite_store::ChunkSection;
+use crate::sqlite_store::CommandError;
 use crate::sqlite_store::ContentEntryKind;
 use crate::sqlite_store::CurrentChunk;
 use crate::sqlite_store::CurrentRoot;
+use crate::sqlite_store::JournalKind;
+use crate::sqlite_store::MapSummary;
+use crate::sqlite_store::PlayerBody;
+use crate::sqlite_store::PlayerCommand;
+use crate::sqlite_store::PlayerQuery;
+use crate::sqlite_store::PlayerScope;
 use crate::sqlite_store::PreparedPeriod;
 use crate::sqlite_store::SaveError;
 use crate::sqlite_store::SqliteCampaignStore;
 use crate::sqlite_store::StateChunk;
+use crate::sqlite_store::SubjectCount;
+use crate::sqlite_store::SubjectKind;
 
 use super::admission;
 use super::audit;
 use super::audit::CoefficientAudit;
 use super::audit::CoefficientBasis;
 use super::audit::CoefficientNormalization;
+use super::authored_graph;
 use super::error::PackageError;
 use super::manifest::HostProfile;
 use super::manifest::LoadedPackage;
@@ -1365,5 +1379,657 @@ fn unit_unknown_fields_and_relative_paths_stay_strict() {
     assert_eq!(
         HostProfile::MichiganRegionalV6.manifest_name(),
         "michigan-regional-v6"
+    );
+}
+
+fn committed_package(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../content/packages")
+        .join(name)
+}
+
+fn copy_tree(source: &Path, destination: &Path) {
+    fs::create_dir_all(destination).expect("the copied package directory is creatable");
+    for entry in fs::read_dir(source).expect("the committed package directory is readable") {
+        let entry = entry.expect("the committed package entry is readable");
+        let target = destination.join(entry.file_name());
+        if entry
+            .file_type()
+            .expect("the committed package entry type is readable")
+            .is_dir()
+        {
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), &target).expect("the committed package file is copyable");
+        }
+    }
+}
+
+fn authored_from_committed(root: &TempRoot, names: &[&str]) -> ResolvedContentSet {
+    let packages = names
+        .iter()
+        .map(|name| {
+            let directory = format!("packages/{name}");
+            copy_tree(&committed_package(name), &root.path(&directory));
+            root.load(&directory)
+        })
+        .collect::<Vec<_>>();
+    resolver::resolve_content_packages(&packages).expect("the committed authored packages resolve")
+}
+
+fn viewer_scope(handle: &CampaignHandle) -> PlayerScope {
+    let tails = handle
+        .durable_tails()
+        .expect("the authored campaign publishes its durable tails");
+    PlayerScope::new(
+        authored_graph::AUTHORED_GRAPH_VIEWER_PLAYER_ID,
+        handle.current().period,
+        tails.knowledge_seq(),
+        tails.journal_seq(),
+    )
+}
+
+fn viewer_nodes(
+    handle: &CampaignHandle,
+    scenario_scope: &str,
+    expected_names: &[&str],
+) -> Vec<AuthoredGraphNodeFact> {
+    let scope = viewer_scope(handle);
+    let summary = handle
+        .query(scope, PlayerQuery::MapSummary)
+        .expect("the authored viewer map summary reads");
+    let PlayerBody::MapSummary(MapSummary { known_subjects }) = summary.body else {
+        panic!("the map summary query must answer a map summary");
+    };
+    assert_eq!(
+        known_subjects,
+        vec![SubjectCount {
+            kind: SubjectKind::Observation,
+            count: u64::try_from(expected_names.len()).expect("the node count fits"),
+        }],
+        "the viewer discloses exactly its designed node facts"
+    );
+    expected_names
+        .iter()
+        .map(|name| {
+            let subject_id = crate::sqlite_store::authored_graph_subject_id(scenario_scope, name)
+                .expect("the authored subject identity encodes");
+            let result = handle
+                .query(
+                    scope,
+                    PlayerQuery::KnownSubject {
+                        subject_kind: SubjectKind::Observation,
+                        subject_id,
+                    },
+                )
+                .expect("the authored viewer node fact is disclosed");
+            let PlayerBody::Subject(fact) = result.body else {
+                panic!("the known subject query must answer a subject fact");
+            };
+            let node = crate::sqlite_store::decode_authored_graph_node_fact(
+                &fact.subject_id,
+                &fact.payload,
+            )
+            .expect("the authored viewer payload decodes");
+            assert_eq!(node.evidence, "Designed");
+            node
+        })
+        .collect()
+}
+
+fn read_section(connection: &Connection, root: &CurrentRoot, section: ChunkSection) -> Vec<u8> {
+    let mut fragments = root
+        .chunks
+        .iter()
+        .filter(|chunk| chunk.section == section)
+        .collect::<Vec<_>>();
+    fragments.sort_by_key(|chunk| chunk.ordinal);
+    let mut bytes = Vec::new();
+    for (expected, chunk) in fragments.iter().enumerate() {
+        assert_eq!(
+            usize::try_from(chunk.ordinal).expect("the fragment ordinal fits"),
+            expected,
+            "the {section:?} fragments are dense and ordered"
+        );
+        bytes.extend_from_slice(
+            &crate::sqlite_store::read_state_chunk(connection, chunk.chunk_id)
+                .expect("the state chunk decodes"),
+        );
+    }
+    bytes
+}
+
+fn assert_authored_opening(root: &CurrentRoot, store: &Path) {
+    assert_eq!(root.period, 0, "the admitted opening is period zero");
+    let required = [
+        ChunkSection::StableGraph,
+        ChunkSection::WorldRegisters,
+        ChunkSection::ResolverManifest,
+        ChunkSection::PreparedEnvironment,
+        ChunkSection::ReplaySessionIdentity,
+        ChunkSection::RngSeed,
+        ChunkSection::ContentDigest,
+        ChunkSection::ReferenceDigest,
+    ];
+    let present = root
+        .chunks
+        .iter()
+        .map(|chunk| chunk.section)
+        .collect::<Vec<_>>();
+    assert!(
+        required.iter().all(|section| present.contains(section)),
+        "the authored opening carries every foundation section: {present:?}"
+    );
+    assert!(
+        present.contains(&ChunkSection::SemanticState),
+        "the authored opening supplies the ninth semantic-state section"
+    );
+    let connection = Connection::open(store).expect("the campaign database opens for a readback");
+    let bytes = read_section(&connection, root, ChunkSection::SemanticState);
+    assert!(
+        !bytes.is_empty(),
+        "the real Michigan geographic material state is captured"
+    );
+    assert_eq!(
+        root.state_hash,
+        content_digest::sha256_of(&bytes),
+        "the opening state hash is the semantic-state identity"
+    );
+}
+
+fn assert_rule_producer(report: &IdentifiedTickReport) {
+    let receipts = &report.report().audit_receipts;
+    assert!(
+        receipts.iter().any(|receipt| {
+            receipt.rule_id == "mods/local-probability-step"
+                && receipt.role == RuleRole::Mechanic
+                && receipt.evidence == EvidenceClass::Designed
+                && receipt.effect
+                    == EffectSignature::NodeField("social-class/probability".to_owned())
+        }),
+        "the authored rule must produce an audited node-field receipt: {receipts:?}"
+    );
+}
+
+fn advance_viewer(
+    handle: &mut CampaignHandle,
+    scenario_scope: &str,
+    expected_names: &[&str],
+) -> (IdentifiedTickReport, Vec<AuthoredGraphNodeFact>) {
+    let (report, committed) = authored_graph::advance_authored_graph_period(handle)
+        .expect("the authored graph period advances and commits");
+    assert_eq!(committed.period, handle.current().period);
+    assert_eq!(
+        committed.world_hash,
+        *report.result_world().digest().as_bytes()
+    );
+    assert_eq!(
+        committed.state_hash,
+        content_digest::sha256_of(report.material_state_rows().canonical_bytes())
+    );
+    assert_rule_producer(&report);
+    let nodes = viewer_nodes(handle, scenario_scope, expected_names);
+    (report, nodes)
+}
+
+fn replay_one_authored_period(handle: &CampaignHandle) -> IdentifiedTickReport {
+    let mut session = authored_graph::authored_graph_replay_session(handle)
+        .expect("the captured authored content rebuilds a replay session");
+    let actions = OrderedPracticeActionBatch::empty(session.session_identity().clone(), 1)
+        .expect("the empty authored action batch constructs");
+    let mut sink = CollectingSink::default();
+    session
+        .advance(&mut sink, &actions)
+        .expect("the captured authored content replays one period")
+}
+
+#[test]
+fn worked_examples_two_and_three_admit_view_and_replay_the_authored_graph() {
+    let root = TempRoot::new();
+    let baseline = authored_from_committed(&root, &["mods.local-probability-fixture"]);
+    assert_eq!(baseline.host_profile(), HostProfile::AuthoredGraphV1);
+    let store = root.path("baseline.sqlite3");
+    let mut handle =
+        authored_graph::admit_authored_graph_package(&baseline, 319, &store).expect("admits");
+    assert_eq!(handle.build(), admission::content_package_build_identity());
+    assert_authored_opening(handle.current(), &store);
+    let (report, nodes) = advance_viewer(
+        &mut handle,
+        "mods/local-probability-fixture",
+        &["first", "second"],
+    );
+    assert_eq!(nodes[0].node_type, "SOCIAL_CLASS");
+    assert_eq!(nodes[0].probability_bits, 0.375_f64.to_bits());
+    assert_eq!(nodes[1].probability_bits, 0.625_f64.to_bits());
+    let history = handle
+        .history(viewer_scope(&handle), None, 0)
+        .expect("the authored campaign publishes its bounded public history");
+    assert_eq!(
+        history
+            .entries
+            .iter()
+            .filter(|entry| entry.kind == JournalKind::PlayerReceipt)
+            .count(),
+        2,
+        "each disclosed authored node keeps its public history record"
+    );
+    let baseline_graph = *report.result_stable_graph_digest().as_bytes();
+    let build = handle.build();
+    drop(handle);
+
+    let reopened = SqliteCampaignStore::open(&store, build).expect("the saved campaign reopens");
+    assert_eq!(reopened.current().period, 1);
+    assert_eq!(
+        reopened.current().world_hash,
+        *report.result_world().digest().as_bytes()
+    );
+    let replayed = replay_one_authored_period(&reopened);
+    assert_eq!(
+        replayed.result_stable_graph_digest().as_bytes(),
+        &baseline_graph,
+        "replay must reproduce the identical GraphStateHash"
+    );
+    assert_eq!(
+        replayed.report().audit_receipts,
+        report.report().audit_receipts,
+        "replay must reproduce the same audit producer identity"
+    );
+    let captured = reopened
+        .read_content_entry(
+            ContentEntryKind::CapturedSource,
+            b"mods/local-probability-fixture/scenario",
+        )
+        .expect("the captured scenario reads back");
+    assert_eq!(captured.len(), 1);
+    drop(reopened);
+
+    let stepped = authored_from_committed(
+        &root,
+        &[
+            "mods.local-probability-step",
+            "mods.local-probability-fixture",
+        ],
+    );
+    assert_ne!(
+        stepped.digest(),
+        baseline.digest(),
+        "the two increments are different content identities"
+    );
+    let mut stepped_handle =
+        authored_graph::admit_authored_graph_package(&stepped, 319, &root.path("stepped.sqlite3"))
+            .expect("the 0.25i variant admits");
+    let (stepped_report, stepped_nodes) = advance_viewer(
+        &mut stepped_handle,
+        "mods/local-probability-fixture",
+        &["first", "second"],
+    );
+    assert_eq!(stepped_nodes[0].probability_bits, 0.5_f64.to_bits());
+    assert_eq!(stepped_nodes[1].probability_bits, 0.75_f64.to_bits());
+    assert_ne!(
+        *stepped_report.result_stable_graph_digest().as_bytes(),
+        baseline_graph,
+        "the two increments must produce different post-state"
+    );
+}
+
+#[test]
+fn three_node_variant_reaches_the_viewer_with_a_designed_fact() {
+    let root = TempRoot::new();
+    let resolved = authored_from_committed(&root, &["mods.local-probability-three-node"]);
+    let mut handle = authored_graph::admit_authored_graph_package(
+        &resolved,
+        319,
+        &root.path("three-node.sqlite3"),
+    )
+    .expect("the three-node variant admits");
+    let (_, nodes) = advance_viewer(
+        &mut handle,
+        "mods/local-probability-three-node",
+        &["first", "second", "third"],
+    );
+    assert_eq!(nodes[0].probability_bits, 0.5_f64.to_bits());
+    assert_eq!(nodes[1].probability_bits, 0.75_f64.to_bits());
+    assert_eq!(nodes[2].probability_bits, 0.375_f64.to_bits());
+    assert_eq!(nodes[2].local_name, "third");
+    for node in &nodes {
+        assert_eq!(node.evidence, "Designed");
+        assert_eq!(node.node_type, "SOCIAL_CLASS");
+    }
+}
+
+#[test]
+fn saved_authored_campaign_keeps_its_captured_structure_after_installed_sources_change() {
+    let root = TempRoot::new();
+    let resolved = authored_from_committed(&root, &["mods.local-probability-fixture"]);
+    let store = root.path("captured.sqlite3");
+    let mut handle =
+        authored_graph::admit_authored_graph_package(&resolved, 319, &store).expect("admits");
+    let (report, nodes) = advance_viewer(
+        &mut handle,
+        "mods/local-probability-fixture",
+        &["first", "second"],
+    );
+    assert_eq!(nodes[0].probability_bits, 0.375_f64.to_bits());
+    let committed_root = handle.current().clone();
+    let build = handle.build();
+    drop(handle);
+
+    let fixture = root.path("packages/mods.local-probability-fixture");
+    root.write(
+        "packages/mods.local-probability-fixture/scenario.bscn",
+        b"(scenario mods/replaced\n  (deffield social-class/probability probability intensive)\n  (node only NodeType/SOCIAL_CLASS (social-class/probability 0.5p)))\n",
+    );
+    root.write(
+        "packages/mods.local-probability-fixture/rules.bsl",
+        b"(rule mods/replaced-step\n  :role mechanic\n  :evidence designed\n  :material-basis \"a different installed rule\"\n  :fuel 64\n  (anchor :before survival)\n  (bindings (binding probability :field social-class/probability))\n  (effects (update-node self social-class/probability (set 0.5p))))\n",
+    );
+    assert!(fixture.join("scenario.bscn").exists());
+
+    let reopened = SqliteCampaignStore::open(&store, build).expect("the saved campaign reopens");
+    assert_eq!(reopened.current(), &committed_root);
+    let captured = reopened
+        .read_content_entry(
+            ContentEntryKind::CapturedSource,
+            b"mods/local-probability-fixture/scenario",
+        )
+        .expect("the captured scenario reads back");
+    assert_eq!(
+        captured[0],
+        fs::read(committed_package("mods.local-probability-fixture").join("scenario.bscn"))
+            .expect("the committed scenario is readable"),
+        "reopening must use captured content, not the edited installed file"
+    );
+    let viewer = viewer_nodes(
+        &reopened,
+        "mods/local-probability-fixture",
+        &["first", "second"],
+    );
+    assert_eq!(viewer[0].probability_bits, 0.375_f64.to_bits());
+    assert_eq!(viewer[1].probability_bits, 0.625_f64.to_bits());
+    let replayed = replay_one_authored_period(&reopened);
+    assert_eq!(
+        replayed.result_stable_graph_digest().as_bytes(),
+        report.result_stable_graph_digest().as_bytes()
+    );
+    drop(reopened);
+
+    let mut reopened =
+        SqliteCampaignStore::open(&store, build).expect("the saved campaign reopens");
+    let (_, second) = authored_graph::advance_authored_graph_period(&mut reopened)
+        .expect("the captured campaign advances a second period");
+    assert_eq!(reopened.current().period, 2);
+    assert_eq!(second.period, 2);
+    let nodes = viewer_nodes(
+        &reopened,
+        "mods/local-probability-fixture",
+        &["first", "second"],
+    );
+    assert_eq!(nodes[0].probability_bits, 0.5_f64.to_bits());
+    assert_eq!(nodes[1].probability_bits, 0.75_f64.to_bits());
+}
+
+#[test]
+fn authored_negative_content_refuses_before_publication() {
+    let zero_fuel = authored_rule().replace(":fuel 64", ":fuel 0");
+    let error = resolve_authored(authored_scenario(), &zero_fuel)
+        .expect_err("zero fuel must refuse at load");
+    assert!(
+        error.to_string().contains("fuel"),
+        "the refusal must name fuel: {error}"
+    );
+
+    let unknown_field = authored_rule().replace(
+        "social-class/probability (add 0.125i)",
+        "social-class/undeclared (add 0.125i)",
+    );
+    let error = resolve_authored(authored_scenario(), &unknown_field)
+        .expect_err("an undeclared field must refuse at load");
+    assert!(
+        matches!(error, PackageError::UnlistedStateActionPair { .. }),
+        "the refusal must name the unlisted pair: {error:?}"
+    );
+
+    let invalid_probability = authored_rule().replace(
+        "(when (<= probability 0.75p))",
+        "(when (<= probability 1.5p))",
+    );
+    let error = resolve_authored(authored_scenario(), &invalid_probability)
+        .expect_err("a probability above one must refuse at load");
+    assert!(
+        error.to_string().contains("literals")
+            || error.to_string().contains("probability")
+            || error.to_string().contains("1.5"),
+        "the refusal must name the invalid probability: {error}"
+    );
+
+    let material_anchor =
+        authored_rule().replace("(anchor :before survival)", "(anchor :after vitality)");
+    let error = resolve_authored(authored_scenario(), &material_anchor)
+        .expect_err("an anchor inside the material causal spine must refuse");
+    assert!(
+        error.to_string().contains("Material Base"),
+        "the refusal must name the material spine: {error}"
+    );
+
+    for (field, value) in [
+        ("territory/county-fips", "26163"),
+        ("household/persons", "1"),
+        ("household/households", "1"),
+    ] {
+        let scenario = authored_scenario().replace(
+            "(deffield social-class/probability probability intensive)",
+            &format!(
+                "(deffield social-class/probability probability intensive)\n  (deffield {field} int extensive)"
+            ),
+        );
+        let rules = authored_rule().replace(
+            "social-class/probability (add 0.125i)",
+            &format!("{field} (set {value})"),
+        );
+        let error = resolve_authored(&scenario, &rules)
+            .expect_err("a governed field write must refuse at load");
+        assert!(
+            error.to_string().contains(field),
+            "the refusal must name {field}: {error}"
+        );
+    }
+}
+
+fn rust_source_tree_digest() -> [u8; 32] {
+    fn walk(directory: &Path, files: &mut Vec<PathBuf>) {
+        for entry in fs::read_dir(directory).expect("the Rust source directory is readable") {
+            let entry = entry.expect("the Rust source entry is readable");
+            let path = entry.path();
+            if entry
+                .file_type()
+                .expect("the Rust source entry type is readable")
+                .is_dir()
+            {
+                walk(&path, files);
+            } else if path.extension().is_some_and(|extension| extension == "rs") {
+                files.push(path);
+            }
+        }
+    }
+
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files = Vec::new();
+    walk(&root, &mut files);
+    files.sort();
+    let mut bytes = Vec::new();
+    for path in files {
+        let relative = path
+            .strip_prefix(&root)
+            .expect("the Rust source path stays inside the tree");
+        bytes.extend_from_slice(relative.to_string_lossy().as_bytes());
+        bytes.push(0);
+        bytes.extend_from_slice(&fs::read(&path).expect("the Rust source file is readable"));
+        bytes.push(0);
+    }
+    content_digest::sha256_of(&bytes)
+}
+
+#[test]
+fn swap_admits_both_profiles_on_one_binary_with_divergent_behavior() {
+    let before = rust_source_tree_digest();
+    let michigan_root = TempRoot::new();
+    let michigan = resolved_hours(&michigan_root, 44);
+    let authored_root = TempRoot::new();
+    let authored = authored_from_committed(
+        &authored_root,
+        &[
+            "mods.local-probability-step",
+            "mods.local-probability-fixture",
+        ],
+    );
+    assert_eq!(michigan.host_profile(), HostProfile::MichiganRegionalV6);
+    assert_eq!(authored.host_profile(), HostProfile::AuthoredGraphV1);
+
+    let refused = admission::admit_michigan_regional_package(
+        &authored,
+        &authored_root.path("wrong-michigan.sqlite3"),
+    )
+    .expect_err("the Michigan numeric profile refuses an authored graph set");
+    assert!(
+        refused.to_string().contains("authored-graph-v1"),
+        "the numeric admission must name the selected profile: {refused}"
+    );
+    let refused = authored_graph::admit_authored_graph_package(
+        &michigan,
+        319,
+        &authored_root.path("wrong-authored.sqlite3"),
+    )
+    .expect_err("the authored graph profile refuses a numeric set");
+    assert!(
+        refused.to_string().contains("michigan-regional-v6"),
+        "the authored admission must name the selected profile: {refused}"
+    );
+
+    let michigan_store = michigan_root.path("michigan.sqlite3");
+    let mut michigan_handle =
+        admission::admit_michigan_regional_package(&michigan, &michigan_store)
+            .expect("the numeric campaign admits");
+    let authored_store = authored_root.path("authored.sqlite3");
+    let mut authored_handle =
+        authored_graph::admit_authored_graph_package(&authored, 319, &authored_store)
+            .expect("the authored campaign admits");
+    assert_eq!(
+        michigan_handle.build(),
+        authored_handle.build(),
+        "both profiles were admitted by the same binary"
+    );
+
+    let command = PlayerCommand {
+        period: 1,
+        actor_id: [0x51; 8],
+        payload: b"organizer-action".to_vec(),
+    };
+    let accepted = michigan_handle
+        .accept_command(command.clone(), [0x7a; 16])
+        .expect("the economic profile still validates and accepts player commands");
+    assert_eq!(accepted.period, 1);
+    let refused = authored_handle
+        .accept_command(command, [0x7b; 16])
+        .expect_err("the authored profile publishes no player commands");
+    assert!(
+        matches!(refused, CommandError::UnsupportedProfile),
+        "the refusal must be the specific unsupported profile: {refused:?}"
+    );
+
+    let (_, authored_nodes) = advance_viewer(
+        &mut authored_handle,
+        "mods/local-probability-fixture",
+        &["first", "second"],
+    );
+    assert_eq!(authored_nodes[0].probability_bits, 0.5_f64.to_bits());
+    assert_eq!(authored_nodes[1].probability_bits, 0.75_f64.to_bits());
+    assert_eq!(
+        michigan_handle.current().chunks.len(),
+        8,
+        "the numeric opening keeps its eight economic restart sections"
+    );
+    assert!(
+        authored_handle
+            .current()
+            .chunks
+            .iter()
+            .any(|chunk| chunk.section == ChunkSection::SemanticState),
+        "the authored period carries the semantic-state section"
+    );
+
+    assert_eq!(
+        rust_source_tree_digest(),
+        before,
+        "neither admission may change the Rust source tree"
+    );
+}
+
+#[test]
+fn first_party_declarations_resolve_through_the_package_boundary() {
+    let resolved = crate::economic_content::resolve_first_party_content()
+        .expect("the embedded first-party declarations resolve");
+    assert_eq!(resolved.host_profile(), HostProfile::AuthoredGraphV1);
+    assert_eq!(resolved.units().len(), 3);
+    assert_eq!(resolved.units_of(SourceKind::Scenario).count(), 1);
+    assert_eq!(resolved.units_of(SourceKind::Rules).count(), 2);
+    assert_eq!(
+        resolved
+            .unit(crate::economic_content::FIRST_PARTY_NATIONAL_SCENARIO_SOURCE_ID)
+            .expect("the national scenario is effective")
+            .bytes(),
+        include_bytes!("../../../../../content/scenarios/national/structure.bscn")
+    );
+    assert_eq!(
+        resolved
+            .unit(crate::economic_content::FIRST_PARTY_MICHIGAN_MATERIAL_SOURCE_ID)
+            .expect("the material rule is effective")
+            .bytes(),
+        include_bytes!("../../../../../content/scenarios/michigan/material-cycle.bsl")
+    );
+    assert_eq!(
+        resolved
+            .unit(crate::economic_content::FIRST_PARTY_MICHIGAN_ORGANIZER_SOURCE_ID)
+            .expect("the organizer rules are effective")
+            .bytes(),
+        include_bytes!("../../../../../content/scenarios/michigan/organizer-cycle.bsl")
+    );
+    let again = crate::economic_content::resolve_first_party_content()
+        .expect("the embedded first-party declarations resolve deterministically");
+    assert_eq!(again.digest(), resolved.digest());
+    let refused = admission::validate_profile_sources(&resolved)
+        .expect_err("the first-party source categories are not a campaign admission");
+    assert!(
+        matches!(refused, PackageError::ProfileSourceKinds { .. }),
+        "the refusal must preserve each host's categories: {refused:?}"
+    );
+}
+
+#[test]
+fn authored_admission_supplies_the_ninth_semantic_state_section() {
+    let root = TempRoot::new();
+    let resolved = authored_from_committed(&root, &["mods.local-probability-fixture"]);
+    let store = root.path("sections.sqlite3");
+    let handle = authored_graph::admit_authored_graph_package(&resolved, 319, &store)
+        .expect("the authored campaign admits");
+    let root = handle.current();
+    let semantic = root
+        .chunks
+        .iter()
+        .filter(|chunk| chunk.section == ChunkSection::SemanticState)
+        .collect::<Vec<_>>();
+    assert!(!semantic.is_empty(), "the semantic state is present");
+    assert_eq!(
+        semantic
+            .iter()
+            .map(|chunk| chunk.ordinal)
+            .collect::<Vec<_>>(),
+        (0..u32::try_from(semantic.len()).expect("the fragment count fits")).collect::<Vec<_>>(),
+        "the semantic state starts at ordinal zero and stays dense"
+    );
+    let connection = Connection::open(&store).expect("the campaign database opens for a readback");
+    let state = read_section(&connection, root, ChunkSection::SemanticState);
+    assert!(
+        !state.is_empty(),
+        "the real Michigan geographic material state is captured, not an empty placeholder"
     );
 }

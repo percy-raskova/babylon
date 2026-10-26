@@ -1,6 +1,14 @@
 //! Immutable current campaign admission shared by material readers and projections.
 use crate::economic_catalog::EconomicProjectionView;
 use crate::identity::CampaignId;
+
+use crate::content_package;
+use crate::content_package::EmbeddedSource;
+use crate::content_package::HostProfile;
+use crate::content_package::LoadedPackage;
+use crate::content_package::PackageError;
+use crate::content_package::ResolvedContentSet;
+use crate::content_package::SourceKind;
 use crate::material_runtime::{
     MaterialComponentIdentity, MaterialRuntimeError, MaterialRuntimeFoundation,
 };
@@ -35,6 +43,89 @@ impl std::fmt::Display for EconomicContentError {
     }
 }
 impl std::error::Error for EconomicContentError {}
+
+/// Stable source identity of the first-party national declarations.
+pub const FIRST_PARTY_NATIONAL_SCENARIO_SOURCE_ID: &str = "babylon/national-structure";
+/// Stable source identity of the first-party Michigan material rule.
+pub const FIRST_PARTY_MICHIGAN_MATERIAL_SOURCE_ID: &str = "babylon/michigan-material-cycle";
+/// Stable source identity of the first-party Michigan organizer rules.
+pub const FIRST_PARTY_MICHIGAN_ORGANIZER_SOURCE_ID: &str = "babylon/michigan-organizer-cycle";
+/// Logical package identity of the embedded first-party source set.
+pub const FIRST_PARTY_PACKAGE_ID: &str = "babylon.first-party-content";
+
+const FIRST_PARTY_NATIONAL_STRUCTURE: &[u8] =
+    include_bytes!("../../../../content/scenarios/national/structure.bscn");
+const FIRST_PARTY_MICHIGAN_MATERIAL: &[u8] =
+    include_bytes!("../../../../content/scenarios/michigan/material-cycle.bsl");
+const FIRST_PARTY_MICHIGAN_ORGANIZER: &[u8] =
+    include_bytes!("../../../../content/scenarios/michigan/organizer-cycle.bsl");
+
+/// Build the embedded first-party declarations as one ordinary content package.
+///
+/// The definition order is fixed, so the generated manifest and its digest are
+/// deterministic. This is the input to [`resolve_first_party_content`]; it is not
+/// an admissible `michigan-regional-v6` numeric set and does not claim to be an
+/// authored graph campaign on its own.
+///
+/// # Errors
+///
+/// Refuses any generated manifest, path, size, UTF-8 or digest violation the
+/// ordinary package loader also refuses.
+pub fn first_party_content_package() -> Result<LoadedPackage, PackageError> {
+    let sources = [
+        EmbeddedSource {
+            source_id: FIRST_PARTY_NATIONAL_SCENARIO_SOURCE_ID,
+            kind: SourceKind::Scenario,
+            path: "national/structure.bscn",
+            bytes: FIRST_PARTY_NATIONAL_STRUCTURE,
+        },
+        EmbeddedSource {
+            source_id: FIRST_PARTY_MICHIGAN_MATERIAL_SOURCE_ID,
+            kind: SourceKind::Rules,
+            path: "michigan/material-cycle.bsl",
+            bytes: FIRST_PARTY_MICHIGAN_MATERIAL,
+        },
+        EmbeddedSource {
+            source_id: FIRST_PARTY_MICHIGAN_ORGANIZER_SOURCE_ID,
+            kind: SourceKind::Rules,
+            path: "michigan/organizer-cycle.bsl",
+            bytes: FIRST_PARTY_MICHIGAN_ORGANIZER,
+        },
+    ];
+    LoadedPackage::from_embedded_sources(
+        "embedded:first-party-content",
+        FIRST_PARTY_PACKAGE_ID,
+        &first_party_version(&sources),
+        HostProfile::AuthoredGraphV1,
+        &sources,
+    )
+}
+
+/// Resolve the first-party declarations through the external package boundary.
+///
+/// Embedded defaults therefore pass the same manifest, digest, resolution and
+/// load-bearing audit checks as installed packages; they are inputs to that
+/// boundary rather than a second bypass. The resolved set keeps each host's
+/// accepted source categories: the national declarations remain a scenario and
+/// the Michigan material and organizer files remain rule units.
+///
+/// # Errors
+///
+/// Refuses any package construction, resolution, replacement, host-profile or
+/// load-bearing audit failure.
+pub fn resolve_first_party_content() -> Result<ResolvedContentSet, PackageError> {
+    content_package::resolve_content_packages(&[first_party_content_package()?])
+}
+
+fn first_party_version(sources: &[EmbeddedSource<'_>]) -> String {
+    let mut joined = Vec::new();
+    for source in sources {
+        joined.extend_from_slice(source.bytes);
+    }
+    let digest = content_digest::sha256_of(&joined);
+    let hex = crate::michigan_economy::digest_hex(&digest);
+    format!("content-{}", &hex[..48])
+}
 
 /// One admitted immutable foundation. Its catalog is never cloned into a second
 /// metadata owner, and projection reads never call the opening generator.

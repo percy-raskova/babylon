@@ -395,6 +395,66 @@ impl LoadedPackage {
     pub fn sources(&self) -> &[LoadedSource] {
         &self.sources
     }
+
+    /// Build one first-party package from in-memory sources.
+    ///
+    /// The generated manifest is parsed by the same strict schema as an installed
+    /// package, and every supplied source passes the same path, size, UTF-8 and
+    /// SHA-256 verification before resolution sees it. `origin` names the
+    /// logical root in diagnostics; nothing is read from the filesystem.
+    ///
+    /// # Errors
+    ///
+    /// Refuses an invalid package/source identity, a missing or duplicate
+    /// supplied path, a source outside its size bound, non-UTF-8 bytes, or a
+    /// digest mismatch.
+    pub fn from_embedded_sources(
+        origin: &str,
+        id: &str,
+        version: &str,
+        host_profile: HostProfile,
+        sources: &[EmbeddedSource<'_>],
+    ) -> Result<Self, PackageError> {
+        validate_package_id(id)?;
+        validate_version(version)?;
+        for source in sources {
+            validate_source_id(source.source_id)?;
+            validate_relative_path(source.path)?;
+        }
+        let manifest_text = embedded_manifest(id, version, host_profile, sources);
+        let raw: RawManifest =
+            toml::from_str(&manifest_text).map_err(|error| PackageError::ManifestToml {
+                path: PathBuf::from(origin),
+                message: error.to_string(),
+            })?;
+        let manifest = validate_manifest(raw)?;
+        let loaded = load_embedded_sources(&manifest, sources)?;
+        let root = PathBuf::from(origin);
+        Ok(Self {
+            manifest_path: root.join(PACKAGE_MANIFEST_FILE),
+            root,
+            manifest,
+            manifest_sha256: content_digest::sha256_of(manifest_text.as_bytes()),
+            sources: loaded,
+        })
+    }
+}
+
+/// One in-memory first-party source offered beside a generated package manifest.
+///
+/// Embedded defaults are not a second admission bypass: the package constructor
+/// validates the generated manifest and every supplied source through the same
+/// digest, path and UTF-8 checks a directory-backed package uses.
+#[derive(Clone, Copy, Debug)]
+pub struct EmbeddedSource<'a> {
+    /// Stable logical source identity.
+    pub source_id: &'a str,
+    /// Closed source kind.
+    pub kind: SourceKind,
+    /// Normalized package-relative path.
+    pub path: &'a str,
+    /// Exact source bytes.
+    pub bytes: &'a [u8],
 }
 
 #[derive(Deserialize)]
@@ -615,6 +675,51 @@ fn load_source(
         path: canonical,
         error,
     })?;
+    verify_source_bytes(entrypoint, bytes)
+}
+
+fn load_embedded_sources(
+    manifest: &PackageManifest,
+    sources: &[EmbeddedSource<'_>],
+) -> Result<Vec<LoadedSource>, PackageError> {
+    let mut loaded = Vec::with_capacity(manifest.entrypoints().len());
+    for entrypoint in manifest.entrypoints() {
+        let supplied = sources
+            .iter()
+            .find(|source| {
+                source.source_id == entrypoint.source_id() && source.path == entrypoint.path()
+            })
+            .ok_or_else(|| PackageError::InvalidSourcePath {
+                path: entrypoint.path().to_owned(),
+                reason: "the embedded package supplies no bytes for this entrypoint",
+            })?;
+        if supplied.kind != entrypoint.kind() {
+            return Err(PackageError::InvalidSourcePath {
+                path: entrypoint.path().to_owned(),
+                reason: "the embedded source kind disagrees with its manifest entrypoint",
+            });
+        }
+        loaded.push(verify_source_bytes(entrypoint, supplied.bytes.to_vec())?);
+    }
+    if loaded.len() != sources.len() {
+        return Err(PackageError::InvalidSourcePath {
+            path: "embedded package".to_owned(),
+            reason: "the embedded package supplies a source no entrypoint declares",
+        });
+    }
+    Ok(loaded)
+}
+
+fn verify_source_bytes(
+    entrypoint: &PackageEntrypoint,
+    bytes: Vec<u8>,
+) -> Result<LoadedSource, PackageError> {
+    if bytes.len() > MAX_PACKAGE_SOURCE_BYTES {
+        return Err(PackageError::SourceTooLarge {
+            path: entrypoint.path().to_owned(),
+            limit: MAX_PACKAGE_SOURCE_BYTES,
+        });
+    }
     std::str::from_utf8(&bytes).map_err(|_| PackageError::SourceNotUtf8 {
         path: entrypoint.path().to_owned(),
     })?;
@@ -633,6 +738,42 @@ fn load_source(
         sha256: actual,
         bytes,
     })
+}
+
+fn embedded_manifest(
+    id: &str,
+    version: &str,
+    host_profile: HostProfile,
+    sources: &[EmbeddedSource<'_>],
+) -> String {
+    use std::fmt::Write as _;
+
+    let mut manifest = format!(
+        "format_version = {PACKAGE_FORMAT_VERSION}\nid = \"{id}\"\nversion = \"{version}\"\ncontent_abi = \"{CONTENT_ABI}\"\nhost_profile = \"{}\"\ndependencies = []\nreplacements = []\n",
+        host_profile.manifest_name()
+    );
+    for source in sources {
+        write!(
+            manifest,
+            "\n[[entrypoints]]\nsource_id = \"{}\"\nkind = \"{}\"\npath = \"{}\"\nsha256 = \"{}\"\n",
+            source.source_id,
+            source.kind.as_str(),
+            source.path,
+            hex_sha256(&content_digest::sha256_of(source.bytes)),
+        )
+        .expect("writing to a String cannot fail");
+    }
+    manifest
+}
+
+fn hex_sha256(bytes: &[u8; 32]) -> String {
+    use std::fmt::Write as _;
+
+    let mut output = String::with_capacity(64);
+    for byte in bytes {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
 }
 
 fn validate_package_id(id: &str) -> Result<(), PackageError> {

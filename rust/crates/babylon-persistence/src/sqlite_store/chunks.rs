@@ -442,6 +442,10 @@ pub fn read_content_entry(
     Ok(decoded)
 }
 
+/// Entry key of the authored-graph opening metadata that declares a campaign
+/// with no player-command surface.
+pub const AUTHORED_GRAPH_ADMISSION_KEY: &[u8] = b"authored-graph-admission";
+
 /// Insert one bounded immutable content or compiled-definition chunk.
 ///
 /// # Errors
@@ -477,6 +481,24 @@ pub fn write_content_entry(
         ],
     )?;
     Ok(())
+}
+
+/// Return whether one content entry holds at least one fragment.
+///
+/// # Errors
+///
+/// Refuses a `SQLite` failure. An absent entry is not an error.
+pub fn has_content_entry(
+    connection: &Connection,
+    kind: ContentEntryKind,
+    entry_key: &[u8],
+) -> Result<bool, SaveError> {
+    let count: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM content_entry WHERE kind = ?1 AND entry_key = ?2",
+        params![kind.code(), entry_key],
+        |row| row.get(0),
+    )?;
+    Ok(count != 0)
 }
 
 /// Insert one bounded recent-detail row for a completed period.

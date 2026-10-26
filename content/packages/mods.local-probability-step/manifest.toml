@@ -1,0 +1,21 @@
+format_version = 1
+id = "mods.local-probability-step"
+version = "1"
+content_abi = "babylon-content-v1"
+host_profile = "authored-graph-v1"
+
+[[dependencies]]
+id = "mods.local-probability-fixture"
+version = "1"
+manifest_sha256 = "b80dc9a8530f16a76146ffc9be68243cf67c54e4ac567c7f12d925cbfc3717f1"
+
+[[entrypoints]]
+source_id = "mods/local-probability-step/rules"
+kind = "rules"
+path = "rules.bsl"
+sha256 = "23f166cbab6495c210e77b242265fc8c2153ea88996897cee4680fd0e40e81bd"
+
+[[replacements]]
+dependency_id = "mods.local-probability-fixture"
+source_id = "mods/local-probability-step/rules"
+expected_sha256 = "d88e3740042a710d473e0bca60f80adc70a0c3b8d450157338fbc3cd5f212d04"

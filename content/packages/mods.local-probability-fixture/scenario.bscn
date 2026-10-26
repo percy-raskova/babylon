@@ -1,0 +1,6 @@
+(scenario mods/local-probability-fixture
+  (deffield social-class/probability probability intensive)
+  (node first NodeType/SOCIAL_CLASS
+    (social-class/probability 0.25p))
+  (node second NodeType/SOCIAL_CLASS
+    (social-class/probability 0.5p)))

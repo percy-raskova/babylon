@@ -155,6 +155,12 @@ pub fn admit_michigan_regional_package(
         &[catalog.rule_source()],
     )
     .map_err(|error| package_refused(error.to_string()))?;
+    // The embedded first-party declarations enter the same resolved-source
+    // boundary as external packages before any campaign is published. They stay
+    // in their declared source categories; this is an integrity gate, not a
+    // national scenario replacement.
+    crate::economic_content::resolve_first_party_content()
+        .map_err(|error| package_refused(error.to_string()))?;
     let normalization = CoefficientNormalization::new(catalog.staffing().hours_per_worker_period)
         .map_err(|error| package_refused(error.to_string()))?;
     audit::audit_catalog_coefficients(foundation.material_catalog(), normalization)
@@ -291,7 +297,7 @@ fn admission_metadata(resolved: &ResolvedContentSet) -> Vec<u8> {
     bytes
 }
 
-fn campaign_uuid(digest: [u8; 32]) -> Uuid {
+pub(crate) fn campaign_uuid(digest: [u8; 32]) -> Uuid {
     let mut bytes = [0_u8; 16];
     bytes.copy_from_slice(&digest[..16]);
     Uuid::from_bytes(bytes)

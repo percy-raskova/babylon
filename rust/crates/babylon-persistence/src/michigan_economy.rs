@@ -258,6 +258,30 @@ pub(crate) fn foundation_from_sources_with_seed(
     defines: &[u8],
     seed: i64,
 ) -> Result<(ReplayTickSession<HypergraphStore>, FoundationContentBundle), MichiganEconomyError> {
+    foundation_from_authored_sources_with_seed(
+        scenario_source,
+        None,
+        rule_source,
+        session_identity,
+        defines,
+        seed,
+    )
+}
+
+/// Prepare one authored scenario, optional declaration prelude and rules over the
+/// real checked Michigan geography.
+///
+/// The geographic `MaterialState` and its reference manifest are the same
+/// artifacts the ordinary material campaign uses; an authored graph campaign is
+/// not given an empty reference or a second simulation engine.
+pub(crate) fn foundation_from_authored_sources_with_seed(
+    scenario_source: &str,
+    prelude_source: Option<&str>,
+    rule_source: &str,
+    session_identity: &str,
+    defines: &[u8],
+    seed: i64,
+) -> Result<(ReplayTickSession<HypergraphStore>, FoundationContentBundle), MichiganEconomyError> {
     let (_, rules) =
         rule_pipeline::split_content(rule_source).map_err(|_| MichiganEconomyError::Scenario)?;
     let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
@@ -278,7 +302,7 @@ pub(crate) fn foundation_from_sources_with_seed(
     // covers the QCEW rows while the existing H3 reference identity stays intact.
     let session = ReplayTickSession::new(
         scenario_source,
-        None,
+        prelude_source,
         rule_source,
         HypergraphStore::new(),
         ReplaySessionId::try_from(session_identity).map_err(|_| MichiganEconomyError::Scenario)?,
@@ -288,9 +312,14 @@ pub(crate) fn foundation_from_sources_with_seed(
         MaterialState::try_new(foundation).map_err(|_| MichiganEconomyError::Foundation)?,
     )
     .map_err(|_| MichiganEconomyError::Foundation)?;
-    let bundle =
-        FoundationContentBundle::try_new(scenario_source, None, rule_source, defines, &manifest)
-            .map_err(|_| MichiganEconomyError::Foundation)?;
+    let bundle = FoundationContentBundle::try_new(
+        scenario_source,
+        prelude_source,
+        rule_source,
+        defines,
+        &manifest,
+    )
+    .map_err(|_| MichiganEconomyError::Foundation)?;
     Ok((session, bundle))
 }
 

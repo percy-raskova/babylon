@@ -410,6 +410,8 @@ pub enum CommandError {
         /// Why the command was refused.
         reason: &'static str,
     },
+    /// The selected host profile publishes no player-command surface.
+    UnsupportedProfile,
     /// The underlying store refused the write.
     Store(SaveError),
 }
@@ -434,6 +436,10 @@ impl std::fmt::Display for CommandError {
             Self::InvalidCommand { reason } => {
                 write!(formatter, "the organizer command is refused: {reason}")
             }
+            Self::UnsupportedProfile => write!(
+                formatter,
+                "the selected host profile publishes no player-command surface"
+            ),
             Self::Store(error) => write!(formatter, "the command acceptance was refused: {error}"),
         }
     }
@@ -709,6 +715,13 @@ impl CampaignHandle {
         command: PlayerCommand,
         nonce: [u8; 16],
     ) -> Result<AcceptanceReceipt, CommandError> {
+        if chunks::has_content_entry(
+            &self.connection,
+            ContentEntryKind::OpeningMetadata,
+            chunks::AUTHORED_GRAPH_ADMISSION_KEY,
+        )? {
+            return Err(CommandError::UnsupportedProfile);
+        }
         if command.payload.is_empty() {
             return Err(CommandError::InvalidCommand {
                 reason: "the command payload is empty",

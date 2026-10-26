@@ -148,6 +148,11 @@ pub enum SaveError {
         /// Rejected endpoint.
         endpoint: u128,
     },
+    /// An external content package was refused before campaign publication.
+    ContentPackage {
+        /// The exact package or host-profile refusal.
+        reason: String,
+    },
     /// A typed field was empty or otherwise outside its contract.
     InvalidField {
         /// Table that owns the field.
@@ -323,6 +328,9 @@ impl std::fmt::Display for SaveError {
                 formatter,
                 "choice endpoint {endpoint} exceeds the governed 2^64 upper bound"
             ),
+            Self::ContentPackage { reason } => {
+                write!(formatter, "content package refused: {reason}")
+            }
             Self::InvalidField {
                 table,
                 field,

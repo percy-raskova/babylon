@@ -392,6 +392,56 @@ pub fn read_state_chunk(connection: &Connection, chunk_id: i64) -> Result<Vec<u8
     codec::decode_chunk_payload(PayloadBudget::StateChunk, &stored)
 }
 
+/// Read and authenticate every fragment of one content entry in ordinal order.
+///
+/// # Errors
+///
+/// Refuses an absent entry, a payload outside the content budget, a codec or
+/// length or digest mismatch, or a `SQLite` failure.
+pub fn read_content_entry(
+    connection: &Connection,
+    kind: ContentEntryKind,
+    entry_key: &[u8],
+) -> Result<Vec<Vec<u8>>, SaveError> {
+    let mut statement = connection.prepare(
+        "SELECT codec, raw_len, raw_hash, payload FROM content_entry
+         WHERE kind = ?1 AND entry_key = ?2 ORDER BY ordinal",
+    )?;
+    let rows = statement
+        .query_map(params![kind.code(), entry_key], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, Vec<u8>>(2)?,
+                row.get::<_, Vec<u8>>(3)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    if rows.is_empty() {
+        return Err(SaveError::InvalidField {
+            table: "content_entry",
+            field: "entry_key",
+            reason: "the requested content entry is absent",
+        });
+    }
+    let mut decoded = Vec::with_capacity(rows.len());
+    for (codec_code, raw_len, raw_hash, payload) in rows {
+        let stored = StoredPayload {
+            codec: PayloadCodec::from_code(codec_code)?,
+            raw_len: u32::try_from(raw_len).map_err(|_| SaveError::Arithmetic {
+                field: "content entry raw length",
+            })?,
+            raw_hash: hash_from_row("content_entry", &raw_hash)?,
+            payload: &payload,
+        };
+        decoded.push(codec::decode_chunk_payload(
+            PayloadBudget::ContentEntry,
+            &stored,
+        )?);
+    }
+    Ok(decoded)
+}
+
 /// Insert one bounded immutable content or compiled-definition chunk.
 ///
 /// # Errors

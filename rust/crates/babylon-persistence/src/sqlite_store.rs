@@ -31,6 +31,7 @@ pub use archive_service::ServiceDisposition;
 pub use archive_service::ServiceError;
 pub use archive_service::ServiceReceipt;
 pub use archive_service::MAX_PENDING_DOSSIERS;
+pub use chunks::read_content_entry;
 pub use chunks::read_state_chunk;
 pub use chunks::write_content_entry;
 pub use chunks::write_journal_record;

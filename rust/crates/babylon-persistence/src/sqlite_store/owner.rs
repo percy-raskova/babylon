@@ -675,6 +675,20 @@ impl CampaignHandle {
         &self.current
     }
 
+    /// Read and authenticate every fragment of one captured content entry.
+    ///
+    /// # Errors
+    ///
+    /// Refuses an absent entry, a payload outside the content budget, a codec or
+    /// length or digest mismatch, or a `SQLite` failure.
+    pub fn read_content_entry(
+        &self,
+        kind: ContentEntryKind,
+        entry_key: &[u8],
+    ) -> Result<Vec<Vec<u8>>, SaveError> {
+        chunks::read_content_entry(&self.connection, kind, entry_key)
+    }
+
     /// Durably accept one organizer command for the next period.
     ///
     /// A replay with the same nonce and equal bytes returns the original

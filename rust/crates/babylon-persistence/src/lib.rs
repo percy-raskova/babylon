@@ -20,6 +20,7 @@ mod bootstrap;
 mod checkpoint;
 mod checkpoint_reference;
 pub mod committed_tick_envelope;
+pub mod content_package;
 mod county_producer;
 mod current_schema;
 pub mod economic_catalog;

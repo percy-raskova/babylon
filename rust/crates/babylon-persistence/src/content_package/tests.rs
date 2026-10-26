@@ -32,6 +32,7 @@ use crate::sqlite_store::CommandError;
 use crate::sqlite_store::ContentEntryKind;
 use crate::sqlite_store::CurrentChunk;
 use crate::sqlite_store::CurrentRoot;
+use crate::sqlite_store::HistoryPage;
 use crate::sqlite_store::JournalKind;
 use crate::sqlite_store::MapSummary;
 use crate::sqlite_store::PlayerBody;
@@ -1477,28 +1478,6 @@ fn viewer_nodes(
         .collect()
 }
 
-fn read_section(connection: &Connection, root: &CurrentRoot, section: ChunkSection) -> Vec<u8> {
-    let mut fragments = root
-        .chunks
-        .iter()
-        .filter(|chunk| chunk.section == section)
-        .collect::<Vec<_>>();
-    fragments.sort_by_key(|chunk| chunk.ordinal);
-    let mut bytes = Vec::new();
-    for (expected, chunk) in fragments.iter().enumerate() {
-        assert_eq!(
-            usize::try_from(chunk.ordinal).expect("the fragment ordinal fits"),
-            expected,
-            "the {section:?} fragments are dense and ordered"
-        );
-        bytes.extend_from_slice(
-            &crate::sqlite_store::read_state_chunk(connection, chunk.chunk_id)
-                .expect("the state chunk decodes"),
-        );
-    }
-    bytes
-}
-
 fn assert_authored_opening(root: &CurrentRoot, store: &Path) {
     assert_eq!(root.period, 0, "the admitted opening is period zero");
     let required = [
@@ -1525,7 +1504,12 @@ fn assert_authored_opening(root: &CurrentRoot, store: &Path) {
         "the authored opening supplies the ninth semantic-state section"
     );
     let connection = Connection::open(store).expect("the campaign database opens for a readback");
-    let bytes = read_section(&connection, root, ChunkSection::SemanticState);
+    let bytes = crate::sqlite_store::read_section_bytes(
+        &connection,
+        &root.chunks,
+        ChunkSection::SemanticState,
+    )
+    .expect("the semantic-state section reads back");
     assert!(
         !bytes.is_empty(),
         "the real Michigan geographic material state is captured"
@@ -1601,47 +1585,7 @@ fn worked_examples_two_and_three_admit_view_and_replay_the_authored_graph() {
     assert_eq!(nodes[0].node_type, "SOCIAL_CLASS");
     assert_eq!(nodes[0].probability_bits, 0.375_f64.to_bits());
     assert_eq!(nodes[1].probability_bits, 0.625_f64.to_bits());
-    let history = handle
-        .history(viewer_scope(&handle), None, 0)
-        .expect("the authored campaign publishes its bounded public history");
-    assert_eq!(
-        history
-            .entries
-            .iter()
-            .filter(|entry| entry.kind == JournalKind::PlayerReceipt)
-            .count(),
-        2,
-        "each disclosed authored node keeps its public history record"
-    );
     let baseline_graph = *report.result_stable_graph_digest().as_bytes();
-    let build = handle.build();
-    drop(handle);
-
-    let reopened = SqliteCampaignStore::open(&store, build).expect("the saved campaign reopens");
-    assert_eq!(reopened.current().period, 1);
-    assert_eq!(
-        reopened.current().world_hash,
-        *report.result_world().digest().as_bytes()
-    );
-    let replayed = replay_one_authored_period(&reopened);
-    assert_eq!(
-        replayed.result_stable_graph_digest().as_bytes(),
-        &baseline_graph,
-        "replay must reproduce the identical GraphStateHash"
-    );
-    assert_eq!(
-        replayed.report().audit_receipts,
-        report.report().audit_receipts,
-        "replay must reproduce the same audit producer identity"
-    );
-    let captured = reopened
-        .read_content_entry(
-            ContentEntryKind::CapturedSource,
-            b"mods/local-probability-fixture/scenario",
-        )
-        .expect("the captured scenario reads back");
-    assert_eq!(captured.len(), 1);
-    drop(reopened);
 
     let stepped = authored_from_committed(
         &root,
@@ -1655,8 +1599,9 @@ fn worked_examples_two_and_three_admit_view_and_replay_the_authored_graph() {
         baseline.digest(),
         "the two increments are different content identities"
     );
+    let stepped_store = root.path("stepped.sqlite3");
     let mut stepped_handle =
-        authored_graph::admit_authored_graph_package(&stepped, 319, &root.path("stepped.sqlite3"))
+        authored_graph::admit_authored_graph_package(&stepped, 319, &stepped_store)
             .expect("the 0.25i variant admits");
     let (stepped_report, stepped_nodes) = advance_viewer(
         &mut stepped_handle,
@@ -1676,12 +1621,9 @@ fn worked_examples_two_and_three_admit_view_and_replay_the_authored_graph() {
 fn three_node_variant_reaches_the_viewer_with_a_designed_fact() {
     let root = TempRoot::new();
     let resolved = authored_from_committed(&root, &["mods.local-probability-three-node"]);
-    let mut handle = authored_graph::admit_authored_graph_package(
-        &resolved,
-        319,
-        &root.path("three-node.sqlite3"),
-    )
-    .expect("the three-node variant admits");
+    let store = root.path("three-node.sqlite3");
+    let mut handle = authored_graph::admit_authored_graph_package(&resolved, 319, &store)
+        .expect("the three-node variant admits");
     let (_, nodes) = advance_viewer(
         &mut handle,
         "mods/local-probability-three-node",
@@ -1697,75 +1639,213 @@ fn three_node_variant_reaches_the_viewer_with_a_designed_fact() {
     }
 }
 
-#[test]
-fn saved_authored_campaign_keeps_its_captured_structure_after_installed_sources_change() {
-    let root = TempRoot::new();
-    let resolved = authored_from_committed(&root, &["mods.local-probability-fixture"]);
-    let store = root.path("captured.sqlite3");
-    let mut handle =
-        authored_graph::admit_authored_graph_package(&resolved, 319, &store).expect("admits");
-    let (report, nodes) = advance_viewer(
-        &mut handle,
-        "mods/local-probability-fixture",
-        &["first", "second"],
+struct AuthoredSaveVariant {
+    name: &'static str,
+    packages: &'static [&'static str],
+    scenario_scope: &'static str,
+    scenario_package: &'static str,
+    store_name: &'static str,
+    expected_nodes: &'static [(&'static str, f64)],
+    second_period_nodes: &'static [(&'static str, f64)],
+}
+
+const SAVED_AUTHORED_VARIANTS: [AuthoredSaveVariant; 3] = [
+    AuthoredSaveVariant {
+        name: "baseline 0.125i",
+        packages: &["mods.local-probability-fixture"],
+        scenario_scope: "mods/local-probability-fixture",
+        scenario_package: "mods.local-probability-fixture",
+        store_name: "baseline-reopen.sqlite3",
+        expected_nodes: &[("first", 0.375), ("second", 0.625)],
+        second_period_nodes: &[("first", 0.5), ("second", 0.75)],
+    },
+    AuthoredSaveVariant {
+        name: "step 0.25i",
+        packages: &[
+            "mods.local-probability-step",
+            "mods.local-probability-fixture",
+        ],
+        scenario_scope: "mods/local-probability-fixture",
+        scenario_package: "mods.local-probability-fixture",
+        store_name: "step-reopen.sqlite3",
+        expected_nodes: &[("first", 0.5), ("second", 0.75)],
+        second_period_nodes: &[],
+    },
+    AuthoredSaveVariant {
+        name: "three-node",
+        packages: &["mods.local-probability-three-node"],
+        scenario_scope: "mods/local-probability-three-node",
+        scenario_package: "mods.local-probability-three-node",
+        store_name: "three-node-reopen.sqlite3",
+        expected_nodes: &[("first", 0.5), ("second", 0.75), ("third", 0.375)],
+        second_period_nodes: &[],
+    },
+];
+
+const REPLACED_SCENARIO: &[u8] = b"(scenario mods/replaced\n  (deffield social-class/probability probability intensive)\n  (node only NodeType/SOCIAL_CLASS (social-class/probability 0.5p)))\n";
+
+const REPLACED_RULES: &[u8] = b"(rule mods/replaced-step\n  :role mechanic\n  :evidence designed\n  :material-basis \"a different installed rule\"\n  :fuel 64\n  (anchor :before survival)\n  (bindings (binding probability :field social-class/probability))\n  (effects (update-node self social-class/probability (set 0.5p))))\n";
+
+fn replace_installed_sources(root: &TempRoot, packages: &[&str]) {
+    for package in packages {
+        for (file, bytes) in [
+            ("scenario.bscn", REPLACED_SCENARIO),
+            ("rules.bsl", REPLACED_RULES),
+        ] {
+            let relative = format!("packages/{package}/{file}");
+            if root.path(&relative).exists() {
+                root.write(&relative, bytes);
+            }
+        }
+    }
+}
+
+fn assert_variant_nodes(expected: &[(&str, f64)], nodes: &[AuthoredGraphNodeFact], context: &str) {
+    assert_eq!(
+        nodes.len(),
+        expected.len(),
+        "{context}: the viewer discloses exactly the authored nodes"
     );
-    assert_eq!(nodes[0].probability_bits, 0.375_f64.to_bits());
+    for (node, (name, probability)) in nodes.iter().zip(expected) {
+        assert_eq!(node.local_name, *name, "{context}: node identity");
+        assert_eq!(node.node_type, "SOCIAL_CLASS", "{context}: node type");
+        assert_eq!(node.evidence, "Designed", "{context}: evidence label");
+        assert_eq!(
+            node.probability_bits,
+            probability.to_bits(),
+            "{context}: {name} probability"
+        );
+    }
+}
+
+fn assert_saved_variant_keeps_its_captured_structure(variant: &AuthoredSaveVariant) {
+    let root = TempRoot::new();
+    let resolved = authored_from_committed(&root, variant.packages);
+    let store = root.path(variant.store_name);
+    let mut handle = authored_graph::admit_authored_graph_package(&resolved, 319, &store)
+        .expect("the authored variant admits");
+    assert_authored_opening(handle.current(), &store);
+    let names = variant
+        .expected_nodes
+        .iter()
+        .map(|(name, _)| *name)
+        .collect::<Vec<_>>();
+    let (report, nodes) = advance_viewer(&mut handle, variant.scenario_scope, &names);
+    assert_variant_nodes(variant.expected_nodes, &nodes, variant.name);
+    let history = handle
+        .history(viewer_scope(&handle), None, 0)
+        .expect("the authored campaign publishes its bounded public history");
+    assert_eq!(
+        history
+            .entries
+            .iter()
+            .filter(|entry| entry.kind == JournalKind::PlayerReceipt)
+            .count(),
+        names.len(),
+        "{}: each disclosed node keeps one public receipt",
+        variant.name
+    );
     let committed_root = handle.current().clone();
     let build = handle.build();
     drop(handle);
 
-    let fixture = root.path("packages/mods.local-probability-fixture");
-    root.write(
-        "packages/mods.local-probability-fixture/scenario.bscn",
-        b"(scenario mods/replaced\n  (deffield social-class/probability probability intensive)\n  (node only NodeType/SOCIAL_CLASS (social-class/probability 0.5p)))\n",
-    );
-    root.write(
-        "packages/mods.local-probability-fixture/rules.bsl",
-        b"(rule mods/replaced-step\n  :role mechanic\n  :evidence designed\n  :material-basis \"a different installed rule\"\n  :fuel 64\n  (anchor :before survival)\n  (bindings (binding probability :field social-class/probability))\n  (effects (update-node self social-class/probability (set 0.5p))))\n",
-    );
-    assert!(fixture.join("scenario.bscn").exists());
-
-    let reopened = SqliteCampaignStore::open(&store, build).expect("the saved campaign reopens");
-    assert_eq!(reopened.current(), &committed_root);
-    let captured = reopened
-        .read_content_entry(
-            ContentEntryKind::CapturedSource,
-            b"mods/local-probability-fixture/scenario",
-        )
-        .expect("the captured scenario reads back");
-    assert_eq!(
-        captured[0],
-        fs::read(committed_package("mods.local-probability-fixture").join("scenario.bscn"))
-            .expect("the committed scenario is readable"),
-        "reopening must use captured content, not the edited installed file"
-    );
-    let viewer = viewer_nodes(
-        &reopened,
-        "mods/local-probability-fixture",
-        &["first", "second"],
-    );
-    assert_eq!(viewer[0].probability_bits, 0.375_f64.to_bits());
-    assert_eq!(viewer[1].probability_bits, 0.625_f64.to_bits());
-    let replayed = replay_one_authored_period(&reopened);
-    assert_eq!(
-        replayed.result_stable_graph_digest().as_bytes(),
-        report.result_stable_graph_digest().as_bytes()
-    );
-    drop(reopened);
+    replace_installed_sources(&root, variant.packages);
 
     let mut reopened =
         SqliteCampaignStore::open(&store, build).expect("the saved campaign reopens");
-    let (_, second) = authored_graph::advance_authored_graph_period(&mut reopened)
-        .expect("the captured campaign advances a second period");
-    assert_eq!(reopened.current().period, 2);
-    assert_eq!(second.period, 2);
-    let nodes = viewer_nodes(
-        &reopened,
-        "mods/local-probability-fixture",
-        &["first", "second"],
+    assert_eq!(
+        reopened.current(),
+        &committed_root,
+        "{}: reopen restores the committed root",
+        variant.name
     );
-    assert_eq!(nodes[0].probability_bits, 0.5_f64.to_bits());
-    assert_eq!(nodes[1].probability_bits, 0.75_f64.to_bits());
+    let semantic = reopened
+        .read_section_bytes(ChunkSection::SemanticState)
+        .expect("the saved semantic-state section reads back");
+    assert_eq!(
+        content_digest::sha256_of(&semantic),
+        committed_root.state_hash,
+        "{}: the saved restart root rehydrates the semantic-state identity",
+        variant.name
+    );
+    assert_reopened_variant(variant, &mut reopened, &report, &history, &names);
+}
+
+fn assert_reopened_variant(
+    variant: &AuthoredSaveVariant,
+    reopened: &mut CampaignHandle,
+    report: &IdentifiedTickReport,
+    history: &HistoryPage,
+    names: &[&str],
+) {
+    let scenario_source = format!("{}/scenario", variant.scenario_scope);
+    let captured = reopened
+        .read_content_entry(ContentEntryKind::CapturedSource, scenario_source.as_bytes())
+        .expect("the captured scenario reads back");
+    assert_eq!(
+        captured,
+        vec![
+            fs::read(committed_package(variant.scenario_package).join("scenario.bscn"))
+                .expect("the committed scenario is readable")
+        ],
+        "{}: reopening must use captured content, not the edited installed file",
+        variant.name
+    );
+    let reopened_nodes = viewer_nodes(reopened, variant.scenario_scope, names);
+    assert_variant_nodes(variant.expected_nodes, &reopened_nodes, variant.name);
+    let replayed = replay_one_authored_period(reopened);
+    assert_eq!(
+        replayed.result_stable_graph_digest().as_bytes(),
+        report.result_stable_graph_digest().as_bytes(),
+        "{}: replay must reproduce the identical GraphStateHash",
+        variant.name
+    );
+    assert_eq!(
+        replayed.report().audit_receipts,
+        report.report().audit_receipts,
+        "{}: replay must reproduce the same audit producer identity",
+        variant.name
+    );
+    let reopened_history = reopened
+        .history(viewer_scope(reopened), None, 0)
+        .expect("the reopened campaign publishes its bounded public history");
+    assert_eq!(
+        reopened_history.committed_period, history.committed_period,
+        "{}: history reports the same committed period after reopen",
+        variant.name
+    );
+    assert_eq!(
+        reopened_history.entries, history.entries,
+        "{}: public history must survive close, source replacement and reopen",
+        variant.name
+    );
+    if !variant.second_period_nodes.is_empty() {
+        let second_names = variant
+            .second_period_nodes
+            .iter()
+            .map(|(name, _)| *name)
+            .collect::<Vec<_>>();
+        let (_, second) = authored_graph::advance_authored_graph_period(reopened)
+            .expect("the reopened campaign advances another period");
+        assert_eq!(
+            second.period, 2,
+            "{}: the second advance commits period two",
+            variant.name
+        );
+        let second_nodes = viewer_nodes(reopened, variant.scenario_scope, &second_names);
+        assert_variant_nodes(
+            variant.second_period_nodes,
+            &second_nodes,
+            &format!("{} second period", variant.name),
+        );
+    }
+}
+
+#[test]
+fn every_saved_variant_keeps_its_captured_structure_after_installed_sources_change() {
+    for variant in &SAVED_AUTHORED_VARIANTS {
+        assert_saved_variant_keeps_its_captured_structure(variant);
+    }
 }
 
 #[test]
@@ -1835,43 +1915,13 @@ fn authored_negative_content_refuses_before_publication() {
     }
 }
 
-fn rust_source_tree_digest() -> [u8; 32] {
-    fn walk(directory: &Path, files: &mut Vec<PathBuf>) {
-        for entry in fs::read_dir(directory).expect("the Rust source directory is readable") {
-            let entry = entry.expect("the Rust source entry is readable");
-            let path = entry.path();
-            if entry
-                .file_type()
-                .expect("the Rust source entry type is readable")
-                .is_dir()
-            {
-                walk(&path, files);
-            } else if path.extension().is_some_and(|extension| extension == "rs") {
-                files.push(path);
-            }
-        }
-    }
-
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut files = Vec::new();
-    walk(&root, &mut files);
-    files.sort();
-    let mut bytes = Vec::new();
-    for path in files {
-        let relative = path
-            .strip_prefix(&root)
-            .expect("the Rust source path stays inside the tree");
-        bytes.extend_from_slice(relative.to_string_lossy().as_bytes());
-        bytes.push(0);
-        bytes.extend_from_slice(&fs::read(&path).expect("the Rust source file is readable"));
-        bytes.push(0);
-    }
-    content_digest::sha256_of(&bytes)
-}
-
 #[test]
 fn swap_admits_both_profiles_on_one_binary_with_divergent_behavior() {
-    let before = rust_source_tree_digest();
+    // The no-Rust-delta proof is the content-only comparison in
+    // `worked_examples_two_and_three_admit_view_and_replay_the_authored_graph`:
+    // the same binary admits both probability increments and only content
+    // varies. An in-process digest of this source tree cannot observe a Rust
+    // delta, because nothing writes `.rs` files between its two reads.
     let michigan_root = TempRoot::new();
     let michigan = resolved_hours(&michigan_root, 44);
     let authored_root = TempRoot::new();
@@ -1956,12 +2006,6 @@ fn swap_admits_both_profiles_on_one_binary_with_divergent_behavior() {
             .any(|chunk| chunk.section == ChunkSection::SemanticState),
         "the authored period carries the semantic-state section"
     );
-
-    assert_eq!(
-        rust_source_tree_digest(),
-        before,
-        "neither admission may change the Rust source tree"
-    );
 }
 
 #[test]
@@ -2027,7 +2071,12 @@ fn authored_admission_supplies_the_ninth_semantic_state_section() {
         "the semantic state starts at ordinal zero and stays dense"
     );
     let connection = Connection::open(&store).expect("the campaign database opens for a readback");
-    let state = read_section(&connection, root, ChunkSection::SemanticState);
+    let state = crate::sqlite_store::read_section_bytes(
+        &connection,
+        &root.chunks,
+        ChunkSection::SemanticState,
+    )
+    .expect("the semantic-state section reads back");
     assert!(
         !state.is_empty(),
         "the real Michigan geographic material state is captured, not an empty placeholder"

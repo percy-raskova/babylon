@@ -54,6 +54,7 @@ use super::owner::CampaignHandle;
 use super::owner::CommandError;
 use super::owner::CommitKind;
 use super::owner::CommittedPeriod;
+use super::owner::CurrentChunk;
 use super::owner::CurrentRoot;
 use super::owner::FaultPoint;
 use super::owner::PlayerCommand;
@@ -127,6 +128,23 @@ fn configured_database(root: &TempRoot) -> Connection {
         .expect("the durable pragmas apply to a fresh connection");
     schema::install_schema(&connection).expect("the nine-table STRICT schema installs");
     connection
+}
+
+fn stored_fragment(
+    connection: &Connection,
+    section: ChunkSection,
+    ordinal: u32,
+    bytes: &[u8],
+) -> CurrentChunk {
+    let chunk_id = chunks::write_state_chunk(connection, section, ordinal, bytes)
+        .expect("the test fragment is admitted");
+    CurrentChunk {
+        section,
+        ordinal,
+        chunk_id,
+        raw_len: u32::try_from(bytes.len()).expect("the test fragment length fits"),
+        raw_hash: content_digest::sha256_of(bytes),
+    }
 }
 
 fn count(connection: &Connection, table: &str) -> i64 {
@@ -571,6 +589,66 @@ fn journal_identity_indexes_refuse_duplicate_nonces_periods_and_record_keys() {
         )
         .expect("the unresolved command index is queryable");
     assert_eq!(unresolved, 1, "the accepted command remains unresolved");
+}
+
+#[test]
+fn section_reads_join_dense_fragments_and_refuse_gaps_or_duplicates() {
+    let root = TempRoot::new();
+    let connection = configured_database(&root);
+    let fragments = vec![
+        stored_fragment(&connection, ChunkSection::SemanticState, 2, b"third"),
+        stored_fragment(&connection, ChunkSection::SemanticState, 0, b"first-"),
+        stored_fragment(&connection, ChunkSection::SemanticState, 1, b"second-"),
+    ];
+    assert_eq!(
+        chunks::read_section_bytes(&connection, &fragments, ChunkSection::SemanticState)
+            .expect("the dense section reassembles in ordinal order"),
+        b"first-second-third",
+        "a section read returns every fragment in ordinal order"
+    );
+
+    let gapped = vec![fragments[1], fragments[0]];
+    let refused = chunks::read_section_bytes(&connection, &gapped, ChunkSection::SemanticState)
+        .expect_err("a gap after ordinal zero must refuse");
+    assert!(
+        matches!(
+            refused,
+            SaveError::CorruptPayload {
+                table: "state_chunk",
+                ..
+            }
+        ),
+        "a gap must be reported as a corrupt restart root: {refused:?}"
+    );
+
+    let repeated = stored_fragment(&connection, ChunkSection::SemanticState, 0, b"again");
+    let duplicate = vec![fragments[1], repeated];
+    let refused = chunks::read_section_bytes(&connection, &duplicate, ChunkSection::SemanticState)
+        .expect_err("a repeated ordinal must refuse");
+    assert!(
+        matches!(
+            refused,
+            SaveError::CorruptPayload {
+                table: "state_chunk",
+                ..
+            }
+        ),
+        "a duplicate must be reported as a corrupt restart root: {refused:?}"
+    );
+
+    let absent = chunks::read_section_bytes(&connection, &fragments, ChunkSection::WorldRegisters)
+        .expect_err("an absent section must refuse");
+    assert!(
+        matches!(
+            absent,
+            SaveError::InvalidField {
+                table: "state_chunk",
+                field: "section",
+                ..
+            }
+        ),
+        "an absent section must name the missing section: {absent:?}"
+    );
 }
 
 #[test]

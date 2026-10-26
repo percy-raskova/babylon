@@ -511,15 +511,8 @@ fn verify_static_sections(
         ),
     ];
     for (section, bytes) in expected {
-        let stored = handle
-            .current()
-            .chunks
-            .iter()
-            .find(|chunk| chunk.section == section)
-            .ok_or_else(|| {
-                package_refused(format!("the campaign lacks the {section:?} section"))
-            })?;
-        if stored.raw_hash != content_digest::sha256_of(&bytes) {
+        let stored = handle.read_section_bytes(section)?;
+        if stored != bytes {
             return Err(package_refused(format!(
                 "the rebuilt {section:?} section disagrees with the captured campaign"
             )));

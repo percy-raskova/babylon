@@ -12,6 +12,7 @@ use crate::sqlite_store::codec;
 use crate::sqlite_store::codec::PayloadBudget;
 use crate::sqlite_store::codec::PayloadCodec;
 use crate::sqlite_store::codec::StoredPayload;
+use crate::sqlite_store::owner::CurrentChunk;
 use crate::sqlite_store::SaveError;
 
 /// Closed state-chunk section registry, matching the nine restart-root sections.
@@ -390,6 +391,51 @@ pub fn read_state_chunk(connection: &Connection, chunk_id: i64) -> Result<Vec<u8
         payload: &payload,
     };
     codec::decode_chunk_payload(PayloadBudget::StateChunk, &stored)
+}
+
+/// Read and authenticate every stored fragment of one restart-root section.
+///
+/// Fragments are ordered by ordinal, so manifest order and storage order may
+/// differ. The section must be dense from ordinal zero: a missing, repeated or
+/// out-of-range ordinal is a corrupt root. A caller therefore receives the
+/// whole section and can never mistake one fragment for its value.
+///
+/// # Errors
+///
+/// Refuses an absent section, a gap or repeated ordinal, a missing chunk, a
+/// payload outside the state-chunk budget, a codec or length or digest
+/// mismatch, or a `SQLite` failure.
+pub fn read_section_bytes(
+    connection: &Connection,
+    chunks: &[CurrentChunk],
+    section: ChunkSection,
+) -> Result<Vec<u8>, SaveError> {
+    let mut fragments = chunks
+        .iter()
+        .filter(|chunk| chunk.section == section)
+        .collect::<Vec<_>>();
+    if fragments.is_empty() {
+        return Err(SaveError::InvalidField {
+            table: "state_chunk",
+            field: "section",
+            reason: "the requested restart section is absent",
+        });
+    }
+    fragments.sort_by_key(|chunk| chunk.ordinal);
+    let mut bytes = Vec::new();
+    for (expected, fragment) in fragments.iter().enumerate() {
+        let expected = u32::try_from(expected).map_err(|_| SaveError::Arithmetic {
+            field: "restart section fragment ordinal",
+        })?;
+        if fragment.ordinal != expected {
+            return Err(SaveError::CorruptPayload {
+                table: "state_chunk",
+                reason: "the restart section fragments are not dense from ordinal zero",
+            });
+        }
+        bytes.extend_from_slice(&read_state_chunk(connection, fragment.chunk_id)?);
+    }
+    Ok(bytes)
 }
 
 /// Read and authenticate every fragment of one content entry in ordinal order.

@@ -695,6 +695,17 @@ impl CampaignHandle {
         chunks::read_content_entry(&self.connection, kind, entry_key)
     }
 
+    /// Read and authenticate every stored fragment of one restart-root section.
+    ///
+    /// # Errors
+    ///
+    /// Refuses an absent section, a gap or repeated fragment ordinal, a
+    /// missing chunk, a payload outside the state-chunk budget, a codec or
+    /// length or digest mismatch, or a `SQLite` failure.
+    pub fn read_section_bytes(&self, section: ChunkSection) -> Result<Vec<u8>, SaveError> {
+        chunks::read_section_bytes(&self.connection, &self.current.chunks, section)
+    }
+
     /// Durably accept one organizer command for the next period.
     ///
     /// A replay with the same nonce and equal bytes returns the original

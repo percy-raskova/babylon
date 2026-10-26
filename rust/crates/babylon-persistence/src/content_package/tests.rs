@@ -1,6 +1,7 @@
 //! Contract tests for external content package resolution and admission.
 
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -14,15 +15,22 @@ use babylon_material_circuit::UnitId;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::material_replay::MaterialReplaySession;
 use babylon_tick::replay_session::ReplayCommitDisposition;
+use rusqlite::Connection;
 
 use crate::material_runtime::MaterialRuntimeFoundation;
 use crate::michigan_content::MichiganContentPreset;
 use crate::michigan_material::MichiganMaterialCatalog;
 use crate::michigan_material::MichiganMaterialProcess;
+use crate::sqlite_store::BuildIdentity;
 use crate::sqlite_store::CampaignHandle;
+use crate::sqlite_store::ChunkSection;
 use crate::sqlite_store::ContentEntryKind;
+use crate::sqlite_store::CurrentChunk;
+use crate::sqlite_store::CurrentRoot;
+use crate::sqlite_store::PreparedPeriod;
 use crate::sqlite_store::SaveError;
 use crate::sqlite_store::SqliteCampaignStore;
+use crate::sqlite_store::StateChunk;
 
 use super::admission;
 use super::audit;
@@ -265,17 +273,28 @@ fn worked_example_one_admits_replays_and_preserves_captured_hours() {
             .bytes(),
         forty_four.as_bytes()
     );
+    let (build, admitted_root, expected_chunks) =
+        admit_worked_example(&root, &resolved, forty_four.as_bytes());
+    replay_from_reopened_campaign(&root, build, &admitted_root, &expected_chunks);
+}
 
+fn admit_worked_example(
+    root: &TempRoot,
+    resolved: &ResolvedContentSet,
+    forty_four: &[u8],
+) -> (BuildIdentity, CurrentRoot, Vec<(ChunkSection, Vec<u8>)>) {
     let store = root.path("campaign.sqlite3");
-    let handle = admission::admit_michigan_regional_package(&resolved, &store)
+    let handle = admission::admit_michigan_regional_package(resolved, &store)
         .expect("the 44-hour package admits");
     let build = handle.build();
     assert_eq!(build, admission::content_package_build_identity());
+    let admitted_root = handle.current().clone();
+    assert_opening_metadata(&handle, resolved);
     let captured = handle
         .read_content_entry(ContentEntryKind::CapturedSource, b"michigan/defines")
         .expect("the captured defines read back");
     assert_eq!(captured.len(), 1);
-    assert_eq!(captured[0], forty_four.as_bytes());
+    assert_eq!(captured[0], forty_four);
     drop(handle);
 
     let captured_text = std::str::from_utf8(&captured[0]).expect("the captured defines are UTF-8");
@@ -294,20 +313,80 @@ fn worked_example_one_admits_replays_and_preserves_captured_hours() {
         3_200
     );
 
-    run_one_material_close(foundation);
+    let expected_chunks = expected_opening_chunks(&foundation);
+    let reconstructed = foundation
+        .reconstruct_captured()
+        .expect("the captured foundation reconstructs through the durable path");
+    let expected_world = reconstructed
+        .into_session()
+        .expect("the reconstructed foundation opens a session")
+        .current_world_hash()
+        .expect("the reconstructed opening hashes");
+    assert_eq!(
+        admitted_root.world_hash, expected_world,
+        "the admitted opening world hash must be the captured foundation's world identity"
+    );
+    assert_eq!(
+        admitted_root.state_hash,
+        content_digest::sha256_of(foundation.initial_register().canonical_bytes()),
+        "the admitted opening state hash must be the captured initial register identity"
+    );
+    assert_opening_root(&admitted_root, &expected_chunks);
+    drop(run_one_material_close(foundation));
+    (build, admitted_root, expected_chunks)
+}
 
-    let modified_on_disk = defines_with_hours(32);
+fn assert_opening_metadata(handle: &CampaignHandle, resolved: &ResolvedContentSet) {
+    let metadata = handle
+        .read_content_entry(
+            ContentEntryKind::OpeningMetadata,
+            b"michigan-regional-admission",
+        )
+        .expect("the admission metadata reads back");
+    assert_eq!(metadata.len(), 1, "one opening metadata entry is written");
+    assert!(
+        metadata[0].ends_with(&resolved.digest()),
+        "the opening metadata must bind the canonical resolution digest"
+    );
+    assert!(
+        metadata[0]
+            .windows(b"michigan-regional-v6".len())
+            .any(|window| window == b"michigan-regional-v6"),
+        "the opening metadata must name the admitted host profile"
+    );
+}
+
+fn replay_from_reopened_campaign(
+    root: &TempRoot,
+    build: BuildIdentity,
+    admitted_root: &CurrentRoot,
+    expected_chunks: &[(ChunkSection, Vec<u8>)],
+) {
+    let store = root.path("campaign.sqlite3");
     root.write(
         "mods/local.michigan-hours/defines.toml",
-        modified_on_disk.as_bytes(),
+        defines_with_hours(32).as_bytes(),
     );
-    let reopened = SqliteCampaignStore::open(&store, build).expect("the saved campaign reopens");
+    let mut reopened =
+        SqliteCampaignStore::open(&store, build).expect("the saved campaign reopens");
+    assert_eq!(
+        reopened.current(),
+        admitted_root,
+        "reopening must reproduce the admitted opening root exactly"
+    );
+    assert_current_chunk_decodes(
+        &store,
+        reopened.current(),
+        ChunkSection::WorldRegisters,
+        expected_chunk(expected_chunks, ChunkSection::WorldRegisters),
+        "the reopened opening world registers",
+    );
     let replay = reopened
         .read_content_entry(ContentEntryKind::CapturedSource, b"michigan/defines")
         .expect("the reopened campaign reads its captured defines");
     assert_eq!(
         replay[0],
-        forty_four.as_bytes(),
+        defines_with_hours(44).as_bytes(),
         "reopening must use the captured 44-hour content, not the edited installed file"
     );
     let replayed_text = std::str::from_utf8(&replay[0]).expect("the replay bytes are UTF-8");
@@ -321,10 +400,226 @@ fn worked_example_one_admits_replays_and_preserves_captured_hours() {
         available_sheet_hours(&replayed_catalog, &replayed_foundation),
         3_520
     );
-    run_one_material_close(replayed_foundation);
+
+    let session = run_one_material_close(replayed_foundation);
+    let prepared = prepared_material_close(&session, reopened.current().world_hash);
+    let committed = reopened
+        .commit(prepared)
+        .expect("the reopened campaign commits the captured-content close");
+    assert_eq!(committed.period, 1);
+    assert_eq!(
+        committed.world_hash,
+        session
+            .current_world_hash()
+            .expect("the closed session hashes"),
+        "the committed world hash must be the close's own world identity"
+    );
+    assert_eq!(reopened.current().period, 1);
+    let advanced_stable_graph = session
+        .graph_session()
+        .stable_graph_state()
+        .expect("the closed session recomposes its stable graph")
+        .canonical_bytes()
+        .to_vec();
+    drop(reopened);
+
+    let advanced = SqliteCampaignStore::open(&store, build)
+        .expect("the advanced campaign reopens after the captured-content close");
+    assert_eq!(advanced.current().period, 1);
+    assert_eq!(advanced.current().world_hash, committed.world_hash);
+    assert_current_chunk_decodes(
+        &store,
+        advanced.current(),
+        ChunkSection::StableGraph,
+        &advanced_stable_graph,
+        "the advanced stable graph",
+    );
 }
 
-fn run_one_material_close(foundation: MaterialRuntimeFoundation) {
+fn expected_chunk(chunks: &[(ChunkSection, Vec<u8>)], section: ChunkSection) -> &[u8] {
+    &chunks
+        .iter()
+        .find(|(candidate, _)| *candidate == section)
+        .expect("the captured foundation carries the requested section")
+        .1
+}
+
+fn assert_current_chunk_decodes(
+    store: &Path,
+    root: &CurrentRoot,
+    section: ChunkSection,
+    expected: &[u8],
+    description: &str,
+) {
+    let chunk = root
+        .chunks
+        .iter()
+        .find(|chunk| chunk.section == section)
+        .expect("the current root carries the requested section");
+    assert_state_chunk_decodes(store, chunk, expected, description);
+}
+
+fn expected_opening_chunks(foundation: &MaterialRuntimeFoundation) -> Vec<(ChunkSection, Vec<u8>)> {
+    let graph = foundation.graph_foundation();
+    let digest = graph.content_digest();
+    let mut content_hash = Vec::with_capacity(64);
+    content_hash.extend_from_slice(&digest.defines_hash);
+    content_hash.extend_from_slice(&digest.rules_hash);
+    vec![
+        (
+            ChunkSection::StableGraph,
+            graph.stable_graph_bytes().to_vec(),
+        ),
+        (
+            ChunkSection::WorldRegisters,
+            graph.world_register_bytes().to_vec(),
+        ),
+        (
+            ChunkSection::ResolverManifest,
+            graph.resolver_manifest_bytes().to_vec(),
+        ),
+        (
+            ChunkSection::PreparedEnvironment,
+            graph.prepared_environment_bytes().to_vec(),
+        ),
+        (
+            ChunkSection::ReplaySessionIdentity,
+            graph.replay_session_identity().as_bytes().to_vec(),
+        ),
+        (
+            ChunkSection::RngSeed,
+            graph.rng_seed().to_be_bytes().to_vec(),
+        ),
+        (ChunkSection::ContentDigest, content_hash),
+        (
+            ChunkSection::ReferenceDigest,
+            graph.reference_digest().as_bytes().to_vec(),
+        ),
+    ]
+}
+
+fn assert_opening_root(root: &CurrentRoot, expected_chunks: &[(ChunkSection, Vec<u8>)]) {
+    assert_eq!(root.period, 0, "the admitted opening is period zero");
+    assert_eq!(
+        root.chunks.len(),
+        expected_chunks.len(),
+        "the admitted opening carries every foundation section exactly once"
+    );
+    for (chunk, (section, bytes)) in root.chunks.iter().zip(expected_chunks) {
+        assert_eq!(
+            chunk.section, *section,
+            "the admitted opening chunks follow section order"
+        );
+        assert_eq!(chunk.ordinal, 0, "each opening section has one fragment");
+        assert_eq!(
+            usize::try_from(chunk.raw_len).expect("a stored chunk length is bounded"),
+            bytes.len(),
+            "the admitted {section:?} chunk length must match the captured foundation"
+        );
+        assert_eq!(
+            chunk.raw_hash,
+            content_digest::sha256_of(bytes),
+            "the admitted {section:?} chunk digest must match the captured foundation"
+        );
+    }
+    assert!(
+        root.chunks
+            .iter()
+            .all(|chunk| chunk.section != ChunkSection::SemanticState),
+        "the numeric opening leaves SemanticState ordinal zero to profile semantic state"
+    );
+}
+
+fn assert_state_chunk_decodes(
+    store: &Path,
+    chunk: &CurrentChunk,
+    expected: &[u8],
+    description: &str,
+) {
+    let connection = Connection::open(store).expect("the campaign database opens for a readback");
+    let decoded = crate::sqlite_store::read_state_chunk(&connection, chunk.chunk_id)
+        .expect("the stored state chunk decodes through the payload codec");
+    assert_eq!(
+        decoded, expected,
+        "{description} must decode to the captured foundation bytes"
+    );
+}
+
+fn prepared_material_close(
+    session: &MaterialReplaySession<HypergraphStore>,
+    expected_world: [u8; 32],
+) -> PreparedPeriod {
+    let graph = session.graph_session();
+    let digest = graph.content_digest();
+    let mut content_hash = Vec::with_capacity(64);
+    content_hash.extend_from_slice(&digest.defines_hash);
+    content_hash.extend_from_slice(&digest.rules_hash);
+    PreparedPeriod {
+        period: session.completed_tick(),
+        expected_world_hash: expected_world,
+        world_hash: session
+            .current_world_hash()
+            .expect("the closed session hashes"),
+        state_hash: content_digest::sha256_of(session.material().canonical_bytes()),
+        chunks: vec![
+            StateChunk {
+                section: ChunkSection::StableGraph,
+                ordinal: 0,
+                bytes: graph
+                    .stable_graph_state()
+                    .expect("the closed session recomposes its stable graph")
+                    .canonical_bytes()
+                    .to_vec(),
+            },
+            StateChunk {
+                section: ChunkSection::WorldRegisters,
+                ordinal: 0,
+                bytes: graph
+                    .world_registers()
+                    .expect("the closed session recomposes its world registers")
+                    .canonical_bytes()
+                    .to_vec(),
+            },
+            StateChunk {
+                section: ChunkSection::ResolverManifest,
+                ordinal: 0,
+                bytes: graph.resolver_manifest_bytes().to_vec(),
+            },
+            StateChunk {
+                section: ChunkSection::PreparedEnvironment,
+                ordinal: 0,
+                bytes: graph.prepared_environment_bytes().to_vec(),
+            },
+            StateChunk {
+                section: ChunkSection::ReplaySessionIdentity,
+                ordinal: 0,
+                bytes: graph.session_identity().as_bytes().to_vec(),
+            },
+            StateChunk {
+                section: ChunkSection::RngSeed,
+                ordinal: 0,
+                bytes: graph.rng_seed().to_be_bytes().to_vec(),
+            },
+            StateChunk {
+                section: ChunkSection::ContentDigest,
+                ordinal: 0,
+                bytes: content_hash,
+            },
+            StateChunk {
+                section: ChunkSection::ReferenceDigest,
+                ordinal: 0,
+                bytes: graph.reference_digest().as_bytes().to_vec(),
+            },
+        ],
+        journal: Vec::new(),
+        knowledge: Vec::new(),
+        detail: Vec::new(),
+    }
+}
+
+fn run_one_material_close(
+    foundation: MaterialRuntimeFoundation,
+) -> MaterialReplaySession<HypergraphStore> {
     let mut session: MaterialReplaySession<HypergraphStore> = foundation
         .into_session()
         .expect("the admitted foundation opens a material session");
@@ -343,6 +638,7 @@ fn run_one_material_close(foundation: MaterialRuntimeFoundation) {
         })
         .expect("the ordinary material close commits");
     assert_eq!(session.completed_tick(), 1);
+    session
 }
 
 #[test]
@@ -643,6 +939,21 @@ fn duplicate_cost_for_one_pair_is_refused() {
     );
 }
 
+#[test]
+fn duplicate_cost_across_phase_anchors_is_refused() {
+    let second = authored_rule()
+        .replace("mods/audit-step", "mods/audit-step-two")
+        .replace(":fuel 64", ":fuel 32")
+        .replace("(anchor :before survival)", "(anchor :after survival)");
+    let rules = format!("{}{second}", authored_rule());
+    let error = resolve_authored(authored_scenario(), &rules)
+        .expect_err("the same state/action pair must carry one cost even from two phase anchors");
+    assert!(
+        matches!(error, PackageError::DuplicateCost { .. }),
+        "the refusal must name the duplicate cost across distinct anchors: {error:?}"
+    );
+}
+
 fn resolve_authored(scenario: &str, rules: &str) -> Result<ResolvedContentSet, PackageError> {
     let root = TempRoot::new();
     let manifest = authored_manifest_for("mods.audit-fixture", scenario, rules);
@@ -751,7 +1062,7 @@ fn shared_normalizing_constant_must_be_consistent() {
 }
 
 #[test]
-fn effect_signature_is_closed_and_every_variant_is_content_reachable() {
+fn effect_signature_is_closed_and_every_variant_is_reachable_by_footprint() {
     let catalog = crate::test_support::catalog();
     let mechanical = audit::audit_rule_set(
         catalog.graph_scenario_source(),
@@ -769,24 +1080,36 @@ fn effect_signature_is_closed_and_every_variant_is_content_reachable() {
         audit::audit_rule_set(effect_coverage_scenario(), None, &[effect_coverage_rules()])
             .expect("the bounded effect fixture audits");
 
-    let mut observed = Vec::new();
+    let mut admitted = Vec::new();
     for audit in [&mechanical, &organizer, &fixture] {
         for rule in audit.rules() {
             for effect in rule.effects() {
-                observed.push(effect_variant(effect));
+                admitted.push(effect_variant(effect));
             }
         }
     }
     // `Shape` verbs are expressible and statically inspected but deferred at
-    // load, so the closed enum is covered by footprint rather than execution.
-    for effect in shape_fixture_footprint() {
-        observed.push(effect_variant(&effect));
-    }
+    // load, so `Shape` claims footprint coverage, never admission. The closed
+    // enum is still fully enumerated: admission covers the other seven variants.
+    let footprint_only = shape_fixture_footprint()
+        .iter()
+        .map(effect_variant)
+        .collect::<Vec<_>>();
 
-    for variant in EffectVariant::ALL {
+    for variant in EffectVariant::ADMITTED {
         assert!(
-            observed.contains(&variant),
-            "no admitted content reaches the closed EffectSignature variant {variant:?}; observed {observed:?}"
+            admitted.contains(&variant),
+            "no admitted content reaches the closed EffectSignature variant {variant:?}; observed {admitted:?}"
+        );
+    }
+    for variant in EffectVariant::FOOTPRINT_ONLY {
+        assert!(
+            footprint_only.contains(&variant),
+            "no content footprint names the deferred EffectSignature variant {variant:?}; observed {footprint_only:?}"
+        );
+        assert!(
+            !admitted.contains(&variant),
+            "the deferred EffectSignature variant {variant:?} cannot be claimed as admitted content"
         );
     }
 }
@@ -804,7 +1127,8 @@ enum EffectVariant {
 }
 
 impl EffectVariant {
-    const ALL: [Self; 8] = [
+    /// Variants at least one admitted content set reaches.
+    const ADMITTED: [Self; 7] = [
         Self::MaterialCycle,
         Self::OrganizerProducts,
         Self::OrganizerPractice,
@@ -812,8 +1136,9 @@ impl EffectVariant {
         Self::EdgeField,
         Self::HyperedgeField,
         Self::Event,
-        Self::Shape,
     ];
+    /// Variants reachable in a decoded content footprint but deferred at load.
+    const FOOTPRINT_ONLY: [Self; 1] = [Self::Shape];
 }
 
 fn effect_variant(effect: &EffectSignature) -> EffectVariant {

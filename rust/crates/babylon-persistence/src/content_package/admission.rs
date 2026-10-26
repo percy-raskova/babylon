@@ -161,7 +161,7 @@ pub fn admit_michigan_regional_package(
         .map_err(|error| package_refused(error.to_string()))?;
     let world_hash = world_hash(&foundation)?;
     let content = admitted_content(resolved, &catalog)?;
-    let opening = admitted_opening(resolved, &foundation, world_hash);
+    let opening = admitted_opening(&foundation, world_hash);
     SqliteCampaignStore::create(store_path, content, opening)
 }
 
@@ -217,8 +217,12 @@ fn admitted_content(
     })
 }
 
+// The opening carries only the eight foundation-owned restart-root sections.
+// Admission facts (host profile and canonical resolution digest) belong to the
+// `OpeningMetadata` content entry, not to `SemanticState`: that section is
+// reserved for per-profile semantic state, and Task 12's authored graph profile
+// needs its ordinal zero.
 fn admitted_opening(
-    resolved: &ResolvedContentSet,
     foundation: &MaterialRuntimeFoundation,
     world_hash: [u8; 32],
 ) -> AdmittedOpening {
@@ -257,7 +261,6 @@ fn admitted_opening(
             ChunkSection::ReferenceDigest,
             graph.reference_digest().as_bytes().to_vec(),
         ),
-        chunk(ChunkSection::SemanticState, admission_metadata(resolved)),
     ];
     AdmittedOpening {
         world_hash,

@@ -92,7 +92,13 @@ pub enum CoefficientUnit {
     LaborHour,
 }
 
-/// One coefficient with its declared basis and unit.
+/// One coefficient with its audited basis and unit.
+///
+/// A row the audit publishes always carries both dimensions;
+/// [`audit_catalog_coefficients`] refuses a missing basis or unit before the row
+/// exists. The accessors expose `Option` only because the audit checks the
+/// compiled coefficient before publication, not because a published row may
+/// lack a dimension.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CoefficientRow {
     name: String,
@@ -107,13 +113,19 @@ impl CoefficientRow {
         &self.name
     }
 
-    /// Return the declared basis, or `None` when the coefficient measures nothing.
+    /// Return the audited basis.
+    ///
+    /// The audit never publishes a row without a basis; `None` is not a valid
+    /// published-row state.
     #[must_use]
     pub const fn basis(&self) -> Option<CoefficientBasis> {
         self.basis
     }
 
-    /// Return the declared unit, or `None` when the unit is undeclared.
+    /// Return the audited unit.
+    ///
+    /// The audit never publishes a row without a unit; `None` is not a valid
+    /// published-row state.
     #[must_use]
     pub const fn unit(&self) -> Option<CoefficientUnit> {
         self.unit
@@ -218,7 +230,6 @@ pub fn audit_rule_set(
             reason: format!("rule {rule_id} declares no readable :fuel cost"),
         })?;
         let anchor_system = anchor_system(form, rule_id);
-        let anchor_key = anchor_key(form, rule_id);
         let effects = babylon_bsl::causal_contract::effect_footprint(form).map_err(|error| {
             PackageError::RuleSetRefused {
                 reason: error.to_string(),
@@ -234,7 +245,10 @@ pub fn audit_rule_set(
                     });
                 }
             }
-            let pair = format!("{anchor_key}:{}", effect_key(effect));
+            // The valuation belongs to the written state target and action verb,
+            // not to the phase an author happened to anchor the rule in. Two
+            // phases that advance one field are still one pair with one cost.
+            let pair = cost_pair(effect);
             if !seen_pairs.insert(pair.clone()) {
                 continue;
             }
@@ -402,26 +416,6 @@ fn anchor_system(rule: &SExpr, rule_id: &str) -> String {
     first_segment(rule_id).to_owned()
 }
 
-fn anchor_key(rule: &SExpr, rule_id: &str) -> String {
-    let SExpr::List(items) = rule else {
-        return format!("default:{}", first_segment(rule_id));
-    };
-    for item in items {
-        let SExpr::List(inner) = item else {
-            continue;
-        };
-        let [SExpr::Atom(Atom::Symbol(head)), SExpr::Atom(Atom::Keyword(position)), SExpr::Atom(Atom::Symbol(system))] =
-            inner.as_slice()
-        else {
-            continue;
-        };
-        if head == "anchor" {
-            return format!("{position}:{system}");
-        }
-    }
-    format!("default:{}", first_segment(rule_id))
-}
-
 fn first_segment(rule_id: &str) -> &str {
     rule_id.split('/').next().unwrap_or(rule_id)
 }
@@ -439,7 +433,11 @@ fn written_field(effect: &EffectSignature) -> Option<&str> {
     }
 }
 
-fn effect_key(effect: &EffectSignature) -> String {
+/// Name the `(state target, action verb)` pair one effect writes.
+///
+/// The anchor is deliberately absent: the pair is the content law, so the same
+/// write from two phases still shares one valuation.
+fn cost_pair(effect: &EffectSignature) -> String {
     match effect {
         EffectSignature::MaterialCycle => "material-cycle".to_owned(),
         EffectSignature::OrganizerProducts => "organizer-products".to_owned(),

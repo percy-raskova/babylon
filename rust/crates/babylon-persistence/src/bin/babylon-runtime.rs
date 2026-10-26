@@ -21,6 +21,7 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_kernel::tick_content_hash::RefDigest;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::material_runtime::DurableMaterialRuntime;
+use babylon_persistence::qualification_audit::national::QualificationError;
 use babylon_persistence::{
     CampaignFoundation, CommittedTickReceipt, PostgresDiagnostic, SemanticArchiveStore,
 };
@@ -175,12 +176,27 @@ enum Command {
         report_jsonl: Option<PathBuf>,
         choice_receipts_jsonl: Option<PathBuf>,
     },
+    QualifyNational {
+        store: PathBuf,
+        output: PathBuf,
+        periods: u64,
+    },
+    QualifyOpen {
+        store: PathBuf,
+        output: PathBuf,
+    },
+    QualifyEvaluate {
+        run: PathBuf,
+        policy: PathBuf,
+        policy_sha256: [u8; 32],
+        horizon: u64,
+    },
 }
 
 fn main() -> ExitCode {
     let Ok(command) = parse_command(std::env::args_os().skip(1)) else {
         eprintln!(
-            "babylon-runtime: expected describe, bootstrap, preflight, run --ticks N [--report-jsonl PATH] [--choice-receipts-jsonl PATH] [--restart-every N], probe, archive, archive-worker --once, michigan-smoke [--report-jsonl PATH] [--choice-receipts-jsonl PATH], provision-readers, or session --stdio --defines PATH"
+            "babylon-runtime: expected describe, bootstrap, preflight, run --ticks N [--report-jsonl PATH] [--choice-receipts-jsonl PATH] [--restart-every N], probe, archive, archive-worker --once, michigan-smoke [--report-jsonl PATH] [--choice-receipts-jsonl PATH], qualify-national --store PATH --output DIR --periods N, qualify-open --store PATH --output DIR, qualify-evaluate --run DIR --policy PATH --policy-sha256 HEX --horizon N, provision-readers, or session --stdio --defines PATH"
         );
         return ExitCode::from(2);
     };
@@ -195,6 +211,14 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         };
+    }
+    if matches!(
+        command,
+        Command::QualifyNational { .. }
+            | Command::QualifyOpen { .. }
+            | Command::QualifyEvaluate { .. }
+    ) {
+        return run_qualification(command);
     }
     let Some(raw_dsn) = std::env::var_os(DSN_ENV) else {
         eprintln!("babylon-runtime: {DSN_ENV} is required");
@@ -224,7 +248,12 @@ fn main() -> ExitCode {
 
 fn execute(command: Command, config: &Config) -> Result<(), String> {
     match command {
-        Command::Describe => return Err("content description requires no database".to_owned()),
+        Command::Describe
+        | Command::QualifyNational { .. }
+        | Command::QualifyOpen { .. }
+        | Command::QualifyEvaluate { .. } => {
+            return Err("the selected command requires no database".to_owned());
+        }
         Command::Preflight => {
             babylon_persistence::preflight_current_schema(config)
                 .map_err(|error| error.to_string())?;
@@ -325,6 +354,78 @@ fn configured_campaign_id() -> Result<Option<CampaignId>, String> {
         }
     };
     Ok(uuid.map(CampaignId::from_uuid))
+}
+
+fn run_qualification(command: Command) -> ExitCode {
+    let result = match command {
+        Command::QualifyNational {
+            store,
+            output,
+            periods,
+        } => babylon_persistence::qualification_audit::national::run_national(
+            &store, &output, periods,
+        )
+        .and_then(|run| {
+            babylon_persistence::qualification_audit::national::write_run(&output, &run)?;
+            Ok(serde_json::json!({
+                "status": "completed",
+                "schema": run.schema,
+                "periods": run.periods,
+                "opening_file_bytes": run.opening_file_bytes,
+                "final_store_bytes": run.final_store_bytes,
+                "final_wal_bytes": run.final_wal_bytes,
+                "elapsed_ns": run.elapsed_ns,
+            }))
+        }),
+        Command::QualifyOpen { store, output } => {
+            babylon_persistence::qualification_audit::national::run_cold_open(&store, &output)
+                .and_then(|cold| {
+                    babylon_persistence::qualification_audit::national::write_cold_open(
+                        &output, &cold,
+                    )?;
+                    Ok(serde_json::json!({
+                        "status": "completed",
+                        "schema": cold.schema,
+                        "cold_open_ns": cold.cold_open_ns,
+                        "store_bytes": cold.store_bytes,
+                        "wal_bytes": cold.wal_bytes,
+                    }))
+                })
+        }
+        Command::QualifyEvaluate {
+            run,
+            policy,
+            policy_sha256,
+            horizon,
+        } => babylon_persistence::qualification_audit::national::evaluate_run(
+            &run,
+            &policy,
+            policy_sha256,
+            horizon,
+        )
+        .map(|evaluation| {
+            serde_json::json!({
+                "status": "completed",
+                "schema": evaluation.schema,
+                "horizon": evaluation.horizon,
+                "passed": evaluation.verdict.passed,
+                "metrics": evaluation.verdict.metrics,
+            })
+        }),
+        _ => Err(QualificationError::Evidence(
+            "the selected command is not a qualification command".to_owned(),
+        )),
+    };
+    match result {
+        Ok(value) => {
+            println!("{value}");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("babylon-runtime: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn run_to_tick(
@@ -1279,6 +1380,10 @@ fn hex_bytes(bytes: &[u8]) -> String {
     encoded
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "`parse_command` keeps the sole closed command grammar in one exhaustive match"
+)]
 fn parse_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, ()> {
     let Some(command) = args.next() else {
         return Err(());
@@ -1369,8 +1474,137 @@ fn parse_command(mut args: impl Iterator<Item = OsString>) -> Result<Command, ()
                 restart_every,
             })
         }
+        value if value == OsStr::new("qualify-national") => {
+            let (store, output, periods) = parse_qualification_run(args)?;
+            Ok(Command::QualifyNational {
+                store,
+                output,
+                periods,
+            })
+        }
+        value if value == OsStr::new("qualify-open") => {
+            let (store, output) = parse_qualification_open(args)?;
+            Ok(Command::QualifyOpen { store, output })
+        }
+        value if value == OsStr::new("qualify-evaluate") => {
+            let (run, policy, policy_sha256, horizon) = parse_qualification_evaluate(args)?;
+            Ok(Command::QualifyEvaluate {
+                run,
+                policy,
+                policy_sha256,
+                horizon,
+            })
+        }
         _ => Err(()),
     }
+}
+
+fn parse_qualification_run(
+    mut args: impl Iterator<Item = OsString>,
+) -> Result<(PathBuf, PathBuf, u64), ()> {
+    let mut store = None;
+    let mut output = None;
+    let mut periods = None;
+    while let Some(flag) = args.next() {
+        if flag == OsStr::new("--store") {
+            if store.is_some() {
+                return Err(());
+            }
+            store = Some(parse_report_path(args.next().ok_or(())?)?);
+        } else if flag == OsStr::new("--output") {
+            if output.is_some() {
+                return Err(());
+            }
+            output = Some(parse_report_path(args.next().ok_or(())?)?);
+        } else if flag == OsStr::new("--periods") {
+            if periods.is_some() {
+                return Err(());
+            }
+            let value = args.next().ok_or(())?;
+            let parsed = value.to_str().ok_or(())?.parse::<u64>().map_err(|_| ())?;
+            if parsed == 0 || parsed > 325 {
+                return Err(());
+            }
+            periods = Some(parsed);
+        } else {
+            return Err(());
+        }
+    }
+    Ok((store.ok_or(())?, output.ok_or(())?, periods.ok_or(())?))
+}
+
+fn parse_qualification_open(
+    mut args: impl Iterator<Item = OsString>,
+) -> Result<(PathBuf, PathBuf), ()> {
+    let mut store = None;
+    let mut output = None;
+    while let Some(flag) = args.next() {
+        if flag == OsStr::new("--store") {
+            if store.is_some() {
+                return Err(());
+            }
+            store = Some(parse_report_path(args.next().ok_or(())?)?);
+        } else if flag == OsStr::new("--output") {
+            if output.is_some() {
+                return Err(());
+            }
+            output = Some(parse_report_path(args.next().ok_or(())?)?);
+        } else {
+            return Err(());
+        }
+    }
+    Ok((store.ok_or(())?, output.ok_or(())?))
+}
+
+fn parse_qualification_evaluate(
+    mut args: impl Iterator<Item = OsString>,
+) -> Result<(PathBuf, PathBuf, [u8; 32], u64), ()> {
+    let mut run = None;
+    let mut policy = None;
+    let mut digest = None;
+    let mut horizon = None;
+    while let Some(flag) = args.next() {
+        if flag == OsStr::new("--run") {
+            if run.is_some() {
+                return Err(());
+            }
+            run = Some(parse_report_path(args.next().ok_or(())?)?);
+        } else if flag == OsStr::new("--policy") {
+            if policy.is_some() {
+                return Err(());
+            }
+            policy = Some(parse_report_path(args.next().ok_or(())?)?);
+        } else if flag == OsStr::new("--policy-sha256") {
+            if digest.is_some() {
+                return Err(());
+            }
+            let value = args.next().ok_or(())?;
+            digest = Some(
+                babylon_persistence::qualification_audit::policy::canonical_digest(
+                    value.to_str().ok_or(())?,
+                )
+                .map_err(|_| ())?,
+            );
+        } else if flag == OsStr::new("--horizon") {
+            if horizon.is_some() {
+                return Err(());
+            }
+            let value = args.next().ok_or(())?;
+            let parsed = value.to_str().ok_or(())?.parse::<u64>().map_err(|_| ())?;
+            if parsed == 0 || parsed > 325 {
+                return Err(());
+            }
+            horizon = Some(parsed);
+        } else {
+            return Err(());
+        }
+    }
+    Ok((
+        run.ok_or(())?,
+        policy.ok_or(())?,
+        digest.ok_or(())?,
+        horizon.ok_or(())?,
+    ))
 }
 
 fn parse_jsonl_options(

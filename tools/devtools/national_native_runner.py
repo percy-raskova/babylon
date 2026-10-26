@@ -902,6 +902,12 @@ class NativeRun:
 
 def main() -> int:
     os.umask(0o077)
+    if os.environ.get("BABYLON_SQLITE_QUALIFICATION") == "1":
+        from tools.devtools.national_sqlite_qualification_runner import (
+            main as sqlite_qualification_main,
+        )
+
+        return sqlite_qualification_main()
     run: NativeRun | None = None
     try:
         root = Path(__file__).resolve().parents[2]

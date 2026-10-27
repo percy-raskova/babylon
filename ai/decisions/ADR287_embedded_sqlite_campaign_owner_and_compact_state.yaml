@@ -197,4 +197,34 @@ ADR287_embedded_sqlite_campaign_owner_and_compact_state:
           reproduces the committed world hash.
         - Every committed period's identity is readable from its summary without
           re-execution, and its recorded content hash authenticates its bytes.
+    - date: '2026-10-27'
+      issue: PER-354
+      packet: P9a-1
+      requirement: >-
+        R8. PERIOD IDENTITY PRESENCE IS BOUND TO THE HOST PROFILE. A campaign's
+        host profile decides whether each committed period records a material
+        tick identity or an explicit absence, so the admission publishes that
+        rule as one owner-written opening-metadata content entry
+        (host-tick-identity-policy, kind opening metadata) with a one-byte closed
+        registry code. The owner writes it inside the creation transaction and
+        reads and authenticates it at every open, so a reopened campaign enforces
+        the same rule as the handle that created it. A material profile commits
+        no period whose identity is absent, and a profile without material
+        mechanics commits no fabricated one; a campaign with an absent or
+        unsupported policy entry is refused. A caller cannot widen the rule by
+        declaring a per-period presence expectation, and a captured entry cannot
+        impersonate the owner's row.
+      preserved_bytes: >-
+        The nine-table container, the schema version, every state chunk, the
+        journal and knowledge chains and the period-summary v2 payload stay
+        unchanged. The new row is immutable content beside the existing opening
+        metadata entries; a campaign written before this rule is refused rather
+        than reinterpreted as permissive.
+      verification: |
+        - A material profile refuses a period candidate with an absent identity
+          and publishes nothing.
+        - A profile without material mechanics still commits explicit absence and
+          refuses a fabricated identity.
+        - A cold reopen reads the durable policy and keeps refusing absence.
+        - A campaign whose policy row is missing or unsupported refuses to open.
   source_record: docs/architecture-reset/09-acceptance-and-governance.md

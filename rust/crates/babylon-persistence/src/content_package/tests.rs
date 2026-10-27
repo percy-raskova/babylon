@@ -15,6 +15,7 @@ use babylon_kernel::content_digest;
 use babylon_material_circuit::InputOutputCoefficient;
 use babylon_material_circuit::UnitId;
 use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_tick::material_replay::IdentifiedMaterialTick;
 use babylon_tick::material_replay::MaterialReplaySession;
 use babylon_tick::replay_session::IdentifiedTickReport;
 use babylon_tick::replay_session::ReplayCommitDisposition;
@@ -45,6 +46,7 @@ use crate::sqlite_store::SqliteCampaignStore;
 use crate::sqlite_store::StateChunk;
 use crate::sqlite_store::SubjectCount;
 use crate::sqlite_store::SubjectKind;
+use crate::sqlite_store::TickIdentityPolicy;
 
 use super::admission;
 use super::audit;
@@ -416,8 +418,8 @@ fn replay_from_reopened_campaign(
         3_520
     );
 
-    let session = run_one_material_close(replayed_foundation);
-    let prepared = prepared_material_close(&session, reopened.current().world_hash);
+    let (session, identity) = run_one_material_close(replayed_foundation);
+    let prepared = prepared_material_close(&session, reopened.current().world_hash, &identity);
     let committed = reopened
         .commit(prepared)
         .expect("the reopened campaign commits the captured-content close");
@@ -563,6 +565,7 @@ fn assert_state_chunk_decodes(
 fn prepared_material_close(
     session: &MaterialReplaySession<HypergraphStore>,
     expected_world: [u8; 32],
+    identity: &IdentifiedMaterialTick,
 ) -> PreparedPeriod {
     let graph = session.graph_session();
     let digest = graph.content_digest();
@@ -629,13 +632,19 @@ fn prepared_material_close(
         journal: Vec::new(),
         knowledge: Vec::new(),
         detail: Vec::new(),
-        tick_identity: None,
+        tick_identity: Some(*identity),
     }
 }
 
+/// Close one ordinary material period and return the session beside the exact
+/// tick identity the detached adjudication emitted, which every committed period
+/// of this material profile must record.
 fn run_one_material_close(
     foundation: MaterialRuntimeFoundation,
-) -> MaterialReplaySession<HypergraphStore> {
+) -> (
+    MaterialReplaySession<HypergraphStore>,
+    IdentifiedMaterialTick,
+) {
     let mut session: MaterialReplaySession<HypergraphStore> = foundation
         .into_session()
         .expect("the admitted foundation opens a material session");
@@ -647,6 +656,7 @@ fn run_one_material_close(
     let prepared = session
         .prepare_advance(&actions)
         .expect("the ordinary material close prepares");
+    let identity = *prepared.identity();
     let mut sink = CollectingSink::default();
     session
         .commit_prepared_and_publish(&mut sink, prepared, |_, _| {
@@ -654,7 +664,7 @@ fn run_one_material_close(
         })
         .expect("the ordinary material close commits");
     assert_eq!(session.completed_tick(), 1);
-    session
+    (session, identity)
 }
 
 #[test]
@@ -1914,6 +1924,20 @@ fn authored_negative_content_refuses_before_publication() {
             "the refusal must name {field}: {error}"
         );
     }
+}
+
+#[test]
+fn each_host_profile_publishes_its_period_tick_identity_policy() {
+    assert_eq!(
+        HostProfile::MichiganRegionalV6.tick_identity_policy(),
+        TickIdentityPolicy::Required,
+        "a material profile must record every period's adjudicated identity"
+    );
+    assert_eq!(
+        HostProfile::AuthoredGraphV1.tick_identity_policy(),
+        TickIdentityPolicy::DeclaredAbsence,
+        "a profile without material mechanics must record an explicit absence"
+    );
 }
 
 #[test]

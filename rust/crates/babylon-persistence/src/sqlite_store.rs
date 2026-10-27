@@ -100,6 +100,7 @@ pub use owner::PreparedPeriod;
 pub use owner::PreparedSubject;
 pub use owner::SqliteCampaignStore;
 pub use owner::StateChunk;
+pub use owner::TickIdentityPolicy;
 pub use owner::MAX_CONTENT_KEY_BYTES;
 pub use owner::MAX_KNOWLEDGE_PAYLOAD_BYTES;
 pub use owner::MAX_SNAPSHOT_CHUNKS;

@@ -492,6 +492,12 @@ pub fn read_content_entry(
 /// with no player-command surface.
 pub const AUTHORED_GRAPH_ADMISSION_KEY: &[u8] = b"authored-graph-admission";
 
+/// Entry key of the opening metadata that publishes the host profile's
+/// per-period tick-identity policy. The owner writes it at creation and reads it
+/// back at every open, so no caller can reopen a material campaign under a rule
+/// that permits absent identities.
+pub const HOST_TICK_IDENTITY_POLICY_KEY: &[u8] = b"host-tick-identity-policy";
+
 /// Insert one bounded immutable content or compiled-definition chunk.
 ///
 /// # Errors

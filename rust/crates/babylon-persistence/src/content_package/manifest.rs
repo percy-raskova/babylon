@@ -10,6 +10,7 @@ use babylon_kernel::content_digest;
 use serde::Deserialize;
 
 use super::error::PackageError;
+use crate::sqlite_store::TickIdentityPolicy;
 
 /// The one manifest file name a package root must provide.
 pub const PACKAGE_MANIFEST_FILE: &str = "manifest.toml";
@@ -60,6 +61,20 @@ impl HostProfile {
             "michigan-regional-v6" => Some(Self::MichiganRegionalV6),
             "authored-graph-v1" => Some(Self::AuthoredGraphV1),
             _ => None,
+        }
+    }
+
+    /// Return what this profile adjudicates about each period's material tick
+    /// identity.
+    ///
+    /// The store publishes this policy durably at campaign creation and enforces
+    /// it on every commit, so the profile that admitted the campaign is what
+    /// decides whether an absent identity is honest or a lost period.
+    #[must_use]
+    pub const fn tick_identity_policy(self) -> TickIdentityPolicy {
+        match self {
+            Self::MichiganRegionalV6 => TickIdentityPolicy::Required,
+            Self::AuthoredGraphV1 => TickIdentityPolicy::DeclaredAbsence,
         }
     }
 }

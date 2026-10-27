@@ -66,6 +66,7 @@ use super::owner::PreparedPeriod;
 use super::owner::PreparedSubject;
 use super::owner::SqliteCampaignStore;
 use super::owner::StateChunk;
+use super::owner::TickIdentityPolicy;
 use super::query;
 use super::query::PlayerBody;
 use super::query::PlayerQuery;
@@ -1408,9 +1409,17 @@ fn chunk(section: ChunkSection, ordinal: u32, bytes: Vec<u8>) -> StateChunk {
 }
 
 fn admitted_content() -> AdmittedContent {
+    // The synthetic campaign fixture owns no material tick, so its profile
+    // records an explicit absence in every period. Material campaigns are built
+    // through the admission path that carries `TickIdentityPolicy::Required`.
+    admitted_content_with_policy(TickIdentityPolicy::DeclaredAbsence)
+}
+
+fn admitted_content_with_policy(policy: TickIdentityPolicy) -> AdmittedContent {
     AdmittedContent {
         campaign_id: campaign_id(),
         build: build_identity(),
+        tick_identity_policy: policy,
         entries: vec![
             AdmittedContentEntry {
                 kind: ContentEntryKind::CapturedSource,
@@ -1908,8 +1917,12 @@ fn period_summary_v2_refuses_a_v1_payload_and_a_forged_identity_hash() {
 fn committed_tick_identity_is_readable_per_period_after_a_cold_reopen() {
     let root = TempRoot::new();
     let database = root.path("campaign.sqlite3");
-    let mut handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
-        .expect("the campaign is created once");
+    let mut handle = SqliteCampaignStore::create(
+        &database,
+        admitted_content_with_policy(TickIdentityPolicy::Required),
+        admitted_opening(),
+    )
+    .expect("the campaign is created once");
     let opening_world = handle.current().world_hash;
     assert!(
         matches!(
@@ -1998,6 +2011,209 @@ fn committed_tick_identity_is_readable_per_period_after_a_cold_reopen() {
         current.tick_content_hash().as_bytes(),
         &content_digest::sha256_of(current.canonical_bytes()),
         "the readable identity authenticates its own canonical bytes"
+    );
+}
+
+#[test]
+fn a_material_campaign_refuses_a_period_without_its_tick_identity() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    // The material host profile's admission: it adjudicates one material tick
+    // per period, so its committed periods must carry that identity.
+    let mut handle = SqliteCampaignStore::create(
+        &database,
+        AdmittedContent {
+            campaign_id: campaign_id(),
+            build: build_identity(),
+            tick_identity_policy: TickIdentityPolicy::Required,
+            entries: vec![AdmittedContentEntry {
+                kind: ContentEntryKind::CompiledDefinitions,
+                key: b"defines".to_vec(),
+                ordinal: 0,
+                bytes: b"compiled definitions".to_vec(),
+            }],
+        },
+        admitted_opening(),
+    )
+    .expect("the material campaign is created once");
+    let opening_world = handle.current().world_hash;
+    let candidate = prepared(
+        1,
+        opening_world,
+        vec![chunk(ChunkSection::StableGraph, 0, graph(1))],
+        Vec::new(),
+        Vec::new(),
+    );
+    assert_eq!(
+        candidate.tick_identity, None,
+        "the candidate records no identity"
+    );
+    assert!(
+        matches!(
+            handle.commit(candidate),
+            Err(SaveError::InvalidField {
+                table: "permanent_journal",
+                field: "tick_identity",
+                ..
+            })
+        ),
+        "a material campaign refuses a period with an absent tick identity"
+    );
+    assert_eq!(
+        handle.current().period,
+        0,
+        "the refused candidate publishes nothing"
+    );
+}
+
+#[test]
+fn the_material_tick_policy_survives_a_cold_reopen() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let handle = SqliteCampaignStore::create(
+        &database,
+        admitted_content_with_policy(TickIdentityPolicy::Required),
+        admitted_opening(),
+    )
+    .expect("the material campaign is created once");
+    assert_eq!(
+        handle.tick_identity_policy(),
+        TickIdentityPolicy::Required,
+        "the creating handle retains the admitted policy"
+    );
+    let opening_world = handle.current().world_hash;
+    drop(handle);
+
+    let mut reopened =
+        SqliteCampaignStore::open(&database, build_identity()).expect("the campaign cold reopens");
+    assert_eq!(
+        reopened.tick_identity_policy(),
+        TickIdentityPolicy::Required,
+        "the reopened handle reads the durable policy, not a caller declaration"
+    );
+    assert!(
+        matches!(
+            reopened.commit(prepared(
+                1,
+                opening_world,
+                vec![chunk(ChunkSection::StableGraph, 0, graph(1))],
+                Vec::new(),
+                Vec::new(),
+            )),
+            Err(SaveError::InvalidField {
+                table: "permanent_journal",
+                field: "tick_identity",
+                ..
+            })
+        ),
+        "a reopened material campaign still refuses an absent identity"
+    );
+
+    let mut with_identity = prepared(
+        1,
+        opening_world,
+        vec![chunk(ChunkSection::StableGraph, 0, graph(1))],
+        Vec::new(),
+        Vec::new(),
+    );
+    with_identity.tick_identity = Some(material_identity(1));
+    reopened
+        .commit(with_identity)
+        .expect("the reopened material campaign commits its adjudicated identity");
+    assert_eq!(
+        reopened
+            .period_tick_identity(1)
+            .expect("the committed identity is readable"),
+        Some(material_identity(1))
+    );
+}
+
+#[test]
+fn a_profile_without_material_mechanics_refuses_a_fabricated_identity() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("the authored campaign is created once");
+    assert_eq!(
+        handle.tick_identity_policy(),
+        TickIdentityPolicy::DeclaredAbsence,
+        "the fixture profile declares its absence"
+    );
+    let opening_world = handle.current().world_hash;
+    let mut fabricated = prepared(
+        1,
+        opening_world,
+        vec![chunk(ChunkSection::StableGraph, 0, graph(1))],
+        Vec::new(),
+        Vec::new(),
+    );
+    fabricated.tick_identity = Some(material_identity(1));
+    assert!(
+        matches!(
+            handle.commit(fabricated),
+            Err(SaveError::InvalidField {
+                table: "permanent_journal",
+                field: "tick_identity",
+                ..
+            })
+        ),
+        "a profile that owns no material tick records an explicit absence"
+    );
+    assert_eq!(handle.current().period, 0, "nothing is published");
+}
+
+#[test]
+fn a_captured_entry_cannot_impersonate_the_owner_written_policy() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut content = admitted_content();
+    content.entries.push(AdmittedContentEntry {
+        kind: ContentEntryKind::OpeningMetadata,
+        key: chunks::HOST_TICK_IDENTITY_POLICY_KEY.to_vec(),
+        ordinal: 0,
+        bytes: b"babylon.host-tick-identity-policy.v1\0\x02".to_vec(),
+    });
+    assert!(
+        matches!(
+            SqliteCampaignStore::create(&database, content, admitted_opening()),
+            Err(SaveError::DuplicateContentEntry)
+        ),
+        "only the owner writes the durable policy"
+    );
+    assert!(!database.exists(), "a refused creation publishes nothing");
+}
+
+#[test]
+fn a_campaign_without_its_durable_policy_refuses_to_open() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let handle = SqliteCampaignStore::create(
+        &database,
+        admitted_content_with_policy(TickIdentityPolicy::Required),
+        admitted_opening(),
+    )
+    .expect("the material campaign is created once");
+    drop(handle);
+    let raw = raw_connection(&database);
+    let removed = raw
+        .execute(
+            "DELETE FROM content_entry WHERE kind = ?1 AND entry_key = ?2",
+            params![
+                ContentEntryKind::OpeningMetadata.code(),
+                chunks::HOST_TICK_IDENTITY_POLICY_KEY
+            ],
+        )
+        .expect("the test removes the policy entry");
+    drop(raw);
+    assert_eq!(removed, 1, "the owner wrote exactly one policy entry");
+    assert!(
+        matches!(
+            SqliteCampaignStore::open(&database, build_identity()),
+            Err(SaveError::UnsupportedTickIdentityPolicy {
+                reason: "the campaign records no host tick-identity policy",
+            })
+        ),
+        "a campaign with no durable rule is never treated as permissive"
     );
 }
 
@@ -2865,8 +3081,8 @@ fn create_reclaims_an_interrupted_creation_instead_of_dead_ending_the_path() {
     );
     assert_eq!(
         count(&raw, "content_entry"),
-        2,
-        "the reclaimed path holds exactly the newly admitted content"
+        3,
+        "the reclaimed path holds exactly the newly admitted content plus the owner-written tick-identity policy"
     );
     assert_eq!(
         count(&raw, "permanent_journal"),

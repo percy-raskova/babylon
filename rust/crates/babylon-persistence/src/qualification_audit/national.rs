@@ -47,7 +47,8 @@ use crate::sqlite_store::retention;
 use crate::sqlite_store::{
     AdmittedContent, AdmittedContentEntry, AdmittedOpening, CampaignHandle, CommittedPeriod,
     PlayerQuery, PreparedJournalRecord, PreparedKnowledgeGrant, PreparedPeriod, PreparedSubject,
-    ReadError, SaveError, SqliteCampaignStore, StateChunk, MAX_STATE_CHUNK_BYTES,
+    ReadError, SaveError, SqliteCampaignStore, StateChunk, TickIdentityPolicy,
+    MAX_STATE_CHUNK_BYTES,
 };
 use crate::CampaignFoundation;
 use crate::CampaignQueryReader;
@@ -737,6 +738,9 @@ fn admitted_content(
     AdmittedContent {
         campaign_id: campaign,
         build: content_package::content_package_build_identity(),
+        // The national run closes real material periods, so every committed
+        // period must carry the identity its detached adjudication produced.
+        tick_identity_policy: TickIdentityPolicy::Required,
         entries,
     }
 }

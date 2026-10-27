@@ -104,6 +104,8 @@ const KNOWLEDGE_DOMAIN: &[u8] = b"babylon.sqlite-store.knowledge.v1\0";
 const CANDIDATE_DOMAIN: &[u8] = b"babylon.sqlite-store.candidate.v1\0";
 /// Domain separator for the admitted-content identity.
 const CONTENT_DOMAIN: &[u8] = b"babylon.sqlite-store.content.v1\0";
+/// Domain separator for the durable host tick-identity policy entry.
+const TICK_IDENTITY_POLICY_DOMAIN: &[u8] = b"babylon.host-tick-identity-policy.v1\0";
 /// Version tag of the canonical snapshot manifest bytes.
 const MANIFEST_VERSION: u8 = 1;
 
@@ -140,6 +142,44 @@ pub struct AdmittedContentEntry {
     pub bytes: Vec<u8>,
 }
 
+/// What the campaign's host profile adjudicates about the per-period material
+/// tick identity.
+///
+/// The host profile is chosen once, at admission, and a saved campaign cannot
+/// derive it from its own rows. The policy it implies is therefore published as
+/// one durable opening-metadata entry at creation and read back at every open,
+/// so a reopened campaign enforces the same rule as the handle that created it
+/// and no writer can silently commit a whole campaign of absent identities.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TickIdentityPolicy {
+    /// A material host profile: every committed period records the material
+    /// tick identity its detached adjudication produced.
+    Required,
+    /// A profile that owns no material mechanics: every committed period
+    /// records an explicit absence instead of a fabricated identity.
+    DeclaredAbsence,
+}
+
+impl TickIdentityPolicy {
+    /// Return the exact versioned integer stored in the durable policy entry.
+    #[must_use]
+    pub const fn code(self) -> u8 {
+        match self {
+            Self::Required => 1,
+            Self::DeclaredAbsence => 2,
+        }
+    }
+
+    /// Decode one stored registry integer, or the policy it does not name.
+    fn parse(code: u8) -> Option<Self> {
+        match code {
+            1 => Some(Self::Required),
+            2 => Some(Self::DeclaredAbsence),
+            _ => None,
+        }
+    }
+}
+
 /// Captured content and build identity admitted with a new campaign.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AdmittedContent {
@@ -147,6 +187,10 @@ pub struct AdmittedContent {
     pub campaign_id: CampaignId,
     /// Build identity required to reopen the campaign.
     pub build: BuildIdentity,
+    /// What the admitted host profile adjudicates about each period's material
+    /// tick identity. Published once at creation and enforced on every commit
+    /// for the life of the campaign.
+    pub tick_identity_policy: TickIdentityPolicy,
     /// Ordered captured source, compiled definitions, provenance and opening
     /// metadata entries.
     pub entries: Vec<AdmittedContentEntry>,
@@ -523,6 +567,13 @@ impl SqliteCampaignStore {
         opening: AdmittedOpening,
     ) -> Result<CampaignHandle, SaveError> {
         sqlite_runtime_pin::verify_sqlite_runtime()?;
+        // The policy entry is owner-written, so a campaign can never exist
+        // without the durable rule its host profile adjudicated, and a captured
+        // entry cannot impersonate it.
+        let mut captured = captured;
+        captured
+            .entries
+            .push(tick_identity_policy_entry(captured.tick_identity_policy));
         validate_content(&captured)?;
         validate_chunks("state_chunk", &opening.chunks)?;
         if opening.chunks.is_empty() {
@@ -557,6 +608,7 @@ impl SqliteCampaignStore {
                 path: path.to_path_buf(),
                 campaign_id: captured.campaign_id,
                 build: captured.build,
+                tick_identity_policy: captured.tick_identity_policy,
                 content_hash: parts.content_hash,
                 current: parts.current,
                 #[cfg(test)]
@@ -639,6 +691,7 @@ pub struct CampaignHandle {
     path: PathBuf,
     campaign_id: CampaignId,
     build: BuildIdentity,
+    tick_identity_policy: TickIdentityPolicy,
     content_hash: [u8; 32],
     current: CurrentRoot,
     #[cfg(test)]
@@ -673,6 +726,13 @@ impl CampaignHandle {
     #[must_use]
     pub const fn build(&self) -> BuildIdentity {
         self.build
+    }
+
+    /// Return what the campaign's host profile adjudicates about each period's
+    /// material tick identity.
+    #[must_use]
+    pub const fn tick_identity_policy(&self) -> TickIdentityPolicy {
+        self.tick_identity_policy
     }
 
     /// Return the campaign database path.
@@ -916,7 +976,7 @@ impl CampaignHandle {
         reason = "the published commit boundary admits one prepared period by value"
     )]
     pub fn commit(&mut self, candidate: PreparedPeriod) -> Result<CommittedPeriod, SaveError> {
-        let prepared = prepare_candidate(&candidate)?;
+        let prepared = prepare_candidate(&candidate, self.tick_identity_policy)?;
         if candidate.period == 0 {
             return Err(SaveError::WrongPeriod {
                 expected: 1,
@@ -1858,12 +1918,14 @@ fn reconcile(
         current.journal_tail_seq,
         current.journal_tail_hash,
     )?;
+    let tick_identity_policy = read_tick_identity_policy(&connection)?;
     Ok(CampaignHandle {
         connection,
         _lock: lock,
         path: path.to_path_buf(),
         campaign_id,
         build: expected_build,
+        tick_identity_policy,
         content_hash: manifest.content_hash,
         current,
         #[cfg(test)]
@@ -2599,13 +2661,37 @@ fn prepare_opening(opening: &AdmittedOpening) -> Result<PreparedCandidate, SaveE
     clippy::too_many_lines,
     reason = "one admission pass validates every section of the prepared period before publication"
 )]
-fn prepare_candidate(candidate: &PreparedPeriod) -> Result<PreparedCandidate, SaveError> {
+fn prepare_candidate(
+    candidate: &PreparedPeriod,
+    tick_identity_policy: TickIdentityPolicy,
+) -> Result<PreparedCandidate, SaveError> {
     if candidate.chunks.is_empty() {
         return Err(SaveError::InvalidField {
             table: "snapshot",
             field: "chunks",
             reason: "a period commit needs at least one state chunk",
         });
+    }
+    // Presence is bound to the campaign's durable profile policy, not to the
+    // caller's per-period choice: a material campaign can never commit a period
+    // whose identity is missing, and a profile without material mechanics can
+    // never record a fabricated one.
+    match (tick_identity_policy, candidate.tick_identity) {
+        (TickIdentityPolicy::Required, None) => {
+            return Err(SaveError::InvalidField {
+                table: "permanent_journal",
+                field: "tick_identity",
+                reason: "a material host profile records the adjudicated tick identity in every committed period",
+            });
+        }
+        (TickIdentityPolicy::DeclaredAbsence, Some(_)) => {
+            return Err(SaveError::InvalidField {
+                table: "permanent_journal",
+                field: "tick_identity",
+                reason: "a host profile without material mechanics records an explicit absence",
+            });
+        }
+        (TickIdentityPolicy::Required, Some(_)) | (TickIdentityPolicy::DeclaredAbsence, None) => {}
     }
     if candidate
         .tick_identity
@@ -2784,6 +2870,56 @@ fn period_candidate_hash(
         bytes.hash(grant.raw_hash);
     }
     Ok(bytes.finish())
+}
+
+/// Encode the owner-written opening-metadata entry that publishes the durable
+/// host tick-identity policy.
+fn tick_identity_policy_entry(policy: TickIdentityPolicy) -> AdmittedContentEntry {
+    let mut bytes = TICK_IDENTITY_POLICY_DOMAIN.to_vec();
+    bytes.push(policy.code());
+    AdmittedContentEntry {
+        kind: ContentEntryKind::OpeningMetadata,
+        key: chunks::HOST_TICK_IDENTITY_POLICY_KEY.to_vec(),
+        ordinal: 0,
+        bytes,
+    }
+}
+
+/// Read and authenticate the durable host tick-identity policy of one campaign.
+///
+/// A campaign with no policy entry, a fragmented policy entry, a foreign domain
+/// or a code outside the closed registry is refused, because a missing rule
+/// would otherwise read as permission to commit absent identities.
+fn read_tick_identity_policy(connection: &Connection) -> Result<TickIdentityPolicy, SaveError> {
+    let fragments = chunks::read_content_entry(
+        connection,
+        ContentEntryKind::OpeningMetadata,
+        chunks::HOST_TICK_IDENTITY_POLICY_KEY,
+    )
+    .map_err(|error| match error {
+        SaveError::InvalidField { .. } => SaveError::UnsupportedTickIdentityPolicy {
+            reason: "the campaign records no host tick-identity policy",
+        },
+        other => other,
+    })?;
+    let [bytes] = fragments.as_slice() else {
+        return Err(SaveError::UnsupportedTickIdentityPolicy {
+            reason: "the host tick-identity policy is split across fragments",
+        });
+    };
+    let Some(code) = bytes.strip_prefix(TICK_IDENTITY_POLICY_DOMAIN) else {
+        return Err(SaveError::UnsupportedTickIdentityPolicy {
+            reason: "the host tick-identity policy carries a foreign domain",
+        });
+    };
+    let [code] = code else {
+        return Err(SaveError::UnsupportedTickIdentityPolicy {
+            reason: "the host tick-identity policy is not one registry byte",
+        });
+    };
+    TickIdentityPolicy::parse(*code).ok_or(SaveError::UnsupportedTickIdentityPolicy {
+        reason: "the host tick-identity policy code is outside the closed registry",
+    })
 }
 
 fn admitted_content_hash(entries: &[AdmittedContentEntry]) -> Result<[u8; 32], SaveError> {

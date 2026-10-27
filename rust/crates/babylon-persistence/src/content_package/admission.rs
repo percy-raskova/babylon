@@ -219,6 +219,7 @@ fn admitted_content(
     Ok(AdmittedContent {
         campaign_id: CampaignId::from_uuid(campaign_uuid(resolved.digest())),
         build: content_package_build_identity(),
+        tick_identity_policy: resolved.host_profile().tick_identity_policy(),
         entries,
     })
 }

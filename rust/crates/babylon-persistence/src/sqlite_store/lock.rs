@@ -230,6 +230,11 @@ pub enum SaveError {
         /// Requested period.
         period: u64,
     },
+    /// The campaign does not publish a supported host tick-identity policy.
+    UnsupportedTickIdentityPolicy {
+        /// What the open found instead.
+        reason: &'static str,
+    },
     /// No earned grant discloses the requested subject at that period.
     UndisclosedSubject,
     /// The export destination already exists and is never overwritten.
@@ -395,6 +400,12 @@ impl std::fmt::Display for SaveError {
             ),
             Self::PeriodSummaryMissing { period } => {
                 write!(formatter, "period {period} has no committed summary record")
+            }
+            Self::UnsupportedTickIdentityPolicy { reason } => {
+                write!(
+                    formatter,
+                    "campaign host tick-identity policy is unsupported: {reason}"
+                )
             }
             Self::UndisclosedSubject => {
                 write!(

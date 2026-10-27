@@ -740,6 +740,7 @@ mod scoped_campaign {
     use babylon_persistence::sqlite_store::PreparedSubject;
     use babylon_persistence::sqlite_store::SqliteCampaignStore;
     use babylon_persistence::sqlite_store::StateChunk;
+    use babylon_persistence::sqlite_store::TickIdentityPolicy;
     use std::fs;
     use std::path::Path;
     use std::path::PathBuf;
@@ -793,6 +794,7 @@ mod scoped_campaign {
             AdmittedContent {
                 campaign_id: CampaignId::from_uuid(Uuid::from_u128(0x5150)),
                 build: BuildIdentity::from_hash([7; 32]),
+                tick_identity_policy: TickIdentityPolicy::DeclaredAbsence,
                 entries: vec![AdmittedContentEntry {
                     kind: ContentEntryKind::CapturedSource,
                     key: b"rules.bsl".to_vec(),

@@ -11,6 +11,7 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::ffi::OsStr;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 use std::fs::OpenOptions;
@@ -336,7 +337,7 @@ pub fn run_national(
         ));
     }
     std::fs::create_dir_all(output_directory)?;
-    require_empty(output_directory)?;
+    require_no_evidence(output_directory)?;
     let started = Instant::now();
     let campaign = CampaignId::from_uuid(Uuid::from_u128(CAMPAIGN_UUID));
     let captured = CapturedEconomicCatalog::capture_national_campaign(
@@ -627,19 +628,43 @@ fn evaluation_path(directory: &Path, policy_sha256: [u8; 32]) -> PathBuf {
     directory.join(format!("evaluation-{}.json", hex(&policy_sha256)))
 }
 
-/// Refuse a directory that already holds evidence.
+/// Evidence files one measured run publishes into its own directory.
+const EVIDENCE_FILES: [&str; 3] = ["run.json", "cold-open.json", "memory.json"];
+/// Every verdict is named `evaluation-<policy sha256>.json`.
+const EVALUATION_PREFIX: &str = "evaluation-";
+const EVALUATION_SUFFIX: &str = ".json";
+/// The append-only advance log.
+const ADVANCE_LOG: &str = "advances.jsonl";
+
+/// Refuse a directory that already holds campaign evidence.
 ///
-/// A measured run appends every advance as it commits, so a reused directory
-/// would mix two runs and let `run.json` replace an earlier verdict input.
-fn require_empty(directory: &Path) -> Result<(), QualificationError> {
-    let mut entries = std::fs::read_dir(directory)?;
-    if entries.next().is_some() {
-        return Err(QualificationError::Evidence(format!(
-            "the output directory {} is not empty",
-            directory.display()
-        )));
+/// The ladder driver redirects each spawned process's stdout and stderr into
+/// the run directory, so its own capture files exist before the measured
+/// process starts and are not evidence. What is policed is what the run
+/// publishes: a measured run appends every advance as it commits and writes
+/// each manifest and each verdict once, so a reused directory would mix two
+/// runs and let one verdict input be replaced by another.
+fn require_no_evidence(directory: &Path) -> Result<(), QualificationError> {
+    for entry in std::fs::read_dir(directory)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if is_evidence_name(&name, entry.metadata()?.len()) {
+            return Err(QualificationError::Evidence(format!(
+                "the output directory {} already holds {name}",
+                directory.display(),
+                name = name.to_string_lossy()
+            )));
+        }
     }
     Ok(())
+}
+
+/// Whether one directory entry is an artifact a measured run owns.
+fn is_evidence_name(name: &OsStr, length: u64) -> bool {
+    let text = name.to_string_lossy();
+    EVIDENCE_FILES.iter().any(|wanted| text == *wanted)
+        || (text.starts_with(EVALUATION_PREFIX) && text.ends_with(EVALUATION_SUFFIX))
+        || (text == ADVANCE_LOG && length > 0)
 }
 
 fn material_opening(
@@ -1381,14 +1406,66 @@ mod tests {
         );
     }
 
+    /// The exact capture files `run_rung` opens before it spawns this process.
+    ///
+    /// `national_sqlite_qualification_runner.py` redirects the spawned
+    /// process's stdout and stderr into the run directory, so these files exist
+    /// before the measured process starts.
+    const DRIVER_CAPTURE_FILES: [&str; 6] = [
+        "qualify.stdout.json",
+        "qualify.stderr.log",
+        "cold-open.stdout.json",
+        "cold-open.stderr.log",
+        "evaluate.stdout.json",
+        "evaluate.stderr.log",
+    ];
+
+    fn touch(directory: &Path, name: &str, body: &[u8]) {
+        std::fs::write(directory.join(name), body).expect("the scratch root is writable");
+    }
+
+    #[test]
+    fn driver_capture_files_do_not_count_as_campaign_evidence() {
+        let scratch = Scratch::new();
+        for name in DRIVER_CAPTURE_FILES {
+            touch(&scratch.0, name, b"");
+        }
+        require_no_evidence(&scratch.0)
+            .expect("the driver's own capture files are not campaign evidence");
+    }
+
+    #[test]
+    fn existing_evidence_is_refused_before_the_run_starts() {
+        let evaluation = format!("evaluation-{}.json", "0".repeat(64));
+        for name in [
+            "run.json",
+            "cold-open.json",
+            "memory.json",
+            evaluation.as_str(),
+            "advances.jsonl",
+        ] {
+            let scratch = Scratch::new();
+            touch(&scratch.0, name, b"{}\n");
+            let error = require_no_evidence(&scratch.0)
+                .expect_err("existing evidence must refuse the run before it starts");
+            assert!(error.to_string().contains(name), "{error}");
+        }
+    }
+
+    #[test]
+    fn an_empty_advance_log_is_not_evidence() {
+        let scratch = Scratch::new();
+        touch(&scratch.0, "advances.jsonl", b"");
+        require_no_evidence(&scratch.0).expect("an advance log without an advance mixes nothing");
+    }
+
     #[test]
     fn a_reused_run_directory_is_refused_before_the_run_starts() {
         let scratch = Scratch::new();
-        std::fs::write(scratch.0.join("advances.jsonl"), b"{}\n")
-            .expect("the scratch root is writable");
+        touch(&scratch.0, "advances.jsonl", b"{}\n");
         let error = run_national(&scratch.0.join("campaign.sqlite"), &scratch.0, 1)
             .expect_err("a reused output directory must be refused");
-        assert!(error.to_string().contains("is not empty"), "{error}");
+        assert!(error.to_string().contains("advances.jsonl"), "{error}");
         assert_eq!(
             std::fs::read(scratch.0.join("advances.jsonl")).expect("the earlier advance survives"),
             b"{}\n",

@@ -1,5 +1,5 @@
 ADR288_postgres_capability_comparison_and_sqlite_service_cost:
-  status: accepted
+  status: superseded
   date: '2026-10-27'
   issue: PER-354
   title: PostgreSQL native capabilities vs SQLite-plus-services, ranked, with the hand-built disclosure cost named

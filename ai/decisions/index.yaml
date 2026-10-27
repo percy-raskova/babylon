@@ -1,6 +1,6 @@
 meta:
-  version: 1.88.0
-  updated: '2026-10-24'
+  version: 1.87.0
+  updated: '2026-08-26'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -25,14 +25,19 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR289_retain_postgresql_campaign_owner_and_retire_sqlite_experiment:
+    title: Retain PostgreSQL as the sole campaign owner; retire the SQLite store experiment
+    status: accepted
+    date: '2026-10-27'
+    file: ADR289_retain_postgresql_campaign_owner_and_retire_sqlite_experiment.yaml
   ADR288_postgres_capability_comparison_and_sqlite_service_cost:
     title: PostgreSQL native capabilities vs SQLite-plus-services, ranked, with the hand-built disclosure cost named
-    status: accepted
+    status: superseded
     date: '2026-10-27'
     file: ADR288_postgres_capability_comparison_and_sqlite_service_cost.yaml
   ADR287_embedded_sqlite_campaign_owner_and_compact_state:
     title: One embedded SQLite 3.53.1 campaign owner replaces PostgreSQL persistence
-    status: accepted
+    status: superseded
     date: '2026-10-24'
     file: ADR287_embedded_sqlite_campaign_owner_and_compact_state.yaml
   ADR278_measured_save_footprint:

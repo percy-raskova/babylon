@@ -1,5 +1,5 @@
 ADR287_embedded_sqlite_campaign_owner_and_compact_state:
-  status: accepted
+  status: superseded
   date: '2026-10-24'
   issue: PER-354
   title: One embedded SQLite 3.53.1 campaign owner replaces PostgreSQL persistence

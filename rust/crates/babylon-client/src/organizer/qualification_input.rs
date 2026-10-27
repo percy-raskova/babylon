@@ -1068,26 +1068,29 @@ mod tests {
             let (mut app, requests, _responses) = crate::observer_io::tests::quit_app();
             let (client, mut session) = super::super::tests::ready();
             session.foundation_digest = Some("admitted".into());
-            app.add_plugins(MinimalPlugins)
-                .insert_resource(session)
-                .insert_resource(client)
-                .insert_resource(ObserverUiState::default())
-                .init_resource::<OpeningPresentation>()
-                .init_resource::<PrimaryView>()
-                .add_message::<OrganizerAction>()
-                .add_message::<ContinueWarning>()
-                .add_message::<ProductionSkip>()
-                .add_observer(crate::observer_title::continue_requested)
-                .configure_sets(
-                    Update,
-                    (
-                        ObserverSet::Input,
-                        ObserverSet::Receive,
-                        ObserverSet::Install,
-                        ObserverSet::Paint,
-                    )
-                        .chain(),
-                );
+            app.add_plugins((
+                MinimalPlugins,
+                crate::test_support::HeadlessVisibilityPlugin,
+            ))
+            .insert_resource(session)
+            .insert_resource(client)
+            .insert_resource(ObserverUiState::default())
+            .init_resource::<OpeningPresentation>()
+            .init_resource::<PrimaryView>()
+            .add_message::<OrganizerAction>()
+            .add_message::<ContinueWarning>()
+            .add_message::<ProductionSkip>()
+            .add_observer(crate::observer_title::continue_requested)
+            .configure_sets(
+                Update,
+                (
+                    ObserverSet::Input,
+                    ObserverSet::Receive,
+                    ObserverSet::Install,
+                    ObserverSet::Paint,
+                )
+                    .chain(),
+            );
             app.world_mut()
                 .resource_mut::<Time<Virtual>>()
                 .set_max_delta(Duration::from_secs(60));

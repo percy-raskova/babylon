@@ -16,8 +16,10 @@ ignore = [
   # The babylon-tui-python entries (bincode, yaml-rust) left with the
   # Amendment AF deletion ceremony (PR #473) — cargo-deny itself flagged
   # them advisory-not-detected, so keeping them would be a stale claim.
-  { id = "RUSTSEC-2024-0436", reason = "paste unmaintained — transitive via Bevy 0.18 (wgpu-core proc-macro helper); no vulnerability; no fixed upstream exists; exits when wgpu drops paste (tracked upstream)" },
-  { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained — transitive via Bevy 0.18's text stack; no vulnerability; no fixed upstream exists; exits when cosmic-text/bevy_text migrate" },
+  # RUSTSEC-2024-0436 (paste) left with the Bevy 0.20 migration: wgpu 30 no
+  # longer pulls `paste`. Nothing else in the new graph re-introduces it, and a
+  # future path that does will red this gate again.
+  { id = "RUSTSEC-2026-0192", reason = "ttf-parser unmaintained — transitive via Bevy 0.20's winit 0.30 Wayland decorations (sctk-adwaita -> ab_glyph -> owned_ttf_parser); no vulnerability; no fixed upstream exists; exits when winit/sctk-adwaita migrate off ab_glyph" },
 ]
 
 [bans]

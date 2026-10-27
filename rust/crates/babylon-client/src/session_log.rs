@@ -614,7 +614,7 @@ mod tests {
     use crate::map_economy_lens::MaterialLensKind;
     use crate::production::ProductionReadingSection;
     use crate::ui::dossier_card::DossierFetchError;
-    use bevy::ecs::schedule::ExecutorKind;
+    use bevy::ecs::schedule::SingleThreadedExecutor;
     use bevy::log::tracing_subscriber::fmt::Layer;
     use bevy::log::tracing_subscriber::layer::SubscriberExt as _;
     use std::time::Duration;
@@ -723,10 +723,10 @@ mod tests {
             .init_resource::<DossierFetchState>()
             .add_plugins(SessionLogPlugin);
         app.edit_schedule(Startup, |schedule| {
-            schedule.set_executor_kind(ExecutorKind::SingleThreaded);
+            schedule.set_executor(SingleThreadedExecutor::new());
         });
         app.edit_schedule(Update, |schedule| {
-            schedule.set_executor_kind(ExecutorKind::SingleThreaded);
+            schedule.set_executor(SingleThreadedExecutor::new());
         });
         bevy::log::tracing::subscriber::with_default(subscriber, || {
             app.update();

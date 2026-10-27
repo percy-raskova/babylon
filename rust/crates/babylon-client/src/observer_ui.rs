@@ -41,6 +41,8 @@ use crate::organizer::OrganizerInspector;
 use crate::production::PrimaryView;
 use crate::production::ProductionCommand;
 use crate::ui::dossier_card::{ActiveCountyDossier, DossierFetchState, DossierRefresh};
+use crate::ui::pressable;
+use crate::ui::Interaction;
 use crate::visual_assets::ObserverFonts;
 use babylon_persistence::observer_reader::ObserverVisibility;
 use babylon_persistence::production_observation::ProductionSnapshot;
@@ -327,13 +329,13 @@ fn apply_fonts(
     mut labels: Query<(&ObserverFontRole, &mut TextFont), Added<ObserverFontRole>>,
 ) {
     for (role, mut font) in &mut labels {
-        font.font = match role {
+        font.font = FontSource::Handle(match role {
             ObserverFontRole::Body => fonts.body.clone(),
             ObserverFontRole::Display => fonts.display.clone(),
             ObserverFontRole::Script => fonts.script.clone(),
             // Bevy's bundled Fira Mono remains the deliberate exact-value face.
             ObserverFontRole::Exact => Handle::default(),
-        };
+        });
         if matches!(role, ObserverFontRole::Display) {
             font.weight = FontWeight::SEMIBOLD;
         }
@@ -353,11 +355,11 @@ fn role_label(
     (
         Text::new(text),
         TextFont {
-            font_size: size,
+            font_size: FontSize::Px(size),
             ..default()
         },
         TextColor(color),
-        TextLayout::new_with_linebreak(LineBreak::WordOrCharacter),
+        TextLayout::linebreak(LineBreak::WordOrCharacter),
         role,
         DeclaredSurface::new(SurfaceId::ObserverShell),
     )
@@ -399,7 +401,7 @@ fn scoped_button(
 ) {
     parent
         .spawn((
-            Button,
+            pressable(),
             ObserverFocusTarget::action(None),
             Node {
                 width: match command {
@@ -2221,15 +2223,19 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::observer_focus::ObserverFocusPlugin;
+    use bevy::input_focus::FocusCause;
 
     #[test]
     fn circuit_navigation_names_the_actual_organizer_destination() {
         let campaign = babylon_persistence::identity::CampaignId::from_uuid(Uuid::nil());
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .insert_resource(ObserverSession::new(campaign))
-            .add_systems(Startup, |mut commands: Commands| spawn_hud(&mut commands))
-            .add_systems(Update, paint_circuit_navigation);
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(ObserverSession::new(campaign))
+        .add_systems(Startup, |mut commands: Commands| spawn_hud(&mut commands))
+        .add_systems(Update, paint_circuit_navigation);
         app.update();
         assert!(app
             .world_mut()
@@ -2360,14 +2366,14 @@ pub(crate) mod tests {
                 .get::<TextFont>(body)
                 .expect("the fixture world holds the addressed component")
                 .font,
-            fonts.body
+            FontSource::Handle(fonts.body)
         );
         assert_eq!(
             app.world()
                 .get::<TextFont>(display)
                 .expect("the fixture world holds the addressed component")
                 .font,
-            fonts.display
+            FontSource::Handle(fonts.display)
         );
         assert_eq!(
             app.world()
@@ -2381,7 +2387,7 @@ pub(crate) mod tests {
                 .get::<TextFont>(exact)
                 .expect("the fixture world holds the addressed component")
                 .font,
-            Handle::<Font>::default()
+            FontSource::Handle(Handle::<Font>::default())
         );
         assert_eq!(
             app.world()
@@ -2621,7 +2627,7 @@ pub(crate) mod tests {
         let target = app
             .world_mut()
             .spawn((
-                Button,
+                pressable(),
                 Node::default(),
                 ObserverButton {
                     command,
@@ -2632,7 +2638,9 @@ pub(crate) mod tests {
             .id();
         app.world_mut().entity_mut(root).add_child(target);
         app.update();
-        app.world_mut().resource_mut::<InputFocus>().0 = Some(target);
+        app.world_mut()
+            .resource_mut::<InputFocus>()
+            .set(target, FocusCause::Navigated);
         (app, window, target)
     }
 
@@ -2765,7 +2773,9 @@ pub(crate) mod tests {
                 .expect("the fixture world holds the addressed component")
                 .available
         );
-        app.world_mut().resource_mut::<InputFocus>().0 = Some(target);
+        app.world_mut()
+            .resource_mut::<InputFocus>()
+            .set(target, FocusCause::Navigated);
         focus_key(&mut app, window, KeyCode::Enter);
         assert_eq!(
             app.world_mut()
@@ -2834,29 +2844,31 @@ pub(crate) mod tests {
 
     fn button_paint_fixture() -> (App, [Entity; 3]) {
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .insert_resource(ObserverUiState {
-                menu_open: false,
-                splash_visible: false,
-                ..default()
-            })
-            .insert_resource(ObserverSession::new(
-                babylon_persistence::identity::CampaignId::from_uuid(Uuid::from_u128(1)),
-            ))
-            .insert_resource(PrimaryView::Map)
-            .init_resource::<ObserverFeedback>()
-            .init_resource::<ChangedButtonNodes>()
-            .add_systems(
-                Update,
-                (
-                    paint_buttons,
-                    |nodes: Query<Entity, Changed<Node>>,
-                     mut changed: ResMut<ChangedButtonNodes>| {
-                        changed.0 = nodes.iter().collect();
-                    },
-                )
-                    .chain(),
-            );
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(ObserverUiState {
+            menu_open: false,
+            splash_visible: false,
+            ..default()
+        })
+        .insert_resource(ObserverSession::new(
+            babylon_persistence::identity::CampaignId::from_uuid(Uuid::from_u128(1)),
+        ))
+        .insert_resource(PrimaryView::Map)
+        .init_resource::<ObserverFeedback>()
+        .init_resource::<ChangedButtonNodes>()
+        .add_systems(
+            Update,
+            (
+                paint_buttons,
+                |nodes: Query<Entity, Changed<Node>>, mut changed: ResMut<ChangedButtonNodes>| {
+                    changed.0 = nodes.iter().collect();
+                },
+            )
+                .chain(),
+        );
         let buttons = [false, true].map(|previous| {
             app.world_mut()
                 .spawn((
@@ -2935,18 +2947,21 @@ pub(crate) mod tests {
     #[test]
     fn menu_clicks_do_not_activate_world_controls_behind_it() {
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .insert_resource(ObserverSession::new(
-                babylon_persistence::identity::CampaignId::from_uuid(Uuid::nil()),
-            ))
-            .init_resource::<PrimaryView>()
-            .insert_resource(ObserverUiState {
-                splash_visible: false,
-                ..default()
-            })
-            .init_resource::<ObserverKeyboardClaim>()
-            .add_message::<ObserverCommand>()
-            .add_systems(Update, pointer_buttons);
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(ObserverSession::new(
+            babylon_persistence::identity::CampaignId::from_uuid(Uuid::nil()),
+        ))
+        .init_resource::<PrimaryView>()
+        .insert_resource(ObserverUiState {
+            splash_visible: false,
+            ..default()
+        })
+        .init_resource::<ObserverKeyboardClaim>()
+        .add_message::<ObserverCommand>()
+        .add_systems(Update, pointer_buttons);
         app.world_mut().spawn((
             Interaction::Pressed,
             ObserverButton {
@@ -2992,22 +3007,25 @@ pub(crate) mod tests {
     #[test]
     fn advanced_controls_start_collapsed_and_only_requested_drawer_is_visible() {
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .insert_resource(ObserverUiState {
-                menu_open: false,
-                splash_visible: false,
-                ..default()
-            })
-            .insert_resource(PrimaryView::Map)
-            .insert_resource(ObserverSession::new(
-                babylon_persistence::identity::CampaignId::from_uuid(Uuid::from_u128(1)),
-            ))
-            .add_systems(Startup, |mut commands: Commands| {
-                spawn_drawers(&mut commands);
-                spawn_menu(&mut commands);
-                spawn_footer(&mut commands);
-            })
-            .add_systems(Update, paint_view_controls);
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(ObserverUiState {
+            menu_open: false,
+            splash_visible: false,
+            ..default()
+        })
+        .insert_resource(PrimaryView::Map)
+        .insert_resource(ObserverSession::new(
+            babylon_persistence::identity::CampaignId::from_uuid(Uuid::from_u128(1)),
+        ))
+        .add_systems(Startup, |mut commands: Commands| {
+            spawn_drawers(&mut commands);
+            spawn_menu(&mut commands);
+            spawn_footer(&mut commands);
+        })
+        .add_systems(Update, paint_view_controls);
         app.update();
         let world = app.world_mut();
         assert!(world
@@ -3048,7 +3066,7 @@ pub(crate) mod tests {
         )))
         .expect("atlas");
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, InputPlugin, CampaignBrowserPlugin))
+        app.add_plugins((MinimalPlugins, InputPlugin, CampaignBrowserPlugin, crate::test_support::HeadlessVisibilityPlugin,))
             .insert_resource(atlas)
             .init_resource::<SelectedCounty>()
             .init_resource::<PrimaryView>()
@@ -3139,19 +3157,22 @@ pub(crate) mod tests {
         )))
         .expect("atlas");
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .insert_resource(atlas)
-            .init_resource::<SelectedCounty>()
-            .init_resource::<PrimaryView>()
-            .init_resource::<ButtonInput<KeyCode>>()
-            .insert_resource(ObserverUiState {
-                splash_visible: false,
-                menu_open: false,
-                ..default()
-            })
-            .init_resource::<ObserverKeyboardClaim>()
-            .add_message::<ObserverCommand>()
-            .add_systems(Update, keyboard);
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(atlas)
+        .init_resource::<SelectedCounty>()
+        .init_resource::<PrimaryView>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .insert_resource(ObserverUiState {
+            splash_visible: false,
+            menu_open: false,
+            ..default()
+        })
+        .init_resource::<ObserverKeyboardClaim>()
+        .add_message::<ObserverCommand>()
+        .add_systems(Update, keyboard);
         for menu_open in [false, true] {
             app.world_mut().resource_mut::<ObserverUiState>().menu_open = menu_open;
             app.world_mut()

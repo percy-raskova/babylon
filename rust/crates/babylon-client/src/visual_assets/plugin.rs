@@ -156,66 +156,74 @@ impl Plugin for VisualAssetsPlugin {
         register_visuals(app.world().resource::<EmbeddedAssetRegistry>());
         let server = app.world().resource::<AssetServer>();
 
-        let hero_liberty =
-            server.load_with_settings("embedded://visual/hero-liberty.webp", linear_image_settings);
-        let title_mark =
-            server.load_with_settings("embedded://visual/title-mark.png", nearest_image_settings);
-        let interface_atlas = server.load_with_settings(
-            "embedded://visual/interface-atlas.png",
-            nearest_image_settings,
-        );
-        let marker_atlas =
-            server.load_with_settings("embedded://visual/marker-atlas.png", nearest_image_settings);
-        let provenance_atlas = server.load_with_settings(
-            "embedded://visual/provenance-atlas.png",
-            nearest_image_settings,
-        );
-        let frame_atlas =
-            server.load_with_settings("embedded://visual/frame-atlas.png", nearest_image_settings);
-        let surface_atlas = server.load_with_settings(
-            "embedded://visual/surface-atlas.png",
-            nearest_image_settings,
-        );
-        let hero_red_apparatus = server.load_with_settings(
-            "embedded://visual/hero-red-apparatus.webp",
-            linear_image_settings,
-        );
-        let hero_empire_anatomized = server.load_with_settings(
-            "embedded://visual/hero-empire-anatomized.webp",
-            linear_image_settings,
-        );
-        let concept_bunker_oracle = server.load_with_settings(
-            "embedded://visual/concept-bunker-oracle.webp",
-            linear_image_settings,
-        );
-        let concept_living_map = server.load_with_settings(
-            "embedded://visual/concept-living-map.webp",
-            linear_image_settings,
-        );
-        let concept_carceral_circuit = server.load_with_settings(
-            "embedded://visual/concept-carceral-circuit.webp",
-            linear_image_settings,
-        );
-        let concept_metabolic_rift = server.load_with_settings(
-            "embedded://visual/concept-metabolic-rift.webp",
-            linear_image_settings,
-        );
-        let banner_counties = server.load_with_settings(
-            "embedded://visual/banner-counties.webp",
-            linear_image_settings,
-        );
-        let banner_carceral = server.load_with_settings(
-            "embedded://visual/banner-carceral.webp",
-            linear_image_settings,
-        );
-        let banner_topology = server.load_with_settings(
-            "embedded://visual/banner-topology.webp",
-            linear_image_settings,
-        );
-        let banner_collapse = server.load_with_settings(
-            "embedded://visual/banner-collapse.webp",
-            linear_image_settings,
-        );
+        let hero_liberty = server
+            .load_builder()
+            .with_settings(linear_image_settings)
+            .load("embedded://visual/hero-liberty.webp");
+        let title_mark = server
+            .load_builder()
+            .with_settings(nearest_image_settings)
+            .load("embedded://visual/title-mark.png");
+        let interface_atlas = server
+            .load_builder()
+            .with_settings(nearest_image_settings)
+            .load("embedded://visual/interface-atlas.png");
+        let marker_atlas = server
+            .load_builder()
+            .with_settings(nearest_image_settings)
+            .load("embedded://visual/marker-atlas.png");
+        let provenance_atlas = server
+            .load_builder()
+            .with_settings(nearest_image_settings)
+            .load("embedded://visual/provenance-atlas.png");
+        let frame_atlas = server
+            .load_builder()
+            .with_settings(nearest_image_settings)
+            .load("embedded://visual/frame-atlas.png");
+        let surface_atlas = server
+            .load_builder()
+            .with_settings(nearest_image_settings)
+            .load("embedded://visual/surface-atlas.png");
+        let hero_red_apparatus = server
+            .load_builder()
+            .with_settings(linear_image_settings)
+            .load("embedded://visual/hero-red-apparatus.webp");
+        let hero_empire_anatomized = server
+            .load_builder()
+            .with_settings(linear_image_settings)
+            .load("embedded://visual/hero-empire-anatomized.webp");
+        let concept_bunker_oracle = server
+            .load_builder()
+            .with_settings(linear_image_settings)
+            .load("embedded://visual/concept-bunker-oracle.webp");
+        let concept_living_map = server
+            .load_builder()
+            .with_settings(linear_image_settings)
+            .load("embedded://visual/concept-living-map.webp");
+        let concept_carceral_circuit = server
+            .load_builder()
+            .with_settings(linear_image_settings)
+            .load("embedded://visual/concept-carceral-circuit.webp");
+        let concept_metabolic_rift = server
+            .load_builder()
+            .with_settings(linear_image_settings)
+            .load("embedded://visual/concept-metabolic-rift.webp");
+        let banner_counties = server
+            .load_builder()
+            .with_settings(linear_image_settings)
+            .load("embedded://visual/banner-counties.webp");
+        let banner_carceral = server
+            .load_builder()
+            .with_settings(linear_image_settings)
+            .load("embedded://visual/banner-carceral.webp");
+        let banner_topology = server
+            .load_builder()
+            .with_settings(linear_image_settings)
+            .load("embedded://visual/banner-topology.webp");
+        let banner_collapse = server
+            .load_builder()
+            .with_settings(linear_image_settings)
+            .load("embedded://visual/banner-collapse.webp");
 
         let (interface_layout, marker_layout, provenance_layout, frame_layout, surface_layout) =
             create_atlas_layouts(app);

@@ -24,6 +24,8 @@ use crate::observer_ui::{ObserverFrame, ObserverUiState, ObserverViewport, RoadL
 use crate::production::PrimaryView;
 use crate::production::ProductionNavigation;
 use crate::production_layout;
+use crate::ui::pressable;
+use crate::ui::Interaction;
 use babylon_persistence::production_observation::PhysicalRouteIndex;
 use bevy::camera::visibility::RenderLayers;
 use bevy::window::PrimaryWindow;
@@ -493,7 +495,7 @@ fn spawn_road_credit(commands: &mut Commands) {
                 credit: true,
             },
             TextFont {
-                font_size: 13.0,
+                font_size: FontSize::Px(13.0),
                 ..default()
             },
             ZIndex(13),
@@ -611,7 +613,7 @@ fn label_bundle(caption: String, anchor: Option<Vec3>, order: usize, color: Colo
         DeclaredSurface::new(SurfaceId::ObserverProduction),
         Text::new(caption),
         TextFont {
-            font_size: 15.0,
+            font_size: FontSize::Px(15.0),
             ..default()
         },
         TextColor(theme::PAPER),
@@ -817,7 +819,7 @@ fn spawn_relationships(
             label.insert(Pickable::IGNORE);
         } else if let Some(selected_county) = selected {
             label.insert((
-                Button,
+                pressable(),
                 RelationshipJump {
                     context: context.clone(),
                     selected_county,

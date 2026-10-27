@@ -379,7 +379,7 @@ mod tests {
     use bevy::audio::PlaybackMode;
     use bevy::ecs::system::RunSystemOnce;
     use rodio::source::SineWave;
-    use rodio::Sink;
+    use rodio::Player;
     use rodio::Source;
     use std::time::Duration;
 
@@ -393,11 +393,15 @@ mod tests {
             app.init_resource::<OpeningPresentation>();
             app.world_mut().resource_mut::<OpeningPresentation>().stage = stage;
         }
-        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
-            .init_asset::<AudioSource>()
-            .init_resource::<ObserverAudioSettings>()
-            .add_systems(Startup, setup)
-            .add_systems(Update, (opening_fanfare, mix).chain());
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .init_asset::<AudioSource>()
+        .init_resource::<ObserverAudioSettings>()
+        .add_systems(Startup, setup)
+        .add_systems(Update, (opening_fanfare, mix).chain());
         app.finish();
         app.cleanup();
         app.update();
@@ -431,7 +435,7 @@ mod tests {
             .iter(app.world())
             .find_map(|(entity, deck)| (*deck == MusicDeck::Gameplay(0)).then_some(entity))
             .expect("the fixture yields the searched value");
-        let (sink, _samples) = Sink::new_idle();
+        let (sink, _samples) = Player::new();
         app.world_mut()
             .entity_mut(finished)
             .insert(AudioSink::new(sink));
@@ -456,7 +460,7 @@ mod tests {
             settings.track = 2;
             settings.music_volume = 0.0;
         }
-        let (sink, _next_samples) = Sink::new_idle();
+        let (sink, _next_samples) = Player::new();
         app.world_mut()
             .entity_mut(next)
             .insert(AudioSink::new(sink));
@@ -477,7 +481,7 @@ mod tests {
         let mut app = music_app();
         let mut decks = app.world_mut().query_filtered::<Entity, With<MusicDeck>>();
         let playing = decks.single(app.world()).expect("one current recording");
-        let (sink, _samples) = Sink::new_idle();
+        let (sink, _samples) = Player::new();
         sink.append(SineWave::new(440.0).take_duration(Duration::from_secs(60)));
         app.world_mut()
             .entity_mut(playing)
@@ -519,7 +523,7 @@ mod tests {
             .query_filtered::<Entity, With<MusicDeck>>()
             .single(app.world())
             .expect("the fixture holds exactly one matching row");
-        let (sink, _samples) = Sink::new_idle();
+        let (sink, _samples) = Player::new();
         app.world_mut()
             .entity_mut(playing)
             .insert(AudioSink::new(sink));
@@ -576,7 +580,7 @@ mod tests {
                 .path(),
             Path::new("music/fascist/05_the_purge.ogg")
         );
-        let (sink, _samples) = Sink::new_idle();
+        let (sink, _samples) = Player::new();
         app.world_mut()
             .entity_mut(title)
             .insert(AudioSink::new(sink));

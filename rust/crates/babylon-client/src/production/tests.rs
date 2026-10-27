@@ -27,6 +27,8 @@ use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
+use crate::ui::Interaction;
+use bevy::input_focus::FocusCause;
 use uuid::Uuid;
 
 fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
@@ -800,24 +802,28 @@ fn labels_remain_inside_the_scene_when_history_reduces_a_small_window() {
 fn open_drawers_block_scene_gestures_without_replaying_them_on_close() {
     use crate::observer_ui::ObserverDisclosure;
     use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
+    use bevy::input::touch::TouchPhase;
 
     let mut app = App::new();
     let mut window = Window::default();
     window.set_cursor_position(Some(Vec2::splat(50.0)));
     let window = app.world_mut().spawn((window, PrimaryWindow)).id();
-    app.add_plugins(MinimalPlugins)
-        .insert_resource(PrimaryView::Production)
-        .insert_resource(ObserverUiState {
-            menu_open: false,
-            splash_visible: false,
-            ..default()
-        })
-        .insert_resource(ObserverViewport(Some(Rect::new(0.0, 0.0, 200.0, 200.0))))
-        .init_resource::<ProductionOrbit>()
-        .init_resource::<ButtonInput<MouseButton>>()
-        .add_message::<MouseMotion>()
-        .add_message::<MouseWheel>()
-        .add_systems(Update, view::orbit_input);
+    app.add_plugins((
+        MinimalPlugins,
+        crate::test_support::HeadlessVisibilityPlugin,
+    ))
+    .insert_resource(PrimaryView::Production)
+    .insert_resource(ObserverUiState {
+        menu_open: false,
+        splash_visible: false,
+        ..default()
+    })
+    .insert_resource(ObserverViewport(Some(Rect::new(0.0, 0.0, 200.0, 200.0))))
+    .init_resource::<ProductionOrbit>()
+    .init_resource::<ButtonInput<MouseButton>>()
+    .add_message::<MouseMotion>()
+    .add_message::<MouseWheel>()
+    .add_systems(Update, view::orbit_input);
     app.world_mut()
         .resource_mut::<ButtonInput<MouseButton>>()
         .press(MouseButton::Right);
@@ -835,6 +841,7 @@ fn open_drawers_block_scene_gestures_without_replaying_them_on_close() {
                 x: 0.0,
                 y: 1.0,
                 window,
+                phase: TouchPhase::Moved,
             });
         app.update();
         let orbit = app.world().resource::<ProductionOrbit>();
@@ -857,6 +864,7 @@ fn open_drawers_block_scene_gestures_without_replaying_them_on_close() {
             x: 0.0,
             y: 1.0,
             window,
+            phase: TouchPhase::Moved,
         });
     app.update();
     assert_eq!(
@@ -983,37 +991,40 @@ fn map_and_flat_controls_preserve_the_county_selected_on_geography() {
     let mut production = snapshot();
     production.sites[1].industry_code = Some("332".into());
     let mut app = App::new();
-    app.add_plugins(MinimalPlugins)
-        .insert_resource(state)
-        .insert_resource(ObserverFrame(
-            Some(ObserverEconomySnapshot {
-                campaign_id: campaign.as_uuid().to_string(),
-                resolve_tick: 1,
-                foundation_digest: "f".repeat(64),
-                tick_content_hash: Some("a".repeat(64)),
-                nominal_world_hash: None,
-                envelope_digest: None,
-                visibility: ObserverVisibility::FullObserver,
-                counties: Vec::new(),
-                production: Some(production),
-            }),
-            None,
-        ))
-        .insert_resource(atlas)
-        .insert_resource(PrimaryView::Production)
-        .insert_resource(ProductionNavigation {
-            selected_site: Some("a".into()),
-            ..default()
-        })
-        .insert_resource(SelectedCounty(Some(macomb)))
-        .init_resource::<ObserverFeedback>()
-        .insert_resource(ObserverUiState {
-            menu_open: false,
-            splash_visible: false,
-            ..default()
-        })
-        .add_message::<ProductionCommand>()
-        .add_systems(Update, navigation::navigate);
+    app.add_plugins((
+        MinimalPlugins,
+        crate::test_support::HeadlessVisibilityPlugin,
+    ))
+    .insert_resource(state)
+    .insert_resource(ObserverFrame(
+        Some(ObserverEconomySnapshot {
+            campaign_id: campaign.as_uuid().to_string(),
+            resolve_tick: 1,
+            foundation_digest: "f".repeat(64),
+            tick_content_hash: Some("a".repeat(64)),
+            nominal_world_hash: None,
+            envelope_digest: None,
+            visibility: ObserverVisibility::FullObserver,
+            counties: Vec::new(),
+            production: Some(production),
+        }),
+        None,
+    ))
+    .insert_resource(atlas)
+    .insert_resource(PrimaryView::Production)
+    .insert_resource(ProductionNavigation {
+        selected_site: Some("a".into()),
+        ..default()
+    })
+    .insert_resource(SelectedCounty(Some(macomb)))
+    .init_resource::<ObserverFeedback>()
+    .insert_resource(ObserverUiState {
+        menu_open: false,
+        splash_visible: false,
+        ..default()
+    })
+    .add_message::<ProductionCommand>()
+    .add_systems(Update, navigation::navigate);
     for command in [ProductionCommand::Map, ProductionCommand::Flat] {
         app.world_mut()
             .resource_mut::<Messages<ProductionCommand>>()
@@ -1147,20 +1158,23 @@ fn unchanged_scene_does_not_dirty_camera_or_label_components() {
         ];
     }
     let mut app = App::new();
-    app.add_plugins(MinimalPlugins)
-        .insert_resource(ObserverSession::new(CampaignId::from_uuid(Uuid::nil())))
-        .insert_resource(PrimaryView::Production)
-        .init_resource::<ProductionNavigation>()
-        .init_resource::<ObserverFrame>()
-        .init_resource::<ObserverUiState>()
-        .init_resource::<ProductionOrbit>()
-        .init_resource::<ObserverViewport>()
-        .init_resource::<UiScale>()
-        .init_resource::<ChangedCounts>()
-        .add_systems(
-            Update,
-            (view::paint_scene, view::paint_labels, count_changes).chain(),
-        );
+    app.add_plugins((
+        MinimalPlugins,
+        crate::test_support::HeadlessVisibilityPlugin,
+    ))
+    .insert_resource(ObserverSession::new(CampaignId::from_uuid(Uuid::nil())))
+    .insert_resource(PrimaryView::Production)
+    .init_resource::<ProductionNavigation>()
+    .init_resource::<ObserverFrame>()
+    .init_resource::<ObserverUiState>()
+    .init_resource::<ProductionOrbit>()
+    .init_resource::<ObserverViewport>()
+    .init_resource::<UiScale>()
+    .init_resource::<ChangedCounts>()
+    .add_systems(
+        Update,
+        (view::paint_scene, view::paint_labels, count_changes).chain(),
+    );
     app.world_mut().spawn((
         Camera::default(),
         Transform::default(),
@@ -1236,29 +1250,32 @@ fn unstarted_dependency_navigation_app() -> App {
     )))
     .expect("committed atlas");
     let mut app = App::new();
-    app.add_plugins(MinimalPlugins)
-        .insert_resource(state)
-        .insert_resource(frame)
-        .insert_resource(atlas)
-        .init_resource::<PrimaryView>()
-        .init_resource::<ProductionNavigation>()
-        .init_resource::<SelectedCounty>()
-        .init_resource::<ObserverUiState>()
-        .init_resource::<ButtonInput<KeyCode>>()
-        .init_resource::<ObserverFeedback>()
-        .add_message::<ProductionCommand>()
-        .add_systems(
-            Update,
-            (
-                view::inputs,
-                navigation::invalidate_navigation,
-                navigation::navigate,
-                navigation::sync_world_county,
-                view::rebuild_dependencies,
-                view::rebuild_county_cohorts,
-            )
-                .chain(),
-        );
+    app.add_plugins((
+        MinimalPlugins,
+        crate::test_support::HeadlessVisibilityPlugin,
+    ))
+    .insert_resource(state)
+    .insert_resource(frame)
+    .insert_resource(atlas)
+    .init_resource::<PrimaryView>()
+    .init_resource::<ProductionNavigation>()
+    .init_resource::<SelectedCounty>()
+    .init_resource::<ObserverUiState>()
+    .init_resource::<ButtonInput<KeyCode>>()
+    .init_resource::<ObserverFeedback>()
+    .add_message::<ProductionCommand>()
+    .add_systems(
+        Update,
+        (
+            view::inputs,
+            navigation::invalidate_navigation,
+            navigation::navigate,
+            navigation::sync_world_county,
+            view::rebuild_dependencies,
+            view::rebuild_county_cohorts,
+        )
+            .chain(),
+    );
     app.world_mut().resource_mut::<ObserverUiState>().menu_open = false;
     app.world_mut()
         .resource_mut::<ObserverUiState>()
@@ -2206,7 +2223,9 @@ fn accepted_world_buttons_release_focus_and_focused_keys_do_not_run_world_shortc
         .spawn((view::button_node(ProductionCommand::Open), ChildOf(group)))
         .id();
     app.update();
-    app.world_mut().resource_mut::<InputFocus>().set(button);
+    app.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(button, FocusCause::Navigated);
     let key = |app: &mut App, key_code, state| {
         app.world_mut().write_message(KeyboardInput {
             key_code,
@@ -2236,7 +2255,9 @@ fn accepted_world_buttons_release_focus_and_focused_keys_do_not_run_world_shortc
         .resource::<ObserverKeyboardClaim>()
         .claimed(KeyCode::Enter));
     key(&mut app, KeyCode::Enter, ButtonState::Released);
-    app.world_mut().resource_mut::<InputFocus>().set(button);
+    app.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(button, FocusCause::Navigated);
     key(&mut app, KeyCode::Enter, ButtonState::Pressed);
     assert_eq!(
         app.world().resource::<InputFocus>().get(),
@@ -2392,7 +2413,9 @@ fn reading_sections_switch_by_keyboard_without_changing_the_observed_period() {
     };
     assert!(panel_text::<ProductionDetails>(&mut app).contains("INPUTS / ON HAND"));
     assert!(!panel_text::<ProductionDetails>(&mut app).contains("LABOR BUDGET"));
-    app.world_mut().resource_mut::<InputFocus>().set(work);
+    app.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(work, FocusCause::Navigated);
     readings_key(&mut app, window, KeyCode::Enter);
     let reading = panel_text::<ProductionDetails>(&mut app);
     assert!(reading.contains("LABOR BUDGET / DERIVED"));
@@ -2423,7 +2446,9 @@ fn readings_tab_order_reaches_the_text_after_controls_and_pages_its_scroll_ances
         flat,
         footer,
     } = readings_focus_app();
-    app.world_mut().resource_mut::<InputFocus>().set(close);
+    app.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(close, FocusCause::Navigated);
     for section in [
         ProductionReadingSection::Flow,
         ProductionReadingSection::Freight,
@@ -2541,7 +2566,9 @@ fn shared_freight_reading_enters_tab_order_and_pages_its_scroll_ancestor() {
         .expect("the fixture world holds the addressed component");
     assert!(target.available);
     assert!(app.world().get::<TabIndex>(reading).is_some());
-    app.world_mut().resource_mut::<InputFocus>().set(footer);
+    app.world_mut()
+        .resource_mut::<InputFocus>()
+        .set(footer, FocusCause::Navigated);
     readings_key(&mut app, window, KeyCode::Tab);
     assert_eq!(app.world().resource::<InputFocus>().get(), Some(reading));
     readings_key(&mut app, window, KeyCode::PageDown);

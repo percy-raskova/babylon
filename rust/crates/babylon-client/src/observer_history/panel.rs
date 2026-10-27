@@ -40,6 +40,8 @@ use crate::observer_controls;
 use crate::observer_ui::ObserverFontRole;
 use crate::organizer::OrganizerClient;
 use crate::production::navigation;
+use crate::ui::pressable;
+use crate::ui::Interaction;
 use bevy::tasks;
 use std::time::Instant;
 
@@ -97,7 +99,7 @@ pub(crate) fn label(value: impl Into<String>, size: f32, color: Color) -> impl B
     (
         Text::new(value),
         TextFont {
-            font_size: size,
+            font_size: FontSize::Px(size),
             ..default()
         },
         TextColor(color),
@@ -705,7 +707,7 @@ pub(crate) fn paint(
                 let observations: Vec<_> = view.observations.iter().filter(|item| item.acquired_period <= session.viewed_tick).collect();
                 if observations.is_empty() { panel.spawn(label("No report had been acquired at this period. Return Live to inspect later knowledge.", 13.0, theme::GRAY)); }
                 for item in observations.into_iter().rev() {
-                    panel.spawn((Button, ObserverFocusTarget::action(Some(context.clone())), HistoryButton::Period { context: context.clone(), period: item.acquired_period },
+                    panel.spawn((pressable(), ObserverFocusTarget::action(Some(context.clone())), HistoryButton::Period { context: context.clone(), period: item.acquired_period },
                         Node { padding: UiRect::all(px(6)), flex_shrink: 0.0, border: UiRect::bottom(px(1)), ..default() },
                         BackgroundColor(theme::PANEL), BorderColor::all(theme::GRAY), DeclaredSurface::new(SurfaceId::OrganizerWorkspace)))
                         .with_child(label(crate::organizer::report_reading(view, item, session.viewed_tick), 13.0, theme::PAPER));
@@ -731,7 +733,7 @@ pub(crate) fn paint(
                 let maximum=history.points.iter().flat_map(|point|[point.planned,point.produced]).flatten().max().unwrap_or(1);
                 panel.spawn(Node{column_gap:px(5),align_items:AlignItems::End,flex_shrink:0.0,overflow:Overflow::scroll_x(),..default()}).with_children(|chart| {
                     for point in &history.points {
-                        chart.spawn((Button, ObserverFocusTarget::action(Some(context.clone())), HistoryButton::Period{context:context.clone(),period:point.period},
+                        chart.spawn((pressable(), ObserverFocusTarget::action(Some(context.clone())), HistoryButton::Period{context:context.clone(),period:point.period},
                             Node{min_width:px(48),padding:UiRect::all(px(3)),row_gap:px(3),flex_direction:FlexDirection::Column,
                                 border:UiRect::bottom(px(2)),..default()},
                             BorderColor::all(if point.period==session.viewed_tick {theme::YELLOW}else{theme::GRAY}),
@@ -880,7 +882,7 @@ pub(crate) fn spawn_event_entry(
 ) {
     panel
         .spawn((
-            Button,
+            pressable(),
             ObserverFocusTarget::action(Some(context.clone())),
             HistoryButton::Event {
                 context: context.clone(),
@@ -943,7 +945,7 @@ pub(crate) fn spawn_delivery_entry(
             ));
             entry
                 .spawn((
-                    Button,
+                    pressable(),
                     ObserverFocusTarget::action(Some(context.clone())),
                     HistoryButton::DeliveryEvidence {
                         context: context.clone(),

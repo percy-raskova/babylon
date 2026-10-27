@@ -28,6 +28,8 @@ mod scene;
 use crate::map_economy_lens;
 use crate::observer::ObservationContext;
 use crate::tessellate::Tessellation;
+use crate::ui::Interaction;
+use bevy::ui_widgets::Button;
 use relationships::CountyAnchors;
 
 const MAP_LAYER: usize = 2;
@@ -208,7 +210,7 @@ fn county_prism(
 }
 
 fn hover_county(
-    over: On<Pointer<Over>>,
+    over: On<PointerOver>,
     counties: Query<&CountySlab>,
     view: Res<PrimaryView>,
     ui: Res<ObserverUiState>,
@@ -224,7 +226,7 @@ fn hover_county(
     }
 }
 fn leave_county(
-    out: On<Pointer<Out>>,
+    out: On<PointerOut>,
     counties: Query<&CountySlab>,
     mut hovered: ResMut<HoveredCounty>,
 ) {
@@ -236,7 +238,7 @@ fn leave_county(
     }
 }
 fn select_county(
-    click: On<Pointer<Click>>,
+    click: On<PointerClick>,
     counties: Query<&CountySlab>,
     view: Res<PrimaryView>,
     ui: Res<ObserverUiState>,
@@ -304,11 +306,11 @@ fn update_observation(
             })
         };
         if data_changed {
-            if let Some(material) = materials.get_mut(&material.0) {
+            if let Some(mut material) = materials.get_mut(&material.0) {
                 material.base_color = color;
             }
         }
-        if let Some(outline) = materials.get_mut(&county.outline) {
+        if let Some(mut outline) = materials.get_mut(&county.outline) {
             outline.base_color = if input.selected.0 == Some(county.atlas_index) {
                 theme::PAPER
             } else if input.hovered.0 == Some(county.atlas_index) {
@@ -615,25 +617,30 @@ mod tests {
 
     fn focused_navigation_app() -> (App, Entity, Entity) {
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, InputPlugin, ObserverFocusPlugin))
-            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
-                16,
-            )))
-            .insert_resource(PrimaryView::Map)
-            .insert_resource(ObserverUiState {
-                menu_open: false,
-                splash_visible: false,
-                ..default()
-            })
-            .insert_resource(ObserverViewport(Some(Rect::from_corners(
-                Vec2::ZERO,
-                Vec2::splat(500.0),
-            ))))
-            .insert_resource(MapGeometry {
-                extent: Vec2::splat(200.0),
-            })
-            .insert_resource(MapOrbit::new(200.0))
-            .add_systems(Update, navigate);
+        app.add_plugins((
+            MinimalPlugins,
+            InputPlugin,
+            ObserverFocusPlugin,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+            16,
+        )))
+        .insert_resource(PrimaryView::Map)
+        .insert_resource(ObserverUiState {
+            menu_open: false,
+            splash_visible: false,
+            ..default()
+        })
+        .insert_resource(ObserverViewport(Some(Rect::from_corners(
+            Vec2::ZERO,
+            Vec2::splat(500.0),
+        ))))
+        .insert_resource(MapGeometry {
+            extent: Vec2::splat(200.0),
+        })
+        .insert_resource(MapOrbit::new(200.0))
+        .add_systems(Update, navigate);
         let mut window = Window::default();
         window.set_cursor_position(Some(Vec2::splat(100.0)));
         let window = app.world_mut().spawn((window, PrimaryWindow)).id();
@@ -776,17 +783,20 @@ mod tests {
     #[test]
     fn legend_stays_inside_measured_world_across_layout_and_scope_changes() {
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .insert_resource(PrimaryView::Map)
-            .insert_resource(ObserverUiState {
-                splash_visible: false,
-                menu_open: false,
-                lens: MapLens::Qcew(EconomyMetric::Employment),
-                ..default()
-            })
-            .init_resource::<ObserverViewport>()
-            .init_resource::<UiScale>()
-            .add_systems(Update, place_legend);
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(PrimaryView::Map)
+        .insert_resource(ObserverUiState {
+            splash_visible: false,
+            menu_open: false,
+            lens: MapLens::Qcew(EconomyMetric::Employment),
+            ..default()
+        })
+        .init_resource::<ObserverViewport>()
+        .init_resource::<UiScale>()
+        .add_systems(Update, place_legend);
         app.world_mut().spawn((Window::default(), PrimaryWindow));
         let legend = app
             .world_mut()
@@ -952,31 +962,34 @@ mod tests {
     #[test]
     fn open_drawers_block_raw_orbit_and_wheel_until_closed() {
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .insert_resource(PrimaryView::Map)
-            .insert_resource(ObserverUiState {
-                menu_open: false,
-                splash_visible: false,
-                ..default()
-            })
-            .insert_resource(ObserverViewport(Some(Rect::from_corners(
-                Vec2::ZERO,
-                Vec2::splat(500.0),
-            ))))
-            .insert_resource(MapGeometry {
-                extent: Vec2::splat(200.0),
-            })
-            .insert_resource(MapOrbit::new(200.0))
-            .init_resource::<ButtonInput<MouseButton>>()
-            .init_resource::<ButtonInput<KeyCode>>()
-            .insert_resource(AccumulatedMouseMotion {
-                delta: Vec2::new(40.0, 10.0),
-            })
-            .insert_resource(AccumulatedMouseScroll {
-                unit: MouseScrollUnit::Line,
-                delta: Vec2::Y,
-            })
-            .add_systems(Update, navigate);
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(PrimaryView::Map)
+        .insert_resource(ObserverUiState {
+            menu_open: false,
+            splash_visible: false,
+            ..default()
+        })
+        .insert_resource(ObserverViewport(Some(Rect::from_corners(
+            Vec2::ZERO,
+            Vec2::splat(500.0),
+        ))))
+        .insert_resource(MapGeometry {
+            extent: Vec2::splat(200.0),
+        })
+        .insert_resource(MapOrbit::new(200.0))
+        .init_resource::<ButtonInput<MouseButton>>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .insert_resource(AccumulatedMouseMotion {
+            delta: Vec2::new(40.0, 10.0),
+        })
+        .insert_resource(AccumulatedMouseScroll {
+            unit: MouseScrollUnit::Line,
+            delta: Vec2::Y,
+        })
+        .add_systems(Update, navigate);
         let mut window = Window::default();
         window.set_cursor_position(Some(Vec2::splat(100.0)));
         app.world_mut().spawn((window, PrimaryWindow));
@@ -1008,7 +1021,10 @@ mod tests {
         use bevy::picking::backend::HitData;
         use bevy::picking::pointer::{Location, PointerId};
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins);
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ));
         app.init_resource::<SelectedCounty>();
         app.init_resource::<PrimaryView>();
         app.init_resource::<ObserverUiState>();
@@ -1021,8 +1037,9 @@ mod tests {
             })
             .observe(select_county)
             .id();
-        let click = || {
-            Pointer::new(
+        let click = || PointerClick {
+            entity,
+            pointer: Pointer::new(
                 PointerId::Mouse,
                 Location {
                     target: bevy::camera::NormalizedRenderTarget::None {
@@ -1031,18 +1048,11 @@ mod tests {
                     },
                     position: Vec2::ZERO,
                 },
-                Click {
-                    button: PointerButton::Primary,
-                    hit: HitData {
-                        camera: Entity::PLACEHOLDER,
-                        depth: 1.0,
-                        position: Some(Vec3::ZERO),
-                        normal: Some(Vec3::Y),
-                    },
-                    duration: Duration::ZERO,
-                },
-                entity,
-            )
+            ),
+            button: PointerButton::Primary,
+            hit: HitData::new(Entity::PLACEHOLDER, 1.0, Some(Vec3::ZERO), Some(Vec3::Y)),
+            duration: Duration::ZERO,
+            count: 1,
         };
         app.world_mut().trigger(click());
         assert_eq!(app.world().resource::<SelectedCounty>().0, None);
@@ -1079,7 +1089,11 @@ mod tests {
     #[test]
     fn map_bootstrap_loads_the_atlas_without_creating_a_render_scene() {
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, AssetPlugin::default()));
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            crate::test_support::HeadlessVisibilityPlugin,
+        ));
         app.insert_resource(ObserverSession::new(CampaignId::from_uuid(Uuid::nil())));
         app.add_plugins(crate::map::MapPlugin);
         app.update();

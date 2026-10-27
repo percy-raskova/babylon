@@ -170,10 +170,13 @@ mod tests {
     fn native_close_forwards_one_quit_and_keeps_the_window_until_shutdown() {
         use crate::observer_ui::ObserverCommand;
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .add_message::<WindowCloseRequested>()
-            .add_message::<ObserverCommand>()
-            .add_systems(PreUpdate, forward_native_close);
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .add_message::<WindowCloseRequested>()
+        .add_message::<ObserverCommand>()
+        .add_systems(PreUpdate, forward_native_close);
         let window = app.world_mut().spawn(PrimaryWindow).id();
         let other = app.world_mut().spawn_empty().id();
         for target in [other, window, window] {

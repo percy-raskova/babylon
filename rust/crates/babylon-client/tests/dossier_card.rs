@@ -28,7 +28,7 @@ use babylon_client::production::ProductionCommand;
 use babylon_client::production::ProductionNavigation;
 use bevy::asset::AssetPlugin;
 use bevy::picking::backend::HitData;
-use bevy::picking::events::{Click, Pointer};
+use bevy::picking::events::{Pointer, PointerClick};
 use bevy::picking::hover::HoverMap;
 use bevy::picking::pointer::{Location, PointerButton, PointerId};
 use bevy::prelude::*;
@@ -444,7 +444,7 @@ fn seize_card(app: &mut App, projection: ArchiveDossierRead) {
 }
 
 /// Clicks one place chip by its rendered label through a REAL
-/// `Pointer<Click>` trigger on the chip NODE — the observer path a player's
+/// `PointerClick` trigger on the chip NODE — the observer path a player's
 /// click takes, not a direct message write.
 fn click_chip(app: &mut App, label: &str) {
     let places = zone_entity(app, DossierZone::Places);
@@ -453,27 +453,23 @@ fn click_chip(app: &mut App, label: &str) {
 }
 
 fn click_entity(app: &mut App, chip: Entity) {
-    app.world_mut().trigger(Pointer::new(
-        PointerId::Mouse,
-        Location {
-            target: bevy::camera::NormalizedRenderTarget::None {
-                width: 0,
-                height: 0,
+    app.world_mut().trigger(PointerClick {
+        entity: chip,
+        pointer: Pointer::new(
+            PointerId::Mouse,
+            Location {
+                target: bevy::camera::NormalizedRenderTarget::None {
+                    width: 0,
+                    height: 0,
+                },
+                position: Vec2::ZERO,
             },
-            position: Vec2::ZERO,
-        },
-        Click {
-            button: PointerButton::Primary,
-            hit: HitData {
-                camera: Entity::PLACEHOLDER,
-                depth: 0.0,
-                position: None,
-                normal: None,
-            },
-            duration: Duration::ZERO,
-        },
-        chip,
-    ));
+        ),
+        button: PointerButton::Primary,
+        hit: HitData::new(Entity::PLACEHOLDER, 0.0, None, None),
+        duration: Duration::ZERO,
+        count: 1,
+    });
     app.update(); // observer writes the request; repaint swaps the page
 }
 

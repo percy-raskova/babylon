@@ -45,7 +45,7 @@ pub(super) fn spawn_peers(
                     projection.external.len()
                 )),
                 TextFont {
-                    font_size: 14.0,
+                    font_size: FontSize::Px(14.0),
                     ..default()
                 },
                 TextColor(theme::YELLOW),

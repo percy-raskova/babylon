@@ -12,6 +12,7 @@ use crate::observer_ui::{ObserverUiState, ObserverViewport};
 use crate::production::PrimaryView;
 use crate::tessellate::Tessellation;
 use bevy::camera::visibility::RenderLayers;
+use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::system::SystemParam;
 use bevy::light::CascadeShadowConfigBuilder;
 use bevy::prelude::*;
@@ -148,7 +149,7 @@ fn spawn_map_scene(
         DirectionalLight {
             color: theme::PAPER,
             illuminance: 9000.0,
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         Transform::from_xyz(-400.0, 800.0, 300.0).looking_at(Vec3::ZERO, Vec3::Y),
@@ -174,6 +175,12 @@ fn spawn_map_scene(
     let orbit = MapOrbit::new(extent.max_element());
     commands.spawn((
         Camera3d::default(),
+        // The observer never ships `tonemapping_luts`, so the default
+        // TonyMcMapface curve (a LUT sampler) is unavailable. AcesFitted is a
+        // LUT-free display transform that keeps exposure and color grading in
+        // the pipeline; Bevy without the feature logs an error and renders an
+        // untonemapped view instead.
+        Tonemapping::AcesFitted,
         Camera {
             clear_color: ClearColorConfig::Custom(theme::INK),
             ..default()
@@ -195,7 +202,7 @@ fn spawn_map_scene(
     commands.spawn((
         Text::new("Campaign county geography"),
         TextFont {
-            font_size: 14.0,
+            font_size: FontSize::Px(14.0),
             ..default()
         },
         TextColor(theme::PAPER),
@@ -242,7 +249,7 @@ fn spawn_insets(commands: &mut Commands, atlas: &CountyAtlas, counties: &[usize]
         commands.spawn((
             Text::new(caption),
             TextFont {
-                font_size: 14.0,
+                font_size: FontSize::Px(14.0),
                 ..default()
             },
             TextColor(theme::PAPER),
@@ -358,7 +365,7 @@ mod tests {
             fit_orbit(&mut orbit, extent, aspect);
             let far = camera_far(extent, &orbit);
             let view = orbit.transform().to_matrix().inverse();
-            let projection = Mat4::perspective_rh(45.0_f32.to_radians(), aspect, 0.5, far);
+            let projection = bevy::math::proj::perspective(45.0_f32.to_radians(), aspect, 0.5, far);
             for x in [-extent.x * 0.5, extent.x * 0.5] {
                 for z in [-extent.y * 0.5, extent.y * 0.5] {
                     for y in [0.0, BASE_HEIGHT + DATA_HEIGHT] {

@@ -55,6 +55,8 @@ use crate::observer_ui::{
     ObserverCampaignCatalog, ObserverCommand, ObserverFontRole, ObserverFrame, ObserverUiState,
 };
 use crate::production::ProductionNavigation;
+use crate::ui::pressable;
+use crate::ui::Interaction;
 use crate::workforce;
 use babylon_persistence::production_observation::ProductionProcess;
 use bevy::tasks;
@@ -213,7 +215,7 @@ pub(crate) fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bu
     (
         Text::new(value),
         TextFont {
-            font_size: size,
+            font_size: FontSize::Px(size),
             ..default()
         },
         TextColor(color),
@@ -229,7 +231,7 @@ pub(crate) fn button(
 ) {
     parent
         .spawn((
-            Button,
+            pressable(),
             BrowserButton(command),
             ObserverFocusTarget::action(None),
             Node {
@@ -404,7 +406,7 @@ pub(crate) fn setup(mut commands: Commands, menu: Query<Entity, With<ObserverCam
                             max_width: percent(100),
                             ..default()
                         },
-                        TextLayout::new_with_linebreak(LineBreak::AnyCharacter),
+                        TextLayout::linebreak(LineBreak::AnyCharacter),
                     ))
                     .insert(ObserverFontRole::Exact);
                 });
@@ -1391,7 +1393,7 @@ mod tests {
     use babylon_persistence::production_observation::ProductionProcess;
     use babylon_persistence::production_observation::ProductionSite;
     use bevy::tasks::TaskPoolBuilder;
-    use bevy::text::CosmicFontSystem;
+    use bevy::text::FontCx;
     use bevy::ui::ui_surface::UiSurface;
     use bevy::ui::ContentSize;
     use std::time::Duration;
@@ -1823,8 +1825,9 @@ mod tests {
             HierarchyPropagatePlugin::<ComputedUiRenderTargetInfo>::new(PostUpdate),
         ))
         .init_resource::<UiScale>()
+        .init_resource::<RemSize>()
         .init_resource::<UiSurface>()
-        .init_resource::<CosmicFontSystem>()
+        .init_resource::<FontCx>()
         .add_systems(Startup, setup)
         .add_systems(
             PostUpdate,

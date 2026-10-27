@@ -244,7 +244,7 @@ fn spawn_legend(commands: &mut Commands) {
                 legend.spawn((
                     Text::new(format!("■ {}", sector.label())),
                     TextFont {
-                        font_size: 13.0,
+                        font_size: FontSize::Px(13.0),
                         ..default()
                     },
                     TextColor(sector_color(sector)),
@@ -472,7 +472,7 @@ fn usable(ui: &ObserverUiState, view: PrimaryView) -> bool {
 }
 
 fn hover_node(
-    event: On<Pointer<Over>>,
+    event: On<PointerOver>,
     nodes: Query<&EconomyNode>,
     mut hovered: ResMut<HoveredNode>,
     ui: Res<ObserverUiState>,
@@ -488,11 +488,7 @@ fn hover_node(
         }
     }
 }
-fn leave_node(
-    event: On<Pointer<Out>>,
-    nodes: Query<&EconomyNode>,
-    mut hovered: ResMut<HoveredNode>,
-) {
+fn leave_node(event: On<PointerOut>, nodes: Query<&EconomyNode>, mut hovered: ResMut<HoveredNode>) {
     if nodes
         .get(event.entity)
         .is_ok_and(|node| hovered.0.as_ref() == Some(&node.node.key))
@@ -501,7 +497,7 @@ fn leave_node(
     }
 }
 fn select_node(
-    event: On<Pointer<Click>>,
+    event: On<PointerClick>,
     nodes: Query<&EconomyNode>,
     mut commands: MessageWriter<ProductionCommand>,
     ui: Res<ObserverUiState>,

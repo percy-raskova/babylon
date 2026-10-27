@@ -71,7 +71,7 @@ codex_rust_bootstrap_toolchain_for_repository() {
       printf '\n'
       ;;
     babylon)
-      printf '%s\n' +1.91.1
+      printf '%s\n' +1.99.1
       ;;
     *)
       return 1

@@ -21,6 +21,35 @@ feels, reads, and takes away. Engine internals appear only as they surface.
   `33% / 33% / 33% / 0%` wealth law, and International Trade (Trade Blocs +
   China/Russia/Iran/Israel, Israel as America's rowdy colonial franchise, and
   cracking $\Phi$ from inside the belly of the beast).
+- `2026-10-26-combat-design.md` — the insurgent route: two-stage dialectical
+  combat (Marighella catalog -> Giáp mesh), the fed-trap offer loop,
+  violence menu & county control gradient, personified slots & loss
+  invoices, long memory & endgame reckoning, and the 7-step OODA loop.
+- `2026-10-26-peacetime-economic-verbs-design.md` — the peacetime Decide step
+  (**The Monthly Closing Meeting**): Verb 1 (*Staffing the Life Raft*:
+  Changkang co-governance vs. *The Magical Power of Pancakes*), Verb 2
+  (*Keeping the Four Books & The Soft-Job Bribe Gradient*), Verb 3 (*Paying
+  the Clandestine Faux Frais*: going into the cold, the silence trap, and
+  *Ceremony 5: The Safe-House Lease*), and Verb 4 (*Weaponizing Circulation*:
+  the 28-day Siege Larder vs. the Boss's Ledger and `PricePolicy::Responsive`).
+- `2026-10-26-negotiation-and-party-life-design.md` — **Negotiation &
+  United-Front Play (#2)** and **Internal Party Life & Congresses (#3)**
+  (**The Room and The Floor**): Room Deals via the *Promise Register*
+  (`review_condition`), Floor Fights (`Shift / Split / Flip` on Union Locals
+  and coalitions), Lenin's Fellow-Traveller rule inside fronts, State/NGO
+  Wedge Offers (`Offer/Split` ledger: internal Split Test + deceptive
+  Counter-Trap), Voluntary vs. Barrier-Forced Party Congresses (with the
+  coalescing meeting leak), the Mandate & Two-Front Floor Fight (*Leningrad
+  1925* emissaries + *Military Opposition* grievance peeling), and the
+  structural payoff of Purges and Splits (*Prague 1912 / 1921 Purge*).
+- `2026-10-26-onboarding-and-product-layer-design.md` — **Progressive
+  Onboarding (#4)** and **The Product Layer (#5)** (**The Door, The Veil,
+  and The Timeline Tree**): Stage 1–4 progressive screen & Veil-of-Money
+  unlocks driven by *On Practice* (`Study` + `Practice`), Period-0 Campaign
+  Setup (*Starting Region + Founding Tendency Archetype + Crisis Bookmark*
+  over seeded `marxist-data-3NF.sqlite` bounds), the **Counterfactual
+  Timeline Tree** & Ironman toggle, and one-click local Markdown Chronicle/Wiki
+  + `.babylon` replay export.
 
 ## Research Briefings (`docs/gameplay/research/`)
 

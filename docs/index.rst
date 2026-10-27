@@ -16,7 +16,7 @@ The project's executable gate contracts cover:
 .. vale ste.UnapprovedWords = NO
 .. vale ste.NounClusters = NO
 
-#. **PostgreSQL/H3/Archive decision-loop slice**
+#. **Durable campaign/H3/Archive decision-loop slice**
 
 #. **Productive & distributive circuit**
 

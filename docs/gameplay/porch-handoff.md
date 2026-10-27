@@ -23,7 +23,22 @@ comes up, note it and hand it back; the workhorse owns the tree.
    *KKKommunities of KKKare* / *The Queer Qlux Qlan*, the Carceral Pipeline & Pelican
    Bay Prison Solidarity Pact, the 672-Hour Burnout Cliff & Four Funding Books, the
    Four Endgames / False Summits, and EROL Amerikan mechanics).
-4. Read `docs/superpowers/plans/2026-10-25-babylon-gameplay-and-late-empire-plan.md`
+4. Read the four 2026-10-26 ratified gameplay design specs:
+   - `docs/gameplay/2026-10-26-combat-design.md` (insurgent route, 7-step OODA loop,
+     Marighella catalog -> Giáp mesh, fed-trap offer loop, loss invoices, long memory).
+   - `docs/gameplay/2026-10-26-peacetime-economic-verbs-design.md` (**#1 Peacetime
+     Economic Verbs / The Monthly Closing Meeting**: Staffing the Life Raft, Keeping
+     the Four Books & Soft-Job Bribe Gradient, Paying the Clandestine *Faux Frais*,
+     and Weaponizing Circulation / Siege Larders).
+   - `docs/gameplay/2026-10-26-negotiation-and-party-life-design.md` (**#2 Negotiation &
+     United Fronts** + **#3 Internal Party Life & Congresses**: Room Deals via the
+     Promise Register, Floor Fights `Shift/Split/Flip`, Wedge Offers, Mandate &
+     Two-Front Congress Floor Fights, and the structural payoff of Purges/Splits).
+   - `docs/gameplay/2026-10-26-onboarding-and-product-layer-design.md` (**#4 Onboarding &
+     Progressive Veil Unlocks** + **#5 Product Layer**: Stage 1–4 *On Practice* screen
+     unlocks, Period-0 "The Door" setup, the Counterfactual Timeline Tree & Ironman,
+     and local Markdown Chronicle/Wiki + `.babylon` replay export).
+5. Read `docs/superpowers/plans/2026-10-25-babylon-gameplay-and-late-empire-plan.md`
    (the 5-wave, 9-task post-`PER-354` implementation plan).
 5. Consult `docs/gameplay/research/01`–`25` for deep source briefings as needed.
 6. Recall durable notes (c-mem, project `babylon/codex-PER-354-architecture-reset`):

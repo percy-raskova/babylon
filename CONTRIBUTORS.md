@@ -14,7 +14,7 @@ The four executable gates are:
 <!-- vale Vale.Terms = NO -->
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
-1. **PostgreSQL/H3/Archive decision-loop slice**
+1. **Durable campaign/H3/Archive decision-loop slice**
 1. **Productive & distributive circuit**
 1. **Player agency**
 1. **COVID emergence benchmark**

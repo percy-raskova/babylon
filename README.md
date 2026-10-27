@@ -98,7 +98,7 @@ The four executable gates are:
 <!-- vale Vale.Terms = NO -->
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
-1. **PostgreSQL/H3/Archive decision-loop slice**
+1. **Durable campaign/H3/Archive decision-loop slice**
 1. **Productive & distributive circuit**
 1. **Player agency**
 1. **COVID emergence benchmark**
@@ -131,7 +131,7 @@ Restricted views already limit facts by player knowledge. The planned decision
 cycle adds player and AI intent plus durable action receipts.
 
 Read [`NORTH_STAR.md`](NORTH_STAR.md) for the full system model. Read
-[`CONSTITUTION.md`](CONSTITUTION.md) v4.2.0 for the constitutional law.
+[`CONSTITUTION.md`](CONSTITUTION.md) v4.3.0 for the constitutional law.
 
 ## Live system
 

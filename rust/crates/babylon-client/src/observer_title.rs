@@ -17,7 +17,7 @@ use crate::observer_opening::{MenuPage, OpeningPresentation, OpeningStage};
 use crate::observer_progress::OperationProgress;
 use crate::observer_theme as theme;
 use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
-use crate::ui::pressable;
+use crate::ui;
 use crate::ui::Interaction;
 use crate::visual_assets::VisualAssets;
 use bevy::picking::pointer::PointerButton;
@@ -75,7 +75,7 @@ fn label(value: &str, size: f32, role: ObserverFontRole) -> impl Bundle {
 fn action_button(parent: &mut ChildSpawnerCommands, action: TitleAction, caption: &str) {
     parent
         .spawn((
-            pressable(),
+            ui::pressable(),
             action,
             Node {
                 width: percent(100),

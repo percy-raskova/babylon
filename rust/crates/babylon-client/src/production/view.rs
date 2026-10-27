@@ -298,7 +298,7 @@ pub(crate) fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bu
 pub(crate) fn button_node(command: ProductionCommand) -> impl Bundle {
     let context = production_command_context(&command).cloned();
     (
-        pressable(),
+        ui::pressable(),
         ProductionButton(command),
         ObserverFocusTarget::action(context),
         Node {
@@ -1003,7 +1003,7 @@ pub(crate) fn spawn_site_label(
         .id();
     commands
         .spawn((
-            pressable(),
+            ui::pressable(),
             ProductionButton(ProductionCommand::Select {
                 site_id: site.id.clone(),
                 context: context.clone(),
@@ -1884,7 +1884,8 @@ use crate::observer_ui::ObserverFontRole;
 use crate::production_brief;
 use crate::production_freight;
 use crate::production_layout;
-use crate::ui::{pressable, Interaction};
+use crate::ui;
+use crate::ui::Interaction;
 use babylon_persistence::identity::CampaignId;
 use bevy::input::mouse::MouseMotion;
 use bevy::input::mouse::MouseWheel;

@@ -40,8 +40,8 @@ use crate::organizer::OrganizerClient;
 use crate::organizer::OrganizerInspector;
 use crate::production::PrimaryView;
 use crate::production::ProductionCommand;
+use crate::ui;
 use crate::ui::dossier_card::{ActiveCountyDossier, DossierFetchState, DossierRefresh};
-use crate::ui::pressable;
 use crate::ui::Interaction;
 use crate::visual_assets::ObserverFonts;
 use babylon_persistence::observer_reader::ObserverVisibility;
@@ -401,7 +401,7 @@ fn scoped_button(
 ) {
     parent
         .spawn((
-            pressable(),
+            ui::pressable(),
             ObserverFocusTarget::action(None),
             Node {
                 width: match command {
@@ -2627,7 +2627,7 @@ pub(crate) mod tests {
         let target = app
             .world_mut()
             .spawn((
-                pressable(),
+                ui::pressable(),
                 Node::default(),
                 ObserverButton {
                     command,

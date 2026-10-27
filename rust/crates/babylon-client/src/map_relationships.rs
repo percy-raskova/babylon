@@ -24,7 +24,7 @@ use crate::observer_ui::{ObserverFrame, ObserverUiState, ObserverViewport, RoadL
 use crate::production::PrimaryView;
 use crate::production::ProductionNavigation;
 use crate::production_layout;
-use crate::ui::pressable;
+use crate::ui;
 use crate::ui::Interaction;
 use babylon_persistence::production_observation::PhysicalRouteIndex;
 use bevy::camera::visibility::RenderLayers;
@@ -819,7 +819,7 @@ fn spawn_relationships(
             label.insert(Pickable::IGNORE);
         } else if let Some(selected_county) = selected {
             label.insert((
-                pressable(),
+                ui::pressable(),
                 RelationshipJump {
                     context: context.clone(),
                     selected_county,

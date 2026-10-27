@@ -55,7 +55,7 @@ use crate::observer_ui::{
     ObserverCampaignCatalog, ObserverCommand, ObserverFontRole, ObserverFrame, ObserverUiState,
 };
 use crate::production::ProductionNavigation;
-use crate::ui::pressable;
+use crate::ui;
 use crate::ui::Interaction;
 use crate::workforce;
 use babylon_persistence::production_observation::ProductionProcess;
@@ -231,7 +231,7 @@ pub(crate) fn button(
 ) {
     parent
         .spawn((
-            pressable(),
+            ui::pressable(),
             BrowserButton(command),
             ObserverFocusTarget::action(None),
             Node {

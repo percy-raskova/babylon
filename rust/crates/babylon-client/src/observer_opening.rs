@@ -15,7 +15,7 @@ use crate::observer::ObserverSession;
 use crate::observer_focus::{ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate};
 use crate::observer_io::ObserverSet;
 use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
-use crate::ui::pressable;
+use crate::ui;
 use bevy::picking::pointer::PointerButton;
 use bevy::text::LineHeight;
 
@@ -212,7 +212,7 @@ fn spawn_production(
             ));
             screen
                 .spawn((
-                    pressable(),
+                    ui::pressable(),
                     SkipProduction,
                     Node {
                         position_type: PositionType::Absolute,

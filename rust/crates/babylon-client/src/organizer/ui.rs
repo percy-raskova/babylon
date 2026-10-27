@@ -24,7 +24,7 @@ use super::qualification_input::HandlerReceipt;
 use super::{presentation, OrganizerClient, OrganizerInspector, RequestKind};
 use crate::observer::SessionPhase;
 use crate::observer_controls::ControlAvailability;
-use crate::ui::pressable;
+use crate::ui;
 use crate::ui::Interaction;
 use babylon_kernel::clock::CampaignDuration;
 use babylon_persistence::runtime_session::OrganizerGiftConsent;
@@ -140,7 +140,7 @@ fn row() -> Node {
 pub(crate) fn button(parent: &mut ChildSpawnerCommands, label: &str, action: OrganizerAction) {
     parent
         .spawn((
-            pressable(),
+            ui::pressable(),
             ActionButton(action),
             ObserverFocusTarget::action(None),
             Node {
@@ -393,7 +393,7 @@ fn paint_scroll_hints(regions: Query<&ComputedNode>, mut hints: Query<(&ScrollHi
 fn spawn_approach(cards: &mut ChildSpawnerCommands, choice: OrganizerChoice) {
     cards
         .spawn((
-            pressable(),
+            ui::pressable(),
             ActionButton(OrganizerAction::Choose(choice)),
             ObserverFocusTarget::action(None),
             Node {
@@ -566,7 +566,7 @@ fn spawn_notes(body: &mut ChildSpawnerCommands) {
         .with_children(|notes| {
             notes.spawn(text("Your notes and references stay with this draft. Editing them spends no time and submits no ruling.", 15.0, theme::GRAY));
             notes.spawn((
-                pressable(), NotesField, ObserverFocusTarget::text_input(None),
+                ui::pressable(), NotesField, ObserverFocusTarget::text_input(None),
                 Node { min_height: px(160), padding: UiRect::all(px(12)),
                     border: UiRect::all(px(1)), width: percent(100), flex_shrink: 0.0, ..default() },
                 BackgroundColor(theme::PANEL), BorderColor::all(theme::GRAY),

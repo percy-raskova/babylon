@@ -12,7 +12,7 @@ use crate::observer_io::ObserverSet;
 use crate::observer_opening::{OpeningPresentation, OpeningStage};
 use crate::observer_theme as theme;
 use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
-use crate::ui::pressable;
+use crate::ui;
 use crate::ui::Interaction;
 use bevy::text::LineBreak;
 
@@ -152,7 +152,7 @@ fn action_button(parent: &mut ChildSpawnerCommands, action: WarningAction, capti
     };
     parent
         .spawn((
-            pressable(),
+            ui::pressable(),
             action,
             Node {
                 min_height: px(48),

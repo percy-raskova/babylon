@@ -673,6 +673,8 @@ fn persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arriva
     let mut standard = RunPair::create(&target, MichiganDeliveryPreset::Standard, 325_001);
     let mut delayed = RunPair::create(&target, MichiganDeliveryPreset::Delayed, 325_003);
     let initial = standard.uninterrupted.session().material().state();
+    let standard_state = standard.uninterrupted.session().material().state().clone();
+    let standard_catalog = standard.uninterrupted.session().catalog().clone();
     let normalized_state = delayed.uninterrupted.session().material().state().clone();
     let normalized_catalog = delayed.uninterrupted.session().catalog().clone();
     let catalog = crate::test_support::catalog();
@@ -689,9 +691,17 @@ fn persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arriva
         .expect("the fixture holds the searched element");
     assert_eq!(delayed_leg.travel_periods, 3);
     delayed_leg.travel_periods = 1;
+    let normalized_catalog = MaterialCatalog::try_new(normalized_catalog)
+        .expect("the edited fixture catalog canonicalizes");
+    assert_eq!(normalized_catalog, standard_catalog);
     assert_eq!(
-        normalized_state,
-        standard.uninterrupted.session().material().state().clone()
+        babylon_material_circuit::encode_material_circuit_state(&standard_catalog, &standard_state)
+            .expect("the canonical material state encodes"),
+        babylon_material_circuit::encode_material_circuit_state(
+            &normalized_catalog,
+            &normalized_state
+        )
+        .expect("the canonical material state encodes")
     );
     let capacities = initial.capacities.clone();
     assert!(!capacities.is_empty());

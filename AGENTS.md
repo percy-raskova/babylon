@@ -76,7 +76,7 @@ The semantic Archive worker and restricted reader supply cited county, place, wo
 PER-48 is decided.
 <!-- vale ste.PassiveVoice = YES -->
 <!-- vale strunk.ActiveVoice = YES -->
-The one-way cutover is in progress (P9a): the SQLite campaign store is built and qualified, and PER-354 is cutting the live composition root onto it before retiring the Postgres campaign owner. Rust owns authoritative campaign state. Amendment AL ratifies one embedded SQLite 3.53.1 owner as the durable publication boundary. Do not add dual-write, a storage trait, or a silent Postgres fallback. Python retains only current data, repository, and operator consumers. It has no simulation engine, mutable game SQLite, transition reader, or Django browser.
+PostgreSQL stays the live campaign writer (P9a stopped per timebox R-14; the SQLite store is built and qualified). Rust owns authoritative campaign state. Amendment AL ratifies one embedded SQLite 3.53.1 owner as the durable publication boundary. Do not add dual-write, a storage trait, or a silent Postgres fallback. Python retains only current data, repository, and operator consumers. It has no simulation engine, mutable game SQLite, transition reader, or Django browser.
 <!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
 

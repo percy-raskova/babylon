@@ -134,7 +134,7 @@ Keep unrelated user changes unchanged. Report an unrelated fault unless the owne
 ## Toolchain and host safety
 
 Use native libraries and `.mise.toml`, `mise.lock`, and `.python-version` pins (ADR252). Install with `mise install --locked` and `mise run install`.
-Run Cargo from `rust/` to use `rust-toolchain.toml`. Reference tools use `mise exec -- uv run --frozen python` in the project `.venv`. The builder checks SQLite 3.53.1. The ratified destination links a bundled SQLite 3.53.1 runtime and refuses a mismatch (ADR287 R2), and no crate consumes it yet.
+Run Cargo from `rust/` to use `rust-toolchain.toml`. Reference tools use `mise exec -- uv run --frozen python` in the project `.venv`. The builder checks SQLite 3.53.1. The ratified destination links a bundled SQLite 3.53.1 runtime and refuses a mismatch (ADR287 R2); nothing yet uses that store as the live campaign writer.
 
 Do not set `PYTHONPATH`. Run heavy gates uncapped and serially. Keep `BLAS=1`.
 

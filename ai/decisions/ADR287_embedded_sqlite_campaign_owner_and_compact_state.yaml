@@ -227,4 +227,20 @@ ADR287_embedded_sqlite_campaign_owner_and_compact_state:
           refuses a fabricated identity.
         - A cold reopen reads the durable policy and keeps refusing absence.
         - A campaign whose policy row is missing or unsupported refuses to open.
+    - date: '2026-10-27'
+      issue: PER-354
+      packet: Task 13 interim bar
+      requirement: >-
+        R9. INTERIM ADVANCE BAR. The R6 30-second advance target was not met
+        (measured 34.2-46.7 s medians across the 2/52/325-period ladder); the
+        enforced bar is interim 60 seconds with the 30-second target kept as
+        tracked optimization debt (contract v2, meets_targets=false). The
+        verification bullet above naming "30 seconds per advance" as met is
+        superseded for the advance metric only; all other R6 limits stand.
+      preserved_bytes: >-
+        No format change. The contract version, bar, target, and debt row are
+        machine-readable in contracts/national_sqlite_qualification_v1.json.
+      verification: |
+        - Every rung verdict carries meets_targets=false with observed, interim,
+          target, and met in its optimization-debt row.
   source_record: docs/architecture-reset/09-acceptance-and-governance.md

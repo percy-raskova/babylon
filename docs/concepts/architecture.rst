@@ -1,7 +1,7 @@
 Architecture Boundary
 =====================
 
-``CONSTITUTION.md`` v4.3.0 governs the architecture. ``NORTH_STAR.md`` gives
+``CONSTITUTION.md`` v4.2.0 governs the architecture. ``NORTH_STAR.md`` gives
 the game direction and gate order. This page describes the current Rust
 implementation and persistence boundary.
 

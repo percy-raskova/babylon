@@ -15,7 +15,7 @@ The four executable gates are:
 <!-- vale Vale.Terms = NO -->
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale ste.NounClusters = NO -->
-1. **Durable campaign/H3/Archive decision-loop slice**
+1. **PostgreSQL/H3/Archive decision-loop slice**
 1. **Productive & distributive circuit**
 1. **Player agency**
 1. **COVID emergence benchmark**
@@ -23,7 +23,7 @@ The four executable gates are:
 <!-- vale ste.UnapprovedWords = YES -->
 <!-- vale ste.NounClusters = YES -->
 
-Read [`CONSTITUTION.md`](../../CONSTITUTION.md) v4.3.0 for the law. Read
+Read [`CONSTITUTION.md`](../../CONSTITUTION.md) v4.2.0 for the law. Read
 [`NORTH_STAR.md`](../../NORTH_STAR.md) for the game direction. Read
 [`CONTRIBUTORS.md`](../../CONTRIBUTORS.md) for the full merge rules.
 

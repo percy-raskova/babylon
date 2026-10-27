@@ -18,7 +18,7 @@ This checkout implements Gate 2. These four executable gates follow:
 <!-- vale ste.UnapprovedWords = NO -->
 <!-- vale Vale.Terms = NO -->
 <!-- vale ste.NounClusters = NO -->
-1. **Durable campaign/H3/Archive decision-loop slice**
+1. **PostgreSQL/H3/Archive decision-loop slice**
 1. **Productive & distributive circuit**
 1. **Player agency**
 1. **COVID emergence benchmark**
@@ -26,7 +26,7 @@ This checkout implements Gate 2. These four executable gates follow:
 <!-- vale ste.UnapprovedWords = YES -->
 <!-- vale ste.NounClusters = YES -->
 
-Read `CONSTITUTION.md` v4.3.0 before a change to game law. ADR221 maps its predecessors and preserves history. `ai/mantras.yaml` is the canonical machine-readable orientation.
+Read `CONSTITUTION.md` v4.2.0 before a change to game law. ADR221 maps its predecessors and preserves history. `ai/mantras.yaml` is the canonical machine-readable orientation.
 
 ## Constitutional compact
 
@@ -64,11 +64,9 @@ Same-rank rules compose sequentially. `MaterialReplaySession` publishes material
 
 Rust's executable `phase_order.rs` owns the causal schedule. The removed Python engine is recoverable at `p27-python-freeze`. BSL citations read that Git tag. Historical detector labels are not promised outcomes.
 
-Reference Parquet and reference-build SQLite are immutable build artifacts. Retained Python builds reference data and runs repository and operator tools.
+Reference Parquet and deterministic SQLite are build artifacts. Retained Python builds reference data and runs repository and operator tools.
 
-Rust owns the current Postgres three-schema boundary, marker-last commits, checkpoint restart, and Archive dirty receipts. The ratified destination is one embedded SQLite campaign database (ADR287). Archive and checkpoint read paths move with that cutover.
-
-The semantic Archive worker and restricted reader supply cited county, place, workplace and organization dossiers, including retained historical pages. These capabilities leave Gate 3 acceptance open. ADR250 places the Gate 4 economic circuit before Gate 5 player actions and next-period intents. Gate 6 adds governed events and COVID.
+Rust owns the three-schema boundary, marker-last commits, checkpoint restart, and Archive dirty receipts. The semantic Archive worker and restricted reader supply cited county, place, workplace and organization dossiers, including retained historical pages. These capabilities leave Gate 3 acceptance open. ADR250 places the Gate 4 economic circuit before Gate 5 player actions and next-period intents. Gate 6 adds governed events and COVID.
 
 <!-- Vale: the accepted Linear status uses a passive state label. -->
 <!-- vale strunk.ActiveVoice = NO -->
@@ -76,7 +74,7 @@ The semantic Archive worker and restricted reader supply cited county, place, wo
 PER-48 is decided.
 <!-- vale ste.PassiveVoice = YES -->
 <!-- vale strunk.ActiveVoice = YES -->
-PostgreSQL stays the live campaign writer (P9a stopped per timebox R-14; the SQLite store is built and qualified). Rust owns authoritative campaign state. Amendment AL ratifies one embedded SQLite 3.53.1 owner as the durable publication boundary. Do not add dual-write, a storage trait, or a silent Postgres fallback. Python retains only current data, repository, and operator consumers. It has no simulation engine, mutable game SQLite, transition reader, or Django browser.
+The one-way cutover is complete. Rust owns authoritative game-managed Postgres. Python retains only current data, repository, and operator consumers. It has no simulation engine, mutable game SQLite, transition reader, or Django browser.
 <!-- vale ste.NounClusters = YES -->
 <!-- vale ste.UnapprovedWords = YES -->
 
@@ -134,7 +132,7 @@ Keep unrelated user changes unchanged. Report an unrelated fault unless the owne
 ## Toolchain and host safety
 
 Use native libraries and `.mise.toml`, `mise.lock`, and `.python-version` pins (ADR252). Install with `mise install --locked` and `mise run install`.
-Run Cargo from `rust/` to use `rust-toolchain.toml`. Reference tools use `mise exec -- uv run --frozen python` in the project `.venv`. The builder checks SQLite 3.53.1. The ratified destination links a bundled SQLite 3.53.1 runtime and refuses a mismatch (ADR287 R2); nothing yet uses that store as the live campaign writer.
+Run Cargo from `rust/` to use `rust-toolchain.toml`. Reference tools use `mise exec -- uv run --frozen python` in the project `.venv`. The builder checks SQLite 3.53.1.
 
 Do not set `PYTHONPATH`. Run heavy gates uncapped and serially. Keep `BLAS=1`.
 

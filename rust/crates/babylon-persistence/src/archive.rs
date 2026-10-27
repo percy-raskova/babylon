@@ -3,6 +3,7 @@
 use crate::michigan_economy;
 use std::collections::{BTreeMap, BTreeSet};
 
+use minijinja::value::Serde;
 use minijinja::{context, Environment, UndefinedBehavior};
 use postgres::types::FromSqlOwned;
 use postgres::{Config, GenericClient, IsolationLevel, NoTls, Row};
@@ -592,8 +593,12 @@ impl FogSafeArchiveRenderer {
                 verified_tick => verified_tick,
                 tick_content_hash => tick_content_hash,
                 decision_question => emission.question(),
-                signals => signals,
-                links => links,
+                // MiniJinja 3 converts `serde::Serialize` types only through
+                // the explicit `value::Serde` wrapper; the blanket
+                // `From<T: Serialize>` conversion that MiniJinja 2 provided is
+                // gone. The rendered bytes are unchanged.
+                signals => Serde(signals),
+                links => Serde(links),
             })
             .map_err(|_| SemanticArchiveError::Template)?;
         let search_text = emission.search_text(subject);

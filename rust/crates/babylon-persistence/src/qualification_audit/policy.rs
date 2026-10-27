@@ -349,17 +349,36 @@ pub struct GrowthSummary {
     pub windows: Vec<GrowthCheckpoint>,
 }
 
+/// One metric the enforced interim bar accepts above its optimization target.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DebtVerdict {
+    /// Metric whose enforced bar is looser than its target.
+    pub metric: Metric,
+    /// Largest or most relevant observed value.
+    pub observed: u64,
+    /// Enforced interim limit.
+    pub interim_limit: u64,
+    /// Frozen target the debt names.
+    pub target_limit: u64,
+    /// Whether the observed value already met the target.
+    pub met: bool,
+}
+
 /// Full policy verdict for one ladder rung.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Verdict {
-    /// Whether every metric passed.
+    /// Whether every metric passed its enforced bar.
     pub passed: bool,
+    /// Whether every metric also met its frozen optimization target.
+    pub meets_targets: bool,
     /// Ordered metric decisions.
     pub metrics: Vec<MetricVerdict>,
     /// Advance quantiles.
     pub advances: AdvanceSummary,
     /// Positive retained growth.
     pub growth: GrowthSummary,
+    /// Recorded optimization debt the enforced bar accepts.
+    pub optimization_debt: Vec<DebtVerdict>,
 }
 
 /// Exact selected fields of `contracts/national_sqlite_qualification_v1.json`.
@@ -370,6 +389,7 @@ pub struct NationalSqlitePolicy {
     memory_sample_ns: u64,
     maximum_memory_bytes: u64,
     maximum_advance_ns: u64,
+    target_advance_ns: u64,
     maximum_cold_open_ns: u64,
     maximum_warm_query_ns: u64,
     maximum_cold_query_ns: u64,
@@ -384,6 +404,13 @@ pub struct NationalSqlitePolicy {
 }
 
 #[derive(Deserialize)]
+struct ContractDebt {
+    metric: String,
+    interim_limit_nanoseconds: u64,
+    target_limit_nanoseconds: u64,
+}
+
+#[derive(Deserialize)]
 struct NationalContract {
     version: u64,
     name: String,
@@ -392,7 +419,9 @@ struct NationalContract {
     memory_charge_method: String,
     memory_sample_interval_nanoseconds: u64,
     maximum_combined_running_game_memory_bytes: u64,
+    advance_bar: String,
     maximum_advance_nanoseconds: u64,
+    target_maximum_advance_nanoseconds: u64,
     maximum_cold_open_nanoseconds: u64,
     maximum_warm_query_nanoseconds: u64,
     maximum_cold_query_nanoseconds: u64,
@@ -406,6 +435,7 @@ struct NationalContract {
     routine_smoke_periods: u64,
     county_count: u64,
     p95_minimum_samples: u64,
+    optimization_debt: Vec<ContractDebt>,
 }
 
 impl NationalSqlitePolicy {
@@ -417,7 +447,7 @@ impl NationalSqlitePolicy {
     pub fn open(path: &Path, sha256: [u8; 32]) -> Result<Self, Refusal> {
         let contract: NationalContract =
             serde_json::from_slice(&read(path, sha256)?).map_err(|_| Refusal::Fields)?;
-        if contract.version != 1
+        if contract.version != 2
             || contract.name != NATIONAL_SQLITE_CONTRACT
             || contract.evidence_class != "Designed"
             || contract.storage_charge_method != "positive_growth_by_component_and_boundary_v1"
@@ -430,7 +460,16 @@ impl NationalSqlitePolicy {
             || contract.qualification_periods != 325
             || contract.memory_sample_interval_nanoseconds == 0
             || contract.maximum_combined_running_game_memory_bytes == 0
-            || contract.maximum_advance_nanoseconds == 0
+            || contract.advance_bar != "interim"
+            || contract.maximum_advance_nanoseconds != 60_000_000_000
+            || contract.target_maximum_advance_nanoseconds != 30_000_000_000
+            || contract.target_maximum_advance_nanoseconds >= contract.maximum_advance_nanoseconds
+            || !matches!(
+                contract.optimization_debt.as_slice(),
+                [debt] if debt.metric == "advance"
+                    && debt.interim_limit_nanoseconds == contract.maximum_advance_nanoseconds
+                    && debt.target_limit_nanoseconds == contract.target_maximum_advance_nanoseconds
+            )
             || contract.maximum_cold_open_nanoseconds == 0
             || contract.maximum_warm_query_nanoseconds == 0
             || contract.maximum_cold_query_nanoseconds == 0
@@ -463,6 +502,7 @@ impl NationalSqlitePolicy {
             memory_sample_ns: contract.memory_sample_interval_nanoseconds,
             maximum_memory_bytes: contract.maximum_combined_running_game_memory_bytes,
             maximum_advance_ns: contract.maximum_advance_nanoseconds,
+            target_advance_ns: contract.target_maximum_advance_nanoseconds,
             maximum_cold_open_ns: contract.maximum_cold_open_nanoseconds,
             maximum_warm_query_ns: contract.maximum_warm_query_nanoseconds,
             maximum_cold_query_ns: contract.maximum_cold_query_nanoseconds,
@@ -493,6 +533,12 @@ impl NationalSqlitePolicy {
     #[must_use]
     pub const fn maximum_advance_ns(&self) -> u64 {
         self.maximum_advance_ns
+    }
+
+    /// Return the frozen optimization target the interim advance bar still owes.
+    #[must_use]
+    pub const fn target_advance_ns(&self) -> u64 {
+        self.target_advance_ns
     }
 
     /// Return the frozen minimum sample count for an empirical p95 claim.
@@ -621,7 +667,12 @@ impl NationalSqlitePolicy {
             !advance_over,
             advances.max_ns,
             self.maximum_advance_ns,
-            &quantile_detail(&advances, advances.over_limit_periods.len()),
+            &quantile_detail(
+                &advances,
+                advances.over_limit_periods.len(),
+                self.maximum_advance_ns,
+                self.target_advance_ns,
+            ),
         ));
         metrics.push(metric(
             Metric::ColdOpen,
@@ -720,11 +771,21 @@ impl NationalSqlitePolicy {
             "scoped reads and briefings visit no state chunk",
         ));
         let passed = metrics.iter().all(|decision| decision.passed);
+        let advance_meets_target = advances.max_ns <= self.target_advance_ns;
+        let optimization_debt = vec![DebtVerdict {
+            metric: Metric::Advance,
+            observed: advances.max_ns,
+            interim_limit: self.maximum_advance_ns,
+            target_limit: self.target_advance_ns,
+            met: advance_meets_target,
+        }];
         Ok(Verdict {
             passed,
+            meets_targets: passed && advance_meets_target,
             metrics,
             advances,
             growth,
+            optimization_debt,
         })
     }
 
@@ -945,16 +1006,27 @@ fn metric(metric: Metric, passed: bool, observed: u64, limit: u64, detail: &str)
     }
 }
 
-fn quantile_detail(summary: &AdvanceSummary, over_periods: usize) -> String {
+fn quantile_detail(
+    summary: &AdvanceSummary,
+    over_periods: usize,
+    interim_ns: u64,
+    target_ns: u64,
+) -> String {
     format!(
-        "samples={} median_ns={} p95_ns={} max_ns={} over_periods={over_periods}",
-        summary.samples, summary.median_ns, summary.p95_ns, summary.max_ns
+        "samples={} median_ns={} p95_ns={} max_ns={} over_periods={over_periods} \
+         bar=interim interim_ns={interim_ns} target_ns={target_ns} meets_target={}",
+        summary.samples,
+        summary.median_ns,
+        summary.p95_ns,
+        summary.max_ns,
+        summary.max_ns <= target_ns
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
     use sha2::{Digest, Sha256};
     use std::fs;
     use std::path::PathBuf;
@@ -1029,5 +1101,65 @@ mod tests {
                 .expect("the fixture call `canonical_digest` succeeds for the authored inputs"),
             [0xab; 32]
         );
+    }
+
+    struct ContractFixture(PathBuf);
+    impl ContractFixture {
+        fn authored(edit: impl FnOnce(&mut Value)) -> Self {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let mut contract: Value = serde_json::from_slice(include_bytes!(
+                "../../../../../contracts/national_sqlite_qualification_v1.json"
+            ))
+            .expect("the authored contract is JSON");
+            edit(&mut contract);
+            let path = std::env::temp_dir().join(format!(
+                "babylon-national-contract-{}-{}.json",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::write(
+                &path,
+                serde_json::to_vec(&contract).expect("the edited contract serializes"),
+            )
+            .expect("the fixture sink accepts the edited bytes");
+            Self(path)
+        }
+        fn digest(&self) -> [u8; 32] {
+            Sha256::digest(fs::read(&self.0).expect("the fixture reader returns its bytes")).into()
+        }
+    }
+    impl Drop for ContractFixture {
+        fn drop(&mut self) {
+            fs::remove_file(&self.0).expect("the fixture file exists before removal");
+        }
+    }
+
+    #[test]
+    fn interim_advance_bar_requires_its_exact_target_debt() {
+        let accepted = ContractFixture::authored(|_| {});
+        assert!(NationalSqlitePolicy::open(&accepted.0, accepted.digest()).is_ok());
+        let edits: [fn(&mut Value); 5] = [
+            |contract| {
+                contract["maximum_advance_nanoseconds"] = serde_json::json!(30_000_000_000_u64);
+            },
+            |contract| {
+                contract["target_maximum_advance_nanoseconds"] =
+                    serde_json::json!(40_000_000_000_u64);
+            },
+            |contract| contract["advance_bar"] = serde_json::json!("target"),
+            |contract| contract["optimization_debt"] = serde_json::json!([]),
+            |contract| {
+                contract["optimization_debt"][0]["target_limit_nanoseconds"] =
+                    serde_json::json!(20_000_000_000_u64);
+            },
+        ];
+        for edit in edits {
+            let refused = ContractFixture::authored(edit);
+            assert_eq!(
+                NationalSqlitePolicy::open(&refused.0, refused.digest()),
+                Err(Refusal::Fields)
+            );
+        }
     }
 }

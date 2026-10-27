@@ -104,15 +104,15 @@ fn metric(
 }
 
 #[test]
-fn ordinary_turn_over_thirty_seconds_fails_even_when_p95_passes() {
+fn ordinary_turn_over_the_interim_bar_fails_even_when_p95_passes() {
     let policy = qualification_policy();
     let mut run = passing_run(52);
-    run.advances[6] = advance(7, 31 * SECOND_NS, 0);
+    run.advances[6] = advance(7, 61 * SECOND_NS, 0);
     let verdict = policy
         .evaluate(&run, 52)
         .expect("the fixture evaluation succeeds");
-    assert!(verdict.advances.p95_ns <= 30 * SECOND_NS);
-    assert_eq!(verdict.advances.max_ns, 31 * SECOND_NS);
+    assert!(verdict.advances.p95_ns <= 60 * SECOND_NS);
+    assert_eq!(verdict.advances.max_ns, 61 * SECOND_NS);
     assert_eq!(verdict.advances.over_limit_periods, vec![7]);
     assert!(!verdict.passed);
     let decision = verdict
@@ -199,9 +199,62 @@ fn every_frozen_boundary_passes_at_equality() {
 }
 
 #[test]
+fn interim_bar_accepts_forty_second_advances_and_records_the_thirty_second_target() {
+    let policy = qualification_policy();
+    let mut run = passing_run(52);
+    run.advances = (1..=52)
+        .map(|period| advance(period, 41 * SECOND_NS, 0))
+        .collect();
+    let verdict = policy
+        .evaluate(&run, 52)
+        .expect("the fixture evaluation succeeds");
+    assert!(verdict.passed, "{:?}", verdict.metrics);
+    assert_eq!(verdict.advances.max_ns, 41 * SECOND_NS);
+    assert!(verdict.advances.max_ns > policy.target_advance_ns());
+    assert!(!verdict.meets_targets);
+    let debt = verdict
+        .optimization_debt
+        .first()
+        .expect("the interim bar records its advance debt");
+    assert_eq!(debt.metric, Metric::Advance);
+    assert_eq!(debt.observed, 41 * SECOND_NS);
+    assert_eq!(debt.interim_limit, 60 * SECOND_NS);
+    assert_eq!(debt.target_limit, 30 * SECOND_NS);
+    assert!(!debt.met);
+}
+
+#[test]
+fn advance_above_the_interim_bar_still_fails() {
+    let policy = qualification_policy();
+    let mut run = passing_run(52);
+    run.advances[10] = advance(11, 60 * SECOND_NS, 0);
+    assert!(metric(&policy, &run, 52, Metric::Advance));
+    run.advances[10] = advance(11, 60 * SECOND_NS + 1, 0);
+    let verdict = policy
+        .evaluate(&run, 52)
+        .expect("the fixture evaluation succeeds");
+    assert_eq!(verdict.advances.over_limit_periods, vec![11]);
+    assert!(!verdict.passed);
+    assert!(!metric(&policy, &run, 52, Metric::Advance));
+    assert!(!verdict.meets_targets);
+}
+
+#[test]
+fn advancing_inside_the_thirty_second_target_clears_the_debt() {
+    let policy = qualification_policy();
+    let verdict = policy
+        .evaluate(&passing_run(52), 52)
+        .expect("the fixture evaluation succeeds");
+    assert!(verdict.passed);
+    assert!(verdict.meets_targets);
+    assert!(verdict.optimization_debt.iter().all(|debt| debt.met));
+}
+
+#[test]
 fn contract_freezes_the_chapter_nine_limits() {
     let policy = qualification_policy();
-    assert_eq!(policy.maximum_advance_ns(), 30 * SECOND_NS);
+    assert_eq!(policy.maximum_advance_ns(), 60 * SECOND_NS);
+    assert_eq!(policy.target_advance_ns(), 30 * SECOND_NS);
     assert_eq!(policy.maximum_cold_open_ns(), 30 * SECOND_NS);
     assert_eq!(policy.maximum_warm_query_ns(), SECOND_NS);
     assert_eq!(policy.maximum_cold_query_ns(), 2 * SECOND_NS);

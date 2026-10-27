@@ -77,18 +77,27 @@ def test_ladder_runs_the_frozen_uncapped_sequence() -> None:
     assert dict(runner.LADDER) == {"smoke": 2, "window": 52, "aging": 325}
 
 
-def test_contract_matches_chapter_nine_limits() -> None:
+def test_contract_records_the_interim_advance_bar_and_its_target_debt() -> None:
     contract = json.loads(
         (
             Path(__file__).resolve().parents[3] / "contracts/national_sqlite_qualification_v1.json"
         ).read_text(encoding="utf-8")
     )
-    assert contract["version"] == 1
+    assert contract["version"] == 2
     assert contract["name"] == "national_sqlite_qualification_v1"
     assert contract["storage_charge_method"] == ("positive_growth_by_component_and_boundary_v1")
     assert contract["maximum_combined_running_game_memory_bytes"] == 4_000_000_000
     assert contract["memory_sample_interval_nanoseconds"] == 250_000_000
-    assert contract["maximum_advance_nanoseconds"] == 30_000_000_000
+    assert contract["advance_bar"] == "interim"
+    assert contract["maximum_advance_nanoseconds"] == 60_000_000_000
+    assert contract["target_maximum_advance_nanoseconds"] == 30_000_000_000
+    assert contract["optimization_debt"] == [
+        {
+            "metric": "advance",
+            "interim_limit_nanoseconds": 60_000_000_000,
+            "target_limit_nanoseconds": 30_000_000_000,
+        }
+    ]
     assert contract["maximum_cold_open_nanoseconds"] == 30_000_000_000
     assert contract["maximum_warm_query_nanoseconds"] == 1_000_000_000
     assert contract["maximum_cold_query_nanoseconds"] == 2_000_000_000

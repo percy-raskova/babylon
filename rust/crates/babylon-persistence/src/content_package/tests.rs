@@ -629,6 +629,7 @@ fn prepared_material_close(
         journal: Vec::new(),
         knowledge: Vec::new(),
         detail: Vec::new(),
+        tick_identity: None,
     }
 }
 

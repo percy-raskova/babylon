@@ -166,4 +166,35 @@ ADR287_embedded_sqlite_campaign_owner_and_compact_state:
     inputs are refused with a specific error. Pinned reference artifacts remain
     readable as immutable inputs. Historical decisions and measured reports
     remain unchanged.
+  amendment_al_notes:
+    - date: '2026-10-27'
+      issue: PER-354
+      packet: P9a-1
+      requirement: >-
+        R7. PERIOD TICK IDENTITY AND RESTORE DECODERS. The compact period summary
+        keeps carrying the identity of the period it closes. Under the unchanged
+        nine-table container its payload becomes babylon.period-summary.v2 and
+        appends three fields after the v1 body: one presence byte, the exact
+        fixed-width IdentifiedMaterialTick bytes, and that identity's
+        tick_content_hash. A profile without material mechanics records an
+        explicit absence and an all-zero hash. A v1 payload is refused, not
+        reinterpreted. The canonical StableGraphState and MaterialStateRows
+        decoders are strict inverses of their encoders: a decoded frame must
+        re-encode to the exact input bytes, with the same bounds, ordering
+        rules, numeric domains, and refusals as the encoder. Cold restore reads
+        the current root's graph, semantic material and restart sections plus the
+        period summary instead of re-executing the period.
+      preserved_bytes: >-
+        The candidate identity, journal chain, knowledge chain, snapshot
+        manifest, chunk framing, and every other ratified canonical byte contract
+        stay byte-identical. Only the versioned period-summary payload grows.
+      verification: |
+        - A persisted period summary decodes to the exact identity it recorded,
+          and a v1 payload is refused with a specific error.
+        - A decoded graph state and material row set re-encode to the exact stored
+          section bytes.
+        - A cold reopen restores a live replay session from store bytes and
+          reproduces the committed world hash.
+        - Every committed period's identity is readable from its summary without
+          re-execution, and its recorded content hash authenticates its bytes.
   source_record: docs/architecture-reset/09-acceptance-and-governance.md

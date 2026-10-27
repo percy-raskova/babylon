@@ -36,7 +36,8 @@ use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
 const TICK_DOMAIN: &[u8] = b"babylon.material-tick-content.v3\0";
-const TICK_IDENTITY_BYTES: usize = TICK_DOMAIN.len() + 12 + 7 * 32;
+/// Exact fixed width of one canonical [`IdentifiedMaterialTick`] frame.
+pub const TICK_IDENTITY_BYTES: usize = TICK_DOMAIN.len() + 12 + 7 * 32;
 
 /// Typed refusal inside the detached material-base composition.
 #[derive(Debug, Clone, PartialEq, Eq)]

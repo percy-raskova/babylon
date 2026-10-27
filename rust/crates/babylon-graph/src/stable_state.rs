@@ -248,6 +248,231 @@ pub fn compose_stable_graph_state_from_rows(
     })
 }
 
+impl StableGraphState {
+    /// Decode one exact canonical stable graph-state frame.
+    ///
+    /// This is the strict inverse of [`encode_stable_graph_state`] and
+    /// [`compose_stable_graph_state_from_rows`]: the decoded rows re-encode to
+    /// the exact input bytes, and every frame the encoder could not produce is
+    /// refused rather than normalized.
+    ///
+    /// # Errors
+    /// Returns the first framing, scenario, numeric, ordering, bound,
+    /// arithmetic, or allocation refusal.
+    pub fn decode(bytes: &[u8]) -> Result<Self, StableIdentityError> {
+        let mut cursor = GraphStateCursor { bytes, position: 0 };
+        if cursor.take(STABLE_GRAPH_DOMAIN.len())? != STABLE_GRAPH_DOMAIN {
+            return Err(canonical_refusal("stable graph domain"));
+        }
+        if cursor.byte()? != 0 {
+            return Err(canonical_refusal("stable graph header flag"));
+        }
+        if cursor.u32()? != STABLE_GRAPH_STATE_LAYOUT_VERSION {
+            return Err(canonical_refusal("stable graph layout version"));
+        }
+        if cursor.byte()? != 0x01 {
+            return Err(canonical_refusal("stable graph scenario tag"));
+        }
+        let scenario = cursor.string("stable graph scenario")?;
+        let input = decode_state_rows(&mut cursor)?;
+        if cursor.position != bytes.len() {
+            return Err(canonical_refusal("stable graph trailing bytes"));
+        }
+        let state = compose_stable_graph_state_from_rows(&scenario, input)?;
+        if state.canonical_bytes.as_slice() != bytes {
+            return Err(canonical_refusal("stable graph canonical order"));
+        }
+        Ok(state)
+    }
+}
+
+fn decode_state_rows(
+    cursor: &mut GraphStateCursor<'_>,
+) -> Result<StableGraphStateRowsInput, StableIdentityError> {
+    let nodes = cursor.section("nodes", 0x02, MAX_STABLE_GRAPH_NODES, |cursor| {
+        Ok((
+            cursor.string("stable node name")?,
+            cursor.string("stable node type")?,
+        ))
+    })?;
+    let node_f64 = cursor.section(
+        "node f64 attributes",
+        0x03,
+        MAX_STABLE_GRAPH_ATTRIBUTES,
+        |cursor| {
+            Ok((
+                cursor.string("stable node name")?,
+                cursor.string("stable node attribute")?,
+                cursor.u64()?,
+            ))
+        },
+    )?;
+    let edges = cursor.section("edges", 0x04, MAX_STABLE_GRAPH_ELEMENTS, |cursor| {
+        Ok((
+            cursor.string("stable edge type")?,
+            cursor.string("stable edge source")?,
+            cursor.string("stable edge target")?,
+            cursor.u64()?,
+        ))
+    })?;
+    let hyperedges = cursor.section("hyperedges", 0x05, MAX_STABLE_GRAPH_ELEMENTS, |cursor| {
+        let local_name = cursor.string("stable hyperedge name")?;
+        let hyperedge_type = cursor.string("stable hyperedge type")?;
+        let members = cursor.section_rows(
+            "hyperedge members",
+            MAX_STABLE_GRAPH_HYPEREDGE_MEMBERS,
+            |cursor| cursor.string("stable hyperedge member"),
+        )?;
+        Ok((local_name, hyperedge_type, members))
+    })?;
+    let edge_f64 = cursor.section(
+        "edge f64 attributes",
+        0x06,
+        MAX_STABLE_GRAPH_ATTRIBUTES,
+        |cursor| {
+            Ok((
+                cursor.string("stable edge type")?,
+                cursor.string("stable edge source")?,
+                cursor.string("stable edge target")?,
+                cursor.string("stable edge attribute")?,
+                cursor.u64()?,
+            ))
+        },
+    )?;
+    let node_currency = cursor.section(
+        "node Currency attributes",
+        0x07,
+        MAX_STABLE_GRAPH_ATTRIBUTES,
+        |cursor| {
+            Ok((
+                cursor.string("stable node name")?,
+                cursor.string("stable Currency attribute")?,
+                cursor.i128()?,
+            ))
+        },
+    )?;
+    let hyperedge_f64 = cursor.section(
+        "hyperedge f64 attributes",
+        0x08,
+        MAX_STABLE_GRAPH_ATTRIBUTES,
+        |cursor| {
+            Ok((
+                cursor.string("stable hyperedge name")?,
+                cursor.string("stable hyperedge attribute")?,
+                cursor.u64()?,
+            ))
+        },
+    )?;
+    Ok(StableGraphStateRowsInput {
+        nodes,
+        node_f64,
+        edges,
+        hyperedges,
+        edge_f64,
+        node_currency,
+        hyperedge_f64,
+    })
+}
+
+fn canonical_refusal(field: &'static str) -> StableIdentityError {
+    StableIdentityError::CanonicalBytes { field }
+}
+
+struct GraphStateCursor<'a> {
+    bytes: &'a [u8],
+    position: usize,
+}
+
+impl GraphStateCursor<'_> {
+    fn take(&mut self, count: usize) -> Result<&[u8], StableIdentityError> {
+        let end =
+            self.position
+                .checked_add(count)
+                .ok_or(StableIdentityError::CapacityOverflow {
+                    field: "stable graph offset",
+                })?;
+        let slice = self
+            .bytes
+            .get(self.position..end)
+            .ok_or_else(|| canonical_refusal("stable graph truncated"))?;
+        self.position = end;
+        Ok(slice)
+    }
+
+    fn byte(&mut self) -> Result<u8, StableIdentityError> {
+        let mut value = [0_u8; 1];
+        value.copy_from_slice(self.take(1)?);
+        Ok(value[0])
+    }
+
+    fn u32(&mut self) -> Result<u32, StableIdentityError> {
+        let mut value = [0_u8; 4];
+        value.copy_from_slice(self.take(4)?);
+        Ok(u32::from_be_bytes(value))
+    }
+
+    fn u64(&mut self) -> Result<u64, StableIdentityError> {
+        let mut value = [0_u8; 8];
+        value.copy_from_slice(self.take(8)?);
+        Ok(u64::from_be_bytes(value))
+    }
+
+    fn i128(&mut self) -> Result<i128, StableIdentityError> {
+        let mut value = [0_u8; 16];
+        value.copy_from_slice(self.take(16)?);
+        Ok(i128::from_be_bytes(value))
+    }
+
+    fn string(&mut self, field: &'static str) -> Result<String, StableIdentityError> {
+        let length = usize::try_from(self.u32()?).map_or(usize::MAX, |value| value);
+        let text = std::str::from_utf8(self.take(length)?).map_err(|_| canonical_refusal(field))?;
+        copy_stable_string(field, text)
+    }
+
+    fn section<T, F>(
+        &mut self,
+        section: &'static str,
+        tag: u8,
+        maximum: usize,
+        row: F,
+    ) -> Result<Vec<T>, StableIdentityError>
+    where
+        F: Fn(&mut Self) -> Result<T, StableIdentityError>,
+    {
+        if self.byte()? != tag {
+            return Err(canonical_refusal("stable graph section tag"));
+        }
+        self.section_rows(section, maximum, row)
+    }
+
+    fn section_rows<T, F>(
+        &mut self,
+        section: &'static str,
+        maximum: usize,
+        row: F,
+    ) -> Result<Vec<T>, StableIdentityError>
+    where
+        F: Fn(&mut Self) -> Result<T, StableIdentityError>,
+    {
+        let actual = usize::try_from(self.u32()?).map_or(usize::MAX, |value| value);
+        if actual > maximum {
+            return Err(StableIdentityError::StateSectionLimit {
+                section,
+                actual,
+                maximum,
+            });
+        }
+        if actual > self.bytes.len() {
+            return Err(canonical_refusal("stable graph section count"));
+        }
+        let mut rows = reserve_rows(section, actual)?;
+        for _ in 0..actual {
+            rows.push(row(self)?);
+        }
+        Ok(rows)
+    }
+}
+
 fn copy_stable_string(field: &'static str, source: &str) -> Result<String, StableIdentityError> {
     let mut output = String::new();
     output
@@ -989,6 +1214,107 @@ mod tests {
         assert_eq!(
             super::finite_bits(f64::INFINITY, "test"),
             Err(StableIdentityError::NonFiniteValue { section: "test" })
+        );
+    }
+
+    fn authored_state() -> crate::stable_state::StableGraphState {
+        use crate::stable_state::{
+            compose_stable_graph_state_from_rows, StableGraphStateRowsInput,
+        };
+        compose_stable_graph_state_from_rows(
+            "test/stable-state",
+            StableGraphStateRowsInput {
+                nodes: vec![
+                    ("node-a".to_owned(), "NodeType/TERRITORY".to_owned()),
+                    ("node-b".to_owned(), "NodeType/ORGANIZATION".to_owned()),
+                ],
+                node_f64: vec![(
+                    "node-a".to_owned(),
+                    "social-class/probability".to_owned(),
+                    0.5_f64.to_bits(),
+                )],
+                edges: vec![(
+                    "PRESENCE".to_owned(),
+                    "node-b".to_owned(),
+                    "node-a".to_owned(),
+                    1.0_f64.to_bits(),
+                )],
+                hyperedges: vec![(
+                    "hyperedge-a".to_owned(),
+                    "HyperedgeType/MARKET".to_owned(),
+                    vec!["node-b".to_owned(), "node-a".to_owned()],
+                )],
+                edge_f64: vec![(
+                    "PRESENCE".to_owned(),
+                    "node-b".to_owned(),
+                    "node-a".to_owned(),
+                    "business/probability".to_owned(),
+                    0.25_f64.to_bits(),
+                )],
+                node_currency: vec![(
+                    "node-b".to_owned(),
+                    "business/revenue".to_owned(),
+                    i128::from(42_i64),
+                )],
+                hyperedge_f64: vec![(
+                    "hyperedge-a".to_owned(),
+                    "market/probability".to_owned(),
+                    0.75_f64.to_bits(),
+                )],
+            },
+        )
+        .expect("the authored rows compose one canonical state")
+    }
+
+    #[test]
+    fn stable_graph_decoder_is_the_exact_inverse_of_the_encoder() {
+        let state = authored_state();
+        let decoded = super::StableGraphState::decode(state.canonical_bytes())
+            .expect("every canonical graph state decodes");
+        assert_eq!(decoded, state, "the decoder returns the encoded state");
+        assert_eq!(
+            decoded.canonical_bytes(),
+            state.canonical_bytes(),
+            "the decoded state preserves the exact canonical bytes"
+        );
+        assert_eq!(
+            decoded.digest(),
+            state.digest(),
+            "the decoded state preserves its identity digest"
+        );
+    }
+
+    #[test]
+    fn stable_graph_decoder_refuses_wrong_header_trailing_and_unsorted_bytes() {
+        let state = authored_state();
+        let bytes = state.canonical_bytes();
+        let mut wrong_domain = bytes.to_vec();
+        wrong_domain[0] ^= 0xff;
+        assert_eq!(
+            super::StableGraphState::decode(&wrong_domain),
+            Err(StableIdentityError::CanonicalBytes {
+                field: "stable graph domain"
+            })
+        );
+        let mut trailing = bytes.to_vec();
+        trailing.push(0);
+        assert_eq!(
+            super::StableGraphState::decode(&trailing),
+            Err(StableIdentityError::CanonicalBytes {
+                field: "stable graph trailing bytes"
+            })
+        );
+        let mut unsorted = bytes.to_vec();
+        let position = unsorted
+            .windows(9)
+            .position(|window| window == b"node-a\0\0\0")
+            .expect("the fixture encodes its first node name once");
+        unsorted[position] = b'z';
+        assert_eq!(
+            super::StableGraphState::decode(&unsorted),
+            Err(StableIdentityError::CanonicalBytes {
+                field: "stable graph canonical order"
+            })
         );
     }
 }

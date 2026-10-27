@@ -225,6 +225,11 @@ pub enum SaveError {
         /// Requested period.
         requested: u64,
     },
+    /// A requested period has no committed summary record.
+    PeriodSummaryMissing {
+        /// Requested period.
+        period: u64,
+    },
     /// No earned grant discloses the requested subject at that period.
     UndisclosedSubject,
     /// The export destination already exists and is never overwritten.
@@ -388,6 +393,9 @@ impl std::fmt::Display for SaveError {
                 formatter,
                 "period {requested} is beyond the committed period {current}"
             ),
+            Self::PeriodSummaryMissing { period } => {
+                write!(formatter, "period {period} has no committed summary record")
+            }
             Self::UndisclosedSubject => {
                 write!(
                     formatter,

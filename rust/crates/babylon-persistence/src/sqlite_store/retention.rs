@@ -17,6 +17,8 @@
 
 use std::path::Path;
 
+use babylon_tick::material_replay::IdentifiedMaterialTick;
+use babylon_tick::material_replay::TICK_IDENTITY_BYTES;
 use rusqlite::Connection;
 use rusqlite::Error;
 
@@ -36,10 +38,11 @@ pub const RETAINED_CHECKPOINTS: usize = 2;
 pub const INCREMENTAL_VACUUM_PAGES: i64 = 128;
 
 /// Domain separator for the compact period summary payload.
-const SUMMARY_DOMAIN: &[u8] = b"babylon.period-summary.v1\0";
+const SUMMARY_DOMAIN: &[u8] = b"babylon.period-summary.v2\0";
 
 /// Exact byte width of one encoded period summary body.
-const SUMMARY_BODY_BYTES: usize = 8 + 32 + 32 + 32 + 8 + 32 + 8 + 32 + 4 + 4;
+const SUMMARY_BODY_BYTES: usize =
+    8 + 32 + 32 + 32 + 8 + 32 + 8 + 32 + 4 + 4 + 1 + TICK_IDENTITY_BYTES + 32;
 
 /// Whether one completed period installs a retained historical checkpoint.
 #[must_use]
@@ -114,6 +117,9 @@ pub struct PeriodSummary {
     pub detail_rows: u32,
     /// Caller evidence records written before the summary.
     pub evidence_records: u32,
+    /// Exact material tick identity the period committed, when its profile owns
+    /// material mechanics. An authored-graph profile records none.
+    pub tick_identity: Option<IdentifiedMaterialTick>,
 }
 
 impl PeriodSummary {
@@ -132,6 +138,15 @@ impl PeriodSummary {
         bytes.extend_from_slice(&self.knowledge_tail_hash);
         bytes.extend_from_slice(&self.detail_rows.to_be_bytes());
         bytes.extend_from_slice(&self.evidence_records.to_be_bytes());
+        if let Some(identity) = &self.tick_identity {
+            bytes.push(1);
+            bytes.extend_from_slice(identity.canonical_bytes());
+            bytes.extend_from_slice(identity.tick_content_hash().as_bytes());
+        } else {
+            bytes.push(0);
+            bytes.resize(bytes.len() + TICK_IDENTITY_BYTES, 0);
+            bytes.extend_from_slice(&[0; 32]);
+        }
         bytes
     }
 }
@@ -140,7 +155,10 @@ impl PeriodSummary {
 ///
 /// # Errors
 ///
-/// Refuses a payload without the exact summary domain and width.
+/// Refuses a payload without the exact summary domain and width, a malformed
+/// identity presence flag, an identity that does not decode, an identity that
+/// names another period, or a recorded content hash that disagrees with the
+/// identity bytes. A superseded `v1` payload is not reinterpreted.
 pub fn decode_period_summary(payload: &[u8]) -> Result<PeriodSummary, SaveError> {
     if payload.len() != SUMMARY_DOMAIN.len() + SUMMARY_BODY_BYTES
         || !payload.starts_with(SUMMARY_DOMAIN)
@@ -154,17 +172,29 @@ pub fn decode_period_summary(payload: &[u8]) -> Result<PeriodSummary, SaveError>
         bytes: &payload[SUMMARY_DOMAIN.len()..],
         offset: 0,
     };
+    let period = reader.u64()?;
+    let candidate_hash = reader.hash()?;
+    let world_hash = reader.hash()?;
+    let state_hash = reader.hash()?;
+    let prior_journal_seq = reader.u64()?;
+    let prior_journal_hash = reader.hash()?;
+    let knowledge_tail_seq = reader.u64()?;
+    let knowledge_tail_hash = reader.hash()?;
+    let detail_rows = reader.u32()?;
+    let evidence_records = reader.u32()?;
+    let tick_identity = reader.tick_identity(period)?;
     Ok(PeriodSummary {
-        period: reader.u64()?,
-        candidate_hash: reader.hash()?,
-        world_hash: reader.hash()?,
-        state_hash: reader.hash()?,
-        prior_journal_seq: reader.u64()?,
-        prior_journal_hash: reader.hash()?,
-        knowledge_tail_seq: reader.u64()?,
-        knowledge_tail_hash: reader.hash()?,
-        detail_rows: reader.u32()?,
-        evidence_records: reader.u32()?,
+        period,
+        candidate_hash,
+        world_hash,
+        state_hash,
+        prior_journal_seq,
+        prior_journal_hash,
+        knowledge_tail_seq,
+        knowledge_tail_hash,
+        detail_rows,
+        evidence_records,
+        tick_identity,
     })
 }
 
@@ -208,6 +238,51 @@ impl SummaryReader<'_> {
         let mut value = [0_u8; 32];
         value.copy_from_slice(self.take(32)?);
         Ok(value)
+    }
+
+    fn tick_identity(&mut self, period: u64) -> Result<Option<IdentifiedMaterialTick>, SaveError> {
+        let present = self.take(1)?[0];
+        let mut identity_bytes = [0_u8; TICK_IDENTITY_BYTES];
+        identity_bytes.copy_from_slice(self.take(TICK_IDENTITY_BYTES)?);
+        let recorded_hash = self.hash()?;
+        match present {
+            0 => {
+                if identity_bytes.iter().any(|byte| *byte != 0)
+                    || recorded_hash.iter().any(|byte| *byte != 0)
+                {
+                    return Err(SaveError::CorruptPayload {
+                        table: "permanent_journal",
+                        reason: "an absent period tick identity carries bytes",
+                    });
+                }
+                Ok(None)
+            }
+            1 => {
+                let identity = IdentifiedMaterialTick::decode(&identity_bytes).map_err(|_| {
+                    SaveError::CorruptPayload {
+                        table: "permanent_journal",
+                        reason: "the period tick identity does not decode",
+                    }
+                })?;
+                if identity.resolve_tick() != period {
+                    return Err(SaveError::CorruptPayload {
+                        table: "permanent_journal",
+                        reason: "the period tick identity names another period",
+                    });
+                }
+                if identity.tick_content_hash().as_bytes() != &recorded_hash {
+                    return Err(SaveError::CorruptPayload {
+                        table: "permanent_journal",
+                        reason: "the recorded period tick content hash disagrees with its bytes",
+                    });
+                }
+                Ok(Some(identity))
+            }
+            _ => Err(SaveError::CorruptPayload {
+                table: "permanent_journal",
+                reason: "the period tick identity presence flag is not boolean",
+            }),
+        }
     }
 }
 

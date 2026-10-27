@@ -444,6 +444,7 @@ pub fn run_national(
             journal,
             knowledge,
             detail: Vec::new(),
+            tick_identity: Some(*prepared.identity()),
         };
         let encoding_ns = elapsed_ns(encoding_started)?;
         let mut committed: Option<CommittedPeriod> = None;
@@ -1714,5 +1715,214 @@ mod tests {
         assert_eq!(registers.prior_decoded_bytes, 4);
         assert_eq!(charge.stored_added_bytes, registers.stored_bytes);
         assert_eq!(charge.decoded_added_bytes, 600);
+    }
+
+    /// Split one restart package into its three exact parts and chain.
+    fn restart_parts(bytes: &[u8]) -> (&[u8], &[u8], &[u8], [u8; 32]) {
+        let mut cursor = 0_usize;
+        assert_eq!(
+            bytes.get(..RESTART_DOMAIN.len()),
+            Some(RESTART_DOMAIN),
+            "the restart package carries its domain"
+        );
+        cursor += RESTART_DOMAIN.len();
+        let part = |cursor: &mut usize| {
+            let length_bytes: [u8; 8] = bytes
+                .get(*cursor..*cursor + 8)
+                .expect("the restart package frames each part")
+                .try_into()
+                .expect("the part length is eight bytes");
+            *cursor += 8;
+            let length = usize::try_from(u64::from_be_bytes(length_bytes))
+                .expect("the part length fits the host");
+            let slice = bytes
+                .get(*cursor..*cursor + length)
+                .expect("the restart part is present");
+            *cursor += length;
+            slice
+        };
+        let state = part(&mut cursor);
+        let receipts = part(&mut cursor);
+        let lookup = part(&mut cursor);
+        let chain: [u8; 32] = bytes
+            .get(cursor..cursor + 32)
+            .expect("the restart package ends with one chain")
+            .try_into()
+            .expect("the chain is thirty-two bytes");
+        cursor += 32;
+        assert_eq!(
+            cursor,
+            bytes.len(),
+            "the restart package carries no trailing bytes"
+        );
+        (state, receipts, lookup, chain)
+    }
+
+    use crate::material_storage::LookupAnchor;
+    use crate::material_storage::OpeningRegister;
+    use babylon_tick::material_world::MaterialWorldRegister;
+
+    type NationalSession = MaterialReplaySession<HypergraphStore>;
+
+    /// Rebuild the admitted foundation and its opening lookup authority.
+    fn admitted_national_session() -> (NationalSession, OpeningRegister) {
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(CAMPAIGN_UUID));
+        let captured = CapturedEconomicCatalog::capture_national_campaign(
+            crate::economic_catalog::national_catalog_input(),
+            campaign,
+        )
+        .expect("the national catalog captures deterministically");
+        let foundation = captured
+            .create_foundation(
+                ReplaySessionId::try_from(SESSION_ID).expect("the session identity is valid"),
+                ReplaySeed::new(REPLAY_SEED),
+            )
+            .expect("the same admitted foundation is reproducible");
+        let opening_bytes = foundation.initial_register().canonical_bytes().to_vec();
+        let session = foundation
+            .into_session()
+            .expect("the admitted foundation opens one fresh session");
+        let opening = crate::material_storage::seed(session.catalog(), &opening_bytes)
+            .expect("the captured opening seeds the lookup authority");
+        (session, opening)
+    }
+
+    /// Decode the current root's material restart package into its register.
+    fn stored_material_register(
+        handle: &CampaignHandle,
+        session: &NationalSession,
+        opening: &OpeningRegister,
+        period: u64,
+    ) -> MaterialWorldRegister {
+        let restart = handle
+            .read_section_bytes(ChunkSection::WorldRegisters)
+            .expect("the current root carries the restart package");
+        let (state_package, receipt_package, lookup_delta, chain) = restart_parts(&restart);
+        let period_lookup = crate::material_storage::read_period_lookup(
+            opening,
+            period,
+            lookup_delta,
+            LookupAnchor::Current(chain),
+        )
+        .expect("the period lookup authenticates against its opening");
+        let (register_bytes, _receipts) = crate::material_storage::decode(
+            session.catalog(),
+            opening,
+            period,
+            state_package,
+            receipt_package,
+            &period_lookup.lookup,
+            period_lookup.chain,
+        )
+        .expect("the material restart package decodes into one canonical register");
+        MaterialWorldRegister::decode_external(session.catalog(), register_bytes)
+            .expect("the decoded register bytes are one canonical material world")
+    }
+
+    /// Assert every committed period's identity is readable and chain-linked.
+    fn assert_recorded_period_identities(handle: &CampaignHandle, period: u64) {
+        let mut prior_world: Option<[u8; 32]> = None;
+        for completed in 1..=period {
+            let identity = handle
+                .period_tick_identity(completed)
+                .expect("every committed period records a summary")
+                .expect("a material campaign records one tick identity per period");
+            assert_eq!(
+                identity.resolve_tick(),
+                completed,
+                "the recorded identity names its own period"
+            );
+            assert_eq!(
+                identity.tick_content_hash().as_bytes(),
+                &content_digest::sha256_of(identity.canonical_bytes()),
+                "the recorded content hash authenticates the persisted identity bytes"
+            );
+            if let Some(previous) = prior_world {
+                assert_eq!(
+                    identity.prior_world_hash(),
+                    previous,
+                    "the per-period identity chain links consecutive periods"
+                );
+            }
+            prior_world = Some(identity.result_world_hash());
+        }
+        assert_eq!(
+            prior_world.expect("the run committed at least one period"),
+            handle.current().world_hash,
+            "the last recorded identity names the committed current world"
+        );
+    }
+
+    #[test]
+    fn a_cold_reopen_restores_the_live_session_from_store_bytes() {
+        use babylon_graph::stable_state::StableGraphState;
+        use babylon_tick::material_state::MaterialStateRows;
+        use babylon_tick::replay_identity;
+
+        let scratch = Scratch::new();
+        let output = scratch.0.join("evidence");
+        let store_path = output.join("campaign.sqlite");
+        let run = run_national(&store_path, &output, 2).expect("the campaign advances two turns");
+        assert_eq!(run.periods, 2, "the run commits the requested horizon");
+
+        let (mut session, opening) = admitted_national_session();
+        let handle = SqliteCampaignStore::open(
+            &store_path,
+            content_package::content_package_build_identity(),
+        )
+        .expect("the committed campaign cold reopens");
+        let period = handle.current().period;
+        assert_eq!(period, 2, "the store holds the two committed periods");
+
+        let graph_bytes = handle
+            .read_section_bytes(ChunkSection::StableGraph)
+            .expect("the current root carries the stable graph section");
+        let graph_state = StableGraphState::decode(&graph_bytes)
+            .expect("the persisted graph bytes decode into the canonical state");
+        assert_eq!(
+            graph_state.canonical_bytes(),
+            graph_bytes,
+            "the stored graph section is the canonical encoder image"
+        );
+        let material_bytes = handle
+            .read_section_bytes(ChunkSection::SemanticState)
+            .expect("the current root carries the semantic material section");
+        let material_rows = MaterialStateRows::decode(&material_bytes)
+            .expect("the persisted material bytes decode into the canonical rows");
+        assert_eq!(
+            material_rows.canonical_bytes(),
+            material_bytes,
+            "the stored semantic section is the canonical encoder image"
+        );
+
+        let register = stored_material_register(&handle, &session, &opening, period);
+        let registers = replay_identity::encode_world_register_set(
+            &replay_identity::world_register_manifest()
+                .expect("the governed register manifest encodes"),
+            i64::try_from(period).expect("the completed period fits the register lane"),
+        )
+        .expect("the completed-tick register set encodes");
+        session
+            .restore_full_checkpoint(
+                &graph_state,
+                &material_rows,
+                registers.canonical_bytes(),
+                register,
+            )
+            .expect("the live session restores from the store bytes alone");
+        assert_eq!(
+            session.completed_tick(),
+            period,
+            "the restored session continues at the committed period"
+        );
+        assert_eq!(
+            session
+                .current_world_hash()
+                .expect("the restored session hashes its complete world"),
+            handle.current().world_hash,
+            "the restored session reproduces the committed world identity"
+        );
+
+        assert_recorded_period_identities(&handle, period);
     }
 }

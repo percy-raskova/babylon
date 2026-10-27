@@ -837,6 +837,7 @@ mod scoped_campaign {
                     payload: b"wayne-wage-fact".to_vec(),
                 }],
                 detail: Vec::new(),
+                tick_identity: None,
             })
             .expect("the scoped period commits");
         handle

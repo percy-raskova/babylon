@@ -153,6 +153,36 @@ pub enum IdentityCodecError {
         /// Unrepresentable fired count.
         value: usize,
     },
+    /// A stable-value frame ended before its declared width.
+    TruncatedValue {
+        /// Semantic field name.
+        field: &'static str,
+    },
+    /// A stable-value frame carried bytes after its exact encoding.
+    TrailingValueBytes {
+        /// First trailing byte position.
+        index: usize,
+    },
+    /// A stable-value discriminant is outside the closed registry.
+    InvalidValueTag {
+        /// Rejected discriminant.
+        tag: u8,
+    },
+    /// A boolean byte was neither zero nor one.
+    InvalidBoolByte {
+        /// Rejected byte.
+        value: u8,
+    },
+    /// A decoded scalar was representable but not already canonical.
+    NonCanonicalValue {
+        /// Semantic field name.
+        field: &'static str,
+    },
+    /// A canonical string was not valid UTF-8.
+    NonUtf8String {
+        /// Semantic field name.
+        field: &'static str,
+    },
 }
 
 /// A BSL value projected onto stable, persistence-safe identities.
@@ -511,6 +541,161 @@ pub fn encode_stable_bsl_value(
         }
     }
     append_checked(output, "StableBslValueV1 output", &writer.finish())
+}
+
+/// Decode one exact canonical `StableBslValueV1` frame.
+///
+/// This is the read-side inverse of [`encode_stable_bsl_value`]. A frame must
+/// consume all its bytes, use a closed discriminant, and carry values the
+/// encoder could have produced; a non-canonical scalar or trailing byte refuses
+/// rather than being normalized.
+///
+/// # Errors
+/// Returns a framing, discriminant, numeric-domain, enum, stable-value, or
+/// checked-allocation refusal without producing a partial value.
+pub fn decode_stable_bsl_value(bytes: &[u8]) -> Result<StableBslValue, IdentityCodecError> {
+    let mut cursor = IdentityCursor { bytes, position: 0 };
+    let tag = cursor.byte()?;
+    let value = match tag {
+        0x01 => StableBslValue::Int(cursor.i64()?),
+        0x02 => StableBslValue::CurrencyMicroUnits(cursor.i128()?),
+        0x03 => StableBslValue::RealBits(canonical_decoded_bits(cursor.u64()?)?),
+        0x04 => {
+            let value = cursor.u64()?;
+            let floor = cursor.ratio_option()?;
+            let cap = cursor.ratio_option()?;
+            validate_stable_ratio(value, floor, cap)?;
+            StableBslValue::RatioBits { value, floor, cap }
+        }
+        0x05 => StableBslValue::Bool(cursor.boolean()?),
+        0x06 => {
+            let enum_type = cursor.string("ValueV1 enum type")?;
+            validate_enum_type("ValueV1 enum type", &enum_type)?;
+            let member = cursor.string("ValueV1 enum member")?;
+            validate_enum_member("ValueV1 enum member", &member)?;
+            StableBslValue::Enum { enum_type, member }
+        }
+        0x07..=0x09 => {
+            let key = StableElementKey::from_canonical_bytes(cursor.rest())?;
+            match (tag, &key) {
+                (0x07, StableElementKey::Node { .. }) => StableBslValue::Node(key),
+                (0x08, StableElementKey::Hyperedge { .. }) => StableBslValue::Hyperedge(key),
+                (0x09, StableElementKey::Edge { .. }) => StableBslValue::Edge(key),
+                _ => return Err(IdentityCodecError::StableKeyKindMismatch),
+            }
+        }
+        other => return Err(IdentityCodecError::InvalidValueTag { tag: other }),
+    };
+    cursor.done()?;
+    Ok(value)
+}
+
+fn canonical_decoded_bits(bits: u64) -> Result<u64, IdentityCodecError> {
+    let canonical = canonical_f64_bits(f64::from_bits(bits))?;
+    if canonical == bits {
+        Ok(canonical)
+    } else {
+        Err(IdentityCodecError::NonCanonicalValue {
+            field: "stable value",
+        })
+    }
+}
+
+struct IdentityCursor<'a> {
+    bytes: &'a [u8],
+    position: usize,
+}
+
+impl IdentityCursor<'_> {
+    fn take(&mut self, count: usize) -> Result<&[u8], IdentityCodecError> {
+        let end = self
+            .position
+            .checked_add(count)
+            .ok_or(IdentityCodecError::CapacityOverflow {
+                field: "stable value offset",
+            })?;
+        let slice =
+            self.bytes
+                .get(self.position..end)
+                .ok_or(IdentityCodecError::TruncatedValue {
+                    field: "stable value",
+                })?;
+        self.position = end;
+        Ok(slice)
+    }
+
+    fn byte(&mut self) -> Result<u8, IdentityCodecError> {
+        let mut value = [0_u8; 1];
+        value.copy_from_slice(self.take(1)?);
+        Ok(value[0])
+    }
+
+    fn u64(&mut self) -> Result<u64, IdentityCodecError> {
+        let mut value = [0_u8; 8];
+        value.copy_from_slice(self.take(8)?);
+        Ok(u64::from_be_bytes(value))
+    }
+
+    fn i64(&mut self) -> Result<i64, IdentityCodecError> {
+        let mut value = [0_u8; 8];
+        value.copy_from_slice(self.take(8)?);
+        Ok(i64::from_be_bytes(value))
+    }
+
+    fn i128(&mut self) -> Result<i128, IdentityCodecError> {
+        let mut value = [0_u8; 16];
+        value.copy_from_slice(self.take(16)?);
+        Ok(i128::from_be_bytes(value))
+    }
+
+    fn boolean(&mut self) -> Result<bool, IdentityCodecError> {
+        match self.byte()? {
+            0 => Ok(false),
+            1 => Ok(true),
+            value => Err(IdentityCodecError::InvalidBoolByte { value }),
+        }
+    }
+
+    fn ratio_option(&mut self) -> Result<Option<u64>, IdentityCodecError> {
+        match self.byte()? {
+            0 => Ok(None),
+            1 => Ok(Some(self.u64()?)),
+            value => Err(IdentityCodecError::InvalidOptionByte { value }),
+        }
+    }
+
+    fn string(&mut self, field: &'static str) -> Result<String, IdentityCodecError> {
+        let length = u32::from_be_bytes(
+            self.take(4)?
+                .try_into()
+                .map_err(|_| IdentityCodecError::TruncatedValue { field })?,
+        );
+        let width = usize::try_from(length).map_err(|_| IdentityCodecError::CapacityOverflow {
+            field: "stable value string",
+        })?;
+        let text = std::str::from_utf8(self.take(width)?)
+            .map_err(|_| IdentityCodecError::NonUtf8String { field })?;
+        copy_identity_string(field, text)
+    }
+
+    fn rest(&mut self) -> &[u8] {
+        let rest = match self.bytes.get(self.position..) {
+            Some(rest) => rest,
+            None => &[],
+        };
+        self.position = self.bytes.len();
+        rest
+    }
+
+    fn done(&self) -> Result<(), IdentityCodecError> {
+        if self.position == self.bytes.len() {
+            Ok(())
+        } else {
+            Err(IdentityCodecError::TrailingValueBytes {
+                index: self.position,
+            })
+        }
+    }
 }
 
 fn encode_value(
@@ -1228,6 +1413,102 @@ mod tests {
                 &enums,
             ),
             Err(IdentityCodecError::UnknownEnumType { id: EnumTypeId(99) })
+        );
+    }
+
+    fn node_key(local_name: &str) -> StableElementKey {
+        StableElementKey::Node {
+            scenario: "test/identity-codec".to_owned(),
+            local_name: local_name.to_owned(),
+        }
+    }
+
+    fn encode(value: &StableBslValue) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        super::encode_stable_bsl_value(value, &mut bytes).expect("the authored value is canonical");
+        bytes
+    }
+
+    #[test]
+    fn stable_value_decoder_is_the_exact_inverse_of_the_encoder() {
+        let values = [
+            StableBslValue::Int(-9_223_372_036_854_775_808),
+            StableBslValue::CurrencyMicroUnits(i128::MIN),
+            StableBslValue::RealBits(1.5_f64.to_bits()),
+            StableBslValue::RatioBits {
+                value: 0.5_f64.to_bits(),
+                floor: Some(0.25_f64.to_bits()),
+                cap: Some(1.0_f64.to_bits()),
+            },
+            StableBslValue::RatioBits {
+                value: 0.5_f64.to_bits(),
+                floor: None,
+                cap: None,
+            },
+            StableBslValue::Bool(true),
+            StableBslValue::Bool(false),
+            StableBslValue::Enum {
+                enum_type: "OrgKind".to_owned(),
+                member: "FIRM".to_owned(),
+            },
+            StableBslValue::Node(node_key("node-a")),
+            StableBslValue::Hyperedge(StableElementKey::Hyperedge {
+                scenario: "test/identity-codec".to_owned(),
+                local_name: "hyperedge-a".to_owned(),
+            }),
+            StableBslValue::Edge(StableElementKey::Edge {
+                scenario: "test/identity-codec".to_owned(),
+                edge_type: "PRESENCE".to_owned(),
+                source_local_name: "node-a".to_owned(),
+                target_local_name: "node-b".to_owned(),
+            }),
+        ];
+        for value in values {
+            let bytes = encode(&value);
+            let decoded = super::decode_stable_bsl_value(&bytes)
+                .expect("every canonical stable value decodes");
+            assert_eq!(decoded, value, "the decoder returns the encoded value");
+            assert_eq!(
+                encode(&decoded),
+                bytes,
+                "the decoded value re-encodes to the exact input bytes"
+            );
+        }
+    }
+
+    #[test]
+    fn stable_value_decoder_refuses_noncanonical_frames() {
+        assert_eq!(
+            super::decode_stable_bsl_value(&[0x0a]),
+            Err(IdentityCodecError::InvalidValueTag { tag: 0x0a })
+        );
+        assert_eq!(
+            super::decode_stable_bsl_value(&[0x05, 0x02]),
+            Err(IdentityCodecError::InvalidBoolByte { value: 2 })
+        );
+        let mut trailing = encode(&StableBslValue::Int(1));
+        trailing.push(0);
+        assert_eq!(
+            super::decode_stable_bsl_value(&trailing),
+            Err(IdentityCodecError::TrailingValueBytes { index: 9 })
+        );
+        let negative_zero = [0x03].into_iter().chain((-0.0_f64).to_bits().to_be_bytes());
+        assert_eq!(
+            super::decode_stable_bsl_value(&negative_zero.collect::<Vec<u8>>()),
+            Err(IdentityCodecError::NonCanonicalValue {
+                field: "stable value"
+            })
+        );
+        let nonfinite = [0x03].into_iter().chain(f64::NAN.to_bits().to_be_bytes());
+        assert_eq!(
+            super::decode_stable_bsl_value(&nonfinite.collect::<Vec<u8>>()),
+            Err(IdentityCodecError::NonFiniteValue)
+        );
+        assert_eq!(
+            super::decode_stable_bsl_value(&[0x01, 0, 0]),
+            Err(IdentityCodecError::TruncatedValue {
+                field: "stable value"
+            })
         );
     }
 }

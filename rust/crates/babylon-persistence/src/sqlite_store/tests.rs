@@ -12,6 +12,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use babylon_kernel::content_digest;
+use babylon_tick::material_replay::IdentifiedMaterialTick;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OpenFlags;
@@ -72,6 +73,8 @@ use super::query::PlayerScope;
 use super::query::ReadError;
 use super::replay::RecentDetailRow;
 use super::replay::ReplayError;
+use super::retention;
+use super::retention::PeriodSummary;
 use super::schema;
 use super::schema::SnapshotRole;
 use super::schema::BUSY_TIMEOUT;
@@ -1508,6 +1511,7 @@ fn prepared(
         journal,
         knowledge,
         detail: Vec::new(),
+        tick_identity: None,
     }
 }
 
@@ -1821,6 +1825,179 @@ fn two_period_identities_survive_cold_reopen_and_export() {
             )
             .expect("the export preserves earned authority"),
         b"earned-county-fact"
+    );
+}
+
+fn material_identity(period: u64) -> IdentifiedMaterialTick {
+    let mut bytes = b"babylon.material-tick-content.v3\0".to_vec();
+    bytes.extend_from_slice(&3_u32.to_be_bytes());
+    bytes.extend_from_slice(&period.to_be_bytes());
+    for value in 1..=7 {
+        bytes.extend_from_slice(&[value; 32]);
+    }
+    IdentifiedMaterialTick::decode(&bytes).expect("the authored canonical identity decodes")
+}
+
+fn summary(period: u64, identity: Option<&IdentifiedMaterialTick>) -> PeriodSummary {
+    PeriodSummary {
+        period,
+        candidate_hash: [1; 32],
+        world_hash: [2; 32],
+        state_hash: [3; 32],
+        prior_journal_seq: 4,
+        prior_journal_hash: [4; 32],
+        knowledge_tail_seq: 5,
+        knowledge_tail_hash: [5; 32],
+        detail_rows: 6,
+        evidence_records: 7,
+        tick_identity: identity.copied(),
+    }
+}
+
+#[test]
+fn period_summary_v2_is_the_exact_inverse_of_its_encoder() {
+    for identity in [None, Some(material_identity(3))] {
+        let expected = summary(3, identity.as_ref());
+        let encoded = expected.encode();
+        let decoded = retention::decode_period_summary(&encoded)
+            .expect("every canonical period summary decodes");
+        assert_eq!(
+            decoded, expected,
+            "the decoded summary preserves the identity it recorded"
+        );
+        assert_eq!(
+            decoded.encode(),
+            encoded,
+            "the decoded summary re-encodes to the exact stored bytes"
+        );
+    }
+}
+
+#[test]
+fn period_summary_v2_refuses_a_v1_payload_and_a_forged_identity_hash() {
+    let canonical = summary(3, Some(&material_identity(3))).encode();
+    let mut superseded = canonical.clone();
+    superseded[..b"babylon.period-summary.v1\0".len()]
+        .copy_from_slice(b"babylon.period-summary.v1\0");
+    assert!(
+        matches!(
+            retention::decode_period_summary(&superseded),
+            Err(SaveError::CorruptPayload {
+                table: "permanent_journal",
+                ..
+            })
+        ),
+        "a v1 summary does not silently decode under the v2 contract"
+    );
+    let mut forged = canonical;
+    let last = forged.len() - 1;
+    forged[last] ^= 0xff;
+    assert!(
+        matches!(
+            retention::decode_period_summary(&forged),
+            Err(SaveError::CorruptPayload {
+                table: "permanent_journal",
+                ..
+            })
+        ),
+        "the recorded content hash must match the identity bytes"
+    );
+}
+
+#[test]
+fn committed_tick_identity_is_readable_per_period_after_a_cold_reopen() {
+    let root = TempRoot::new();
+    let database = root.path("campaign.sqlite3");
+    let mut handle = SqliteCampaignStore::create(&database, admitted_content(), admitted_opening())
+        .expect("the campaign is created once");
+    let opening_world = handle.current().world_hash;
+    assert!(
+        matches!(
+            handle.period_tick_identity(0),
+            Err(SaveError::PeriodSummaryMissing { period: 0 })
+        ),
+        "the opening has no period summary identity"
+    );
+
+    let mut first_candidate = prepared(
+        1,
+        opening_world,
+        vec![chunk(ChunkSection::StableGraph, 0, graph(1))],
+        Vec::new(),
+        Vec::new(),
+    );
+    first_candidate.tick_identity = Some(material_identity(1));
+    let first = handle
+        .commit(first_candidate)
+        .expect("period one commits its exact material tick identity");
+    assert_eq!(
+        handle
+            .period_tick_identity(1)
+            .expect("period one records one readable identity"),
+        Some(material_identity(1)),
+        "the identity is readable without re-executing the period"
+    );
+
+    let mut mismatched = prepared(
+        2,
+        first.world_hash,
+        vec![chunk(ChunkSection::StableGraph, 0, graph(2))],
+        Vec::new(),
+        Vec::new(),
+    );
+    mismatched.tick_identity = Some(material_identity(3));
+    assert!(
+        matches!(
+            handle.commit(mismatched),
+            Err(SaveError::InvalidField {
+                table: "permanent_journal",
+                field: "tick_identity",
+                ..
+            })
+        ),
+        "an identity that names another period is refused"
+    );
+
+    let mut second_candidate = prepared(
+        2,
+        first.world_hash,
+        vec![chunk(ChunkSection::StableGraph, 0, graph(2))],
+        Vec::new(),
+        Vec::new(),
+    );
+    second_candidate.tick_identity = Some(material_identity(2));
+    let second = handle.commit(second_candidate).expect("period two commits");
+    assert_eq!(second.period, 2, "period two is the committed boundary");
+    drop(handle);
+
+    let reopened =
+        SqliteCampaignStore::open(&database, build_identity()).expect("the campaign cold reopens");
+    assert_eq!(reopened.current().period, 2);
+    assert_eq!(
+        reopened
+            .period_tick_identity(1)
+            .expect("the earlier period identity stays readable"),
+        Some(material_identity(1))
+    );
+    assert_eq!(
+        reopened
+            .period_tick_identity(2)
+            .expect("the current period identity stays readable"),
+        Some(material_identity(2))
+    );
+    let current = reopened
+        .period_tick_identity(2)
+        .expect("the current identity is readable")
+        .expect("the current period records an identity");
+    assert_eq!(
+        current.resolve_tick(),
+        2,
+        "the readable identity names the period that recorded it"
+    );
+    assert_eq!(
+        current.tick_content_hash().as_bytes(),
+        &content_digest::sha256_of(current.canonical_bytes()),
+        "the readable identity authenticates its own canonical bytes"
     );
 }
 
@@ -2920,6 +3097,7 @@ fn long_candidate(
             ordinal: 0,
             payload: format!("prices-{period}").into_bytes(),
         }],
+        tick_identity: None,
     }
 }
 

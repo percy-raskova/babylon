@@ -253,6 +253,7 @@ pub fn authored_graph_period_candidate(
         journal,
         knowledge,
         detail: Vec::new(),
+        tick_identity: None,
     })
 }
 

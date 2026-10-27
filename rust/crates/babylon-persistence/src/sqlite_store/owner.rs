@@ -37,6 +37,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 use babylon_kernel::content_digest;
+use babylon_tick::material_replay::IdentifiedMaterialTick;
 use uuid::Uuid;
 
 use crate::identity::CampaignId;
@@ -251,6 +252,11 @@ pub struct PreparedPeriod {
     pub knowledge: Vec<PreparedKnowledgeGrant>,
     /// Exhaustive technical detail retained for the thirteen-period window.
     pub detail: Vec<PreparedDetailRow>,
+    /// Exact material tick identity the profile adjudicated for this period.
+    ///
+    /// A profile with material mechanics records `Some`; the authored-graph
+    /// profile records `None` because it owns no material tick.
+    pub tick_identity: Option<IdentifiedMaterialTick>,
 }
 
 /// Whether an acceptance inserted a new commitment or replayed an existing one.
@@ -706,6 +712,27 @@ impl CampaignHandle {
         chunks::read_section_bytes(&self.connection, &self.current.chunks, section)
     }
 
+    /// Read the material tick identity one completed period recorded.
+    ///
+    /// The identity is decoded from the period's permanent summary, so a caller
+    /// reads it without re-executing or reconstructing the period. `Ok(None)`
+    /// names a period whose profile owns no material mechanics.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a period without a committed summary record, a summary whose
+    /// payload no longer authenticates, an identity that does not decode, or a
+    /// `SQLite` failure.
+    pub fn period_tick_identity(
+        &self,
+        period: u64,
+    ) -> Result<Option<IdentifiedMaterialTick>, SaveError> {
+        let Some((summary, _, _)) = period_summary_for(&self.connection, period)? else {
+            return Err(SaveError::PeriodSummaryMissing { period });
+        };
+        Ok(summary.tick_identity)
+    }
+
     /// Durably accept one organizer command for the next period.
     ///
     /// A replay with the same nonce and equal bytes returns the original
@@ -924,6 +951,11 @@ impl CampaignHandle {
                     period: candidate.period,
                 });
             }
+            if existing.0.tick_identity != candidate.tick_identity {
+                return Err(SaveError::ConflictingPeriodCommit {
+                    period: candidate.period,
+                });
+            }
             transaction.commit()?;
             let summary = existing.0;
             return Ok(CommittedPeriod {
@@ -1132,6 +1164,7 @@ impl CampaignHandle {
             knowledge_tail_hash: knowledge_hash,
             detail_rows,
             evidence_records: count(candidate.journal.len(), "evidence record count")?,
+            tick_identity: candidate.tick_identity,
         };
         let summary_payload = summary.encode();
         journal_seq = journal_seq.checked_add(1).ok_or(SaveError::Arithmetic {
@@ -2572,6 +2605,16 @@ fn prepare_candidate(candidate: &PreparedPeriod) -> Result<PreparedCandidate, Sa
             table: "snapshot",
             field: "chunks",
             reason: "a period commit needs at least one state chunk",
+        });
+    }
+    if candidate
+        .tick_identity
+        .is_some_and(|identity| identity.resolve_tick() != candidate.period)
+    {
+        return Err(SaveError::InvalidField {
+            table: "permanent_journal",
+            field: "tick_identity",
+            reason: "the material tick identity names another period",
         });
     }
     validate_chunks("state_chunk", &candidate.chunks)?;

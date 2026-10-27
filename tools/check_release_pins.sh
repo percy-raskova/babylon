@@ -109,43 +109,6 @@ try:
     hashes = re.findall(r"^  sha256: ([0-9a-f]{64})$", products[0], re.MULTILINE)
     require(len(hashes) == 1, "manifest product requires one SHA-256 digest")
     digest(hashes[0], "manifest product")
-
-    # PER-354 / ADR287: the campaign store links the SAME SQLite runtime the
-    # reference builder pins. Only `libsqlite3-sys` 0.38.0 bundles 3.53.1, and
-    # neither it nor `rusqlite` 0.40.0 builds on the pinned stable toolchain, so
-    # both arrive through rev-pinned forks. A resolver upgrade, a branch ref, a
-    # widened requirement, or an unlisted git source must all fail here rather
-    # than drift silently. Removal condition: see rust/Cargo.toml.
-    sqlite_crates = {"libsqlite3-sys": "0.38.0", "rusqlite": "0.40.0"}
-    bundled_sqlite_by_crate = {"0.38.0": "3.53.1"}
-    require(bundled_sqlite_by_crate.get(sqlite_crates["libsqlite3-sys"]) == pins[0],
-            "libsqlite3-sys version does not bundle the pinned SQLite runtime")
-    patches = read_toml("rust/Cargo.toml").get("patch", {}).get("crates-io", {})
-    locked = {package["name"]: package for package in cargo["package"]}
-    for name, version in sqlite_crates.items():
-        patch = patches.get(name, {})
-        url = patch.get("git", "")
-        rev = patch.get("rev", "")
-        require(isinstance(url, str) and url.startswith("https://github.com/"),
-                f"rust/Cargo.toml requires a git [patch.crates-io] {name}")
-        require(isinstance(rev, str) and re.fullmatch(r"[0-9a-f]{40}", rev) is not None,
-                f"{name} patch requires a full 40-hex rev, never a branch")
-        package = locked.get(name)
-        require(isinstance(package, dict) and package.get("version") == version,
-                f"Cargo.lock must lock {name} {version}")
-        require(package.get("source") == f"git+{url}?rev={rev}#{rev}",
-                f"Cargo.lock {name} source differs from its rev-pinned fork")
-    declared = read_toml("rust/crates/babylon-persistence/Cargo.toml")["dependencies"]
-    for name, version in sqlite_crates.items():
-        require(declared.get(name, {}).get("version") == f"={version}",
-                f"babylon-persistence must require {name} exactly ={version}")
-    allow_git = read_toml("rust/deny.toml")["sources"]["allow-git"]
-    allowed = {url.removesuffix(".git") for url in allow_git}
-    git_sources = {package["source"].removeprefix("git+").split("?")[0].removesuffix(".git")
-                   for package in cargo["package"]
-                   if package.get("source", "").startswith("git+")}
-    missing = sorted(git_sources - allowed)
-    require(not missing, f"deny.toml allow-git omits {missing}")
 except PinDrift as error:
     print(f"check_release_pins: REFUSE: {error}", file=sys.stderr)
     sys.exit(1)
@@ -153,6 +116,5 @@ except (OSError, ValueError, KeyError, TypeError) as error:
     print(f"check_release_pins: FATAL: {error}", file=sys.stderr)
     sys.exit(2)
 
-print(f"check_release_pins: OK: Python {python}, uv {uv}, Rust {rust}; SQLite {pins[0]} lockstep "
-      f"(libsqlite3-sys {sqlite_crates['libsqlite3-sys']}, rusqlite {sqlite_crates['rusqlite']}).")
+print(f"check_release_pins: OK: Python {python}, uv {uv}, Rust {rust}; SQLite {pins[0]} lockstep.")
 PY

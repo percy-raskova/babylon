@@ -112,21 +112,3 @@ wrong_self_convention = "deny"
 # `expect("<invariant>")` or a pattern match replaces it; the message states
 # why the call cannot fail (`docs/agents/rust-style.md`, implementation table).
 unwrap_used = "deny"
-
-# PER-354 / ADR287: the campaign store must link SQLite 3.53.1, the same version
-# the Python reference builder pins (`tools/build_reference_db.py`). The only
-# published `libsqlite3-sys` bundling 3.53.1 is 0.38.0, and neither 0.38.0 nor
-# the `rusqlite` 0.40.0 that requires it builds on the pinned stable toolchain
-# (1.91.1): both call std `cfg_select!`, which stabilizes in Rust 1.95.
-#
-# `[patch]` lives in the workspace root because Cargo reads it only from the
-# root manifest; a member-manifest patch is ignored. Both entries are rev-pinned
-# to full SHAs, never branches. REMOVAL CONDITION: when PER-351 brings the
-# toolchain to Rust >= 1.95, delete both lines, delete both `allow-git` entries
-# in `rust/deny.toml`, and `cargo update` back to the published crates.
-[patch.crates-io]
-# libsqlite3-sys 0.38.0 unchanged except the upstream 0.38.2 build.rs shim.
-libsqlite3-sys = { git = "https://github.com/percy-raskova/libsqlite3-sys-babylon-pin", rev = "da2ab1442ec2129b1cf2f2bae6207fb08e3ba566" }
-# rusqlite 0.40.0 unchanged except seven `cfg_select!` call sites rewritten as
-# the equivalent `#[cfg]` gates.
-rusqlite = { git = "https://github.com/percy-raskova/rusqlite-babylon-pin", rev = "c683415ee53a54ddf7a073e4aa0d7e76361e9867" }

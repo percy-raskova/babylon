@@ -32,15 +32,6 @@ use crate::postgres_catalog::{
     CATALOG_TCP_USER_TIMEOUT,
 };
 use crate::postgres_diagnostic::PostgresDiagnostic;
-use crate::sqlite_store::CampaignHandle;
-use crate::sqlite_store::DossierRequest;
-use crate::sqlite_store::HistoryCursor;
-use crate::sqlite_store::HistoryPage;
-use crate::sqlite_store::PlayerQuery;
-use crate::sqlite_store::PlayerResult;
-use crate::sqlite_store::PlayerScope;
-use crate::sqlite_store::ReadError;
-use crate::sqlite_store::ServiceError;
 use crate::CurrentSchemaError;
 use crate::SCHEMA_ADVISORY_LOCK_KEY;
 use postgres::Client;
@@ -648,79 +639,4 @@ fn decode_committed_tick_status(
         tick_content_hash: archive::decode_digest(row, 3)?,
         envelope_digest: archive::decode_digest(row, 4)?,
     })
-}
-
-/// Fog-safe, read-only scoped view over one open embedded campaign.
-///
-/// The reader borrows the owning [`CampaignHandle`](crate::sqlite_store::CampaignHandle)
-/// and can only answer closed [`PlayerQuery`](crate::sqlite_store::PlayerQuery)
-/// values inside a [`PlayerScope`](crate::sqlite_store::PlayerScope). It cannot
-/// grant knowledge, accept a command, or commit a period: the owner's write
-/// surface stays unreachable through this type.
-#[derive(Clone, Copy)]
-pub struct CampaignQueryReader<'a> {
-    handle: &'a CampaignHandle,
-}
-
-impl<'a> CampaignQueryReader<'a> {
-    /// Bind one read-only scoped reader to an open campaign owner.
-    #[must_use]
-    pub const fn new(handle: &'a CampaignHandle) -> Self {
-        Self { handle }
-    }
-
-    /// Return the durable campaign identity.
-    #[must_use]
-    pub const fn campaign_id(&self) -> &CampaignId {
-        self.handle.campaign_id()
-    }
-
-    /// Bind a scope to the current committed period and durable tails.
-    ///
-    /// # Errors
-    ///
-    /// Refuses a missing or inconsistent committed manifest.
-    pub fn current_scope(&self, player_id: [u8; 8]) -> Result<PlayerScope, ReadError> {
-        let tails = self.handle.durable_tails()?;
-        Ok(PlayerScope::new(
-            player_id,
-            self.handle.current().period,
-            tails.knowledge_seq(),
-            tails.journal_seq(),
-        ))
-    }
-
-    /// Answer one closed query inside one player scope.
-    ///
-    /// # Errors
-    ///
-    /// Refuses a scope beyond the committed present, an unearned subject, a
-    /// malformed identity, a damaged stored payload, or a `SQLite` failure.
-    pub fn query(&self, scope: PlayerScope, query: PlayerQuery) -> Result<PlayerResult, ReadError> {
-        self.handle.query(scope, query)
-    }
-
-    /// Read one bounded page of the player's visible journal.
-    ///
-    /// # Errors
-    ///
-    /// Refuses a scope beyond the committed present, a damaged stored payload, or
-    /// a `SQLite` failure.
-    pub fn history(
-        &self,
-        scope: PlayerScope,
-        cursor: Option<HistoryCursor>,
-        limit: u16,
-    ) -> Result<HistoryPage, ReadError> {
-        self.handle.history(scope, cursor, limit)
-    }
-
-    /// Read every pending Archive dossier request of this campaign.
-    ///
-    /// # Errors
-    ///
-    /// Refuses a damaged service record or a `SQLite` failure.
-    pub fn pending_dossiers(&self) -> Result<Vec<DossierRequest>, ServiceError> {
-        self.handle.pending_archive_dossiers()
-    }
 }

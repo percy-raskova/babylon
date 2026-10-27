@@ -242,8 +242,8 @@ fn service_household_satisfaction_has_no_pantry_or_retailer_requirement() {
     let (catalog, state) = recurring(crate::opening());
     let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
-    assert!(closed.household_consumption.is_empty());
-    assert!(closed.household_demand.is_empty());
+    assert_eq!(closed.household_consumption.len(), 0);
+    assert_eq!(closed.household_demand.len(), 0);
     assert_eq!(closed.household_services.len(), 1);
     let h = &closed.household_services[0];
     assert_eq!(
@@ -258,12 +258,14 @@ fn service_household_satisfaction_has_no_pantry_or_retailer_requirement() {
     let CircuitAccounting::Monetary(e) = &closed.state.accounting else {
         panic!()
     };
-    assert!(e
-        .recurring
-        .as_ref()
-        .expect("the fixture set the optional field before this read")
-        .household_stocks
-        .is_empty());
+    assert_eq!(
+        e.recurring
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .household_stocks
+            .len(),
+        0
+    );
     assert_eq!(
         closed
             .income
@@ -661,7 +663,7 @@ fn service_batches_expire_unallocated_output_at_exact_remaining_cost() {
         .inventory
         .iter()
         .all(|r| r.good_id != crate::good(1) && r.good_id != crate::good(2)));
-    assert!(closed.state.freight.is_empty());
+    assert_eq!(closed.state.freight.len(), 0);
     let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &closed.state)
         .expect("the canonical material state encodes");
     assert_eq!(

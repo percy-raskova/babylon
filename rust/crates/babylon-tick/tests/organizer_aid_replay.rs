@@ -61,7 +61,7 @@ fn fulfilled_gift_uses_real_time_before_later_coordination() {
         assert_eq!(prefix, part);
         remaining = tail;
     }
-    assert!(remaining.is_empty());
+    assert_eq!(remaining.len(), 0);
     let mut session = organizer_aid_fixture::authored_session(
         foundation,
         organizer_aid_fixture::config(),
@@ -165,7 +165,7 @@ fn captured_promises_cannot_replace_zero_actual_household_time() {
         0,
         6,
     );
-    assert!(book.contributions.is_empty());
+    assert_eq!(book.contributions.len(), 0);
     assert_eq!(
         economy
             .recurring
@@ -309,12 +309,15 @@ fn delivered_consumed_support_funds_only_actual_independent_coordination() {
             .outcome,
         OrganizerOutcome::AidScheduled
     );
-    assert!(next_entries
-        .receipts
-        .last()
-        .expect("the fixture sequence is non-empty")
-        .time_use
-        .is_empty());
+    assert_eq!(
+        next_entries
+            .receipts
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .time_use
+            .len(),
+        0
+    );
     assert_eq!(
         next_entries
             .aid_receipts
@@ -413,7 +416,7 @@ fn failed_gift_tick_publishes_nothing_and_exact_retry_preserves_receipt_identity
         hash_before
     );
     assert_eq!(session.completed_tick(), 0);
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
     let retry = organizer_aid_fixture::prepare(&session, Some(&accepted));
     assert_eq!(*retry.identity(), expected);
     organizer_aid_fixture::commit(&mut session, &mut sink, retry);
@@ -469,7 +472,7 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
         waiting_entries.aid_receipts[0].practice.outcome,
         OrganizerOutcome::AidAwaitingSupport
     );
-    assert!(waiting_entries.aid_receipts[0].practice.time_use.is_empty());
+    assert_eq!(waiting_entries.aid_receipts[0].practice.time_use.len(), 0);
     let second = organizer_aid_fixture::prepare(&session, None);
     let second_receipts =
         babylon_tick::material_world::decode_material_receipts(second.material().receipt_bytes())
@@ -487,7 +490,7 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
         .material()
         .organizer_state()
         .expect("the fixture register carries organizer state");
-    assert!(completed.pending_aid.is_empty());
+    assert_eq!(completed.pending_aid.len(), 0);
     let resolution = session
         .material()
         .history()
@@ -852,7 +855,7 @@ fn protected_closing_pantry_refuses_collection_despite_actual_cash() {
     let HouseholdTimeAccounting::Modeled(book) = &e.household_time else {
         unreachable!()
     };
-    assert!(book.contributions.is_empty());
+    assert_eq!(book.contributions.len(), 0);
 }
 #[test]
 fn actual_collection_wire_refuses_changed_posting_hours_use_and_previous_schema() {
@@ -1035,7 +1038,7 @@ fn original_collection_funds_only_separately_authorized_later_aid() {
         paid_candidate.material().receipt_bytes(),
     )
     .expect("the canonical bytes decode into the declared type");
-    assert!(paid_rows.aid.is_empty());
+    assert_eq!(paid_rows.aid.len(), 0);
     let value = serde_json::to_value(paid_candidate.material().register().history())
         .expect("the value serializes to JSON");
     assert_eq!(
@@ -1518,7 +1521,7 @@ fn collection_zero_eligible_cash_and_missing_actual_time_refuse_without_spending
         let HouseholdTimeAccounting::Modeled(time) = &e.household_time else {
             unreachable!()
         };
-        assert!(time.contributions.is_empty());
+        assert_eq!(time.contributions.len(), 0);
     }
 }
 
@@ -1606,7 +1609,7 @@ fn partial_collection_failure_exact_retry_and_reopen_publish_one_original_receip
         hash_before
     );
     assert_eq!(session.completed_tick(), 0);
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
     let retry = organizer_aid_fixture::prepare(&session, Some(&accepted));
     assert_eq!(*retry.identity(), expected);
     assert_eq!(retry.material().receipt_bytes(), expected_bytes);

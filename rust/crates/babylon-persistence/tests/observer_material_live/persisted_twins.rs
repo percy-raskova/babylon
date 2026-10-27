@@ -704,7 +704,7 @@ fn persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arriva
         .expect("the canonical material state encodes")
     );
     let capacities = initial.capacities.clone();
-    assert!(!capacities.is_empty());
+    assert_ne!(capacities.len(), 0);
     assert!(capacities.iter().all(|row| row.period == 1));
     assert!(matches!(&normalized_catalog.capacity_policy,
         babylon_material_circuit::CapacitySupply::Rolling(rows)

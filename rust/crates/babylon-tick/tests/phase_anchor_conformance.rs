@@ -158,7 +158,7 @@ fn scenario_failure_precedes_phase_composition_without_hydration() {
     assert!(!error.contains("E-LOAD-003"), "{error}");
     assert!(error.contains("scenario"), "{error}");
     assert_eq!(graph.state_hash().expect("refused hash"), before);
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
 }
 
 #[test]

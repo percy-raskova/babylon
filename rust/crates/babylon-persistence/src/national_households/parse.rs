@@ -104,8 +104,10 @@ fn partition(rows: &[AcsEstimate], parent: usize, children: &[usize]) -> Result<
 
 fn observations<const N: usize>(fields: &[&str]) -> Result<Box<[AcsEstimate; N]>, Error> {
     fields
-        .chunks_exact(6)
-        .map(observation)
+        .as_chunks::<6>()
+        .0
+        .iter()
+        .map(|fields| observation(fields))
         .collect::<Result<Vec<_>, _>>()?
         .try_into()
         .map(Box::new)

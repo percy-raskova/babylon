@@ -280,9 +280,12 @@ fn later_publication_does_not_claim_unchanged_atoms_changed_with_their_source_ti
     let previous = witnessed();
     let next = later(&previous);
     assert_ne!(previous.atoms[1].atom_id(), next.atoms[1].atom_id());
-    assert!(super::super::changes::between(Some(&previous), &next)
-        .expect("the fixture call `between` succeeds for the authored inputs")
-        .is_empty());
+    assert_eq!(
+        super::super::changes::between(Some(&previous), &next)
+            .expect("the fixture call `between` succeeds for the authored inputs")
+            .len(),
+        0
+    );
 }
 
 #[test]

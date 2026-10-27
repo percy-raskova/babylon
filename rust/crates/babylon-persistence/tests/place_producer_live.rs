@@ -521,7 +521,7 @@ fn live_place_producer_pages_the_bootstrap_drain_across_sweeps() {
     let rerun = worker
         .sweep_once(target.campaign_id, &producer)
         .expect("rerun sweep reconciles");
-    assert!(dispositions(&rerun).is_empty());
+    assert_eq!(dispositions(&rerun).len(), 0);
     assert_eq!(rerun.verified_tick(), 1);
     assert_eq!(
         place_page_count(&target.config, target.campaign_id),

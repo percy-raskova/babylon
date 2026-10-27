@@ -37,8 +37,8 @@ fn projection_uses_exact_committed_state_and_refuses_future_history() {
     )
     .expect("the fixture projection accepts the authored input");
     assert!(initial.provenance[0].starts_with("Designed finite 16-period economic circuit"));
-    assert!(initial.freight.is_empty());
-    assert!(initial.events.is_empty());
+    assert_eq!(initial.freight.len(), 0);
+    assert_eq!(initial.events.len(), 0);
     assert!(initial.material_balance.is_none());
     assert_eq!(initial.labor_accounts.len(), 5);
     assert!(initial
@@ -317,7 +317,7 @@ fn native_route_projection_keeps_every_relation_and_shares_exact_stage_definitio
         .map(|row| &row.physical_route_id)
         .collect();
     assert_eq!(snapshot.physical_routes.len(), unique.len());
-    assert!(!snapshot.routes.is_empty());
+    assert_ne!(snapshot.routes.len(), 0);
     for relation in &snapshot.routes {
         let definition = index
             .get(relation)

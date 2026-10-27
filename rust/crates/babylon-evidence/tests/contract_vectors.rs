@@ -354,7 +354,7 @@ fn parse_bits(value: &str, expected: usize) -> Vec<f64> {
         output.push(f64::from_bits(bits));
         remainder = next;
     }
-    assert!(remainder.is_empty());
+    assert_eq!(remainder.len(), 0);
     output
 }
 

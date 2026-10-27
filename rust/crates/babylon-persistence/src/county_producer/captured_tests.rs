@@ -48,7 +48,7 @@ fn captured_national_counties_select_current_ct_and_island_identities_without_fa
                 .expect("the fixture catalog holds the addressed county")
                 .name()
         );
-        assert!(page.place_links().is_empty());
+        assert_eq!(page.place_links().len(), 0);
         assert!(page
             .decision_question()
             .contains("local place detail unavailable"));
@@ -140,10 +140,13 @@ fn captured_county_identity_citation_round_trips_and_remains_grant_bound() {
         ))
     );
     let hidden = CountyGrantIndex::default();
-    assert!(desired_county_projection(&page, &hidden)
-        .expect("the fixture call `desired_county_projection` succeeds for the authored inputs")
-        .signals()
-        .is_empty());
+    assert_eq!(
+        desired_county_projection(&page, &hidden)
+            .expect("the fixture call `desired_county_projection` succeeds for the authored inputs")
+            .signals()
+            .len(),
+        0
+    );
 }
 
 #[test]
@@ -165,7 +168,7 @@ fn captured_spatial_detail_uses_supplied_bytes_and_refuses_source_drift() {
     let pages = CountySource::Michigan(products)
         .plans(vec![("26163".into(), "wayne".into())], &BTreeMap::new())
         .expect("the fixture call `plans` succeeds for the authored inputs");
-    assert!(!pages[0].place_links().is_empty());
+    assert_ne!(pages[0].place_links().len(), 0);
     assert!(pages[0]
         .place_links()
         .windows(2)

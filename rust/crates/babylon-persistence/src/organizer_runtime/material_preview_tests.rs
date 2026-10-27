@@ -59,7 +59,7 @@ fn remote_projection_preserves_admission_dispatch_and_resolution_dates() {
         .material()
         .organizer_state()
         .expect("the fixture register carries organizer state");
-    assert!(state.pending_aid.is_empty());
+    assert_eq!(state.pending_aid.len(), 0);
     let entries = session
         .material()
         .organizer_journal()

@@ -161,8 +161,8 @@ pub(super) fn archive_boundary(
         };
         assert_eq!(verified_through_tick, tick);
         assert!(page.content_source.tick() <= tick);
-        assert!(!page.markdown.is_empty());
-        assert!(!page.citations.is_empty());
+        assert_ne!(page.markdown.len(), 0);
+        assert_ne!(page.citations.len(), 0);
         dossier_bytes.extend_from_slice(&page.revision_id);
         dossier_bytes.extend_from_slice(&page.content_sha256);
         dossier_bytes.extend_from_slice(&Sha256::digest(page.markdown.as_bytes()));
@@ -225,7 +225,7 @@ pub(super) fn production_boundary(
         .production
         .as_ref()
         .expect("complete production required");
-    assert!(!production.household_accounts.is_empty());
+    assert_ne!(production.household_accounts.len(), 0);
     assert!(production.material_balance.is_some());
     let foreign: BTreeSet<_> = production
         .sites

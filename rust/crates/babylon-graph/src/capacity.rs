@@ -878,7 +878,7 @@ mod tests {
             .allocate(&[candidate("SURVEIL", 1, 0.2, 1)])
             .expect("the fixture allocation fits the authored table");
         assert_eq!(outcome.funded.len(), 1);
-        assert!(outcome.declined.is_empty());
+        assert_eq!(outcome.declined.len(), 0);
     }
 
     #[test]

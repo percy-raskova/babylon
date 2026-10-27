@@ -228,7 +228,7 @@ pub(crate) fn assert_scoped_page<'a>(
             ArchiveSearchState::Pending(expected),
         ) => {
             assert_eq!(*reason, expected);
-            assert!(page.changes.changes.is_empty());
+            assert_eq!(page.changes.changes.len(), 0);
             assert!(page.changes.next_cursor.is_none());
             page
         }
@@ -446,11 +446,10 @@ pub(crate) fn assert_restart_drains_and_verifies_quiet_periods(
                 .expect("the fixture set the optional field before this read")
         ));
     }
-    assert!(worker
+    let resweep = worker
         .sweep_once(campaign, &producer)
-        .expect("the fixture sweep completes")
-        .dispositions()
-        .is_empty());
+        .expect("the fixture sweep completes");
+    assert_eq!(resweep.dispositions().len(), 0);
     for tick in 2..=3 {
         advance_material_period(&mut runtime);
         let scope = current_archive_scope(reader, campaign);
@@ -539,7 +538,7 @@ impl DisposableTarget {
         assert_eq!(suffix.len(), 12);
         assert!(suffix.bytes().all(|byte| byte.is_ascii_hexdigit()));
         let sequence = NEXT_DISPOSABLE_TARGET
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
                 value.checked_add(1)
             })
             .expect("disposable target sequence remains bounded");
@@ -1153,7 +1152,7 @@ pub(crate) fn assert_material_accounts(snapshot: &ObserverEconomySnapshot) {
         .all(|event| event.period <= snapshot.resolve_tick));
     if snapshot.resolve_tick == 0 {
         assert!(rows.material_balance.is_none());
-        assert!(rows.events.is_empty());
+        assert_eq!(rows.events.len(), 0);
         return;
     }
     let balance = rows
@@ -1161,7 +1160,7 @@ pub(crate) fn assert_material_accounts(snapshot: &ObserverEconomySnapshot) {
         .as_ref()
         .expect("the fixture set the optional field before this read");
     assert_eq!(balance.period, snapshot.resolve_tick);
-    assert!(!balance.rows.is_empty());
+    assert_ne!(balance.rows.len(), 0);
     let mut principals = BTreeSet::new();
     let mut arrivals = BTreeMap::new();
     for event in &rows.events {
@@ -1838,7 +1837,7 @@ mod current_authority {
             );
             assert_eq!(runtime.session().completed_tick(), 0);
             assert!(runtime.tail().is_none());
-            assert!(sink.events.is_empty());
+            assert_eq!(sink.events.len(), 0);
             let rows = sql
                 .query("SELECT schema_sha256 FROM babylon_meta.current_schema", &[])
                 .expect("the seeded rows are readable");
@@ -1865,7 +1864,7 @@ mod current_authority {
     ) -> Vec<(i64, Vec<i64>)> {
         let vectors = sql.query("SELECT vector_id,node_ids FROM babylon_state.graph_node_vector_v1 WHERE campaign_id=$1 ORDER BY vector_id", &[campaign.as_uuid()]).expect("the seeded rows are readable")
             .into_iter().map(|row| (row.get(0), row.get(1))).collect::<Vec<_>>();
-        assert!(!vectors.is_empty());
+        assert_ne!(vectors.len(), 0);
         for (expected, (actual, _)) in vectors.iter().enumerate() {
             assert_eq!(
                 *actual,
@@ -1965,7 +1964,7 @@ mod current_authority {
                     assert_eq!(runtime.session().graph_session().completed_tick(), 0);
                     assert!(runtime.tail().is_none());
                     assert!(runtime.diagnostic_receipt().is_none());
-                    assert!(sink.events.is_empty());
+                    assert_eq!(sink.events.len(), 0);
                     runtime
                         .advance_and_commit(&mut sink, &actions)
                         .expect("one retry after the competing commit finished must reconcile")
@@ -2077,7 +2076,7 @@ pub(crate) fn self_consistent_changed_period_lookup(
         packed.push(entry.kind as u8);
         packed.extend_from_slice(&entry.bytes);
     }
-    assert!(!additions.is_empty());
+    assert_ne!(additions.len(), 0);
     let replacement = (0..=original_table.lookup.entries().len())
         .map(|counter| {
             let mut bytes = [0; 32];

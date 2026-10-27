@@ -795,7 +795,7 @@ mod tests {
                 }
             ))
         );
-        assert!(rows.is_empty());
+        assert_eq!(rows.len(), 0);
         assert_eq!(body_bytes, body_before);
     }
 
@@ -834,7 +834,7 @@ mod tests {
             report.tick_content_hash().as_bytes(),
         )
         .expect("current report receipt");
-        assert!(!graph.is_empty());
+        assert_ne!(graph.len(), 0);
         assert_eq!(event.len(), 2);
         assert_eq!(
             graph_body_bytes,

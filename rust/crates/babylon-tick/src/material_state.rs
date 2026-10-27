@@ -1159,7 +1159,6 @@ impl MaterialStateRows {
     }
 
     /// Iterate all rows in exact family-tag/key order without allocation.
-    #[must_use]
     pub fn rows(&self) -> impl ExactSizeIterator<Item = MaterialStateRowRef<'_>> + '_ {
         MaterialStateRowsIter {
             rows: self,

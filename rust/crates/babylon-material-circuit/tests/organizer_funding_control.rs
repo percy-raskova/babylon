@@ -443,7 +443,7 @@ fn assert_aid_grant_and_gift_accounts(completed: &MaterialCircuitTransition) {
     let donor_income = income(completed, AccountId::Household(control::donor()));
     let organization_income = income(completed, control::organization());
     let recipient_income = income(completed, AccountId::Household(control::recipient()));
-    assert!(completed.collections.is_empty());
+    assert_eq!(completed.collections.len(), 0);
     let grant = completed
         .aid
         .iter()

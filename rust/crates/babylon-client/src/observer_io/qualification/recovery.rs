@@ -521,7 +521,7 @@ pub(super) mod tests {
                 .completed_tick(),
             0
         );
-        assert!(audit.custody.practices() == original_practices);
+        assert_eq!(audit.custody.practices(), original_practices);
         let receipt: Value = serde_json::from_slice(
             &std::fs::read(directory.0.join(format!(
                     "recovery-0-{}.json",
@@ -709,15 +709,15 @@ pub(super) mod tests {
             .status(&session, status)
             .expect("the fixture command reports its status");
         let result = candidate(&mut audit, &mut session);
-        assert!(
+        assert_eq!(
             result
                 .recovery
                 .as_ref()
                 .expect("the fixture set the optional field before this read")
                 .original_status
                 .pending
-                .as_ref()
-                == Some(&commitment)
+                .as_ref(),
+            Some(&commitment)
         );
         audit
             .commit(&session, result)

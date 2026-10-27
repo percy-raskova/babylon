@@ -876,7 +876,7 @@ fn assert_populated_material_rows(material: &MaterialStateRows) {
         territory.territory_id(),
         &stable_material_node("territory-a")
     );
-    assert!(territory.ordered_fields().is_empty());
+    assert_eq!(territory.ordered_fields().len(), 0);
     for foundation_row in michigan_foundation().rows() {
         let Some(MaterialStateRowRef::DynamicHex(dynamic_hex)) = material_rows.next() else {
             panic!("material rows lost the exact dynamic-H3 family")
@@ -1264,7 +1264,7 @@ fn organization_rows_are_derived_from_the_post_tick_graph_and_presence_topology(
             member: "BUSINESS".to_owned(),
         }
     );
-    assert!(derived_business.ordered_territory_ids().is_empty());
+    assert_eq!(derived_business.ordered_territory_ids().len(), 0);
     assert_eq!(
         derived_business.ordered_fields(),
         &[
@@ -1470,7 +1470,7 @@ fn replay_action_guards_and_rules_hash_refuse_without_publication() {
         })
     ));
     assert_eq!(session.completed_tick(), 0);
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
     assert_eq!(
         session
             .graph()
@@ -1512,7 +1512,7 @@ fn replay_rule_failure_discards_detached_writes_events_and_identity() {
         Err(ReplayTickError::Execution { .. })
     ));
     assert_eq!(session.completed_tick(), 0);
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
     assert_eq!(
         session
             .graph()

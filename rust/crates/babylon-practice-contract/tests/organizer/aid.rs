@@ -141,9 +141,9 @@ fn gift_admission_precedes_recipient_time_and_practice_can_fail_afterward() {
         .expect("the fixture sequence is non-empty")
         .practice;
     assert_eq!(receipt.outcome, OrganizerOutcome::InsufficientTime);
-    assert!(receipt.time_use.is_empty());
+    assert_eq!(receipt.time_use.len(), 0);
     assert_eq!(next.standing, opening.standing);
-    assert!(next.contact_products.is_empty());
+    assert_eq!(next.contact_products.len(), 0);
     assert_eq!(
         next.agreements,
         babylon_practice_contract::reduce_organizer_products(
@@ -193,7 +193,7 @@ fn captured_receiving_consent_does_not_force_partner_practice() {
         .time_use
         .iter()
         .all(|row| row.actor_id == config.controlled_actor_id));
-    assert!(next.contact_products.is_empty());
+    assert_eq!(next.contact_products.len(), 0);
     babylon_practice_contract::validate_organizer_aid_commitment(&config, &gift)
         .expect("the authored fixture satisfies the rule");
 }
@@ -224,7 +224,7 @@ fn both_actual_practices_use_mutual_aid_and_separate_authorities() {
             row.intent.target.identity.as_bytes(),
             config.aid_bindings[0].social_class_target
         );
-        assert!(row.intent.parameters.is_empty());
+        assert_eq!(row.intent.parameters.len(), 0);
         assert_eq!(row.intent.evidence_digests, vec![[51; 32], [61; 32]]);
         authorities.insert(row.intent.input_authority_id);
     }
@@ -245,7 +245,7 @@ fn both_actual_practices_use_mutual_aid_and_separate_authorities() {
         .practice;
     assert_eq!(receipt.outcome, OrganizerOutcome::AidPracticeCompleted);
     assert_eq!(receipt.time_use.iter().map(|row| row.hours).sum::<u64>(), 5);
-    assert!(next.contact_products.is_empty());
+    assert_eq!(next.contact_products.len(), 0);
 }
 
 #[test]
@@ -361,14 +361,16 @@ fn later_donor_scarcity_and_wrong_authority_do_not_create_practice_time() {
             .outcome,
         OrganizerOutcome::InsufficientTime
     );
-    assert!(next
-        .journal
-        .aid_receipts
-        .last()
-        .expect("the fixture sequence is non-empty")
-        .practice
-        .time_use
-        .is_empty());
+    assert_eq!(
+        next.journal
+            .aid_receipts
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .practice
+            .time_use
+            .len(),
+        0
+    );
     assert_eq!(next.standing, opening.standing);
     babylon_practice_contract::validate_organizer_aid_commitment(&config, &gift)
         .expect("the authored fixture satisfies the rule");
@@ -583,7 +585,7 @@ fn remote_authorization_survives_then_attempts_after_real_grant_and_consumption(
         },
     )
     .expect("the organizer period resolves with time");
-    assert!(next.pending_aid.is_empty());
+    assert_eq!(next.pending_aid.len(), 0);
     let row = next
         .journal
         .aid_receipts
@@ -594,7 +596,7 @@ fn remote_authorization_survives_then_attempts_after_real_grant_and_consumption(
     assert_eq!(row.practice.period, 2);
     assert_eq!(row.practice.outcome, OrganizerOutcome::AidPracticeCompleted);
     assert!(row.practice.contact_product_id.is_none());
-    assert!(row.practice.observation_ids.is_empty());
+    assert_eq!(row.practice.observation_ids.len(), 0);
     assert!(
         next.journal
             .receipts
@@ -707,7 +709,7 @@ fn unshipped_or_granted_unconsumed_support_never_completes_and_retires_once() {
             },
         )
         .expect("the organizer period resolves with time");
-        assert!(next.pending_aid.is_empty());
+        assert_eq!(next.pending_aid.len(), 0);
         assert_eq!(
             next.journal
                 .aid_receipts
@@ -897,7 +899,7 @@ fn later_ordinary_work_precedes_aid_and_cannot_double_spend_actual_supply() {
             .outcome,
         OrganizerOutcome::InsufficientTime
     );
-    assert!(next.pending_aid.is_empty());
+    assert_eq!(next.pending_aid.len(), 0);
     assert_eq!(
         organizer_actual_time_uses(&next, 2)
             .filter(|row| row.contributor_id == 201)
@@ -978,7 +980,7 @@ fn independently_refused_delayed_practice_keeps_valid_grant_and_consumption_evid
         .iter()
         .any(|use_row| use_row.actor_id == 106));
     assert!(row.practice.contact_product_id.is_none());
-    assert!(next.pending_aid.is_empty());
+    assert_eq!(next.pending_aid.len(), 0);
 }
 
 #[test]
@@ -1123,8 +1125,8 @@ fn cutting_real_support_with_unrelated_free_time_blocks_delayed_completion() {
             .last()
             .expect("the fixture sequence is non-empty");
         assert_eq!(row.practice.outcome, OrganizerOutcome::AidNotProvisioned);
-        assert!(row.practice.time_use.is_empty());
-        assert!(next.pending_aid.is_empty());
+        assert_eq!(row.practice.time_use.len(), 0);
+        assert_eq!(next.pending_aid.len(), 0);
         // Ordinary authorized standing work still ran; it is not aid completion.
         assert!(
             next.journal

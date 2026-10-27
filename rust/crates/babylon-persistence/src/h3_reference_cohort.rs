@@ -367,14 +367,12 @@ fn parse_representative_h3_reference_cohort(
         .try_reserve_exact(EXPECTED_SOURCE_CELLS)
         .map_err(|_| H3ReferenceCohortError::FixtureAllocation)?;
     for (index, chunk) in fixture[payload_offset..]
-        .chunks_exact(SOURCE_ROW_BYTES)
+        .as_chunks::<SOURCE_ROW_BYTES>()
+        .0
+        .iter()
         .enumerate()
     {
-        let raw = u64::from_be_bytes(
-            chunk
-                .try_into()
-                .expect("the exact fixture length yields eight-byte cells"),
-        );
+        let raw = u64::from_be_bytes(*chunk);
         let cell = H3CellId::try_from(raw)
             .map_err(|source| H3ReferenceCohortError::FixtureInvalidCell { index, source })?;
         source_cells.push(cell);

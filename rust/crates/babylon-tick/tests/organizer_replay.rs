@@ -479,10 +479,13 @@ fn idle_workplace_without_a_production_commitment_closes_and_reports_zero_work()
         "expired opening service prevents another committed batch"
     );
     let second = prepare(&session, None);
-    assert!(decode_material_receipts(second.material().receipt_bytes())
-        .expect("the canonical bytes decode into the declared type")
-        .production
-        .is_empty());
+    assert_eq!(
+        decode_material_receipts(second.material().receipt_bytes())
+            .expect("the canonical bytes decode into the declared type")
+            .production
+            .len(),
+        0
+    );
     let organizer = second
         .material()
         .register()
@@ -665,7 +668,7 @@ fn rejected_commit_publishes_nothing_and_identical_pending_input_retries_determi
     );
     assert_eq!(session.completed_tick(), 0);
     assert_eq!(session.graph_session().completed_tick(), 0);
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
     assert_eq!(accepted, accepted_before);
     let retry = prepare(&session, Some(&accepted));
     assert_eq!(*retry.identity(), expected_identity);

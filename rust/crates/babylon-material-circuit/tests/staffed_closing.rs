@@ -207,7 +207,7 @@ fn real_arrival_requests_work_with_zero_employment_then_plans_next_period() {
         .finish_with_labor(&catalog, vec![labor(2, 0)])
         .expect("the fixture completes with labor");
     assert_eq!(dispatched.dispatches.len(), 1);
-    assert!(dispatched.state.production_commitments.is_empty());
+    assert_eq!(dispatched.state.production_commitments.len(), 0);
     assert_eq!(opening, original);
 
     let closed = babylon_material_circuit::close_material_period(&catalog, &dispatched.state)
@@ -233,7 +233,7 @@ fn real_arrival_requests_work_with_zero_employment_then_plans_next_period() {
         .finish_with_labor(&catalog, staffing.next_labor().to_vec())
         .expect("the fixture completes with labor");
     assert_eq!(arrival.arrivals.len(), 1);
-    assert!(arrival.production.is_empty());
+    assert_eq!(arrival.production.len(), 0);
     assert_eq!(arrival.state.production_commitments[0].planned_batches, 2);
     assert_eq!(arrival.state.labor, vec![labor(3, 40)]);
     let production = babylon_material_circuit::close_material_period(&catalog, &arrival.state)
@@ -337,7 +337,7 @@ fn requests_share_inputs_preserve_zero_processes_and_ignore_labor_under_permutat
         .iter()
         .all(|row| row.planned_batches == 1));
     assert_eq!(actual.state.inventory, state.inventory);
-    assert!(actual.production.is_empty());
+    assert_eq!(actual.production.len(), 0);
 }
 
 #[test]
@@ -410,7 +410,7 @@ fn invalid_next_labor_refuses_without_mutating_opening_or_publishing_a_partial_c
         .expect("the material period closes")
         .finish_with_labor(&catalog, vec![labor(2, 0)])
         .expect("the fixture completes with labor");
-    assert!(finished.state.production_commitments.is_empty());
+    assert_eq!(finished.state.production_commitments.len(), 0);
     assert_eq!(finished.state.labor, vec![labor(2, 0)]);
 }
 

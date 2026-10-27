@@ -219,7 +219,7 @@ fn another_campaign_cannot_replace_the_opening_or_advance_an_empty_prefix() {
         Err(Refusal::Identity)
     );
     let (admitted, after) = advance(&mut other, None);
-    assert!(admitted.receipts.aid.is_empty());
+    assert_eq!(admitted.receipts.aid.len(), 0);
     assert_eq!(
         audit
             .read(other.catalog(), &admitted, other.material(), &after)

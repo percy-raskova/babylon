@@ -279,7 +279,7 @@ fn actual_gift(rows: &MaterialTickReceipts, positive: bool) {
         .filter(|r| r.outcome == AidOutcome::Granted && r.quantity > 0)
         .collect();
     if !positive {
-        assert!(granted.is_empty());
+        assert_eq!(granted.len(), 0);
         return;
     }
     assert_eq!(granted.len(), 1);

@@ -387,15 +387,20 @@ impl IdentifiedMaterialTick {
         canonical_bytes[..head].copy_from_slice(TICK_DOMAIN);
         canonical_bytes[head..head + 4].copy_from_slice(&3_u32.to_be_bytes());
         canonical_bytes[head + 4..head + 12].copy_from_slice(&resolve_tick.to_be_bytes());
-        for (slot, digest) in canonical_bytes[head + 12..].chunks_exact_mut(32).zip([
-            foundation,
-            *graph.tick_content_hash().as_bytes(),
-            graph.report().world_before,
-            graph.report().world_after,
-            prior_world_hash,
-            result_world_hash,
-            receipt_digest,
-        ]) {
+        for (slot, digest) in canonical_bytes[head + 12..]
+            .as_chunks_mut::<32>()
+            .0
+            .iter_mut()
+            .zip([
+                foundation,
+                *graph.tick_content_hash().as_bytes(),
+                graph.report().world_before,
+                graph.report().world_after,
+                prior_world_hash,
+                result_world_hash,
+                receipt_digest,
+            ])
+        {
             slot.copy_from_slice(&digest);
         }
         let tick_content_hash =

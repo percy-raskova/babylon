@@ -2254,7 +2254,7 @@ mod tests {
             &mut fuel,
         )
         .expect("an empty for-each is not an error");
-        assert!(events.is_empty());
+        assert_eq!(events.len(), 0);
         let stored = graph
             .node_attribute(self_id, "social-class/agitation")
             .expect("the fixture node carries the authored attribute");
@@ -3391,7 +3391,7 @@ mod tests {
         )
         .expect_err("the malformed batch is refused");
         assert_eq!(err.code, Some(EvalCode::ExistenceDiscipline), "{err}");
-        assert!(graph.all_edge_attributes().is_empty());
+        assert_eq!(graph.all_edge_attributes().len(), 0);
     }
 
     /// §2.10 discipline 1 on the write side: a qname whose owner segment

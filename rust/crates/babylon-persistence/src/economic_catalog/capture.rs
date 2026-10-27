@@ -453,9 +453,9 @@ mod tests {
         let detail = catalog
             .national_detail()
             .expect("the national source owner retains the authored partition");
-        assert!(!detail.background_households().is_empty());
-        assert!(!detail.background_workplaces().is_empty());
-        assert!(!detail.foreground().household_principals().is_empty());
+        assert_ne!(detail.background_households().len(), 0);
+        assert_ne!(detail.background_workplaces().len(), 0);
+        assert_ne!(detail.foreground().household_principals().len(), 0);
         assert_eq!(
             detail.background_households().len() + detail.foreground().household_principals().len(),
             catalog.opening().households.len(),

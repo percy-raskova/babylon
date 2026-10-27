@@ -376,7 +376,7 @@ fn tax_shortfall_records_current_uncollected_amount_without_minting_debt() {
             .tax_expense,
         crate::money(1)
     );
-    assert!(economy(&t.state).book.snapshot().shifts.is_empty());
+    assert_eq!(economy(&t.state).book.snapshot().shifts.len(), 0);
     assert_eq!(
         economy(&t.state)
             .book

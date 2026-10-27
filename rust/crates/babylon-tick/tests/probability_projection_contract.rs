@@ -344,5 +344,5 @@ fn resolved_nonadjacency_is_a_typed_rule_owned_probability_refusal() {
     };
     assert_eq!(rule_id, "struggle/spark-recognizer");
     assert_eq!(sample, "struggle/spark");
-    assert!(!form_path.is_empty());
+    assert_ne!(form_path.len(), 0);
 }

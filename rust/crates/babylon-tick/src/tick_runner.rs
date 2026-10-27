@@ -2975,7 +2975,7 @@ mod tests {
                 .as_bytes(),
             before
         );
-        assert!(sink.events.is_empty());
+        assert_eq!(sink.events.len(), 0);
     }
 
     #[test]

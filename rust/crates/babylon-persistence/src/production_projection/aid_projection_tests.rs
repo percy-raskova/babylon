@@ -61,9 +61,12 @@ fn assert_aid_projection(routed: bool) {
             projected.is_ok(),
             "routed={routed} period={period}: {projected:?}"
         );
-        assert!(!projected
-            .expect("the fixture projection returns its value")
-            .is_empty());
+        assert_ne!(
+            projected
+                .expect("the fixture projection returns its value")
+                .len(),
+            0
+        );
         let (capacity, _definitions) = freight::project_with_labels(
             session.catalog(),
             current,

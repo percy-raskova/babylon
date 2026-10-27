@@ -79,7 +79,7 @@ fn actual_equipment_close_receipts_roundtrip_with_wip_installation_wages_and_wea
         assert!(super::super::decode_material_receipts(&bytes[..bytes.len() - 1]).is_err());
         state = transition.state;
     }
-    assert!(position(&state).cohorts.is_empty());
+    assert_eq!(position(&state).cohorts.len(), 0);
     assert_eq!(equipment_cost(&state), money(0));
     assert_eq!(stock_cost(&state, good(4)), money(44));
     let (mut catalog, mut state) = opening();
@@ -200,9 +200,9 @@ fn installation_decisions_roundtrip_and_refuse_false_starts_positions_and_old_fo
             "mutation {mutation}"
         );
     }
-    assert!(decoded.household_time.is_empty());
-    assert!(decoded.aid.is_empty());
-    assert!(decoded.collections.is_empty());
+    assert_eq!(decoded.household_time.len(), 0);
+    assert_eq!(decoded.aid.len(), 0);
+    assert_eq!(decoded.collections.len(), 0);
     // Empty time34, aid35 and collection36 each retain a tag and u64 count.
     let start = bytes.len() - 3 * (1 + 8) - super::super::installation_decision::ROW_BYTES;
     let mut malformed = bytes.clone();

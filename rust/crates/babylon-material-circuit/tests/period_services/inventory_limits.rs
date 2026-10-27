@@ -112,7 +112,7 @@ fn temporary_service_outputs_and_grants_do_not_consume_durable_stock_row_budget(
         .service_performance
         .iter()
         .all(|r| r.performed_quantity == 1 && r.used_quantity == 1));
-    assert!(closed.state.service_orders.is_empty());
+    assert_eq!(closed.state.service_orders.len(), 0);
     let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &closed.state)
         .expect("the canonical material state encodes");
     assert_eq!(
@@ -310,7 +310,7 @@ fn paid_service_grants_cross_the_old_carrying_cap_and_expire_before_publication(
     assert!(stocks
         .iter()
         .all(|row| row.good_id != crate::good(1) && row.good_id != crate::good(2)));
-    assert!(closed.state.service_orders.is_empty());
+    assert_eq!(closed.state.service_orders.len(), 0);
     let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &closed.state)
         .expect("the canonical material state encodes");
     assert_eq!(

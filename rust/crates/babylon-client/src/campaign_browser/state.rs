@@ -1723,7 +1723,7 @@ mod tests {
             for mismatch in ["period", "perspective", "missing"] {
                 let (mut app, text) = freight_comparison_app();
                 select_comparison_section(&mut app, label);
-                assert!(!painted_comparison(&mut app, text).is_empty());
+                assert_ne!(painted_comparison(&mut app, text).len(), 0);
                 {
                     let mut browser = app.world_mut().resource_mut::<CampaignBrowserState>();
                     let compared = browser
@@ -3305,12 +3305,14 @@ mod tests {
                 browser.invalidate(context, &mut world.resource_mut::<ObserverUiState>());
             });
         app.update();
-        assert!(app
-            .world()
-            .get::<Text>(text)
-            .expect("the fixture world holds the addressed component")
-            .0
-            .is_empty());
+        assert_eq!(
+            app.world()
+                .get::<Text>(text)
+                .expect("the fixture world holds the addressed component")
+                .0
+                .len(),
+            0
+        );
         deliver_selection_catalog(
             &mut app,
             &[(10, "Active"), (30, "Parts shortage"), (50, "Freight")],

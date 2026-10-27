@@ -1530,7 +1530,7 @@ mod tests {
             .resource_mut::<ProductionNavigation>()
             .selected_site = None;
         app.update();
-        assert!(road_batch_vertices(&mut app).is_empty());
+        assert_eq!(road_batch_vertices(&mut app).len(), 0);
         app.world_mut().resource_mut::<ObserverUiState>().road_layer = RoadLayer::CapturedRoads;
         app.update();
         assert_eq!(road_batch_vertices(&mut app), [(RoadBatch::Captured, 24)]);
@@ -1575,7 +1575,7 @@ mod tests {
         assert_eq!(road_batch_vertices(&mut app).len(), 2);
         *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
         app.update();
-        assert!(road_batch_vertices(&mut app).is_empty());
+        assert_eq!(road_batch_vertices(&mut app).len(), 0);
     }
 
     #[test]

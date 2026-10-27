@@ -228,8 +228,8 @@ fn shipment_precedes_arrival_and_realization() {
         .expect("period one must close");
     assert_eq!(first.state.period, 2);
     assert_eq!(first.dispatches.len(), 1);
-    assert!(first.arrivals.is_empty());
-    assert!(first.realizations.is_empty());
+    assert_eq!(first.arrivals.len(), 0);
+    assert_eq!(first.realizations.len(), 0);
     assert_eq!(first.state.orders[0].shipped, 6);
     assert_eq!(first.state.orders[0].delivered, 0);
     assert_eq!(first.state.orders[0].realized, 0);
@@ -258,12 +258,12 @@ fn delivered_inputs_feed_the_following_period_not_the_arrival_period() {
     let (catalog, opening) = base_state();
     let first = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("period one must close");
-    assert!(first.state.production_commitments.is_empty());
+    assert_eq!(first.state.production_commitments.len(), 0);
 
     let second = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
         .expect("period two must close");
     assert_eq!(second.state.production_commitments[0].planned_batches, 2);
-    assert!(second.production.is_empty());
+    assert_eq!(second.production.len(), 0);
 
     let third = babylon_material_circuit::advance_material_circuit(&catalog, &second.state)
         .expect("period three must close");
@@ -281,7 +281,7 @@ fn severed_supplier_relation_causes_backlog_without_creating_goods() {
 
     let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("missing supply is a material outcome");
-    assert!(first.dispatches.is_empty());
+    assert_eq!(first.dispatches.len(), 0);
     assert_eq!(first.state.orders[0].shipped, 0);
     assert_eq!(
         first.state.derived_backlog().expect("derived backlog")[0].quantity,
@@ -291,8 +291,8 @@ fn severed_supplier_relation_causes_backlog_without_creating_goods() {
 
     let second = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
         .expect("period two must close");
-    assert!(second.arrivals.is_empty());
-    assert!(second.state.production_commitments.is_empty());
+    assert_eq!(second.arrivals.len(), 0);
+    assert_eq!(second.state.production_commitments.len(), 0);
 }
 
 #[test]
@@ -315,7 +315,7 @@ fn missing_stock_and_labor_are_material_shortages_not_engine_errors() {
     let outcome = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("zero supply must still close");
     assert_eq!(outcome.production[0].produced_batches, 0);
-    assert!(outcome.dispatches.is_empty());
+    assert_eq!(outcome.dispatches.len(), 0);
     assert_eq!(
         outcome.state.derived_backlog().expect("derived backlog")[0].quantity,
         6

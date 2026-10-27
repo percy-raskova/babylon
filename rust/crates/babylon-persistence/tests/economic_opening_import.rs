@@ -20,8 +20,8 @@ fn control_import_preserves_exact_goods_orders_and_staffing() {
         let opening = economic_catalog::import_michigan_opening(&catalog)
             .expect("the fixture call `import_michigan_opening` succeeds for the authored inputs");
         assert_eq!(opening.accounting, CatalogAccounting::PhysicalControl);
-        assert!(opening.households.is_empty());
-        assert!(opening.employment.is_empty());
+        assert_eq!(opening.households.len(), 0);
+        assert_eq!(opening.employment.len(), 0);
         let compiled = opening.compile().expect("the authored scenario compiles");
         assert_eq!(
             compiled.catalog.process_outputs.len(),

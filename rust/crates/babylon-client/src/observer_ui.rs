@@ -2896,7 +2896,7 @@ pub(crate) mod tests {
         app.update();
         assert_eq!(app.world().resource::<ChangedButtonNodes>().0.len(), 3);
         app.update();
-        assert!(app.world().resource::<ChangedButtonNodes>().0.is_empty());
+        assert_eq!(app.world().resource::<ChangedButtonNodes>().0.len(), 0);
 
         for (lens, message, display) in [
             (
@@ -2925,7 +2925,7 @@ pub(crate) mod tests {
                 );
             }
             app.update();
-            assert!(app.world().resource::<ChangedButtonNodes>().0.is_empty());
+            assert_eq!(app.world().resource::<ChangedButtonNodes>().0.len(), 0);
         }
 
         // Updating a visible explanation changes its text without dirtying its layout node.
@@ -2934,7 +2934,7 @@ pub(crate) mod tests {
         assert_eq!(app.world().resource::<ChangedButtonNodes>().0, [nodes[2]]);
         app.world_mut().resource_mut::<ObserverFeedback>().message = Some("Finishing period.");
         app.update();
-        assert!(app.world().resource::<ChangedButtonNodes>().0.is_empty());
+        assert_eq!(app.world().resource::<ChangedButtonNodes>().0.len(), 0);
         assert_eq!(
             app.world()
                 .get::<Text>(nodes[2])

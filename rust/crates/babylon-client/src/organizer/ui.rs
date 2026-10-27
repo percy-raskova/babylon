@@ -1476,12 +1476,14 @@ mod tests {
                 .bypass_change_detection()
                 .content_size = Vec2::new(400.0, 100.0) * scale;
             app.update();
-            assert!(app
-                .world()
-                .get::<Text>(hint)
-                .expect("the fixture world holds the addressed component")
-                .0
-                .is_empty());
+            assert_eq!(
+                app.world()
+                    .get::<Text>(hint)
+                    .expect("the fixture world holds the addressed component")
+                    .0
+                    .len(),
+                0
+            );
         }
     }
 
@@ -2083,14 +2085,16 @@ mod tests {
         assert!(text.contains("RESOLVING · period 4"));
         assert!(!text.contains("Advance to receive"));
         assert!(text.contains("No outcome is credited"));
-        assert!(app
-            .world()
-            .resource::<OrganizerClient>()
-            .view
-            .as_ref()
-            .expect("the fixture set the optional field before this read")
-            .receipts
-            .is_empty());
+        assert_eq!(
+            app.world()
+                .resource::<OrganizerClient>()
+                .view
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .receipts
+                .len(),
+            0
+        );
     }
 
     #[test]
@@ -2118,14 +2122,16 @@ mod tests {
             .resource::<OrganizerClient>()
             .commitment
             .is_none());
-        assert!(app
-            .world()
-            .resource::<OrganizerClient>()
-            .view
-            .as_ref()
-            .expect("the fixture set the optional field before this read")
-            .receipts
-            .is_empty());
+        assert_eq!(
+            app.world()
+                .resource::<OrganizerClient>()
+                .view
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .receipts
+                .len(),
+            0
+        );
     }
 
     #[test]
@@ -2608,7 +2614,7 @@ mod tests {
             *app.world().resource::<PrimaryView>(),
             PrimaryView::Organizer
         );
-        assert!(app.world().resource::<ArchiveRequests>().0.is_empty());
+        assert_eq!(app.world().resource::<ArchiveRequests>().0.len(), 0);
         assert!(!app.world().resource::<ObserverUiState>().archive_open);
         let edited = client
             .draft

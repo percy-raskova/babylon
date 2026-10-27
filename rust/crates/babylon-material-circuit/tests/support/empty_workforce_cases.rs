@@ -87,8 +87,8 @@ fn assert_zero_attendance(state: &MaterialCircuitState) {
         .iter()
         .all(|r| r.period == state.period && r.planned_hours == 0));
     assert!(state.labor.iter().all(|r| r.available == 0));
-    assert!(accounts.employment.is_empty());
-    assert!(accounts.member_labor.is_empty());
+    assert_eq!(accounts.employment.len(), 0);
+    assert_eq!(accounts.member_labor.len(), 0);
 }
 
 #[test]
@@ -117,11 +117,11 @@ fn empty_workplaces_cannot_turn_stock_and_funded_demand_into_free_work_after_res
         assert_eq!(result.state.period, period + 1);
         assert_eq!(result.state.inventory, inventory);
         assert!(result.production.iter().all(|r| r.produced_batches == 0));
-        assert!(result.local_fulfillments.is_empty());
-        assert!(result.dispatches.is_empty());
-        assert!(result.wage_accruals.is_empty());
-        assert!(result.labor_use.is_empty());
-        assert!(result.member_labor_use.is_empty());
+        assert_eq!(result.local_fulfillments.len(), 0);
+        assert_eq!(result.dispatches.len(), 0);
+        assert_eq!(result.wage_accruals.len(), 0);
+        assert_eq!(result.labor_use.len(), 0);
+        assert_eq!(result.member_labor_use.len(), 0);
         assert_eq!(result.household_demand[0].admitted_quantity, 1);
         assert_eq!(result.household_demand[0].expired_quantity, 1);
         assert_eq!(result.household_demand[0].fulfilled_quantity, 0);
@@ -225,9 +225,9 @@ fn an_empty_shared_producer_and_merchant_can_request_work_without_inventing_peop
         .finish_with_workforce(&catalog, staffed.next_labor().to_vec(), vec![])
         .expect("the fixture call `finish_with_workforce` succeeds for the authored inputs");
     assert_zero_attendance(&result.state);
-    assert!(result.state.production_commitments.is_empty());
-    assert!(result.member_labor_use.is_empty());
-    assert!(result.wage_accruals.is_empty());
+    assert_eq!(result.state.production_commitments.len(), 0);
+    assert_eq!(result.member_labor_use.len(), 0);
+    assert_eq!(result.wage_accruals.len(), 0);
 }
 
 #[test]

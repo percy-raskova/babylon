@@ -690,7 +690,7 @@ fn assert_quiet_sweep_refreshes_held_card(
     let restart = ArchiveWorker::new(&target.config)
         .sweep_once(target.campaign_id, &NullArchiveDossierProducer)
         .expect("restarted quiet worker is idle");
-    assert!(restart.dispositions().is_empty());
+    assert_eq!(restart.dispositions().len(), 0);
     assert_eq!(restart.verified_tick(), 3);
 }
 

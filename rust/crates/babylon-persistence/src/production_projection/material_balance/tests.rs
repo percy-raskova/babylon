@@ -521,9 +521,9 @@ fn add_receiving_dispatch(catalog: &mut MaterialCatalog, state: &mut MaterialCir
 fn assert_intermediate_transit_loss(intermediate: &Pair) {
     assert_eq!(intermediate.2.losses.len(), 1);
     assert_eq!(intermediate.2.losses[0].quantity, 25);
-    assert!(intermediate.2.arrivals.is_empty());
-    assert!(intermediate.2.deliveries.is_empty());
-    assert!(intermediate.2.realizations.is_empty());
+    assert_eq!(intermediate.2.arrivals.len(), 0);
+    assert_eq!(intermediate.2.deliveries.len(), 0);
+    assert_eq!(intermediate.2.realizations.len(), 0);
     assert_eq!(intermediate.1.freight.len(), 1);
     assert_eq!(intermediate.1.freight[0].current_stage_index, 1);
     assert_eq!(intermediate.1.freight[0].quantity, 75);
@@ -549,7 +549,7 @@ fn intermediate_loss_then_final_arrival_preserves_same_principal_work_and_dispat
     assert_intermediate_transit_loss(&intermediate);
 
     let arrival = then(&intermediate);
-    assert!(arrival.2.losses.is_empty());
+    assert_eq!(arrival.2.losses.len(), 0);
     assert_eq!(arrival.2.arrivals.len(), 1);
     assert_eq!(arrival.2.arrivals[0].quantity, 75);
     assert_eq!(arrival.2.production.len(), 1);
@@ -943,8 +943,8 @@ fn retail_state() -> Parts {
 fn retail_final_handoff_has_a_distinct_committed_stock_sink() {
     let committed = pair(retail_state());
     assert_eq!(committed.2.local_fulfillments[0].quantity, 3);
-    assert!(committed.2.dispatches.is_empty());
-    assert!(committed.2.arrivals.is_empty());
+    assert_eq!(committed.2.dispatches.len(), 0);
+    assert_eq!(committed.2.arrivals.len(), 0);
     let balance = complete(&committed);
     let retailer = site_row(&balance, 1);
     assert_eq!(
@@ -975,9 +975,9 @@ fn local_internal_transfer_moves_same_native_stock_without_physical_arrival() {
     state.corridor_capacities.clear();
     let committed = pair((catalog, state));
     assert_eq!(committed.2.local_transfers[0].quantity, 100);
-    assert!(committed.2.dispatches.is_empty());
-    assert!(committed.2.arrivals.is_empty());
-    assert!(committed.1.freight.is_empty());
+    assert_eq!(committed.2.dispatches.len(), 0);
+    assert_eq!(committed.2.arrivals.len(), 0);
+    assert_eq!(committed.1.freight.len(), 0);
     let balance = complete(&committed);
     assert_eq!(
         (
@@ -1298,7 +1298,7 @@ fn recurring_eight_period_control_preserves_balances_after_order_retirement() {
         let balance = complete(&pair);
         conserved(&balance);
         assert_eq!(balance.period, period);
-        assert!(pair.1.final_demand_orders.is_empty());
+        assert_eq!(pair.1.final_demand_orders.len(), 0);
         state = pair.1;
         catalog = pair.3;
     }
@@ -1352,7 +1352,7 @@ fn retired_monetary_arrivals_require_delivery_and_realization_receipts() {
     let valid = then(&first);
     complete(&valid);
     let mut damaged = valid.clone();
-    assert!(!damaged.2.realizations.is_empty());
+    assert_ne!(damaged.2.realizations.len(), 0);
     damaged.2.realizations.clear();
     assert!(validate(&damaged).is_err());
     damaged = valid.clone();
@@ -1628,7 +1628,7 @@ fn actual_recurring_services_authenticate_paid_household_satisfaction_without_pa
         super::super::services_fixture::recurring(super::super::services_fixture::materials());
     let evidence = pair((catalog, state));
     assert_eq!(evidence.2.household_services[0].satisfied_quantity, 1);
-    assert!(evidence.2.household_consumption.is_empty());
+    assert_eq!(evidence.2.household_consumption.len(), 0);
     let services = super::super::households::services::project_with_labels(
         &evidence.3,
         &evidence.1,
@@ -1845,7 +1845,7 @@ fn actual_unfunded_household_service_need_remains_visible_without_work_or_purcha
 #[test]
 fn installation_decision_must_join_current_plan_and_post_wear_position() {
     let evidence = pair(super::super::equipment_fixture::opening());
-    assert!(!evidence.2.installation_decisions.is_empty());
+    assert_ne!(evidence.2.installation_decisions.len(), 0);
     assert!(project(&evidence).is_ok());
     let mut missing = evidence.clone();
     missing.2.installation_decisions.clear();

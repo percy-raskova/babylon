@@ -31,10 +31,13 @@ fn every_source_member_is_preserved_with_explicit_admission() {
         .admitted_cohorts()
         .all(|row| row.key().function.is_some()));
     let kalawao = CountyGeoid::try_from("15005").expect("the fixture value fits the target range");
-    assert!(reference
-        .groups_in_county(kalawao)
-        .expect("the fixture call `groups_in_county` succeeds for the authored inputs")
-        .is_empty());
+    assert_eq!(
+        reference
+            .groups_in_county(kalawao)
+            .expect("the fixture call `groups_in_county` succeeds for the authored inputs")
+            .len(),
+        0
+    );
     assert!(reference
         .groups_in_county(
             CountyGeoid::try_from("26999").expect("the fixture value fits the target range")

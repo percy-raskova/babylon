@@ -956,8 +956,7 @@ impl Write for ProgressOutput {
         let last = self
             .bytes
             .split(|byte| *byte == b'\n')
-            .filter(|line| !line.is_empty())
-            .next_back()
+            .rfind(|line| !line.is_empty())
             .expect("the fixture iterator yields its authored rows");
         let row: Value =
             serde_json::from_slice(last).expect("the authored bytes match the declared schema");
@@ -1052,7 +1051,7 @@ pub(in crate::runtime_session::coordinator) fn actual_progress_flushes_in_order_
                 .bytes
                 .split(|byte| *byte == b'\n')
                 .take(ack)
-                .flat_map(|line| line.iter().copied().chain([b'\n']))
+                .flat_map(|line| line.iter().copied().chain(*b"\n"))
                 .collect::<Vec<_>>()
         )
         .len(),

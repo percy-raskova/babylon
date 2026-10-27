@@ -51,7 +51,7 @@ fn consumed_contact_product_tombstone_survives_creation_receipt_eviction() {
         .agreements
         .iter()
         .any(|row| row.source_product_id == Some(product.product_id)));
-    assert!(renewed.contact_products.is_empty());
+    assert_eq!(renewed.contact_products.len(), 0);
 }
 
 #[test]
@@ -75,7 +75,7 @@ fn household_time_witness_refuses_evicted_last_period_hour_partition() {
         .as_ref()
         .expect("a household resolution records its exact time partition");
     assert_eq!(witness.period, 1);
-    assert!(!witness.contribution_use_ids.is_empty());
+    assert_ne!(witness.contribution_use_ids.len(), 0);
     assert_eq!(witness.contribution_use_ids, expected_use_ids(&resolved));
     babylon_practice_contract::validate_organizer_journal(
         &config,

@@ -1021,9 +1021,12 @@ pub(crate) mod tests {
         snapshot
             .household_accounts
             .retain(|r| r.demand_principal_id != "recipient");
-        assert!(shared_accounts(&snapshot, Some("meals"))
-            .expect("the fixture call `shared_accounts` succeeds for the authored inputs")
-            .is_empty());
+        assert_eq!(
+            shared_accounts(&snapshot, Some("meals"))
+                .expect("the fixture call `shared_accounts` succeeds for the authored inputs")
+                .len(),
+            0
+        );
         let hidden = account_reading(&snapshot.freight_capacity_accounts[0], &snapshot);
         assert!(hidden.contains("Household support detail unavailable in this observation."));
         assert!(!hidden.contains("HOUSEHOLD AID"));
@@ -1169,12 +1172,18 @@ pub(crate) mod tests {
     #[test]
     fn invalid_route_definitions_are_not_empty_shared_membership() {
         let mut snapshot = fixture();
-        assert!(shared_accounts(&snapshot, Some("undisclosed"))
-            .expect("the fixture call `shared_accounts` succeeds for the authored inputs")
-            .is_empty());
-        assert!(competitor_sites("undisclosed", &snapshot)
-            .expect("the fixture call `competitor_sites` succeeds for the authored inputs")
-            .is_empty());
+        assert_eq!(
+            shared_accounts(&snapshot, Some("undisclosed"))
+                .expect("the fixture call `shared_accounts` succeeds for the authored inputs")
+                .len(),
+            0
+        );
+        assert_eq!(
+            competitor_sites("undisclosed", &snapshot)
+                .expect("the fixture call `competitor_sites` succeeds for the authored inputs")
+                .len(),
+            0
+        );
         snapshot.physical_routes.clear();
         assert!(matches!(
             shared_accounts(&snapshot, Some("panels")),
@@ -1200,12 +1209,18 @@ pub(crate) mod tests {
             1
         );
         snapshot.sites.retain(|site| site.id != "mill");
-        assert!(competitor_sites("panels", &snapshot)
-            .expect("the fixture call `competitor_sites` succeeds for the authored inputs")
-            .is_empty());
-        assert!(shared_accounts(&snapshot, Some("panels"))
-            .expect("the fixture call `shared_accounts` succeeds for the authored inputs")
-            .is_empty());
+        assert_eq!(
+            competitor_sites("panels", &snapshot)
+                .expect("the fixture call `competitor_sites` succeeds for the authored inputs")
+                .len(),
+            0
+        );
+        assert_eq!(
+            shared_accounts(&snapshot, Some("panels"))
+                .expect("the fixture call `shared_accounts` succeeds for the authored inputs")
+                .len(),
+            0
+        );
     }
 
     #[test]

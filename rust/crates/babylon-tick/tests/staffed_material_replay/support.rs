@@ -750,7 +750,7 @@ pub(crate) fn one_empty_period_holds_then_releases_and_real_arrival_rehires_for_
     commit(&mut session, &mut sink, second);
     assert_people(&session, 0.0, 1.0, 0.0);
     assert_eq!(session.material().state().labor, vec![labor(3, 0)]);
-    assert!(session.material().state().production_commitments.is_empty());
+    assert_eq!(session.material().state().production_commitments.len(), 0);
 
     let arrival = prepare(&session);
     assert_eq!(staffing_field(&arrival, "current-unretained-hours"), 40);
@@ -759,7 +759,7 @@ pub(crate) fn one_empty_period_holds_then_releases_and_real_arrival_rehires_for_
         .expect("the canonical bytes decode into the declared type");
     assert_eq!(receipts.arrivals.len(), 1);
     assert_eq!(receipts.arrivals[0].quantity, 4);
-    assert!(receipts.production.is_empty());
+    assert_eq!(receipts.production.len(), 0);
     assert_eq!(
         arrival.material().register().state().production_commitments[0].planned_batches,
         1
@@ -800,7 +800,7 @@ pub(crate) fn one_empty_period_holds_then_releases_and_real_arrival_rehires_for_
         (order.shipped, order.delivered, order.realized, order.lost),
         (4, 4, 4, 0)
     );
-    assert!(session.material().state().freight.is_empty());
+    assert_eq!(session.material().state().freight.len(), 0);
     assert_eq!(
         session
             .material()

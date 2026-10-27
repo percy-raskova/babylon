@@ -1408,7 +1408,7 @@ note = "Mass declaration ownership fixture"
             serde_json::to_string(&first).expect("the fixture value formats as text"),
             serde_json::to_string(&second).expect("the fixture value formats as text")
         );
-        assert!(!first.is_empty());
+        assert_ne!(first.len(), 0);
     }
 
     fn two_prelude_manifest(preludes: &str) -> ContentSetManifest {

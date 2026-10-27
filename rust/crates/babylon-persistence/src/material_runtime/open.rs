@@ -189,7 +189,7 @@ fn revalidate_capture(
         return Err(MaterialRuntimeError::FoundationMismatch);
     }
     if capture_identity::rows_digest(marker.iter())?
-        != capture_identity::rows_digest(original_marker.into_iter())?
+        != capture_identity::rows_digest(original_marker)?
     {
         return Err(MaterialRuntimeError::TailConflict);
     }

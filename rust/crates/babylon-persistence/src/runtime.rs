@@ -177,7 +177,7 @@ mod live_tests {
         assert_eq!(runtime.session().completed_tick(), 0);
         assert_eq!(runtime.session().material().canonical_bytes(), before);
         assert!(runtime.diagnostic_receipt().is_none());
-        assert!(sink.events.is_empty());
+        assert_eq!(sink.events.len(), 0);
         let mut owner = config
             .connect(NoTls)
             .expect("the test database accepts the connection");
@@ -239,7 +239,7 @@ mod live_tests {
             .advance_and_commit(&mut refused_sink, &actions)
             .is_err());
         assert_eq!(stale.session().completed_tick(), 1);
-        assert!(refused_sink.events.is_empty());
+        assert_eq!(refused_sink.events.len(), 0);
         owner.execute("UPDATE babylon_state.material_tick_v3 SET receipt_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2", &[campaign.as_uuid(), &original]).expect("the test database applies the setup statement");
         assert_eq!(
             stale
@@ -467,7 +467,7 @@ mod live_tests {
                 .prepare_advance(&actions)
                 .expect("the session prepares the authored advance");
             let report = candidate.graph_report();
-            assert!(!report.successful_event_batch().events().is_empty());
+            assert_ne!(report.successful_event_batch().events().len(), 0);
             let mut reference = client
                 .transaction()
                 .expect("the test database opens a transaction");

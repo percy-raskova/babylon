@@ -70,7 +70,7 @@ fn generated_source_loads_only_observed_cohorts_and_native_sector_hyperedges() {
             .sum::<usize>(),
         1_522
     );
-    assert!(actual.rows().edges().is_empty());
+    assert_eq!(actual.rows().edges().len(), 0);
 }
 
 #[test]
@@ -205,7 +205,7 @@ fn advance(session: &mut ReplayTickSession<HypergraphStore>) -> IdentifiedTickRe
         .advance(&mut sink, &actions)
         .expect("the fixture advances the authored period");
     assert_eq!(report.report().fired, 0);
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
     report
 }
 
@@ -240,7 +240,7 @@ fn full_foundation_and_checkpoint_roundtrip_preserve_memberships_and_identity() 
             .node_f64()
     );
     assert_ne!(continued.session_identity(), old.session_identity());
-    assert!(bundle.rule_source_bytes().is_empty());
+    assert_eq!(bundle.rule_source_bytes().len(), 0);
     assert_eq!(
         CampaignFoundation::capture(&continued, bundle)
             .expect("the fixture captures the authored state")

@@ -108,15 +108,18 @@ fn foreign_direct_counterpart_has_an_explicit_peer_and_no_county_geometry() {
     assert_eq!(result.total_links, 5);
     assert_eq!(result.nodes.len(), 2);
     assert!(heading(&result, NetworkSector::All).contains("1 counterparts listed outside this map"));
-    assert!(frame
-        .0
-        .as_ref()
-        .expect("the fixture set the optional field before this read")
-        .production
-        .as_ref()
-        .expect("the fixture set the optional field before this read")
-        .routes
-        .is_empty());
+    assert_eq!(
+        frame
+            .0
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .production
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .routes
+            .len(),
+        0
+    );
 }
 
 #[test]
@@ -164,13 +167,16 @@ fn household_service_needs_are_visible_without_fabricating_retail_orders() {
         .any(|link| link.to == NodeKey::EndBuyers("26163".into())
             && matches!(&link.kind, NetworkLinkKind::Commodity {good, ..} if good == "care")));
     assert_eq!(result.total_links, 3);
-    assert!(frame
-        .0
-        .as_ref()
-        .expect("the fixture set the optional field before this read")
-        .production
-        .as_ref()
-        .expect("the fixture set the optional field before this read")
-        .final_demand_accounts
-        .is_empty());
+    assert_eq!(
+        frame
+            .0
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .production
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .final_demand_accounts
+            .len(),
+        0
+    );
 }

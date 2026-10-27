@@ -138,7 +138,7 @@ fn tessellate_polygon(
     }
 
     let base = positions.len() as u32;
-    for point in flat.chunks_exact(2) {
+    for point in flat.as_chunks::<2>().0 {
         positions.push([point[0] as f32, point[1] as f32, 0.0]);
         vertex_county.push(county_index);
     }
@@ -148,7 +148,10 @@ fn tessellate_polygon(
     // Keep one triangulator, with the per-county area property as its gate.
     let mut triangles: Vec<usize> = Vec::new();
     triangulator.earcut(
-        flat.chunks_exact(2).map(|point| [point[0], point[1]]),
+        flat.as_chunks::<2>()
+            .0
+            .iter()
+            .map(|point| [point[0], point[1]]),
         &hole_indices,
         &mut triangles,
     );
@@ -367,7 +370,9 @@ mod tests {
         assert_eq!(end - start, 4, "the square contributes its 4 corners");
         let triangle_count = tess
             .indices
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .filter(|tri| tri.iter().all(|&i| (start..end).contains(&i)))
             .count();
         assert_eq!(
@@ -398,7 +403,9 @@ mod tests {
 
         let county_triangles: Vec<[u32; 3]> = tess
             .indices
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .filter(|tri| tri.iter().all(|&i| (start..end).contains(&i)))
             .map(|tri| [tri[0], tri[1], tri[2]])
             .collect();
@@ -451,7 +458,7 @@ mod tests {
 
         // No county tessellates to zero triangles.
         let mut triangle_count_by_county = vec![0u32; atlas.len()];
-        for tri in tess.indices.chunks_exact(3) {
+        for tri in tess.indices.as_chunks::<3>().0 {
             let county = tess.vertex_county[tri[0] as usize];
             triangle_count_by_county[county as usize] += 1;
         }
@@ -516,7 +523,7 @@ mod tests {
         // One pass over every triangle, bucketed by owning county —
         // O(triangles), not O(counties x triangles).
         let mut triangle_area_sum_by_county = vec![0.0f64; atlas.len()];
-        for tri in tess.indices.chunks_exact(3) {
+        for tri in tess.indices.as_chunks::<3>().0 {
             let county = tess.vertex_county[tri[0] as usize] as usize;
             triangle_area_sum_by_county[county] += triangle_area(
                 tess.positions[tri[0] as usize],

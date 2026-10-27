@@ -238,7 +238,7 @@ pub(crate) fn relation_path(from: Vec3, to: Vec3) -> Vec<Vec3> {
         ]
     } else {
         let bend = if to.x > from.x {
-            (from.x + to.x) * 0.5
+            f32::midpoint(from.x, to.x)
         } else if to.z > from.z {
             from.x.max(to.x) + 135.0
         } else {

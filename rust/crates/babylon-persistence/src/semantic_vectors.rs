@@ -1265,7 +1265,9 @@ fn hex_bytes(value: &str, field_name: &'static str) -> Result<Vec<u8>, RustPersi
     }
     value
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| {
             let high = hex_nibble(pair[0])
                 .ok_or(RustPersistenceVectorError::Shape { field: field_name })?;

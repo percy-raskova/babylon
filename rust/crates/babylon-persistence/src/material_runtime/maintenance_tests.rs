@@ -296,7 +296,7 @@ fn failed_commit_retry(
             .expect("the committed session publishes a world hash"),
         hash
     );
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
     let retry = session
         .prepare_advance(actions)
         .expect("the session prepares the authored advance");
@@ -331,7 +331,7 @@ fn assert_full_projection(
         .find(|site| site.id == maintenance.provider_site_id)
         .expect("the fixture holds the searched element");
     assert!(provider.roles.contains(&ProductionSiteRole::Maintenance));
-    assert!(provider.processes.is_empty());
+    assert_eq!(provider.processes.len(), 0);
     assert_eq!(provider.observed_employment, Some(1480));
     assert_eq!(snapshot.sites.len(), catalog.sites().len());
     assert_eq!(

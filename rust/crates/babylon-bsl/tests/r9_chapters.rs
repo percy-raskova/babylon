@@ -1777,7 +1777,7 @@ mod c6_effect_position_iteration {
             &mut fuel,
         )
         .expect("an empty for-each is not an error");
-        assert!(events.is_empty());
+        assert_eq!(events.len(), 0);
         let stored = graph
             .node_attribute(self_id, "social-class/agitation")
             .expect("the fixture node carries the authored attribute");

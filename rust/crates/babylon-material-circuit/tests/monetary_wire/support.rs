@@ -495,7 +495,7 @@ pub(crate) fn historical_cost_opening_accrued_wages_are_assets_and_liabilities_w
     let CircuitAccounting::Monetary(economy) = &result.state.accounting else {
         panic!("paid control");
     };
-    assert!(economy.book.snapshot().shifts.is_empty());
+    assert_eq!(economy.book.snapshot().shifts.len(), 0);
     assert_eq!(
         economy
             .book

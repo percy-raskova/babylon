@@ -128,15 +128,18 @@ fn live_shared_membership_preserves_checkpoint_boundary_and_historical_reads() {
     );
     archive_reader::with_reader(&target.config, |reader| {
         for tick in [1, 2, 13, 14] {
-            assert!(reader
-                .search_as_of(
-                    &archive_reader::scope_at(&target.config, target.campaign_id, tick),
-                    "checkpoint",
-                    10
-                )
-                .expect("the fixture call `search_as_of` succeeds for the authored inputs")
-                .hits
-                .is_empty());
+            assert_eq!(
+                reader
+                    .search_as_of(
+                        &archive_reader::scope_at(&target.config, target.campaign_id, tick),
+                        "checkpoint",
+                        10
+                    )
+                    .expect("the fixture call `search_as_of` succeeds for the authored inputs")
+                    .hits
+                    .len(),
+                0
+            );
         }
     });
     let mut transaction = client

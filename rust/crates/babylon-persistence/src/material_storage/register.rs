@@ -680,7 +680,7 @@ mod typed_decode_controls {
             ),
             "authenticated immutable register bytes must reuse their admitted owner"
         );
-        assert!(!borrowed.receipts.aid.is_empty());
+        assert_ne!(borrowed.receipts.aid.len(), 0);
         let owned = decode(&encoded.register_storage_bytes, None)
             .expect("the committed canonical bytes decode");
         assert!(matches!(owned.register, Cow::Owned(_)));
@@ -759,7 +759,7 @@ mod typed_decode_controls {
             decode_material_receipts(receipts)
                 .expect("the canonical bytes decode into the declared type")
         );
-        assert!(!admitted.receipts.aid.is_empty());
+        assert_ne!(admitted.receipts.aid.len(), 0);
         assert_eq!(
             decode(
                 session.catalog(),

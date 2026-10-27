@@ -35,7 +35,9 @@ fn hex_encode(bytes: &[u8]) -> String {
 fn hex_decode(text: &str) -> Vec<u8> {
     assert!(text.len().is_multiple_of(2), "even hex length");
     text.as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|chunk| {
             let byte = std::str::from_utf8(chunk).expect("ASCII hex");
             u8::from_str_radix(byte, 16).expect("hex byte")

@@ -353,8 +353,8 @@ fn fulfillment_credits_stock_expiry_refunds_and_consumption_preserves_need() {
         (2, 2)
     );
     assert_eq!(household_rows(&mut state).household_stocks[0].quantity, 2);
-    assert!(state.final_demand_orders.is_empty());
-    assert!(economy(&mut state).book.snapshot().purchases.is_empty());
+    assert_eq!(state.final_demand_orders.len(), 0);
+    assert_eq!(economy(&mut state).book.snapshot().purchases.len(), 0);
     assert_eq!(
         economy(&mut state)
             .book

@@ -585,11 +585,11 @@ mod collection_history_tests {
                 .sum::<usize>(),
             1
         );
-        assert!(collection_history(journal, &opening_view).is_empty());
+        assert_eq!(collection_history(journal, &opening_view).len(), 0);
         // Restrict only the presentation window, never the canonical successful
         // receipt. A fact outside retained practice IDs must not be disclosed.
         let mut no_retained_receipts = current_view(&reopened);
         no_retained_receipts.receipts.clear();
-        assert!(collection_history(journal, &no_retained_receipts).is_empty());
+        assert_eq!(collection_history(journal, &no_retained_receipts).len(), 0);
     }
 }

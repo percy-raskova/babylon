@@ -149,7 +149,7 @@ fn county_prism(
     let mut normals = Vec::new();
     let first = triangles.indices.partition_point(|index| *index < start);
     let last = triangles.indices.partition_point(|index| *index < end);
-    for triangle in triangles.indices[first..last].chunks_exact(3) {
+    for triangle in triangles.indices[first..last].as_chunks::<3>().0 {
         let mut top = [triangle[0], triangle[1], triangle[2]].map(|index| {
             let point = triangles.positions[index as usize];
             scene_point(Vec2::new(point[0], point[1]), origin, 1.0)
@@ -1139,7 +1139,7 @@ mod tests {
             for probe in &probes {
                 let point = scene_point(Vec2::from_array(probe.epsg5070), origin, 1.0);
                 let point = Vec2::new(point.x, point.z);
-                let hit = positions.chunks_exact(3).any(|triangle| {
+                let hit = positions.as_chunks::<3>().0.iter().any(|triangle| {
                     if !triangle.iter().all(|p| p[1].to_bits() == 1.0_f32.to_bits()) {
                         return false;
                     }
@@ -1185,7 +1185,7 @@ mod tests {
             else {
                 panic!("positions");
             };
-            assert!(!positions.is_empty());
+            assert_ne!(positions.len(), 0);
             assert_eq!(positions.len() % 3, 0);
             assert!(positions.iter().flatten().all(|value| value.is_finite()));
             assert!(positions.iter().any(|point| point[1] == 0.0));

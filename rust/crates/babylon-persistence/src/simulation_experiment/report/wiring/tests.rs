@@ -116,7 +116,7 @@ fn coverage_matches_captured_subjects_and_native_family_selection() {
         .expect("the fixture holds the searched element");
     family.selected = false;
     family.captured_rows = 0;
-    assert!(!receipts.production.is_empty());
+    assert_ne!(receipts.production.len(), 0);
     assert!(manifest::verify(&manifest, &report, &receipts, &staffing).is_err());
 }
 
@@ -155,13 +155,16 @@ fn captured_selection_and_real_first_period_cover_each_admitted_profile() {
             .bsl_families
             .iter()
             .all(|r| r.selected != r.rule_ids.is_empty()));
-        assert!(manifest
-            .bsl_families
-            .iter()
-            .find(|r| r.family == "metabolism")
-            .expect("the fixture holds the searched element")
-            .rule_ids
-            .is_empty());
+        assert_eq!(
+            manifest
+                .bsl_families
+                .iter()
+                .find(|r| r.family == "metabolism")
+                .expect("the fixture holds the searched element")
+                .rule_ids
+                .len(),
+            0
+        );
         assert_eq!(
             manifest.native_compositions.is_empty(),
             foundation.labor().bindings().is_empty()

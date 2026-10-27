@@ -235,7 +235,10 @@ fn exact_rows_require_the_matching_commit_marker() {
         }
         tx.rollback().expect("the open transaction rolls back");
     }
-    assert!(!rows(&mut observer, "public.v_observer_graph_node_v1", campaign).is_empty());
+    assert_ne!(
+        rows(&mut observer, "public.v_observer_graph_node_v1", campaign).len(),
+        0
+    );
 }
 
 fn assert_sql_denied(config: &Config, relation: &str) {

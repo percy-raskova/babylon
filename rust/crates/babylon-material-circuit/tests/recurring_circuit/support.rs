@@ -537,7 +537,7 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
                 .sum::<u64>()
             + consumption;
         assert_eq!(physical, 56, "period {period}");
-        assert!(closed.state.final_demand_orders.is_empty());
+        assert_eq!(closed.state.final_demand_orders.len(), 0);
         assert_eq!(closed.household_consumption[0].required_quantity, 4);
         if period == 5 {
             assert_eq!(closed.household_consumption[0].unmet_quantity, 4);
@@ -798,7 +798,7 @@ pub(crate) fn retained_finite_purchase_restores_attendance_when_recurring_purcha
         .expect("the authored material state advances one period");
     assert_eq!(second.local_fulfillments[0].quantity, 1);
     assert_eq!(second.household_consumption[0].available_quantity, 5);
-    assert!(second.state.final_demand_orders.is_empty());
+    assert_eq!(second.state.final_demand_orders.len(), 0);
     assert!(economy(&second.state)
         .book
         .purchase(OutboundOrderId::LocalFinalDemand(id))

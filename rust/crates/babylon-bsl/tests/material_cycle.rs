@@ -54,7 +54,7 @@ fn load(source: &str) -> Result<LoadedRule, LoadError> {
 fn material_cycle_loads_without_graph_bindings_or_domain_and_charges_full_invocation() {
     let loaded = load(RULE).expect("the closed native rule must load");
     assert_eq!(loaded.execution, RuleExecution::MaterialCycle);
-    assert!(loaded.bindings.is_empty());
+    assert_eq!(loaded.bindings.len(), 0);
     assert!(loaded.domain.is_none());
     assert_eq!(loaded.static_bound, 1_000_000);
     assert_eq!(loaded.declared_fuel, 1_000_000);
@@ -252,5 +252,5 @@ fn material_cycle_graph_evaluator_refuses_without_host_even_with_zero_subjects()
     )
     .expect_err("the fixture run completes");
     assert!(error.message.contains("material runtime host"), "{error}");
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
 }

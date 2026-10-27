@@ -197,7 +197,7 @@ fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
     assert_eq!(inventory_quantity(&dispatched.state, site(12)), 0);
     let arrived = babylon_material_circuit::advance_material_circuit(&catalog, &dispatched.state)
         .expect("the authored material state advances one period");
-    assert!(arrived.state.freight.is_empty());
+    assert_eq!(arrived.state.freight.len(), 0);
     assert_eq!(inventory_quantity(&arrived.state, site(SUPPLIER)), 2);
     assert_eq!(inventory_quantity(&arrived.state, site(BUYER)), 6);
     assert_eq!(inventory_quantity(&arrived.state, site(12)), 4);
@@ -398,7 +398,7 @@ fn final_route_arrival_credits_inventory_before_realization() {
     let second = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
         .expect("period two must close");
 
-    assert!(second.state.freight.is_empty());
+    assert_eq!(second.state.freight.len(), 0);
     assert_eq!(inventory_quantity(&second.state, site(BUYER)), 4);
     assert_eq!(second.state.orders[0].delivered, 4);
     assert_eq!(second.state.orders[0].realized, 4);
@@ -416,8 +416,8 @@ fn missing_supplier_route_remains_backlog() {
     let outcome = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("a missing routed supplier relation is a material shortage");
 
-    assert!(outcome.dispatches.is_empty());
-    assert!(outcome.state.freight.is_empty());
+    assert_eq!(outcome.dispatches.len(), 0);
+    assert_eq!(outcome.state.freight.len(), 0);
     assert_eq!(outcome.state.orders[0].shipped, 0);
     assert_eq!(
         outcome.state.derived_backlog().expect("derived backlog")[0].quantity,
@@ -505,7 +505,7 @@ fn completed_leg_loss_remains_attributed_before_final_delivery() {
 
     let third = babylon_material_circuit::advance_material_circuit(&catalog, &second.state)
         .expect("period three must close");
-    assert!(third.state.freight.is_empty());
+    assert_eq!(third.state.freight.len(), 0);
     assert_eq!(third.state.orders[0].shipped, 4);
     assert_eq!(third.state.orders[0].lost, 1);
     assert_eq!(third.state.orders[0].delivered, 3);
@@ -555,7 +555,7 @@ fn final_arrival_can_form_and_execute_following_period_production() {
 
     let dispatch = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("dispatch period must close");
-    assert!(dispatch.state.production_commitments.is_empty());
+    assert_eq!(dispatch.state.production_commitments.len(), 0);
     let arrival = babylon_material_circuit::advance_material_circuit(&catalog, &dispatch.state)
         .expect("arrival period must close");
     assert_eq!(arrival.state.production_commitments.len(), 1);

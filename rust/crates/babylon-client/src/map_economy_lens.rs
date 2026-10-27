@@ -700,7 +700,7 @@ mod tests {
             let projection = super::project_map_lens(observation, &lens);
             assert!(projection.counties.is_empty());
             assert_eq!(projection.maximum(), None);
-            assert!(projection.unit.is_empty());
+            assert_eq!(projection.unit.len(), 0);
         }
         assert_eq!(lens.label_for_log(None), "Supply relationships");
     }
@@ -1098,10 +1098,11 @@ freight_order_definitions: Vec::new(),
         // Even an accidentally attached full payload cannot open preview choices.
         snapshot.visibility = ObserverVisibility::KnownPreview;
         selection.reconcile(Some(&snapshot), ScopeTransition::Unchanged);
-        assert!(
+        assert_eq!(
             material_choices(&snapshot, MaterialLensKind::ProducedThisPeriod)
                 .expect("the fixture call `material_choices` succeeds for the authored inputs")
-                .is_empty()
+                .len(),
+            0
         );
         assert_eq!(
             project_map_lens(Some(&snapshot), &selection).unavailable,

@@ -106,7 +106,7 @@ fn ownership_requires_explicit_claim_and_descriptors_independent_of_foreign_loca
     let (catalog, state) = crate::opening([0, 0, 0, 0, 0]);
     let t = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
-    assert!(t.taxes.is_empty());
+    assert_eq!(t.taxes.len(), 0);
     let mut duplicate = state.clone();
     let f = &mut crate::economy_mut(&mut duplicate).financial;
     f.ownership.push(f.ownership[0].clone());

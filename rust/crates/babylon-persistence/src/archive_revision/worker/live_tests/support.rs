@@ -648,7 +648,7 @@ pub(in crate::archive_revision::worker) fn live_worker_rerun_reconciles_without_
     let second = worker
         .sweep_once(target.campaign_id, &StubPageProducer)
         .expect("rerun sweep reconciles");
-    assert!(second.dispositions().is_empty());
+    assert_eq!(second.dispositions().len(), 0);
     assert_eq!(second.applied_count(), 0);
     assert_eq!(second.already_consumed_count(), 0);
     assert_eq!(second.paged_count(), 0);
@@ -756,7 +756,7 @@ pub(in crate::archive_revision::worker) fn live_worker_consumes_empty_batches_on
     let rerun = restarted
         .sweep_once(target.campaign_id, &NullArchiveDossierProducer::new())
         .expect("restarted worker reads settled prefix");
-    assert!(rerun.dispositions().is_empty());
+    assert_eq!(rerun.dispositions().len(), 0);
     assert_eq!(rerun.verified_tick(), 2);
     assert_eq!(
         receipt_consumption_count(&target.config, target.campaign_id),

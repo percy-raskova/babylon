@@ -196,7 +196,7 @@ fn assert_admitted_inputs(
         session_id.clone(),
     )
     .expect("the authored action batch builds");
-    assert!(!ordinary_batch.items().is_empty());
+    assert_ne!(ordinary_batch.items().len(), 0);
     let gift = babylon_practice_contract::admit_organizer(
         config,
         state,
@@ -219,7 +219,7 @@ fn assert_admitted_inputs(
         .periods
         .iter()
         .all(|entries| entries.aid_receipts.is_empty()));
-    assert!(state.pending_aid.is_empty());
+    assert_eq!(state.pending_aid.len(), 0);
     let mut stale_command = command(OrganizerChoice::RemoteAid, 3);
     stale_command.expected_period = 1;
     assert_eq!(

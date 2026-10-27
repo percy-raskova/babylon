@@ -355,7 +355,7 @@ pub fn assert_admitted_state(opening: &EconomicOpening, aid: &NationalAidCapture
         .as_ref()
         .expect("the fixture set the optional field before this read");
     assert_eq!(e.aid.mandates, aid.mandates);
-    assert!(e.aid.freight.is_empty());
+    assert_eq!(e.aid.freight.len(), 0);
     let added_needs = aid
         .children
         .iter()

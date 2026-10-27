@@ -295,7 +295,7 @@ fn nonwage_attendance_and_idle_use_the_same_finite_household_time() {
         }
         let transition = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
-        assert!(transition.wage_accruals.is_empty());
+        assert_eq!(transition.wage_accruals.len(), 0);
         assert!(transition.member_labor_use.iter().any(|r| r.idle_hours > 0));
         assert!(transition
             .member_labor_use

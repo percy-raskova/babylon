@@ -616,13 +616,16 @@ fn local_grant_canonical_state_and_complete_receipt_package_inverse() {
     assert!(receipts.aid.iter().any(|row| row.outcome
         == babylon_material_circuit::AidOutcome::Granted
         && row.quantity == 2));
-    assert!(candidate
-        .material()
-        .register()
-        .organizer_state()
-        .expect("the fixture register carries organizer state")
-        .pending_aid
-        .is_empty());
+    assert_eq!(
+        candidate
+            .material()
+            .register()
+            .organizer_state()
+            .expect("the fixture register carries organizer state")
+            .pending_aid
+            .len(),
+        0
+    );
     let mut sink = CollectingSink::default();
     f::commit(&mut session, &mut sink, candidate);
     assert_eq!(
@@ -753,8 +756,8 @@ fn assert_aid_arrival(
             .micro_units(),
         refunded
     );
-    assert!(economy.aid.freight.is_empty());
-    assert!(economy.book.snapshot().aid.is_empty());
+    assert_eq!(economy.aid.freight.len(), 0);
+    assert_eq!(economy.book.snapshot().aid.len(), 0);
     let closed_sections = schema::sections(candidate.material().register().canonical_bytes())
         .expect("the fixture call `sections` succeeds for the authored inputs");
     for id in [71, 72] {
@@ -778,7 +781,7 @@ fn assert_aid_arrival(
         .organizer_journal()
         .and_then(|journal| journal.latest())
         .expect("the fixture register carries organizer journal entries");
-    assert!(completed.pending_aid.is_empty());
+    assert_eq!(completed.pending_aid.len(), 0);
     assert_eq!(
         completed_entries
             .aid_receipts
@@ -864,14 +867,17 @@ fn routed_aid_package_sequence(loss_ppm: u32, arrived: u64, refunded: i128) {
     let receipts =
         babylon_tick::material_world::decode_material_receipts(third.material().receipt_bytes())
             .expect("the canonical bytes decode into the declared type");
-    assert!(receipts.aid.is_empty());
-    assert!(third
-        .material()
-        .register()
-        .organizer_state()
-        .expect("the fixture register carries organizer state")
-        .pending_aid
-        .is_empty());
+    assert_eq!(receipts.aid.len(), 0);
+    assert_eq!(
+        third
+            .material()
+            .register()
+            .organizer_state()
+            .expect("the fixture register carries organizer state")
+            .pending_aid
+            .len(),
+        0
+    );
     assert_eq!(
         third
             .material()
@@ -1061,7 +1067,7 @@ fn opening_prefix_producer_selects_smaller_frame_for_added_removed_and_rekeyed_r
 fn opening_prefix_keeps_full_frame_when_smaller_and_preserves_empty_and_missing_base() {
     let old = prefix_inventory(256);
     let mut current = prefix_inventory(32);
-    for row in current[4..].chunks_exact_mut(104) {
+    for row in current[4..].as_chunks_mut::<104>().0 {
         row[96..].fill(0);
     }
     let (selected, stored, lookup) = prefix_selected(&old, &current);
@@ -1833,7 +1839,7 @@ fn missing_offer_references_do_not_hide_malformed_later_bytes() {
         offers::encode(&trailing, 6, &lookup),
         Err(StorageError::Trailing)
     );
-    assert!(lookup.entries().is_empty());
+    assert_eq!(lookup.entries().len(), 0);
 }
 
 #[test]

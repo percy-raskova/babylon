@@ -1741,7 +1741,7 @@ mod tests {
             .expect("the fixture set the optional field before this borrow")
             .good_id = "different-good".into();
         app.update();
-        assert!(history_buttons(&mut app).is_empty());
+        assert_eq!(history_buttons(&mut app).len(), 0);
         assert!(app
             .world()
             .resource::<HistoryState>()

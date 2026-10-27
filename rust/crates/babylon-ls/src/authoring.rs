@@ -1707,7 +1707,10 @@ mod tests {
             },
         }]);
         let text = "(branch YES :mass 1m (effects ";
-        assert!(completion_items(text, &effects_context, text.len()).is_empty());
+        assert_eq!(
+            completion_items(text, &effects_context, text.len()).len(),
+            0
+        );
     }
 
     #[test]

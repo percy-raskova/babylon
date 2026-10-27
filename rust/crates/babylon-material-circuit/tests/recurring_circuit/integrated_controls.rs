@@ -488,9 +488,9 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
             active_periods += 1;
         }
         if period == 1 {
-            assert!(transition.deliveries.is_empty());
-            assert!(transition.realizations.is_empty());
-            assert!(!transition.state.freight.is_empty());
+            assert_eq!(transition.deliveries.len(), 0);
+            assert_eq!(transition.realizations.len(), 0);
+            assert_ne!(transition.state.freight.len(), 0);
         }
         let delivered_before = delivered;
         let settled_before = settled;
@@ -529,8 +529,8 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
             .map(|r| r.consumed_quantity)
             .sum::<u64>();
         assert_conservation(&transition.state, consumed, 16, 200);
-        assert!(transition.production.is_empty());
-        assert!(transition.local_transfers.is_empty());
+        assert_eq!(transition.production.len(), 0);
+        assert_eq!(transition.local_transfers.len(), 0);
         state = babylon_material_circuit::decode_material_circuit_state(
             &catalog,
             &babylon_material_circuit::encode_material_circuit_state(&catalog, &transition.state)
@@ -544,7 +544,7 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
     assert_eq!(consumed, 8);
     assert_eq!(delivered, [4, 4]);
     assert_eq!(settled, [4, 4]);
-    assert!(state.freight.is_empty());
+    assert_eq!(state.freight.len(), 0);
     assert_eq!(
         state
             .inventory

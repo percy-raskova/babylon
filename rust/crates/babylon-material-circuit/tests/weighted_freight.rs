@@ -247,7 +247,7 @@ fn many_capacity_memberships_share_one_stage_and_one_arrival() {
     );
     assert_eq!(second.arrivals.len(), second.deliveries.len());
     assert_eq!(second.arrivals.len(), second.realizations.len());
-    assert!(second.state.freight.is_empty());
+    assert_eq!(second.state.freight.len(), 0);
 }
 
 #[test]
@@ -335,11 +335,12 @@ fn duplicate_or_missing_mass_and_stage_capacity_identity_is_refused() {
     );
     changed = original;
     changed.corridor_capacities.clear();
-    assert!(
+    assert_eq!(
         babylon_material_circuit::advance_material_circuit(&catalog, &changed)
             .expect("the authored material state advances one period")
             .dispatches
-            .is_empty()
+            .len(),
+        0
     );
 }
 

@@ -456,7 +456,7 @@ fn purchase_admission_cannot_spend_the_same_cash_twice_or_leave_an_order_behind(
     .expect("the fixture admits the authored purchase");
     let closed = babylon_material_circuit::advance_material_circuit(&catalog, &funded)
         .expect("the authored material state advances one period");
-    assert!(closed.wage_accruals.is_empty());
+    assert_eq!(closed.wage_accruals.len(), 0);
     assert_eq!(closed.labor_use[0].funded_hours, 0);
     assert_eq!(closed.labor_use[0].unfunded_hours, 4);
     assert_eq!(
@@ -582,7 +582,7 @@ fn previously_earned_wages_survive_restart_and_payment_does_not_accrue_them_agai
             .expect("the fixture book holds the payer account"),
         money(23)
     );
-    assert!(book(&closed.state).snapshot().shifts.is_empty());
+    assert_eq!(book(&closed.state).snapshot().shifts.len(), 0);
     assert_eq!(
         book(&closed.state)
             .total_cash_and_reserves()
@@ -610,7 +610,7 @@ fn goods_and_a_funded_buyer_do_not_substitute_for_employer_working_cash() {
     .expect("the fixture admits the authored purchase");
     let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
-    assert!(closed.local_fulfillments.is_empty());
+    assert_eq!(closed.local_fulfillments.len(), 0);
     assert_eq!(closed.state.final_demand_orders[0].fulfilled, 0);
     assert_eq!(closed.labor_use[0].unfunded_hours, 4);
     assert_eq!(
@@ -759,7 +759,7 @@ fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash
             .expect("the fixture book totals without overflow"),
         money(24)
     );
-    assert!(book.costs.snapshot().freight.is_empty());
+    assert_eq!(book.costs.snapshot().freight.len(), 0);
 }
 
 #[path = "support/resident_attendance.rs"]

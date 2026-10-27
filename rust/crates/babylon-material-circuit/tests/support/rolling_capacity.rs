@@ -204,12 +204,12 @@ fn finite_controls_do_not_extrapolate_missing_capacity() {
     state.corridor_capacities.retain(|row| row.period == 1);
     let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
-    assert!(first.state.capacities.is_empty());
-    assert!(first.state.corridor_capacities.is_empty());
-    assert!(first.state.production_commitments.is_empty());
+    assert_eq!(first.state.capacities.len(), 0);
+    assert_eq!(first.state.corridor_capacities.len(), 0);
+    assert_eq!(first.state.production_commitments.len(), 0);
     let second = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
         .expect("the authored material state advances one period");
-    assert!(second.dispatches.is_empty());
+    assert_eq!(second.dispatches.len(), 0);
     assert_eq!(second.household_demand[0].fulfilled_quantity, 0);
 }
 
@@ -342,7 +342,7 @@ fn future_departures_remain_reserved_after_total_loss_and_checkpoint_restart() {
     let third = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(second.losses.iter().map(|r| r.quantity).sum::<u64>(), 7);
-    assert!(third.losses.is_empty());
+    assert_eq!(third.losses.len(), 0);
     assert!(!third
         .state
         .freight

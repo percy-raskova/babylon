@@ -306,6 +306,5 @@ fn storable(catalog: &MaterialCatalog, good: GoodId, unit: UnitId) -> bool {
     catalog
         .commodities
         .binary_search_by_key(&(good, unit), |r| (r.good_id, r.unit_id))
-        .ok()
-        .is_some_and(|i| matches!(catalog.commodities[i].kind, CommodityKind::Storable { .. }))
+        .is_ok_and(|i| matches!(catalog.commodities[i].kind, CommodityKind::Storable { .. }))
 }

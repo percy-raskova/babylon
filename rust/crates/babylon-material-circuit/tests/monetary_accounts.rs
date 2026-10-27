@@ -650,7 +650,7 @@ fn purchase_view_preserves_partial_settlement_and_retirement() {
         .retire_purchase(order())
         .expect("the fixture retires the authored purchase");
     assert!(ledger.purchases().next().is_none());
-    assert!(ledger.snapshot().purchases.is_empty());
+    assert_eq!(ledger.snapshot().purchases.len(), 0);
     assert_eq!(ledger.cash_accounts().len(), 2);
     assert_eq!(
         ledger

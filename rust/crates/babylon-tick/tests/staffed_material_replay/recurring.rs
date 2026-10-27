@@ -316,12 +316,15 @@ fn household_admission_consumption_and_retirement_replay_atomically() {
     assert_eq!(receipts.household_demand[0].admitted_quantity, 1);
     assert_eq!(receipts.household_demand[0].expired_quantity, 1);
     assert_eq!(receipts.household_consumption[0].unmet_quantity, 1);
-    assert!(candidate
-        .material()
-        .register()
-        .state()
-        .final_demand_orders
-        .is_empty());
+    assert_eq!(
+        candidate
+            .material()
+            .register()
+            .state()
+            .final_demand_orders
+            .len(),
+        0
+    );
     let expected = *candidate.identity();
     let refused = session.commit_prepared_and_publish(&mut sink, candidate, |_, _| {
         Err::<ReplayCommitDisposition, _>("recurring commit refused")
@@ -367,12 +370,10 @@ fn household_admission_consumption_and_retirement_replay_atomically() {
             .expect("the canonical bytes decode into the declared type");
         assert_eq!(receipts.household_consumption[0].period, period);
         consumed += receipts.household_consumption[0].consumed_quantity;
-        assert!(next
-            .material()
-            .register()
-            .state()
-            .final_demand_orders
-            .is_empty());
+        assert_eq!(
+            next.material().register().state().final_demand_orders.len(),
+            0
+        );
         crate::commit(&mut session, &mut sink, next);
         crate::commit(&mut restored, &mut restored_sink, replay);
     }

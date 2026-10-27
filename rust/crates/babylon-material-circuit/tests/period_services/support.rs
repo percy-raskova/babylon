@@ -321,9 +321,9 @@ pub(crate) fn native_services_feed_later_stages_without_freight_or_stored_servic
             .collect::<Vec<_>>(),
         vec![2, 1, 1]
     );
-    assert!(closed.dispatches.is_empty());
-    assert!(closed.handling.is_empty());
-    assert!(closed.state.freight.is_empty());
+    assert_eq!(closed.dispatches.len(), 0);
+    assert_eq!(closed.handling.len(), 0);
+    assert_eq!(closed.state.freight.len(), 0);
     assert_eq!(
         closed
             .state
@@ -364,7 +364,7 @@ pub(crate) fn native_services_feed_later_stages_without_freight_or_stored_servic
             .amount,
         money(6)
     );
-    assert!(closed.state.service_orders.is_empty());
+    assert_eq!(closed.state.service_orders.len(), 0);
     let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &closed.state)
         .expect("the canonical material state encodes");
     assert_eq!(

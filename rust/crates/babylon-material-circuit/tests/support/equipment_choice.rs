@@ -110,7 +110,7 @@ fn installation_choice_preserves_owned_equipment_pledged_to_a_paid_buyer() {
         crate::position(&closed.state).pending.is_empty(),
         "sale inventory must not become WIP"
     );
-    assert!(closed.installation.is_empty());
+    assert_eq!(closed.installation.len(), 0);
     assert_eq!(closed.dispatches.iter().map(|r| r.quantity).sum::<u64>(), 1);
     assert_eq!(closed.state.freight.len(), 1);
     assert_eq!(stock_cost(&closed.state, crate::good(2)), crate::money(6));
@@ -246,7 +246,7 @@ fn installation_choice_plan_withdrawal_and_explicit_replacement_are_distinct() {
     assert_eq!(held.installation_decisions[0].captured_plan_batches, 0);
     assert_eq!(held.installation_decisions[0].target_units, 0);
     assert_eq!(held.installation_decisions[0].started_units, 0);
-    assert!(crate::position(&held.state).pending.is_empty());
+    assert_eq!(crate::position(&held.state).pending.len(), 0);
     let catalog = crate::rebuild(&catalog, |content| {
         content.installation_policies[0].target = InstallationTarget::ProductionPlan {
             replacement_units: 1,
@@ -331,7 +331,7 @@ fn installation_choice_pledged_stock_does_not_suppress_a_real_replacement_purcha
     });
     let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
-    assert!(closed.installation.is_empty());
+    assert_eq!(closed.installation.len(), 0);
     assert_eq!(closed.investment[0].on_hand_units, 0);
     assert_eq!(closed.investment[0].replacement_requested_units, 1);
     assert_eq!(closed.investment[0].admitted_units, 1);

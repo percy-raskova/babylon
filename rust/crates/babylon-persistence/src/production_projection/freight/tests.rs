@@ -412,7 +412,7 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
             .collect::<Vec<_>>(),
         vec![(1, 160_000, 0), (2, 120_000, 40_000)]
     );
-    assert!(receipt.arrivals.is_empty());
+    assert_eq!(receipt.arrivals.len(), 0);
     let mut stages = super::super::routes::stage_index(&material, &next)
         .expect("the fixture call `stage_index` succeeds for the authored inputs");
     let legs = stages

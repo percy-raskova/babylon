@@ -97,8 +97,7 @@ impl ArchivePageRef {
             || matches!(
                 kind,
                 ArchiveSubjectKind::Workplace | ArchiveSubjectKind::Organization
-            ) && (id.parse::<u64>().ok().filter(|value| *value > 0).is_none()
-                || id.starts_with('0'))
+            ) && (id.parse::<u64>().ok().is_none_or(|value| value == 0) || id.starts_with('0'))
             || id.len() != expected
             || id.len() > MAX_ID_BYTES
             || !id.bytes().all(|byte| byte.is_ascii_digit())
@@ -910,7 +909,7 @@ impl ArchiveAtomSubject {
                 id.len() == 7 && id.bytes().all(|byte| byte.is_ascii_digit())
             }
             ArchiveAtomSubjectKind::Workplace | ArchiveAtomSubjectKind::Organization => {
-                id.parse::<u64>().ok().is_some_and(|value| value > 0) && !id.starts_with('0')
+                id.parse::<u64>().is_ok_and(|value| value > 0) && !id.starts_with('0')
             }
             ArchiveAtomSubjectKind::Concept => {
                 let mut bytes = id.bytes();

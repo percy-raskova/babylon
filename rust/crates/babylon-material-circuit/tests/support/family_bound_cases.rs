@@ -258,7 +258,7 @@ fn staffing_requests_above_former_global_bound_preserve_sources_and_people() {
             .collect::<BTreeMap<_, _>>(),
         BTreeMap::from([(active[0], 1), (active[1], 1)])
     );
-    assert!(actual.production.is_empty());
+    assert_eq!(actual.production.len(), 0);
     assert_eq!(actual.state.inventory, state.inventory);
     assert_eq!(state, original);
 }
@@ -340,7 +340,7 @@ fn planning_above_former_combined_bound_honors_late_input_and_labor_scarcity() {
         };
         assert_eq!(plans.get(&ProcessId::from_bytes(identity(index))), expected);
     }
-    assert!(actual.production.is_empty());
+    assert_eq!(actual.production.len(), 0);
     assert_eq!(actual.state.inventory, state.inventory);
     assert_eq!(state, original);
 }

@@ -1691,7 +1691,7 @@ fn scoped_back_and_display_preferences_survive_refresh_without_blocking_recovery
     let navigation = app.world().resource::<ProductionNavigation>();
     assert!(navigation.flat);
     assert!(!navigation.details_open);
-    assert!(navigation.history.is_empty());
+    assert_eq!(navigation.history.len(), 0);
     assert!(navigation.selected_site.is_none());
     assert_eq!(
         control_display(&mut app, &ProductionCommand::Back),
@@ -1785,7 +1785,7 @@ fn exact_readings_are_collapsed_until_requested_and_clear_with_capability() {
         Display::None
     );
     assert!(panel_text::<ProductionBrief>(&mut app).contains("Committed plan partly completed"));
-    assert!(panel_text::<ProductionDetails>(&mut app).is_empty());
+    assert_eq!(panel_text::<ProductionDetails>(&mut app).len(), 0);
     assert_eq!(
         panel_text::<ProductionDisclosureLabel>(&mut app),
         "READINGS +"
@@ -1819,10 +1819,10 @@ fn exact_readings_are_collapsed_until_requested_and_clear_with_capability() {
             .display,
         Display::None
     );
-    assert!(panel_text::<ProductionDetails>(&mut app).is_empty());
+    assert_eq!(panel_text::<ProductionDetails>(&mut app).len(), 0);
     assert!(!panel_text::<ProductionBrief>(&mut app).contains("Cohort"));
-    assert!(panel_text::<ProductionReadingSubject>(&mut app).is_empty());
-    assert!(panel_text::<ProductionReadingHeadline>(&mut app).is_empty());
+    assert_eq!(panel_text::<ProductionReadingSubject>(&mut app).len(), 0);
+    assert_eq!(panel_text::<ProductionReadingHeadline>(&mut app).len(), 0);
 }
 
 #[test]
@@ -2694,11 +2694,10 @@ fn native_dependency_navigation_preserves_back_and_rejects_late_contexts() {
             .as_deref(),
         Some("b")
     );
-    assert!(app
-        .world()
-        .resource::<ProductionNavigation>()
-        .history
-        .is_empty());
+    assert_eq!(
+        app.world().resource::<ProductionNavigation>().history.len(),
+        0
+    );
 
     press_site(&mut app, "a");
     app.world_mut().resource_mut::<ObserverSession>().generation += 1;
@@ -2788,8 +2787,8 @@ fn only_actual_visible_in_transit_lots_get_static_markers() {
         view::freight_markers(&snapshot, &layout, 2),
         "schematic markers do not invent continuous travel motion"
     );
-    assert!(view::freight_markers(&snapshot, &layout, 0).is_empty());
-    assert!(view::freight_markers(&snapshot, &layout, 4).is_empty());
+    assert_eq!(view::freight_markers(&snapshot, &layout, 0).len(), 0);
+    assert_eq!(view::freight_markers(&snapshot, &layout, 4).len(), 0);
     for case in 0..4 {
         let mut withheld = lot.clone();
         match case {
@@ -2799,7 +2798,7 @@ fn only_actual_visible_in_transit_lots_get_static_markers() {
             _ => withheld.good_id = "another-good".into(),
         }
         snapshot.freight = vec![withheld];
-        assert!(view::freight_markers(&snapshot, &layout, 1).is_empty());
+        assert_eq!(view::freight_markers(&snapshot, &layout, 1).len(), 0);
     }
 }
 

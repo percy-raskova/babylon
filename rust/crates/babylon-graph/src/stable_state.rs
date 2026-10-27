@@ -424,7 +424,7 @@ impl GraphStateCursor<'_> {
     }
 
     fn string(&mut self, field: &'static str) -> Result<String, StableIdentityError> {
-        let length = usize::try_from(self.u32()?).map_or(usize::MAX, |value| value);
+        let length = usize::try_from(self.u32()?).unwrap_or(usize::MAX);
         let text = std::str::from_utf8(self.take(length)?).map_err(|_| canonical_refusal(field))?;
         copy_stable_string(field, text)
     }
@@ -454,7 +454,7 @@ impl GraphStateCursor<'_> {
     where
         F: Fn(&mut Self) -> Result<T, StableIdentityError>,
     {
-        let actual = usize::try_from(self.u32()?).map_or(usize::MAX, |value| value);
+        let actual = usize::try_from(self.u32()?).unwrap_or(usize::MAX);
         if actual > maximum {
             return Err(StableIdentityError::StateSectionLimit {
                 section,

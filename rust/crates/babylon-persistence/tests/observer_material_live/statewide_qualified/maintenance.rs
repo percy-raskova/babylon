@@ -234,7 +234,7 @@ fn assert_admitted_source_and_design(catalog: &MichiganMaterialCatalog, case: Ca
         .expect("the fixture call `physical_network` succeeds for the authored inputs");
     assert!(physical.source.pbf_url.starts_with("https://"));
     assert_eq!(physical.terminals.len(), 83);
-    assert!(!physical.edges.is_empty());
+    assert_ne!(physical.edges.len(), 0);
     assert_provider_source(catalog);
     assert_eq!(catalog.physical_evidence_class(), EvidenceClass::Designed);
     assert_eq!(catalog.staffing().evidence_class, "Designed");
@@ -345,7 +345,7 @@ fn assert_foundation(rows: &ProductionSnapshot, catalog: &MichiganMaterialCatalo
         .find(|site| site.id == account.provider_site_id)
         .expect("the fixture holds the searched element");
     assert!(provider.roles.contains(&ProductionSiteRole::Maintenance));
-    assert!(provider.processes.is_empty());
+    assert_eq!(provider.processes.len(), 0);
     assert_eq!(provider.observed_employment, Some(1480));
     assert_eq!(
         provider.id,
@@ -582,7 +582,7 @@ fn assert_commit_refusal_preserves_candidate(reference: &mut Session) {
             .expect("the committed session publishes a world hash"),
         world
     );
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
     let retry = reference
         .prepare_advance(&actions)
         .expect("the session prepares the authored advance");
@@ -659,7 +659,7 @@ fn assert_sql_marker_refusal(
         graph
     );
     assert!(runtime.tail().is_none());
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
     assert_no_maintenance_tick_rows(owner, campaign);
     // The existing advance_pair immediately below this call retries the same
     // opening and compares durable register/receipt bytes with the untouched twin.

@@ -1658,7 +1658,6 @@ fn candidate_projection_and_complete_intent_order_are_closed() {
     let alternate_rows = schedule
         .rows()
         .iter()
-        .cloned()
         .map(|row| {
             PracticeCandidateRow::new(row.attempt_tick(), digest(95), row.practice_intent_digest())
         })

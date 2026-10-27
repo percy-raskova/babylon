@@ -759,7 +759,7 @@ fn captured_source_refuses_changed_tick_zero_organizer_agreements() {
         .organizer_state()
         .expect("the fixture register carries organizer state")
         .clone();
-    assert!(!changed.agreements.is_empty());
+    assert_ne!(changed.agreements.len(), 0);
     changed.agreements.clear();
     let altered_register = MaterialWorldRegister::try_new(
         original.material_catalog(),

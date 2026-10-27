@@ -52,8 +52,8 @@ fn committed_receipts_admit_explicit_merchant_handling_and_local_fulfillment() {
     let receipt = material_world::decode_material_receipts(&local_handoff_receipts())
         .expect("the canonical bytes decode into the declared type");
     assert_eq!(receipt.resolve_tick, 1);
-    assert!(receipt.dispatches.is_empty());
-    assert!(receipt.arrivals.is_empty());
+    assert_eq!(receipt.dispatches.len(), 0);
+    assert_eq!(receipt.arrivals.len(), 0);
     assert_eq!(receipt.handling.len(), 1);
     let work = &receipt.handling[0];
     assert_eq!(
@@ -126,8 +126,8 @@ fn local_transfer_receipts_preserve_both_owners_without_freight() {
     assert_eq!(transfer.supplier_site_id, SiteId::from_bytes([7; 32]));
     assert_eq!(transfer.buyer_site_id, SiteId::from_bytes([1; 32]));
     assert_eq!(transfer.quantity, 3);
-    assert!(receipts.dispatches.is_empty());
-    assert!(receipts.arrivals.is_empty());
+    assert_eq!(receipts.dispatches.len(), 0);
+    assert_eq!(receipts.arrivals.len(), 0);
 
     let mut self_transfer = bytes.clone();
     self_transfer[row_start + 64..row_start + 96].copy_from_slice(&[7; 32]);
@@ -317,7 +317,7 @@ fn register_byte_budget_is_one_gb_and_receipts_keep_their_independent_cap() {
     const ONE_GB: usize = 1_000_000_000;
     let admitted = material_world::bounded_bytes(ONE_GB, MAX_MATERIAL_WORLD_REGISTER_BYTES)
         .expect("the fixture call `bounded_bytes` succeeds for the authored inputs");
-    assert!(admitted.is_empty());
+    assert_eq!(admitted.len(), 0);
     assert!(admitted.capacity() >= ONE_GB);
     assert_eq!(
         material_world::bounded_bytes(ONE_GB + 1, MAX_MATERIAL_WORLD_REGISTER_BYTES),

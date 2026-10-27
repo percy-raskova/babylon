@@ -74,7 +74,7 @@ fn arrived_equipment_and_materials_wait_for_actual_work_before_next_period_capac
     let first = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("the authored material state advances one period");
     assert_eq!(position(&first.state).pending[0].remaining_hours, 3);
-    assert!(position(&first.state).cohorts.is_empty());
+    assert_eq!(position(&first.state).cohorts.len(), 0);
     assert_eq!(first.state.capacities[0].available_batches, 0);
     assert_eq!(equipment_cost(&first.state), money(26));
     let second = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
@@ -104,7 +104,7 @@ fn arrived_equipment_and_materials_wait_for_actual_work_before_next_period_capac
             .sum::<u64>(),
         0
     );
-    assert!(position(&third.state).pending.is_empty());
+    assert_eq!(position(&third.state).pending.len(), 0);
     assert_eq!(position(&third.state).cohorts[0].usable_from_period, 4);
     assert_eq!(third.state.capacities[0].available_batches, 2);
     assert_eq!(equipment_cost(&third.state), money(32));
@@ -128,7 +128,7 @@ fn actual_use_transfers_the_complete_carrying_remainder_to_unsold_output_without
         .expect("the authored material state advances one period");
     assert_eq!(fifth.production[0].produced_batches, 1);
     assert_eq!(fifth.equipment_wear[0].carried_to_output, money(11));
-    assert!(position(&fifth.state).cohorts.is_empty());
+    assert_eq!(position(&fifth.state).cohorts.len(), 0);
     assert_eq!(equipment_cost(&fifth.state), money(0));
     assert_eq!(stock_cost(&fifth.state, good(4)), money(44));
     assert_eq!(
@@ -167,7 +167,7 @@ fn unpaid_owner_installation_performs_real_work_without_creating_wage_cost_or_ow
             .expect("the fixture book holds the payer account"),
         money(0)
     );
-    assert!(economy(&state).financial.ownership.is_empty());
+    assert_eq!(economy(&state).financial.ownership.len(), 0);
 }
 
 #[test]
@@ -196,13 +196,13 @@ fn missing_complements_and_hoarding_do_not_turn_stocked_equipment_into_capacity(
         HistoricalCostBook::from_snapshot(snapshot).expect("the snapshot admits the derived value");
     let closed = babylon_material_circuit::advance_material_circuit(&catalog, &missing)
         .expect("the authored material state advances one period");
-    assert!(position(&closed.state).pending.is_empty());
+    assert_eq!(position(&closed.state).pending.len(), 0);
     assert_eq!(closed.state.capacities[0].available_batches, 0);
     let (catalog, hoarded) = opening();
     let hoarded_catalog = rebuild(&catalog, |content| content.installation_policies.clear());
     let closed = babylon_material_circuit::advance_material_circuit(&hoarded_catalog, &hoarded)
         .expect("the authored material state advances one period");
-    assert!(position(&closed.state).pending.is_empty());
+    assert_eq!(position(&closed.state).pending.len(), 0);
     assert_eq!(
         closed
             .state
@@ -226,7 +226,7 @@ fn replacement_can_use_cash_at_a_loss_while_positive_retained_income_cannot_repl
     assert_eq!(first.investment[0].admitted_units, 1);
     assert_eq!(first.state.orders.len(), 1);
     assert_eq!(first.state.capacities[0].available_batches, 0);
-    assert!(position(&first.state).cohorts.is_empty());
+    assert_eq!(position(&first.state).cohorts.len(), 0);
     assert_eq!(
         economy(&first.state)
             .book
@@ -249,7 +249,7 @@ fn replacement_can_use_cash_at_a_loss_while_positive_retained_income_cannot_repl
         .expect("the authored material state advances one period");
     assert_eq!(closed.investment[0].expansion_requested_units, 1);
     assert_eq!(closed.investment[0].admitted_units, 0);
-    assert!(closed.state.orders.is_empty());
+    assert_eq!(closed.state.orders.len(), 0);
 }
 
 #[test]
@@ -264,7 +264,7 @@ fn funded_undelivered_equipment_is_not_repurchased_or_installed() {
     assert_eq!(second.investment[0].admitted_units, 0);
     assert_eq!(second.state.freight.len(), 1);
     assert_eq!(second.state.capacities[0].available_batches, 0);
-    assert!(position(&second.state).pending.is_empty());
+    assert_eq!(position(&second.state).pending.len(), 0);
     let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &second.state)
         .expect("the canonical material state encodes");
     let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
@@ -291,10 +291,10 @@ fn inactive_managed_process_keeps_its_checked_binding_without_assets_or_policies
     let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(equipment(&catalog).bindings.len(), 1);
-    assert!(position(&closed.state).cohorts.is_empty());
-    assert!(position(&closed.state).pending.is_empty());
+    assert_eq!(position(&closed.state).cohorts.len(), 0);
+    assert_eq!(position(&closed.state).pending.len(), 0);
     assert_eq!(closed.state.capacities[0].available_batches, 0);
-    assert!(closed.installation.is_empty());
+    assert_eq!(closed.installation.len(), 0);
 }
 
 #[test]
@@ -488,8 +488,8 @@ fn eighty_staffed_periods_preserve_unfinished_installation_after_horizon_and_exa
     // The captured next-period roster retains one paid idle hour as equipment exhausts.
     assert_eq!(paid_idle_hours, 1);
     assert_eq!(wear, money(86));
-    assert!(position(&state).pending.is_empty());
-    assert!(position(&state).cohorts.is_empty());
+    assert_eq!(position(&state).pending.len(), 0);
+    assert_eq!(position(&state).cohorts.len(), 0);
     assert_eq!(stock_cost(&state, good(4)), money(95));
     assert_eq!(
         economy(&state)
@@ -549,7 +549,7 @@ fn installed_capacity_cannot_replace_missing_inputs_or_avoid_paid_idle_loss() {
             .sum::<u64>(),
         0
     );
-    assert!(closed.equipment_wear.is_empty());
+    assert_eq!(closed.equipment_wear.len(), 0);
     assert_eq!(equipment_cost(&closed.state), money(32));
     let income = closed
         .income

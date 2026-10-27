@@ -180,8 +180,14 @@ fn live_territory_definitions_reuse_exact_fields_and_preserve_history() {
     territory_storage::insert(&mut tx, campaign, 4, &[])
         .expect("the fixture call `insert` succeeds for the authored inputs");
     marker(&mut tx, campaign, 4);
-    assert!(canonical_rows(&mut tx, StoredTickReadSource::Runtime, campaign, 4).is_empty());
-    assert!(canonical_rows(&mut tx, StoredTickReadSource::FullObserver, campaign, 4).is_empty());
+    assert_eq!(
+        canonical_rows(&mut tx, StoredTickReadSource::Runtime, campaign, 4).len(),
+        0
+    );
+    assert_eq!(
+        canonical_rows(&mut tx, StoredTickReadSource::FullObserver, campaign, 4).len(),
+        0
+    );
     assert_eq!(tx.query_one("SELECT territory_count FROM babylon_state.territory_tick_manifest_v1 WHERE campaign_id=$1 AND resolve_tick=4", &[campaign.as_uuid()]).expect("the seeded row is present exactly once").try_get::<_,i64>(0).expect("the fixture world holds the addressed component"), 0);
     tx.batch_execute("SET CONSTRAINTS babylon_state.territory_definition_complete_v1 IMMEDIATE")
         .expect("the test database applies the schema statements");

@@ -1034,8 +1034,7 @@ mod tests {
         );
         let last = log
             .lines()
-            .filter(|line| line.contains("observer camera checkpoint"))
-            .next_back()
+            .rfind(|line| line.contains("observer camera checkpoint"))
             .expect("pose");
         assert!(
             last.contains("position=[99.0, 0.0, 0.0]") && last.contains("settled=true"),

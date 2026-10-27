@@ -249,7 +249,7 @@ fn normalized_multi_input_owners_share_inventory_and_labor_and_merchants_have_no
     assert_eq!(state.final_demand_orders.len(), 1);
     assert_eq!(material.supplier_routes.len(), 5);
     assert_eq!(material.route_stages.len(), 3);
-    assert!(state.freight.is_empty());
+    assert_eq!(state.freight.len(), 0);
     for route in material
         .supplier_routes
         .iter()

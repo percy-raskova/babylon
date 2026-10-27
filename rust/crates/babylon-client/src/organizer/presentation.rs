@@ -2080,9 +2080,9 @@ mod tests {
         assert!(text.contains("collected 0 currency; 0 shared material hours"));
         assert!(text.contains("Household consumption is unmet"));
         assert!(text.contains("no standing fallback"));
-        assert!(collection_history(&client, &view, 2).is_empty());
+        assert_eq!(collection_history(&client, &view, 2).len(), 0);
         client.collection_resolutions[0].practice.actor_id = view.actor_id + 1;
-        assert!(collection_history(&client, &view, 3).is_empty());
+        assert_eq!(collection_history(&client, &view, 3).len(), 0);
         client.collection = Some(
             babylon_persistence::runtime_session::OrganizerCollectionPreview {
                 period: view.period,
@@ -2133,8 +2133,9 @@ mod tests {
             collection_history(&partially_collected, &partial_view, resolved_period)
                 .contains("Partially collected")
         );
-        assert!(
-            collection_history(&partially_collected, &partial_view, resolved_period - 1).is_empty()
+        assert_eq!(
+            collection_history(&partially_collected, &partial_view, resolved_period - 1).len(),
+            0
         );
     }
 

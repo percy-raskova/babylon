@@ -1053,7 +1053,7 @@ mod tests {
         let body = &canonical[start + 9..start + 9 + count * RECEIPT_ROW_BYTES[10]];
         let mut lookup = lookup.clone();
         let mut rows = Vec::new();
-        for row in body.chunks_exact(RECEIPT_ROW_BYTES[10]) {
+        for row in body.as_chunks::<{ RECEIPT_ROW_BYTES[10] }>().0 {
             rows.extend(
                 pack_row(11, row, &mut lookup)
                     .expect("the fixture row packs into the bounded frame"),

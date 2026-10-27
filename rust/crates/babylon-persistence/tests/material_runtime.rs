@@ -101,7 +101,7 @@ fn material_commit_failure_leaves_graph_circuit_world_time_and_sink_unchanged() 
                 .expect("the committed session publishes a world hash"),
             world
         );
-        assert!(sink.events.is_empty());
+        assert_eq!(sink.events.len(), 0);
         let retry = session
             .prepare_advance(&actions(&session))
             .expect("the session prepares the authored advance");

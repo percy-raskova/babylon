@@ -522,7 +522,7 @@ pub(crate) fn private_partner_policy_capacity_and_factory_facts_do_not_change_la
         if refusal == OrganizerRefusal::WrongAuthority {
             assert_eq!((lawful.available_hours, lawful.required_hours), (0, 0));
             assert!(!lawful.replaces_standing_work);
-            assert!(lawful.observations.is_empty());
+            assert_eq!(lawful.observations.len(), 0);
         } else {
             assert_eq!(
                 lawful.observations, preview.observations,
@@ -769,8 +769,8 @@ pub(crate) fn severing_the_contact_consumer_removes_later_report_access_but_pres
         &config, &opening, &opening, &completed,
     )
     .expect("the fixture call `report_organizer_workplace` succeeds for the authored inputs");
-    assert!(connected.journal.receipts.is_empty());
-    assert!(disconnected.journal.receipts.is_empty());
+    assert_eq!(connected.journal.receipts.len(), 0);
+    assert_eq!(disconnected.journal.receipts.len(), 0);
     assert_eq!(
         opening.journal.receipts.last(),
         Some(&contact_receipt),
@@ -1334,10 +1334,10 @@ pub(crate) fn assert_no_time_product(state: &babylon_practice_contract::Resolved
         .expect("the fixture sequence is non-empty");
     assert_eq!(receipt.outcome, OrganizerOutcome::InsufficientTime);
     assert_eq!(receipt.hours_spent, 0);
-    assert!(receipt.time_use.is_empty());
+    assert_eq!(receipt.time_use.len(), 0);
     assert!(receipt.contact_product_id.is_none());
-    assert!(receipt.observation_ids.is_empty());
-    assert!(state.contact_products.is_empty());
+    assert_eq!(receipt.observation_ids.len(), 0);
+    assert_eq!(state.contact_products.len(), 0);
 }
 
 #[test]
@@ -1552,7 +1552,7 @@ pub(crate) fn finite_time_does_not_supply_partner_consent() {
             OrganizerPartnerResponse::Participated
         );
         assert!(receipt.contact_product_id.is_none());
-        assert!(next.contact_products.is_empty());
+        assert_eq!(next.contact_products.len(), 0);
         assert_eq!(next.agreements, opening.agreements);
     }
 }
@@ -1966,7 +1966,7 @@ pub(crate) fn recent_observations_preserve_latest_distinct_reports_and_complete_
         .filter(|row| !matches!(row.report, OrganizerReport::Maintenance { .. }))
         .map(|row| row.observation_id)
         .collect::<Vec<_>>();
-    assert!(!early.is_empty());
+    assert_ne!(early.len(), 0);
     for _ in 0..40 {
         let next = act(
             &config,

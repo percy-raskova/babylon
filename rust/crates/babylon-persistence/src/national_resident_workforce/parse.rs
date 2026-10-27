@@ -100,8 +100,10 @@ fn county(line: &str, controls: &NationalCountyReference) -> Result<ResidentWork
         .county(geoid)
         .map_err(|_| Error::UnknownCounty(geoid))?;
     let observations: Vec<_> = fields[1..]
-        .chunks_exact(6)
-        .map(observation)
+        .as_chunks::<6>()
+        .0
+        .iter()
+        .map(|fields| observation(fields))
         .collect::<Result<_, _>>()?;
     let observations: [AcsEstimate; 21] = observations.try_into().map_err(|_| Error::CsvShape)?;
     let estimate = |line: usize| observations[line - 1].estimate.value();

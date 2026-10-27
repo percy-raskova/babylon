@@ -124,8 +124,8 @@ fn canonical_roundtrip(
             .expect("the fixture book totals without overflow"),
         crate::money(0)
     );
-    assert!(crate::economy(&restored).employment.is_empty());
-    assert!(crate::economy(&restored).member_labor.is_empty());
+    assert_eq!(crate::economy(&restored).employment.len(), 0);
+    assert_eq!(crate::economy(&restored).member_labor.len(), 0);
     restored
 }
 fn service_needs() -> (MaterialCatalog, MaterialCircuitState) {

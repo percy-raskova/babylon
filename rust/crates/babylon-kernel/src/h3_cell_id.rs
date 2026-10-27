@@ -37,7 +37,6 @@ impl H3ImmediateChildren {
     }
 
     /// Iterate over the ordered children without allocation.
-    #[must_use]
     pub fn iter(&self) -> impl ExactSizeIterator<Item = H3CellId> + '_ {
         self.as_slice().iter().copied()
     }

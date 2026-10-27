@@ -132,10 +132,11 @@ fn inconsistent_duplicate_and_overflowing_member_claims_are_refused() {
 fn an_explicit_zero_force_workplace_stays_empty_even_when_work_is_requested() {
     let row = decision(0, 0, 20);
     assert_eq!(row.target_employed(), 0);
-    assert!(
+    assert_eq!(
         babylon_material_circuit::distribute_staffing_members(&row, &[])
             .expect("the fixture distributes the authored members")
-            .is_empty()
+            .len(),
+        0
     );
     assert!(
         babylon_material_circuit::distribute_staffing_members(&decision(1, 0, 4), &[]).is_err()

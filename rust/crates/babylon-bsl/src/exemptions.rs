@@ -32,10 +32,10 @@ mod tests {
     #[test]
     fn every_exemption_row_carries_full_governance_metadata() {
         for exemption in EXTENSIVE_INTENSIVE_EXEMPTIONS {
-            assert!(!exemption.field_name.is_empty());
-            assert!(!exemption.reason.is_empty());
-            assert!(!exemption.owner.is_empty());
-            assert!(!exemption.date.is_empty());
+            assert_ne!(exemption.field_name.len(), 0);
+            assert_ne!(exemption.reason.len(), 0);
+            assert_ne!(exemption.owner.len(), 0);
+            assert_ne!(exemption.date.len(), 0);
         }
     }
 }

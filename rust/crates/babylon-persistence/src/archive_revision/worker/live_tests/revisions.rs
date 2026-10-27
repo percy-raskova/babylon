@@ -143,7 +143,7 @@ fn assert_late_grant_pending(target: &LiveWorkerTarget) {
         else {
             panic!("tail knowledge refresh stays pending");
         };
-        assert!(page.signals.is_empty());
+        assert_eq!(page.signals.len(), 0);
         assert!(!page.markdown.contains("728576"));
         let search = reader
             .search_as_of(&scope, "728576", 10)
@@ -152,7 +152,7 @@ fn assert_late_grant_pending(target: &LiveWorkerTarget) {
             search.state,
             ArchiveSearchState::Pending(ArchiveDossierPending::KnowledgeRefresh)
         );
-        assert!(search.hits.is_empty());
+        assert_eq!(search.hits.len(), 0);
     });
 }
 #[test]
@@ -221,7 +221,7 @@ fn live_late_grant_stays_pending_at_tail_and_never_rewrites_old_tick() {
         let ArchiveDossierState::Ready { page: old, .. } = older.state else {
             panic!("old tick does not remain invalidated by later grant");
         };
-        assert!(old.signals.is_empty());
+        assert_eq!(old.signals.len(), 0);
         assert!(!old.markdown.contains("728576"));
         let current = reader
             .dossier_as_of(

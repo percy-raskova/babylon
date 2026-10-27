@@ -372,7 +372,7 @@ fn presets_share_exact_setup_except_the_single_declared_delay() {
             .expect("the fixture call `industry_for_site` succeeds for the authored inputs");
         assert_eq!(source.area_fips, site.county_geoid);
         assert_eq!(source.industry_code, site.naics);
-        assert!(source.disclosure_code.is_empty());
+        assert_eq!(source.disclosure_code.len(), 0);
     }
 }
 
@@ -485,7 +485,7 @@ fn delivery_delay_changes_following_period_output_with_food_causally_disconnecte
     for state in [standard.material().state(), delayed.material().state()] {
         assert_eq!(inventory(state, "wayne-vehicle-parts", "subassembly"), 30);
         assert_eq!(inventory(state, "oakland-food", "packaged-meal"), 200);
-        assert!(state.freight.is_empty());
+        assert_eq!(state.freight.len(), 0);
         assert!(state
             .orders
             .iter()

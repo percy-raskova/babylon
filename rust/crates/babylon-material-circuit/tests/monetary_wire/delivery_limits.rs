@@ -95,5 +95,5 @@ fn local_dispatch_and_rebuilt_backlog_include_the_last_delivery_above_the_old_ca
     let backlog = closed.state.derived_backlog().expect("derived backlog");
     assert_eq!(backlog.len(), DELIVERY_LIMIT);
     assert!(backlog.iter().all(|r| r.quantity == 0));
-    assert!(closed.state.freight.is_empty());
+    assert_eq!(closed.state.freight.len(), 0);
 }

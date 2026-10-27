@@ -1077,8 +1077,8 @@ mod split_content_tests {
     #[test]
     fn a_source_with_no_forms_is_an_explicit_empty_program() {
         let (intrinsics, rules) = super::split_content("").expect("empty program");
-        assert!(intrinsics.is_empty());
-        assert!(rules.is_empty());
+        assert_eq!(intrinsics.len(), 0);
+        assert_eq!(rules.len(), 0);
     }
 
     #[test]
@@ -1936,8 +1936,8 @@ mod empty_program_tests {
         let expected = crate::canonical_ast::rules_hash_of(&[]).expect("empty canonical rule set");
         for source in ["", " \n\t", "; immutable observer baseline\n"] {
             let (intrinsics, rules) = super::split_content(source).expect("explicit empty program");
-            assert!(intrinsics.is_empty());
-            assert!(rules.is_empty());
+            assert_eq!(intrinsics.len(), 0);
+            assert_eq!(rules.len(), 0);
             let forms: Vec<_> = rules.into_iter().map(|rule| rule.form).collect();
             assert_eq!(
                 crate::canonical_ast::rules_hash_of(&forms)

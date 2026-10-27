@@ -415,8 +415,8 @@ mod tests {
             .expect("the fixture advances the authored period");
         assert_eq!(report.report().considered, 0);
         assert_eq!(report.report().fired, 0);
-        assert!(report.report().audit_receipts.is_empty());
-        assert!(sink.events.is_empty());
+        assert_eq!(report.report().audit_receipts.len(), 0);
+        assert_eq!(sink.events.len(), 0);
         report
     }
 
@@ -469,8 +469,8 @@ mod tests {
         let (mut revised, revised_bundle) = build_observer_foundation(&changed).expect(
             "the fixture call `build_observer_foundation` succeeds for the authored inputs",
         );
-        assert!(original_bundle.rule_source_bytes().is_empty());
-        assert!(revised_bundle.rule_source_bytes().is_empty());
+        assert_eq!(original_bundle.rule_source_bytes().len(), 0);
+        assert_eq!(revised_bundle.rule_source_bytes().len(), 0);
         let original_foundation = CampaignFoundation::capture(&original, original_bundle)
             .expect("the fixture captures the authored state");
         let revised_foundation = CampaignFoundation::capture(&revised, revised_bundle)

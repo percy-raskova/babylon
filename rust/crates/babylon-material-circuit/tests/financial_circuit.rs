@@ -310,7 +310,7 @@ fn capital_contribution_swaps_cash_for_equity_without_income_or_equipment() {
         money(5)
     );
     assert!(t.income.iter().all(|r| r.net_income == money(0)));
-    assert!(economy(&t.state).financial.contributions.is_empty());
+    assert_eq!(economy(&t.state).financial.contributions.len(), 0);
     assert_eq!(
         economy(&t.state)
             .book
@@ -347,7 +347,7 @@ fn public_support_records_unfunded_budget_without_creating_cash_or_consumption()
             .expect("the fixture book holds the payer account"),
         money(3)
     );
-    assert!(t.household_consumption.is_empty());
+    assert_eq!(t.household_consumption.len(), 0);
     assert_eq!(
         economy(&t.state)
             .book

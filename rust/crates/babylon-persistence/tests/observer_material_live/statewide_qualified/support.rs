@@ -179,7 +179,7 @@ pub(crate) fn qualify_preset(delivery: MichiganDeliveryPreset, index: u128) {
     let physical = catalog.physical_network().expect("actual road network");
     assert!(!physical.source.pbf_url.starts_with("synthetic://"));
     assert!(physical.source.pbf_url.starts_with("https://"));
-    assert!(!physical.edges.is_empty());
+    assert_ne!(physical.edges.len(), 0);
     assert_eq!(physical.terminals.len(), 83);
     assert_eq!(catalog.sites().len(), 397);
     let preset = MichiganContentPreset::new_campaign(delivery);

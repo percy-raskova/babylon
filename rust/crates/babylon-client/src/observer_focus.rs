@@ -1008,7 +1008,7 @@ mod tests {
             key(&mut app, window, code, ButtonState::Released, false);
         }
         let actions = app.world().resource::<Actions>();
-        assert!(actions.accepted.is_empty());
+        assert_eq!(actions.accepted.len(), 0);
         assert_eq!(actions.world_steps, 0);
         assert_eq!(actions.world_navigation, 0);
         press(&mut app, window, KeyCode::Tab);
@@ -1147,7 +1147,7 @@ mod tests {
         press(&mut app, window, KeyCode::Enter);
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(button));
         let actions = app.world().resource::<Actions>();
-        assert!(actions.accepted.is_empty());
+        assert_eq!(actions.accepted.len(), 0);
         assert_eq!(actions.refused, [button]);
         assert_eq!(actions.world_steps, 0);
     }
@@ -1218,7 +1218,7 @@ mod tests {
         );
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(safe));
         let actions = app.world().resource::<Actions>();
-        assert!(actions.accepted.is_empty());
+        assert_eq!(actions.accepted.len(), 0);
         assert_eq!(actions.world_steps, 0);
     }
 
@@ -1286,7 +1286,7 @@ mod tests {
             false,
         );
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(close));
-        assert!(app.world().resource::<Actions>().accepted.is_empty());
+        assert_eq!(app.world().resource::<Actions>().accepted.len(), 0);
         key(
             &mut app,
             window,
@@ -1304,7 +1304,7 @@ mod tests {
         );
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(original));
         let actions = app.world().resource::<Actions>();
-        assert!(actions.accepted.is_empty());
+        assert_eq!(actions.accepted.len(), 0);
         assert_eq!(actions.world_steps, 0);
     }
 
@@ -1355,7 +1355,7 @@ mod tests {
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(button));
         assert!(app.world().get::<TabIndex>(button).is_none());
         let actions = app.world().resource::<Actions>();
-        assert!(actions.accepted.is_empty());
+        assert_eq!(actions.accepted.len(), 0);
         assert_eq!(actions.refused, [button]);
         assert_eq!(actions.world_steps, 0);
     }
@@ -1417,11 +1417,11 @@ mod tests {
         press(&mut app, window, KeyCode::Enter);
         assert!(app.world().get::<TabIndex>(stale).is_none());
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(safe));
-        assert!(app.world().resource::<Actions>().accepted.is_empty());
+        assert_eq!(app.world().resource::<Actions>().accepted.len(), 0);
         app.world_mut().despawn(safe);
         press(&mut app, window, KeyCode::Enter);
         let actions = app.world().resource::<Actions>();
-        assert!(actions.accepted.is_empty());
+        assert_eq!(actions.accepted.len(), 0);
         assert_eq!(actions.world_steps, 0);
     }
 
@@ -1518,7 +1518,7 @@ mod tests {
             Vec2::new(0.0, 100.0)
         );
         press(&mut app, window, KeyCode::Enter);
-        assert!(app.world().resource::<Actions>().accepted.is_empty());
+        assert_eq!(app.world().resource::<Actions>().accepted.len(), 0);
         assert_eq!(app.world().resource::<Actions>().world_steps, 0);
     }
 

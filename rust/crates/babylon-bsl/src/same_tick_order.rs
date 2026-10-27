@@ -1532,8 +1532,8 @@ mod tests {
                 form_rule_id: "actual/id".to_owned(),
             });
 
-        assert!(diagnosis.stale_default_reads.is_empty());
-        assert!(diagnosis.unreset_fan_ins.is_empty());
+        assert_eq!(diagnosis.stale_default_reads.len(), 0);
+        assert_eq!(diagnosis.unreset_fan_ins.len(), 0);
         assert_eq!(
             diagnosis
                 .clone()
@@ -2402,14 +2402,14 @@ mod tests {
         assert_eq!(e059_keys.len(), GOVERNED_E059_CARDINALITY);
 
         for row in GOVERNED_E058_DISPOSITIONS {
-            assert!(!row.reason.trim().is_empty());
+            assert_ne!(row.reason.trim().len(), 0);
             assert_eq!(
                 (row.owner, row.date, row.adr),
                 ("Director", "2026-08-23", "ADR224")
             );
         }
         for row in GOVERNED_E059_DISPOSITIONS {
-            assert!(!row.reason.trim().is_empty());
+            assert_ne!(row.reason.trim().len(), 0);
             assert_eq!(
                 (row.owner, row.date, row.adr),
                 ("Director", "2026-08-23", "ADR224")

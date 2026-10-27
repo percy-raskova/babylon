@@ -401,7 +401,7 @@ mod tests {
         bus.publish(event("t", 3))
             .expect("the fixture call `publish` succeeds for the authored inputs");
         assert!(observed.try_recv().is_err(), "no handler may run");
-        assert!(bus.history().is_empty());
+        assert_eq!(bus.history().len(), 0);
         let blocked = bus.blocked_events();
         assert_eq!(blocked.len(), 1);
         assert_eq!(blocked[0].interceptor_name, "censor");

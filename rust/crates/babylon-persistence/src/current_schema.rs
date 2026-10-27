@@ -555,7 +555,7 @@ mod tests {
                 .zip(censuses[0].entries())
                 .filter(|(left, right)| left != right)
                 .collect::<Vec<_>>();
-            assert!(!differences.is_empty());
+            assert_ne!(differences.len(), 0);
             assert!(differences
                 .iter()
                 .all(|(entry, _)| entry.key().schema() == "public"

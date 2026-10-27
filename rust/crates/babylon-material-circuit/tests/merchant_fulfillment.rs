@@ -233,9 +233,9 @@ fn routed_and_local_orders_share_stock_handling_mass_and_opening_labor_once() {
         9
     );
     assert_eq!(completed.state.final_demand_orders[0].fulfilled, 1);
-    assert!(completed.arrivals.is_empty());
-    assert!(completed.deliveries.is_empty());
-    assert!(completed.realizations.is_empty());
+    assert_eq!(completed.arrivals.len(), 0);
+    assert_eq!(completed.deliveries.len(), 0);
+    assert_eq!(completed.realizations.len(), 0);
 }
 
 #[test]
@@ -280,9 +280,9 @@ fn local_handoff_consumes_handling_mass_without_a_road_or_freight_lot() {
     assert_eq!(completed.handling[0].needed_hours, 6);
     assert_eq!(completed.handling[0].used_hours, 6);
     assert_eq!(completed.state.inventory[0].quantity, 7);
-    assert!(completed.state.freight.is_empty());
-    assert!(completed.dispatches.is_empty());
-    assert!(completed.production.is_empty());
+    assert_eq!(completed.state.freight.len(), 0);
+    assert_eq!(completed.dispatches.len(), 0);
+    assert_eq!(completed.production.len(), 0);
     assert_eq!(
         completed.state.inventory[0].good_id,
         state.inventory[0].good_id
@@ -312,7 +312,7 @@ fn finite_local_orders_credit_once_and_finished_orders_report_completed_zero() {
         assert_eq!(stock + handed_off, 10);
         assert_eq!(completed.state.final_demand_orders[0].fulfilled, handed_off);
         if period == 6 {
-            assert!(completed.local_fulfillments.is_empty());
+            assert_eq!(completed.local_fulfillments.len(), 0);
             assert_eq!(completed.handling.len(), 1);
             assert_eq!(
                 (
@@ -383,7 +383,7 @@ fn zero_employment_can_rehire_from_feasible_handling_need_without_current_dispat
     let completed = closed
         .finish_with_labor(&catalog, staffing.next_labor().to_vec())
         .expect("the fixture completes with labor");
-    assert!(completed.local_fulfillments.is_empty());
+    assert_eq!(completed.local_fulfillments.len(), 0);
     assert_eq!(
         (
             completed.handling[0].needed_hours,
@@ -418,7 +418,7 @@ fn empty_inventory_reports_zero_feasible_handling_and_staffing_need() {
         ),
         (0, 0)
     );
-    assert!(result.local_fulfillments.is_empty());
+    assert_eq!(result.local_fulfillments.len(), 0);
 }
 
 #[test]
@@ -740,8 +740,8 @@ fn local_inter_owner_transfer_needs_no_road_or_transit() {
     let completed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("explicit local circulation");
     assert_eq!(completed.state.orders[0].delivered, 2);
-    assert!(completed.state.freight.is_empty());
-    assert!(completed.arrivals.is_empty());
+    assert_eq!(completed.state.freight.len(), 0);
+    assert_eq!(completed.arrivals.len(), 0);
 }
 
 fn local_supplier() -> (MaterialCatalog, MaterialCircuitState) {
@@ -768,10 +768,10 @@ fn local_transfer_has_explicit_receipt_and_still_requires_merchant_labor() {
         completed.local_transfers[0].buyer_site_id,
         state.orders[0].buyer_site_id
     );
-    assert!(completed.dispatches.is_empty());
-    assert!(completed.arrivals.is_empty());
-    assert!(completed.deliveries.is_empty());
-    assert!(completed.realizations.is_empty());
+    assert_eq!(completed.dispatches.len(), 0);
+    assert_eq!(completed.arrivals.len(), 0);
+    assert_eq!(completed.deliveries.len(), 0);
+    assert_eq!(completed.realizations.len(), 0);
     assert_eq!(
         (
             completed.state.orders[0].shipped,
@@ -793,7 +793,7 @@ fn local_transfer_has_explicit_receipt_and_still_requires_merchant_labor() {
     state.labor[0].available = 0;
     let stopped = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
-    assert!(stopped.local_transfers.is_empty());
+    assert_eq!(stopped.local_transfers.len(), 0);
     assert_eq!(stopped.handling[0].needed_hours, 20);
     assert_eq!(stopped.handling[0].used_hours, 0);
     assert_eq!(stopped.state.orders[0].shipped, 0);
@@ -912,7 +912,7 @@ fn residual_zero_base_order_still_requires_funded_handling_hours() {
     let completed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(completed.dispatches[0].quantity, 1);
-    assert!(completed.local_fulfillments.is_empty());
+    assert_eq!(completed.local_fulfillments.len(), 0);
     assert_eq!(
         completed.handling.iter().map(|r| r.used_hours).sum::<u64>(),
         2
@@ -924,7 +924,7 @@ fn residual_zero_base_order_still_requires_funded_handling_hours() {
     state.labor[0].available = 1;
     let blocked = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
-    assert!(blocked.dispatches.is_empty());
-    assert!(blocked.local_fulfillments.is_empty());
+    assert_eq!(blocked.dispatches.len(), 0);
+    assert_eq!(blocked.local_fulfillments.len(), 0);
     assert!(blocked.handling.iter().all(|r| r.used_hours == 0));
 }

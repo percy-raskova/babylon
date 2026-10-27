@@ -219,7 +219,7 @@ fn local_gift_conserves_cash_and_basis_without_a_sale_and_debits_actual_time() {
     assert_eq!(receiver.statement.gift_income, crate::money(14));
     assert_eq!(receiver.statement.sales, crate::money(0));
     assert_eq!(receiver.statement.public_transfer_income, crate::money(0));
-    assert!(crate::economy(&gifted.state).book.snapshot().aid.is_empty());
+    assert_eq!(crate::economy(&gifted.state).book.snapshot().aid.len(), 0);
     let HouseholdTimeAccounting::Modeled(time) = &crate::economy(&gifted.state).household_time
     else {
         panic!("modeled");
@@ -302,7 +302,7 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
     let first =
         close_aid(&catalog, &state, &[input(2)]).expect("the fixture closes the pending aid");
     assert_eq!(consumed(&first, recipient()).consumed_quantity, 0);
-    assert!(!first.dispatches.is_empty());
+    assert_ne!(first.dispatches.len(), 0);
     let commercial = first
         .procurement
         .iter()
@@ -380,8 +380,8 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
             .expect("the fixture book holds the payer account"),
         crate::money(3)
     );
-    assert!(crate::economy(&second.state).aid.freight.is_empty());
-    assert!(crate::economy(&second.state).book.snapshot().aid.is_empty());
+    assert_eq!(crate::economy(&second.state).aid.freight.len(), 0);
+    assert_eq!(crate::economy(&second.state).book.snapshot().aid.len(), 0);
     assert!(second
         .aid
         .iter()
@@ -415,7 +415,7 @@ fn physical_loss_refunds_donor_cash_and_never_grants_phantom_food() {
         .money_transfers
         .iter()
         .any(|r| matches!(r.purpose, MoneyTransferPurpose::AidRefund(_))));
-    assert!(crate::economy(&second.state).book.snapshot().aid.is_empty());
+    assert_eq!(crate::economy(&second.state).book.snapshot().aid.len(), 0);
 }
 
 #[test]

@@ -7,7 +7,7 @@ comes up, note it and hand it back; the workhorse owns the tree.
 
 ## How to orient
 
-1. Read `docs/gameplay/00-overview.md` (index of sessions + all 25 research briefings `01`–`25`).
+1. Read `docs/gameplay/00-overview.md` (index of sessions + all 38 research briefings `01`–`38`).
 2. Read `docs/gameplay/2026-10-25-porch-01.md` (session 01: fantasy, five screens,
    decision ceremony, three-layer answer, visibility rule, three-author narrator,
    LLM contract, fog/veil).
@@ -40,8 +40,8 @@ comes up, note it and hand it back; the workhorse owns the tree.
      and local Markdown Chronicle/Wiki + `.babylon` replay export).
 5. Read `docs/superpowers/plans/2026-10-25-babylon-gameplay-and-late-empire-plan.md`
    (the 5-wave, 9-task post-`PER-354` implementation plan).
-5. Consult `docs/gameplay/research/01`–`25` for deep source briefings as needed.
-6. Recall durable notes (c-mem, project `babylon/codex-PER-354-architecture-reset`):
+6. Consult `docs/gameplay/research/01`–`38` for deep source briefings as needed.
+7. Recall durable notes (c-mem, project `babylon/codex-PER-354-architecture-reset`):
    design batch `194431`, LLM contract `194442`, maturity visibility `194457`,
    Porch 02 master batch `195376`, Bonapartist State `195490`, NSA/CIA/Dept. of War
    `195564`, future studies `194318` (V3 tooltips/wiki, combat synthesis), Proton

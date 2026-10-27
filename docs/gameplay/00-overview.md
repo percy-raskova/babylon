@@ -48,8 +48,8 @@ feels, reads, and takes away. Engine internals appear only as they surface.
   unlocks driven by *On Practice* (`Study` + `Practice`), Period-0 Campaign
   Setup (*Starting Region + Founding Tendency Archetype + Crisis Bookmark*
   over seeded `marxist-data-3NF.sqlite` bounds), the **Counterfactual
-  Timeline Tree** & Ironman toggle, and one-click local Markdown Chronicle/Wiki
-  + `.babylon` replay export.
+  Timeline Tree** & Ironman toggle, and one-click local Markdown Chronicle/Wiki +
+  `.babylon` replay export.
 
 ## Research Briefings (`docs/gameplay/research/`)
 
@@ -78,6 +78,19 @@ feels, reads, and takes away. Engine internals appear only as they surface.
 - `23-revolutionary-metabolism-sinks-scarcity-and-cadre-reproduction.md` — Gap 4: Revolutionary Metabolism & Scarcity: the `HouseholdTimeReceipt` 672-hour burnout cliff (`protected_unresolved_hours != 0 => contribution_available = 0`), the single wage ladder (party stipend vs. NGO/union staffer bribe), Mao's 1945 underground cash sink vs. legal `survival_interest`, the 4 funding books (Rule 1 dues, coded coupons, grants, Tiflis 1907 expropriations), and the 28-day rent/siege clock.
 - `24-false-summits-dsa-presidency-red-settler-trap-and-endgame-states.md` — Gap 5: The 4 Endgames with zero scripted cutscenes: False Summit A (*"DSA Wins Congress & AOC is President"* $\rightarrow$ Kautskyite social-imperialist Navy deployments to save $\Phi$ vs. Chile-1973 Pentagon/Finance coup), False Summit B (*The `RED_OGV` Red-Settler Trap* $\rightarrow$ observed extraction intensity ratcheting `max-biocapacity` down while New Afrika/Aztlán/Indigenous nations secede), Collapse Trajectory C (*Warlord Archipelago*), and *True Liberation*.
 - `25-erol-new-communist-movement-amerikan-examples.md` — EROL (Encyclopedia of Anti-Revisionism On-Line, `ncm-1`–`ncm-8` & `1956–1970`, 36 primary U.S. documents): DRUM & League of Revolutionary Black Workers vs. UAW payroll absorption in Detroit, RU/RCP's NUWO ("not an organization, a big meeting"), the Boston Busing white-chauvinist disaster (`slogan_collision` + `rival_gain`), Greensboro 1979 disarming ordinance, and OCIC/CP(M-L) premature party-building wars.
+- `26-rand-coin-doctrine-and-scorecards.md` — RAND COIN doctrine (Long's assumptions, the Paul/Clarke/Grill scorecard arithmetic, Davis/Cragin support dynamics) read as the state's instrument panel and insurgent target list, and why not to wire the scorecard in as a dial set.
+- `27-armed-group-endings-and-violence-logic.md` — How armed groups end (Jones–Libicki), Kalyvas's control-and-violence logic, Weinstein's recruitment endowments, Wood and Scott: what a county's balance of control permits each side to do to civilians, and when an armed phase pays.
+- `28-swarms-networks-and-police-intel.md` — Swarm doctrine as a duty cycle with a comms optimum, the police intelligence loop as six stages with a named seam at each, and the exchange rate between network resilience and command.
+- `29-army-intel-and-coin-manuals-inverted.md` — ADP 2-0, FM 3-24 (2006 / 2014 / 2025) and ATP 2-01.3 inverted: the Army intelligence cycle as seven player verbs, and the COIN manual as a catalogue of how the state makes the player legible, dependent, or divided.
+- `30-peoples-war-classics-operational-grammar.md` — Giáp, Neuberg, Mao and the people's-war classics: unit scales, stage transitions, preconditions, equipment flow, leadership presence, and the contradictions that become selectable doctrines rather than one correct line (with one recorded Trotsky scope exception).
+- `31-hoi4-supply-material-factors.md` — HOI4 binary supply pass: reach propagated by five sequential passes, the `10 + 5 × min-edge-level` corridor rule, proportional shortage sharing, the army supply-ratio recovery clock, and the compiled fixed-point sigmoid the constitution refuses.
+- `32-lawvere-1962-probabilistic-mappings.md` — Lawvere's 1962 category of probabilistic mappings read closely: probabilities as morphisms, whether composition preserves history, and what the annotator's own errors teach a designer.
+- `33-observability-canon-for-qualification-and-intel.md` — Honeycomb / OpenTelemetry canon: wide events, the 2/52/325-period qualification contract, instrumenting a fogged economy by organizing, and the event-then-write `AuditReceipt` retrospective trace query.
+- `34-ux-exposure-doctrine-and-bi-as-art.md` — Tufte, Norman, Krug, Shneiderman and Salen–Zimmerman on two-tier exposure: exact public statistics versus engine magnitudes shown only as rate, acceleration, or qualia, and why the honest BI surface must also be beautiful.
+- `35-july-living-map-and-behemoth-threads.md` — July's topology-screen design history: what the Director actually said about the Living Map, the "behemoth" directives and the August "Entity" formalization, and the homonym trap with the Department of War Behemoth.
+- `36-may-design-threads-behemoth.md` — May 2026: the month the aesthetic was enforced, not invented — the topology graph demoted then made static, two canons in force at once, and where May contradicts the current two-tier exposure doctrine.
+- `37-june-design-threads-behemoth.md` — June 2026: the month with no design record — an empty window proved rather than merely unindexed, bracketed by what the record says immediately before and after so the absence can be used.
+- `38-august-design-threads-behemoth.md` — August design threads: the Behemoth, the map room and the mask — Director verbatim (V) separated from recorded ruling (R) and agent interpretation (I), including what the Director did not say.
 
 ## Open threads (parked as separate future lines)
 

@@ -10,10 +10,13 @@
 //! the Task 14 cutover's concern; this runner reports that scope explicitly.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 use std::fs::OpenOptions;
+use std::io::ErrorKind;
 use std::path::Path;
+use std::path::PathBuf;
 use std::time::Instant;
 
 use babylon_bsl::structural_verbs::CollectingSink;
@@ -217,6 +220,66 @@ pub struct PeriodBreakdown {
     pub journal_bytes: u64,
     /// Earned knowledge payload bytes written by the caller.
     pub knowledge_bytes: u64,
+    /// Charged stored journal payload bytes.
+    #[serde(default)]
+    pub journal_stored_bytes: u64,
+    /// Charged stored knowledge payload bytes.
+    #[serde(default)]
+    pub knowledge_stored_bytes: u64,
+    /// Charged stored bytes and fragment counts by restart-root section.
+    #[serde(default)]
+    pub sections: Vec<SectionCharge>,
+    /// Every restart-root fragment this period changed.
+    #[serde(default)]
+    pub fragments: Vec<FragmentChange>,
+    /// Stored charge the durable acknowledgement added beyond the encoded
+    /// candidate. It has no component attribution and is reported, never hidden.
+    #[serde(default)]
+    pub acknowledged_residual_bytes: u64,
+}
+
+/// How one restart-root fragment position differs from the previous snapshot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FragmentChangeKind {
+    /// The previous snapshot held no fragment at this position.
+    Added,
+    /// The previous snapshot held different bytes at this position.
+    Rewritten,
+    /// The previous snapshot held a fragment this snapshot omits.
+    Retired,
+}
+
+/// One restart-root fragment the period changed or retired.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct FragmentChange {
+    /// Closed section code of the fragment.
+    pub section: i64,
+    /// Manifest ordinal inside the section.
+    pub ordinal: u32,
+    /// How this position differs from the previous snapshot.
+    pub change: FragmentChangeKind,
+    /// Decoded bytes this snapshot holds at the position; zero when retired.
+    pub decoded_bytes: u64,
+    /// Decoded bytes the previous snapshot held at the position.
+    pub prior_decoded_bytes: u64,
+    /// Charged stored payload bytes; zero when nothing was written.
+    pub stored_bytes: u64,
+}
+
+/// Charged stored bytes one restart-root section contributed in a period.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SectionCharge {
+    /// Closed section code.
+    pub section: i64,
+    /// Fragments this section added or rewrote.
+    pub charged_fragments: u64,
+    /// Decoded bytes of the fragments this section added or rewrote.
+    pub decoded_bytes: u64,
+    /// Decoded bytes previously held at changed and retired positions.
+    pub prior_decoded_bytes: u64,
+    /// Charged stored payload bytes of the fragments this section wrote.
+    pub stored_bytes: u64,
 }
 
 /// One cold-open measurement.
@@ -273,6 +336,7 @@ pub fn run_national(
         ));
     }
     std::fs::create_dir_all(output_directory)?;
+    require_empty(output_directory)?;
     let started = Instant::now();
     let campaign = CampaignId::from_uuid(Uuid::from_u128(CAMPAIGN_UUID));
     let captured = CapturedEconomicCatalog::capture_national_campaign(
@@ -312,7 +376,7 @@ pub fn run_national(
         .fold(0_u64, u64::saturating_add);
     let mut handle = SqliteCampaignStore::create(store_path, content, opening)?;
     let opening_file_bytes = store_bytes(store_path)?;
-    let mut previous = chunk_hashes(&handle);
+    let mut previous = previous_chunks(&handle);
     let opening_lookup = crate::material_storage::seed(session.catalog(), &opening_register_bytes)
         .map_err(|error| QualificationError::Material(error.to_string()))?;
     drop(opening_register_bytes);
@@ -357,8 +421,7 @@ pub fn run_national(
         let chunks = period_chunks(&prepared, &restart_package)?;
         let journal = briefing_journal(period);
         let knowledge = briefing_knowledge(period);
-        let mut charge = charge_candidate(&chunks, &journal, &knowledge, &previous)?;
-        let breakdown = period_breakdown(
+        let (mut charge, mut breakdown) = period_accounting(
             period,
             &RestartParts {
                 state: &state_package,
@@ -369,7 +432,7 @@ pub fn run_national(
             &journal,
             &knowledge,
             &previous,
-        );
+        )?;
         drop((state_package, receipt_package, lookup_delta));
         let candidate = PreparedPeriod {
             period,
@@ -381,7 +444,6 @@ pub fn run_national(
             knowledge,
             detail: Vec::new(),
         };
-        charge.period = period;
         let encoding_ns = elapsed_ns(encoding_started)?;
         let mut committed: Option<CommittedPeriod> = None;
         let mut commit_ns = 0_u64;
@@ -420,14 +482,14 @@ pub fn run_national(
             ));
         }
         let briefing_started = Instant::now();
-        let briefing = measure_queries(&handle, 1)?;
+        measure_queries(&handle, 1)?;
         let briefing_ns = elapsed_ns(briefing_started)?;
         let total_ns = judgment_started
             .elapsed()
             .as_nanos()
             .try_into()
             .map_err(|_| QualificationError::Evidence("advance duration overflow".to_owned()))?;
-        previous = chunk_hashes(&handle);
+        previous = previous_chunks(&handle);
         let summary_residual = acknowledged
             .retention
             .gross_bytes_added
@@ -435,6 +497,7 @@ pub fn run_national(
         charge.decoded_added_bytes = acknowledged.retention.gross_bytes_added;
         charge.stored_added_bytes = charge.stored_added_bytes.saturating_add(summary_residual);
         charge.unreachable_stored_bytes = acknowledged.retention.bytes_made_unreachable;
+        breakdown.acknowledged_residual_bytes = summary_residual;
         charges.push(charge);
         breakdowns.push(breakdown);
         advances.push(AdvanceSample {
@@ -444,7 +507,6 @@ pub fn run_national(
             commit_ns,
             briefing_ns,
             total_ns,
-            chunks_visited: briefing.iter().map(|sample| sample.chunks_visited).sum(),
         });
         write_advance(
             output_directory,
@@ -552,8 +614,32 @@ pub fn evaluate_run(
         run: merged,
         verdict,
     };
-    write_json(&run_directory.join("evaluation.json"), &evaluation)?;
+    write_json(&evaluation_path(run_directory, policy_sha256), &evaluation)?;
     Ok(evaluation)
+}
+
+/// Name one verdict after the frozen contract that produced it.
+///
+/// Re-evaluation under another contract writes beside the earlier verdict
+/// instead of replacing it, so an evidence directory keeps every verdict it
+/// earned.
+fn evaluation_path(directory: &Path, policy_sha256: [u8; 32]) -> PathBuf {
+    directory.join(format!("evaluation-{}.json", hex(&policy_sha256)))
+}
+
+/// Refuse a directory that already holds evidence.
+///
+/// A measured run appends every advance as it commits, so a reused directory
+/// would mix two runs and let `run.json` replace an earlier verdict input.
+fn require_empty(directory: &Path) -> Result<(), QualificationError> {
+    let mut entries = std::fs::read_dir(directory)?;
+    if entries.next().is_some() {
+        return Err(QualificationError::Evidence(format!(
+            "the output directory {} is not empty",
+            directory.display()
+        )));
+    }
+    Ok(())
 }
 
 fn material_opening(
@@ -778,124 +864,229 @@ struct RestartParts<'a> {
     lookup: &'a [u8],
 }
 
-fn period_breakdown(
+/// One restart-root fragment as the previous snapshot left it.
+struct PreviousChunk {
+    decoded_bytes: u64,
+    hash: [u8; 32],
+}
+
+/// Charged restart-root bytes and the fragments that produced them.
+struct ChunkAccounting {
+    stored_bytes: u64,
+    decoded_bytes: u64,
+    sections: Vec<SectionCharge>,
+    fragments: Vec<FragmentChange>,
+}
+
+/// Charged caller bytes for journal records and earned knowledge.
+struct CallerAccounting {
+    journal_decoded: u64,
+    journal_stored: u64,
+    knowledge_decoded: u64,
+    knowledge_stored: u64,
+}
+
+/// Charge one period and record where every charged byte came from.
+fn period_accounting(
     period: u64,
     parts: &RestartParts<'_>,
     chunks: &[StateChunk],
     journal: &[PreparedJournalRecord],
     knowledge: &[PreparedKnowledgeGrant],
-    previous: &BTreeMap<(i64, u32), [u8; 32]>,
-) -> PeriodBreakdown {
-    let mut stable_graph = 0_u64;
-    let mut semantic_state = 0_u64;
-    let mut metadata = 0_u64;
-    for chunk in chunks {
-        let hash = content_digest::sha256_of(&chunk.bytes);
-        if previous.get(&(chunk.section.code(), chunk.ordinal)) == Some(&hash) {
-            continue;
-        }
-        let length = u64::try_from(chunk.bytes.len()).unwrap_or(u64::MAX);
-        match chunk.section {
-            ChunkSection::StableGraph => stable_graph = stable_graph.saturating_add(length),
-            ChunkSection::SemanticState => semantic_state = semantic_state.saturating_add(length),
-            ChunkSection::WorldRegisters => {}
-            _ => metadata = metadata.saturating_add(length),
-        }
-    }
-    let journal_bytes = journal.iter().fold(0_u64, |total, record| {
-        total.saturating_add(u64::try_from(record.payload.len()).unwrap_or(u64::MAX))
-    });
-    let knowledge_bytes = knowledge.iter().fold(0_u64, |total, grant| {
-        total.saturating_add(u64::try_from(grant.payload.len()).unwrap_or(u64::MAX))
-    });
-    let world_register_is_new = chunks.iter().any(|chunk| {
-        chunk.section == ChunkSection::WorldRegisters
-            && previous.get(&(chunk.section.code(), chunk.ordinal))
-                != Some(&content_digest::sha256_of(&chunk.bytes))
-    });
-    let package = |bytes: &[u8]| -> u64 {
-        if world_register_is_new {
-            u64::try_from(bytes.len()).unwrap_or(u64::MAX)
-        } else {
-            0
-        }
+    previous: &BTreeMap<(i64, u32), PreviousChunk>,
+) -> Result<(PeriodCharge, PeriodBreakdown), QualificationError> {
+    let chunk = account_chunks(chunks, previous)?;
+    let caller = account_caller_bytes(journal, knowledge)?;
+    let section = |wanted: ChunkSection| {
+        chunk
+            .sections
+            .iter()
+            .find(|charge| charge.section == wanted.code())
     };
-    PeriodBreakdown {
+    let decoded_of =
+        |wanted: ChunkSection| section(wanted).map_or(0, |charge| charge.decoded_bytes);
+    let stable_graph_bytes = decoded_of(ChunkSection::StableGraph);
+    let semantic_state_bytes = decoded_of(ChunkSection::SemanticState);
+    let metadata_bytes = chunk
+        .sections
+        .iter()
+        .filter(|charge| is_metadata_section(charge.section))
+        .try_fold(0_u64, |total, charge| {
+            accumulate(total, charge.decoded_bytes)
+        })?;
+    let world_register_is_new =
+        section(ChunkSection::WorldRegisters).is_some_and(|charge| charge.charged_fragments > 0);
+    let (state, receipts, lookup) = if world_register_is_new {
+        (
+            byte_count(parts.state)?,
+            byte_count(parts.receipts)?,
+            byte_count(parts.lookup)?,
+        )
+    } else {
+        (0, 0, 0)
+    };
+    let breakdown = PeriodBreakdown {
         period,
-        state_package_bytes: package(parts.state),
-        receipt_package_bytes: package(parts.receipts),
-        lookup_delta_bytes: package(parts.lookup),
-        stable_graph_bytes: stable_graph,
-        semantic_state_bytes: semantic_state,
-        metadata_bytes: metadata,
-        journal_bytes,
-        knowledge_bytes,
-    }
+        state_package_bytes: state,
+        receipt_package_bytes: receipts,
+        lookup_delta_bytes: lookup,
+        stable_graph_bytes,
+        semantic_state_bytes,
+        metadata_bytes,
+        journal_bytes: caller.journal_decoded,
+        knowledge_bytes: caller.knowledge_decoded,
+        journal_stored_bytes: caller.journal_stored,
+        knowledge_stored_bytes: caller.knowledge_stored,
+        sections: chunk.sections,
+        fragments: chunk.fragments,
+        acknowledged_residual_bytes: 0,
+    };
+    let stored_added_bytes = accumulate(
+        accumulate(chunk.stored_bytes, caller.journal_stored)?,
+        caller.knowledge_stored,
+    )?;
+    let decoded_added_bytes = accumulate(
+        accumulate(chunk.decoded_bytes, caller.journal_decoded)?,
+        caller.knowledge_decoded,
+    )?;
+    Ok((
+        PeriodCharge {
+            period,
+            stored_added_bytes,
+            decoded_added_bytes,
+            unreachable_stored_bytes: 0,
+        },
+        breakdown,
+    ))
 }
 
-fn charge_candidate(
+/// Diff every changed restart-root fragment against the previous snapshot.
+fn account_chunks(
     chunks: &[StateChunk],
-    journal: &[PreparedJournalRecord],
-    knowledge: &[PreparedKnowledgeGrant],
-    previous: &BTreeMap<(i64, u32), [u8; 32]>,
-) -> Result<PeriodCharge, QualificationError> {
-    let mut stored = 0_u64;
-    let mut decoded = 0_u64;
+    previous: &BTreeMap<(i64, u32), PreviousChunk>,
+) -> Result<ChunkAccounting, QualificationError> {
+    let mut sections: BTreeMap<i64, SectionCharge> = BTreeMap::new();
+    let mut fragments = Vec::new();
+    let mut present = BTreeSet::new();
+    let mut stored_bytes = 0_u64;
+    let mut decoded_bytes = 0_u64;
     for chunk in chunks {
-        let hash = content_digest::sha256_of(&chunk.bytes);
-        if previous.get(&(chunk.section.code(), chunk.ordinal)) == Some(&hash) {
+        let key = (chunk.section.code(), chunk.ordinal);
+        present.insert(key);
+        let prior = previous.get(&key);
+        if prior.is_some_and(|prior| prior.hash == content_digest::sha256_of(&chunk.bytes)) {
             continue;
         }
         let encoded = codec::encode_chunk_payload(PayloadBudget::StateChunk, &chunk.bytes)?;
-        stored = stored
-            .checked_add(u64::try_from(encoded.payload.len()).map_err(|_| {
-                QualificationError::Evidence("stored chunk length overflow".to_owned())
-            })?)
-            .ok_or_else(|| {
-                QualificationError::Evidence("stored chunk total overflow".to_owned())
-            })?;
-        decoded = decoded
-            .checked_add(u64::try_from(chunk.bytes.len()).map_err(|_| {
-                QualificationError::Evidence("decoded chunk length overflow".to_owned())
-            })?)
-            .ok_or_else(|| {
-                QualificationError::Evidence("decoded chunk total overflow".to_owned())
-            })?;
+        let stored = byte_count(&encoded.payload)?;
+        let decoded = byte_count(&chunk.bytes)?;
+        stored_bytes = accumulate(stored_bytes, stored)?;
+        decoded_bytes = accumulate(decoded_bytes, decoded)?;
+        let charge = sections
+            .entry(key.0)
+            .or_insert_with(|| empty_section(key.0));
+        charge.charged_fragments = accumulate(charge.charged_fragments, 1)?;
+        charge.decoded_bytes = accumulate(charge.decoded_bytes, decoded)?;
+        charge.prior_decoded_bytes = accumulate(
+            charge.prior_decoded_bytes,
+            prior.map_or(0, |prior| prior.decoded_bytes),
+        )?;
+        charge.stored_bytes = accumulate(charge.stored_bytes, stored)?;
+        fragments.push(FragmentChange {
+            section: key.0,
+            ordinal: key.1,
+            change: if prior.is_some() {
+                FragmentChangeKind::Rewritten
+            } else {
+                FragmentChangeKind::Added
+            },
+            decoded_bytes: decoded,
+            prior_decoded_bytes: prior.map_or(0, |prior| prior.decoded_bytes),
+            stored_bytes: stored,
+        });
     }
+    for (key, prior) in previous {
+        if present.contains(key) {
+            continue;
+        }
+        let charge = sections
+            .entry(key.0)
+            .or_insert_with(|| empty_section(key.0));
+        charge.prior_decoded_bytes = accumulate(charge.prior_decoded_bytes, prior.decoded_bytes)?;
+        fragments.push(FragmentChange {
+            section: key.0,
+            ordinal: key.1,
+            change: FragmentChangeKind::Retired,
+            decoded_bytes: 0,
+            prior_decoded_bytes: prior.decoded_bytes,
+            stored_bytes: 0,
+        });
+    }
+    Ok(ChunkAccounting {
+        stored_bytes,
+        decoded_bytes,
+        sections: sections.into_values().collect(),
+        fragments,
+    })
+}
+
+fn account_caller_bytes(
+    journal: &[PreparedJournalRecord],
+    knowledge: &[PreparedKnowledgeGrant],
+) -> Result<CallerAccounting, QualificationError> {
+    let mut journal_decoded_bytes = 0_u64;
+    let mut journal_stored_bytes = 0_u64;
     for record in journal {
         let encoded =
             codec::encode_chunk_payload(PayloadBudget::PermanentJournal, &record.payload)?;
-        stored = stored
-            .checked_add(u64::try_from(encoded.payload.len()).map_err(|_| {
-                QualificationError::Evidence("stored journal length overflow".to_owned())
-            })?)
-            .ok_or_else(|| {
-                QualificationError::Evidence("stored journal total overflow".to_owned())
-            })?;
-        decoded = decoded
-            .checked_add(u64::try_from(record.payload.len()).map_err(|_| {
-                QualificationError::Evidence("decoded journal length overflow".to_owned())
-            })?)
-            .ok_or_else(|| {
-                QualificationError::Evidence("decoded journal total overflow".to_owned())
-            })?;
+        journal_stored_bytes = accumulate(journal_stored_bytes, byte_count(&encoded.payload)?)?;
+        journal_decoded_bytes = accumulate(journal_decoded_bytes, byte_count(&record.payload)?)?;
     }
+    let mut knowledge_bytes = 0_u64;
     for grant in knowledge {
-        let length = u64::try_from(grant.payload.len())
-            .map_err(|_| QualificationError::Evidence("knowledge length overflow".to_owned()))?;
-        stored = stored
-            .checked_add(length)
-            .ok_or_else(|| QualificationError::Evidence("stored knowledge overflow".to_owned()))?;
-        decoded = decoded
-            .checked_add(length)
-            .ok_or_else(|| QualificationError::Evidence("decoded knowledge overflow".to_owned()))?;
+        knowledge_bytes = accumulate(knowledge_bytes, byte_count(&grant.payload)?)?;
     }
-    Ok(PeriodCharge {
-        period: 0,
-        stored_added_bytes: stored,
-        decoded_added_bytes: decoded,
-        unreachable_stored_bytes: 0,
+    Ok(CallerAccounting {
+        journal_decoded: journal_decoded_bytes,
+        journal_stored: journal_stored_bytes,
+        knowledge_decoded: knowledge_bytes,
+        knowledge_stored: knowledge_bytes,
     })
+}
+
+const fn empty_section(section: i64) -> SectionCharge {
+    SectionCharge {
+        section,
+        charged_fragments: 0,
+        decoded_bytes: 0,
+        prior_decoded_bytes: 0,
+        stored_bytes: 0,
+    }
+}
+
+const fn is_metadata_section(section: i64) -> bool {
+    matches!(
+        ChunkSection::from_code(section),
+        Some(
+            ChunkSection::ResolverManifest
+                | ChunkSection::PreparedEnvironment
+                | ChunkSection::ReplaySessionIdentity
+                | ChunkSection::RngSeed
+                | ChunkSection::ContentDigest
+                | ChunkSection::ReferenceDigest
+        )
+    )
+}
+
+fn byte_count(bytes: &[u8]) -> Result<u64, QualificationError> {
+    u64::try_from(bytes.len())
+        .map_err(|_| QualificationError::Evidence("retained bytes overflow u64".to_owned()))
+}
+
+fn accumulate(total: u64, value: u64) -> Result<u64, QualificationError> {
+    total
+        .checked_add(value)
+        .ok_or_else(|| QualificationError::Evidence("retained byte accounting overflow".to_owned()))
 }
 
 fn next_actions(
@@ -941,7 +1132,6 @@ fn measure_queries(
         samples.push(QuerySample {
             elapsed_ns: county_ns,
             rows_visited: u64::from(county.cost.rows_visited()),
-            chunks_visited: 0,
         });
         let started = Instant::now();
         let map = reader.query(scope, PlayerQuery::MapSummary)?;
@@ -949,7 +1139,6 @@ fn measure_queries(
         samples.push(QuerySample {
             elapsed_ns: map_ns,
             rows_visited: u64::from(map.cost.rows_visited()),
-            chunks_visited: 0,
         });
         let started = Instant::now();
         let history = reader.history(scope, None, 50)?;
@@ -957,18 +1146,25 @@ fn measure_queries(
         samples.push(QuerySample {
             elapsed_ns: history_ns,
             rows_visited: u64::from(history.cost.rows_visited()),
-            chunks_visited: 0,
         });
     }
     Ok(samples)
 }
 
-fn chunk_hashes(handle: &CampaignHandle) -> BTreeMap<(i64, u32), [u8; 32]> {
+fn previous_chunks(handle: &CampaignHandle) -> BTreeMap<(i64, u32), PreviousChunk> {
     handle
         .current()
         .chunks
         .iter()
-        .map(|chunk| ((chunk.section.code(), chunk.ordinal), chunk.raw_hash))
+        .map(|chunk| {
+            (
+                (chunk.section.code(), chunk.ordinal),
+                PreviousChunk {
+                    decoded_bytes: u64::from(chunk.raw_len),
+                    hash: chunk.raw_hash,
+                },
+            )
+        })
         .collect()
 }
 
@@ -998,14 +1194,26 @@ fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, Qualificati
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), QualificationError> {
-    std::fs::write(path, serde_json::to_vec_pretty(value)?)?;
+    use std::io::Write;
+    let bytes = serde_json::to_vec_pretty(value)?;
+    let mut file = match OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+            return Err(QualificationError::Evidence(format!(
+                "the evidence file {} already exists and is never replaced",
+                path.display()
+            )));
+        }
+        Err(error) => return Err(error.into()),
+    };
+    file.write_all(&bytes)?;
     Ok(())
 }
 
 /// Persist the measured run manifest.
 ///
 /// # Errors
-/// Refuses an unwritable output directory.
+/// Refuses an existing evidence file or an unwritable output directory.
 pub fn write_run(directory: &Path, run: &RunManifest) -> Result<(), QualificationError> {
     write_json(&directory.join("run.json"), run)
 }
@@ -1013,7 +1221,7 @@ pub fn write_run(directory: &Path, run: &RunManifest) -> Result<(), Qualificatio
 /// Persist the cold-open manifest.
 ///
 /// # Errors
-/// Refuses an unwritable output directory.
+/// Refuses an existing evidence file or an unwritable output directory.
 pub fn write_cold_open(
     directory: &Path,
     cold: &ColdOpenManifest,
@@ -1028,4 +1236,406 @@ fn hex(bytes: &[u8]) -> String {
         write!(&mut text, "{byte:02x}").expect("writing to String cannot fail");
     }
     text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::qualification_audit::policy::MemorySample;
+    use serde_json::Value;
+    use sha2::{Digest, Sha256};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    const CAMPAIGN: &str = "28100000-0000-0000-0000-000000000013";
+
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new() -> Self {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "babylon-national-evidence-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir_all(&path).expect("the scratch root is creatable");
+            Self(path)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).ok();
+        }
+    }
+
+    fn contract() -> (PathBuf, [u8; 32]) {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../contracts/national_sqlite_qualification_v1.json");
+        let bytes = std::fs::read(&path).expect("the authored contract is readable");
+        (path, <[u8; 32]>::from(Sha256::digest(bytes)))
+    }
+
+    fn advance(period: u64) -> AdvanceSample {
+        AdvanceSample {
+            period,
+            judgment_ns: 1_000_000,
+            encoding_ns: 0,
+            commit_ns: 0,
+            briefing_ns: 0,
+            total_ns: 1_000_000,
+        }
+    }
+
+    fn evidence_run() -> RunManifest {
+        RunManifest {
+            schema: RUN_SCHEMA.to_owned(),
+            campaign: CAMPAIGN.to_owned(),
+            build_hash: hex(&[0; 32]),
+            periods: 2,
+            opening_decoded_bytes: 1_000,
+            opening_file_bytes: 1_000,
+            final_store_bytes: 2_000,
+            final_wal_bytes: 0,
+            elapsed_ns: 2_000,
+            advances: (1..=2).map(advance).collect(),
+            charges: (1..=2)
+                .map(|period| PeriodCharge {
+                    period,
+                    stored_added_bytes: 1_000_000,
+                    decoded_added_bytes: 2_000_000,
+                    unreachable_stored_bytes: 0,
+                })
+                .collect(),
+            breakdowns: Vec::new(),
+            warm_queries: vec![QuerySample {
+                elapsed_ns: 1_000_000,
+                rows_visited: 4,
+            }],
+        }
+    }
+
+    fn evidence_cold_open() -> ColdOpenManifest {
+        ColdOpenManifest {
+            schema: COLD_OPEN_SCHEMA.to_owned(),
+            campaign: CAMPAIGN.to_owned(),
+            cold_open_ns: 1_000_000,
+            cold_queries: vec![QuerySample {
+                elapsed_ns: 2_000_000,
+                rows_visited: 4,
+            }],
+            warm_queries: vec![QuerySample {
+                elapsed_ns: 1_000_000,
+                rows_visited: 4,
+            }],
+            store_bytes: 1_000,
+            wal_bytes: 0,
+        }
+    }
+
+    fn evidence_memory() -> MemorySummary {
+        MemorySummary {
+            samples: vec![
+                MemorySample {
+                    elapsed_ns: 0,
+                    rss_bytes: 3_000_000_000,
+                },
+                MemorySample {
+                    elapsed_ns: 250_000_000,
+                    rss_bytes: 3_000_000_000,
+                },
+            ],
+        }
+    }
+
+    fn write_evidence(directory: &Path, run: &RunManifest, cold: &ColdOpenManifest) {
+        for (name, bytes) in [
+            (
+                "run.json",
+                serde_json::to_vec_pretty(run).expect("the run manifest serializes"),
+            ),
+            (
+                "cold-open.json",
+                serde_json::to_vec_pretty(cold).expect("the cold-open manifest serializes"),
+            ),
+            (
+                "memory.json",
+                serde_json::to_vec_pretty(&evidence_memory())
+                    .expect("the memory summary serializes"),
+            ),
+        ] {
+            std::fs::write(directory.join(name), bytes).expect("the scratch root is writable");
+        }
+    }
+
+    #[test]
+    fn scoped_query_evidence_names_only_the_counter_the_reader_exposes() {
+        let sample = QuerySample {
+            elapsed_ns: 1,
+            rows_visited: 3,
+        };
+        assert_eq!(
+            serde_json::to_value(sample).expect("the query sample serializes"),
+            serde_json::json!({"elapsed_ns": 1, "rows_visited": 3}),
+            "the reader exposes stored rows only, so no chunk counter may be invented"
+        );
+    }
+
+    #[test]
+    fn a_reused_run_directory_is_refused_before_the_run_starts() {
+        let scratch = Scratch::new();
+        std::fs::write(scratch.0.join("advances.jsonl"), b"{}\n")
+            .expect("the scratch root is writable");
+        let error = run_national(&scratch.0.join("campaign.sqlite"), &scratch.0, 1)
+            .expect_err("a reused output directory must be refused");
+        assert!(error.to_string().contains("is not empty"), "{error}");
+        assert_eq!(
+            std::fs::read(scratch.0.join("advances.jsonl")).expect("the earlier advance survives"),
+            b"{}\n",
+            "the refusal leaves the earlier evidence untouched"
+        );
+    }
+
+    #[test]
+    fn evidence_files_are_never_replaced() {
+        let scratch = Scratch::new();
+        let run = evidence_run();
+        write_run(&scratch.0, &run).expect("the first run manifest is written");
+        let first =
+            std::fs::read(scratch.0.join("run.json")).expect("the run manifest is readable");
+        let error = write_run(&scratch.0, &run).expect_err("a second write must be refused");
+        assert!(error.to_string().contains("already exists"), "{error}");
+        assert_eq!(
+            std::fs::read(scratch.0.join("run.json")).expect("the run manifest is readable"),
+            first
+        );
+        let cold = evidence_cold_open();
+        write_cold_open(&scratch.0, &cold).expect("the first cold-open manifest is written");
+        assert!(write_cold_open(&scratch.0, &cold).is_err());
+    }
+
+    #[test]
+    fn re_evaluation_writes_beside_the_earlier_verdict() {
+        let scratch = Scratch::new();
+        let (contract, digest) = contract();
+        write_evidence(&scratch.0, &evidence_run(), &evidence_cold_open());
+        let first = evaluate_run(&scratch.0, &contract, digest, 2)
+            .expect("the recorded evidence is evaluated");
+        assert!(first.verdict.passed, "{:?}", first.verdict.metrics);
+        let first_path = evaluation_path(&scratch.0, digest);
+        assert!(
+            first_path.exists(),
+            "the verdict is named after its contract"
+        );
+        assert!(
+            !scratch.0.join("evaluation.json").exists(),
+            "a fixed verdict filename would be replaced by the next contract"
+        );
+        let first_bytes = std::fs::read(&first_path).expect("the verdict is readable");
+
+        let other_contract = scratch.0.join("contract-other.json");
+        let mut value: Value = serde_json::from_slice(
+            &std::fs::read(&contract).expect("the authored contract is readable"),
+        )
+        .expect("the authored contract is JSON");
+        value["review_note"] = serde_json::json!("distinct bytes, same consumed fields");
+        std::fs::write(
+            &other_contract,
+            serde_json::to_vec(&value).expect("the edited contract serializes"),
+        )
+        .expect("the scratch root is writable");
+        let other_digest = <[u8; 32]>::from(Sha256::digest(
+            std::fs::read(&other_contract).expect("the edited contract is readable"),
+        ));
+        assert_ne!(other_digest, digest);
+        evaluate_run(&scratch.0, &other_contract, other_digest, 2)
+            .expect("the same evidence is re-evaluated under another contract");
+        assert!(evaluation_path(&scratch.0, other_digest).exists());
+        assert_eq!(
+            std::fs::read(&first_path).expect("the earlier verdict survives"),
+            first_bytes,
+            "re-evaluation must not destroy the earlier verdict"
+        );
+        assert!(
+            evaluate_run(&scratch.0, &contract, digest, 2).is_err(),
+            "the same verdict is never silently replaced"
+        );
+    }
+
+    fn previous_chunk(decoded_bytes: u64, bytes: &[u8]) -> PreviousChunk {
+        PreviousChunk {
+            decoded_bytes,
+            hash: content_digest::sha256_of(bytes),
+        }
+    }
+
+    /// A snapshot with two rewritten fragments, one added and one retired.
+    fn churn_previous() -> BTreeMap<(i64, u32), PreviousChunk> {
+        BTreeMap::from([
+            (
+                (ChunkSection::StableGraph.code(), 0),
+                previous_chunk(16, &[1; 16]),
+            ),
+            (
+                (ChunkSection::StableGraph.code(), 1),
+                previous_chunk(8, &[2; 8]),
+            ),
+            (
+                (ChunkSection::StableGraph.code(), 3),
+                previous_chunk(5, &[3; 5]),
+            ),
+            (
+                (ChunkSection::WorldRegisters.code(), 0),
+                previous_chunk(4, &[4; 4]),
+            ),
+        ])
+    }
+
+    /// The next snapshot: the restart package repeats, the graph churns.
+    fn churn_chunks() -> Vec<StateChunk> {
+        vec![
+            StateChunk {
+                section: ChunkSection::StableGraph,
+                ordinal: 0,
+                bytes: vec![5; 16],
+            },
+            StateChunk {
+                section: ChunkSection::StableGraph,
+                ordinal: 1,
+                bytes: vec![6; 8],
+            },
+            StateChunk {
+                section: ChunkSection::StableGraph,
+                ordinal: 2,
+                bytes: vec![7; 12],
+            },
+            StateChunk {
+                section: ChunkSection::WorldRegisters,
+                ordinal: 0,
+                bytes: vec![4; 4],
+            },
+        ]
+    }
+
+    #[test]
+    fn fragment_diff_attributes_rewrites_additions_and_retirements() {
+        let previous = churn_previous();
+        let chunks = churn_chunks();
+        let journal = briefing_journal(7);
+        let knowledge = briefing_knowledge(7);
+        let parts = RestartParts {
+            state: &[1; 100],
+            receipts: &[2; 200],
+            lookup: &[3; 300],
+        };
+        let (charge, breakdown) =
+            period_accounting(7, &parts, &chunks, &journal, &knowledge, &previous)
+                .expect("the fixture period is accounted");
+        let stable = breakdown
+            .sections
+            .iter()
+            .find(|section| section.section == ChunkSection::StableGraph.code())
+            .expect("the stable graph changed");
+        assert_eq!(stable.charged_fragments, 3);
+        assert_eq!(stable.decoded_bytes, 36);
+        assert_eq!(
+            stable.prior_decoded_bytes, 29,
+            "a retired fragment is attributed instead of dropped"
+        );
+        assert!(
+            stable.stored_bytes > 0,
+            "the stable graph charge is stored payload bytes"
+        );
+        assert_eq!(
+            stable.stored_bytes,
+            breakdown
+                .fragments
+                .iter()
+                .filter(|fragment| fragment.section == ChunkSection::StableGraph.code())
+                .try_fold(0_u64, |total, fragment| {
+                    total.checked_add(fragment.stored_bytes)
+                })
+                .expect("the fragment charges fit u64"),
+            "the section charge is the sum of its fragment charges"
+        );
+        assert_eq!(
+            breakdown.state_package_bytes, 0,
+            "an unchanged restart package charges nothing"
+        );
+        let find = |ordinal: u32| {
+            breakdown
+                .fragments
+                .iter()
+                .find(|fragment| {
+                    fragment.section == ChunkSection::StableGraph.code()
+                        && fragment.ordinal == ordinal
+                })
+                .copied()
+                .expect("the fixture changed the requested fragment")
+        };
+        let rewritten = find(0);
+        assert_eq!(rewritten.change, FragmentChangeKind::Rewritten);
+        assert_eq!(
+            rewritten.decoded_bytes, rewritten.prior_decoded_bytes,
+            "equal decoded lengths with new bytes are serialization churn"
+        );
+        let added = find(2);
+        assert_eq!(added.change, FragmentChangeKind::Added);
+        assert_eq!(added.prior_decoded_bytes, 0);
+        let retired = find(3);
+        assert_eq!(retired.change, FragmentChangeKind::Retired);
+        assert_eq!(retired.decoded_bytes, 0);
+        assert_eq!(retired.stored_bytes, 0);
+        let section_stored = breakdown
+            .sections
+            .iter()
+            .try_fold(0_u64, |total, section| {
+                total.checked_add(section.stored_bytes)
+            })
+            .expect("the section charges fit u64");
+        assert_eq!(breakdown.acknowledged_residual_bytes, 0);
+        assert_eq!(
+            charge.stored_added_bytes,
+            section_stored
+                + breakdown.journal_stored_bytes
+                + breakdown.knowledge_stored_bytes
+                + breakdown.acknowledged_residual_bytes,
+            "component charges and the unattributed residual sum to the charged period"
+        );
+        assert_eq!(breakdown.journal_bytes, 48);
+        assert_eq!(breakdown.knowledge_bytes, 384);
+    }
+
+    #[test]
+    fn a_changed_restart_package_is_charged_and_attributed() {
+        let previous = BTreeMap::from([(
+            (ChunkSection::WorldRegisters.code(), 0),
+            previous_chunk(4, &[4; 4]),
+        )]);
+        let chunks = vec![StateChunk {
+            section: ChunkSection::WorldRegisters,
+            ordinal: 0,
+            bytes: vec![9; 600],
+        }];
+        let parts = RestartParts {
+            state: &[1; 100],
+            receipts: &[2; 200],
+            lookup: &[3; 300],
+        };
+        let (charge, breakdown) = period_accounting(1, &parts, &chunks, &[], &[], &previous)
+            .expect("the fixture period is accounted");
+        assert_eq!(breakdown.state_package_bytes, 100);
+        assert_eq!(breakdown.receipt_package_bytes, 200);
+        assert_eq!(breakdown.lookup_delta_bytes, 300);
+        let registers = breakdown
+            .sections
+            .iter()
+            .find(|section| section.section == ChunkSection::WorldRegisters.code())
+            .expect("the restart package changed");
+        assert_eq!(registers.charged_fragments, 1);
+        assert_eq!(registers.decoded_bytes, 600);
+        assert_eq!(registers.prior_decoded_bytes, 4);
+        assert_eq!(charge.stored_added_bytes, registers.stored_bytes);
+        assert_eq!(charge.decoded_added_bytes, 600);
+    }
 }

@@ -2,8 +2,8 @@
 //! national coverage or Archive admission from this small accounting fixture.
 use super::audit::{BoundaryFacts, ReceiptFacts, RenewalFacts};
 use super::policy::{
-    AdvanceSample, MemorySample, MemorySummary, Metric, NationalSqlitePolicy, PeriodCharge,
-    QualificationRun, QuerySample,
+    AdvanceSample, Applicability, MemorySample, MemorySummary, Metric, NationalSqlitePolicy,
+    PeriodCharge, QualificationRun, QuerySample,
 };
 use super::{audit, economic, production_renewal, reader, trade};
 use crate::michigan_content::MichiganContentPreset;
@@ -29,7 +29,7 @@ fn qualification_policy() -> NationalSqlitePolicy {
     NationalSqlitePolicy::open(&path, digest).expect("the authored contract is frozen")
 }
 
-fn advance(period: u64, total_ns: u64, chunks_visited: u64) -> AdvanceSample {
+fn advance(period: u64, total_ns: u64) -> AdvanceSample {
     AdvanceSample {
         period,
         judgment_ns: total_ns,
@@ -37,7 +37,6 @@ fn advance(period: u64, total_ns: u64, chunks_visited: u64) -> AdvanceSample {
         commit_ns: 0,
         briefing_ns: 0,
         total_ns,
-        chunks_visited,
     }
 }
 
@@ -66,18 +65,16 @@ fn memory(rss_bytes: u64, gap_ns: u64, samples: usize) -> MemorySummary {
 fn passing_run(horizon: u64) -> QualificationRun {
     QualificationRun {
         advances: (1..=horizon)
-            .map(|period| advance(period, SECOND_NS, 0))
+            .map(|period| advance(period, SECOND_NS))
             .collect(),
         cold_open_ns: SECOND_NS,
         warm_queries: vec![QuerySample {
             elapsed_ns: 1_000_000,
             rows_visited: 4,
-            chunks_visited: 0,
         }],
         cold_queries: vec![QuerySample {
             elapsed_ns: 2_000_000,
             rows_visited: 4,
-            chunks_visited: 0,
         }],
         memory: memory(3_000_000_000, 250_000_000, 4),
         charges: (1..=horizon)
@@ -107,7 +104,7 @@ fn metric(
 fn ordinary_turn_over_the_interim_bar_fails_even_when_p95_passes() {
     let policy = qualification_policy();
     let mut run = passing_run(52);
-    run.advances[6] = advance(7, 61 * SECOND_NS, 0);
+    run.advances[6] = advance(7, 61 * SECOND_NS);
     let verdict = policy
         .evaluate(&run, 52)
         .expect("the fixture evaluation succeeds");
@@ -169,18 +166,16 @@ fn every_frozen_boundary_passes_at_equality() {
     let policy = qualification_policy();
     let mut run = passing_run(52);
     run.advances = (1..=52)
-        .map(|period| advance(period, policy.maximum_advance_ns(), 0))
+        .map(|period| advance(period, policy.maximum_advance_ns()))
         .collect();
     run.cold_open_ns = policy.maximum_cold_open_ns();
     run.warm_queries = vec![QuerySample {
         elapsed_ns: policy.maximum_warm_query_ns(),
         rows_visited: 4,
-        chunks_visited: 0,
     }];
     run.cold_queries = vec![QuerySample {
         elapsed_ns: policy.maximum_cold_query_ns(),
         rows_visited: 4,
-        chunks_visited: 0,
     }];
     run.memory = memory(policy.maximum_memory_bytes(), 250_000_000, 3);
     run.charges = (1..=52)
@@ -203,7 +198,7 @@ fn interim_bar_accepts_forty_second_advances_and_records_the_thirty_second_targe
     let policy = qualification_policy();
     let mut run = passing_run(52);
     run.advances = (1..=52)
-        .map(|period| advance(period, 41 * SECOND_NS, 0))
+        .map(|period| advance(period, 41 * SECOND_NS))
         .collect();
     let verdict = policy
         .evaluate(&run, 52)
@@ -227,9 +222,9 @@ fn interim_bar_accepts_forty_second_advances_and_records_the_thirty_second_targe
 fn advance_above_the_interim_bar_still_fails() {
     let policy = qualification_policy();
     let mut run = passing_run(52);
-    run.advances[10] = advance(11, 60 * SECOND_NS, 0);
+    run.advances[10] = advance(11, 60 * SECOND_NS);
     assert!(metric(&policy, &run, 52, Metric::Advance));
-    run.advances[10] = advance(11, 60 * SECOND_NS + 1, 0);
+    run.advances[10] = advance(11, 60 * SECOND_NS + 1);
     let verdict = policy
         .evaluate(&run, 52)
         .expect("the fixture evaluation succeeds");
@@ -274,7 +269,7 @@ fn contract_freezes_the_chapter_nine_limits() {
 fn subphase_sum_above_total_refuses_instead_of_substituting_a_subphase() {
     let policy = qualification_policy();
     let mut run = passing_run(2);
-    let mut sample = advance(1, 10 * SECOND_NS, 0);
+    let mut sample = advance(1, 10 * SECOND_NS);
     sample.judgment_ns = 6 * SECOND_NS;
     sample.encoding_ns = 5 * SECOND_NS;
     run.advances[0] = sample;
@@ -282,11 +277,30 @@ fn subphase_sum_above_total_refuses_instead_of_substituting_a_subphase() {
 }
 
 #[test]
-fn bounded_reads_and_full_horizons_are_required() {
+fn bounded_read_is_not_applicable_without_a_chunk_counter() {
     let policy = qualification_policy();
-    let mut run = passing_run(52);
-    run.warm_queries[0].chunks_visited = 1;
-    assert!(!metric(&policy, &run, 52, Metric::BoundedRead));
+    let verdict = policy
+        .evaluate(&passing_run(2), 2)
+        .expect("the fixture evaluation succeeds");
+    let decision = verdict
+        .metrics
+        .iter()
+        .find(|decision| decision.metric == Metric::BoundedRead)
+        .expect("bounded read is decided");
+    assert_eq!(
+        decision.applicability,
+        Applicability::NotApplicable,
+        "no scoped reader exposes a state-chunk counter, so boundedness cannot be a measured pass"
+    );
+    assert!(
+        verdict.passed,
+        "an undecidable boundedness metric must not fail an otherwise passing rung"
+    );
+}
+
+#[test]
+fn full_horizons_are_required() {
+    let policy = qualification_policy();
     let mut run = passing_run(2);
     run.cold_queries.clear();
     assert!(!metric(&policy, &run, 2, Metric::ColdQuery));

@@ -106,3 +106,14 @@ def test_contract_records_the_interim_advance_bar_and_its_target_debt() -> None:
     assert contract["maximum_charged_growth_bytes_52_periods"] == 520_000_000
     assert contract["maximum_charged_growth_bytes_325_periods"] == 3_250_000_000
     assert contract["qualification_periods"] == 325
+
+
+def test_each_verdict_is_named_after_the_contract_that_produced_it(tmp_path: Path) -> None:
+    first = runner.evaluation_path(tmp_path, "a" * 64)
+    second = runner.evaluation_path(tmp_path, "b" * 64)
+    assert first.name == f"evaluation-{'a' * 64}.json"
+    assert first != second
+    assert first.parent == second.parent == tmp_path
+    for malformed in ("A" * 64, "a" * 63, "a" * 65, "g" * 64):
+        with pytest.raises(runner.RunnerRefusal):
+            runner.evaluation_path(tmp_path, malformed)

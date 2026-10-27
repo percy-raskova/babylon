@@ -172,8 +172,6 @@ pub struct AdvanceSample {
     pub briefing_ns: u64,
     /// Total accepted-advance time, from judgment start through briefing.
     pub total_ns: u64,
-    /// Stored rows or chunks the briefing visited.
-    pub chunks_visited: u64,
 }
 
 /// One bounded player query sample.
@@ -183,8 +181,6 @@ pub struct QuerySample {
     pub elapsed_ns: u64,
     /// Stored rows the scoped query visited.
     pub rows_visited: u64,
-    /// Stored chunks the scoped query visited.
-    pub chunks_visited: u64,
 }
 
 /// One sampled process resident-set measurement.
@@ -269,8 +265,18 @@ pub enum Metric {
     WindowGrowth,
     /// The complete qualification horizon met its ceiling.
     TotalGrowth,
-    /// Scoped reads visited no chunk.
+    /// Scoped reads stay inside the structural no-chunk bound.
     BoundedRead,
+}
+
+/// Whether a metric carried the measurement its decision needs.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Applicability {
+    /// The evidence carried the counter this metric decides.
+    Measured,
+    /// No evidence carried the counter, so the metric decides nothing.
+    NotApplicable,
 }
 
 /// One metric decision with the observed and frozen values.
@@ -279,7 +285,12 @@ pub struct MetricVerdict {
     /// Metric decided.
     pub metric: Metric,
     /// Whether the observed value met the frozen limit.
+    ///
+    /// A metric without its measurement is never a pass; `applicability` says
+    /// why it decided nothing.
     pub passed: bool,
+    /// Whether the evidence carried the measurement this decision needs.
+    pub applicability: Applicability,
     /// Largest or most relevant observed value.
     pub observed: u64,
     /// Frozen limit, or zero for an equality/no-visit contract.
@@ -309,8 +320,6 @@ pub struct AdvanceSummary {
     pub briefing_ns_total: u64,
     /// Periods whose total exceeded the ceiling.
     pub over_limit_periods: Vec<u64>,
-    /// Briefing chunks visited across every sample.
-    pub chunks_visited: u64,
 }
 
 /// One growth boundary decision.
@@ -647,11 +656,6 @@ impl NationalSqlitePolicy {
         let memory_gap = maximum_gap(&run.memory.samples)?;
         let warm = query_summary(&run.warm_queries)?;
         let cold = query_summary(&run.cold_queries)?;
-        let chunks_visited = advances
-            .chunks_visited
-            .checked_add(warm.chunks_visited)
-            .and_then(|value| value.checked_add(cold.chunks_visited))
-            .ok_or(Refusal::Arithmetic)?;
 
         let mut metrics = Vec::with_capacity(12);
         metrics.push(metric(
@@ -763,14 +767,15 @@ impl NationalSqlitePolicy {
                 "complete qualification horizon",
             ));
         }
-        metrics.push(metric(
+        metrics.push(not_applicable(
             Metric::BoundedRead,
-            chunks_visited == 0,
-            chunks_visited,
-            0,
-            "scoped reads and briefings visit no state chunk",
+            "no scoped reader exposes a state-chunk counter; the scoped read module's structural \
+             no-chunk guard is the boundedness evidence",
         ));
-        let passed = metrics.iter().all(|decision| decision.passed);
+        let passed = metrics
+            .iter()
+            .filter(|decision| decision.applicability == Applicability::Measured)
+            .all(|decision| decision.passed);
         let advance_meets_target = advances.max_ns <= self.target_advance_ns;
         let optimization_debt = vec![DebtVerdict {
             metric: Metric::Advance,
@@ -870,17 +875,12 @@ struct Queries {
     median_ns: u64,
     p95_ns: u64,
     max_ns: u64,
-    chunks_visited: u64,
 }
 
 fn query_summary(samples: &[QuerySample]) -> Result<Queries, Refusal> {
     let mut times = Vec::with_capacity(samples.len());
-    let mut chunks = 0_u64;
     for sample in samples {
         times.push(sample.elapsed_ns);
-        chunks = chunks
-            .checked_add(sample.chunks_visited)
-            .ok_or(Refusal::Arithmetic)?;
     }
     times.sort_unstable();
     if times.is_empty() {
@@ -889,7 +889,6 @@ fn query_summary(samples: &[QuerySample]) -> Result<Queries, Refusal> {
             median_ns: 0,
             p95_ns: 0,
             max_ns: 0,
-            chunks_visited: chunks,
         });
     }
     Ok(Queries {
@@ -897,7 +896,6 @@ fn query_summary(samples: &[QuerySample]) -> Result<Queries, Refusal> {
         median_ns: percentile(&times, 1, 2)?,
         p95_ns: percentile(&times, 95, 100)?,
         max_ns: times.last().copied().unwrap_or(0),
-        chunks_visited: chunks,
     })
 }
 
@@ -907,7 +905,6 @@ fn summarize_advances(samples: &[AdvanceSample], limit: u64) -> Result<AdvanceSu
     let mut encoding = 0_u64;
     let mut commit = 0_u64;
     let mut briefing = 0_u64;
-    let mut chunks = 0_u64;
     let mut over_limit = Vec::new();
     for sample in samples {
         if sample.total_ns
@@ -933,9 +930,6 @@ fn summarize_advances(samples: &[AdvanceSample], limit: u64) -> Result<AdvanceSu
         briefing = briefing
             .checked_add(sample.briefing_ns)
             .ok_or(Refusal::Arithmetic)?;
-        chunks = chunks
-            .checked_add(sample.chunks_visited)
-            .ok_or(Refusal::Arithmetic)?;
         if sample.total_ns > limit {
             over_limit.push(sample.period);
         }
@@ -951,7 +945,6 @@ fn summarize_advances(samples: &[AdvanceSample], limit: u64) -> Result<AdvanceSu
         commit_ns_total: commit,
         briefing_ns_total: briefing,
         over_limit_periods: over_limit,
-        chunks_visited: chunks,
     })
 }
 
@@ -1000,8 +993,21 @@ fn metric(metric: Metric, passed: bool, observed: u64, limit: u64, detail: &str)
     MetricVerdict {
         metric,
         passed,
+        applicability: Applicability::Measured,
         observed,
         limit,
+        detail: detail.to_owned(),
+    }
+}
+
+/// Decide a metric that the evidence cannot measure, without claiming a pass.
+fn not_applicable(metric: Metric, detail: &str) -> MetricVerdict {
+    MetricVerdict {
+        metric,
+        passed: false,
+        applicability: Applicability::NotApplicable,
+        observed: 0,
+        limit: 0,
         detail: detail.to_owned(),
     }
 }

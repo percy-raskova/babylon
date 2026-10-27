@@ -323,7 +323,7 @@ def run_rung(
             f"policy evaluation failed for {periods} periods: "
             + completed.stderr.decode("utf-8", errors="replace")[-1200:]
         )
-    evaluation = load_json(rung_directory / "evaluation.json")
+    evaluation = load_json(evaluation_path(rung_directory, policy_sha256))
     run = load_json(rung_directory / "run.json")
     cold_evidence = load_json(rung_directory / "cold-open.json")
     verdict = require_object(evaluation.get("verdict"), "verdict")
@@ -340,6 +340,18 @@ def run_rung(
 
 def contract_digest(contract: Path) -> str:
     return hashlib.sha256(contract.read_bytes()).hexdigest()
+
+
+def evaluation_path(rung_directory: Path, policy_sha256: str) -> Path:
+    """Name one verdict after the frozen contract that produced it.
+
+    Re-evaluation under another contract writes beside the earlier verdict
+    instead of replacing it, so an evidence directory can hold every verdict
+    it earned.
+    """
+    if len(policy_sha256) != 64 or any(digit not in "0123456789abcdef" for digit in policy_sha256):
+        raise RunnerRefusal("policy digest is not canonical lowercase hexadecimal")
+    return rung_directory / f"evaluation-{policy_sha256}.json"
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -139,7 +139,7 @@ catalog_seal:
   - seal validated definitions with the digest computed from canonical bytes; input definitions contain no digest
   - sealed catalog data and its digest are private and immutable
   - a decoder refuses bytes whose embedded digest differs from the supplied catalog
-  - definitions are never re-encoded into a period state and never cloned per period
+  - the sealed catalog remains authoritative; definitions are not encoded into period state
 
 monetary_row_field_order:
   accounts: [account_identity, cash_i128]

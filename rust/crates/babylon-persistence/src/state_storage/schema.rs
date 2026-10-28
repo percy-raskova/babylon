@@ -128,11 +128,11 @@ impl StateParser<'_> {
         }
         self.record(29, start, None);
         if present == 1 {
-            for id in 30..=33 {
+            for id in [30, 31, 33] {
                 self.rows(id)?;
             }
             self.variable(34, offer)?;
-            for id in 35..=38 {
+            for id in 35..=37 {
                 self.rows(id)?;
             }
         }

@@ -410,7 +410,7 @@ mod collection_history_tests {
         let CircuitAccounting::Monetary(economy) = &mut material.accounting else {
             panic!("monetary collection fixture");
         };
-        let payer = economy.aid.mandates[0].payer;
+        let payer = catalog.aid_mandates[0].payer;
         let AccountId::Organization(organization) = payer else {
             panic!("existing captured organizational payer");
         };
@@ -464,7 +464,7 @@ mod collection_history_tests {
             household_principal_id: binding.donor_principal_id,
             organization_account_id: organization.as_bytes(),
             social_class_target: binding.social_class_target,
-            labor_unit_id: economy.aid.mandates[0].labor_unit_id.as_bytes(),
+            labor_unit_id: catalog.aid_mandates[0].labor_unit_id.as_bytes(),
             cash_consent: OrganizerGiftConsent::Accept,
             maximum_cash_micros: 8,
             protected_cash_floor_micros: 2,

@@ -566,7 +566,7 @@ mod engine_test {
         .expect("the fixture admits the authored purchase");
         let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
-        let bytes = super::super::encode_material_receipts(1, &result)
+        let bytes = super::super::encode_material_receipts(&catalog, 1, &result)
             .expect("the fixture value encodes to its canonical bytes");
         let decoded = super::super::decode_material_receipts(&bytes)
             .expect("the canonical bytes decode into the declared type");

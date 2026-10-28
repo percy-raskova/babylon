@@ -84,10 +84,9 @@ pub struct AidFreightLot {
     pub quantity: u64,
 }
 
-/// Only immutable mandates and unresolved freight survive publication.
+/// Unresolved freight survives publication.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AidBook {
-    pub mandates: Vec<AidMandate>,
     pub freight: Vec<AidFreightLot>,
 }
 
@@ -195,19 +194,16 @@ pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) 
         return Ok(());
     };
     let book = &economy.aid;
-    if book.mandates.len() > crate::MAX_MATERIAL_CIRCUIT_ROWS
-        || book
-            .freight
-            .len()
-            .checked_add(state.freight.len())
-            .ok_or(MaterialCircuitError::Arithmetic)?
-            > crate::MAX_MATERIAL_CIRCUIT_ROWS
+    if book
+        .freight
+        .len()
+        .checked_add(state.freight.len())
+        .ok_or(MaterialCircuitError::Arithmetic)?
+        > crate::MAX_MATERIAL_CIRCUIT_ROWS
     {
         return Err(MaterialCircuitError::RowLimit);
     }
-    if book.mandates.windows(2).any(|w| w[0].id >= w[1].id)
-        || book.freight.windows(2).any(|w| w[0].lot_id >= w[1].lot_id)
-    {
+    if book.freight.windows(2).any(|w| w[0].lot_id >= w[1].lot_id) {
         return Err(MaterialCircuitError::AidInvariant);
     }
     let donors: BTreeSet<_> = catalog.aid_mandates.iter().map(|m| m.donor).collect();
@@ -221,11 +217,11 @@ pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) 
     let mut reserves = BTreeSet::new();
     let sale_lots: BTreeSet<_> = state.freight.iter().map(|l| l.lot_id).collect();
     for lot in &book.freight {
-        let mandate = book
-            .mandates
+        let mandate = catalog
+            .aid_mandates
             .binary_search_by_key(&lot.mandate_id, |m| m.id)
             .ok()
-            .map(|i| &book.mandates[i])
+            .map(|i| &catalog.aid_mandates[i])
             .ok_or(MaterialCircuitError::AidAuthority)?;
         let AidTransport::Routed { route_id, .. } = mandate.transport else {
             return Err(MaterialCircuitError::AidInvariant);
@@ -303,7 +299,7 @@ fn validate_mandate(
         .recurring
         .as_ref()
         .ok_or(MaterialCircuitError::AidInvariant)?;
-    let crate::HouseholdTimeAccounting::Modeled(time) = &economy.household_time else {
+    let crate::HouseholdTimeAccounting::Modeled(_) = &economy.household_time else {
         return Err(MaterialCircuitError::AidInvariant);
     };
     economy.book.cash(mandate.payer)?;
@@ -313,10 +309,10 @@ fn validate_mandate(
     for principal in [mandate.donor, mandate.recipient] {
         if !recurring.household_stocks.iter().any(|r| {
             (r.principal_id, r.good_id, r.unit_id) == (principal, mandate.good_id, mandate.unit_id)
-        }) || !recurring.household_needs.iter().any(|r| {
+        }) || !catalog.household_needs.iter().any(|r| {
             (r.principal_id, r.good_id, r.unit_id) == (principal, mandate.good_id, mandate.unit_id)
-        }) || !time
-            .policies
+        }) || !catalog
+            .household_time_policy
             .iter()
             .any(|p| p.principal_id == principal && p.labor_unit_id == mandate.labor_unit_id)
         {
@@ -361,6 +357,7 @@ fn validate_mandate(
 }
 
 pub(crate) fn prepare(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     inputs: &[AidResolveInput],
     costs: &CostClose,
@@ -383,9 +380,14 @@ pub(crate) fn prepare(
         .as_ref()
         .ok_or(MaterialCircuitError::AidAuthority)?;
     let consumption =
-        crate::recurring::households::preview_household_needs(recurring, state.period)?;
-    let time =
-        crate::household_time::preview(state, costs.attendance_members(), &consumption, services)?;
+        crate::recurring::households::preview_household_needs(catalog, recurring, state.period)?;
+    let time = crate::household_time::preview(
+        catalog,
+        state,
+        costs.attendance_members(),
+        &consumption,
+        services,
+    )?;
     let mut prepared = PreparedAid {
         orders: Vec::new(),
         surplus: consumption
@@ -402,9 +404,8 @@ pub(crate) fn prepare(
             })
             .collect(),
     };
-    let mandates: BTreeMap<_, _> = economy
-        .aid
-        .mandates
+    let mandates: BTreeMap<_, _> = catalog
+        .aid_mandates
         .iter()
         .map(|m| (m.id, m.clone()))
         .collect();
@@ -559,22 +560,22 @@ pub(crate) fn grant_household_stock(
 }
 
 pub(crate) fn contribution_uses(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     receipts: &[AidReceipt],
 ) -> Result<Vec<HouseholdContributionUse>> {
-    let crate::CircuitAccounting::Monetary(economy) = &state.accounting else {
+    let crate::CircuitAccounting::Monetary(_) = &state.accounting else {
         return Ok(Vec::new());
     };
     receipts
         .iter()
         .filter(|r| r.contribution_hours > 0)
         .map(|r| {
-            let mandate = economy
-                .aid
-                .mandates
+            let mandate = catalog
+                .aid_mandates
                 .binary_search_by_key(&r.mandate_id, |m| m.id)
                 .ok()
-                .map(|i| &economy.aid.mandates[i])
+                .map(|i| &catalog.aid_mandates[i])
                 .ok_or(MaterialCircuitError::AidAuthority)?;
             Ok(HouseholdContributionUse {
                 use_id: r.commitment_id.as_bytes(),
@@ -657,6 +658,7 @@ impl AidReceipt {
 }
 
 pub(crate) fn validate_receipts(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     receipts: &[AidReceipt],
 ) -> Result<()> {
@@ -664,7 +666,7 @@ pub(crate) fn validate_receipts(
     if receipts.len() > MAX_AID_RECEIPTS_PER_PERIOD {
         return Err(MaterialCircuitError::RowLimit);
     }
-    let crate::CircuitAccounting::Monetary(economy) = &state.accounting else {
+    let crate::CircuitAccounting::Monetary(_) = &state.accounting else {
         return if receipts.is_empty() {
             Ok(())
         } else {
@@ -676,12 +678,11 @@ pub(crate) fn validate_receipts(
         if receipt.period != state.period {
             return Err(MaterialCircuitError::AidInvariant);
         }
-        let mandate = economy
-            .aid
-            .mandates
+        let mandate = catalog
+            .aid_mandates
             .binary_search_by_key(&receipt.mandate_id, |m| m.id)
             .ok()
-            .map(|i| &economy.aid.mandates[i])
+            .map(|i| &catalog.aid_mandates[i])
             .ok_or(MaterialCircuitError::AidAuthority)?;
         receipt.validate_against(mandate)?;
         if !seen.insert((receipt.commitment_id, receipt.outcome as u8)) {

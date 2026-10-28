@@ -1,6 +1,6 @@
 meta:
   contract: MaterialCircuitV4
-  schema_version: 20
+  schema_version: 21
   evidence_class: Designed
   rust_owner: babylon-material-circuit
 
@@ -92,7 +92,7 @@ accounting_field_order:
   physical_control: [accounting_mode_u8]
   monetary: [accounting_mode_u8, accounts, purchases, shifts, employment, member_labor, optional_recurring,
              historical_cost_book, financial_institutions, household_time_accounting,
-             aid_mandates, aid_freight, aid_cash_reserves]
+             aid_freight, aid_cash_reserves]
 
 catalog_row_field_order:
   capacity_policy: [mode_u8, conditional_policy_fields]
@@ -107,13 +107,15 @@ catalog_row_field_order:
   handling_coefficients: [site_id, good_id, unit_id, hours_per_unit]
   maintenance_binding: [provider_site_id, consumer_process_id, spare_good_id, spare_unit_id, labor_unit_id,
                         spare_units_per_job, labor_units_per_job, enabled_batches_per_job, maximum_jobs_per_period]
-  aid_mandates: [id, donor, recipient, donor_actor, donor_contributor_id, good_id, unit_id, quantity_per_period,
-                 cash_per_unit, hours_per_unit, transport_tag_u8, conditional_transport_fields]
+  aid_mandates: [id, source_hash, donor_actor, donor_contributor_id, recipient_actor, payer_account,
+                 donor, recipient, good_id, unit_id, labor_unit_id, hours_per_unit, maximum_quantity,
+                 cash_per_unit, transport_tag_u8, conditional_transport_fields]
   household_time_policy: [principal_id, labor_unit_id, eligible_persons, hours_per_eligible_person,
                           protected, routine_provisioning, unmet_burdens]
   service_inputs: [buyer_site_id, provider_site_id, good_id, unit_id, quantity_per_period, maximum_purchase,
                    cash_floor_i128]
   household_needs: [principal_id, good_id, unit_id, need_basis_u8, units_per_basis]
+  # Equipment content is nested in capacity_policy.
   equipment_content: [definitions, bindings, installation_inputs, installation_policies, investment_policies]
 
 catalog_canonical_keys:
@@ -134,7 +136,8 @@ catalog_canonical_keys:
 catalog_seal:
   - canonicalize every definition family once at admission, in the orders above
   - validate row bounds, uniqueness, route continuity, coefficient coverage and nested definitions
-  - recompute catalog_digest from the canonical bytes; a supplied digest is ignored
+  - seal validated definitions with the digest computed from canonical bytes; input definitions contain no digest
+  - sealed catalog data and its digest are private and immutable
   - a decoder refuses bytes whose embedded digest differs from the supplied catalog
   - definitions are never re-encoded into a period state and never cloned per period
 
@@ -161,25 +164,20 @@ recurring_field_order:
   - last_household_consumption_period
   - households
   - household_stocks
-  - household_needs
   - household_purchases
   - offers
   - replenishment
   - production
   - attendance
-  - service_inputs
 
 recurring_row_field_order:
   households: [kind, principal_id, households, persons]
   household_kind: "u8: 1 ordinary (H>0, P>=H); 2 collective residence (P>0, H=0), person-based needs only"
   household_stocks: [principal_id, good_id, unit_id, quantity]
-  household_needs: [principal_id, good_id, unit_id, need_basis_u8, units_per_basis]
   household_purchases: [principal_id, retailer_site_id, good_id, unit_id, target_closing_stock,
                         maximum_purchase, enabled_u8]
   offers: [site_id, good_id, unit_id, unit_price_i128, price_policy_u8, conditional_price_policy_fields]
   service_responsive_price_policy: [minimum_i128, maximum_i128, step_i128]
-  service_inputs: [buyer_site_id, provider_site_id, good_id, unit_id, quantity_per_period, maximum_purchase,
-                   cash_floor_i128]
   responsive_price_policy: [minimum_i128, maximum_i128, step_i128, target_stock]
   replenishment: [buyer_site_id, supplier_site_id, good_id, unit_id, target_stock, maximum_purchase,
                   cash_floor_i128]
@@ -189,13 +187,11 @@ recurring_row_field_order:
 recurring_canonical_keys:
   households: [principal_id]
   household_stocks: [principal_id, good_id, unit_id]
-  household_needs: [principal_id, good_id, unit_id]
   household_purchases: [principal_id, good_id, unit_id]
   offers: [site_id, good_id, unit_id]
   replenishment: [buyer_site_id, supplier_site_id, good_id, unit_id]
   production: [process_id]
   attendance: [site_id, unit_id]
-  service_inputs: [buyer_site_id, good_id, unit_id]
 
 row_field_order:
   storable_kind: [grams_per_unit]
@@ -897,8 +893,9 @@ household_time:
   authority: ADR270
   evidence: Captured eligible residents and explicitly Designed hour commitments; not observed time-use estimates.
   accounting_u8: {not_modeled_control: 0, modeled: 1}
-  field_order: [accounting_u8, policies, receipts, contributions]
-  count_encoding: u32_big_endian_before_each_modeled_row_family_and_each_policy_burden_family
+  field_order: [accounting_u8, receipts, contributions]
+  policy_owner: immutable catalog; policies are absent from state bytes
+  count_encoding: u32_big_endian_before_each_modeled_row_family; catalog policy burden families also use u32 counts
   policy_fields: [principal_id, labor_unit_id, eligible_persons, hours_per_eligible_person,
                   protected_need_basis_u8, protected_hours_per_basis,
                   provisioning_need_basis_u8, provisioning_hours_per_basis, unmet_burdens]
@@ -936,7 +933,8 @@ household_time:
 
 household_aid:
   evidence_class: Designed
-  field_order: [mandates, freight, cash_reserves]
+  field_order: [freight, cash_reserves]
+  mandate_owner: immutable catalog; mandates are absent from state bytes
   mandate_fields: [id, source_hash, donor_actor, donor_contributor_id, recipient_actor, payer_account,
                    donor_household_id, recipient_household_id, good_id, unit_id, labor_unit_id,
                    hours_per_unit, maximum_quantity, cash_per_unit, transport_tag, conditional_transport_fields]
@@ -973,5 +971,5 @@ household_aid:
     - A failed detached operation publishes no goods, cash, time use or aid receipt.
   host_boundary: Material aid and supplied resources do not establish completed organizer practice or independent
     partner consent.
-  persistence: State schema19 includes every aid vector even when empty in monetary mode; physical controls omit
-    monetary branches.
+  persistence: State schema21 includes aid freight and cash reserves even when empty in monetary mode; mandates
+    reside in the catalog. Physical controls omit monetary branches.

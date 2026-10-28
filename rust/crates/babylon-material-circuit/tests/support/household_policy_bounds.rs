@@ -136,10 +136,8 @@ fn service_needs() -> (MaterialCatalog, MaterialCircuitState) {
     let unit = UnitId::from_bytes(identity(1));
     let hours = UnitId::from_bytes(identity(2));
     let mut rows = RecurringEconomy {
-        service_inputs: vec![],
         households: vec![],
         household_stocks: vec![],
-        household_needs: vec![],
         household_purchases: vec![],
         offers: vec![],
         replenishment: vec![],
@@ -157,7 +155,7 @@ fn service_needs() -> (MaterialCatalog, MaterialCircuitState) {
         });
         for commodity in 0..4 {
             let good = GoodId::from_bytes(identity(commodity));
-            rows.household_needs.push(HouseholdNeed {
+            catalog.household_needs.push(HouseholdNeed {
                 principal_id: resident(n),
                 good_id: good,
                 unit_id: unit,
@@ -182,7 +180,6 @@ fn service_needs() -> (MaterialCatalog, MaterialCircuitState) {
         }
     }
     declare_services(&mut catalog, &mut rows, unit, hours);
-    catalog.household_needs.clone_from(&rows.household_needs);
 
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog is valid");
     crate::economy_mut(&mut state).recurring = Some(Box::new(rows));
@@ -239,49 +236,55 @@ fn household_policy_bound_preserves_every_need_and_purchase_and_checks_the_tail(
         .recurring
         .as_ref()
         .expect("the fixture set the optional field before this read");
-    assert_eq!(rows.household_needs.len(), POLICY_LIMIT);
+    assert_eq!(catalog.household_needs.len(), POLICY_LIMIT);
     assert_eq!(rows.household_purchases.len(), POLICY_LIMIT);
     assert_eq!(
         rows.households.iter().map(|r| r.persons).sum::<u64>(),
         32_768
     );
     assert_eq!(
-        rows.household_needs
+        catalog
+            .household_needs
             .last()
             .expect("the fixture sequence is non-empty")
             .principal_id,
         resident(32_767)
     );
-    for purchases in [false, true] {
-        let mut duplicate = restored.clone();
-        let r = crate::economy_mut(&mut duplicate)
-            .recurring
-            .as_mut()
-            .expect("the fixture set the optional field before this borrow");
-        if purchases {
-            r.household_purchases[POLICY_LIMIT - 1] = r.household_purchases[0].clone();
-        } else {
-            r.household_needs[POLICY_LIMIT - 1] = r.household_needs[0].clone();
-        }
-        assert_eq!(
-            babylon_material_circuit::encode_material_circuit_state(&catalog, &duplicate),
-            Err(MaterialCircuitError::DuplicateRow)
-        );
-        let mut excess = restored.clone();
-        let r = crate::economy_mut(&mut excess)
-            .recurring
-            .as_mut()
-            .expect("the fixture set the optional field before this borrow");
-        if purchases {
-            r.household_purchases.push(r.household_purchases[0].clone());
-        } else {
-            r.household_needs.push(r.household_needs[0].clone());
-        }
-        assert_eq!(
-            babylon_material_circuit::encode_material_circuit_state(&catalog, &excess),
-            Err(MaterialCircuitError::RowLimit)
-        );
-    }
+    let mut duplicate_catalog = catalog.clone().into_definition();
+    duplicate_catalog.household_needs[POLICY_LIMIT - 1] =
+        duplicate_catalog.household_needs[0].clone();
+    assert_eq!(
+        MaterialCatalog::try_new(duplicate_catalog),
+        Err(MaterialCircuitError::DuplicateRow)
+    );
+    let mut excess_catalog = catalog.clone().into_definition();
+    excess_catalog
+        .household_needs
+        .push(excess_catalog.household_needs[0].clone());
+    assert_eq!(
+        MaterialCatalog::try_new(excess_catalog),
+        Err(MaterialCircuitError::RowLimit)
+    );
+    let mut duplicate = restored.clone();
+    let r = crate::economy_mut(&mut duplicate)
+        .recurring
+        .as_mut()
+        .expect("recurring");
+    r.household_purchases[POLICY_LIMIT - 1] = r.household_purchases[0].clone();
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &duplicate),
+        Err(MaterialCircuitError::DuplicateRow)
+    );
+    let mut excess = restored.clone();
+    let r = crate::economy_mut(&mut excess)
+        .recurring
+        .as_mut()
+        .expect("recurring");
+    r.household_purchases.push(r.household_purchases[0].clone());
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &excess),
+        Err(MaterialCircuitError::RowLimit)
+    );
     let mut disconnected = restored;
     disconnected.service_connections.pop();
     assert_eq!(

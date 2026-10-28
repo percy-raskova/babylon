@@ -314,7 +314,8 @@ impl MaterialWorldRegister {
         organizer: Option<(OrganizerConfig, OrganizerState, OrganizerPeriodJournal)>,
         state_bytes: &[u8],
     ) -> Result<Self, MaterialWorldError> {
-        let organizer_bytes = encode_bound_organizer(completed_tick, &state, organizer.as_ref())?;
+        let organizer_bytes =
+            encode_bound_organizer(catalog, completed_tick, &state, organizer.as_ref())?;
         let length = REGISTER_DOMAIN
             .len()
             .checked_add(20)
@@ -480,7 +481,8 @@ impl MaterialWorldRegister {
         // without assembling a second full outer register during admission.
         let canonical_state =
             babylon_material_circuit::encode_material_circuit_state(catalog, &state)?;
-        let canonical_organizer = encode_bound_organizer(tick, &state, organizer.as_ref())?;
+        let canonical_organizer =
+            encode_bound_organizer(catalog, tick, &state, organizer.as_ref())?;
         let canonical_length = header
             .checked_add(canonical_state.len())
             .and_then(|count| count.checked_add(canonical_organizer.len()))
@@ -531,15 +533,20 @@ impl MaterialWorldRegister {
         if self.state.period.checked_add(1) != Some(transition.state.period) {
             return Err(MaterialWorldError::PeriodMismatch);
         }
-        let receipts = encode_material_receipts(self.state.period, &transition)?;
+        let receipts = encode_material_receipts(catalog, self.state.period, &transition)?;
         let organizer_facts = self
             .organizer_config()
             .map(|config| organizer_workplace_facts(config, catalog, &self.state, &transition))
             .transpose()?;
         let organizer_aid_support = match (self.organizer_config(), self.organizer_state()) {
-            (Some(config), Some(organizer)) => {
-                organizer_support::facts(config, organizer, commitment, &self.state, &transition)?
-            }
+            (Some(config), Some(organizer)) => organizer_support::facts(
+                catalog,
+                config,
+                organizer,
+                commitment,
+                &self.state,
+                &transition,
+            )?,
             (None, None) if commitment.is_none() => Vec::new(),
             _ => return Err(MaterialWorldError::Wire),
         };
@@ -661,6 +668,7 @@ impl PreparedMaterialWorld {
 }
 
 pub(crate) fn encode_bound_organizer(
+    catalog: &MaterialCatalog,
     completed_tick: u64,
     circuit: &MaterialCircuitState,
     organizer: Option<&(OrganizerConfig, OrganizerState, OrganizerPeriodJournal)>,
@@ -668,7 +676,7 @@ pub(crate) fn encode_bound_organizer(
     let Some((config, state, journal)) = organizer else {
         return Ok(vec![0]);
     };
-    organizer_collection::validate_binding(config, circuit)?;
+    organizer_collection::validate_binding(catalog, config, circuit)?;
     organizer_collection::current(config, state, journal, circuit, completed_tick)?;
     babylon_practice_contract::validate_organizer_journal(config, state, journal)?;
     if state.period != completed_tick {
@@ -1024,6 +1032,7 @@ macro_rules! encode_receipt_family_rows {
     reason = "one match arm per closed receipt family keeps each family's encoder beside the shared cursor"
 )]
 pub(crate) fn encode_material_receipts(
+    catalog: &MaterialCatalog,
     tick: u64,
     transition: &MaterialCircuitTransition,
 ) -> Result<Vec<u8>, MaterialWorldError> {
@@ -1103,7 +1112,7 @@ pub(crate) fn encode_material_receipts(
     installation_decision::validate(&transition.installation_decisions, &transition.installation)?;
     income_receipt::validate_order(&transition.income)?;
     aid_receipt::validate(&transition.aid, tick)?;
-    aid_receipt::validate_state(&transition.aid, &transition.state)?;
+    aid_receipt::validate_state(catalog, &transition.aid, &transition.state)?;
     collection_receipt::validate(
         &transition.collections,
         &transition.money_transfers,

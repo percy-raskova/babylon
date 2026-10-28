@@ -59,8 +59,7 @@ fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts(
     .expect("the fixture call `build_national_opening` succeeds for the authored inputs");
     let aid = opening.aid;
     let opening = opening.opening;
-    assert_eq!(opening.policies.aid.mandates, aid.mandates);
-    assert_eq!(opening.policies.aid.freight.len(), 0);
+    assert_eq!(opening.policies.aid_mandates, aid.mandates);
     eprintln!("native opening generation: {:?}", start.elapsed());
     household_controls::assert_people(&opening, &policy, &aid);
     household_controls::assert_endowments_and_ownership(&opening, &policy, &aid);

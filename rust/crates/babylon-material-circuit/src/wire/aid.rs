@@ -2,46 +2,16 @@
 use super::accounting;
 use super::Cursor;
 use crate::{
-    AidBook, AidCashReserve, AidFreightLot, AidMandate, AidTransport, FinalDemandPrincipalId,
-    FreightLotId, GoodId, LogisticsNodeId, MaterialCircuitError, OrderId, RouteId, UnitId,
+    AidBook, AidCashReserve, AidFreightLot, FinalDemandPrincipalId, FreightLotId, GoodId,
+    MaterialCircuitError, OrderId, RouteId, UnitId,
 };
 use std::result::Result as StdResult;
 
 type Result<T> = StdResult<T, MaterialCircuitError>;
 
 pub(super) fn append(out: &mut Vec<u8>, book: &AidBook, reserves: &[AidCashReserve]) -> Result<()> {
-    accounting::ordered_rows(&book.mandates, |r| r.id)?;
     accounting::ordered_rows(&book.freight, |r| r.lot_id)?;
     accounting::ordered_rows(reserves, |r| r.id)?;
-    super::append_rows(out, &book.mandates, |b, r| {
-        b.extend_from_slice(&r.id);
-        b.extend_from_slice(&r.source_hash);
-        for actor in [r.donor_actor, r.donor_contributor_id, r.recipient_actor] {
-            b.extend_from_slice(&actor.to_be_bytes());
-        }
-        accounting::append_account(b, r.payer);
-        b.extend_from_slice(&r.donor.as_bytes());
-        b.extend_from_slice(&r.recipient.as_bytes());
-        b.extend_from_slice(&r.good_id.as_bytes());
-        b.extend_from_slice(&r.unit_id.as_bytes());
-        b.extend_from_slice(&r.labor_unit_id.as_bytes());
-        b.extend_from_slice(&r.hours_per_unit.to_be_bytes());
-        b.extend_from_slice(&r.maximum_quantity.to_be_bytes());
-        b.extend_from_slice(&r.cash_per_unit.micro_units().to_be_bytes());
-        match r.transport {
-            AidTransport::Local => b.push(1),
-            AidTransport::Routed {
-                route_id,
-                from_node_id,
-                to_node_id,
-            } => {
-                b.push(2);
-                b.extend_from_slice(&route_id.as_bytes());
-                b.extend_from_slice(&from_node_id.as_bytes());
-                b.extend_from_slice(&to_node_id.as_bytes());
-            }
-        }
-    })?;
     super::append_rows(out, &book.freight, |b, r| {
         b.extend_from_slice(&r.lot_id.as_bytes());
         b.extend_from_slice(&r.commitment_id.as_bytes());
@@ -74,50 +44,6 @@ pub(super) fn append(out: &mut Vec<u8>, book: &AidBook, reserves: &[AidCashReser
 }
 
 pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<(AidBook, Vec<AidCashReserve>)> {
-    let mandates = super::decode_rows(cursor, |b| {
-        let id = b.array()?;
-        let source_hash = b.array()?;
-        let donor_actor = b.u64()?;
-        let donor_contributor_id = b.u64()?;
-        let recipient_actor = b.u64()?;
-        let payer = accounting::decode_account(b)?;
-        let donor = FinalDemandPrincipalId::from_bytes(b.array()?);
-        let recipient = FinalDemandPrincipalId::from_bytes(b.array()?);
-        let good_id = GoodId::from_bytes(b.array()?);
-        let unit_id = UnitId::from_bytes(b.array()?);
-        let labor_unit_id = UnitId::from_bytes(b.array()?);
-        let hours_per_unit = b.u64()?;
-        let maximum_quantity = b.u64()?;
-        let cash_per_unit = accounting::decode_currency(b)?;
-        let transport = match b.u8()? {
-            1 => AidTransport::Local,
-            2 => AidTransport::Routed {
-                route_id: RouteId::from_bytes(b.array()?),
-                from_node_id: LogisticsNodeId::from_bytes(b.array()?),
-                to_node_id: LogisticsNodeId::from_bytes(b.array()?),
-            },
-            _ => return Err(MaterialCircuitError::WireEnum),
-        };
-        let row = AidMandate {
-            id,
-            source_hash,
-            donor_actor,
-            donor_contributor_id,
-            recipient_actor,
-            payer,
-            donor,
-            recipient,
-            good_id,
-            unit_id,
-            labor_unit_id,
-            hours_per_unit,
-            maximum_quantity,
-            cash_per_unit,
-            transport,
-        };
-        row.validate()?;
-        Ok(row)
-    })?;
     let freight = super::decode_rows(cursor, |b| {
         Ok(AidFreightLot {
             lot_id: FreightLotId::from_bytes(b.array()?),
@@ -146,8 +72,7 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<(AidBook, Vec<AidCashRes
             refunded: b.u64()?,
         })
     })?;
-    accounting::ordered_rows(&mandates, |r| r.id)?;
     accounting::ordered_rows(&freight, |r| r.lot_id)?;
     accounting::ordered_rows(&reserves, |r| r.id)?;
-    Ok((AidBook { mandates, freight }, reserves))
+    Ok((AidBook { freight }, reserves))
 }

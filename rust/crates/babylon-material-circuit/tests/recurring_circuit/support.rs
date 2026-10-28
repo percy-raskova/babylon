@@ -92,8 +92,14 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
             pricing: PricePolicy::Fixed,
         })
         .collect();
+    let household_needs = vec![HouseholdNeed {
+        principal_id: household(),
+        good_id: good(2),
+        unit_id: units(),
+        basis: HouseholdNeedBasis::Persons,
+        units_per_basis: 1,
+    }];
     let recurring = RecurringEconomy {
-        service_inputs: vec![],
         households: vec![HouseholdCohort {
             kind: babylon_material_circuit::HouseholdKind::Ordinary,
             principal_id: household(),
@@ -105,13 +111,6 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
             good_id: good(2),
             unit_id: units(),
             quantity: 8,
-        }],
-        household_needs: vec![HouseholdNeed {
-            principal_id: household(),
-            good_id: good(2),
-            unit_id: units(),
-            basis: HouseholdNeedBasis::Persons,
-            units_per_basis: 1,
         }],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: household(),
@@ -240,8 +239,8 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         maintenance_binding: None,
         aid_mandates: vec![],
         household_time_policy: vec![],
-        service_inputs: recurring.service_inputs.clone(),
-        household_needs: recurring.household_needs.clone(),
+        service_inputs: vec![],
+        household_needs: household_needs.clone(),
     };
     let state = MaterialCircuitState {
         period: 1,
@@ -847,7 +846,6 @@ pub(crate) fn producer_retail_opening() -> (MaterialCatalog, MaterialCircuitStat
         basis: HouseholdNeedBasis::Persons,
         units_per_basis: 1,
     };
-    rows.household_needs.push(need.clone());
     catalog.household_needs.push(need);
     rows.household_purchases[0].enabled = false;
     rows.household_purchases.push(HouseholdPurchasePolicy {
@@ -977,9 +975,11 @@ pub(crate) fn cash_backed_unfilled_retail_demand_can_restart_a_producer_with_no_
 #[test]
 pub(crate) fn a_household_purchase_without_a_recipient_stock_is_refused_before_reserving_cash() {
     let (catalog, mut state) = producer_retail_opening();
+    let mut catalog = catalog.into_definition();
+    catalog.household_needs.retain(|row| row.good_id != good(1));
+    let catalog = MaterialCatalog::try_new(catalog).expect("valid fixture catalog");
     let rows = recurring_mut(&mut state);
     rows.household_stocks.retain(|row| row.good_id != good(1));
-    rows.household_needs.retain(|row| row.good_id != good(1));
     rows.household_purchases
         .retain(|row| row.good_id != good(1));
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
@@ -1026,4 +1026,24 @@ pub(crate) fn a_household_purchase_without_a_recipient_stock_is_refused_before_r
         Err(MaterialCircuitError::FinalDemandInvariant)
     );
     assert_eq!(state, original);
+}
+
+#[test]
+fn household_needs_are_catalog_authority_and_foreign_catalog_refuses_state() {
+    let (catalog, state) = opening();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
+        .expect("original catalog admits state");
+    let mut foreign = catalog.clone().into_definition();
+    foreign.household_needs[0].units_per_basis += 1;
+    let foreign = MaterialCatalog::try_new(foreign).expect("altered catalog is valid");
+    let foreign_bytes = babylon_material_circuit::encode_material_circuit_state(&foreign, &state)
+        .expect("altered catalog admits the same dynamic state");
+    let payload_offset =
+        babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1 + 2 + 32;
+    assert_eq!(&bytes[payload_offset..], &foreign_bytes[payload_offset..]);
+    assert_ne!(catalog.catalog_digest(), foreign.catalog_digest());
+    assert_eq!(
+        babylon_material_circuit::decode_material_circuit_state(&foreign, &bytes),
+        Err(MaterialCircuitError::WireDomain),
+    );
 }

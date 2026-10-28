@@ -221,7 +221,7 @@ fn padded_durable_carrying_book() -> (MaterialCatalog, MaterialCircuitState) {
                 unit_id: crate::unit(4),
                 quantity: 1,
             });
-            recurring.household_needs.push(HouseholdNeed {
+            catalog.household_needs.push(HouseholdNeed {
                 principal_id: principal,
                 good_id: *commodity,
                 unit_id: crate::unit(4),
@@ -239,7 +239,6 @@ fn padded_durable_carrying_book() -> (MaterialCatalog, MaterialCircuitState) {
             });
         }
     }
-    let needs = recurring.household_needs.clone();
     let stocks = state
         .inventory
         .iter()
@@ -264,7 +263,6 @@ fn padded_durable_carrying_book() -> (MaterialCatalog, MaterialCircuitState) {
     e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
         .expect("the fixture opens the authored source");
     assert_eq!(e.costs.snapshot().stocks.len(), MAX_CARRYING_STOCKS - 5);
-    catalog.household_needs = needs;
 
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)

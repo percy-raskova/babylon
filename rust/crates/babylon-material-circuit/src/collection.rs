@@ -317,7 +317,11 @@ fn protected_payments(
     Ok(())
 }
 
-fn input_valid(state: &MaterialCircuitState, input: &CollectionResolveInput) -> Result<()> {
+fn input_valid(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+    input: &CollectionResolveInput,
+) -> Result<()> {
     if input.resolve_period != state.period
         || input.admitted_period.checked_add(1) != Some(input.resolve_period)
         || input.requested.micro_units() <= 0
@@ -340,8 +344,11 @@ fn input_valid(state: &MaterialCircuitState, input: &CollectionResolveInput) -> 
     let CircuitAccounting::Monetary(e) = &state.accounting else {
         return Err(MaterialCircuitError::CollectionInvariant);
     };
-    if e.aid.mandates.iter().any(|row| row.id == input.mandate_id)
-        || !e.aid.mandates.iter().any(|row| {
+    if catalog
+        .aid_mandates
+        .iter()
+        .any(|row| row.id == input.mandate_id)
+        || !catalog.aid_mandates.iter().any(|row| {
             row.donor == input.donor
                 && row.donor_actor == input.actor_id
                 && row.donor_contributor_id == input.contributor_id
@@ -403,9 +410,9 @@ fn frozen_outcomes(
     // Freeze eligibility before any collection and ownership payout. Even an
     // identical credit later in the tick cannot change this source snapshot.
     let mut frozen = Vec::with_capacity(inputs.len());
-    let aid_uses = crate::aid::contribution_uses(state, facts.aid)?;
+    let aid_uses = crate::aid::contribution_uses(catalog, state, facts.aid)?;
     for input in inputs {
-        input_valid(state, input)?;
+        input_valid(catalog, state, input)?;
         let CircuitAccounting::Monetary(e) = &state.accounting else {
             return Err(MaterialCircuitError::CollectionInvariant);
         };

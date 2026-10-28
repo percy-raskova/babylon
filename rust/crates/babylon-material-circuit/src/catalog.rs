@@ -301,7 +301,18 @@ impl MaterialCatalogDefinition {
         for mandate in &self.aid_mandates {
             mandate.validate()?;
         }
+        let mut burden_count = 0_usize;
         for policy in &self.household_time_policy {
+            policy
+                .eligible_persons
+                .checked_mul(policy.hours_per_eligible_person)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            burden_count = burden_count
+                .checked_add(policy.unmet_burdens.len())
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            if burden_count > MAX_MATERIAL_CIRCUIT_ROWS {
+                return Err(MaterialCircuitError::RowLimit);
+            }
             if policy.hours_per_eligible_person == 0 {
                 return Err(MaterialCircuitError::HouseholdTimeInvariant);
             }
@@ -389,6 +400,11 @@ impl MaterialCatalogDefinition {
         self.aid_mandates.sort_by_key(|row| row.id);
         self.household_time_policy
             .sort_by_key(|row| row.principal_id);
+        for policy in &mut self.household_time_policy {
+            policy
+                .unmet_burdens
+                .sort_by_key(|row| (row.good_id, row.unit_id));
+        }
         self.service_inputs
             .sort_by_key(|row| (row.buyer_site_id, row.good_id, row.unit_id));
         self.household_needs

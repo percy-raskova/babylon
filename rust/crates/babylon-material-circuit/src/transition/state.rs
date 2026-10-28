@@ -416,6 +416,20 @@ pub(crate) fn canonical_state(
     let mut canonical = state.clone();
     canonicalize_rows(&mut canonical);
     validate_unique_rows(&canonical)?;
+    crate::household_time::validate(catalog, &canonical)?;
+    let recurring_active = matches!(&canonical.accounting,
+        CircuitAccounting::Monetary(economy) if economy.recurring.is_some());
+    if !recurring_active && !catalog.aid_mandates.is_empty() {
+        return Err(MaterialCircuitError::AidInvariant);
+    }
+    if !recurring_active {
+        if !catalog.household_needs.is_empty() {
+            return Err(MaterialCircuitError::PurchaseInvariant);
+        }
+        if !catalog.service_inputs.is_empty() {
+            return Err(MaterialCircuitError::ServiceInvariant);
+        }
+    }
     crate::services::validate(catalog, &canonical)?;
     merchant_admission::validate_merchants(catalog, &canonical)?;
     validate_routes(catalog, &canonical)?;
@@ -952,6 +966,7 @@ pub(crate) fn dispatch_and_replenish(
     )?;
     inventory::publish_inventory(state, inventory);
     crate::recurring::complete_household_orders(
+        catalog,
         state,
         household_demand,
         &outbound.local_fulfillments,
@@ -961,6 +976,7 @@ pub(crate) fn dispatch_and_replenish(
     let (new_orders, procurement) =
         crate::recurring::firms::replenish(state, &outbound.local_transfers, money_transfers)?;
     let aid = crate::aid::prepare(
+        catalog,
         state,
         aid_inputs,
         costs,
@@ -1095,18 +1111,24 @@ pub(crate) struct HouseholdCloseReceipts {
 }
 
 pub(crate) fn close_household_reproduction(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     costs: &mut CostClose,
     services: &ServiceClose,
     wage_accruals: &[WageAccrualReceipt],
 ) -> Result<HouseholdCloseReceipts, MaterialCircuitError> {
-    let consumption = crate::recurring::consume_household_needs(state)?;
+    let consumption = crate::recurring::consume_household_needs(catalog, state)?;
     for receipt in &consumption {
         costs.consume(receipt)?;
     }
     let (labor_use, member_labor_use) = costs.finish_attendance(state)?;
-    let time =
-        crate::household_time::close(state, &member_labor_use, &consumption, &services.household)?;
+    let time = crate::household_time::close(
+        catalog,
+        state,
+        &member_labor_use,
+        &consumption,
+        &services.household,
+    )?;
     costs.payroll(state, &member_labor_use, wage_accruals)?;
     Ok(HouseholdCloseReceipts {
         consumption,
@@ -1244,7 +1266,7 @@ pub(crate) fn close_household_finance(
     support: HouseholdSupportInputs<'_>,
 ) -> Result<(HouseholdCloseReceipts, Vec<CollectionReceipt>), MaterialCircuitError> {
     let MaterialContext { catalog, state } = context;
-    let households = close_household_reproduction(state, costs, services, wage_accruals)?;
+    let households = close_household_reproduction(catalog, state, costs, services, wage_accruals)?;
     finance.collect_taxes(state, costs, money_transfers)?;
     let collections = crate::collection::close(
         catalog,
@@ -1457,9 +1479,9 @@ pub(crate) fn finish_close_accounting(
     let mut equipment_wear = std::mem::take(&mut costs.wear_receipts);
     equipment_wear.sort_by_key(|r| (r.process_id, r.cohort_id));
     aid_receipts.sort_by_key(|r| (r.commitment_id, r.outcome as u8));
-    crate::aid::validate_receipts(state, aid_receipts)?;
+    crate::aid::validate_receipts(catalog, state, aid_receipts)?;
     let income = costs.finish(catalog, state)?;
-    let aid_contributions = crate::aid::contribution_uses(state, aid_receipts)?;
+    let aid_contributions = crate::aid::contribution_uses(catalog, state, aid_receipts)?;
     Ok(FinalAccountingReceipts {
         equipment_wear,
         income,
@@ -1514,13 +1536,11 @@ pub(crate) fn close_due_aid(
     money: &mut Vec<MoneyTransferReceipt>,
     receipts: &mut Vec<AidReceipt>,
 ) -> Result<(), MaterialCircuitError> {
-    let (opening, mandates) = match &mut state.accounting {
+    let opening = match &mut state.accounting {
         CircuitAccounting::PhysicalControl => return Ok(()),
-        CircuitAccounting::Monetary(economy) => (
-            std::mem::take(&mut economy.aid.freight),
-            economy.aid.mandates.clone(),
-        ),
+        CircuitAccounting::Monetary(economy) => std::mem::take(&mut economy.aid.freight),
     };
+    let mandates = &catalog.aid_mandates;
     let mut remaining = Vec::new();
     for mut lot in opening {
         if lot.stage_arrival_period != state.period {

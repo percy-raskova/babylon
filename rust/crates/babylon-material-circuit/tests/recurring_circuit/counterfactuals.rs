@@ -267,7 +267,11 @@ fn foreign_household() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([77; 32])
 }
 
-fn foreign_need(state: &mut MaterialCircuitState, enabled: bool) {
+fn foreign_need(
+    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
+    state: &mut MaterialCircuitState,
+    enabled: bool,
+) {
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         unreachable!()
     };
@@ -287,7 +291,7 @@ fn foreign_need(state: &mut MaterialCircuitState, enabled: bool) {
         unit_id: crate::units(),
         quantity: 0,
     });
-    recurring.household_needs.push(HouseholdNeed {
+    catalog.household_needs.push(HouseholdNeed {
         principal_id: foreign_household(),
         good_id: crate::good(2),
         unit_id: crate::units(),
@@ -325,7 +329,7 @@ fn domestic_competition(enabled: bool) -> (MaterialCatalog, MaterialCircuitState
         .find(|r| r.site_id == crate::site(2) && r.good_id == crate::good(2))
         .expect("the fixture holds the searched element")
         .quantity = 2;
-    foreign_need(&mut state, enabled);
+    foreign_need(&mut catalog, &mut state, enabled);
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         unreachable!()
     };

@@ -354,7 +354,7 @@ pub fn assert_admitted_state(opening: &EconomicOpening, aid: &NationalAidCapture
         .recurring
         .as_ref()
         .expect("the fixture set the optional field before this read");
-    assert_eq!(e.aid.mandates, aid.mandates);
+    assert_eq!(compiled.catalog.aid_mandates, aid.mandates);
     assert_eq!(e.aid.freight.len(), 0);
     let added_needs = aid
         .children
@@ -374,7 +374,7 @@ pub fn assert_admitted_state(opening: &EconomicOpening, aid: &NationalAidCapture
                 .len()
         })
         .sum::<usize>();
-    assert_eq!(recurring.household_needs.len(), 87_960 + added_needs);
+    assert_eq!(compiled.catalog.household_needs.len(), 87_960 + added_needs);
     assert_eq!(recurring.household_purchases.len(), 87_960 + added_needs);
     assert_eq!(e.financial.ownership.len(), 90_794);
     assert_eq!(e.costs.snapshot().equity.len(), 90_794);

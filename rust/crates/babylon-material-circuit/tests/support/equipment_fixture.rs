@@ -338,10 +338,8 @@ pub(crate) fn configure_investment(
     e.costs =
         HistoricalCostBook::from_snapshot(costs).expect("the snapshot admits the derived value");
     e.recurring = Some(Box::new(RecurringEconomy {
-        service_inputs: vec![],
         households: vec![],
         household_stocks: vec![],
-        household_needs: vec![],
         household_purchases: vec![],
         offers: vec![SellerOffer {
             site_id: seller,
@@ -440,10 +438,8 @@ pub(crate) fn configure_investment_supply(
 pub(crate) fn configure_output_quote(state: &mut MaterialCircuitState) {
     let period = state.period;
     economy_mut(state).recurring = Some(Box::new(RecurringEconomy {
-        service_inputs: vec![],
         households: vec![],
         household_stocks: vec![],
-        household_needs: vec![],
         household_purchases: vec![],
         replenishment: vec![],
         offers: vec![SellerOffer {

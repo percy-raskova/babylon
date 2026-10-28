@@ -71,7 +71,7 @@ pub(crate) fn project_economic_current(
         labor::project_labor_accounts(catalog, state, prior, done)
     })?;
     let household_accounts = diagnostics::timed_projection(Stage::Households, tick, || {
-        households::project_with_labels(state, prior, done, |g, u| metadata.labels(g, u))
+        households::project_with_labels(catalog, state, prior, done, |g, u| metadata.labels(g, u))
     })?;
     let household_service_accounts =
         diagnostics::timed_projection(Stage::HouseholdServices, tick, || {

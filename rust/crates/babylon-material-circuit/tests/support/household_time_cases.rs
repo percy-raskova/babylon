@@ -51,10 +51,7 @@ fn time_opening(food: u64) -> (MaterialCatalog, MaterialCircuitState) {
         }],
     };
     catalog.household_time_policy = vec![policy.clone()];
-    economy.household_time = HouseholdTimeAccounting::Modeled(
-        HouseholdTimeBook::new(vec![policy])
-            .expect("the constructor accepts the authored fixture arguments"),
-    );
+    economy.household_time = HouseholdTimeAccounting::Modeled(HouseholdTimeBook::default());
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
@@ -163,27 +160,19 @@ fn shared_household_aliases_cannot_duplicate_contribution_time() {
 #[test]
 fn time_endowments_refuse_population_overrun_unaccounted_attendance_and_wrong_units() {
     for invalid in [0, 5] {
-        let (catalog, mut state) = time_opening(4);
-        let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
-            unreachable!()
-        };
-        let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
-            unreachable!()
-        };
-        book.policies[0].eligible_persons = invalid;
+        let (catalog, state) = time_opening(4);
+        let mut definition = catalog.into_definition();
+        definition.household_time_policy[0].eligible_persons = invalid;
+        let catalog = MaterialCatalog::try_new(definition).expect("valid definition");
         assert_eq!(
             babylon_material_circuit::advance_material_circuit(&catalog, &state),
             Err(MaterialCircuitError::HouseholdTimeInvariant)
         );
     }
-    let (catalog, mut state) = time_opening(4);
-    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
-        unreachable!()
-    };
-    let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
-        unreachable!()
-    };
-    book.policies[0].labor_unit_id = crate::units();
+    let (catalog, state) = time_opening(4);
+    let mut definition = catalog.into_definition();
+    definition.household_time_policy[0].labor_unit_id = crate::units();
+    let catalog = MaterialCatalog::try_new(definition).expect("valid definition");
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(MaterialCircuitError::HouseholdTimeInvariant)
@@ -343,10 +332,9 @@ fn zero_eligible_persons_can_retain_needs_without_invented_time() {
     economy.costs =
         HistoricalCostBook::open(&economy.book, costs.stocks, costs.freight, vec![], vec![])
             .expect("the fixture opens the authored source");
-    let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
-        unreachable!()
-    };
-    book.policies[0].eligible_persons = 0;
+    let mut definition = catalog.into_definition();
+    definition.household_time_policy[0].eligible_persons = 0;
+    let catalog = MaterialCatalog::try_new(definition).expect("valid definition");
     let transition = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(transition.household_consumption[0].required_quantity, 4);
@@ -402,21 +390,13 @@ fn nonworker_household_requires_an_admitted_hour_unit() {
     {
         row.planned_hours = 0;
     }
-    let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
-        unreachable!()
-    };
-    book.policies[0].labor_unit_id = crate::units();
+    let mut definition = catalog.clone().into_definition();
+    definition.household_time_policy[0].labor_unit_id = crate::units();
+    let invalid_catalog = MaterialCatalog::try_new(definition).expect("valid definition");
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&catalog, &state),
+        babylon_material_circuit::advance_material_circuit(&invalid_catalog, &state),
         Err(MaterialCircuitError::HouseholdTimeInvariant)
     );
-    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
-        unreachable!()
-    };
-    let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
-        unreachable!()
-    };
-    book.policies[0].labor_unit_id = crate::hours();
     let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(closed.household_time[0].attended_hours, 0);
@@ -457,4 +437,97 @@ fn a_prior_period_contribution_cannot_be_replayed_after_rollover() {
         Err(MaterialCircuitError::HouseholdTimeInvariant)
     );
     assert_eq!(state, before);
+}
+
+#[test]
+fn authored_time_policy_is_canonical_and_refuses_invalid_definitions() {
+    let (catalog, _) = time_opening(4);
+    let mut definition = catalog.clone().into_definition();
+    let second = HouseholdUnmetTimeBurden {
+        good_id: crate::good(1),
+        unit_id: crate::units(),
+        hours_per_unmet_unit: 2,
+    };
+    definition.household_time_policy[0]
+        .unmet_burdens
+        .push(second);
+    let admitted = MaterialCatalog::try_new(definition.clone()).expect("valid authored policies");
+    definition.household_time_policy[0].unmet_burdens.reverse();
+    assert_eq!(
+        admitted,
+        MaterialCatalog::try_new(definition.clone()).expect("same policy")
+    );
+    definition.household_time_policy[0].unmet_burdens[0].hours_per_unmet_unit = 0;
+    assert_eq!(
+        MaterialCatalog::try_new(definition),
+        Err(MaterialCircuitError::HouseholdTimeInvariant)
+    );
+    let mut overflow = catalog.into_definition();
+    overflow.household_time_policy[0].eligible_persons = u64::MAX;
+    assert_eq!(
+        MaterialCatalog::try_new(overflow),
+        Err(MaterialCircuitError::Arithmetic)
+    );
+}
+
+#[test]
+fn unmodeled_and_physical_accounts_refuse_authored_time_policies() {
+    let (catalog, mut monetary) = time_opening(4);
+    let CircuitAccounting::Monetary(economy) = &mut monetary.accounting else {
+        unreachable!()
+    };
+    economy.household_time = HouseholdTimeAccounting::NotModeled;
+    let mut physical = monetary.clone();
+    physical.accounting = CircuitAccounting::PhysicalControl;
+    let errors: Vec<_> = [&monetary, &physical]
+        .into_iter()
+        .map(|state| babylon_material_circuit::encode_material_circuit_state(&catalog, state).err())
+        .collect();
+    assert_eq!(
+        errors,
+        vec![Some(MaterialCircuitError::HouseholdTimeInvariant); 2]
+    );
+    for state in [&monetary, &physical] {
+        assert_eq!(
+            babylon_material_circuit::advance_material_circuit(&catalog, state).err(),
+            Some(MaterialCircuitError::HouseholdTimeInvariant)
+        );
+        assert_eq!(
+            babylon_material_circuit::close_material_period(&catalog, state).err(),
+            Some(MaterialCircuitError::HouseholdTimeInvariant)
+        );
+    }
+    let mut definition = catalog.into_definition();
+    definition.household_time_policy.clear();
+    let empty = MaterialCatalog::try_new(definition).expect("empty time definition is valid");
+    assert!(babylon_material_circuit::encode_material_circuit_state(&empty, &monetary).is_ok());
+    let mut physical_definition = empty.into_definition();
+    physical_definition.household_needs.clear();
+    let physical_catalog =
+        MaterialCatalog::try_new(physical_definition).expect("empty policies are valid");
+    assert!(
+        babylon_material_circuit::encode_material_circuit_state(&physical_catalog, &physical)
+            .is_ok()
+    );
+}
+
+#[test]
+fn inactive_recurring_modes_refuse_authored_needs() {
+    let (catalog, mut missing) = crate::opening();
+    let CircuitAccounting::Monetary(economy) = &mut missing.accounting else {
+        unreachable!()
+    };
+    economy.recurring = None;
+    let mut physical = missing.clone();
+    physical.accounting = CircuitAccounting::PhysicalControl;
+    for state in [&missing, &physical] {
+        assert_eq!(
+            babylon_material_circuit::encode_material_circuit_state(&catalog, state).err(),
+            Some(MaterialCircuitError::PurchaseInvariant)
+        );
+        assert_eq!(
+            babylon_material_circuit::close_material_period(&catalog, state).err(),
+            Some(MaterialCircuitError::PurchaseInvariant)
+        );
+    }
 }

@@ -236,6 +236,7 @@ fn freight_opening() -> (MaterialCatalog, MaterialCircuitState) {
     let mut catalog = catalog.into_definition();
     state.period = 50;
     state.accounting = CircuitAccounting::PhysicalControl;
+    catalog.household_needs.clear();
     catalog.process_outputs.clear();
     catalog.input_coefficients.clear();
     catalog.labor_coefficients.clear();

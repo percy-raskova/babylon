@@ -1411,6 +1411,7 @@ fn household_stock_conservation_distinguishes_delivery_consumption_and_expiry() 
     let valid = pair(super::super::recurring_fixture::materials());
     let project_household = |pair: &Pair| {
         super::super::households::project_with_labels(
+            &pair.3,
             &pair.1,
             Some(&pair.0),
             Some(&pair.2),

@@ -1,16 +1,13 @@
 //! Captured recurring policies and current stocks; quantities retain their units.
 
 use crate::MaterialCircuitError;
-use crate::ServiceInputPolicy;
 use crate::{FinalDemandPrincipalId, GoodId, OrderId, ProcessId, SiteId, UnitId};
 use babylon_kernel::currency::Currency;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecurringEconomy {
-    pub service_inputs: Vec<ServiceInputPolicy>,
     pub households: Vec<HouseholdCohort>,
     pub household_stocks: Vec<HouseholdStock>,
-    pub household_needs: Vec<HouseholdNeed>,
     pub household_purchases: Vec<HouseholdPurchasePolicy>,
     pub offers: Vec<SellerOffer>,
     pub replenishment: Vec<ReplenishmentPolicy>,

@@ -53,10 +53,13 @@ fn assert_aid_projection(routed: bool) {
         }
         fixture::commit(&mut session, &mut sink, candidate);
         let current = session.material().state();
-        let projected =
-            households::project_with_labels(current, Some(&prior), Some(&receipts), |_, _| {
-                Some(("Food".to_owned(), "units".to_owned()))
-            });
+        let projected = households::project_with_labels(
+            session.catalog(),
+            current,
+            Some(&prior),
+            Some(&receipts),
+            |_, _| Some(("Food".to_owned(), "units".to_owned())),
+        );
         assert!(
             projected.is_ok(),
             "routed={routed} period={period}: {projected:?}"
@@ -99,7 +102,7 @@ fn assert_aid_projection(routed: bool) {
                 .expect("the fixture arithmetic stays in range");
             for corrupted in [missing, duplicate, changed] {
                 assert_eq!(
-                    aid::join(&prior, current, &corrupted).err(),
+                    aid::join(session.catalog(), &prior, current, &corrupted).err(),
                     Some(ProductionProjectionError::State)
                 );
             }

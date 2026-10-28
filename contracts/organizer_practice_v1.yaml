@@ -113,7 +113,7 @@ knowledge:
   collection_history: exact_amount_outcome_and_commitment_for_controlled_actor_recent_eight_receipts
 
 replay_successor:
-  material_register: material_world_register_v4
+  material_register: material_world_register_v5
   action_inputs: existing_ordered_practice_batch_binds_all_accepted_commands_including_zero_hour_controls
   tick_payload_layout: 2
   action_outcome_section_tag: 4

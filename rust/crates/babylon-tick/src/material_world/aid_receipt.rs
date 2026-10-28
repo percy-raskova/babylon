@@ -65,10 +65,11 @@ fn validate_row(row: &AidReceipt, tick: u64) -> Result<(), MaterialWorldError> {
 }
 
 pub(super) fn validate_state(
+    catalog: &babylon_material_circuit::MaterialCatalog,
     rows: &[AidReceipt],
     state: &MaterialCircuitState,
 ) -> Result<(), MaterialWorldError> {
-    let CircuitAccounting::Monetary(economy) = &state.accounting else {
+    let CircuitAccounting::Monetary(_) = &state.accounting else {
         return if rows.is_empty() {
             Ok(())
         } else {
@@ -76,12 +77,11 @@ pub(super) fn validate_state(
         };
     };
     for row in rows {
-        let index = economy
-            .aid
-            .mandates
+        let index = catalog
+            .aid_mandates
             .binary_search_by_key(&row.mandate_id, |mandate| mandate.id)
             .map_err(|_| MaterialWorldError::Wire)?;
-        row.validate_against(&economy.aid.mandates[index])?;
+        row.validate_against(&catalog.aid_mandates[index])?;
     }
     Ok(())
 }

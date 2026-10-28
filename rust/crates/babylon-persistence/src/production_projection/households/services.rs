@@ -79,7 +79,7 @@ pub(crate) fn project_with_labels(
         .collect();
     let mut purchases = purchase_totals(receipt)?;
     let mut result = Vec::new();
-    for need in r
+    for need in catalog
         .household_needs
         .iter()
         .filter(|r| kinds.contains(&(r.good_id, r.unit_id)))

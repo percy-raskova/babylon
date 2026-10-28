@@ -2,8 +2,9 @@
 use super::MaterialWorldError;
 use babylon_material_circuit::AidFreightLot;
 use babylon_material_circuit::{
-    AccountId, AidMandate, AidOutcome, AidReceipt, CircuitAccounting, MaterialCircuitState,
-    MaterialCircuitTransition, MoneyLocation, MoneyTransferPurpose, MoneyTransferReceipt, OrderId,
+    AccountId, AidMandate, AidOutcome, AidReceipt, CircuitAccounting, MaterialCatalog,
+    MaterialCircuitState, MaterialCircuitTransition, MoneyLocation, MoneyTransferPurpose,
+    MoneyTransferReceipt, OrderId,
 };
 use babylon_practice_contract::{
     OrganizerAidCommitment, OrganizerAidMaterialPostings, OrganizerAidSupport,
@@ -13,6 +14,7 @@ use babylon_practice_contract::{
 use std::collections::BTreeSet;
 
 pub(super) fn facts(
+    catalog: &MaterialCatalog,
     config: &OrganizerConfig,
     organizer: &OrganizerState,
     accepted: Option<&OrganizerCommitment>,
@@ -22,7 +24,13 @@ pub(super) fn facts(
     let mut result = Vec::with_capacity(2);
     for pending in &organizer.pending_aid {
         babylon_practice_contract::validate_organizer_aid_commitment(config, &pending.gift)?;
-        let row = support(&pending.gift, pending.dispatch_period, opening, transition)?;
+        let row = support(
+            catalog,
+            &pending.gift,
+            pending.dispatch_period,
+            opening,
+            transition,
+        )?;
         if row.material_commitment_id != pending.material_commitment_id
             || row.good_id != pending.good_id
             || row.unit_id != pending.unit_id
@@ -40,6 +48,7 @@ pub(super) fn facts(
         let gift =
             babylon_practice_contract::organizer_aid_commitment(config, organizer, accepted)?;
         result.push(support(
+            catalog,
             &gift,
             accepted.resolves_period,
             opening,
@@ -55,6 +64,7 @@ pub(super) fn facts(
     reason = "one aid reducer keeps every mandate receipt and transfer in a single ordered pass"
 )]
 fn support(
+    catalog: &MaterialCatalog,
     gift: &OrganizerAidCommitment,
     dispatch_period: u64,
     opening: &MaterialCircuitState,
@@ -66,9 +76,8 @@ fn support(
     let CircuitAccounting::Monetary(closing) = &transition.state.accounting else {
         return Err(MaterialWorldError::Wire);
     };
-    let mandate = prior
-        .aid
-        .mandates
+    let mandate = catalog
+        .aid_mandates
         .iter()
         .find(|row| row.id == gift.mandate_id)
         .ok_or(MaterialWorldError::Wire)?;
@@ -78,7 +87,6 @@ fn support(
         || mandate.donor_contributor_id != gift.donor_contributor_id
         || mandate.donor.as_bytes() != gift.donor_principal_id
         || mandate.recipient.as_bytes() != gift.recipient_principal_id
-        || closing.aid.mandates.iter().find(|row| row.id == mandate.id) != Some(mandate)
         || dispatch_period > opening.period
     {
         return Err(MaterialWorldError::Wire);

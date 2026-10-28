@@ -518,14 +518,7 @@ fn assert_aid_period_package(
     );
     let current_sections = schema::sections(&restored.0)
         .expect("the fixture call `sections` succeeds for the authored inputs");
-    assert_eq!(
-        current_sections
-            .iter()
-            .find(|section| section.id == 70)
-            .expect("the fixture holds the searched element")
-            .count,
-        Some(1)
-    );
+    assert!(current_sections.iter().all(|section| section.id != 70));
     let organizer = current_sections
         .iter()
         .find(|section| section.id == 69)

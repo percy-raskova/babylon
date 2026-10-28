@@ -27,7 +27,6 @@ use babylon_material_circuit::CorridorId;
 use babylon_material_circuit::HistoricalCostBook;
 use babylon_material_circuit::HouseholdDemandReceipt;
 use babylon_material_circuit::HouseholdNeedBasis;
-use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MonetaryBook;
@@ -461,7 +460,8 @@ fn market_aid_opening(cut: MarketProvisionCut) -> Materials {
         .find(|r| r.principal_id == organizer_aid_fixture::household())
         .expect("the fixture holds the searched element")
         .target_closing_stock = 2;
-    rows.household_needs
+    catalog
+        .household_needs
         .iter_mut()
         .find(|r| r.principal_id == organizer_aid_fixture::household())
         .expect("the fixture holds the searched element")
@@ -490,7 +490,7 @@ fn market_aid_opening(cut: MarketProvisionCut) -> Materials {
     .expect("the fixture opens the authored source");
     e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
         .expect("the fixture opens the authored source");
-    e.aid.mandates[0].maximum_quantity = 1;
+    catalog.aid_mandates[0].maximum_quantity = 1;
     if matches!(cut, MarketProvisionCut::SupplyRoute) {
         state
             .corridor_capacities
@@ -505,17 +505,6 @@ fn market_aid_opening(cut: MarketProvisionCut) -> Materials {
             .filter(|r| r.process_id == process(2))
             .for_each(|r| r.available_batches = 0);
     }
-    let CircuitAccounting::Monetary(e) = &state.accounting else {
-        unreachable!()
-    };
-    catalog.aid_mandates.clone_from(&e.aid.mandates);
-    if let Some(recurring) = &e.recurring {
-        catalog
-            .household_needs
-            .clone_from(&recurring.household_needs);
-    }
-    if let HouseholdTimeAccounting::Modeled(time) = &e.household_time {
-        catalog.household_time_policy.clone_from(&time.policies);
-    }
+
     Materials { catalog, state }
 }

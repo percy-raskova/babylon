@@ -62,9 +62,8 @@ fn split_existing_household() -> (MaterialCatalog, MaterialCircuitState) {
         unit_id: crate::units(),
         quantity: 2,
     });
-    let mut need = recurring.household_needs[0].clone();
+    let mut need = catalog.household_needs[0].clone();
     need.principal_id = second;
-    recurring.household_needs.push(need.clone());
     catalog.household_needs.push(need);
     recurring.household_purchases[0].target_closing_stock = 6;
     recurring.household_purchases[0].maximum_purchase = 3;
@@ -233,7 +232,9 @@ fn zero_households_require_explicit_collective_kind_and_no_household_basis_need(
     );
     let recurring = crate::recurring_mut(&mut collective);
     recurring.households[0].households = 0;
-    recurring.household_needs[0].basis = HouseholdNeedBasis::Households;
+    let mut catalog = catalog.into_definition();
+    catalog.household_needs[0].basis = HouseholdNeedBasis::Households;
+    let catalog = MaterialCatalog::try_new(catalog).expect("valid catalog");
     assert!(babylon_material_circuit::advance_material_circuit(&catalog, &collective).is_err());
 }
 

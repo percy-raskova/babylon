@@ -89,7 +89,7 @@ pub(super) fn validate(
     }
     validate_outputs(catalog, prior, receipt, &production, &kinds, performed)?;
     let mut expected_use = recipe_use(catalog, &production, &kinds)?;
-    household_use(prior, receipt, &kinds, &grants, &mut expected_use)?;
+    household_use(catalog, prior, receipt, &kinds, &grants, &mut expected_use)?;
     if nonzero(used) != nonzero(expected_use) {
         return Err(ProductionProjectionError::State);
     }
@@ -169,6 +169,7 @@ fn recipe_use(
     Ok(result)
 }
 fn household_use(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
     kinds: &BTreeSet<(GoodId, UnitId)>,
@@ -178,7 +179,7 @@ fn household_use(
     let mut expected = BTreeMap::new();
     if let Some(r) = lifecycle::recurring(prior) {
         let households: BTreeMap<_, _> = r.households.iter().map(|r| (r.principal_id, r)).collect();
-        for need in &r.household_needs {
+        for need in &catalog.household_needs {
             if !kinds.contains(&(need.good_id, need.unit_id)) {
                 continue;
             }

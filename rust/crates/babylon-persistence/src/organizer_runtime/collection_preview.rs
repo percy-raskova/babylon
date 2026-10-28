@@ -110,10 +110,10 @@ mod tests {
             false,
             false,
         );
-        let CircuitAccounting::Monetary(economy) = &session.material().state().accounting else {
+        let CircuitAccounting::Monetary(_) = &session.material().state().accounting else {
             panic!("monetary captured fixture");
         };
-        let labor_unit_id = economy.aid.mandates[0].labor_unit_id.as_bytes();
+        let labor_unit_id = session.catalog().aid_mandates[0].labor_unit_id.as_bytes();
         let mut config = session
             .material()
             .organizer_config()

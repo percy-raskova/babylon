@@ -85,10 +85,8 @@ fn receipts(period: u64) -> MaterialTickReceipts {
 }
 fn recurring(retailer: u8) -> RecurringEconomy {
     RecurringEconomy {
-        service_inputs: vec![],
         households: vec![],
         household_stocks: vec![],
-        household_needs: vec![],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: household(),
             retailer_site_id: site(retailer),

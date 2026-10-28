@@ -139,12 +139,12 @@ impl MaterialBaseInputs<'_> {
             .ok_or(MaterialWorldError::Wire)?;
         let gift = babylon_practice_contract::organizer_aid_commitment(config, opening, accepted)
             .map_err(|error| MaterialBaseError::World(error.into()))?;
-        let CircuitAccounting::Monetary(economy) = &self.opening.state().accounting else {
+        let CircuitAccounting::Monetary(_) = &self.opening.state().accounting else {
             return Err(MaterialWorldError::Wire.into());
         };
-        let mut matches = economy
-            .aid
-            .mandates
+        let mut matches = self
+            .catalog
+            .aid_mandates
             .iter()
             .filter(|row| row.id == gift.mandate_id);
         let mandate = matches
@@ -201,6 +201,7 @@ impl MaterialBaseInputs<'_> {
             ) {
                 (Some(config), Some(organizer)) => {
                     crate::material_world::organizer_collection::input(
+                        self.catalog,
                         config,
                         organizer,
                         self.commitment,

@@ -92,9 +92,9 @@ pub(super) fn wire(
             unmet_burdens: burdens,
         });
     }
-    builder.opening.policies.household_time = HouseholdTimeAccounting::Modeled(
-        HouseholdTimeBook::new(policies).map_err(NationalOpeningError::TimeAccount)?,
-    );
+    builder.opening.policies.household_time_policy = policies;
+    builder.opening.policies.household_time =
+        HouseholdTimeAccounting::Modeled(HouseholdTimeBook::default());
     Ok(())
 }
 

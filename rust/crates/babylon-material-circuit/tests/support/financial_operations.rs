@@ -163,8 +163,14 @@ fn configure_service_money(
         vec![],
     )
     .expect("the fixture opens the authored source");
+    let household_needs = vec![HouseholdNeed {
+        principal_id: crate::household(),
+        good_id: service,
+        unit_id: native,
+        basis: HouseholdNeedBasis::Persons,
+        units_per_basis: 1,
+    }];
     let recurring = RecurringEconomy {
-        service_inputs: vec![],
         households: vec![HouseholdCohort {
             kind: babylon_material_circuit::HouseholdKind::Ordinary,
             principal_id: crate::household(),
@@ -172,13 +178,6 @@ fn configure_service_money(
             persons: 1,
         }],
         household_stocks: vec![],
-        household_needs: vec![HouseholdNeed {
-            principal_id: crate::household(),
-            good_id: service,
-            unit_id: native,
-            basis: HouseholdNeedBasis::Persons,
-            units_per_basis: 1,
-        }],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: crate::household(),
             retailer_site_id: crate::site(),
@@ -211,9 +210,7 @@ fn configure_service_money(
         last_household_admission_period: 0,
         last_household_consumption_period: 0,
     };
-    catalog
-        .household_needs
-        .clone_from(&recurring.household_needs);
+    catalog.household_needs.clone_from(&household_needs);
     e.recurring = Some(Box::new(recurring));
 }
 fn income(t: &MaterialCircuitTransition, account: AccountId) -> &IncomeReceipt {

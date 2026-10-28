@@ -16,9 +16,13 @@ pub(super) fn assert_time(opening: &EconomicOpening, policy: &NationalGamePolicy
         panic!("captured national time controls must reach the material engine");
     };
     assert!(book.receipts.is_empty() && book.contributions.is_empty());
-    assert_eq!(book.policies.len(), opening.households.len());
-    assert!(book
-        .policies
+    assert_eq!(
+        compiled.catalog.household_time_policy.len(),
+        opening.households.len()
+    );
+    assert!(compiled
+        .catalog
+        .household_time_policy
         .windows(2)
         .all(|pair| pair[0].principal_id < pair[1].principal_id));
     let residents: BTreeMap<_, _> = opening
@@ -38,7 +42,7 @@ pub(super) fn assert_time(opening: &EconomicOpening, policy: &NationalGamePolicy
     let mut domestic_eligible = 0_u64;
     let mut domestic_locations = BTreeSet::new();
     let mut external = 0;
-    for time in &book.policies {
+    for time in &compiled.catalog.household_time_policy {
         let household = residents[&time.principal_id];
         let counted_force = workforce
             .get(&time.principal_id)

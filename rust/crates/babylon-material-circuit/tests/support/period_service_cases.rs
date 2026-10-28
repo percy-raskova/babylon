@@ -65,10 +65,8 @@ fn household_service_need_uses_the_selected_basis_at_admission_and_consumption()
             .as_mut()
             .expect("the fixture set the optional field before this borrow");
         rows.households[0].persons = 4;
-        rows.household_needs[0].basis = basis;
         rows.household_purchases[0].maximum_purchase = 4;
-        let needs = rows.household_needs.clone();
-        let catalog = resealed(catalog, |catalog| catalog.household_needs = needs);
+        let catalog = resealed(catalog, |catalog| catalog.household_needs[0].basis = basis);
         let close = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
         let receipt = &close.household_services[0];
@@ -124,36 +122,43 @@ pub(super) fn recurring(
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         panic!()
     };
+    let household_needs = vec![HouseholdNeed {
+        principal_id: crate::household(),
+        good_id: crate::good(2),
+        unit_id: crate::unit(2),
+        basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
+        units_per_basis: 1,
+    }];
+    let service_inputs = vec![
+        ServiceInputPolicy {
+            buyer_site_id: crate::site(2),
+            provider_site_id: crate::site(1),
+            good_id: crate::good(1),
+            unit_id: crate::unit(1),
+            quantity_per_period: 2,
+            maximum_purchase: 2,
+            cash_floor: crate::money(0),
+        },
+        ServiceInputPolicy {
+            buyer_site_id: crate::site(3),
+            provider_site_id: crate::site(1),
+            good_id: crate::good(1),
+            unit_id: crate::unit(1),
+            quantity_per_period: 1,
+            maximum_purchase: 1,
+            cash_floor: crate::money(0),
+        },
+        ServiceInputPolicy {
+            buyer_site_id: crate::site(3),
+            provider_site_id: crate::site(2),
+            good_id: crate::good(2),
+            unit_id: crate::unit(2),
+            quantity_per_period: 1,
+            maximum_purchase: 1,
+            cash_floor: crate::money(0),
+        },
+    ];
     let recurring = RecurringEconomy {
-        service_inputs: vec![
-            ServiceInputPolicy {
-                buyer_site_id: crate::site(2),
-                provider_site_id: crate::site(1),
-                good_id: crate::good(1),
-                unit_id: crate::unit(1),
-                quantity_per_period: 2,
-                maximum_purchase: 2,
-                cash_floor: crate::money(0),
-            },
-            ServiceInputPolicy {
-                buyer_site_id: crate::site(3),
-                provider_site_id: crate::site(1),
-                good_id: crate::good(1),
-                unit_id: crate::unit(1),
-                quantity_per_period: 1,
-                maximum_purchase: 1,
-                cash_floor: crate::money(0),
-            },
-            ServiceInputPolicy {
-                buyer_site_id: crate::site(3),
-                provider_site_id: crate::site(2),
-                good_id: crate::good(2),
-                unit_id: crate::unit(2),
-                quantity_per_period: 1,
-                maximum_purchase: 1,
-                cash_floor: crate::money(0),
-            },
-        ],
         households: vec![HouseholdCohort {
             kind: babylon_material_circuit::HouseholdKind::Ordinary,
             principal_id: crate::household(),
@@ -161,13 +166,6 @@ pub(super) fn recurring(
             persons: 1,
         }],
         household_stocks: vec![],
-        household_needs: vec![HouseholdNeed {
-            principal_id: crate::household(),
-            good_id: crate::good(2),
-            unit_id: crate::unit(2),
-            basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
-            units_per_basis: 1,
-        }],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: crate::household(),
             retailer_site_id: crate::site(2),
@@ -227,10 +225,8 @@ pub(super) fn recurring(
         last_household_consumption_period: 0,
     };
     let mut catalog = catalog.into_definition();
-    catalog.service_inputs.clone_from(&recurring.service_inputs);
-    catalog
-        .household_needs
-        .clone_from(&recurring.household_needs);
+    catalog.service_inputs = service_inputs;
+    catalog.household_needs.clone_from(&household_needs);
 
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     e.recurring = Some(Box::new(recurring));
@@ -917,4 +913,47 @@ fn prebooked_household_service_retains_its_price_and_is_not_purchased_twice() {
             .consumption_expense,
         crate::money(1)
     );
+}
+
+#[test]
+fn service_inputs_are_catalog_authority_and_foreign_catalog_refuses_state() {
+    let (catalog, state) = recurring(crate::opening());
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
+        .expect("original catalog admits state");
+    let mut foreign = catalog.clone().into_definition();
+    foreign.service_inputs[0].quantity_per_period += 1;
+    let foreign = MaterialCatalog::try_new(foreign).expect("altered catalog is valid");
+    let foreign_bytes = babylon_material_circuit::encode_material_circuit_state(&foreign, &state)
+        .expect("altered catalog admits the same dynamic state");
+    let payload_offset = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1 + 2 + 32;
+    assert_eq!(&bytes[payload_offset..], &foreign_bytes[payload_offset..]);
+    assert_ne!(catalog.catalog_digest(), foreign.catalog_digest());
+    assert_eq!(
+        decode_material_circuit_state(&foreign, &bytes),
+        Err(MaterialCircuitError::WireDomain),
+    );
+}
+
+#[test]
+fn inactive_recurring_modes_refuse_service_inputs() {
+    let (catalog, mut missing) = recurring(crate::opening());
+    let mut definition = catalog.into_definition();
+    definition.household_needs.clear();
+    let catalog = MaterialCatalog::try_new(definition).expect("catalog remains valid");
+    let CircuitAccounting::Monetary(economy) = &mut missing.accounting else {
+        unreachable!()
+    };
+    economy.recurring = None;
+    let mut physical = missing.clone();
+    physical.accounting = CircuitAccounting::PhysicalControl;
+    for state in [&missing, &physical] {
+        assert_eq!(
+            babylon_material_circuit::encode_material_circuit_state(&catalog, state).err(),
+            Some(MaterialCircuitError::ServiceInvariant)
+        );
+        assert_eq!(
+            babylon_material_circuit::close_material_period(&catalog, state).err(),
+            Some(MaterialCircuitError::ServiceInvariant)
+        );
+    }
 }

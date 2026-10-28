@@ -13,8 +13,6 @@ fn resident_and_household_bases_drive_real_consumption_without_changing_counts()
         let (catalog, mut state) = crate::opening();
         let mut catalog = catalog.into_definition();
         let recurring = crate::recurring_mut(&mut state);
-        recurring.household_needs[0].basis = basis;
-        recurring.household_needs[0].units_per_basis = 2;
         recurring.household_purchases[0].enabled = false;
         catalog.household_needs[0].basis = basis;
         catalog.household_needs[0].units_per_basis = 2;

@@ -133,16 +133,6 @@ const LAYOUTS: &[(u16, Layout)] = &[
         ]
     ), // recurring.household_stocks
     fixed!(
-        32,
-        105,
-        131_072,
-        [
-            (0, Identity(K::FinalDemandPrincipal)),
-            (32, Identity(K::Good)),
-            (64, Identity(K::Unit))
-        ]
-    ), // recurring.household_needs
-    fixed!(
         33,
         145,
         131_072,
@@ -176,17 +166,6 @@ const LAYOUTS: &[(u16, Layout)] = &[
         65_536,
         [(0, Identity(K::Site)), (32, Identity(K::Unit))]
     ), // recurring.attendance
-    fixed!(
-        38,
-        160,
-        65_536,
-        [
-            (0, Identity(K::Site)),
-            (32, Identity(K::Site)),
-            (64, Identity(K::Good)),
-            (96, Identity(K::Unit))
-        ]
-    ), // recurring.service_inputs
     fixed!(39, 81, 131_072, [(1, Account)]),              // cost.accounts
     fixed!(
         40,

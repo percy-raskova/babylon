@@ -27,13 +27,17 @@ pub fn recurring_household_order_id(
     OrderId::from_bytes(content_digest::sha256_of(&bytes))
 }
 
-fn requirements(rows: &RecurringEconomy) -> Result<BTreeMap<HouseholdKey, u64>> {
+fn requirements(
+    catalog: &MaterialCatalog,
+    rows: &RecurringEconomy,
+) -> Result<BTreeMap<HouseholdKey, u64>> {
     let households: BTreeMap<_, _> = rows
         .households
         .iter()
         .map(|r| (r.principal_id, r))
         .collect();
-    rows.household_needs
+    catalog
+        .household_needs
         .iter()
         .map(|need| {
             let cohort = households
@@ -71,7 +75,7 @@ pub(crate) fn admit_household_orders(
     let Some(rows) = &mut economy.recurring else {
         return Ok(vec![]);
     };
-    let required = requirements(rows)?;
+    let required = requirements(catalog, rows)?;
     let stock: BTreeMap<_, _> = rows
         .household_stocks
         .iter()
@@ -192,6 +196,7 @@ fn fund_order(
 }
 
 fn validate_demand_receipts(
+    catalog: &MaterialCatalog,
     rows: &RecurringEconomy,
     period: u64,
     demands: &[HouseholdDemandReceipt],
@@ -204,7 +209,7 @@ fn validate_demand_receipts(
         .iter()
         .map(|r| ((r.principal_id, r.good_id, r.unit_id), r))
         .collect();
-    let required = requirements(rows)?;
+    let required = requirements(catalog, rows)?;
     let stocks: BTreeMap<_, _> = rows
         .household_stocks
         .iter()
@@ -289,6 +294,7 @@ fn validate_handoff(
 /// Credit and settle new handoffs once, then expire only generated principals.
 /// A prior finite household order remains open for its undelivered remainder.
 pub(crate) fn complete_household_orders(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     demands: &mut [HouseholdDemandReceipt],
     handoffs: &[LocalRetailFulfillmentReceipt],
@@ -301,7 +307,7 @@ pub(crate) fn complete_household_orders(
         return Ok(());
     };
     household_phase(rows, state.period)?;
-    validate_demand_receipts(rows, state.period, demands)?;
+    validate_demand_receipts(catalog, rows, state.period, demands)?;
     if handoffs.len() > MAX_MATERIAL_CIRCUIT_ROWS {
         return Err(MaterialCircuitError::RowLimit);
     }
@@ -426,6 +432,7 @@ fn resolve_generated_order(
 
 /// Consume this period's need from actual stock; unmet units are evidence, not debt.
 pub(crate) fn consume_household_needs(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
 ) -> Result<Vec<HouseholdConsumptionReceipt>> {
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
@@ -454,7 +461,7 @@ pub(crate) fn consume_household_needs(
             return Err(MaterialCircuitError::PurchaseInvariant);
         }
     }
-    let receipts = preview_household_needs(rows, state.period)?;
+    let receipts = preview_household_needs(catalog, rows, state.period)?;
     let closing: BTreeMap<_, _> = receipts
         .iter()
         .map(|r| ((r.principal_id, r.good_id, r.unit_id), r.closing_quantity))
@@ -471,10 +478,11 @@ pub(crate) fn consume_household_needs(
 }
 
 pub(crate) fn preview_household_needs(
+    catalog: &MaterialCatalog,
     rows: &RecurringEconomy,
     period: u64,
 ) -> Result<Vec<HouseholdConsumptionReceipt>> {
-    let needed = requirements(rows)?;
+    let needed = requirements(catalog, rows)?;
     let stocks: BTreeMap<_, _> = rows
         .household_stocks
         .iter()

@@ -15,7 +15,7 @@ use babylon_kernel::geography::CountyGeoid;
 
 use super::sources::SourceArtifact;
 use babylon_kernel::clock::CampaignDuration;
-use babylon_material_circuit::AidBook;
+use babylon_material_circuit::AidMandate;
 use babylon_material_circuit::CapacityRow;
 use babylon_material_circuit::CashAccount;
 use babylon_material_circuit::CommodityDefinition;
@@ -181,8 +181,9 @@ pub enum CatalogAccounting {
 /// Opening policies reuse the engine's exact types without retaining dynamic cursors.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogPolicies {
-    pub aid: AidBook,
+    pub aid_mandates: Vec<AidMandate>,
     pub household_time: HouseholdTimeAccounting,
+    pub household_time_policy: Vec<babylon_material_circuit::HouseholdTimePolicy>,
     pub offers: Vec<SellerOffer>,
     pub replenishment: Vec<ReplenishmentPolicy>,
     pub household_purchases: Vec<HouseholdPurchasePolicy>,

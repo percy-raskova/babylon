@@ -82,10 +82,8 @@ fn local_cost_economy() -> MonetaryCircuit {
             compensation: babylon_material_circuit::LaborCompensation::Wage(crate::money(1)),
         }],
         recurring: Some(Box::new(RecurringEconomy {
-            service_inputs: vec![],
             households: vec![],
             household_stocks: vec![],
-            household_needs: vec![],
             household_purchases: vec![],
             offers: vec![SellerOffer {
                 site_id: crate::site(2),
@@ -119,6 +117,7 @@ fn local_cost_economy() -> MonetaryCircuit {
 fn local_cost_opening() -> (MaterialCatalog, MaterialCircuitState) {
     let (catalog, mut state) = crate::opening();
     let mut catalog = catalog.into_definition();
+    catalog.household_needs.clear();
     state.accounting = CircuitAccounting::Monetary(Box::new(local_cost_economy()));
     state.inventory = vec![inventory(1, 2, 1), inventory(2, 2, 1)];
     catalog.process_outputs.clear();

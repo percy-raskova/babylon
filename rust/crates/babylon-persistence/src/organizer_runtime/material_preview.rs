@@ -7,11 +7,11 @@ use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::RecurringEconomy;
 use babylon_material_circuit::UnitId;
 use babylon_material_circuit::{
-    AidTransport, CircuitAccounting, HouseholdTimeAccounting, MaterialCircuitState,
+    AidTransport, CircuitAccounting, HouseholdTimeAccounting, MaterialCatalog, MaterialCircuitState,
 };
 use babylon_practice_contract::{
     OrganizerAidKind, OrganizerAidSupport, OrganizerConfig, OrganizerGiftConsent,
-    OrganizerPendingAidPractice, OrganizerReceipt, OrganizerState,
+    OrganizerPendingAidPractice, OrganizerPeriodJournalEntries, OrganizerReceipt,
 };
 use serde::{Deserialize, Serialize};
 type Result<T> = std::result::Result<T, RuntimeSessionErrorCode>;
@@ -118,6 +118,7 @@ pub(super) fn pending(row: &OrganizerPendingAidPractice) -> OrganizerAidPending 
     }
 }
 pub(super) fn projections(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     config: &OrganizerConfig,
     period: u64,
@@ -168,7 +169,7 @@ pub(super) fn projections(
                 unit_price: o.unit_price.micro_units(),
             });
         let time = remaining_time(state, mandate.donor, mandate.labor_unit_id, period)?;
-        let transport = transport(state, mandate.transport)?;
+        let transport = transport(catalog, state, mandate.transport)?;
         result.push(OrganizerMaterialAidPreview {
             kind: binding.kind,
             mandate_id: mandate.id,
@@ -179,7 +180,7 @@ pub(super) fn projections(
             unit_id: mandate.unit_id.as_bytes(),
             donor_stock,
             own_need,
-            grams_per_unit: state
+            grams_per_unit: catalog
                 .commodities
                 .iter()
                 .find(|r| r.good_id == mandate.good_id && r.unit_id == mandate.unit_id)
@@ -279,6 +280,7 @@ fn remaining_time(
     }))
 }
 fn transport(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     value: AidTransport,
 ) -> Result<OrganizerAidTransportPreview> {
@@ -292,7 +294,11 @@ fn transport(
     };
     let mut departure = state.period;
     let mut stages = Vec::new();
-    for row in state.route_stages.iter().filter(|r| r.route_id == route_id) {
+    for row in catalog
+        .route_stages
+        .iter()
+        .filter(|r| r.route_id == route_id)
+    {
         let capacities = state
             .route_stage_capacities
             .iter()
@@ -300,7 +306,7 @@ fn transport(
             .map(|m| {
                 Ok(OrganizerAidCapacity {
                     corridor_id: m.corridor_id.as_bytes(),
-                    remaining_grams: remaining_capacity(state, m.corridor_id, departure)?,
+                    remaining_grams: remaining_capacity(catalog, state, m.corridor_id, departure)?,
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -327,11 +333,11 @@ fn transport(
         stages,
     })
 }
-pub(super) fn resolutions(state: &OrganizerState) -> Vec<OrganizerAidResolution> {
-    state
+pub(super) fn resolutions(entries: &OrganizerPeriodJournalEntries) -> Vec<OrganizerAidResolution> {
+    entries
         .aid_receipts
         .iter()
-        .filter(|r| r.practice.period == state.period)
+        .filter(|r| r.practice.period == entries.period)
         .map(|r| OrganizerAidResolution {
             pending: pending(&r.authorization),
             support: r.support.clone(),
@@ -341,6 +347,7 @@ pub(super) fn resolutions(state: &OrganizerState) -> Vec<OrganizerAidResolution>
 }
 
 fn remaining_capacity(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     id: CorridorId,
     period: u64,
@@ -352,14 +359,15 @@ fn remaining_capacity(
     {
         return Ok(Some(row.available_grams));
     }
-    match &state.capacity_supply {
+    match &catalog.capacity_policy {
         CapacitySupply::FiniteSchedule => Ok(Some(0)),
         CapacitySupply::Rolling(supply) => {
             let Some(row) = supply.shared.iter().find(|r| r.corridor_id == id) else {
                 return Ok(None);
             };
-            let reserved = supply
-                .future_reservations
+            let reserved = state
+                .capacity_reservations
+                .future
                 .iter()
                 .filter(|r| r.corridor_id == id && r.departure_period == period)
                 .try_fold(0u64, |sum, r| {

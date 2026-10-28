@@ -148,6 +148,7 @@ mod tests {
     use crate::michigan_defines::MichiganDefines;
     use crate::michigan_material::MichiganDeliveryPreset;
     use crate::michigan_material::MichiganMaterialCatalog;
+    use babylon_practice_contract::OrganizerPeriodJournal;
     use std::path::Path;
     use uuid::Uuid;
     #[test]
@@ -161,9 +162,13 @@ mod tests {
             .expect("the fixture call `config` succeeds for the authored inputs");
         let state = babylon_practice_contract::initial_organizer_state(&config)
             .expect("the authored config admits an opening organizer state");
-        let view =
-            babylon_practice_contract::organizer_view(&config, &state, config.controlled_actor_id)
-                .expect("the fixture call `organizer_view` succeeds for the authored inputs");
+        let view = babylon_practice_contract::organizer_view(
+            &config,
+            &state,
+            &OrganizerPeriodJournal::empty(),
+            config.controlled_actor_id,
+        )
+        .expect("the fixture call `organizer_view` succeeds for the authored inputs");
         assert_eq!(
             (view.available_hours, view.inquiry_hours, view.contact_hours),
             (16, 12, 8)

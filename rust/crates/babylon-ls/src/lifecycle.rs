@@ -919,7 +919,7 @@ note = "LSP request fixture"
                 .message
                 .contains("campaign context is unavailable"));
             assert!(!diagnostics[0].message.contains("checks run"));
-            assert!(!result_id.is_empty());
+            assert_ne!(result_id.len(), 0);
         }
     }
 

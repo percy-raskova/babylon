@@ -503,7 +503,7 @@ impl InterventionDelta {
         for row in rows.into_iter().take(65_536) {
             admitted.push(row);
         }
-        admitted.sort_by(|left, right| left.stable_row_id_digest.cmp(&right.stable_row_id_digest));
+        admitted.sort_by_key(|left| left.stable_row_id_digest);
         reject_delta_duplicates(&admitted)?;
         Ok(Self {
             ledger_kind,

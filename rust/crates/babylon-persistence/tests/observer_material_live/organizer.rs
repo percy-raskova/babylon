@@ -28,6 +28,7 @@ use babylon_persistence::{
     ArchiveDossierProducer, ArchiveKnowledge, OrganizerDossierProducer, PendingArchiveReceipt,
     SemanticArchiveError,
 };
+use babylon_practice_contract::OrganizerPeriodJournalEntries;
 use postgres::{Config, NoTls};
 use std::path::Path;
 use uuid::Uuid;
@@ -494,10 +495,11 @@ fn qualify_observation_metadata(
     let observation = runtime
         .session()
         .material()
-        .organizer_state()
-        .expect("the fixture register carries organizer state")
-        .observations
+        .organizer_journal()
+        .expect("the fixture register carries organizer journal")
+        .periods
         .iter()
+        .flat_map(|entries| &entries.observations)
         .find(|row| row.acquired_period == 3)
         .expect("the fixture holds the searched element")
         .clone();
@@ -541,9 +543,11 @@ fn qualify_receipt_metadata(
     let receipt = runtime
         .session()
         .material()
-        .organizer_state()
-        .expect("the fixture register carries organizer state")
-        .receipts
+        .organizer_journal()
+        .expect("the fixture register carries organizer journal")
+        .periods
+        .iter()
+        .flat_map(OrganizerPeriodJournalEntries::receipts)
         .last()
         .expect("the fixture sequence is non-empty")
         .clone();

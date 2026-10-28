@@ -6,6 +6,7 @@ use super::ServiceMarketReceipt;
 use super::ServicePerformanceReceipt;
 use super::ServicePriceDecision;
 use super::UnitId;
+use crate::MaterialCatalog;
 use crate::SiteId;
 use crate::{CircuitAccounting, PricePolicy, ServiceOrder};
 use babylon_kernel::currency::Currency;
@@ -13,7 +14,10 @@ use std::collections::BTreeMap;
 
 type MarketKey = (SiteId, GoodId, UnitId);
 
-pub(super) fn capture(state: &MaterialCircuitState) -> Result<Vec<ServiceMarketReceipt>> {
+pub(super) fn capture(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+) -> Result<Vec<ServiceMarketReceipt>> {
     let CircuitAccounting::Monetary(e) = &state.accounting else {
         return Ok(vec![]);
     };
@@ -21,8 +25,8 @@ pub(super) fn capture(state: &MaterialCircuitState) -> Result<Vec<ServiceMarketR
         return Ok(vec![]);
     };
     let mut markets = Vec::new();
-    for output in &state.process_outputs {
-        if super::stage(state, output)?.is_none() {
+    for output in &catalog.process_outputs {
+        if super::stage(catalog, output)?.is_none() {
             continue;
         }
         let offer = r
@@ -44,6 +48,7 @@ pub(super) fn capture(state: &MaterialCircuitState) -> Result<Vec<ServiceMarketR
             admitted_quantity: 0,
             performed_quantity: 0,
             available_capacity: crate::capacity::process_available(
+                catalog,
                 state,
                 output.process_id,
                 output.site_id,
@@ -71,6 +76,7 @@ fn sum(
     })
 }
 pub(super) fn update(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     performance: &[ServicePerformanceReceipt],
     markets: &mut [ServiceMarketReceipt],
@@ -127,11 +133,11 @@ pub(super) fn update(
             .map(|i| &mut r.production[i])
             .ok_or(MaterialCircuitError::ProcessInvariant)?
             .planned_batches = market.planned_quantity.div_ceil(
-            state
+            catalog
                 .process_outputs
                 .binary_search_by_key(&market.process_id, |o| o.process_id)
                 .ok()
-                .map(|i| &state.process_outputs[i])
+                .map(|i| &catalog.process_outputs[i])
                 .ok_or(MaterialCircuitError::ProcessInvariant)?
                 .quantity_per_batch,
         );

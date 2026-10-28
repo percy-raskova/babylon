@@ -44,6 +44,7 @@ mod live_tests {
     use crate::michigan_material::MichiganDeliveryPreset;
     use crate::michigan_material::MichiganMaterialCatalog;
     use babylon_kernel::content_digest;
+    use babylon_material_circuit::MaterialCatalog;
     use babylon_tick::material_world::MaterialWorldRegister;
     use postgres::Client;
     use postgres::{Config, NoTls};
@@ -57,10 +58,11 @@ mod live_tests {
     fn valid_changed_material_receipt(
         owner: &mut Client,
         campaign: CampaignId,
+        catalog: &MaterialCatalog,
         base: &[u8],
     ) -> Vec<u8> {
-        let opening =
-            crate::material_storage::seed(base).expect("the fixture seeds the authored rows");
+        let opening = crate::material_storage::seed(catalog, base)
+            .expect("the fixture seeds the authored rows");
         let mut chain = crate::material_storage::initial_lookup_chain(&opening)
             .expect("the opening register builds its first lookup chain");
         let mut loaded = None;
@@ -88,6 +90,7 @@ mod live_tests {
         let lookup = loaded.expect("the fixture carries the loaded value");
         let row=owner.query_one("SELECT register_storage_bytes,receipt_storage_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid()]).expect("the seeded row is present exactly once");
         let (register, mut receipts) = crate::material_storage::decode(
+            catalog,
             &opening,
             2,
             row.get::<_, &[u8]>(0),
@@ -113,14 +116,15 @@ mod live_tests {
         assert_ne!(content_digest::sha256_of(&receipts), original_digest);
         babylon_tick::material_world::decode_material_receipts(&receipts)
             .expect("the canonical bytes decode into the declared type");
-        let register =
-            MaterialWorldRegister::decode(&register).expect("the committed canonical bytes decode");
+        let register = MaterialWorldRegister::decode_external(catalog, register)
+            .expect("the committed canonical bytes decode");
         let encoded =
             crate::material_storage::encode(&register, &receipts, &opening, lookup.previous_chain)
                 .expect("the fixture value encodes canonically");
         assert_eq!(encoded.lookup.entries(), lookup.lookup.entries());
         assert_eq!(
             crate::material_storage::decode(
+                catalog,
                 &opening,
                 2,
                 &encoded.register_storage_bytes,
@@ -137,6 +141,10 @@ mod live_tests {
 
     #[test]
     #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one storage witness asserts the complete canonical inverse in sequence"
+    )]
     fn live_material_commit_loss_reconciles_only_the_complete_persisted_candidate() {
         use crate::material_runtime::{CommitFault, DurableMaterialRuntime, COMMIT_FAULT};
         let base = validated_base_config();
@@ -169,7 +177,7 @@ mod live_tests {
         assert_eq!(runtime.session().completed_tick(), 0);
         assert_eq!(runtime.session().material().canonical_bytes(), before);
         assert!(runtime.diagnostic_receipt().is_none());
-        assert!(sink.events.is_empty());
+        assert_eq!(sink.events.len(), 0);
         let mut owner = config
             .connect(NoTls)
             .expect("the test database accepts the connection");
@@ -219,14 +227,19 @@ mod live_tests {
             .get(0);
         assert_eq!(count, 2);
         let original:Vec<u8>=owner.query_one("SELECT receipt_storage_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid()]).expect("the seeded row is present exactly once").get(0);
-        let corrupt = valid_changed_material_receipt(&mut owner, campaign, &before);
+        let corrupt = valid_changed_material_receipt(
+            &mut owner,
+            campaign,
+            runtime.session().catalog(),
+            &before,
+        );
         owner.execute("UPDATE babylon_state.material_tick_v3 SET receipt_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid(),&corrupt]).expect("the test database applies the setup statement");
         let mut refused_sink = CollectingSink::default();
         assert!(stale
             .advance_and_commit(&mut refused_sink, &actions)
             .is_err());
         assert_eq!(stale.session().completed_tick(), 1);
-        assert!(refused_sink.events.is_empty());
+        assert_eq!(refused_sink.events.len(), 0);
         owner.execute("UPDATE babylon_state.material_tick_v3 SET receipt_storage_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=2", &[campaign.as_uuid(), &original]).expect("the test database applies the setup statement");
         assert_eq!(
             stale
@@ -454,7 +467,7 @@ mod live_tests {
                 .prepare_advance(&actions)
                 .expect("the session prepares the authored advance");
             let report = candidate.graph_report();
-            assert!(!report.successful_event_batch().events().is_empty());
+            assert_ne!(report.successful_event_batch().events().len(), 0);
             let mut reference = client
                 .transaction()
                 .expect("the test database opens a transaction");

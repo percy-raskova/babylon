@@ -9,26 +9,35 @@ use crate::michigan_material::MichiganDeliveryPreset;
 use crate::production_observation::{
     ProductionFreightOrderDefinition, ProductionFreightReservation,
 };
-use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::RollingProcessSupply;
+use babylon_material_circuit::{MaterialCatalog, MaterialCircuitState};
 use babylon_tick::material_world;
 use babylon_tick::material_world::MaterialTickReceipts;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-fn shared_opening(meal_order: u64, capacity: u64) -> MaterialCircuitState {
-    let catalog = crate::test_support::catalog();
+type Parts = (MaterialCatalog, MaterialCircuitState);
+type Pair = (
+    MaterialCircuitState,
+    MaterialCircuitState,
+    MaterialTickReceipts,
+    MaterialCatalog,
+);
+
+fn shared_opening(meal_order: u64, capacity: u64) -> Parts {
+    let source = crate::test_support::catalog();
     let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
-        .create_foundation(&catalog)
+        .create_foundation(&source)
         .expect("the authored catalog builds the foundation");
+    let catalog = foundation.material_catalog().clone();
     let mut state = foundation.initial_register().state().clone();
-    let sheet = catalog
+    let sheet = source
         .routes()
         .iter()
         .find(|route| route.good_key == "sheet")
         .expect("the fixture holds the searched element");
-    let meal = catalog
+    let meal = source
         .routes()
         .iter()
         .find(|route| route.good_key == "meal")
@@ -64,32 +73,22 @@ fn shared_opening(meal_order: u64, capacity: u64) -> MaterialCircuitState {
         .find(|order| order.order_id == meal.order_id())
         .expect("the fixture holds the searched element")
         .ordered = meal_order;
-    state
-        .backlog
-        .iter_mut()
-        .find(|row| row.order_id == meal.order_id())
-        .expect("the fixture holds the searched element")
-        .quantity = meal_order;
-    state
+    (catalog, state)
 }
 
-fn committed_pair(
-    state: MaterialCircuitState,
-) -> (
-    MaterialCircuitState,
-    MaterialCircuitState,
-    MaterialTickReceipts,
-) {
-    let opening = MaterialWorldRegister::try_new(0, state)
+fn committed_pair(parts: Parts) -> Pair {
+    let (catalog, state) = parts;
+    let opening = MaterialWorldRegister::try_new(&catalog, 0, state)
         .expect("the authored fixture satisfies the constructor invariants");
     let next = opening
-        .prepare_next()
+        .prepare_next(&catalog)
         .expect("the fixture prepares the authored state");
     (
         opening.state().clone(),
         next.register().state().clone(),
         material_world::decode_material_receipts(next.receipt_bytes())
             .expect("the canonical bytes decode into the declared type"),
+        catalog,
     )
 }
 
@@ -122,9 +121,9 @@ fn assert_shared_reservation(
                 .order
         })
         .collect();
-    let catalog = crate::test_support::catalog();
+    let source = crate::test_support::catalog();
     for (good, quantity) in [("sheet", expected.0), ("meal", expected.1)] {
-        let route = catalog
+        let route = source
             .routes()
             .iter()
             .find(|row| row.good_key == good)
@@ -173,9 +172,11 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
         (200, 160, (120, 40, 0)),
         (80, 160, (141, 19, 0)),
     ] {
-        let (opening, next, receipt) = committed_pair(shared_opening(meal_order, capacity));
+        let (opening, next, receipt, material) =
+            committed_pair(shared_opening(meal_order, capacity));
         let (accounts, definitions) = projection::project_freight_capacity_accounts(
             &crate::test_support::catalog(),
+            &material,
             &next,
             Some(&opening),
             Some(&receipt),
@@ -208,7 +209,6 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
         );
         let mut permuted_opening = opening.clone();
         permuted_opening.orders.reverse();
-        permuted_opening.route_stages.reverse();
         permuted_opening.route_stage_capacities.reverse();
         permuted_opening.corridor_capacities.reverse();
         let mut permuted_receipt = receipt.clone();
@@ -217,6 +217,7 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
             (accounts, definitions),
             projection::project_freight_capacity_accounts(
                 &crate::test_support::catalog(),
+                &material,
                 &next,
                 Some(&permuted_opening),
                 Some(&permuted_receipt)
@@ -228,9 +229,10 @@ fn shared_capacity_is_counted_once_with_exact_competing_dispatches_and_residual(
 
 #[test]
 fn foundation_sharing_is_known_but_completed_zero_is_not_invented() {
-    let state = shared_opening(200, 160);
+    let (material, state) = shared_opening(200, 160);
     let (accounts, _definitions) = projection::project_freight_capacity_accounts(
         &crate::test_support::catalog(),
+        &material,
         &state,
         None,
         None,
@@ -245,9 +247,10 @@ fn foundation_sharing_is_known_but_completed_zero_is_not_invented() {
             .next_opening_available_grams,
         160_000
     );
-    let (opening, next, receipt) = committed_pair(shared_opening(200, 0));
+    let (opening, next, receipt, material) = committed_pair(shared_opening(200, 0));
     let (accounts, definitions) = projection::project_freight_capacity_accounts(
         &crate::test_support::catalog(),
+        &material,
         &next,
         Some(&opening),
         Some(&receipt),
@@ -275,13 +278,14 @@ fn foundation_sharing_is_known_but_completed_zero_is_not_invented() {
 
 #[test]
 fn missing_duplicate_and_excess_receipts_or_capacity_refuse() {
-    let (opening, next, receipt) = committed_pair(shared_opening(200, 160));
-    let catalog = crate::test_support::catalog();
+    let (opening, next, receipt, material) = committed_pair(shared_opening(200, 160));
+    let source = crate::test_support::catalog();
     let mut missing = receipt.clone();
     missing.dispatches.pop();
     assert_eq!(
         projection::project_freight_capacity_accounts(
-            &catalog,
+            &source,
+            &material,
             &next,
             Some(&opening),
             Some(&missing)
@@ -292,7 +296,8 @@ fn missing_duplicate_and_excess_receipts_or_capacity_refuse() {
     duplicate.dispatches.push(receipt.dispatches[0].clone());
     assert_eq!(
         projection::project_freight_capacity_accounts(
-            &catalog,
+            &source,
+            &material,
             &next,
             Some(&opening),
             Some(&duplicate)
@@ -305,7 +310,8 @@ fn missing_duplicate_and_excess_receipts_or_capacity_refuse() {
         .push(opening.corridor_capacities[0].clone());
     assert_eq!(
         projection::project_freight_capacity_accounts(
-            &catalog,
+            &source,
+            &material,
             &next,
             Some(&duplicated_capacity),
             Some(&receipt)
@@ -316,7 +322,8 @@ fn missing_duplicate_and_excess_receipts_or_capacity_refuse() {
     wrong_next.corridor_capacities[0].available_grams += 1;
     assert_eq!(
         projection::project_freight_capacity_accounts(
-            &catalog,
+            &source,
+            &material,
             &wrong_next,
             Some(&opening),
             Some(&receipt)
@@ -331,14 +338,14 @@ fn missing_duplicate_and_excess_receipts_or_capacity_refuse() {
     reason = "`reservations_for_later_legs_debit_the_future_period_without_claiming_arrival` keeps one authored boundary's fixture and assertions together"
 )]
 fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival() {
-    let mut state = shared_opening(200, 160);
-    let catalog = crate::test_support::catalog();
-    let sheet = catalog
+    let (mut catalog, mut state) = shared_opening(200, 160);
+    let source = crate::test_support::catalog();
+    let sheet = source
         .routes()
         .iter()
         .find(|route| route.good_key == "sheet")
         .expect("the fixture holds the searched element");
-    let first = state
+    let first = catalog
         .route_stages
         .iter_mut()
         .find(|leg| leg.route_id == sheet.id())
@@ -365,10 +372,13 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
         stage_index: 1,
         corridor_id: shared_id,
     });
-    state.route_stages.push(second);
-    let (opening, next, receipt) = committed_pair(state);
+    catalog.route_stages.push(second);
+    // The catalog is sealed and ordered; re-seal it after the authored extension.
+    let catalog = MaterialCatalog::try_new(catalog).expect("the extended catalog canonicalizes");
+    let (opening, next, receipt, material) = committed_pair((catalog, state));
     let (accounts, _definitions) = projection::project_freight_capacity_accounts(
-        &catalog,
+        &source,
+        &material,
         &next,
         Some(&opening),
         Some(&receipt),
@@ -402,8 +412,8 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
             .collect::<Vec<_>>(),
         vec![(1, 160_000, 0), (2, 120_000, 40_000)]
     );
-    assert!(receipt.arrivals.is_empty());
-    let mut stages = super::super::routes::stage_index(&next)
+    assert_eq!(receipt.arrivals.len(), 0);
+    let mut stages = super::super::routes::stage_index(&material, &next)
         .expect("the fixture call `stage_index` succeeds for the authored inputs");
     let legs = stages
         .remove(&sheet.id())
@@ -425,7 +435,8 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
     capacity.available_grams += 1;
     assert_eq!(
         projection::project_freight_capacity_accounts(
-            &catalog,
+            &source,
+            &material,
             &mismatched,
             Some(&opening),
             Some(&receipt)
@@ -436,11 +447,12 @@ fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival(
 
 #[test]
 fn rolling_capacity_reconciles_future_bookings_and_refuses_unexplained_budget_changes() {
-    let catalog = crate::test_support::catalog();
-    let (opening, next, receipt) = committed_pair(rolling_two_stage_opening());
+    let source = crate::test_support::catalog();
+    let (opening, next, receipt, material) = committed_pair(rolling_two_stage_opening());
     let project = |current: &MaterialCircuitState| {
         projection::project_freight_capacity_accounts(
-            &catalog,
+            &source,
+            &material,
             current,
             Some(&opening),
             Some(&receipt),
@@ -464,44 +476,47 @@ fn rolling_capacity_reconciles_future_bookings_and_refuses_unexplained_budget_ch
             .collect::<Vec<_>>(),
         vec![(1, 160_000), (3, 120_000)]
     );
-    let babylon_material_circuit::CapacitySupply::Rolling(supply) = &next.capacity_supply else {
-        panic!("rolling supply must survive the close");
-    };
-    assert_eq!(supply.future_reservations.len(), 1);
-    assert_eq!(supply.future_reservations[0].departure_period, 3);
-    assert_eq!(supply.future_reservations[0].reserved_grams, 120_000);
+    assert_eq!(next.capacity_reservations.future.len(), 1);
+    assert_eq!(next.capacity_reservations.future[0].departure_period, 3);
+    assert_eq!(next.capacity_reservations.future[0].reserved_grams, 120_000);
     let mut changed = next.clone();
-    let babylon_material_circuit::CapacitySupply::Rolling(supply) = &mut changed.capacity_supply
-    else {
-        unreachable!()
-    };
-    supply.future_reservations[0].reserved_grams -= 1;
+    changed.capacity_reservations.future[0].reserved_grams -= 1;
     assert_eq!(project(&changed), Err(ProductionProjectionError::State));
     let mut changed = next.clone();
     changed.corridor_capacities[0].available_grams -= 1;
     assert_eq!(project(&changed), Err(ProductionProjectionError::State));
-    let mut changed = next.clone();
-    let babylon_material_circuit::CapacitySupply::Rolling(supply) = &mut changed.capacity_supply
+    let mut changed_material = material.clone();
+    let babylon_material_circuit::CapacitySupply::Rolling(supply) =
+        &mut changed_material.capacity_policy
     else {
         unreachable!()
     };
     supply.shared[0].grams_per_period += 1;
-    assert_eq!(project(&changed), Err(ProductionProjectionError::State));
+    assert_eq!(
+        projection::project_freight_capacity_accounts(
+            &source,
+            &changed_material,
+            &next,
+            Some(&opening),
+            Some(&receipt),
+        ),
+        Err(ProductionProjectionError::State)
+    );
 }
 
-fn rolling_two_stage_opening() -> MaterialCircuitState {
+fn rolling_two_stage_opening() -> Parts {
     use babylon_material_circuit::{
         CapacitySupply, InstalledProcessCapacity, RollingCapacitySupply, SharedCapacitySupply,
     };
-    let mut state = shared_opening(200, 160);
-    let catalog = crate::test_support::catalog();
-    let route = catalog
+    let (mut material, mut state) = shared_opening(200, 160);
+    let source = crate::test_support::catalog();
+    let route = source
         .routes()
         .iter()
         .find(|row| row.good_key == "sheet")
         .expect("the fixture holds the searched element")
         .id();
-    let first = state
+    let first = material
         .route_stages
         .iter_mut()
         .find(|row| row.route_id == route)
@@ -517,7 +532,7 @@ fn rolling_two_stage_opening() -> MaterialCircuitState {
         travel_periods: 1,
         loss_ppm: 0,
     };
-    state.route_stages.push(second);
+    material.route_stages.push(second);
     let shared = state
         .route_stage_capacities
         .iter()
@@ -531,7 +546,7 @@ fn rolling_two_stage_opening() -> MaterialCircuitState {
     });
     state.capacities.retain(|row| row.period == 1);
     state.corridor_capacities.retain(|row| row.period == 1);
-    state.capacity_supply = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
+    material.capacity_policy = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
         processes: RollingProcessSupply::CapturedNameplate(
             state
                 .capacities
@@ -551,9 +566,10 @@ fn rolling_two_stage_opening() -> MaterialCircuitState {
                 grams_per_period: row.available_grams,
             })
             .collect(),
-        future_reservations: Vec::new(),
     }));
-    state
+    // The catalog is sealed and ordered; re-seal it after the authored extension.
+    let material = MaterialCatalog::try_new(material).expect("the extended catalog canonicalizes");
+    (material, state)
 }
 
 #[test]
@@ -578,14 +594,14 @@ fn multileg_projection_encodes_each_exact_order_fact_once() {
             _ => {}
         }
     }
-    let mut state = shared_opening(200, 160);
-    let catalog = crate::test_support::catalog();
-    let sheet = catalog
+    let (mut catalog, mut state) = shared_opening(200, 160);
+    let source = crate::test_support::catalog();
+    let sheet = source
         .routes()
         .iter()
         .find(|r| r.good_key == "sheet")
         .expect("the fixture holds the searched element");
-    let first = state
+    let first = catalog
         .route_stages
         .iter_mut()
         .find(|leg| leg.route_id == sheet.id())
@@ -612,10 +628,13 @@ fn multileg_projection_encodes_each_exact_order_fact_once() {
         stage_index: 1,
         corridor_id: shared,
     });
-    state.route_stages.push(second);
-    let (opening, next, receipt) = committed_pair(state);
+    catalog.route_stages.push(second);
+    // The catalog is sealed and ordered; re-seal it after the authored extension.
+    let catalog = MaterialCatalog::try_new(catalog).expect("the extended catalog canonicalizes");
+    let (opening, next, receipt, material) = committed_pair((catalog, state));
     let projection = projection::project_freight_capacity_accounts(
-        &catalog,
+        &source,
+        &material,
         &next,
         Some(&opening),
         Some(&receipt),

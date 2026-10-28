@@ -5,6 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::MaterialCatalog;
 use crate::MonetaryCircuit;
 use crate::{
     CircuitAccounting, FinalDemandPrincipalId, GoodId, HouseholdCohort,
@@ -239,7 +240,7 @@ pub(crate) fn validate_structure(book: &HouseholdTimeBook) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
+pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> Result<()> {
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
         return Ok(());
     };
@@ -269,11 +270,12 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
     {
         return Err(MaterialCircuitError::HouseholdTimeInvariant);
     }
-    validate_policies(state, economy, book, &cohorts, &needs, &policies)?;
+    validate_policies(catalog, state, economy, book, &cohorts, &needs, &policies)?;
     validate_receipts(state.period, book, &cohorts, &needs, &policies)
 }
 
 fn validate_policies(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     economy: &MonetaryCircuit,
     book: &HouseholdTimeBook,
@@ -290,9 +292,9 @@ fn validate_policies(
         .labor
         .iter()
         .map(|r| r.unit_id)
-        .chain(state.labor_coefficients.iter().map(|r| r.unit_id))
-        .chain(state.merchants.iter().map(|r| r.labor_unit_id))
-        .chain(state.maintenance_binding.iter().map(|r| r.labor_unit_id))
+        .chain(catalog.labor_coefficients.iter().map(|r| r.unit_id))
+        .chain(catalog.merchants.iter().map(|r| r.labor_unit_id))
+        .chain(catalog.maintenance_binding.iter().map(|r| r.labor_unit_id))
         .collect();
     let mut capacities = BTreeMap::<_, u64>::new();
     for row in &economy.member_labor {
@@ -530,11 +532,12 @@ fn close_household(
 /// Refuses stale periods, missing modeled accounts, reused IDs with changed terms,
 /// duplicate admission rows, overdraw, unsupported quantities or overflow.
 pub fn consume_household_contributions(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     period: u64,
     uses: &[HouseholdContributionUse],
 ) -> Result<Vec<HouseholdContributionReceipt>> {
-    validate(state)?;
+    validate(catalog, state)?;
     if period.checked_add(1) != Some(state.period) || uses.len() > MAX_MATERIAL_CIRCUIT_ROWS {
         return Err(MaterialCircuitError::HouseholdTimeInvariant);
     }

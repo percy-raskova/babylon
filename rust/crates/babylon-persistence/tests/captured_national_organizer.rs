@@ -167,10 +167,11 @@ fn assert_admitted_inputs(
         matches!(&config.time_binding, OrganizerTimeBindingMode::Household{bindings} if bindings.len()==3)
     );
     assert_eq!(config.aid_bindings.len(), 2);
-    assert!(
-        state.receipts.is_empty() && state.aid_receipts.is_empty() && state.pending_aid.is_empty()
-    );
-    assert!(state.contact_products.is_empty() && state.observations.is_empty());
+    let journal = initial
+        .organizer_journal()
+        .expect("the fixture register carries organizer journal");
+    assert!(journal.periods.is_empty() && state.pending_aid.is_empty());
+    assert!(state.contact_products.is_empty() && state.learned_authority_index.is_empty());
     let command = |choice, nonce| OrganizerCommand {
         campaign_id: config.campaign_id,
         actor_id: config.controlled_actor_id,
@@ -195,7 +196,7 @@ fn assert_admitted_inputs(
         session_id.clone(),
     )
     .expect("the authored action batch builds");
-    assert!(!ordinary_batch.items().is_empty());
+    assert_ne!(ordinary_batch.items().len(), 0);
     let gift = babylon_practice_contract::admit_organizer(
         config,
         state,
@@ -214,7 +215,11 @@ fn assert_admitted_inputs(
     assert_eq!(gift.resolves_period, 1);
     assert_eq!(gift_capture.source_hash, sha256_of(policy));
     // Admission authorizes an input only: no gift, practice or contact is credited.
-    assert!(state.aid_receipts.is_empty() && state.pending_aid.is_empty());
+    assert!(journal
+        .periods
+        .iter()
+        .all(|entries| entries.aid_receipts.is_empty()));
+    assert_eq!(state.pending_aid.len(), 0);
     let mut stale_command = command(OrganizerChoice::RemoteAid, 3);
     stale_command.expected_period = 1;
     assert_eq!(

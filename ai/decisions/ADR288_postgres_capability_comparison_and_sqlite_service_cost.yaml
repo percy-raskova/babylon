@@ -1,0 +1,99 @@
+ADR288_postgres_capability_comparison_and_sqlite_service_cost:
+  status: superseded
+  date: '2026-10-27'
+  issue: PER-354
+  title: PostgreSQL native capabilities vs SQLite-plus-services, ranked, with the hand-built disclosure cost named
+  evidence_class: Designed
+  authority:
+    - Director approved recording the comparison on 2026-10-27 (external review noted ADR287 shows no capability matrix)
+    - Supplements, not amends, ADR287_embedded_sqlite_campaign_owner_and_compact_state (ADRs are immutable; the decision stands)
+    - Repository rules require an architecture decision record for a new architectural finding
+  supplements:
+    - >-
+      ADR287_embedded_sqlite_campaign_owner_and_compact_state only for its
+      one-line alternatives analysis ("tuning indexes or compression"). The
+      direction, targets, and prohibitions are unchanged.
+  context: |
+    ADR287 selected one embedded SQLite campaign owner and rejected keeping
+    PostgreSQL in a single sentence, without a capability-by-capability
+    comparison, a ranking of the live options, or an analysis of how a
+    PostgreSQL server would most cheaply interface the game. The P9a
+    decomposition then revealed a concrete cost of the decision: the
+    knowledge-fog boundary the game enforces today is PostgreSQL role and
+    column ACLs, and the SQLite path must rebuild that enforcement by hand
+    (P9a-2 projection disclosure, D-3). A decision whose price is a hand-built
+    ACL engine should name that price in the record, alongside the ranking
+    that justifies paying it.
+
+    Verified PostgreSQL capabilities the game actually uses (migrations and
+    reader code at PER-354 head, not assumed): role/column ACL enforcement
+    across ~40 v_observer_*/v_known_* views (observer_reader/observer.rs
+    AUTHORITY_SQL/HELD_SQL/confine_authority), MATERIALIZED CTEs and window
+    functions for event-frame validation (current_schema.sql), MVCC snapshots
+    for concurrent observer reads, TOAST for large payloads, WAL for
+    durability. Verified absent: extensions, LISTEN/NOTIFY, partitioning,
+    PostGIS, advisory locks, logical replication.
+  decision: |
+    R1. RANKING, for a single-writer deterministic 28-day adjudication under
+    a 4,000,000,000-byte running budget. First: SQLite plus owned services
+    (chosen) — wins on determinism hygiene (no autovacuum timing, no
+    statistics-driven plan flips, no background writers; each is a
+    nondeterminism source against byte-identical replay), zero process
+    coupling, in-process latency, and digest-pinnable byte contracts. Loses
+    concurrent readers (the single-owner lock admits one), ACL enforcement
+    (rebuilt as P9a-2), and ad-hoc psql tooling. Second: fully native
+    PostgreSQL — wins concurrent observer reads during ticks, fog
+    enforcement for free, and operator ergonomics; loses on determinism
+    hygiene (MVCC bloat is the measured tens-of-MB-per-period retention
+    overrun ADR287 cites), roughly 200-300 MB server-side baseline
+    (postmaster, background workers, 128 MB default shared_buffers,
+    ~5-10 MB per backend across writer plus two reader roles), and the
+    Docker/provisioning coupling every play session carries. Third:
+    SQLite beside PostgreSQL for reads (dual-write or logical replication)
+    — rejected; two stores means two truths and the fog boundary would
+    straddle them, against the no-dual-write rule.
+    R2. LEAST-MEMORY POSTGRES INTERFACE, had the decision gone the other
+    way: one pooled writer plus the two existing reader roles over a Unix
+    socket (not TCP loopback, roughly halving the ~50-200 microsecond
+    per-round-trip cost), 128 MB shared_buffers, minimal work_mem, prepared
+    statements on hot paths, synchronous_commit untouched. Latency budget:
+    even 10,000 queries per tick at 0.1 ms is ~1 s against ~40 s of
+    judgment — the PG-era problem was retained bytes, never latency. The
+    acceptable native-PostgreSQL shape would have been views plus ACLs
+    kept, ~250 MB server baseline inside the 4 GB budget, retention fixed
+    with partitioning, aggressive VACUUM, and TOAST tuning.
+    R3. NAMED COST. P9a-2's projector is a hand-built ACL engine and exists
+    solely because SQLite has no roles. Its spec MUST cite the
+    v_observer_*/v_known_* view definitions field by field, and its tests
+    MUST assert omission per field, so the hand-built engine stays
+    provably equivalent to the native one it replaces.
+  alternatives_rejected:
+    - Relitigating the SQLite direction (the determinism, byte-contract, and budget grounds stand).
+    - A dual-write or replicated read store beside SQLite.
+    - Editing ADR287 in place (ADRs are immutable; this record supplements it).
+  consequences: |
+    The SQLite direction keeps its rationale with the price tag attached:
+    one PG native capability (role/column ACLs) is rebuilt by hand under
+    D-3 projection disclosure, and the equivalence burden (view citations,
+    per-field omission tests) is part of P9a-2's acceptance, not optional
+    hardening.
+
+    MVCC bloat as the retention-overrun mechanism is now on the record,
+    closing the "tuning indexes or compression" dismissal with the
+    arithmetic ADR287 omitted: the storage model that makes PostgreSQL
+    good for concurrent applications is what exceeded the 10 MB ceiling.
+
+    No code, target, or prohibition changes. P9a-2's acceptance grows by
+    the view-citation requirement; everything else stands.
+  verification: |
+    - Every capability claimed present is sited to a file and line in the
+      PER-354 tree (see context); every capability claimed absent was
+      checked with rg against migrations and the reader crates.
+    - Latency figures are estimates marked as such; the retention figures
+      they are weighed against are measured (Task 13 ladder).
+    - P9a-2 is accepted only with view-definition citations and
+      per-field omission tests.
+  compatibility: |
+    No migration, no dual-write, no format change. Historical decisions
+    and measured reports remain unchanged.
+  source_record: docs/architecture-reset/09-acceptance-and-governance.md

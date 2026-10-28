@@ -69,8 +69,8 @@ fn shared_language_neutral_vectors_execute_every_codec_and_refusal() {
     for row in rows {
         let outcome = babylon_persistence::verify_persistence_semantic_vector_row(row)
             .expect("every row executes independently of corpus identity");
-        assert!(!outcome.id().is_empty());
-        assert!(!outcome.kind().is_empty());
+        assert_ne!(outcome.id().len(), 0);
+        assert_ne!(outcome.kind().len(), 0);
     }
 
     let ad_hoc = babylon_persistence::verify_persistence_semantic_vector_row(AD_HOC_VALID)

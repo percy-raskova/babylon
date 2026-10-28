@@ -11,6 +11,7 @@ use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::content_digest;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_practice_contract::OrganizerPeriodJournal;
 use babylon_tick::material_replay::PreparedMaterialTick;
 use babylon_tick::material_replay::{MaterialReplayError, MaterialReplaySession};
 use babylon_tick::material_state::{MaterialGeography, MaterialState};
@@ -81,7 +82,7 @@ fn material_campaign_captures_authored_cycle_and_fires_it_once_per_period() {
             "the authored material cycle must execute exactly once in period {tick}"
         );
         session
-            .commit_prepared_and_publish(&mut sink, candidate, |_| {
+            .commit_prepared_and_publish(&mut sink, candidate, |_, _| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
             .expect("the prepared period commits");
@@ -436,12 +437,12 @@ fn admitted_bundle_foundations_reconstruct_exactly_through_dispatch_transit_and_
                 right.material().receipt_bytes()
             );
             continued
-                .commit_prepared_and_publish(&mut left_sink, left, |_| {
+                .commit_prepared_and_publish(&mut left_sink, left, |_, _| {
                     Ok::<_, ()>(ReplayCommitDisposition::Committed)
                 })
                 .expect("the prepared period commits");
             reopened
-                .commit_prepared_and_publish(&mut right_sink, right, |_| {
+                .commit_prepared_and_publish(&mut right_sink, right, |_, _| {
                     Ok::<_, ()>(ReplayCommitDisposition::Committed)
                 })
                 .expect("the prepared period commits");
@@ -479,10 +480,11 @@ fn bundle_reconstruction_refuses_alternate_content_and_individually_valid_change
     let mut changed = stored_copy(&original);
     let mut state = original.initial_register().state().clone();
     state.inventory[0].quantity += 1;
-    changed.initial_register_bytes = MaterialWorldRegister::try_new(0, state)
-        .expect("the authored fixture satisfies the constructor invariants")
-        .canonical_bytes()
-        .to_vec();
+    changed.initial_register_bytes =
+        MaterialWorldRegister::try_new(original.material_catalog(), 0, state)
+            .expect("the authored fixture satisfies the constructor invariants")
+            .canonical_bytes()
+            .to_vec();
     assert!(matches!(
         super::reconstruct_material_foundation(
             changed,
@@ -630,8 +632,11 @@ fn reconstructed_checkpoint(
             graph.result_stable_graph(),
             graph.material_state_rows(),
             graph.result_registers().canonical_bytes(),
-            MaterialWorldRegister::decode(candidate.material().register().canonical_bytes())
-                .expect("the committed canonical bytes decode"),
+            MaterialWorldRegister::decode_external(
+                restored.catalog(),
+                candidate.material().register().canonical_bytes().to_vec(),
+            )
+            .expect("the committed canonical bytes decode"),
         )
         .expect("the committed checkpoint restores");
     restored
@@ -673,7 +678,8 @@ fn material_transition_failure_abandons_prepared_graph_and_identity() {
         .iter()
         .find(|row| row.period == 1 && row.planned_batches > 0)
         .expect("the fixture holds the searched element");
-    let output = initial
+    let output = foundation
+        .material_catalog()
         .process_outputs
         .iter()
         .find(|row| row.process_id == source.process_id)
@@ -695,11 +701,13 @@ fn material_transition_failure_abandons_prepared_graph_and_identity() {
                 quantity: u64::MAX,
             });
     }
-    let register = MaterialWorldRegister::try_new(0, initial)
+    let catalog = foundation.material_catalog().clone();
+    let register = MaterialWorldRegister::try_new(&catalog, 0, initial)
         .expect("the authored fixture satisfies the constructor invariants");
     let session = MaterialReplaySession::new(
         foundation.graph,
         register,
+        catalog,
         [7; 32],
         babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
         foundation.labor,
@@ -751,20 +759,25 @@ fn captured_source_refuses_changed_tick_zero_organizer_agreements() {
         .organizer_state()
         .expect("the fixture register carries organizer state")
         .clone();
-    assert!(!changed.agreements.is_empty());
+    assert_ne!(changed.agreements.len(), 0);
     changed.agreements.clear();
-    let altered_register =
-        MaterialWorldRegister::try_new(0, original.initial_register().state().clone())
-            .expect("the authored fixture satisfies the constructor invariants")
-            .with_organizer(
-                original
-                    .initial_register()
-                    .organizer_config()
-                    .expect("the fixture register carries organizer config")
-                    .clone(),
-                changed,
-            )
-            .expect("the fixture builder accepts the authored options");
+    let altered_register = MaterialWorldRegister::try_new(
+        original.material_catalog(),
+        0,
+        original.initial_register().state().clone(),
+    )
+    .expect("the authored fixture satisfies the constructor invariants")
+    .with_organizer(
+        original.material_catalog(),
+        original
+            .initial_register()
+            .organizer_config()
+            .expect("the fixture register carries organizer config")
+            .clone(),
+        changed,
+        OrganizerPeriodJournal::empty(),
+    )
+    .expect("the fixture builder accepts the authored options");
     let graph = runtime::reconstruct_graph_foundation_session(original.graph_foundation()).expect(
         "the fixture call `reconstruct_graph_foundation_session` succeeds for the authored inputs",
     );

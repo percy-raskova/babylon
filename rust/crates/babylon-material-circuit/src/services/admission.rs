@@ -6,6 +6,7 @@ use super::ServiceOrder;
 use super::ServicePerformanceReceipt;
 use super::UnitId;
 use super::MAX_SERVICE_RECEIPTS_PER_PERIOD;
+use crate::MaterialCatalog;
 use crate::OrderId;
 use crate::{
     AccountId, CircuitAccounting, MoneyTransferReceipt, OutboundOrderId, PurchaseEscrow, SiteId,
@@ -64,16 +65,16 @@ struct Request {
     requested: u64,
     floor: Currency,
 }
-fn requests(state: &MaterialCircuitState) -> Result<Vec<Request>> {
+fn requests(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> Result<Vec<Request>> {
     let CircuitAccounting::Monetary(e) = &state.accounting else {
         return Ok(vec![]);
     };
     let Some(r) = &e.recurring else {
         return Ok(vec![]);
     };
-    let requirements = super::input_requirements(state, false)?;
+    let requirements = super::input_requirements(catalog, state, false)?;
     let mut result = Vec::new();
-    for p in &r.service_inputs {
+    for p in &catalog.service_inputs {
         result.push(Request {
             order_id: recurring_service_order_id(
                 state.period,
@@ -91,7 +92,7 @@ fn requests(state: &MaterialCircuitState) -> Result<Vec<Request>> {
         });
     }
     for p in &r.household_purchases {
-        if !super::is_service(state, p.good_id, p.unit_id) {
+        if !super::is_service(catalog, p.good_id, p.unit_id) {
             continue;
         }
         let cohort = r
@@ -177,10 +178,11 @@ fn deduct_due_commitments(state: &MaterialCircuitState, requests: &mut [Request]
     Ok(())
 }
 pub(super) fn admit(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     movements: &mut Vec<MoneyTransferReceipt>,
 ) -> Result<Vec<ServicePerformanceReceipt>> {
-    let requests = requests(state)?;
+    let requests = requests(catalog, state)?;
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         return Ok(vec![]);
     };

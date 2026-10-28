@@ -3,25 +3,22 @@ use super::{
     ProductionProjectionError, ProductiveEquipment, Result,
 };
 use babylon_material_circuit::{
-    AccountId, EquipmentAssetId, EquipmentCohortId, InstallationId, InstallationReceipt,
-    InstalledEquipmentCohort, PendingInstallation,
+    AccountId, EquipmentAssetId, EquipmentCohortId, EquipmentPosition, InstallationId,
+    InstallationReceipt, InstalledEquipmentCohort, PendingInstallation,
 };
 use std::collections::{BTreeMap, BTreeSet};
 type Pending = BTreeMap<InstallationId, PendingInstallation>;
 type Cohorts = BTreeMap<EquipmentCohortId, InstalledEquipmentCohort>;
 pub(super) fn reconcile(
     prior: &MaterialCircuitState,
+    position: &EquipmentPosition,
     equipment: &ProductiveEquipment,
     receipt: &MaterialTickReceipts,
     definitions: &Definitions<'_>,
     assets: &mut AssetBook,
     cohorts: &mut Cohorts,
 ) -> Result<(Pending, EquipmentFacts)> {
-    let mut old: Pending = equipment
-        .pending
-        .iter()
-        .map(|r| (r.id, r.clone()))
-        .collect();
+    let mut old: Pending = position.pending.iter().map(|r| (r.id, r.clone())).collect();
     let mut pending = Pending::new();
     let mut facts = EquipmentFacts::default();
     let policies: BTreeMap<_, _> = equipment

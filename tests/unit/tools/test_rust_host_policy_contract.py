@@ -5,6 +5,14 @@ digests pin the coordinated review-fix bytes; the final NNSims commit is
 recorded when the two branches are qualified together.
 Changing one file requires a coordinated policy-version change in both private
 repositories, never a same-version last-installer-wins update.
+
+PR #1037 moved Babylon's pinned compiler from 1.91.1 to 1.99.1 (bevy 0.20
+requires rustc >= 1.97.1). That pin lives in this bundle's
+`codex_rust_bootstrap_toolchain_for_repository` selector, so `policy.sh` and
+`tests/policy-contract.sh` now carry Babylon-local bytes at policy v11. NNSims
+serves no Babylon selector, so its copy is unchanged: the coordinated
+policy-version bump described above stays outstanding before the two
+repositories can be called byte-identical again.
 """
 
 from __future__ import annotations
@@ -29,7 +37,7 @@ POLICY_V11_SHA256 = {
     "cargo": "d1b3dc2124ab6ff0e064034629a6fadde0299b8a820082a80c082b11e66b63a0",
     "cargo-config.py": "efd74452a2c521dfc9a38810e75f6605fadfa987af66f547f3bc89b5077380e0",
     "install.sh": "c6408ed8592248b9aa9c9f4b08a4e3474db5b1ef4d87a8246eb6ac8e411683de",
-    "policy.sh": "07901c5ed951357c6ffe5847f88ad6a97e82b4693e6d019699c876b566fa08d4",
+    "policy.sh": "246c96b81d856a47b7e7a103a46b087dc85740d1ee414e7b3113def8a63067af",
     "systemd/codex-rust-babylon.slice": (
         "7404997f95b7c19093bc93b364c81a6c2a2a88fc685d40cada3d50a030b2397e"
     ),
@@ -43,7 +51,7 @@ POLICY_V11_SHA256 = {
         "c29ed77288b6131957e8cfee08bdca443f8ae3974ecfd45c9aa0d7e1e19996f4"
     ),
     "tests/policy-contract.sh": (
-        "c98304b566c62771bb115509a485abb95732beefb7091bae0783d783eec4c133"
+        "724cd467b00c01f5839e82372c7864557ed8b4ecad1a7ecfb0d297b554ab551f"
     ),
 }
 
@@ -234,7 +242,7 @@ def test_codex_environment_is_tracked_policy_not_ignored_local_state() -> None:
         "CODEX_RUST_SCCACHE_BOOTSTRAP=1",
         "codex_rust_cache_dir babylon",
         "codex_rust_server_socket babylon",
-        "rustup toolchain install 1.91.1",
+        "rustup toolchain install 1.99.1",
         '"$CODEX_WORKTREE_PATH/rust/target"',
         "mise run check:worktree-contract",
         'export PATH="$codex_rust_dispatcher_bin:$codex_rust_cargo_home/bin:$PATH"',
@@ -304,7 +312,7 @@ def test_native_mise_prefers_installed_managed_cargo() -> None:
             'test "$(command -v cargo-clippy)" = "$EXPECTED_RUSTUP_BIN/cargo-clippy" && '
             'test "$(command -v rustfmt)" = "$EXPECTED_RUSTUP_BIN/rustfmt" && '
             "cd rust && "
-            'test "$(rustc --version)" = "$(rustup run 1.91.1 rustc --version)" && '
+            'test "$(rustc --version)" = "$(rustup run 1.99.1 rustc --version)" && '
             "CODEX_RUST_HOST_DRY_RUN=1 cargo metadata --locked --no-deps --format-version 1; "
             'inspection_status="$?"; test "$inspection_status" -eq 88',
         ],

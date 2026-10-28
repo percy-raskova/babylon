@@ -70,16 +70,16 @@ fn assert_shared_fixture_transport(fixture: &VectorFixture) {
         );
     }
     for vector in fixture.invalid_sql.iter().take(1) {
-        assert!(!vector.label.is_empty());
+        assert_ne!(vector.label.len(), 0);
         assert!(vector.sql_i64 < 0);
     }
     for vector in fixture.invalid_text.iter().take(6) {
-        assert!(!vector.label.is_empty());
-        assert!(!vector.text.is_empty());
+        assert_ne!(vector.label.len(), 0);
+        assert_ne!(vector.text.len(), 0);
     }
     for vector in fixture.invalid_ancestor.iter().take(2) {
-        assert!(!vector.label.is_empty());
-        assert!(!vector.text.is_empty());
+        assert_ne!(vector.label.len(), 0);
+        assert_ne!(vector.text.len(), 0);
         match vector.label.as_str() {
             "too_fine_parent" => assert_eq!(vector.requested_resolution, 11),
             "resolution_above_15" => assert_eq!(vector.requested_resolution, 16),

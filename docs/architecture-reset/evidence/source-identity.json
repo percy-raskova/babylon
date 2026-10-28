@@ -1,0 +1,338 @@
+{
+  "schema_version": 1,
+  "inspected_on": "2026-10-23",
+  "repository_head": "99f998e3dffb301a218a8a4e0ed809f440dafef2",
+  "method": "SHA-256 and exact comparison of linked repository sources and inventory source files against the pinned Git blob. This is an evidence identity record, not runtime qualification.",
+  "files": [
+    {
+      "path": "CONSTITUTION.md",
+      "bytes": 20337,
+      "sha256": "a3a6aef853f081c1d6c9d3abbabb0db504abadba335da67da2d51ce02b0c4096",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "NORTH_STAR.md",
+      "bytes": 15684,
+      "sha256": "f7bcc2b66a05a6ead4332cfbd29f8f8e527f03569ff0ca4b71364604a49770a5",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "content/scenarios/michigan/defines.toml",
+      "bytes": 11442,
+      "sha256": "7176764f233190164c985ca3847c42e701ba5421824a4277a51e92739b55a2aa",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "content/scenarios/michigan/material-cycle.bsl",
+      "bytes": 270,
+      "sha256": "699326e74c93ab284f52988a16f597438d8ef3723cca81789a6728a3e0664e04",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "content/scenarios/michigan/organizer-cycle.bsl",
+      "bytes": 605,
+      "sha256": "6eaaec67340d1bce2a1b840c177cf51acaaa9761f4c011a384b21b8d9936e0ef",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "content/scenarios/national/structure.bscn",
+      "bytes": 728,
+      "sha256": "d0eecb0b6a8cf9959ee786a0d01db3e885ec2ce6aa104f24411f9b7532bdebdf",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "docs/concepts/architecture.rst",
+      "bytes": 53999,
+      "sha256": "34e30a3f408d4f78598d63307b4b2fa01caea47a13c5ee2b2a0f500faf34e8f9",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "docs/superpowers/specs/2026-07-22-mirror-typed-core-spec.md",
+      "bytes": 17192,
+      "sha256": "572b2c0ac5a5a68172561b131593df3b4739fd4027cc47a6a89d3f50e4720fcd",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-bsl/src/causal_contract.rs",
+      "bytes": 73737,
+      "sha256": "77f790a5272cddc334b5581fab012caf3ed2609fc9236fb6d4bdd59c2913041f",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-bsl/src/evaluator.rs",
+      "bytes": 183405,
+      "sha256": "1f269cbfc2a34ce8d9b3a53303e6d11a1103463fb92bbeb9ae60b625c0b92629",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-bsl/src/probability.rs",
+      "bytes": 99506,
+      "sha256": "285752ff035a317dab8b1ac0b4ad910efb35286db1e9b3277fd163ade01a3819",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-bsl/src/scenario.rs",
+      "bytes": 247742,
+      "sha256": "1c3771a9b3a25d5a6cafae2232adf9ab48002fcb6859fb967183180611ec5578",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-bsl/src/typecheck.rs",
+      "bytes": 77429,
+      "sha256": "948cea6d375a810d321a9669c5aedd414988a0e0b2965278a88e580a52881064",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-material-circuit/src/model.rs",
+      "bytes": 21633,
+      "sha256": "00cae2b44b8fd90d8e3a9bc2ef92d7e0728febc36fe0264d7d145fe63da8a7a8",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-material-circuit/src/payments.rs",
+      "bytes": 16128,
+      "sha256": "7faaa0e6b1d44e79c2be323640bb5d878e4afa911322099fe217fef5524a0d0c",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-material-circuit/src/recurring/model.rs",
+      "bytes": 5892,
+      "sha256": "7dfa50e6f793f538cba49901c07adc53b57cddff0bd0624db2561b70e131700f",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-material-circuit/src/transition.rs",
+      "bytes": 56857,
+      "sha256": "35f042b5030968c321c162a2b6a9132f601984c86555a23c61d5f0b4b5070be0",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/migrations/current_archive.sql",
+      "bytes": 33303,
+      "sha256": "cdab8ae603469030f2488edeefdb7e6edc945e4733881c959045f2f182866b2f",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/migrations/current_schema.sql",
+      "bytes": 118441,
+      "sha256": "3db23b9cc05065f5c0d59e5731fc85c7b7d14ac1c8bdfb6be217e0f081d3a60d",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/archive_revision/worker.rs",
+      "bytes": 7298,
+      "sha256": "a8e117734aa047637332fa185aeceaad7f2a8a7de93309a851f66acf704f9e14",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/checkpoint_reference.rs",
+      "bytes": 5336,
+      "sha256": "198c716c83c0446f691a883d3e6ae5d544213e576841f7b35e37cf354c92cf50",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/economic_catalog/compile.rs",
+      "bytes": 18647,
+      "sha256": "0bbcca31c08ddf398e4cafc6bfc0932c9f216f25cfd913569c7dea43cfee9afb",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/economic_catalog/national.rs",
+      "bytes": 6256,
+      "sha256": "4af59bf92b9396976a5c63d55dcfa662b3faf8115cff3c3b0ee2970757c220cf",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/economic_content.rs",
+      "bytes": 9543,
+      "sha256": "7b30df7f3938d39cc812df7630d8a877ebe507432fe1810c3c14fff138efa275",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/foundation.rs",
+      "bytes": 18383,
+      "sha256": "3ae9801ff4a8963287181d4dc20aa3da82d6e64e4b038b9b116eef328507434a",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/foundation/content.rs",
+      "bytes": 9660,
+      "sha256": "81991e7bfd308e45bc243cfb75b3ce1dc130621e3e0e91dc2fd848e15079512a",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/material_runtime.rs",
+      "bytes": 89820,
+      "sha256": "4946209aeaf88b4668ca806e81dca9fa96772185b8555f0ca0fa62e2be5b9e46",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/material_runtime/open.rs",
+      "bytes": 6079,
+      "sha256": "3aeb4e13267fe8f9d60abeca80f72d1cdc7afa87dae4d454acecb7ad118f1e75",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/material_runtime/runtime_checkpoint.rs",
+      "bytes": 7020,
+      "sha256": "20b5bd0ae0b95eb4002b1b7fdced74b0a9fac786842cfadb065d7f0e02394e6b",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/michigan_content.rs",
+      "bytes": 8636,
+      "sha256": "b06646ab448ff93fb6f229425fcfa125192074bf34ddd8db21a6fc8b8813e474",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/michigan_defines.rs",
+      "bytes": 19055,
+      "sha256": "37ed598f20b928376bc881a892e0e2a72ab7f90bca53759a01e29b0f1d26ea25",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/michigan_economy.rs",
+      "bytes": 21500,
+      "sha256": "c9375ed9767d1b065b28b9583b31cc00c714257d75dd60505089e762af0d48de",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/michigan_material.rs",
+      "bytes": 22152,
+      "sha256": "a3484a6a6d23f5f25da628af2b27f6733f909e76216dc245c81f2fc5d48143c5",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/national_cohorts/model.rs",
+      "bytes": 4623,
+      "sha256": "587d9d9dc4cd3f3d7b6fd868e1953944543d16b0bf85ab0229380a17c8c0bd51",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/national_economy/opening.rs",
+      "bytes": 13146,
+      "sha256": "cdb33ac94373df0b1723f51e99800d7c43512d0cdca647602f7e2709665477ce",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/national_household_allocation/model.rs",
+      "bytes": 3622,
+      "sha256": "7a8c6c47615ff47ad59560dd77628d5193956e95d7237d3598ed79ba890c5c64",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/national_household_refinement.rs",
+      "bytes": 10519,
+      "sha256": "c2fa2aa117a07439dab4f4a127ecbb1dde5b9115ad0fbb75cd322fa3b02877e5",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/observer_material.rs",
+      "bytes": 41586,
+      "sha256": "5672bb216d468c557392da2de281203750d3851cd0c15b37697bdd3b17019f16",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/organizer_runtime.rs",
+      "bytes": 22388,
+      "sha256": "d5623191d39ce79b760030164338298695ce457e95b3039a5a770668cb235baa",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/production_observation.rs",
+      "bytes": 26384,
+      "sha256": "dd99e44811d396a652f442170908a0d6232325c3a3c8f35a82685ac21656c8e1",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/production_projection/history.rs",
+      "bytes": 11267,
+      "sha256": "576ca3394e34a0d40b0b51b3bc1ba02bc90ccd6c66e8874bc7dc3b82cf2e6d25",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/reader.rs",
+      "bytes": 27236,
+      "sha256": "23cccb2d840406b2e8f04785a82fad90514e6e96b09ff27594d2a8da913ecaf8",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/runtime.rs",
+      "bytes": 99119,
+      "sha256": "b5509405d02418814327bc4dabe46b262b5fcc7163a9b810dfc133535a7885d3",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/state_storage.rs",
+      "bytes": 30707,
+      "sha256": "2c6cadcd5aaacf7492cd08bb5492d5979d4ccc615c364d53f3ef67099876e3ad",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-persistence/src/storage_compression.rs",
+      "bytes": 3683,
+      "sha256": "8051d8704581b710a5e71626c32629cf8d8b7326660e1e978b8b71bfa76233ff",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-practice-contract/src/organizer.rs",
+      "bytes": 12822,
+      "sha256": "3a62b63e1a186a21c06127cb2285ee94caf13b1f2974406d7af4b2b2a3526dd9",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-practice-contract/src/organizer/contract.rs",
+      "bytes": 31681,
+      "sha256": "d3ecd1221bc2af3b9b0e8ea88c9d084f5b239b9f01c49ade4f70105bb050f2bb",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-tick/src/material_replay.rs",
+      "bytes": 22758,
+      "sha256": "76f9391e4e571f90a8d4bfad37c48faa7356466de688ec315636baba676f6293",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-tick/src/material_world.rs",
+      "bytes": 62736,
+      "sha256": "88a7613de5e9e72a7ebb4c26dadceb49b910411c18530a9a3227671e2687ff44",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-tick/src/material_world/organizer_time.rs",
+      "bytes": 7822,
+      "sha256": "492f931a58e0a28455003e8d6b139af2565479196e7afc4952f4aa018190b70b",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-tick/src/phase_order.rs",
+      "bytes": 32410,
+      "sha256": "4e9debd7e438f2591a73c816ff697bb0204cfeda95fe490d5962c594aa0db32d",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-tick/tests/causal_contract_conformance.rs",
+      "bytes": 18907,
+      "sha256": "13d29b7bb282e8238759e22544a44890542423bc990829a4a0c081db3eb9ceae",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "rust/crates/babylon-tick/tests/phase_anchor_conformance.rs",
+      "bytes": 7357,
+      "sha256": "e9ed5fdd777d23b67d4707a48d3021a5eca53b2a3fa04b4408c948e6021555bb",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "tools/devtools/national_native_runner.py",
+      "bytes": 39651,
+      "sha256": "7f976abd234519542bd1c1314c62215e9d5855cebd0fc1c86e1a121c250107d6",
+      "matches_pinned_git_blob": true
+    },
+    {
+      "path": "tools/postgres_national_lifecycle.sh",
+      "bytes": 45721,
+      "sha256": "f966732157b65fee168fc5713d14dd4d6d4a6e6beb7b7a1a4458380025088e89",
+      "matches_pinned_git_blob": true
+    }
+  ]
+}

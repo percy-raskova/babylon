@@ -140,7 +140,7 @@ fn assert_published_work_reauthenticates_fresh_source(
     let empty = producer
         .produce(*campaign.as_uuid(), receipt, &knowledge, 4)
         .expect("the fixture call `produce` succeeds for the authored inputs");
-    assert!(empty.batch().pages().is_empty());
+    assert_eq!(empty.batch().pages().len(), 0);
     assert_eq!(empty.remaining(), 0);
     assert!(
         producer

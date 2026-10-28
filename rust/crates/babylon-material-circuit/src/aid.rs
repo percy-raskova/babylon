@@ -7,6 +7,7 @@ use crate::valuation::CostClose;
 use crate::AccountId;
 use crate::HouseholdContributionUse;
 use crate::HouseholdServiceReceipt;
+use crate::MaterialCatalog;
 use crate::MaterialCircuitState;
 use crate::MoneyTransferReceipt;
 use crate::{
@@ -188,7 +189,7 @@ impl PreparedAid {
     }
 }
 
-pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
+pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> Result<()> {
     use std::collections::BTreeSet;
     let crate::CircuitAccounting::Monetary(economy) = &state.accounting else {
         return Ok(());
@@ -209,13 +210,13 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
     {
         return Err(MaterialCircuitError::AidInvariant);
     }
-    let donors: BTreeSet<_> = book.mandates.iter().map(|m| m.donor).collect();
-    let recipients: BTreeSet<_> = book.mandates.iter().map(|m| m.recipient).collect();
+    let donors: BTreeSet<_> = catalog.aid_mandates.iter().map(|m| m.donor).collect();
+    let recipients: BTreeSet<_> = catalog.aid_mandates.iter().map(|m| m.recipient).collect();
     if !donors.is_disjoint(&recipients) {
         return Err(MaterialCircuitError::AidInvariant);
     }
-    for mandate in &book.mandates {
-        validate_mandate(state, mandate)?;
+    for mandate in &catalog.aid_mandates {
+        validate_mandate(catalog, state, mandate)?;
     }
     let mut reserves = BTreeSet::new();
     let sale_lots: BTreeSet<_> = state.freight.iter().map(|l| l.lot_id).collect();
@@ -244,7 +245,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
         {
             return Err(MaterialCircuitError::AidInvariant);
         }
-        let legs: Vec<_> = state
+        let legs: Vec<_> = catalog
             .route_stages
             .iter()
             .filter(|s| s.route_id == route_id)
@@ -289,7 +290,11 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
     Ok(())
 }
 
-fn validate_mandate(state: &MaterialCircuitState, mandate: &AidMandate) -> Result<()> {
+fn validate_mandate(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+    mandate: &AidMandate,
+) -> Result<()> {
     mandate.validate()?;
     let crate::CircuitAccounting::Monetary(economy) = &state.accounting else {
         return Err(MaterialCircuitError::AidInvariant);
@@ -339,7 +344,7 @@ fn validate_mandate(state: &MaterialCircuitState, mandate: &AidMandate) -> Resul
             from_node_id,
             to_node_id,
         } => {
-            let legs: Vec<_> = state
+            let legs: Vec<_> = catalog
                 .route_stages
                 .iter()
                 .filter(|s| s.route_id == route_id)

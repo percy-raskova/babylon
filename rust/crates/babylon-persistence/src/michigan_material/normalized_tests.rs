@@ -206,18 +206,19 @@ fn merchant_fixture() -> MichiganMaterialCatalog {
 #[test]
 fn normalized_multi_input_owners_share_inventory_and_labor_and_merchants_have_no_fake_road() {
     let c = merchant_fixture();
-    let state = crate::economic_catalog::import_michigan_opening(&c)
+    let compiled = crate::economic_catalog::import_michigan_opening(&c)
         .expect("the fixture call `import_michigan_opening` succeeds for the authored inputs")
         .compile()
-        .expect("the authored scenario compiles")
-        .state;
+        .expect("the authored scenario compiles");
+    let material = &compiled.catalog;
+    let state = &compiled.state;
     let p = c
         .processes()
         .iter()
         .find(|p| p.key == "second-panel-process")
         .expect("the fixture holds the searched element");
     assert_eq!(
-        state
+        material
             .input_coefficients
             .iter()
             .filter(|r| r.process_id == p.id())
@@ -244,17 +245,17 @@ fn normalized_multi_input_owners_share_inventory_and_labor_and_merchants_have_no
             .count(),
         1
     );
-    assert_eq!(state.merchants.len(), 2);
+    assert_eq!(material.merchants.len(), 2);
     assert_eq!(state.final_demand_orders.len(), 1);
-    assert_eq!(state.supplier_routes.len(), 5);
-    assert_eq!(state.route_stages.len(), 3);
-    assert!(state.freight.is_empty());
-    for route in state
+    assert_eq!(material.supplier_routes.len(), 5);
+    assert_eq!(material.route_stages.len(), 3);
+    assert_eq!(state.freight.len(), 0);
+    for route in material
         .supplier_routes
         .iter()
         .filter(|r| r.transport_kind == SupplierTransport::Local)
     {
-        assert!(!state
+        assert!(!material
             .route_stages
             .iter()
             .any(|s| s.route_id == route.route_id));

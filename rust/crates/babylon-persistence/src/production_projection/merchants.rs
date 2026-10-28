@@ -16,7 +16,8 @@ use crate::michigan_economy;
 #[cfg(test)]
 use crate::michigan_material::MichiganMaterialCatalog;
 use babylon_material_circuit::{
-    FinalDemandPrincipalId, GoodId, MaterialCircuitState, OrderId, OutboundOrderId, SiteId, UnitId,
+    FinalDemandPrincipalId, GoodId, MaterialCatalog, MaterialCircuitState, OrderId,
+    OutboundOrderId, SiteId, UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
@@ -28,6 +29,7 @@ type DemandKey = (FinalDemandPrincipalId, GoodId, UnitId);
 #[cfg(test)]
 pub(super) fn project_merchants(
     catalog: &MichiganMaterialCatalog,
+    material_catalog: &MaterialCatalog,
     current: &MaterialCircuitState,
     prior: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
@@ -36,16 +38,24 @@ pub(super) fn project_merchants(
     Vec<ProductionMerchantHandlingAccount>,
     Vec<ProductionFinalDemandAccount>,
 )> {
-    project_with_labels(current, prior, receipt, history, |g, u| {
-        catalog
-            .goods()
-            .iter()
-            .find(|r| r.id() == g && r.unit_id() == u)
-            .map(|r| (r.label.clone(), r.unit_key.clone()))
-    })
+    project_with_labels(
+        material_catalog,
+        current,
+        prior,
+        receipt,
+        history,
+        |g, u| {
+            catalog
+                .goods()
+                .iter()
+                .find(|r| r.id() == g && r.unit_id() == u)
+                .map(|r| (r.label.clone(), r.unit_key.clone()))
+        },
+    )
 }
 
 pub(super) fn project_with_labels(
+    catalog: &MaterialCatalog,
     current: &MaterialCircuitState,
     prior: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
@@ -60,17 +70,19 @@ pub(super) fn project_with_labels(
         (Some(prior), Some(receipt)) => Some((
             prior,
             receipt,
-            outbound::completed_facts(prior, current, receipt)?,
+            outbound::completed_facts(catalog, prior, current, receipt)?,
         )),
         _ => return Err(ProductionProjectionError::History),
     };
     let handling = handling_accounts(
+        catalog,
         current,
         completed
             .as_ref()
             .map(|(prior, receipt, facts)| (*prior, *receipt, facts.as_slice())),
     )?;
     let demand = project_final_with_labels(
+        catalog,
         current,
         completed
             .as_ref()
@@ -82,6 +94,7 @@ pub(super) fn project_with_labels(
 }
 
 fn handling_accounts(
+    catalog: &MaterialCatalog,
     current: &MaterialCircuitState,
     completed: Option<(
         &MaterialCircuitState,
@@ -90,16 +103,16 @@ fn handling_accounts(
     )>,
 ) -> Result<Vec<ProductionMerchantHandlingAccount>> {
     let complete_rows = completed
-        .map(|(prior, receipt, facts)| handling_rows(prior, receipt, facts))
+        .map(|(_, receipt, facts)| handling_rows(catalog, receipt, facts))
         .transpose()?;
     let mut coefficients_by_site = BTreeMap::<_, Vec<_>>::new();
-    for row in &current.handling_coefficients {
+    for row in &catalog.handling_coefficients {
         coefficients_by_site
             .entry(row.site_id)
             .or_default()
             .push(row);
     }
-    current
+    catalog
         .merchants
         .iter()
         .map(|merchant| {
@@ -114,7 +127,7 @@ fn handling_accounts(
                     Ok(ProductionHandlingCoefficient {
                         good_id: michigan_economy::digest_hex(&row.good_id.as_bytes()),
                         unit_id: michigan_economy::digest_hex(&row.unit_id.as_bytes()),
-                        grams_per_unit: outbound::mass(current, row.good_id, row.unit_id)?,
+                        grams_per_unit: outbound::mass(catalog, row.good_id, row.unit_id)?,
                         hours_per_unit: row.hours_per_unit,
                     })
                 })
@@ -161,11 +174,11 @@ fn handling_accounts(
 }
 
 fn handling_rows(
-    prior: &MaterialCircuitState,
+    catalog: &MaterialCatalog,
     receipt: &MaterialTickReceipts,
     facts: &[OutboundFact],
 ) -> Result<BTreeMap<SiteId, Vec<ProductionMerchantHandlingOrder>>> {
-    let merchants: BTreeSet<_> = prior.merchants.iter().map(|row| row.site_id).collect();
+    let merchants: BTreeSet<_> = catalog.merchants.iter().map(|row| row.site_id).collect();
     let mut expected = BTreeMap::new();
     for fact in facts.iter().filter(|fact| merchants.contains(&fact.site)) {
         if expected.insert((fact.site, fact.id), fact).is_some() {
@@ -173,7 +186,7 @@ fn handling_rows(
         }
     }
     let mut coefficients = BTreeMap::new();
-    for row in &prior.handling_coefficients {
+    for row in &catalog.handling_coefficients {
         if coefficients
             .insert((row.site_id, row.good_id, row.unit_id), row)
             .is_some()
@@ -228,6 +241,7 @@ fn handling_rows(
 }
 
 pub(super) fn project_final_with_labels(
+    catalog: &MaterialCatalog,
     current: &MaterialCircuitState,
     completed: Option<(&MaterialCircuitState, &[OutboundFact])>,
     history: &OrderHistory,
@@ -246,7 +260,7 @@ pub(super) fn project_final_with_labels(
     }
     let mut configured = BTreeMap::<DemandKey, BTreeSet<SiteId>>::new();
     if let Some(rows) = super::lifecycle::recurring(current) {
-        let services = super::services::service_kinds(current);
+        let services = super::services::service_kinds(catalog);
         for policy in &rows.household_purchases {
             if services.contains(&(policy.good_id, policy.unit_id)) {
                 continue;

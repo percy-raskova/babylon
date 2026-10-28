@@ -1,6 +1,8 @@
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
-use babylon_material_circuit::{decode_material_circuit_state, MaterialCircuitState};
+use babylon_material_circuit::{
+    decode_material_circuit_state, MaterialCatalog, MaterialCircuitState,
+};
 use babylon_persistence::michigan_content::MichiganContentPreset;
 use babylon_persistence::michigan_material::MichiganMaterialCatalog;
 use babylon_persistence::michigan_material::{MichiganDeliveryPreset, MichiganMaterialSite};
@@ -33,7 +35,7 @@ fn prepare(session: &Session) -> PreparedMaterialTick<HypergraphStore> {
 
 fn commit(session: &mut Session, candidate: PreparedMaterialTick<HypergraphStore>) {
     session
-        .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_| {
+        .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_, _| {
             Ok::<_, ()>(ReplayCommitDisposition::Committed)
         })
         .expect("the prepared period commits");
@@ -298,35 +300,35 @@ fn assert_second_period_delivery_delay(
 
 #[test]
 fn presets_share_exact_setup_except_the_single_declared_delay() {
-    let standard = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
+    let standard_foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
         .create_foundation(&crate::test_support::catalog())
-        .expect("the authored catalog builds the foundation")
-        .initial_register()
-        .state()
-        .clone();
-    let mut delayed = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Delayed)
+        .expect("the authored catalog builds the foundation");
+    let standard_catalog = standard_foundation.material_catalog().clone();
+    let standard = standard_foundation.initial_register().state().clone();
+    let delayed_foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Delayed)
         .create_foundation(&crate::test_support::catalog())
-        .expect("the authored catalog builds the foundation")
-        .initial_register()
-        .state()
-        .clone();
+        .expect("the authored catalog builds the foundation");
+    let mut delayed_catalog = delayed_foundation.material_catalog().clone();
+    let delayed = delayed_foundation.initial_register().state().clone();
     let catalog = crate::test_support::catalog();
     let route = catalog
         .routes()
         .iter()
         .find(|route| route.key == "sheet-transfer")
         .expect("the fixture holds the searched element");
-    let changed = delayed
+    let changed = delayed_catalog
         .route_stages
         .iter_mut()
         .find(|row| row.route_id == route.id())
         .expect("the fixture holds the searched element");
     assert_eq!(changed.travel_periods, 3);
     changed.travel_periods = 1;
+    let delayed_catalog = MaterialCatalog::try_new(delayed_catalog)
+        .expect("the edited fixture catalog canonicalizes");
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&standard)
+        babylon_material_circuit::encode_material_circuit_state(&standard_catalog, &standard)
             .expect("the canonical material state encodes"),
-        babylon_material_circuit::encode_material_circuit_state(&delayed)
+        babylon_material_circuit::encode_material_circuit_state(&delayed_catalog, &delayed)
             .expect("the canonical material state encodes")
     );
     assert_eq!(standard.period, 1);
@@ -370,7 +372,7 @@ fn presets_share_exact_setup_except_the_single_declared_delay() {
             .expect("the fixture call `industry_for_site` succeeds for the authored inputs");
         assert_eq!(source.area_fips, site.county_geoid);
         assert_eq!(source.industry_code, site.naics);
-        assert!(source.disclosure_code.is_empty());
+        assert_eq!(source.disclosure_code.len(), 0);
     }
 }
 
@@ -483,7 +485,7 @@ fn delivery_delay_changes_following_period_output_with_food_causally_disconnecte
     for state in [standard.material().state(), delayed.material().state()] {
         assert_eq!(inventory(state, "wayne-vehicle-parts", "subassembly"), 30);
         assert_eq!(inventory(state, "oakland-food", "packaged-meal"), 200);
-        assert!(state.freight.is_empty());
+        assert_eq!(state.freight.len(), 0);
         assert!(state
             .orders
             .iter()
@@ -526,18 +528,20 @@ fn every_dispatch_transit_arrival_restart_reproduces_exact_continuation() {
                         .graph_report()
                         .result_registers()
                         .canonical_bytes(),
-                    MaterialWorldRegister::decode(
-                        candidate.material().register().canonical_bytes(),
+                    MaterialWorldRegister::decode_external(
+                        restored.catalog(),
+                        candidate.material().register().canonical_bytes().to_vec(),
                     )
                     .expect("the committed canonical bytes decode"),
                 )
                 .expect("the committed checkpoint restores");
             let encoded = babylon_material_circuit::encode_material_circuit_state(
+                restored.catalog(),
                 candidate.material().register().state(),
             )
             .expect("the canonical material state encodes");
             assert_eq!(
-                decode_material_circuit_state(&encoded)
+                decode_material_circuit_state(restored.catalog(), &encoded)
                     .expect("the canonical material bytes decode"),
                 *restored.material().state()
             );

@@ -15,14 +15,14 @@ use babylon_material_circuit::SiteId;
 use babylon_material_circuit::StaffingMemberId;
 use babylon_material_circuit::UnitId;
 use babylon_material_circuit::{
-    AccountId, AttendancePlan, CapacityRow, CapacitySupply, CashAccount, CircuitAccounting,
-    CommodityDefinition, CorridorCapacity, EmploymentTerms, FinalDemandPrincipal, HouseholdCohort,
-    HouseholdNeed, HouseholdPurchasePolicy, HouseholdStock, InputOutputCoefficient, InventoryRow,
-    LaborCapacityRow, LaborCoefficient, MaterialCircuitState, MerchantHandling,
-    MerchantHandlingCoefficient, MerchantRole, MonetaryBook, MonetaryCircuit, PricePolicy,
-    ProcessOutput, ProductionCommitment, ProductionDemandPolicy, RecurringEconomy,
-    ReplenishmentPolicy, RouteStage, RouteStageCapacity, SellerOffer, SiteLogisticsNode,
-    StockCarryingValue, SupplierRoute, SupplierTransport,
+    AccountId, AttendancePlan, CapacityReservations, CapacityRow, CapacitySupply, CashAccount,
+    CircuitAccounting, CommodityDefinition, CorridorCapacity, EmploymentTerms,
+    FinalDemandPrincipal, HouseholdCohort, HouseholdNeed, HouseholdPurchasePolicy, HouseholdStock,
+    InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, MaterialCatalog,
+    MaterialCircuitState, MerchantHandling, MerchantHandlingCoefficient, MerchantRole,
+    MonetaryBook, MonetaryCircuit, PricePolicy, ProcessOutput, ProductionCommitment,
+    ProductionDemandPolicy, RecurringEconomy, ReplenishmentPolicy, RouteStage, RouteStageCapacity,
+    SellerOffer, SiteLogisticsNode, StockCarryingValue, SupplierRoute, SupplierTransport,
 };
 
 fn site(id: u8) -> SiteId {
@@ -282,13 +282,12 @@ fn labor_coefficients() -> Vec<LaborCoefficient> {
 
 #[allow(
     clippy::too_many_lines,
-    reason = "`opening` keeps one authored boundary's fixture and assertions together"
+    reason = "`materials` keeps one authored boundary's fixture together"
 )]
-pub(crate) fn opening() -> MaterialCircuitState {
-    MaterialCircuitState {
-        period: 1,
-        accounting: accounting(),
-        capacity_supply: CapacitySupply::FiniteSchedule,
+pub(crate) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
+    let recurring = recurring_policies();
+    let catalog = MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2, 3]
             .into_iter()
             .map(|owner| SiteLogisticsNode {
@@ -299,8 +298,6 @@ pub(crate) fn opening() -> MaterialCircuitState {
         process_outputs: process_outputs(),
         input_coefficients: input_coefficients(),
         labor_coefficients: labor_coefficients(),
-        service_connections: vec![],
-        service_orders: vec![],
         commodities: [0, 1, 2]
             .into_iter()
             .map(|commodity| CommodityDefinition {
@@ -311,6 +308,33 @@ pub(crate) fn opening() -> MaterialCircuitState {
             .collect(),
         supplier_routes: supplier_routes(),
         route_stages: route_stages(),
+        merchants: vec![MerchantHandling {
+            site_id: site(3),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
+            role: MerchantRole::Retail,
+            capacity_id: corridor(3),
+            labor_unit_id: hours(),
+        }],
+        handling_coefficients: vec![MerchantHandlingCoefficient {
+            site_id: site(3),
+            good_id: good(2),
+            unit_id: units(),
+            hours_per_unit: 1,
+        }],
+        maintenance_binding: None,
+        aid_mandates: Vec::new(),
+        household_time_policy: Vec::new(),
+        service_inputs: recurring.service_inputs.clone(),
+        household_needs: recurring.household_needs.clone(),
+        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
+    };
+    let state = MaterialCircuitState {
+        period: 1,
+        accounting: accounting(),
+        service_connections: vec![],
+        service_orders: vec![],
         route_stage_capacities: [1, 2]
             .into_iter()
             .map(|id| RouteStageCapacity {
@@ -321,7 +345,6 @@ pub(crate) fn opening() -> MaterialCircuitState {
             .collect(),
         inventory: vec![inventory(1, 0, 40), inventory(2, 1, 4), inventory(3, 2, 4)],
         orders: vec![],
-        backlog: vec![],
         freight: vec![],
         corridor_capacities: (1..=9)
             .flat_map(|period| {
@@ -363,21 +386,6 @@ pub(crate) fn opening() -> MaterialCircuitState {
                 planned_batches: 4,
             })
             .collect(),
-        merchants: vec![MerchantHandling {
-            site_id: site(3),
-            location: "county:26163"
-                .parse()
-                .expect("the authored literal parses as the declared type"),
-            role: MerchantRole::Retail,
-            capacity_id: corridor(3),
-            labor_unit_id: hours(),
-        }],
-        handling_coefficients: vec![MerchantHandlingCoefficient {
-            site_id: site(3),
-            good_id: good(2),
-            unit_id: units(),
-            hours_per_unit: 1,
-        }],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
             location: "county:26163"
@@ -385,7 +393,11 @@ pub(crate) fn opening() -> MaterialCircuitState {
                 .expect("the authored literal parses as the declared type"),
         }],
         final_demand_orders: vec![],
-        maintenance_binding: None,
         maintenance_service: None,
-    }
+        capacity_reservations: CapacityReservations::default(),
+    };
+    (
+        MaterialCatalog::try_new(catalog).expect("the fixture catalog canonicalizes"),
+        state,
+    )
 }

@@ -7,7 +7,12 @@ pub const MAX_MATERIAL_CIRCUIT_ROWS: usize = 65_536;
 /// Designed ceiling after the actual national close exceeded 65,536 service orders.
 pub const MAX_SERVICE_ORDERS: usize = 131_072;
 /// Designed ceiling after the actual national close exceeded 65,536 delivery orders.
-pub const MAX_DELIVERY_ORDERS: usize = 131_072;
+///
+/// PER-354 national qualification: 116,080 orders before the fourth close and
+/// 193,606 before the twelfth; the former 131,072 ceiling refuses the required
+/// 52/325-period horizon. The raised bound keeps a 2.7x margin over the
+/// measured twelfth-period book.
+pub const MAX_DELIVERY_ORDERS: usize = 524_288;
 /// Derived total of independently bounded delivery, retail and service principals.
 pub const MAX_MATERIAL_ORDER_PRINCIPALS: usize =
     MAX_DELIVERY_ORDERS + MAX_MATERIAL_CIRCUIT_ROWS + MAX_SERVICE_ORDERS;
@@ -61,8 +66,8 @@ use crate::AidReceipt;
 use crate::CapitalContributionReceipt;
 use crate::CircuitAccounting;
 use crate::CollectionReceipt;
-use crate::CommodityDefinition;
 use crate::DistributionReceipt;
+use crate::EquipmentPosition;
 use crate::EquipmentWearReceipt;
 use crate::HouseholdConsumptionReceipt;
 use crate::HouseholdContributionUse;
@@ -74,6 +79,7 @@ use crate::InstallationDecisionReceipt;
 use crate::InstallationReceipt;
 use crate::InvestmentReceipt;
 use crate::LaborUseReceipt;
+use crate::MaterialCatalog;
 use crate::MemberLaborUseReceipt;
 use crate::MoneyTransferReceipt;
 use crate::PriceReceipt;
@@ -87,9 +93,11 @@ use crate::ServiceOrder;
 use crate::ServiceOutputReceipt;
 use crate::ServicePerformanceReceipt;
 use crate::StaffingMemberReceipt;
+use crate::StaffingState;
 use crate::TaxReceipt;
 use crate::WageAccrualReceipt;
 pub(crate) use identity_type;
+use std::collections::BTreeMap;
 
 identity_type!(SiteId);
 identity_type!(GoodId);
@@ -244,7 +252,11 @@ pub struct RoutedDispatchReceipt {
 /// Bound on timed stages, independently of physical path length.
 pub const MAX_ROUTE_STAGES_PER_ROUTE: usize = 16;
 /// Designed bound on total order/resource requests during one freight close.
-pub const MAX_FREIGHT_RESOURCE_REQUESTS: usize = 1_114_112;
+///
+/// PER-354 national qualification: the twelfth close produced 1,114,113
+/// freight resource requests, one above the former bound. The raised bound
+/// keeps a 4x margin for the 52/325-period horizon.
+pub const MAX_FREIGHT_RESOURCE_REQUESTS: usize = 4_456_448;
 
 /// Transport attached to an internal supply relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -470,44 +482,126 @@ pub struct FutureCapacityReservation {
     pub reserved_grams: u64,
 }
 
-/// Current residuals live only in the state's dated current-period budgets.
+/// Authored rolling policy shared by every period of one campaign.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RollingCapacitySupply {
     pub processes: RollingProcessSupply,
     pub shared: Vec<SharedCapacitySupply>,
-    pub future_reservations: Vec<FutureCapacityReservation>,
 }
 
-/// Complete opening state; stock and recipe quantities retain their native units.
+/// Current advance bookings and installed-equipment position.
+///
+/// The authored policy lives in the catalog; only these quantities change.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CapacityReservations {
+    pub equipment: EquipmentPosition,
+    pub future: Vec<FutureCapacityReservation>,
+}
+
+/// Complete current state; stock and recipe quantities retain their native units.
+///
+/// Immutable definitions live once in [`MaterialCatalog`]; this struct
+/// owns only quantities that change between periods.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitState {
-    pub capacity_supply: CapacitySupply,
     pub period: u64,
     pub accounting: CircuitAccounting,
-    pub site_logistics_nodes: Vec<SiteLogisticsNode>,
-    pub process_outputs: Vec<ProcessOutput>,
-    pub input_coefficients: Vec<InputOutputCoefficient>,
-    pub labor_coefficients: Vec<LaborCoefficient>,
-    pub commodities: Vec<CommodityDefinition>,
     pub service_connections: Vec<ServiceConnection>,
     pub service_orders: Vec<ServiceOrder>,
-    pub supplier_routes: Vec<SupplierRoute>,
-    pub route_stages: Vec<RouteStage>,
     pub route_stage_capacities: Vec<RouteStageCapacity>,
     pub inventory: Vec<InventoryRow>,
     pub orders: Vec<OrderRow>,
-    pub backlog: Vec<BacklogRow>,
     pub freight: Vec<RoutedFreightLot>,
     pub corridor_capacities: Vec<CorridorCapacity>,
     pub capacities: Vec<CapacityRow>,
+    /// Admitted commitments installed by the preceding close.
     pub labor: Vec<LaborCapacityRow>,
     pub production_commitments: Vec<ProductionCommitment>,
-    pub merchants: Vec<MerchantHandling>,
-    pub handling_coefficients: Vec<MerchantHandlingCoefficient>,
     pub final_demand_principals: Vec<FinalDemandPrincipal>,
     pub final_demand_orders: Vec<FinalDemandOrder>,
-    pub maintenance_binding: Option<MaintenanceBinding>,
     pub maintenance_service: Option<MaintenanceService>,
+    pub capacity_reservations: CapacityReservations,
+}
+
+impl MaterialCircuitState {
+    /// Exact admitted-minus-shipped demand, derived from current orders.
+    ///
+    /// # Errors
+    /// Refuses an order that shipped more than it admitted.
+    pub fn derived_backlog(&self) -> Result<Vec<BacklogRow>, MaterialCircuitError> {
+        self.orders
+            .iter()
+            .map(|order| {
+                order
+                    .ordered
+                    .checked_sub(order.shipped)
+                    .map(|quantity| BacklogRow {
+                        order_id: order.order_id,
+                        quantity,
+                    })
+                    .ok_or(MaterialCircuitError::BacklogInvariant)
+            })
+            .collect()
+    }
+
+    /// Exact labor schedule for this period, joined from admitted staffing.
+    ///
+    /// Every catalog work principal appears, including an explicit zero; pool
+    /// principals outside the catalog are preserved so validation can refuse them.
+    ///
+    /// # Errors
+    /// Refuses a staffing period that is not this state's period, a row bound or
+    /// an unrepresentable aggregate.
+    pub fn derived_labor_schedule(
+        &self,
+        catalog: &MaterialCatalog,
+        staffing: &StaffingState,
+    ) -> Result<Vec<LaborCapacityRow>, MaterialCircuitError> {
+        if staffing.period() != self.period {
+            return Err(MaterialCircuitError::PeriodInvariant);
+        }
+        if self.labor.len() > MAX_MATERIAL_CIRCUIT_ROWS {
+            return Err(MaterialCircuitError::RowLimit);
+        }
+        let mut hours = BTreeMap::<(SiteId, UnitId), u64>::new();
+        for pool in staffing.pools() {
+            let available = pool
+                .employed()
+                .checked_mul(pool.binding().policy().hours_per_person())
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            *hours
+                .entry((pool.binding().site_id(), pool.binding().unit_id()))
+                .or_default() = available;
+        }
+        for (output, coefficient) in catalog
+            .process_outputs
+            .iter()
+            .zip(&catalog.labor_coefficients)
+        {
+            hours
+                .entry((output.site_id, coefficient.unit_id))
+                .or_default();
+        }
+        for merchant in &catalog.merchants {
+            hours
+                .entry((merchant.site_id, merchant.labor_unit_id))
+                .or_default();
+        }
+        if let Some(binding) = &catalog.maintenance_binding {
+            hours
+                .entry((binding.provider_site_id, binding.labor_unit_id))
+                .or_default();
+        }
+        Ok(hours
+            .into_iter()
+            .map(|((site_id, unit_id), available)| LaborCapacityRow {
+                site_id,
+                unit_id,
+                period: self.period,
+                available,
+            })
+            .collect())
+    }
 }
 /// Exact V3 mass-weighted freight refusal classes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

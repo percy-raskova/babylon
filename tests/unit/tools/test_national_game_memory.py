@@ -436,6 +436,40 @@ def test_retired_open_record_retries_only_after_real_thread_membership_changes(
             assert all(row.state not in {"T", "t"} for row in memory.thread_census(binding))
 
 
+def test_retiring_task_listed_through_the_next_scan_is_retried(
+    retiring_thread_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The kernel can list a retired task once more after its records are gone."""
+    child = retiring_thread_children[0]
+    task_directory = Path(f"/proc/{child.pid}/task")
+    binding = memory.ProcessBinding(
+        pid=child.pid,
+        start_time_ticks=memory.parse_start_time(
+            Path(f"/proc/{child.pid}/stat").read_bytes(), child.pid
+        ),
+        role="engine-runtime",
+        executable_sha256=executable_sha(child),
+    )
+    retired = task_directory / "2147483647"
+    original_iterdir = Path.iterdir
+    scans = 0
+
+    def tasks(path: Path) -> Iterator[Path]:
+        nonlocal scans
+        entries = tuple(original_iterdir(path))
+        if path == task_directory:
+            scans += 1
+            if scans <= 2:
+                return iter((*entries, retired))
+        return iter(entries)
+
+    monkeypatch.setattr(Path, "iterdir", tasks)
+    census = memory.stable_thread_census(binding, time.monotonic() + 2)
+    assert len(census) == 2 and int(retired.name) not in {row.tid for row in census}
+    assert scans >= 3
+
+
 def test_missing_worker_record_with_unchanged_membership_is_not_retried(
     retiring_thread_children, monkeypatch
 ):

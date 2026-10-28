@@ -7,11 +7,12 @@ use babylon_material_circuit::{
 };
 use babylon_practice_contract::OrganizerChoice;
 use babylon_practice_contract::{
-    OrganizerConfig, OrganizerError, OrganizerPeriodTimeResources, OrganizerState,
-    OrganizerTimeBinding, OrganizerTimeBindingMode, PracticeResourceAllocationMode,
+    OrganizerConfig, OrganizerError, OrganizerPeriodJournalEntries, OrganizerPeriodTimeResources,
+    OrganizerState, OrganizerTimeBinding, OrganizerTimeBindingMode, PracticeResourceAllocationMode,
     PracticeResourceCapacity, PracticeResourceId, PracticeResourceOwner, PracticeUnitId,
 };
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 fn book(state: &MaterialCircuitState) -> Result<&HouseholdTimeBook, MaterialWorldError> {
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
@@ -101,9 +102,14 @@ pub(super) fn resources(
     })
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one ordered pass joins receipt, collection and witness hour identities before the material debit"
+)]
 pub(super) fn uses(
     config: &OrganizerConfig,
     organizer: &OrganizerState,
+    entries: &OrganizerPeriodJournalEntries,
     period: u64,
     material: &MaterialCircuitState,
 ) -> Result<Vec<HouseholdContributionUse>, MaterialWorldError> {
@@ -113,6 +119,9 @@ pub(super) fn uses(
         ));
     };
     babylon_practice_contract::validate_organizer_pair(config, organizer)?;
+    if entries.period != period {
+        return Err(MaterialWorldError::PeriodMismatch);
+    }
     let principals: BTreeMap<_, _> = bindings
         .iter()
         .map(|binding| {
@@ -123,9 +132,9 @@ pub(super) fn uses(
         })
         .collect();
     let mut result = Vec::new();
-    for receipt in babylon_practice_contract::organizer_period_receipts(organizer, period) {
+    for receipt in babylon_practice_contract::organizer_period_receipts(entries) {
         if receipt.choice == OrganizerChoice::Collect {
-            let row = organizer
+            let row = entries
                 .collection_receipts
                 .iter()
                 .find(|row| row.practice == *receipt)
@@ -177,12 +186,12 @@ pub(super) fn uses(
                     .ok_or(MaterialWorldError::Organizer(
                         OrganizerError::TimeBindingMismatch,
                     ))?;
-            let mut identity = b"babylon.organizer-household-contribution.v1\0".to_vec();
-            identity.extend_from_slice(&receipt.receipt_id);
-            identity.extend_from_slice(&usage.actor_id.to_be_bytes());
-            identity.extend_from_slice(&usage.contributor_id.to_be_bytes());
             result.push(HouseholdContributionUse {
-                use_id: content_digest::sha256_of(&identity),
+                use_id: babylon_practice_contract::household_contribution_use_id(
+                    &receipt.receipt_id,
+                    usage.actor_id,
+                    usage.contributor_id,
+                ),
                 principal_id,
                 actor_id: usage.actor_id,
                 contributor_id: usage.contributor_id,
@@ -191,5 +200,24 @@ pub(super) fn uses(
         }
     }
     result.sort_by_key(|usage| usage.use_id);
+    // The witness is independent evidence that the period's household hours
+    // were debited exactly once; a missing debit must refuse rather than re-spend.
+    if let Some(witness) = &organizer.last_period_time_witness {
+        if witness.period == period {
+            let mut charged: BTreeSet<_> = result.iter().map(|usage| usage.use_id).collect();
+            for row in &entries.collection_receipts {
+                if row.fact.performed_hours > 0 {
+                    charged.insert(row.fact.contribution_use_id);
+                }
+            }
+            if witness
+                .contribution_use_ids
+                .iter()
+                .any(|id| !charged.contains(id))
+            {
+                return Err(MaterialWorldError::Wire);
+            }
+        }
+    }
     Ok(result)
 }

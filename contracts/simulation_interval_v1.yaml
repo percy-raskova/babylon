@@ -112,7 +112,7 @@ content_units:
     multiplier. Every rate conversion needs its own declared transformation.
 
 current_contracts:
-  - contracts/material_circuit_v3.yaml
+  - contracts/material_circuit_v4.yaml
   - contracts/material_world_register_v4.yaml
   - contracts/committed_material_tick_v3.yaml
   - contracts/nominal_material_world_v3.yaml

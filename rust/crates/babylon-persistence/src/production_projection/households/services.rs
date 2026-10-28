@@ -6,6 +6,7 @@ use super::{
 };
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::MaterialCatalog;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -40,6 +41,7 @@ pub struct CompletedHouseholdService {
 }
 
 pub(crate) fn project_with_labels(
+    catalog: &MaterialCatalog,
     current: &MaterialCircuitState,
     prior: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
@@ -51,14 +53,14 @@ pub(crate) fn project_with_labels(
             if prior.period.checked_add(1) == Some(current.period)
                 && receipt.resolve_tick == prior.period =>
         {
-            super::super::services::validate(prior, current, receipt)?;
+            super::super::services::validate(catalog, prior, current, receipt)?;
         }
         _ => return Err(ProductionProjectionError::History),
     }
     let Some(r) = lifecycle::recurring(current) else {
         return Ok(Vec::new());
     };
-    let kinds = super::super::services::service_kinds(current);
+    let kinds = super::super::services::service_kinds(catalog);
     let cohorts: BTreeMap<_, _> = r.households.iter().map(|r| (r.principal_id, r)).collect();
     let principals: BTreeMap<_, _> = current
         .final_demand_principals
@@ -164,8 +166,8 @@ mod tests {
 
     #[test]
     fn collective_resident_services_preserve_actual_receipts_and_zero_households() {
-        let mut opening = super::super::super::services_fixture::recurring(
-            super::super::super::services_fixture::opening(),
+        let (catalog, mut opening) = super::super::super::services_fixture::recurring(
+            super::super::super::services_fixture::materials(),
         );
         let CircuitAccounting::Monetary(economy) = &mut opening.accounting else {
             panic!("monetary control");
@@ -177,15 +179,16 @@ mod tests {
             .households[0];
         cohort.kind = HouseholdKind::CollectiveResidence;
         cohort.households = 0;
-        let opening = MaterialWorldRegister::try_new(0, opening)
+        let opening = MaterialWorldRegister::try_new(&catalog, 0, opening)
             .expect("the authored fixture satisfies the constructor invariants");
         let next = opening
-            .prepare_next()
+            .prepare_next(&catalog)
             .expect("the fixture prepares the authored state");
         let mut receipts = material_world::decode_material_receipts(next.receipt_bytes())
             .expect("the canonical bytes decode into the declared type");
         let project = |receipts: &MaterialTickReceipts| {
             project_with_labels(
+                &catalog,
                 next.register().state(),
                 Some(opening.state()),
                 Some(receipts),

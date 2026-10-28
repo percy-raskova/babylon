@@ -41,8 +41,8 @@ fn run() -> Result<()> {
     let mut input = None;
     let mut output = None;
     let mut dsn = None;
-    let mut iter = args.chunks_exact(2);
-    for pair in &mut iter {
+    let (pairs, remainder) = args.as_chunks::<2>();
+    for pair in pairs {
         match pair[0].as_str() {
             "--input" if input.is_none() => input = Some(PathBuf::from(&pair[1])),
             "--output" if output.is_none() => output = Some(PathBuf::from(&pair[1])),
@@ -53,7 +53,7 @@ fn run() -> Result<()> {
             ),
         }
     }
-    if !iter.remainder().is_empty() {
+    if !remainder.is_empty() {
         return Err("missing flag value".into());
     }
     let input = input.ok_or("missing --input")?;
@@ -176,7 +176,9 @@ fn main() -> ExitCode {
             if let Some(output) = std::env::args()
                 .skip(1)
                 .collect::<Vec<_>>()
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .find(|p| p[0] == "--output")
                 .map(|p| PathBuf::from(&p[1]))
             {

@@ -14,6 +14,7 @@ use super::UnitId;
 use crate::inventory;
 use crate::inventory::InventoryLedger;
 use crate::valuation::CostClose;
+use crate::MaterialCatalog;
 use crate::{
     AccountId, CircuitAccounting, MoneyTransferReceipt, OutboundOrderId, ProductionCommitment,
 };
@@ -32,12 +33,13 @@ pub(crate) struct ServiceClose {
 }
 impl ServiceClose {
     pub(crate) fn new(
+        catalog: &MaterialCatalog,
         state: &mut MaterialCircuitState,
         movements: &mut Vec<MoneyTransferReceipt>,
     ) -> Result<Self> {
-        let performance = super::admission::admit(state, movements)?;
+        let performance = super::admission::admit(catalog, state, movements)?;
         Ok(Self {
-            markets: super::market::capture(state)?,
+            markets: super::market::capture(catalog, state)?,
             performance,
             outputs: vec![],
             household: vec![],
@@ -46,17 +48,18 @@ impl ServiceClose {
     }
     pub(crate) fn allocate(
         &mut self,
+        catalog: &MaterialCatalog,
         state: &MaterialCircuitState,
         commitments: &[ProductionCommitment],
         allocations: &mut [u64],
     ) -> Result<()> {
         let mut potential = InventoryLedger::new();
         for (c, q) in commitments.iter().zip(allocations.iter()) {
-            let output = state
+            let output = catalog
                 .process_outputs
                 .binary_search_by_key(&c.process_id, |o| o.process_id)
                 .ok()
-                .map(|i| &state.process_outputs[i])
+                .map(|i| &catalog.process_outputs[i])
                 .ok_or(MaterialCircuitError::ProcessInvariant)?;
             potential.insert(
                 (output.site_id, output.good_id, output.unit_id),
@@ -78,7 +81,8 @@ impl ServiceClose {
                 quantity: r.admitted_quantity,
             })
             .collect();
-        let granted = crate::transition::outbound::allocate_services(state, &due, &potential)?;
+        let granted =
+            crate::transition::outbound::allocate_services(catalog, state, &due, &potential)?;
         for (order, quantity) in due.iter().zip(granted) {
             let i = self
                 .performance
@@ -90,17 +94,18 @@ impl ServiceClose {
     }
     pub(crate) fn handoff(
         &mut self,
+        catalog: &MaterialCatalog,
         state: &mut MaterialCircuitState,
         phase: ServiceStage,
         costs: &mut CostClose,
         movements: &mut Vec<MoneyTransferReceipt>,
     ) -> Result<()> {
         let first = self.outputs.len();
-        self.capture_outputs(state, phase, costs)?;
+        self.capture_outputs(catalog, state, phase, costs)?;
         let mut quantities = inventory::take_inventory(state);
-        self.sell_grants(state, phase, costs, movements, &mut quantities)?;
+        self.sell_grants(catalog, state, phase, costs, movements, &mut quantities)?;
         self.expire_outputs(first, costs, &mut quantities)?;
-        self.credit_grants(state, phase, costs, &mut quantities)?;
+        self.credit_grants(catalog, phase, costs, &mut quantities)?;
         self.outputs
             .sort_by_key(|r| (r.site_id, r.good_id, r.unit_id));
         inventory::publish_inventory(state, quantities);
@@ -108,14 +113,15 @@ impl ServiceClose {
     }
     fn capture_outputs(
         &mut self,
+        catalog: &MaterialCatalog,
         state: &MaterialCircuitState,
         phase: ServiceStage,
         costs: &CostClose,
     ) -> Result<()> {
-        let outputs: Vec<_> = state
+        let outputs: Vec<_> = catalog
             .process_outputs
             .iter()
-            .filter_map(|r| match super::stage(state, r) {
+            .filter_map(|r| match super::stage(catalog, r) {
                 Ok(Some(s)) if s == phase => Some(Ok(r.clone())),
                 Err(e) => Some(Err(e)),
                 _ => None,
@@ -161,6 +167,7 @@ impl ServiceClose {
     }
     fn sell_grants(
         &mut self,
+        catalog: &MaterialCatalog,
         state: &mut MaterialCircuitState,
         phase: ServiceStage,
         costs: &mut CostClose,
@@ -168,7 +175,7 @@ impl ServiceClose {
         quantities: &mut InventoryLedger,
     ) -> Result<()> {
         for row in &mut self.performance {
-            if !matches!(kind(state,row.good_id,row.unit_id)?,CommodityKind::PeriodService{stage:s} if s==phase)
+            if !matches!(kind(catalog,row.good_id,row.unit_id)?,CommodityKind::PeriodService{stage:s} if s==phase)
             {
                 continue;
             }
@@ -228,13 +235,13 @@ impl ServiceClose {
     }
     fn credit_grants(
         &mut self,
-        state: &MaterialCircuitState,
+        catalog: &MaterialCatalog,
         phase: ServiceStage,
         costs: &mut CostClose,
         quantities: &mut InventoryLedger,
     ) -> Result<()> {
         for row in &self.performance {
-            if !matches!(kind(state,row.good_id,row.unit_id)?,CommodityKind::PeriodService{stage:s} if s==phase)
+            if !matches!(kind(catalog,row.good_id,row.unit_id)?,CommodityKind::PeriodService{stage:s} if s==phase)
             {
                 continue;
             }
@@ -261,13 +268,14 @@ impl ServiceClose {
     }
     pub(crate) fn finish(
         &mut self,
+        catalog: &MaterialCatalog,
         state: &mut MaterialCircuitState,
         costs: &mut CostClose,
     ) -> Result<()> {
         let mut remaining: BTreeMap<GrantKey, u64> = state
             .inventory
             .iter()
-            .filter(|r| super::is_service(state, r.good_id, r.unit_id))
+            .filter(|r| super::is_service(catalog, r.good_id, r.unit_id))
             .map(|r| {
                 (
                     (AccountId::Site(r.site_id), r.good_id, r.unit_id),
@@ -275,7 +283,7 @@ impl ServiceClose {
                 )
             })
             .collect();
-        self.consume_households(state, costs, &mut remaining)?;
+        self.consume_households(catalog, state, costs, &mut remaining)?;
         for row in &self.performance {
             remaining
                 .entry((row.buyer, row.good_id, row.unit_id))
@@ -310,7 +318,7 @@ impl ServiceClose {
             *q -= r.used_quantity;
             r.unused_quantity = r.performed_quantity - r.used_quantity;
         }
-        let services: BTreeSet<_> = state
+        let services: BTreeSet<_> = catalog
             .commodities
             .iter()
             .filter(|r| matches!(r.kind, CommodityKind::PeriodService { .. }))
@@ -327,6 +335,7 @@ impl ServiceClose {
     }
     fn consume_households(
         &mut self,
+        catalog: &MaterialCatalog,
         state: &MaterialCircuitState,
         costs: &mut CostClose,
         remaining: &mut BTreeMap<GrantKey, u64>,
@@ -336,8 +345,8 @@ impl ServiceClose {
         };
         let mut controlled = BTreeSet::new();
         if let Some(r) = &e.recurring {
-            for need in &r.household_needs {
-                if !super::is_service(state, need.good_id, need.unit_id) {
+            for need in &catalog.household_needs {
+                if !super::is_service(catalog, need.good_id, need.unit_id) {
                     continue;
                 }
                 let cohort = r
@@ -382,9 +391,16 @@ impl ServiceClose {
     }
     pub(crate) fn plan(
         &mut self,
+        catalog: &MaterialCatalog,
         state: &mut MaterialCircuitState,
         next_period: u64,
     ) -> Result<()> {
-        super::market::update(state, &self.performance, &mut self.markets, next_period)
+        super::market::update(
+            catalog,
+            state,
+            &self.performance,
+            &mut self.markets,
+            next_period,
+        )
     }
 }

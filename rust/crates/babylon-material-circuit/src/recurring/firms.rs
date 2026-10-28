@@ -5,8 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use babylon_kernel::currency::Currency;
 
 use super::AttendancePlan;
+use crate::transition::MaterialContext;
 use crate::LocalRetailFulfillmentReceipt;
 use crate::MaintenanceReceipt;
+use crate::MaterialCatalog;
 use crate::{
     AccountId, CircuitAccounting, GoodId, HouseholdDemandReceipt, LocalTransferReceipt,
     MaterialCircuitError, MaterialCircuitState, MoneyTransferReceipt, OrderAccessMode, OrderId,
@@ -219,6 +221,7 @@ pub(crate) fn replenish(
 }
 
 pub(crate) fn plan_production(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     dispatches: &[RoutedDispatchReceipt],
     local: &[LocalTransferReceipt],
@@ -290,14 +293,14 @@ pub(crate) fn plan_production(
     };
     let mut receipts = Vec::new();
     for policy in &mut recurring.production {
-        let output = state
+        let output = catalog
             .process_outputs
             .binary_search_by_key(&policy.process_id, |row| row.process_id)
             .ok()
-            .map(|index| &state.process_outputs[index])
+            .map(|index| &catalog.process_outputs[index])
             .ok_or(MaterialCircuitError::ProcessInvariant)?;
         let key = (policy.site_id, output.good_id, output.unit_id);
-        if state.commodities.iter().any(|r| {
+        if catalog.commodities.iter().any(|r| {
             (r.good_id, r.unit_id) == (output.good_id, output.unit_id)
                 && matches!(r.kind, crate::CommodityKind::PeriodService { .. })
         }) {
@@ -391,7 +394,7 @@ fn handling_quantities(
 }
 
 pub(crate) fn plan_attendance(
-    state: &mut MaterialCircuitState,
+    context: MaterialContext<'_>,
     demand: &[HouseholdDemandReceipt],
     dispatches: &[RoutedDispatchReceipt],
     local: &[LocalTransferReceipt],
@@ -399,24 +402,25 @@ pub(crate) fn plan_attendance(
     maintenance: Option<&MaintenanceReceipt>,
     next_period: u64,
 ) -> Result<(), MaterialCircuitError> {
+    let MaterialContext { catalog, state } = context;
     if !matches!(&state.accounting, CircuitAccounting::Monetary(economy) if economy.recurring.is_some())
     {
         return Ok(());
     }
-    let production = crate::production::derive_shared_labor_requests(state, next_period)?;
+    let production = crate::production::derive_shared_labor_requests(catalog, state, next_period)?;
     let mut hours = BTreeMap::<(SiteId, UnitId), u64>::new();
     for request in production {
         add_hours(&mut hours, request.site_id, request.unit_id, request.hours)?;
     }
-    for (_, site, unit, requested) in crate::equipment::work_requests(state)? {
+    for (_, site, unit, requested) in crate::equipment::work_requests(catalog, state)? {
         add_hours(&mut hours, site, unit, requested)?;
     }
-    let merchants: BTreeMap<_, _> = state
+    let merchants: BTreeMap<_, _> = catalog
         .merchants
         .iter()
         .map(|row| (row.site_id, row))
         .collect();
-    let coefficients: BTreeMap<_, _> = state
+    let coefficients: BTreeMap<_, _> = catalog
         .handling_coefficients
         .iter()
         .map(|row| ((row.site_id, row.good_id, row.unit_id), row.hours_per_unit))

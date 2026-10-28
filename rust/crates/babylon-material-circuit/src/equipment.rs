@@ -23,12 +23,14 @@ pub use model::*;
 
 pub use receipts::*;
 
-pub(crate) use validation::{canonicalize, row_limits, validate};
+pub(crate) use validation::{
+    canonicalize, canonicalize_position, row_limits_content, validate, validate_content,
+};
 
 #[path = "equipment/lookup.rs"]
 mod lookup;
 
 use lookup::Result;
-pub(crate) use lookup::{get, get_mut};
+pub(crate) use lookup::{cohorts_for, position, position_mut};
 
 use crate::{MaterialCircuitError, MaterialCircuitState, ProcessId};

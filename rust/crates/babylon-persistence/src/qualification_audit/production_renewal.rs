@@ -3,9 +3,9 @@
 use babylon_material_circuit::{
     AccountId, AidOutcome, CapacitySupply, CircuitAccounting, CommodityKind,
     FinalDemandPrincipalId, GoodId, HouseholdConsumptionReceipt, HouseholdDemandReceipt,
-    MaterialCircuitState, MoneyLocation, MoneyTransferPurpose, MoneyTransferReceipt, OrderId,
-    OutboundOrderId, ProcessId, ProcurementReceipt, ProductionReceipt, RollingProcessSupply,
-    SiteId, UnitId,
+    MaterialCatalog, MaterialCircuitState, MoneyLocation, MoneyTransferPurpose,
+    MoneyTransferReceipt, OrderId, OutboundOrderId, ProcessId, ProcurementReceipt,
+    ProductionReceipt, RollingProcessSupply, SiteId, UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use serde::Serialize;
@@ -127,7 +127,12 @@ impl Audit {
     /// # Errors
     /// Refuses a mismatched seed period, invalid custody units or quantities,
     /// incomplete order identities and arithmetic overflow.
-    pub fn seed(state: &MaterialCircuitState, seed_period: u64, hash: [u8; 32]) -> Result<Self> {
+    pub fn seed(
+        catalog: &MaterialCatalog,
+        state: &MaterialCircuitState,
+        seed_period: u64,
+        hash: [u8; 32],
+    ) -> Result<Self> {
         if seed_period.checked_add(1) != Some(state.period) {
             return Err(Refusal::SeedPeriod);
         }
@@ -135,7 +140,7 @@ impl Audit {
             seed_period,
             hash,
             period: seed_period,
-            chain: select(state)?,
+            chain: select(catalog, state)?,
             orders: BTreeMap::new(),
         };
         if audit.chain.is_some() {
@@ -629,14 +634,14 @@ impl Chain {
     }
 }
 type Outputs = BTreeMap<Group, BTreeMap<ProcessId, u64>>;
-fn eligible(state: &MaterialCircuitState) -> BTreeSet<Native> {
-    let mut natives: BTreeSet<_> = state
+fn eligible(catalog: &MaterialCatalog) -> BTreeSet<Native> {
+    let mut natives: BTreeSet<_> = catalog
         .commodities
         .iter()
         .filter(|v| matches!(v.kind, CommodityKind::Storable { .. }))
         .map(|v| (v.good_id, v.unit_id))
         .collect();
-    if let CapacitySupply::Rolling(s) = &state.capacity_supply {
+    if let CapacitySupply::Rolling(s) = &catalog.capacity_policy {
         if let RollingProcessSupply::Equipment(e) = &s.processes {
             for d in &e.definitions {
                 natives.remove(&(d.equipment_good_id, d.equipment_unit_id));
@@ -645,9 +650,9 @@ fn eligible(state: &MaterialCircuitState) -> BTreeSet<Native> {
     }
     natives
 }
-fn outputs(state: &MaterialCircuitState, natives: &BTreeSet<Native>) -> Result<Outputs> {
+fn outputs(catalog: &MaterialCatalog, natives: &BTreeSet<Native>) -> Result<Outputs> {
     let mut out = Outputs::new();
-    for p in &state.process_outputs {
+    for p in &catalog.process_outputs {
         if !natives.contains(&(p.good_id, p.unit_id)) {
             continue;
         }
@@ -665,15 +670,15 @@ fn outputs(state: &MaterialCircuitState, natives: &BTreeSet<Native>) -> Result<O
     }
     Ok(out)
 }
-fn select(state: &MaterialCircuitState) -> Result<Option<Chain>> {
+fn select(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> Result<Option<Chain>> {
     let CircuitAccounting::Monetary(book) = &state.accounting else {
         return Ok(None);
     };
     let Some(recurring) = &book.recurring else {
         return Ok(None);
     };
-    let natives = eligible(state);
-    let outputs = outputs(state, &natives)?;
+    let natives = eligible(catalog);
+    let outputs = outputs(catalog, &natives)?;
     let mut groups = BTreeMap::<Group, BTreeSet<FinalDemandPrincipalId>>::new();
     for p in &recurring.household_purchases {
         if p.enabled && natives.contains(&(p.good_id, p.unit_id)) {

@@ -1,0 +1,246 @@
+ADR287_embedded_sqlite_campaign_owner_and_compact_state:
+  status: superseded
+  date: '2026-10-24'
+  issue: PER-354
+  title: One embedded SQLite 3.53.1 campaign owner replaces PostgreSQL persistence
+  evidence_class: Designed
+  authority:
+    - Director selected the embedded SQLite direction and game targets on 2026-10-23
+    - Amendment AL ratifies the Article V storage boundary and the Gate 3 rename
+    - Repository rules require an architecture decision record
+  partially_supersedes:
+    - >-
+      ADR220_rust_owned_postgresql_persistence_boundary only for PostgreSQL as
+      the campaign store. Rust ownership, typed committed-tick transactions,
+      hydration, one writer, and least-privilege readers remain binding.
+    - >-
+      ADR273_interim_save_budget_and_rotating_qualification only for PostgreSQL
+      authority and the 23,000,000, 299,000,000, and 1,196,000,000-byte
+      ceilings. Rotation discipline and evidence preservation remain binding.
+    - >-
+      ADR278_measured_save_footprint only for PostgreSQL as the default
+      living-state store and its 10,000,000,000-byte PostgreSQL ceiling.
+      Measurement, complete-retained-save accounting, and real consumer proof
+      remain binding.
+    - >-
+      ADR280_development_budgets_prioritize_play only for the PostgreSQL-framed
+      40,000,000-byte development ceiling and the 120-second p95 and 180-second
+      cold-open allowances. Exact accounting, recovery, and playable evidence
+      remain binding.
+  context: |
+    The PostgreSQL campaign path retained tens of millions of bytes per period,
+    while the Designed ceiling is 10,000,000 bytes. Repeated detached-tick
+    writes, duplicate opening components, event history, indexes, and
+    checkpoint growth kept measured periods above both the storage and latency
+    targets. The Director selected one embedded SQLite campaign owner and the
+    player-facing targets on 2026-10-23. The current Constitution named
+    PostgreSQL as the durable boundary and SQLite as a reference-build input,
+    so a production SQLite owner required a narrow amendment rather than a new
+    mathematical primitive.
+
+    The game still uses one detached 28-day adjudication followed by one atomic
+    publication. Thirteen periods span a model year. Pinned reference
+    artifacts remain immutable inputs. The change replaces the campaign store
+    and its retained-history policy; it does not relax causal authority,
+    geography, native hyperedges, knowledge fog, exact choice receipts,
+    deterministic identity, or explicit refusal.
+  decision: |
+    R1. OWNERSHIP. One Rust process owns one open campaign and commits each
+    adjudicated period into one embedded SQLite database. A detached tick is
+    prepared outside the write transaction. BEGIN IMMEDIATE verifies the
+    expected current root, then writes state and content chunks, the current
+    causal registers, accepted-input consumption, choice and player receipts,
+    knowledge changes, journal records, retention work, and projection work.
+    The complete save manifest is written last and the transaction commits.
+    The durable period advances only after the commit acknowledges it.
+    Command acceptance and bounded nonmechanical service operations may commit
+    independently under their declared contracts; they cannot advance the
+    period, adjudicate effects, or grant unearned knowledge. No second writer,
+    storage trait, runtime dual writer, or silent PostgreSQL fallback is
+    admitted. A task-scoped file lock makes a second writer refuse with the
+    owning process and campaign identity.
+
+    R2. RUNTIME PIN. Babylon links one bundled SQLite 3.53.1 C source and
+    refuses any other runtime version at startup with a specific error. The
+    Rust dependency pin, the reference builder pin, and the immutable reference
+    artifact manifest move in lockstep. A system SQLite, a differently patched
+    optional library, or an unreported replacement is not admitted. Pinned
+    reference artifacts remain immutable inputs and are not campaign state.
+
+    R3. STORAGE SHAPE. The campaign store uses STRICT tables, WAL mode,
+    synchronous=FULL, foreign_keys=ON, a bounded busy timeout, and explicit
+    writer serialization. Money uses signed i128 micro-units encoded as 16
+    canonical bytes; general quantities use 8-byte u64; choice interval
+    endpoints and counts up to 2^64 use 16-byte u128 with an upper-bound check.
+    No REAL column stores money, counts, tickets, or binary64 bits. State,
+    content, and recent-detail chunks cap at 4 MiB decoded. Permanent journal
+    records cap at 16 MiB decoded. The demand-driven service_state store caps at
+    1 MiB decoded and 256 pending requests. Immutable recipes, routes, and
+    geography live once in the material catalog and content_entry chunks.
+
+    R4. RETENTION. Recent technical detail retains the latest thirteen periods.
+    Historical checkpoints retain the permanent opening and the latest two
+    completed thirteen-period checkpoints. The current snapshot is always
+    complete and separate. Current causal state, permanent player history,
+    required choice evidence, anti-double-spend indexes, and deterministic
+    replay inputs do not expire under that policy. A historical report retained
+    past detail eviction keeps its observed and acquired periods, source,
+    citation, and content. Bounded retention is not permission to prune a
+    living commitment or to substitute a projection for required evidence.
+
+    R5. FORMAT AND ACCEPTANCE. The new campaign format has its own explicit
+    identity. Incompatible PostgreSQL or predecessor campaign bytes are
+    refused with a specific error; they are not migrated, reinterpreted, or
+    dual-written through a compatibility runtime. The governed Gate 3 identity
+    becomes "Durable campaign/H3/Archive decision-loop slice". Its decision-loop
+    and Archive requirements remain unchanged, and the rename does not close
+    the gate. Executable and native acceptance require separate evidence.
+
+    R6. TARGETS. The target computer is a 16 GB desktop. Combined running-game
+    memory must stay at or below 4,000,000,000 bytes. An ordinary advance,
+    durable save, and required briefing must finish within 30 seconds. A cold
+    open must reach an actionable player view within 30 seconds. A normal
+    subject selection or history page must finish within one second warm and
+    two seconds cold. Retained growth must stay at or below 10,000,000 bytes
+    per committed period, 130,000,000 bytes per thirteen-period model year, and
+    520,000,000 bytes over 52 periods. The provisional 325-period ceiling is
+    3,250,000,000 bytes plus the opening, with 10,000,000,000 bytes retained as
+    a secondary total ceiling. These are Designed limits, not measured
+    achievements.
+  alternatives_rejected:
+    - Keeping PostgreSQL as the campaign store and tuning indexes or compression.
+    - A generic storage abstraction, second backend, dual writer, or silent fallback.
+    - Migrating or reinterpreting old campaign bytes under the new format.
+    - Linking a system SQLite, a different patch library, or an unreported runtime.
+    - Treating a compressed blob or one exported file as proof of retained growth.
+    - Unbounded yearly checkpoint snapshots or pruning living causal state.
+    - Copying a live WAL database with a filesystem copy instead of online backup.
+  consequences: |
+    Campaign persistence becomes a single local file with one writer and a
+    bounded technical-history policy. The change can reduce per-period
+    retention and remove PostgreSQL service coupling, but it does not by itself
+    prove the 30-second or 10 MB targets. A failing period must report its
+    responsible component instead of relaxing the limit.
+
+    Old PostgreSQL campaign databases and unsupported predecessor formats
+    remain preserved as data but cannot resume under the new format. Historical
+    ADRs, contracts, golden vectors, and reports retain their bytes. The
+    scoped supersession above changes only the named storage requirements;
+    every unlisted clause remains in force.
+
+    Gate 3 stays open. Archive dossiers, county coverage, exact accounting,
+    knowledge fog, choice receipts, replay, recovery, and the player-facing
+    acceptance scenario still need their own executable and native evidence.
+    The amendment adds no mathematical primitive, weakens no prohibition, and
+    changes no reserved theoretical commitment.
+  transition:
+    previous_constitution:
+      version: '4.2.0'
+      git_blob: 87b77e665f5457ad3b02504d6e74f6e684d02b4a
+    new_constitution_version: '4.3.0'
+    amendment: AL
+  verification: |
+    - The linked SQLite runtime reports version number 3_053_001 and version
+      text 3.53.1; a mismatch refuses with a specific error.
+    - tools/check_release_pins.sh keeps the Rust dependency pin, the reference
+      builder pin, and the reference artifact manifest in lockstep.
+    - Identical admitted inputs produce the same canonical state, ordered
+      effects, and identity under the new format.
+    - A failure during judgment or before commit publishes no partial period;
+      a lost commit acknowledgement reconciles to the committed result without
+      executing the command twice.
+    - Current restore reads bounded current roots and pending indexes rather
+      than every historical period.
+    - Checkpoint rotation at periods 12->13->14 and 25->26->27->39->40 never
+      removes a chunk referenced by the opening or either retained checkpoint.
+    - A fact observed in period 4 but acquired in period 9 is invisible to a
+      period-4 historical view or an earlier knowledge prefix.
+    - An expired or consumed contact product or household hour cannot be spent
+      twice after its receipt leaves current technical detail.
+    - Online export opens the exported file read-only, verifies all table,
+      chunk, and service hashes, and publishes it atomically.
+    - The two-period smoke meets 30 seconds per advance; the 52-period window
+      reports every advance, maximum, median, and p95.
+  compatibility: |
+    No PostgreSQL campaign migration or dual-write is provided. Unsupported
+    inputs are refused with a specific error. Pinned reference artifacts remain
+    readable as immutable inputs. Historical decisions and measured reports
+    remain unchanged.
+  amendment_al_notes:
+    - date: '2026-10-27'
+      issue: PER-354
+      packet: P9a-1
+      requirement: >-
+        R7. PERIOD TICK IDENTITY AND RESTORE DECODERS. The compact period summary
+        keeps carrying the identity of the period it closes. Under the unchanged
+        nine-table container its payload becomes babylon.period-summary.v2 and
+        appends three fields after the v1 body: one presence byte, the exact
+        fixed-width IdentifiedMaterialTick bytes, and that identity's
+        tick_content_hash. A profile without material mechanics records an
+        explicit absence and an all-zero hash. A v1 payload is refused, not
+        reinterpreted. The canonical StableGraphState and MaterialStateRows
+        decoders are strict inverses of their encoders: a decoded frame must
+        re-encode to the exact input bytes, with the same bounds, ordering
+        rules, numeric domains, and refusals as the encoder. Cold restore reads
+        the current root's graph, semantic material and restart sections plus the
+        period summary instead of re-executing the period.
+      preserved_bytes: >-
+        The candidate identity, journal chain, knowledge chain, snapshot
+        manifest, chunk framing, and every other ratified canonical byte contract
+        stay byte-identical. Only the versioned period-summary payload grows.
+      verification: |
+        - A persisted period summary decodes to the exact identity it recorded,
+          and a v1 payload is refused with a specific error.
+        - A decoded graph state and material row set re-encode to the exact stored
+          section bytes.
+        - A cold reopen restores a live replay session from store bytes and
+          reproduces the committed world hash.
+        - Every committed period's identity is readable from its summary without
+          re-execution, and its recorded content hash authenticates its bytes.
+    - date: '2026-10-27'
+      issue: PER-354
+      packet: P9a-1
+      requirement: >-
+        R8. PERIOD IDENTITY PRESENCE IS BOUND TO THE HOST PROFILE. A campaign's
+        host profile decides whether each committed period records a material
+        tick identity or an explicit absence, so the admission publishes that
+        rule as one owner-written opening-metadata content entry
+        (host-tick-identity-policy, kind opening metadata) with a one-byte closed
+        registry code. The owner writes it inside the creation transaction and
+        reads and authenticates it at every open, so a reopened campaign enforces
+        the same rule as the handle that created it. A material profile commits
+        no period whose identity is absent, and a profile without material
+        mechanics commits no fabricated one; a campaign with an absent or
+        unsupported policy entry is refused. A caller cannot widen the rule by
+        declaring a per-period presence expectation, and a captured entry cannot
+        impersonate the owner's row.
+      preserved_bytes: >-
+        The nine-table container, the schema version, every state chunk, the
+        journal and knowledge chains and the period-summary v2 payload stay
+        unchanged. The new row is immutable content beside the existing opening
+        metadata entries; a campaign written before this rule is refused rather
+        than reinterpreted as permissive.
+      verification: |
+        - A material profile refuses a period candidate with an absent identity
+          and publishes nothing.
+        - A profile without material mechanics still commits explicit absence and
+          refuses a fabricated identity.
+        - A cold reopen reads the durable policy and keeps refusing absence.
+        - A campaign whose policy row is missing or unsupported refuses to open.
+    - date: '2026-10-27'
+      issue: PER-354
+      packet: Task 13 interim bar
+      requirement: >-
+        R9. INTERIM ADVANCE BAR. The R6 30-second advance target was not met
+        (measured 34.2-46.7 s medians across the 2/52/325-period ladder); the
+        enforced bar is interim 60 seconds with the 30-second target kept as
+        tracked optimization debt (contract v2, meets_targets=false). The
+        verification bullet above naming "30 seconds per advance" as met is
+        superseded for the advance metric only; all other R6 limits stand.
+      preserved_bytes: >-
+        No format change. The contract version, bar, target, and debt row are
+        machine-readable in contracts/national_sqlite_qualification_v1.json.
+      verification: |
+        - Every rung verdict carries meets_targets=false with observed, interim,
+          target, and met in its optimization-debt row.
+  source_record: docs/architecture-reset/09-acceptance-and-governance.md

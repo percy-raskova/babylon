@@ -12,7 +12,8 @@ use crate::production_observation::{
 };
 
 use babylon_material_circuit::{
-    CorridorId, MaterialCircuitState, RouteId, RouteStage, SiteId, SupplierTransport,
+    CorridorId, MaterialCatalog, MaterialCircuitState, RouteId, RouteStage, SiteId,
+    SupplierTransport,
 };
 
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -131,7 +132,7 @@ pub(in crate::production_projection) struct RouteIndex<'a> {
 }
 
 impl<'a> RouteIndex<'a> {
-    fn new(state: &'a MaterialCircuitState) -> Result<Self> {
+    fn new(catalog: &'a MaterialCatalog, state: &'a MaterialCircuitState) -> Result<Self> {
         let mut memberships = BTreeMap::<_, BTreeSet<_>>::new();
         for row in &state.route_stage_capacities {
             if !memberships
@@ -143,7 +144,7 @@ impl<'a> RouteIndex<'a> {
             }
         }
         let mut stages = BTreeMap::<_, Vec<_>>::new();
-        for row in &state.route_stages {
+        for row in &catalog.route_stages {
             if !memberships.contains_key(&(row.route_id, row.stage_index)) {
                 return Err(ProductionProjectionError::State);
             }
@@ -185,16 +186,17 @@ pub(in crate::production_projection) fn budgets(state: &MaterialCircuitState) ->
 }
 
 pub(in crate::production_projection) fn participants(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
 ) -> Result<BTreeMap<CorridorId, Participants>> {
     let mut result = BTreeMap::<CorridorId, Participants>::new();
-    let index = RouteIndex::new(state)?;
+    let index = RouteIndex::new(catalog, state)?;
     for ((route, _), ids) in index.memberships {
         for id in ids {
             result.entry(id).or_default().routes.insert(route);
         }
     }
-    for merchant in &state.merchants {
+    for merchant in &catalog.merchants {
         let row = result.entry(merchant.capacity_id).or_default();
         if !row.routes.is_empty()
             || !row.merchants.insert(merchant.site_id)
@@ -216,6 +218,7 @@ pub(in crate::production_projection) fn participants(
 #[cfg(test)]
 pub(in crate::production_projection) fn project_freight_capacity_accounts(
     catalog: &MichiganMaterialCatalog,
+    material_catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     opening: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
@@ -223,12 +226,13 @@ pub(in crate::production_projection) fn project_freight_capacity_accounts(
     Vec<ProductionFreightCapacityAccount>,
     Vec<ProductionFreightOrderDefinition>,
 )> {
-    project_with_labels(state, opening, receipt, |id| {
+    project_with_labels(material_catalog, state, opening, receipt, |id| {
         catalog.corridor_label(id).map(str::to_owned)
     })
 }
 
 pub(in crate::production_projection) fn project_with_labels(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     opening: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
@@ -238,10 +242,11 @@ pub(in crate::production_projection) fn project_with_labels(
     Vec<ProductionFreightOrderDefinition>,
 )> {
     let current = budgets(state)?;
-    let principals = participants(state)?;
+    let principals = participants(catalog, state)?;
     let completed = match (opening, receipt) {
         (None, None) if state.period == 1 => None,
         (Some(prior), Some(receipt)) => Some(completed_reservations(
+            catalog,
             prior,
             state,
             receipt,
@@ -341,29 +346,28 @@ pub(in crate::production_projection) fn capacity_order(
 }
 
 pub(in crate::production_projection) fn completed_reservations(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
     current_budgets: &Budgets,
     principals: &BTreeMap<CorridorId, Participants>,
 ) -> Result<CompletedReservations> {
-    if !outbound::same_rows(&prior.route_stages, &current.route_stages)
-        || !outbound::same_rows(
-            &prior.route_stage_capacities,
-            &current.route_stage_capacities,
-        )
-    {
+    if !outbound::same_rows(
+        &prior.route_stage_capacities,
+        &current.route_stage_capacities,
+    ) {
         return Err(ProductionProjectionError::State);
     }
-    let facts = outbound::completed_facts(prior, current, receipt)?;
+    let facts = outbound::completed_facts(catalog, prior, current, receipt)?;
     let mut reservations = Reservations::new();
     let mut orders = Vec::new();
     // A completed zero principal remains visible even after all finite orders finish.
     for id in principals.keys() {
         reservations.entry((*id, prior.period)).or_default();
     }
-    let route_index = RouteIndex::new(prior)?;
-    let merchants: BTreeMap<_, _> = prior.merchants.iter().map(|r| (r.site_id, r)).collect();
+    let route_index = RouteIndex::new(catalog, prior)?;
+    let merchants: BTreeMap<_, _> = catalog.merchants.iter().map(|r| (r.site_id, r)).collect();
     let dispatches: BTreeMap<_, _> = receipt.dispatches.iter().map(|r| (r.order_id, r)).collect();
     for fact in facts {
         let order = capacity_order(&fact)?;
@@ -415,25 +419,24 @@ pub(in crate::production_projection) fn completed_reservations(
                 .push(ordinal);
         }
     }
-    aid::append(prior, current, receipt, &route_index, &mut reservations)?;
-    match (&prior.capacity_supply, &current.capacity_supply) {
-        (CapacitySupply::FiniteSchedule, CapacitySupply::FiniteSchedule) => {
-            reconcile_reservation_budgets(
-                &budgets(prior)?,
-                current_budgets,
-                current.period,
-                (reservations, orders),
-            )
-        }
-        (CapacitySupply::Rolling(before), CapacitySupply::Rolling(after)) => rolling::reconcile(
-            prior,
-            current,
-            before,
-            after,
+    aid::append(
+        catalog,
+        prior,
+        current,
+        receipt,
+        &route_index,
+        &mut reservations,
+    )?;
+    match &catalog.capacity_policy {
+        CapacitySupply::FiniteSchedule => reconcile_reservation_budgets(
+            &budgets(prior)?,
+            current_budgets,
+            current.period,
             (reservations, orders),
-            receipt,
         ),
-        _ => Err(ProductionProjectionError::State),
+        CapacitySupply::Rolling(_) => {
+            rolling::reconcile(catalog, prior, current, (reservations, orders), receipt)
+        }
     }
 }
 

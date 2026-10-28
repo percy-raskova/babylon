@@ -343,7 +343,7 @@ fn expected_digest(name: &str) -> [u8; 32] {
     let text = std::env::var(name).expect("explicit retained-game digest required");
     assert_eq!(text.len(), 64);
     let mut digest = [0; 32];
-    for (index, pair) in text.as_bytes().chunks_exact(2).enumerate() {
+    for (index, pair) in text.as_bytes().as_chunks::<2>().0.iter().enumerate() {
         digest[index] = u8::from_str_radix(
             std::str::from_utf8(pair).expect("the fixture bytes came from a UTF-8 string"),
             16,

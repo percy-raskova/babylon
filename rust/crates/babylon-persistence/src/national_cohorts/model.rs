@@ -1,4 +1,5 @@
 use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::geography::CountyGeoid;
 
 /// Disjoint source grouping; `None` means unclassified evidence, never an executable function.
@@ -11,6 +12,49 @@ pub struct CohortKey {
     /// Source ownership axis, independent of technical function.
     pub ownership: QcewOwnership,
 }
+/// One counted background workplace identity; source axes never blend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct WorkplaceCohortKey {
+    /// Fixed county or bounded external location.
+    pub location: EconomicLocation,
+    /// Technical function, independent of ownership.
+    pub function: EconomicFunction,
+    /// Source ownership axis; `None` is an explicitly Designed workplace.
+    pub ownership: Option<QcewOwnership>,
+}
+impl WorkplaceCohortKey {
+    /// Pair one captured source cohort with its admitted location.
+    #[must_use]
+    pub fn source_backed(key: CohortKey, location: EconomicLocation) -> Option<Self> {
+        if EconomicLocation::domestic_county(key.county).ok()? != location {
+            return None;
+        }
+        Some(Self {
+            location,
+            function: key.function?,
+            ownership: Some(key.ownership),
+        })
+    }
+    /// Name a Designed workplace without inventing a QCEW ownership claim.
+    #[must_use]
+    pub const fn designed(location: EconomicLocation, function: EconomicFunction) -> Self {
+        Self {
+            location,
+            function,
+            ownership: None,
+        }
+    }
+    /// Whether two admitted sites share one counted background workplace row.
+    /// Every causal axis (location, function, source ownership) must agree; the
+    /// individual site identity stays foreground-only.
+    #[must_use]
+    pub fn equivalent_for_consolidation(&self, other: &Self) -> bool {
+        self.location == other.location
+            && self.function == other.function
+            && self.ownership == other.ownership
+    }
+}
+
 /// Availability of source jobs, payroll and weekly mean wage.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QcewDisclosure {

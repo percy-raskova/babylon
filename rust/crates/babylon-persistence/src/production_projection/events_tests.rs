@@ -16,6 +16,12 @@ fn order_history(catalog: &MichiganMaterialCatalog) -> OrderHistory {
             .opening
             .compile()
             .expect("the authored scenario compiles")
+            .catalog,
+        &source
+            .view()
+            .opening
+            .compile()
+            .expect("the authored scenario compiles")
             .state,
     )
     .expect("the opening register admits its sections")

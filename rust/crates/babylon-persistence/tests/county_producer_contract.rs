@@ -58,13 +58,16 @@ fn qcew_baseline_retains_exact_integers_units_and_public_provenance() {
             .expect("later source"),
         desired
     );
-    assert!(babylon_persistence::desired_county_projection(
-        &plan,
-        &grant_index_for(&plan, false, false)
-    )
-    .expect("redacted")
-    .signals()
-    .is_empty());
+    assert_eq!(
+        babylon_persistence::desired_county_projection(
+            &plan,
+            &grant_index_for(&plan, false, false)
+        )
+        .expect("redacted")
+        .signals()
+        .len(),
+        0
+    );
 }
 
 #[test]

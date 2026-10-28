@@ -15,6 +15,7 @@ use babylon_material_circuit::AidBook;
 use babylon_material_circuit::AidMandate;
 use babylon_material_circuit::AidTransport;
 use babylon_material_circuit::AttendancePlan;
+use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacityRow;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CashAccount;
@@ -47,6 +48,7 @@ use babylon_material_circuit::LaborCapacityRow;
 use babylon_material_circuit::LaborCoefficient;
 use babylon_material_circuit::LaborCompensation;
 use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MerchantHandling;
 use babylon_material_circuit::MerchantHandlingCoefficient;
@@ -89,6 +91,7 @@ use babylon_practice_contract::OrganizerHouseholdBinding;
 use babylon_practice_contract::OrganizerParticipant;
 use babylon_practice_contract::OrganizerPartner;
 use babylon_practice_contract::OrganizerPartnerPolicy;
+use babylon_practice_contract::OrganizerPeriodJournal;
 use babylon_practice_contract::OrganizerTimeBindingMode;
 use babylon_practice_contract::ORGANIZER_SCHEMA_VERSION;
 use babylon_tick::h3_runtime::MichiganDynamicHexFoundation;
@@ -420,12 +423,20 @@ fn route_stage_capacities() -> Vec<RouteStageCapacity> {
         .collect()
 }
 
-pub(crate) fn opening() -> MaterialCircuitState {
+/// One authored definition set and its opening quantities.
+pub(crate) struct Materials {
+    pub(crate) catalog: MaterialCatalog,
+    pub(crate) state: MaterialCircuitState,
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "one fixture assembles the whole conserved circuit so projections start from a real opening"
+)]
+pub(crate) fn opening() -> Materials {
     let recurring = recurring();
-    MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
-        period: 1,
-        accounting: accounting(recurring),
+    let catalog = MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2, 3]
             .into_iter()
             .map(|owner| SiteLogisticsNode {
@@ -436,8 +447,6 @@ pub(crate) fn opening() -> MaterialCircuitState {
         process_outputs: process_outputs(),
         input_coefficients: input_coefficients(),
         labor_coefficients: labor_coefficients(),
-        service_connections: vec![],
-        service_orders: vec![],
         commodities: [0, 1, 2]
             .into_iter()
             .map(|commodity| CommodityDefinition {
@@ -450,10 +459,36 @@ pub(crate) fn opening() -> MaterialCircuitState {
             .collect(),
         supplier_routes: supplier_routes(),
         route_stages: route_stages(),
+        merchants: vec![MerchantHandling {
+            site_id: site(3),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
+            role: MerchantRole::Retail,
+            capacity_id: corridor(3),
+            labor_unit_id: hours(),
+        }],
+        handling_coefficients: vec![MerchantHandlingCoefficient {
+            site_id: site(3),
+            good_id: good(2),
+            unit_id: units(),
+            hours_per_unit: 1,
+        }],
+        maintenance_binding: None,
+        aid_mandates: vec![],
+        household_time_policy: vec![],
+        service_inputs: recurring.service_inputs.clone(),
+        household_needs: recurring.household_needs.clone(),
+        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
+    };
+    let state = MaterialCircuitState {
+        period: 1,
+        accounting: accounting(recurring),
+        service_connections: vec![],
+        service_orders: vec![],
         route_stage_capacities: route_stage_capacities(),
         inventory: vec![inventory(1, 0, 40), inventory(2, 1, 4), inventory(3, 2, 4)],
         orders: vec![],
-        backlog: vec![],
         freight: vec![],
         corridor_capacities: (1..=9)
             .flat_map(|period| {
@@ -495,21 +530,6 @@ pub(crate) fn opening() -> MaterialCircuitState {
                 planned_batches: 4,
             })
             .collect(),
-        merchants: vec![MerchantHandling {
-            site_id: site(3),
-            location: "county:26163"
-                .parse()
-                .expect("the authored literal parses as the declared type"),
-            role: MerchantRole::Retail,
-            capacity_id: corridor(3),
-            labor_unit_id: hours(),
-        }],
-        handling_coefficients: vec![MerchantHandlingCoefficient {
-            site_id: site(3),
-            good_id: good(2),
-            unit_id: units(),
-            hours_per_unit: 1,
-        }],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
             location: "county:26163"
@@ -517,16 +537,20 @@ pub(crate) fn opening() -> MaterialCircuitState {
                 .expect("the authored literal parses as the declared type"),
         }],
         final_demand_orders: vec![],
-        maintenance_binding: None,
         maintenance_service: None,
-    }
+        capacity_reservations: CapacityReservations::default(),
+    };
+    Materials { catalog, state }
 }
 
 pub(crate) fn recipient() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([76; 32])
 }
-pub(crate) fn aid_opening(routed: bool) -> MaterialCircuitState {
-    let mut state = opening();
+pub(crate) fn aid_opening(routed: bool) -> Materials {
+    let Materials {
+        mut catalog,
+        mut state,
+    } = opening();
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: recipient(),
         location: state.final_demand_principals[0].location,
@@ -609,7 +633,20 @@ pub(crate) fn aid_opening(routed: bool) -> MaterialCircuitState {
         mandates: vec![mandate(routed)],
         freight: vec![],
     };
-    state
+    // The catalog owns the definition rows the engine validates against.
+    let CircuitAccounting::Monetary(economy) = &state.accounting else {
+        panic!("monetary control");
+    };
+    catalog.aid_mandates.clone_from(&economy.aid.mandates);
+    if let Some(recurring) = &economy.recurring {
+        catalog
+            .household_needs
+            .clone_from(&recurring.household_needs);
+    }
+    if let HouseholdTimeAccounting::Modeled(time) = &economy.household_time {
+        catalog.household_time_policy.clone_from(&time.policies);
+    }
+    Materials { catalog, state }
 }
 pub(crate) fn mandate(routed: bool) -> AidMandate {
     AidMandate {
@@ -788,9 +825,15 @@ fn staffing() -> StaffingComposition {
 pub(crate) fn try_session(
     foundation: &MichiganDynamicHexFoundation,
     rules: &str,
-    material: MaterialCircuitState,
+    material: Materials,
     organizer: OrganizerConfig,
 ) -> Result<Session, MaterialReplayError> {
+    let Materials {
+        catalog,
+        state: opening,
+    } = material;
+    let catalog = MaterialCatalog::try_new(catalog)
+        .expect("the authored definitions canonicalize before admission");
     let (_, parsed) =
         rule_pipeline::split_content(rules).expect("the authored content splits into its sections");
     let forms = parsed.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
@@ -815,13 +858,14 @@ pub(crate) fn try_session(
     let config = organizer;
     let state = babylon_practice_contract::initial_organizer_state(&config)
         .expect("the authored config admits an opening organizer state");
-    let material = MaterialWorldRegister::try_new(0, material)
+    let material = MaterialWorldRegister::try_new(&catalog, 0, opening)
         .expect("the authored fixture satisfies the constructor invariants")
-        .with_organizer(config, state)
+        .with_organizer(&catalog, config, state, OrganizerPeriodJournal::empty())
         .expect("the fixture builder accepts the authored options");
     MaterialReplaySession::new(
         graph,
         material,
+        catalog,
         content_digest::sha256_of(b"organizer-replay-fixture-foundation"),
         babylon_kernel::clock::CampaignDuration::Finite { final_period: 8 },
         staffing(),
@@ -876,7 +920,7 @@ pub(crate) fn prepare(session: &Session, accepted: Option<&OrganizerCommitment>)
 
 pub(crate) fn commit(session: &mut Session, sink: &mut CollectingSink, candidate: Candidate) {
     session
-        .commit_prepared_and_publish(sink, candidate, |_| {
+        .commit_prepared_and_publish(sink, candidate, |_, _| {
             Ok::<_, &'static str>(ReplayCommitDisposition::Committed)
         })
         .expect("the prepared period commits");
@@ -890,6 +934,10 @@ pub(crate) fn authored_session(
 ) -> Session {
     authored_session_with_loss(foundation, organizer, no_time, routed, 0)
 }
+#[allow(
+    clippy::too_many_lines,
+    reason = "one authored boundary keeps the complete session fixture and its controls together"
+)]
 pub(crate) fn authored_session_with_loss(
     foundation: &MichiganDynamicHexFoundation,
     organizer: OrganizerConfig,
@@ -897,10 +945,13 @@ pub(crate) fn authored_session_with_loss(
     routed: bool,
     loss_ppm: u32,
 ) -> Session {
-    let mut state = aid_opening(routed);
+    let Materials {
+        mut catalog,
+        mut state,
+    } = aid_opening(routed);
     assert!(loss_ppm <= 1_000_000);
     if routed {
-        state
+        catalog
             .route_stages
             .iter_mut()
             .find(|stage| stage.route_id == route(2))
@@ -989,11 +1040,12 @@ pub(crate) fn authored_session_with_loss(
             unreachable!()
         };
         book.policies[0].hours_per_eligible_person = 4;
+        catalog.household_time_policy.clone_from(&book.policies);
     }
     try_session(
         foundation,
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
-        state,
+        Materials { catalog, state },
         organizer,
     )
     .expect("the fixture opens a session")

@@ -70,7 +70,7 @@ fn spawn_gallery(mut commands: Commands, assets: Res<VisualAssets>) {
                     card.spawn((
                         Text::new(entry.label),
                         TextFont {
-                            font_size: 24.0,
+                            font_size: FontSize::Px(24.0),
                             ..default()
                         },
                         TextColor(crate::palette::BONE),

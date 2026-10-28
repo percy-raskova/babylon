@@ -152,7 +152,7 @@ fn geoid_validation_accepts_only_seven_digit_place_identities() {
         assert_eq!(page.place_geoid().len(), 7);
         assert!(page.place_geoid().bytes().all(|byte| byte.is_ascii_digit()));
         assert!(page.place_geoid().starts_with("26"));
-        assert!(!page.title().is_empty());
+        assert_ne!(page.title().len(), 0);
     }
 }
 
@@ -206,7 +206,7 @@ fn cross_county_places_keep_every_county_slice() {
     for link in links {
         assert_eq!(link.target().kind(), ArchiveSubjectKind::County);
         assert_eq!(link.target().id().len(), 5);
-        assert!(!link.known_label().is_empty());
+        assert_ne!(link.known_label().len(), 0);
     }
 }
 
@@ -426,7 +426,7 @@ fn semantic_hash_covers_signal_citation_county_names_and_template_identity() {
     ]);
     let redacted = babylon_persistence::desired_place_projection(&plan, &subject_and_county)
         .expect("signal-redacted desired projection");
-    assert!(redacted.signals().is_empty());
+    assert_eq!(redacted.signals().len(), 0);
     assert_ne!(
         babylon_persistence::place_page_semantic_sha256(plan.place_geoid(), &redacted),
         baseline,
@@ -500,7 +500,7 @@ fn grant_refresh_republication_folds_grant_visibility_into_dirty_detection() {
         redacted_render.markdown(),
     )
     .expect("redacted page parses back");
-    assert!(redacted_stored.signals().is_empty());
+    assert_eq!(redacted_stored.signals().len(), 0);
     assert_eq!(redacted_stored.counties(), &[("26163".to_owned(), None)]);
 
     // Later identity and county grants arrive: the page re-dirties.

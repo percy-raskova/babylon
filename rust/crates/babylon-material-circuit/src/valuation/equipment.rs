@@ -5,25 +5,26 @@ use super::Result;
 use crate::payments::LaborUse;
 use crate::{
     AccountId, EquipmentAssetId, EquipmentCohortId, EquipmentWearReceipt, InstallationId,
-    MaterialCircuitError, MaterialCircuitState, ProcessId, SiteId, UnitId,
+    MaterialCatalog, MaterialCircuitError, MaterialCircuitState, ProcessId, SiteId, UnitId,
 };
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
 impl CostClose {
     pub(crate) fn wear(
         &mut self,
+        catalog: &MaterialCatalog,
         state: &mut MaterialCircuitState,
         process: ProcessId,
         batches: u64,
     ) -> Result<Currency> {
         let period = state.period;
-        let Some(e) = crate::equipment::get_mut(state) else {
+        let Some(content) = catalog.equipment_content() else {
             return Ok(super::zero());
         };
         if batches == 0 {
             return Ok(super::zero());
         }
-        let (binding, definition) = e.definition(process)?;
+        let (binding, definition) = content.definition(process)?;
         let site = binding.site_id;
         let rate = definition.batches_per_unit_per_period;
         let active = self
@@ -32,8 +33,9 @@ impl CostClose {
             .ok_or(MaterialCircuitError::EquipmentInvariant)?;
         let mut remaining = batches;
         let mut total = super::zero();
-        let range = e.cohorts_for(process);
-        for cohort in &mut e.cohorts[range] {
+        let position = crate::equipment::position_mut(state);
+        let range = crate::equipment::cohorts_for(&position.cohorts, process);
+        for cohort in &mut position.cohorts[range] {
             if remaining == 0 {
                 break;
             }
@@ -187,17 +189,19 @@ impl CostClose {
     }
 }
 pub(super) fn validate_assets(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     book: &HistoricalCostBook,
 ) -> Result<()> {
     let mut expected = BTreeMap::new();
-    if let Some(e) = crate::equipment::get(state) {
-        for c in &e.cohorts {
-            let (b, _) = e.definition(c.process_id)?;
+    if let Some(content) = catalog.equipment_content() {
+        let position = crate::equipment::position(state);
+        for c in &position.cohorts {
+            let (b, _) = content.definition(c.process_id)?;
             expected.insert(EquipmentAssetId::Installed(c.id), b.site_id);
         }
-        for p in &e.pending {
-            let (b, _) = e.definition(p.process_id)?;
+        for p in &position.pending {
+            let (b, _) = content.definition(p.process_id)?;
             expected.insert(EquipmentAssetId::Installation(p.id), b.site_id);
         }
     }

@@ -407,7 +407,7 @@ mod tests {
         assert_eq!(dossier.stale_nodes(&graph), vec![gone]);
         assert_eq!(dossier.reconcile(&graph), vec![gone]);
         assert!(!dossier.knows_node(gone));
-        assert!(dossier.stale_nodes(&graph).is_empty());
+        assert_eq!(dossier.stale_nodes(&graph).len(), 0);
     }
 
     #[test]

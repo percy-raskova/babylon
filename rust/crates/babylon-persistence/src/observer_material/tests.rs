@@ -190,7 +190,7 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
         rows.push(row);
         verify_published_period(&history, &expected, &expected_lookup, period);
         session
-            .commit_prepared_and_publish(&mut CollectingSink::default(), next, |_| {
+            .commit_prepared_and_publish(&mut CollectingSink::default(), next, |_, _| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
             .expect("the prepared period commits");
@@ -211,6 +211,7 @@ fn continuous_cursor_replays_beyond_sixteen_and_refuses_a_broken_tail() {
     let project = |value: &MaterialHistory| {
         production_projection::project_economic_current(
             expected.view(),
+            expected.material_catalog(),
             value.register(&expected),
             value.opening(&expected),
             value.receipt(),
@@ -328,8 +329,11 @@ fn verify_restart(
             next.graph_report().result_stable_graph(),
             next.graph_report().material_state_rows(),
             next.graph_report().result_registers().canonical_bytes(),
-            MaterialWorldRegister::decode(next.material().register().canonical_bytes())
-                .expect("the committed canonical bytes decode"),
+            MaterialWorldRegister::decode_external(
+                resumed.catalog(),
+                next.material().register().canonical_bytes().to_vec(),
+            )
+            .expect("the committed canonical bytes decode"),
         )
         .expect("the committed checkpoint restores");
     assert_eq!(resumed.completed_tick(), 17);

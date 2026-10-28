@@ -1,29 +1,31 @@
+use babylon_material_circuit::EquipmentPosition;
 use babylon_material_circuit::HouseholdTimeAccounting;
-fn money(n: i128) -> Currency {
+use babylon_material_circuit::MaterialCatalog;
+pub(crate) fn money(n: i128) -> Currency {
     Currency::from_micro_units(n)
 }
-fn site() -> SiteId {
+pub(crate) fn site() -> SiteId {
     SiteId::from_bytes([1; 32])
 }
-fn process() -> ProcessId {
+pub(crate) fn process() -> ProcessId {
     ProcessId::from_bytes([1; 32])
 }
-fn household() -> FinalDemandPrincipalId {
+pub(crate) fn household() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([9; 32])
 }
-fn good(n: u8) -> GoodId {
+pub(crate) fn good(n: u8) -> GoodId {
     GoodId::from_bytes([n; 32])
 }
-fn unit() -> UnitId {
+pub(crate) fn unit() -> UnitId {
     UnitId::from_bytes([7; 32])
 }
-fn hours() -> UnitId {
+pub(crate) fn hours() -> UnitId {
     UnitId::from_bytes([8; 32])
 }
-fn definition() -> EquipmentDefinitionId {
+pub(crate) fn definition() -> EquipmentDefinitionId {
     EquipmentDefinitionId::from_bytes([1; 32])
 }
-fn opening_assets() -> (MonetaryBook, HistoricalCostBook) {
+pub(crate) fn opening_assets() -> (MonetaryBook, HistoricalCostBook) {
     let book = MonetaryBook::open(vec![
         CashAccount {
             id: AccountId::Site(site()),
@@ -45,11 +47,12 @@ fn opening_assets() -> (MonetaryBook, HistoricalCostBook) {
             amount: money(amount),
         })
         .collect();
-    let costs = HistoricalCostBook::open(&book, stock_values, vec![], vec![], vec![]).expect("the fixture opens the authored source");
+    let costs = HistoricalCostBook::open(&book, stock_values, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     (book, costs)
 }
-fn opening_capacity() -> CapacitySupply {
-    CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
+pub(crate) fn opening_capacity() -> (CapacitySupply, EquipmentPosition) {
+    let policy = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
         processes: RollingProcessSupply::Equipment(Box::new(ProductiveEquipment {
             definitions: vec![EquipmentDefinition {
                 id: definition(),
@@ -71,8 +74,6 @@ fn opening_capacity() -> CapacitySupply {
                 unit_id: unit(),
                 quantity_per_equipment_unit: 2,
             }],
-            cohorts: vec![],
-            pending: vec![],
             installation_policies: vec![InstallationPolicy {
                 process_id: process(),
                 target: InstallationTarget::FixedUnits(1),
@@ -82,10 +83,10 @@ fn opening_capacity() -> CapacitySupply {
             investment_policies: vec![],
         })),
         shared: vec![],
-        future_reservations: vec![],
-    }))
+    }));
+    (policy, EquipmentPosition::default())
 }
-fn opening_accounting(
+pub(crate) fn opening_accounting(
     book: MonetaryBook,
     costs: HistoricalCostBook,
     schedules: &[LaborCapacityRow],
@@ -115,8 +116,9 @@ fn opening_accounting(
         }],
     }))
 }
-fn opening() -> MaterialCircuitState {
+pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
     let (book, costs) = opening_assets();
+    let (capacity_policy, equipment) = opening_capacity();
     let schedules: Vec<_> = [0, 2, 1, 2, 1, 0, 0, 0]
         .into_iter()
         .enumerate()
@@ -127,10 +129,8 @@ fn opening() -> MaterialCircuitState {
             available,
         })
         .collect();
-    MaterialCircuitState {
-        period: 1,
-        capacity_supply: opening_capacity(),
-        accounting: opening_accounting(book, costs, &schedules),
+    let catalog = MaterialCatalog {
+        capacity_policy,
         site_logistics_nodes: vec![SiteLogisticsNode {
             site_id: site(),
             node_id: LogisticsNodeId::from_bytes([1; 32]),
@@ -160,6 +160,23 @@ fn opening() -> MaterialCircuitState {
                 kind: CommodityKind::Storable { grams_per_unit: 1 },
             })
             .collect(),
+        supplier_routes: vec![],
+        route_stages: vec![],
+        merchants: vec![],
+        handling_coefficients: vec![],
+        maintenance_binding: None,
+        aid_mandates: vec![],
+        household_time_policy: vec![],
+        service_inputs: vec![],
+        household_needs: vec![],
+        catalog_digest: [0; 32],
+    };
+    let state = MaterialCircuitState {
+        period: 1,
+        accounting: opening_accounting(book, costs, &schedules),
+        service_connections: vec![],
+        service_orders: vec![],
+        route_stage_capacities: vec![],
         inventory: [1, 2, 3, 0]
             .into_iter()
             .enumerate()
@@ -170,6 +187,9 @@ fn opening() -> MaterialCircuitState {
                 quantity,
             })
             .collect(),
+        orders: vec![],
+        freight: vec![],
+        corridor_capacities: vec![],
         capacities: vec![CapacityRow {
             site_id: site(),
             process_id: process(),
@@ -180,38 +200,36 @@ fn opening() -> MaterialCircuitState {
         production_commitments: vec![],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
-            location: "county:26163".parse().expect("the authored literal parses as the declared type"),
+            location: "county:26163"
+                .parse()
+                .expect("the authored literal parses as the declared type"),
         }],
-        service_connections: vec![],
-        service_orders: vec![],
-        supplier_routes: vec![],
-        route_stages: vec![],
-        route_stage_capacities: vec![],
-        orders: vec![],
-        backlog: vec![],
-        freight: vec![],
-        corridor_capacities: vec![],
-        merchants: vec![],
-        handling_coefficients: vec![],
         final_demand_orders: vec![],
-        maintenance_binding: None,
         maintenance_service: None,
-    }
+        capacity_reservations: babylon_material_circuit::CapacityReservations {
+            equipment,
+            future: vec![],
+        },
+    };
+    (
+        MaterialCatalog::try_new(catalog).expect("the authored fixture catalog is valid"),
+        state,
+    )
 }
-fn economy(state: &MaterialCircuitState) -> &MonetaryCircuit {
+pub(crate) fn economy(state: &MaterialCircuitState) -> &MonetaryCircuit {
     let CircuitAccounting::Monetary(e) = &state.accounting else {
         panic!("paid")
     };
     e
 }
-fn economy_mut(state: &mut MaterialCircuitState) -> &mut MonetaryCircuit {
+pub(crate) fn economy_mut(state: &mut MaterialCircuitState) -> &mut MonetaryCircuit {
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         panic!("paid")
     };
     e
 }
-fn equipment(state: &MaterialCircuitState) -> &ProductiveEquipment {
-    let CapacitySupply::Rolling(s) = &state.capacity_supply else {
+pub(crate) fn equipment(catalog: &MaterialCatalog) -> &ProductiveEquipment {
+    let CapacitySupply::Rolling(s) = &catalog.capacity_policy else {
         panic!("rolling")
     };
     let RollingProcessSupply::Equipment(e) = &s.processes else {
@@ -219,24 +237,45 @@ fn equipment(state: &MaterialCircuitState) -> &ProductiveEquipment {
     };
     e
 }
-fn equipment_mut(state: &mut MaterialCircuitState) -> &mut ProductiveEquipment {
-    let CapacitySupply::Rolling(s) = &mut state.capacity_supply else {
+pub(crate) fn position(state: &MaterialCircuitState) -> &EquipmentPosition {
+    &state.capacity_reservations.equipment
+}
+pub(crate) fn position_mut(state: &mut MaterialCircuitState) -> &mut EquipmentPosition {
+    &mut state.capacity_reservations.equipment
+}
+/// Rebuild one catalog with a changed equipment definition set.
+pub(crate) fn rebuild(
+    catalog: &MaterialCatalog,
+    mutate: impl FnOnce(&mut ProductiveEquipment),
+) -> MaterialCatalog {
+    let CapacitySupply::Rolling(supply) = &catalog.capacity_policy else {
         panic!("rolling")
     };
-    let RollingProcessSupply::Equipment(e) = &mut s.processes else {
+    let RollingProcessSupply::Equipment(existing) = &supply.processes else {
         panic!("equipment")
     };
-    e
+    let mut content = (**existing).clone();
+    mutate(&mut content);
+    let mut rebuilt = catalog.clone();
+    rebuilt.capacity_policy = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
+        processes: RollingProcessSupply::Equipment(Box::new(content)),
+        shared: supply.shared.clone(),
+    }));
+    rebuilt.catalog_digest = [0; 32];
+    MaterialCatalog::try_new(rebuilt).expect("the rebuilt fixture catalog is valid")
 }
-fn equipment_cost(state: &MaterialCircuitState) -> Currency {
+pub(crate) fn equipment_cost(state: &MaterialCircuitState) -> Currency {
     economy(state)
         .costs
         .snapshot()
         .equipment
         .iter()
-        .fold(money(0), |sum, r| sum.checked_add(r.amount).expect("the fixture arithmetic stays in range"))
+        .fold(money(0), |sum, r| {
+            sum.checked_add(r.amount)
+                .expect("the fixture arithmetic stays in range")
+        })
 }
-fn stock_cost(state: &MaterialCircuitState, id: GoodId) -> Currency {
+pub(crate) fn stock_cost(state: &MaterialCircuitState, id: GoodId) -> Currency {
     economy(state)
         .costs
         .snapshot()
@@ -246,9 +285,13 @@ fn stock_cost(state: &MaterialCircuitState, id: GoodId) -> Currency {
         .expect("the fixture holds the searched element")
         .amount
 }
-
-fn configure_investment(state: &mut MaterialCircuitState, cash: i128, retained: i128) {
-    configure_investment_supply(state);
+pub(crate) fn configure_investment(
+    catalog: &mut MaterialCatalog,
+    state: &mut MaterialCircuitState,
+    cash: i128,
+    retained: i128,
+) {
+    configure_investment_supply(catalog, state);
     let seller = SiteId::from_bytes([2; 32]);
     let e = economy_mut(state);
     e.book = MonetaryBook::open(vec![
@@ -278,7 +321,8 @@ fn configure_investment(state: &mut MaterialCircuitState, cash: i128, retained: 
         unit_id: unit(),
         amount: money(24),
     });
-    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![]).expect("the fixture opens the authored source");
+    e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
+        .expect("the fixture opens the authored source");
     let mut costs = e.costs.snapshot();
     let account = costs
         .accounts
@@ -290,7 +334,8 @@ fn configure_investment(state: &mut MaterialCircuitState, cash: i128, retained: 
         .checked_sub(money(retained))
         .expect("the fixture arithmetic stays in range");
     account.retained_earnings = money(retained);
-    e.costs = HistoricalCostBook::from_snapshot(costs).expect("the snapshot admits the derived value");
+    e.costs =
+        HistoricalCostBook::from_snapshot(costs).expect("the snapshot admits the derived value");
     e.recurring = Some(Box::new(RecurringEconomy {
         service_inputs: vec![],
         households: vec![],
@@ -321,12 +366,11 @@ fn configure_investment(state: &mut MaterialCircuitState, cash: i128, retained: 
         last_household_consumption_period: 0,
     }));
 }
-
-fn configure_investment_supply(state: &mut MaterialCircuitState) {
+pub(crate) fn configure_investment_supply(catalog: &mut MaterialCatalog, state: &mut MaterialCircuitState) {
     let seller = SiteId::from_bytes([2; 32]);
     let route = RouteId::from_bytes([2; 32]);
     let corridor = CorridorId::from_bytes([2; 32]);
-    state.site_logistics_nodes.push(SiteLogisticsNode {
+    catalog.site_logistics_nodes.push(SiteLogisticsNode {
         site_id: seller,
         node_id: LogisticsNodeId::from_bytes([2; 32]),
     });
@@ -342,7 +386,7 @@ fn configure_investment_supply(state: &mut MaterialCircuitState) {
         unit_id: unit(),
         quantity: 2,
     });
-    state.supplier_routes.push(SupplierRoute {
+    catalog.supplier_routes.push(SupplierRoute {
         buyer_site_id: site(),
         supplier_site_id: seller,
         good_id: good(1),
@@ -350,7 +394,7 @@ fn configure_investment_supply(state: &mut MaterialCircuitState) {
         route_id: route,
         transport_kind: SupplierTransport::Staged,
     });
-    state.route_stages.push(RouteStage {
+    catalog.route_stages.push(RouteStage {
         route_id: route,
         stage_index: 0,
         from_node_id: LogisticsNodeId::from_bytes([2; 32]),
@@ -368,25 +412,26 @@ fn configure_investment_supply(state: &mut MaterialCircuitState) {
         period: 1,
         available_grams: 10,
     });
-    let CapacitySupply::Rolling(supply) = &mut state.capacity_supply else {
+    let CapacitySupply::Rolling(supply) = &mut catalog.capacity_policy else {
         panic!("rolling")
     };
     supply.shared.push(SharedCapacitySupply {
         corridor_id: corridor,
         grams_per_period: 10,
     });
-    equipment_mut(state).investment_policies = vec![InvestmentPolicy {
-        process_id: process(),
-        supplier_site_id: seller,
-        replacement_target_units: 1,
-        maximum_installed_units: 2,
-        maximum_purchase_per_period: 1,
-        expansion_earnings_fraction_bps: 10000,
-        cash_floor: money(0),
-    }];
+    *catalog = rebuild(catalog, |content| {
+        content.investment_policies = vec![InvestmentPolicy {
+            process_id: process(),
+            supplier_site_id: seller,
+            replacement_target_units: 1,
+            maximum_installed_units: 2,
+            maximum_purchase_per_period: 1,
+            expansion_earnings_fraction_bps: 10000,
+            cash_floor: money(0),
+        }];
+    });
 }
-
-fn configure_output_quote(state: &mut MaterialCircuitState) {
+pub(crate) fn configure_output_quote(state: &mut MaterialCircuitState) {
     let period = state.period;
     economy_mut(state).recurring = Some(Box::new(RecurringEconomy {
         service_inputs: vec![],

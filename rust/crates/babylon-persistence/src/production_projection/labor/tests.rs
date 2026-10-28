@@ -9,21 +9,26 @@ use super::projection;
 use super::projection::{budgets, completed_totals};
 use crate::michigan_economy;
 use crate::production_observation::CompletedProductionLabor;
+use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CircuitAccounting;
-use babylon_material_circuit::{MaterialCircuitState, ProcessId, SiteId, UnitId};
+use babylon_material_circuit::{MaterialCatalog, MaterialCircuitState, ProcessId, SiteId, UnitId};
 use babylon_tick::material_world;
 use babylon_tick::material_world::MaterialTickReceipts;
 
-fn shared_opening() -> MaterialCircuitState {
+type Parts = (MaterialCatalog, MaterialCircuitState);
+type Pair = (
+    MaterialCircuitState,
+    MaterialCircuitState,
+    MaterialTickReceipts,
+    MaterialCatalog,
+);
+
+fn shared_opening() -> Parts {
     let site = SiteId::from_bytes([1; 32]);
     let labor_unit = UnitId::from_bytes([2; 32]);
-    let mut state = MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
-        accounting: CircuitAccounting::PhysicalControl,
-        maintenance_binding: None,
-        maintenance_service: None,
-        period: 1,
+    let mut catalog = MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![SiteLogisticsNode {
             site_id: site,
             node_id: LogisticsNodeId::from_bytes([3; 32]),
@@ -31,11 +36,6 @@ fn shared_opening() -> MaterialCircuitState {
         process_outputs: vec![],
         input_coefficients: vec![],
         labor_coefficients: vec![],
-        supplier_routes: vec![],
-        route_stages: vec![],
-        route_stage_capacities: vec![],
-        service_connections: vec![],
-        service_orders: vec![],
         commodities: [4, 5]
             .into_iter()
             .map(|id| CommodityDefinition {
@@ -44,13 +44,29 @@ fn shared_opening() -> MaterialCircuitState {
                 kind: CommodityKind::Storable { grams_per_unit: 1 },
             })
             .collect(),
+        supplier_routes: vec![],
+        route_stages: vec![],
         merchants: vec![],
         handling_coefficients: vec![],
+        maintenance_binding: None,
+        aid_mandates: vec![],
+        household_time_policy: vec![],
+        service_inputs: vec![],
+        household_needs: vec![],
+        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
+    };
+    let mut state = MaterialCircuitState {
+        accounting: CircuitAccounting::PhysicalControl,
+        maintenance_service: None,
+        capacity_reservations: CapacityReservations::default(),
+        period: 1,
+        route_stage_capacities: vec![],
+        service_connections: vec![],
+        service_orders: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
         inventory: vec![],
         orders: vec![],
-        backlog: vec![],
         freight: vec![],
         corridor_capacities: vec![],
         capacities: vec![],
@@ -59,14 +75,14 @@ fn shared_opening() -> MaterialCircuitState {
     };
     for (id, quantity) in [(4, 2), (5, 3)] {
         let process = ProcessId::from_bytes([id; 32]);
-        state.process_outputs.push(ProcessOutput {
+        catalog.process_outputs.push(ProcessOutput {
             process_id: process,
             site_id: site,
             good_id: GoodId::from_bytes([id; 32]),
             unit_id: UnitId::from_bytes([6; 32]),
             quantity_per_batch: 1,
         });
-        state.labor_coefficients.push(LaborCoefficient {
+        catalog.labor_coefficients.push(LaborCoefficient {
             process_id: process,
             unit_id: labor_unit,
             quantity_per_batch: quantity,
@@ -92,33 +108,32 @@ fn shared_opening() -> MaterialCircuitState {
             available,
         });
     }
-    state
+    (
+        MaterialCatalog::try_new(catalog).expect("the fixture catalog canonicalizes"),
+        state,
+    )
 }
 
-fn committed_pair(
-    state: MaterialCircuitState,
-) -> (
-    MaterialCircuitState,
-    MaterialCircuitState,
-    MaterialTickReceipts,
-) {
-    let opening = MaterialWorldRegister::try_new(0, state)
+fn committed_pair(parts: Parts) -> Pair {
+    let (catalog, state) = parts;
+    let opening = MaterialWorldRegister::try_new(&catalog, 0, state)
         .expect("the authored fixture satisfies the constructor invariants");
     let next = opening
-        .prepare_next()
+        .prepare_next(&catalog)
         .expect("the fixture prepares the authored state");
     (
         opening.state().clone(),
         next.register().state().clone(),
         material_world::decode_material_receipts(next.receipt_bytes())
             .expect("the canonical bytes decode into the declared type"),
+        catalog,
     )
 }
 
 #[test]
 fn shared_principal_is_counted_once_and_time_closes_from_actual_receipts() {
-    let (opening, next, receipt) = committed_pair(shared_opening());
-    let rows = projection::project_labor_accounts(&next, Some(&opening), Some(&receipt))
+    let (opening, next, receipt, catalog) = committed_pair(shared_opening());
+    let rows = projection::project_labor_accounts(&catalog, &next, Some(&opening), Some(&receipt))
         .expect("the fixture projection accepts the authored input");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].next_opening_period, 2);
@@ -143,7 +158,7 @@ fn shared_principal_is_counted_once_and_time_closes_from_actual_receipts() {
     reversed.production.reverse();
     assert_eq!(
         rows,
-        projection::project_labor_accounts(&next, Some(&opening), Some(&reversed))
+        projection::project_labor_accounts(&catalog, &next, Some(&opening), Some(&reversed))
             .expect("the fixture projection accepts the authored input")
     );
     assert_eq!(
@@ -154,15 +169,15 @@ fn shared_principal_is_counted_once_and_time_closes_from_actual_receipts() {
 
 #[test]
 fn exact_unit_principals_remain_separate_at_the_same_site() {
-    let mut state = shared_opening();
+    let (mut catalog, mut state) = shared_opening();
     let other_unit = UnitId::from_bytes([7; 32]);
-    state.labor_coefficients[1].unit_id = other_unit;
+    catalog.labor_coefficients[1].unit_id = other_unit;
     let mut budget = state.labor[0].clone();
     budget.unit_id = other_unit;
     budget.available = 6;
     state.labor.push(budget);
-    let (opening, next, receipt) = committed_pair(state);
-    let rows = projection::project_labor_accounts(&next, Some(&opening), Some(&receipt))
+    let (opening, next, receipt, catalog) = committed_pair((catalog, state));
+    let rows = projection::project_labor_accounts(&catalog, &next, Some(&opening), Some(&receipt))
         .expect("the fixture projection accepts the authored input");
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0].site_id, rows[1].site_id);
@@ -191,22 +206,23 @@ fn exact_unit_principals_remain_separate_at_the_same_site() {
 
 #[test]
 fn multiplication_and_shared_sum_overflow_refuse_without_mutating_inputs() {
-    let (mut opening, _, mut receipt) = committed_pair(shared_opening());
-    opening.labor_coefficients[0].quantity_per_batch = u64::MAX;
+    let (mut opening, _, mut receipt, mut catalog) = committed_pair(shared_opening());
+    catalog.labor_coefficients[0].quantity_per_batch = u64::MAX;
     let before = opening.clone();
     assert!(matches!(
         completed_totals(
+            &catalog,
             &opening,
             &receipt,
             None,
-            &budgets(&opening)
+            &budgets(&catalog, &opening)
                 .expect("the fixture call `budgets` succeeds for the authored inputs"),
             &super::super::equipment::EquipmentFacts::default()
         ),
         Err(ProductionProjectionError::Arithmetic)
     ));
     assert_eq!(opening, before);
-    for coefficient in &mut opening.labor_coefficients {
+    for coefficient in &mut catalog.labor_coefficients {
         coefficient.quantity_per_batch = u64::MAX;
     }
     for plan in &mut opening.production_commitments {
@@ -218,10 +234,11 @@ fn multiplication_and_shared_sum_overflow_refuse_without_mutating_inputs() {
     }
     assert!(matches!(
         completed_totals(
+            &catalog,
             &opening,
             &receipt,
             None,
-            &budgets(&opening)
+            &budgets(&catalog, &opening)
                 .expect("the fixture call `budgets` succeeds for the authored inputs"),
             &super::super::equipment::EquipmentFacts::default()
         ),
@@ -231,52 +248,52 @@ fn multiplication_and_shared_sum_overflow_refuse_without_mutating_inputs() {
 
 #[test]
 fn inconsistent_accounts_refuse_instead_of_publishing_negative_or_unattributed_time() {
-    let (opening, next, receipt) = committed_pair(shared_opening());
+    let (opening, next, receipt, catalog) = committed_pair(shared_opening());
     let mut insufficient = opening.clone();
     insufficient.labor[0].available = 7;
     assert_eq!(
-        projection::project_labor_accounts(&next, Some(&insufficient), Some(&receipt)),
+        projection::project_labor_accounts(&catalog, &next, Some(&insufficient), Some(&receipt)),
         Err(ProductionProjectionError::State)
     );
     let mut duplicate = receipt.clone();
     duplicate.production.push(receipt.production[0].clone());
     assert_eq!(
-        projection::project_labor_accounts(&next, Some(&opening), Some(&duplicate)),
+        projection::project_labor_accounts(&catalog, &next, Some(&opening), Some(&duplicate)),
         Err(ProductionProjectionError::State)
     );
     let mut missing = receipt.clone();
     missing.production.pop();
     assert_eq!(
-        projection::project_labor_accounts(&next, Some(&opening), Some(&missing)),
+        projection::project_labor_accounts(&catalog, &next, Some(&opening), Some(&missing)),
         Err(ProductionProjectionError::State)
     );
     assert_eq!(
-        projection::project_labor_accounts(&next, None, Some(&receipt)),
+        projection::project_labor_accounts(&catalog, &next, None, Some(&receipt)),
         Err(ProductionProjectionError::History)
     );
     let mut duplicate_budget = opening.clone();
     duplicate_budget.labor.push(opening.labor[0].clone());
     assert_eq!(
-        budgets(&duplicate_budget),
+        budgets(&catalog, &duplicate_budget),
         Err(ProductionProjectionError::State)
     );
 }
 
 #[test]
 fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_handling() {
-    let mut opening = shared_opening();
+    let (mut catalog, mut opening) = shared_opening();
     let consumer = ProcessId::from_bytes([4; 32]);
-    opening
+    catalog
         .process_outputs
         .retain(|row| row.process_id == consumer);
-    opening
+    catalog
         .labor_coefficients
         .retain(|row| row.process_id == consumer);
     opening.capacities.retain(|row| row.process_id == consumer);
     opening
         .production_commitments
         .retain(|row| row.process_id == consumer);
-    opening
+    catalog
         .input_coefficients
         .push(babylon_material_circuit::InputOutputCoefficient {
             process_id: consumer,
@@ -292,7 +309,7 @@ fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_hand
             unit_id: UnitId::from_bytes([6; 32]),
             quantity: 10,
         });
-    opening.commodities.push(CommodityDefinition {
+    catalog.commodities.push(CommodityDefinition {
         good_id: GoodId::from_bytes([21; 32]),
         unit_id: UnitId::from_bytes([6; 32]),
         kind: CommodityKind::Storable { grams_per_unit: 1 },
@@ -309,7 +326,7 @@ fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_hand
         enabled_batches_per_job: 1,
         maximum_jobs_per_period: 2,
     };
-    opening.site_logistics_nodes.push(SiteLogisticsNode {
+    catalog.site_logistics_nodes.push(SiteLogisticsNode {
         site_id: provider,
         node_id: LogisticsNodeId::from_bytes([22; 32]),
     });
@@ -331,14 +348,14 @@ fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_hand
         period: 1,
         available_batches: 2,
     });
-    opening.maintenance_binding = Some(binding);
+    catalog.maintenance_binding = Some(binding);
     let mut future = opening.capacities.clone();
     for capacity in &mut future {
         capacity.period = 2;
     }
     opening.capacities.extend(future);
-    let (opening, next, receipt) = committed_pair(opening);
-    let rows = projection::project_labor_accounts(&next, Some(&opening), Some(&receipt))
+    let (opening, next, receipt, catalog) = committed_pair((catalog, opening));
+    let rows = projection::project_labor_accounts(&catalog, &next, Some(&opening), Some(&receipt))
         .expect("the fixture projection accepts the authored input");
     let provider = rows
         .iter()
@@ -359,14 +376,17 @@ fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_hand
     assert_eq!(completed["handling_used"], 0);
     let mut missing = receipt.clone();
     missing.maintenance = None;
-    assert!(projection::project_labor_accounts(&next, Some(&opening), Some(&missing)).is_err());
+    assert!(
+        projection::project_labor_accounts(&catalog, &next, Some(&opening), Some(&missing))
+            .is_err()
+    );
 }
 
 #[test]
 fn monetary_attendance_cannot_relabel_actual_production_as_idle_or_handling() {
-    let (opening, next, receipt) =
-        committed_pair(crate::production_projection::recurring_fixture::opening());
-    projection::project_labor_accounts(&next, Some(&opening), Some(&receipt))
+    let (opening, next, receipt, catalog) =
+        committed_pair(crate::production_projection::recurring_fixture::materials());
+    projection::project_labor_accounts(&catalog, &next, Some(&opening), Some(&receipt))
         .expect("the fixture projection accepts the authored input");
     for as_idle in [true, false] {
         let mut changed = receipt.clone();
@@ -406,7 +426,7 @@ fn monetary_attendance_cannot_relabel_actual_production_as_idle_or_handling() {
             .validate()
             .expect("the authored fixture passes validation");
         assert_eq!(
-            projection::project_labor_accounts(&next, Some(&opening), Some(&changed)),
+            projection::project_labor_accounts(&catalog, &next, Some(&opening), Some(&changed)),
             Err(ProductionProjectionError::History)
         );
     }

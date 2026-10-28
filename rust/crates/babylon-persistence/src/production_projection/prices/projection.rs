@@ -7,8 +7,8 @@ use super::{flows, model};
 use super::super::{lifecycle, ProductionProjectionError};
 
 use babylon_material_circuit::{
-    CommodityKind, GoodId, MaterialCircuitState, PriceDecision, PricePolicy, PriceReceipt,
-    SellerOffer, SiteId, UnitId,
+    CommodityKind, GoodId, MaterialCatalog, MaterialCircuitState, PriceDecision, PricePolicy,
+    PriceReceipt, SellerOffer, SiteId, UnitId,
 };
 
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -22,10 +22,11 @@ pub(in crate::production_projection) type Result<T> = StdResult<T, ProductionPro
 
 pub(in crate::production_projection) type Key = (SiteId, GoodId, UnitId);
 
-pub(in crate::production_projection) fn offers(
-    state: &MaterialCircuitState,
-) -> Result<BTreeMap<Key, &SellerOffer>> {
-    let goods: BTreeMap<_, _> = state
+pub(in crate::production_projection) fn offers<'a>(
+    catalog: &MaterialCatalog,
+    state: &'a MaterialCircuitState,
+) -> Result<BTreeMap<Key, &'a SellerOffer>> {
+    let goods: BTreeMap<_, _> = catalog
         .commodities
         .iter()
         .map(|r| ((r.good_id, r.unit_id), r.kind))
@@ -53,17 +54,18 @@ pub(in crate::production_projection) fn offers(
 }
 
 pub(in crate::production_projection) fn validate(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
     orders: &PeriodOrders,
 ) -> Result<()> {
-    let before = offers(prior)?;
-    let after = offers(current)?;
+    let before = offers(catalog, prior)?;
+    let after = offers(catalog, current)?;
     if before.keys().ne(after.keys()) || before.len() != receipt.prices.len() {
         return Err(ProductionProjectionError::State);
     }
-    let flows = Flows::new(prior, current, receipt, orders)?;
+    let flows = Flows::new(catalog, current, receipt, orders)?;
     let inventory: BTreeMap<_, _> = current
         .inventory
         .iter()
@@ -151,6 +153,7 @@ pub(in crate::production_projection) fn validate_reason(
 }
 
 pub(in crate::production_projection) fn project_with_labels(
+    catalog: &MaterialCatalog,
     current: &MaterialCircuitState,
     prior: Option<&MaterialCircuitState>,
     receipts: Option<&MaterialTickReceipts>,
@@ -159,8 +162,8 @@ pub(in crate::production_projection) fn project_with_labels(
     match (prior, receipts) {
         (None, None) if current.period == 1 => {}
         (Some(prior), Some(receipts)) => {
-            let orders = lifecycle::join(prior, current, receipts)?;
-            validate(prior, current, receipts, &orders)?;
+            let orders = lifecycle::join(catalog, prior, current, receipts)?;
+            validate(catalog, prior, current, receipts, &orders)?;
         }
         _ => return Err(ProductionProjectionError::History),
     }
@@ -170,7 +173,7 @@ pub(in crate::production_projection) fn project_with_labels(
         .iter()
         .map(|r| ((r.site_id, r.good_id, r.unit_id), r))
         .collect();
-    offers(current)?
+    offers(catalog, current)?
         .into_iter()
         .map(|(key, offer)| {
             let (good, unit) = labels(key.1, key.2).ok_or(ProductionProjectionError::Content)?;

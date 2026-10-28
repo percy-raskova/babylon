@@ -2,8 +2,8 @@
 use super::{PeriodOrders, ProductionProjectionError, Result};
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
-    AccountId, CommodityKind, GoodId, MaterialCircuitState, OrderId, OutboundOrderId,
-    PurchaseEscrow, ServiceOrder, ServicePerformanceReceipt, SiteId, UnitId,
+    AccountId, CommodityKind, GoodId, MaterialCatalog, MaterialCircuitState, OrderId,
+    OutboundOrderId, PurchaseEscrow, ServiceOrder, ServicePerformanceReceipt, SiteId, UnitId,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
@@ -21,6 +21,7 @@ struct Request {
 }
 
 pub(super) fn admit(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipts: &MaterialTickReceipts,
@@ -64,7 +65,7 @@ pub(super) fn admit(
     if actual.len() != current.service_orders.len() || actual != future {
         return Err(ProductionProjectionError::State);
     }
-    let mut expected = requests(prior, &purchases)?;
+    let mut expected = requests(catalog, prior, &purchases)?;
     let connections: BTreeSet<_> = prior
         .service_connections
         .iter()
@@ -164,6 +165,7 @@ fn admit_generated(
     Ok(())
 }
 fn requests(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     purchases: &BTreeMap<OutboundOrderId, &PurchaseEscrow>,
 ) -> Result<BTreeMap<OrderId, Request>> {
@@ -171,7 +173,7 @@ fn requests(
         return Ok(BTreeMap::new());
     };
     let offers = super::offer_index(prior)?;
-    let services: BTreeSet<_> = prior
+    let services: BTreeSet<_> = catalog
         .commodities
         .iter()
         .filter(|r| matches!(r.kind, CommodityKind::PeriodService { .. }))

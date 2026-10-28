@@ -132,7 +132,7 @@ fn published_observations() -> &'static [ObserverEconomySnapshot] {
             )
             .expect("the fixture call `compose` succeeds for the authored inputs");
             let (ack, _) = session
-                .commit_prepared_and_publish(&mut sink, prepared, |_| {
+                .commit_prepared_and_publish(&mut sink, prepared, |_, _| {
                     Ok::<_, ()>(ReplayCommitDisposition::Committed)
                 })
                 .expect("the prepared period commits");
@@ -1383,7 +1383,7 @@ fn shared_freight_definitions_refuse_forged_missing_unused_and_duplicate_facts()
     let original = observation
         .production
         .expect("the fixture observation carries its production section");
-    assert!(!original.freight_order_definitions.is_empty());
+    assert_ne!(original.freight_order_definitions.len(), 0);
     assert!(FreightOrderIndex::try_new(&original).is_ok());
     let mut changed = original.clone();
     changed.freight_order_definitions[0].order.requested_grams = u128::MAX;

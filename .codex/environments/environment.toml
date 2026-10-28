@@ -51,7 +51,7 @@ from typing import Any
 MAX_ANCESTORS = 128
 MAX_CONFIG_FILES = 512
 MAX_INCLUDES_PER_FILE = 128
-EXPECTED_TOOLCHAIN = "1.91.1"
+EXPECTED_TOOLCHAIN = "1.99.1"
 
 
 def add_active_config(configs: list[Path], cargo_dir: Path) -> None:
@@ -192,7 +192,7 @@ if [ ! -e .env ] && [ ! -L .env ]; then
   install -m 600 .env.example .env
 fi
 
-rustup toolchain install 1.91.1 --profile minimal --component clippy --component rustfmt
+rustup toolchain install 1.99.1 --profile minimal --component clippy --component rustfmt
 
 . "$CODEX_WORKTREE_PATH/.codex/host/policy.sh"
 codex_tools_root="$(codex_rust_tools_root)"
@@ -242,7 +242,7 @@ else
     -u CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER \
     RUSTC_WRAPPER= \
     RUSTC_WORKSPACE_WRAPPER= \
-    cargo +1.91.1 install --locked --force --version "=$CODEX_RUST_SCCACHE_VERSION" \
+    cargo +1.99.1 install --locked --force --version "=$CODEX_RUST_SCCACHE_VERSION" \
       --root "$sccache_version_root" sccache
   sccache_bin="$sccache_version_root/bin/sccache"
 fi

@@ -5,6 +5,7 @@ use babylon_graph::stable_element::StableElementKey;
 use babylon_graph::stable_state;
 use babylon_graph::stable_state::StableGraphState;
 use babylon_graph::stable_state::StableGraphStateRowsInput;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::{
     CircuitAccounting, StaffingMemberBinding, StaffingPolicy, StaffingPoolBinding, StaffingPoolId,
     StaffingWorkSource,
@@ -16,8 +17,13 @@ use babylon_tick::material_staffing::{
 };
 use babylon_tick::material_world::MaterialWorldRegister;
 
-fn paid_opening() -> (StaffingComposition, StableGraphState, MaterialWorldRegister) {
-    let state = crate::production_projection::recurring_fixture::opening();
+fn paid_opening() -> (
+    StaffingComposition,
+    StableGraphState,
+    MaterialWorldRegister,
+    MaterialCatalog,
+) {
+    let (catalog, state) = crate::production_projection::recurring_fixture::materials();
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
         panic!("paid control")
     };
@@ -57,7 +63,7 @@ fn paid_opening() -> (StaffingComposition, StableGraphState, MaterialWorldRegist
             ),
             (member.clone(), RESERVE_POPULATION.into(), 0_f64.to_bits()),
         ]);
-        let source = state
+        let source = catalog
             .process_outputs
             .iter()
             .find(|row| row.site_id == terms.site_id)
@@ -105,14 +111,15 @@ fn paid_opening() -> (StaffingComposition, StableGraphState, MaterialWorldRegist
         StaffingComposition::try_new(bindings)
             .expect("the authored fixture satisfies the constructor invariants"),
         graph,
-        MaterialWorldRegister::try_new(0, state)
+        MaterialWorldRegister::try_new(&catalog, 0, state)
             .expect("the authored fixture satisfies the constructor invariants"),
+        catalog,
     )
 }
 
 #[test]
 fn paid_projection_joins_resident_accounts_hours_and_compensation() {
-    let (composition, graph, register) = paid_opening();
+    let (composition, graph, register, _catalog) = paid_opening();
     let accounts =
         projection::project_staffing_accounts(&composition, &graph, &register, None, &[], None)
             .expect("the fixture projection accepts the authored input");

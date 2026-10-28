@@ -1466,7 +1466,7 @@ mod tests {
         let inventory = descriptor["observables"]
             .as_array()
             .expect("the JSON fixture field is an array");
-        assert!(!inventory.is_empty());
+        assert_ne!(inventory.len(), 0);
         assert_eq!(inventory.len(), state.rows().node_f64().len());
         assert!(inventory.iter().all(|row| row
             .as_object()
@@ -1483,7 +1483,7 @@ mod tests {
                         .starts_with(namespace)
                 })
                 .collect();
-            assert!(!fixed.is_empty());
+            assert_ne!(fixed.len(), 0);
             assert!(fixed.iter().all(|row| row["role"] == "observed_baseline"));
         }
     }

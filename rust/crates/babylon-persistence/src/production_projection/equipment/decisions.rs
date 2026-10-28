@@ -4,7 +4,7 @@ use super::{
     ProductiveEquipment, Result,
 };
 use babylon_material_circuit::{
-    EquipmentCohortId, InstallationTarget, InstalledEquipmentCohort, ProcessId,
+    EquipmentCohortId, EquipmentPosition, InstallationTarget, InstalledEquipmentCohort, ProcessId,
 };
 use std::collections::BTreeMap;
 
@@ -12,6 +12,7 @@ type Units = BTreeMap<ProcessId, u64>;
 
 pub(super) fn validate(
     prior: &MaterialCircuitState,
+    position: &EquipmentPosition,
     equipment: &ProductiveEquipment,
     receipt: &MaterialTickReceipts,
     definitions: &Definitions<'_>,
@@ -28,7 +29,7 @@ pub(super) fn validate(
         .map(|r| (r.process_id, r))
         .collect();
     let installed = units(post_wear.values().map(|r| (r.process_id, r.units)))?;
-    let pending = units(equipment.pending.iter().map(|r| (r.process_id, r.units)))?;
+    let pending = units(position.pending.iter().map(|r| (r.process_id, r.units)))?;
     let mut started = Units::new();
     let mut continuing = Units::new();
     for r in &receipt.installation {

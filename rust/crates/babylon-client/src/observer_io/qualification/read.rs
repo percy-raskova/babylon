@@ -27,6 +27,11 @@ impl Work {
         }
     }
 
+    // The added admission lookup pushes this sequence one line past the limit.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one opening admission keeps the snapshot, admission and disclosure sequence together"
+    )]
     fn opening(
         mut self,
         reader: ObserverEconomyReader,
@@ -63,12 +68,16 @@ impl Work {
         }
         let geography = babylon_persistence::qualification_audit::county_roster(&snapshot)
             .map_err(|e| e.to_string())?;
+        let admission = admitted_cursor
+            .admission_handle()
+            .ok_or("native aid authenticated admission absent")?;
         let opening = admitted_cursor
             .with_opening_register(context.campaign, |register| {
                 if register.canonical_bytes().len() > policy.material_register_bytes {
                     return Err("native aid opening exceeds its register byte limit".to_string());
                 }
-                self.custody.open(register, &self.scope, self.duration)?;
+                self.custody
+                    .open(&admission, register, &self.scope, self.duration)?;
                 Ok(Opening {
                     campaign: snapshot.campaign_id.clone(),
                     foundation_sha256: snapshot.foundation_digest.clone(),
@@ -156,13 +165,17 @@ impl Work {
             .as_ref()
             .and_then(ObserverMaterialCursor::current_register)
             .ok_or("native audit authenticated register absent")?;
+        let admission = candidate_cursor
+            .as_ref()
+            .and_then(ObserverMaterialCursor::admission_handle)
+            .ok_or("native audit authenticated admission absent")?;
         let facts = self
             .audit
-            .read(&observation, register)
+            .read(admission.material_catalog(), &observation, register)
             .map_err(|e| e.to_string())?;
-        let aid = self
-            .custody
-            .read(&observation.accounting, register, self.duration)?;
+        let aid =
+            self.custody
+                .read(&admission, &observation.accounting, register, self.duration)?;
         let binding = KnownBinding::from_facts(&facts);
         let identity = Identity::capture(
             &observation.snapshot,
@@ -234,11 +247,16 @@ impl Work {
         if evidence.body_bytes() > policy.production_evidence_bytes {
             return Err("native restored production evidence exceeds its byte limit".into());
         }
+        let admission = candidate_cursor
+            .as_ref()
+            .and_then(ObserverMaterialCursor::admission_handle)
+            .ok_or("native restored admission absent")?;
         let observe = |register: &MaterialWorldRegister| {
             if register.canonical_bytes().len() > policy.material_register_bytes {
                 return Err("native restored register exceeds its byte limit".to_string());
             }
-            self.custody.recovered_register(register, self.duration)?;
+            self.custody
+                .recovered_register(&admission, register, self.duration)?;
             Identity::capture(
                 &full.snapshot,
                 register.digest(),

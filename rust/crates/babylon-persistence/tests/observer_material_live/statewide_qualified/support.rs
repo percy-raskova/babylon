@@ -25,6 +25,7 @@ use babylon_tick::material_world::{
 };
 use babylon_tick::replay_session::ReplayCommitDisposition;
 
+use babylon_material_circuit::MaterialCatalog;
 use babylon_persistence::production_observation::FreightOrderIndex;
 use babylon_persistence::production_observation::PhysicalRouteIndex;
 use babylon_tick::material_world;
@@ -178,7 +179,7 @@ pub(crate) fn qualify_preset(delivery: MichiganDeliveryPreset, index: u128) {
     let physical = catalog.physical_network().expect("actual road network");
     assert!(!physical.source.pbf_url.starts_with("synthetic://"));
     assert!(physical.source.pbf_url.starts_with("https://"));
-    assert!(!physical.edges.is_empty());
+    assert_ne!(physical.edges.len(), 0);
     assert_eq!(physical.terminals.len(), 83);
     assert_eq!(catalog.sites().len(), 397);
     let preset = MichiganContentPreset::new_campaign(delivery);
@@ -353,6 +354,7 @@ pub(crate) fn advance_pair(
     let receipts = material_world::decode_material_receipts(bytes)
         .expect("the canonical bytes decode into the declared type");
     assert_goods_conserved(
+        reference.catalog(),
         reference.material().state(),
         prepared.material().register().state(),
         &receipts,
@@ -370,6 +372,7 @@ pub(crate) fn advance_pair(
         super::super::persisted_twins::stored_canonical_material(
             sql,
             campaign,
+            runtime.session().catalog(),
             receipts.resolve_tick,
         );
     assert_eq!(
@@ -378,7 +381,7 @@ pub(crate) fn advance_pair(
     );
     assert_eq!(stored_receipts, bytes);
     reference
-        .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_| {
+        .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_, _| {
             Ok::<_, ()>(ReplayCommitDisposition::Committed)
         })
         .expect("the prepared period commits");
@@ -491,7 +494,7 @@ pub(crate) fn observe(
         .max(register.canonical_bytes().len());
     measured.maximum_family_rows = measured
         .maximum_family_rows
-        .max(maximum_rows(register.state()));
+        .max(maximum_rows(runtime.session().catalog(), register.state()));
     rows.clone()
 }
 
@@ -908,6 +911,7 @@ pub(crate) fn inventory_and_transit(state: &MaterialCircuitState) -> Goods {
 }
 
 pub(crate) fn assert_goods_conserved(
+    material: &MaterialCatalog,
     opening: &MaterialCircuitState,
     closing: &MaterialCircuitState,
     receipts: &MaterialTickReceipts,
@@ -915,7 +919,7 @@ pub(crate) fn assert_goods_conserved(
     let mut available = inventory_and_transit(opening);
     let mut accounted = inventory_and_transit(closing);
     for receipt in &receipts.production {
-        let output = opening
+        let output = material
             .process_outputs
             .iter()
             .find(|row| row.process_id == receipt.process_id)
@@ -924,7 +928,7 @@ pub(crate) fn assert_goods_conserved(
             .entry((output.good_id, output.unit_id))
             .or_default() +=
             u128::from(output.quantity_per_batch) * u128::from(receipt.produced_batches);
-        for input in opening
+        for input in material
             .input_coefficients
             .iter()
             .filter(|row| row.process_id == receipt.process_id)
@@ -1000,26 +1004,25 @@ pub(crate) fn assert_history_and_preview(
         .is_none());
 }
 
-pub(crate) fn maximum_rows(state: &MaterialCircuitState) -> usize {
+pub(crate) fn maximum_rows(material: &MaterialCatalog, state: &MaterialCircuitState) -> usize {
     [
-        state.site_logistics_nodes.len(),
-        state.process_outputs.len(),
-        state.input_coefficients.len(),
-        state.labor_coefficients.len(),
-        state.commodities.len(),
-        state.supplier_routes.len(),
-        state.route_stages.len(),
+        material.site_logistics_nodes.len(),
+        material.process_outputs.len(),
+        material.input_coefficients.len(),
+        material.labor_coefficients.len(),
+        material.commodities.len(),
+        material.supplier_routes.len(),
+        material.route_stages.len(),
         state.route_stage_capacities.len(),
         state.inventory.len(),
         state.orders.len(),
-        state.backlog.len(),
         state.freight.len(),
         state.corridor_capacities.len(),
         state.capacities.len(),
         state.labor.len(),
         state.production_commitments.len(),
-        state.merchants.len(),
-        state.handling_coefficients.len(),
+        material.merchants.len(),
+        material.handling_coefficients.len(),
         state.final_demand_principals.len(),
         state.final_demand_orders.len(),
     ]

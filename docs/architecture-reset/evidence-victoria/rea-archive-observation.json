@@ -1,0 +1,208 @@
+{
+  "evidence_id": "ev_a98330281f68bf8a36a4964167e24f52ea0a8bb9106de451ff0e47c9791e0b09",
+  "subject": {
+    "name": "victoria3-save-analysis-20aae8cc.zip",
+    "digest": {
+      "sha256": "41d2d86f559cfcfba115464a40142b1e17d7ee7d4e5200654452fd1e1c436433"
+    },
+    "format": "zip",
+    "architecture": null,
+    "local_path": "/tmp/victoria3-save-analysis-20aae8cc.zip"
+  },
+  "provider": {
+    "id": "rea-artifact-graph",
+    "name": "REA safe artifact graph provider",
+    "version": "1"
+  },
+  "analysis_profile": null,
+  "predicate_type": "rea.analysis",
+  "operation": "inspect_artifact",
+  "parameters": {
+    "integrity_policy": "fail"
+  },
+  "raw_result": null,
+  "normalized_result": {
+    "inspection_id": "ai_62a43fa02528be15b0f1471a18c283a3ef23532e2de663b740f4025c027fe1a0",
+    "subject": {
+      "manifest_id": "agm_44caf6680de6fdc6ba57006df4bba48aa11e318a99e1aa34a9b5aab9e83af84f",
+      "root_artifact_id": "art_0af3dd54616ec133cf0009247acb10caaab99be794a0b1d7b1951e2344d0076f",
+      "root_sha256": "41d2d86f559cfcfba115464a40142b1e17d7ee7d4e5200654452fd1e1c436433",
+      "root_format": "zip"
+    },
+    "substeps": [
+      {
+        "substep_id": "ais_ab8e265eda813db33c08aec9546a951f3dae523bc4c91cd0ac5178053c3e0510",
+        "operation": "inventory_artifact",
+        "status": "completed",
+        "evidence_id": "ev_df14b0c8565a91bd7121d8045687dcc93bad60b42bccf176e51f3886829ff25e",
+        "evidence": {
+          "evidence_id": "ev_df14b0c8565a91bd7121d8045687dcc93bad60b42bccf176e51f3886829ff25e",
+          "subject": {
+            "name": "victoria3-save-analysis-20aae8cc.zip",
+            "digest": {
+              "sha256": "41d2d86f559cfcfba115464a40142b1e17d7ee7d4e5200654452fd1e1c436433"
+            },
+            "format": "zip",
+            "architecture": null,
+            "local_path": "/tmp/victoria3-save-analysis-20aae8cc.zip"
+          },
+          "provider": {
+            "id": "rea-artifact-graph",
+            "name": "REA safe artifact graph provider",
+            "version": "1"
+          },
+          "analysis_profile": null,
+          "predicate_type": "rea.analysis",
+          "operation": "inventory_artifact",
+          "parameters": {
+            "integrity_policy": "fail"
+          },
+          "raw_result": null,
+          "normalized_result": {
+            "manifest": {
+              "manifest_id": "agm_44caf6680de6fdc6ba57006df4bba48aa11e318a99e1aa34a9b5aab9e83af84f",
+              "root_artifact_id": "art_0af3dd54616ec133cf0009247acb10caaab99be794a0b1d7b1951e2344d0076f",
+              "root_sha256": "41d2d86f559cfcfba115464a40142b1e17d7ee7d4e5200654452fd1e1c436433",
+              "root_format": "zip",
+              "graph_sha256": "fe28108ce18621dca309cd9815a0c970080e2e93cc24e27f3715267cc09a9ce5",
+              "node_count": 2,
+              "occurrence_count": 2,
+              "edge_count": 1
+            },
+            "nodes": [
+              {
+                "artifact_id": "art_0af3dd54616ec133cf0009247acb10caaab99be794a0b1d7b1951e2344d0076f",
+                "format": "zip",
+                "sha256": "41d2d86f559cfcfba115464a40142b1e17d7ee7d4e5200654452fd1e1c436433",
+                "size": 9178743,
+                "media_type": null,
+                "architecture": null,
+                "content_state": "materialized",
+                "limitations": []
+              },
+              {
+                "artifact_id": "art_b6590fa0a610d05e6eb0cb14e9047c25d6b329f97589f2c910437c9c832427bb",
+                "format": "file",
+                "sha256": "2be28fa263081cf2ae65acfb721d15120182716ba097a2c1533150faa9e67691",
+                "size": 72336841,
+                "media_type": null,
+                "architecture": null,
+                "content_state": "embedded",
+                "limitations": []
+              }
+            ],
+            "occurrences": [
+              {
+                "occurrence_id": "occ_871d8cbb28eff0ecfad9e4d1119fbcbf03d160329852aeaa273e70b38759fe4d",
+                "artifact_id": "art_0af3dd54616ec133cf0009247acb10caaab99be794a0b1d7b1951e2344d0076f",
+                "parent_occurrence_id": null,
+                "logical_path": ".",
+                "entry_kind": "file",
+                "artifact_kind": "container",
+                "artifact_format": "zip",
+                "declared_size": 9178743,
+                "compressed_size": null,
+                "executable": false,
+                "encrypted": false,
+                "hash_status": "verified",
+                "source_location": null,
+                "limitations": []
+              },
+              {
+                "occurrence_id": "occ_1590064c79efe4017c243c01ee65ac6786382f5b24a89740c85a2ae02670c8c1",
+                "artifact_id": "art_b6590fa0a610d05e6eb0cb14e9047c25d6b329f97589f2c910437c9c832427bb",
+                "parent_occurrence_id": "occ_871d8cbb28eff0ecfad9e4d1119fbcbf03d160329852aeaa273e70b38759fe4d",
+                "logical_path": "gamestate",
+                "entry_kind": "file",
+                "artifact_kind": "resource",
+                "artifact_format": "file",
+                "declared_size": 72336841,
+                "compressed_size": 9178627,
+                "executable": false,
+                "encrypted": false,
+                "hash_status": "verified",
+                "source_location": null,
+                "limitations": []
+              }
+            ],
+            "edges": [
+              {
+                "edge_id": "edge_b02c249f2c022582425412dc3a79c8349dafc467bb9596ba57df3f45721baef2",
+                "ordinal": 0,
+                "parent_artifact_id": "art_0af3dd54616ec133cf0009247acb10caaab99be794a0b1d7b1951e2344d0076f",
+                "relation": "contains",
+                "occurrence_id": "occ_1590064c79efe4017c243c01ee65ac6786382f5b24a89740c85a2ae02670c8c1",
+                "producer": null
+              }
+            ],
+            "provenance": [],
+            "integrity_contradictions": [],
+            "limitations": [
+              "ZIP inventory lists central-directory entries only. Bytes after the central directory, including an APK Signing Block or a ZIP comment, are not occurrences."
+            ]
+          },
+          "confidence": "observed",
+          "authority": "shipped-artifact",
+          "environment": null,
+          "limitations": [
+            "ZIP inventory lists central-directory entries only. Bytes after the central directory, including an APK Signing Block or a ZIP comment, are not occurrences."
+          ],
+          "locations": [],
+          "evidence_links": []
+        }
+      }
+    ],
+    "observations": [
+      {
+        "observation_id": "aio_9d6fce06086a3f9d6747a6b2bb8913491f21eb50059f5fc84bde3e66cf56d884",
+        "kind": "root-manifest",
+        "subject": "art_0af3dd54616ec133cf0009247acb10caaab99be794a0b1d7b1951e2344d0076f",
+        "value": {
+          "manifest_id": "agm_44caf6680de6fdc6ba57006df4bba48aa11e318a99e1aa34a9b5aab9e83af84f",
+          "root_artifact_id": "art_0af3dd54616ec133cf0009247acb10caaab99be794a0b1d7b1951e2344d0076f",
+          "root_sha256": "41d2d86f559cfcfba115464a40142b1e17d7ee7d4e5200654452fd1e1c436433",
+          "root_format": "zip",
+          "graph_sha256": "fe28108ce18621dca309cd9815a0c970080e2e93cc24e27f3715267cc09a9ce5",
+          "node_count": 2,
+          "occurrence_count": 2,
+          "edge_count": 1
+        },
+        "evidence_id": "ev_df14b0c8565a91bd7121d8045687dcc93bad60b42bccf176e51f3886829ff25e"
+      }
+    ],
+    "hypotheses": [],
+    "contradictions": [],
+    "unexplored_branches": [],
+    "next_probes": [],
+    "coverage": {
+      "status": "complete-within-substeps",
+      "substeps_completed": 1,
+      "observations_retained": 1,
+      "observations_omitted": 0,
+      "hypotheses_retained": 0,
+      "hypotheses_omitted": 0,
+      "unexplored_branches_retained": 0,
+      "unexplored_branches_omitted": 0,
+      "next_probes_retained": 0,
+      "next_probes_omitted": 0
+    },
+    "evidence_links": [
+      "ev_df14b0c8565a91bd7121d8045687dcc93bad60b42bccf176e51f3886829ff25e"
+    ],
+    "limitations": [
+      "Inspection derives bounded static hypotheses and next probes; it does not execute the artifact or claim format-specific semantics.",
+      "ZIP inventory lists central-directory entries only. Bytes after the central directory, including an APK Signing Block or a ZIP comment, are not occurrences."
+    ]
+  },
+  "confidence": "observed",
+  "authority": "shipped-artifact",
+  "environment": null,
+  "limitations": [
+    "Inspection derives bounded static hypotheses and next probes; it does not execute the artifact or claim format-specific semantics.",
+    "ZIP inventory lists central-directory entries only. Bytes after the central directory, including an APK Signing Block or a ZIP comment, are not occurrences."
+  ],
+  "locations": [],
+  "evidence_links": [
+    "ev_df14b0c8565a91bd7121d8045687dcc93bad60b42bccf176e51f3886829ff25e"
+  ]
+}

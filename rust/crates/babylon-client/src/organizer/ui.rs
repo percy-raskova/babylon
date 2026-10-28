@@ -24,8 +24,11 @@ use super::qualification_input::HandlerReceipt;
 use super::{presentation, OrganizerClient, OrganizerInspector, RequestKind};
 use crate::observer::SessionPhase;
 use crate::observer_controls::ControlAvailability;
+use crate::ui;
+use crate::ui::Interaction;
 use babylon_kernel::clock::CampaignDuration;
 use babylon_persistence::runtime_session::OrganizerGiftConsent;
+use bevy::input_focus::FocusCause;
 use bevy::text::LineBreak;
 use bevy::ui::UiSystems;
 
@@ -98,11 +101,11 @@ fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bundle {
     (
         Text::new(value),
         TextFont {
-            font_size: size,
+            font_size: FontSize::Px(size),
             ..default()
         },
         TextColor(color),
-        TextLayout::new_with_linebreak(LineBreak::WordOrCharacter),
+        TextLayout::linebreak(LineBreak::WordOrCharacter),
         Node {
             min_width: px(0),
             max_width: percent(100),
@@ -137,7 +140,7 @@ fn row() -> Node {
 pub(crate) fn button(parent: &mut ChildSpawnerCommands, label: &str, action: OrganizerAction) {
     parent
         .spawn((
-            Button,
+            ui::pressable(),
             ActionButton(action),
             ObserverFocusTarget::action(None),
             Node {
@@ -390,7 +393,7 @@ fn paint_scroll_hints(regions: Query<&ComputedNode>, mut hints: Query<(&ScrollHi
 fn spawn_approach(cards: &mut ChildSpawnerCommands, choice: OrganizerChoice) {
     cards
         .spawn((
-            Button,
+            ui::pressable(),
             ActionButton(OrganizerAction::Choose(choice)),
             ObserverFocusTarget::action(None),
             Node {
@@ -563,7 +566,7 @@ fn spawn_notes(body: &mut ChildSpawnerCommands) {
         .with_children(|notes| {
             notes.spawn(text("Your notes and references stay with this draft. Editing them spends no time and submits no ruling.", 15.0, theme::GRAY));
             notes.spawn((
-                Button, NotesField, ObserverFocusTarget::text_input(None),
+                ui::pressable(), NotesField, ObserverFocusTarget::text_input(None),
                 Node { min_height: px(160), padding: UiRect::all(px(12)),
                     border: UiRect::all(px(1)), width: percent(100), flex_shrink: 0.0, ..default() },
                 BackgroundColor(theme::PANEL), BorderColor::all(theme::GRAY),
@@ -831,7 +834,7 @@ fn actions(
                 ui.archive_open = false;
                 ui.history_open = false;
                 if let Some(entity) = client.return_focus.take() {
-                    focus.set(entity);
+                    focus.set(entity, FocusCause::Navigated);
                 }
             }
             OrganizerAction::Choose(choice) => {
@@ -881,7 +884,7 @@ fn actions(
             OrganizerAction::CloseInspector => {
                 client.inspector = OrganizerInspector::Closed;
                 if let Some(entity) = client.return_focus.take() {
-                    focus.set(entity);
+                    focus.set(entity, FocusCause::Navigated);
                 }
             }
         }
@@ -906,7 +909,7 @@ fn choose_approach(
     if client.inspector == OrganizerInspector::Direction {
         client.inspector = OrganizerInspector::Closed;
         if let Some(entity) = client.return_focus.take() {
-            focus.set(entity);
+            focus.set(entity, FocusCause::Navigated);
         }
     }
 }
@@ -1473,12 +1476,14 @@ mod tests {
                 .bypass_change_detection()
                 .content_size = Vec2::new(400.0, 100.0) * scale;
             app.update();
-            assert!(app
-                .world()
-                .get::<Text>(hint)
-                .expect("the fixture world holds the addressed component")
-                .0
-                .is_empty());
+            assert_eq!(
+                app.world()
+                    .get::<Text>(hint)
+                    .expect("the fixture world holds the addressed component")
+                    .0
+                    .len(),
+                0
+            );
         }
     }
 
@@ -1528,50 +1533,55 @@ mod tests {
             ..default()
         };
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .configure_sets(
-                Update,
-                (
-                    ObserverSet::Input,
-                    ObserverSet::Receive,
-                    ObserverSet::Install,
-                    ObserverSet::Paint,
-                )
-                    .chain(),
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .configure_sets(
+            Update,
+            (
+                ObserverSet::Input,
+                ObserverSet::Receive,
+                ObserverSet::Install,
+                ObserverSet::Paint,
             )
-            .insert_resource(session)
-            .insert_resource(client)
-            .insert_resource(PrimaryView::Organizer)
-            .insert_resource(ObserverUiState {
-                menu_open: false,
-                splash_visible: false,
-                ..default()
-            })
-            .insert_resource(
-                CountyAtlas::parse(include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/../../../assets/map/county_atlas.bin"
-                )))
-                .expect("the authored literal parses as the declared type"),
-            )
-            .insert_resource(SelectedCounty(Some(0)))
-            .init_resource::<InputFocus>()
-            .init_resource::<ButtonInput<KeyCode>>()
-            .init_resource::<ObserverKeyboardClaim>()
-            .init_resource::<ArchiveRequests>()
-            .add_message::<ObserverCommand>()
-            .add_systems(
-                Update,
-                crate::observer_ui::keyboard.before(ObserverSet::Input),
-            )
-            .add_observer(
-                |event: On<OrganizerArchiveRequested>, mut requests: ResMut<ArchiveRequests>| {
-                    requests.0.push(event.organization);
-                },
-            );
+                .chain(),
+        )
+        .insert_resource(session)
+        .insert_resource(client)
+        .insert_resource(PrimaryView::Organizer)
+        .insert_resource(ObserverUiState {
+            menu_open: false,
+            splash_visible: false,
+            ..default()
+        })
+        .insert_resource(
+            CountyAtlas::parse(include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../assets/map/county_atlas.bin"
+            )))
+            .expect("the authored literal parses as the declared type"),
+        )
+        .insert_resource(SelectedCounty(Some(0)))
+        .init_resource::<InputFocus>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .init_resource::<ObserverKeyboardClaim>()
+        .init_resource::<ArchiveRequests>()
+        .add_message::<ObserverCommand>()
+        .add_systems(
+            Update,
+            crate::observer_ui::keyboard.before(ObserverSet::Input),
+        )
+        .add_observer(
+            |event: On<OrganizerArchiveRequested>, mut requests: ResMut<ArchiveRequests>| {
+                requests.0.push(event.organization);
+            },
+        );
         install(&mut app);
         let focus = app.world_mut().spawn_empty().id();
-        app.world_mut().resource_mut::<InputFocus>().set(focus);
+        app.world_mut()
+            .resource_mut::<InputFocus>()
+            .set(focus, FocusCause::Navigated);
         app.update();
         (app, focus, draft)
     }
@@ -1580,7 +1590,7 @@ mod tests {
         let archive_focus = app.world_mut().spawn_empty().id();
         app.world_mut()
             .resource_mut::<InputFocus>()
-            .set(archive_focus);
+            .set(archive_focus, FocusCause::Navigated);
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .reset_all();
@@ -2075,14 +2085,16 @@ mod tests {
         assert!(text.contains("RESOLVING · period 4"));
         assert!(!text.contains("Advance to receive"));
         assert!(text.contains("No outcome is credited"));
-        assert!(app
-            .world()
-            .resource::<OrganizerClient>()
-            .view
-            .as_ref()
-            .expect("the fixture set the optional field before this read")
-            .receipts
-            .is_empty());
+        assert_eq!(
+            app.world()
+                .resource::<OrganizerClient>()
+                .view
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .receipts
+                .len(),
+            0
+        );
     }
 
     #[test]
@@ -2110,14 +2122,16 @@ mod tests {
             .resource::<OrganizerClient>()
             .commitment
             .is_none());
-        assert!(app
-            .world()
-            .resource::<OrganizerClient>()
-            .view
-            .as_ref()
-            .expect("the fixture set the optional field before this read")
-            .receipts
-            .is_empty());
+        assert_eq!(
+            app.world()
+                .resource::<OrganizerClient>()
+                .view
+                .as_ref()
+                .expect("the fixture set the optional field before this read")
+                .receipts
+                .len(),
+            0
+        );
     }
 
     #[test]
@@ -2517,7 +2531,9 @@ mod tests {
                 })
                 .expect("the fixture yields the searched value")
         };
-        app.world_mut().resource_mut::<InputFocus>().set(focus);
+        app.world_mut()
+            .resource_mut::<InputFocus>()
+            .set(focus, FocusCause::Navigated);
         app.update();
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(focus));
         assert!(app
@@ -2598,7 +2614,7 @@ mod tests {
             *app.world().resource::<PrimaryView>(),
             PrimaryView::Organizer
         );
-        assert!(app.world().resource::<ArchiveRequests>().0.is_empty());
+        assert_eq!(app.world().resource::<ArchiveRequests>().0.len(), 0);
         assert!(!app.world().resource::<ObserverUiState>().archive_open);
         let edited = client
             .draft
@@ -2619,7 +2635,7 @@ mod tests {
         let inspector_focus = app.world_mut().spawn_empty().id();
         app.world_mut()
             .resource_mut::<InputFocus>()
-            .set(inspector_focus);
+            .set(inspector_focus, FocusCause::Navigated);
         app.world_mut()
             .write_message(OrganizerAction::ArchiveWorkplace);
         app.update();

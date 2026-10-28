@@ -130,7 +130,7 @@ fn production_history_matches_exact_snapshots_and_survives_reopen() {
     fixture.advance_to(4);
     let snapshots: Vec<_> = (0..=4).map(|tick| fixture.read(tick)).collect();
     let targets = history_targets(&snapshots[0]);
-    assert!(!targets.is_empty());
+    assert_ne!(targets.len(), 0);
     let mut held = Vec::new();
     for target in &targets {
         let expected: Vec<_> = snapshots

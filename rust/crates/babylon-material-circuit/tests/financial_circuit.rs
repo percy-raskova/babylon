@@ -2,6 +2,7 @@ use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::AidBook;
+use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CapitalContributionOrder;
 use babylon_material_circuit::CashAccount;
@@ -16,6 +17,7 @@ use babylon_material_circuit::HistoricalCostBook;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::InstitutionLocation;
 use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MonetaryBook;
 use babylon_material_circuit::MonetaryCircuit;
@@ -78,7 +80,7 @@ fn financial() -> FinancialInstitutions {
         contributions: vec![],
     }
 }
-fn opening(cash: [i128; 5]) -> MaterialCircuitState {
+fn opening(cash: [i128; 5]) -> (MaterialCatalog, MaterialCircuitState) {
     let book = MonetaryBook::open(
         [
             AccountId::Site(site()),
@@ -112,8 +114,28 @@ fn opening(cash: [i128; 5]) -> MaterialCircuitState {
         vec![],
     )
     .expect("the fixture opens the authored source");
-    MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
+    let catalog = MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
+        site_logistics_nodes: vec![SiteLogisticsNode {
+            site_id: site(),
+            node_id: LogisticsNodeId::from_bytes([1; 32]),
+        }],
+        process_outputs: vec![],
+        input_coefficients: vec![],
+        labor_coefficients: vec![],
+        commodities: vec![],
+        supplier_routes: vec![],
+        route_stages: vec![],
+        merchants: vec![],
+        handling_coefficients: vec![],
+        maintenance_binding: None,
+        aid_mandates: vec![],
+        household_time_policy: vec![],
+        service_inputs: vec![],
+        household_needs: vec![],
+        catalog_digest: [0; 32],
+    };
+    let state = MaterialCircuitState {
         period: 1,
         accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
             aid: AidBook::default(),
@@ -126,37 +148,37 @@ fn opening(cash: [i128; 5]) -> MaterialCircuitState {
             employment: vec![],
             financial: financial(),
         })),
-        site_logistics_nodes: vec![SiteLogisticsNode {
-            site_id: site(),
-            node_id: LogisticsNodeId::from_bytes([1; 32]),
-        }],
-        process_outputs: vec![],
-        input_coefficients: vec![],
-        labor_coefficients: vec![],
-        commodities: vec![],
         service_connections: vec![],
         service_orders: vec![],
-        supplier_routes: vec![],
-        route_stages: vec![],
         route_stage_capacities: vec![],
         inventory: vec![],
         orders: vec![],
-        backlog: vec![],
         freight: vec![],
         corridor_capacities: vec![],
         capacities: vec![],
         labor: vec![],
         production_commitments: vec![],
-        merchants: vec![],
-        handling_coefficients: vec![],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
             location: EconomicLocation::Foreign(ForeignCounterpart::Canada),
         }],
         final_demand_orders: vec![],
-        maintenance_binding: None,
         maintenance_service: None,
-    }
+        capacity_reservations: CapacityReservations::default(),
+    };
+    (
+        MaterialCatalog::try_new(catalog).expect("the authored fixture catalog is valid"),
+        state,
+    )
+}
+fn resealed(
+    catalog: MaterialCatalog,
+    mutate: impl FnOnce(&mut MaterialCatalog),
+) -> MaterialCatalog {
+    let mut catalog = catalog;
+    mutate(&mut catalog);
+    catalog.catalog_digest = [0; 32];
+    MaterialCatalog::try_new(catalog).expect("the rebuilt fixture catalog is valid")
 }
 fn economy(state: &MaterialCircuitState) -> &MonetaryCircuit {
     let CircuitAccounting::Monetary(e) = &state.accounting else {
@@ -172,7 +194,7 @@ fn economy_mut(state: &mut MaterialCircuitState) -> &mut MonetaryCircuit {
 }
 #[test]
 fn ownership_distributes_retained_cash_once_with_exact_remainder_and_restart() {
-    let mut state = opening([7, 0, 0, 0, 0]);
+    let (catalog, mut state) = opening([7, 0, 0, 0, 0]);
     let e = economy_mut(&mut state);
     let mut costs = e.costs.snapshot();
     let capital = costs
@@ -190,7 +212,7 @@ fn ownership_distributes_retained_cash_once_with_exact_remainder_and_restart() {
         period_cap: money(7),
         cash_floor: money(0),
     });
-    let t = babylon_material_circuit::advance_material_circuit(&state)
+    let t = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(
         economy(&t.state)
@@ -228,23 +250,24 @@ fn ownership_distributes_retained_cash_once_with_exact_remainder_and_restart() {
             .expect("the fixture book totals without overflow"),
         money(7)
     );
-    let next = babylon_material_circuit::advance_material_circuit(&t.state)
+    let next = babylon_material_circuit::advance_material_circuit(&catalog, &t.state)
         .expect("the authored material state advances one period");
     let restored = babylon_material_circuit::decode_material_circuit_state(
-        &babylon_material_circuit::encode_material_circuit_state(&t.state)
+        &catalog,
+        &babylon_material_circuit::encode_material_circuit_state(&catalog, &t.state)
             .expect("the canonical material state encodes"),
     )
     .expect("the canonical material bytes decode");
     assert_eq!(
         next,
-        babylon_material_circuit::advance_material_circuit(&restored)
+        babylon_material_circuit::advance_material_circuit(&catalog, &restored)
             .expect("the authored material state advances one period")
     );
     assert!(next.distributions.iter().all(|r| r.paid == money(0)));
 }
 #[test]
 fn capital_contribution_swaps_cash_for_equity_without_income_or_equipment() {
-    let mut state = opening([0, 0, 5, 0, 0]);
+    let (catalog, mut state) = opening([0, 0, 5, 0, 0]);
     economy_mut(&mut state)
         .financial
         .contributions
@@ -255,7 +278,7 @@ fn capital_contribution_swaps_cash_for_equity_without_income_or_equipment() {
             issuer_site_id: site(),
             amount: money(5),
         });
-    let t = babylon_material_circuit::advance_material_circuit(&state)
+    let t = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(
         economy(&t.state)
@@ -287,8 +310,7 @@ fn capital_contribution_swaps_cash_for_equity_without_income_or_equipment() {
         money(5)
     );
     assert!(t.income.iter().all(|r| r.net_income == money(0)));
-    assert!(economy(&t.state).financial.contributions.is_empty());
-    assert_eq!(t.state.capacity_supply, state.capacity_supply);
+    assert_eq!(economy(&t.state).financial.contributions.len(), 0);
     assert_eq!(
         economy(&t.state)
             .book
@@ -299,7 +321,7 @@ fn capital_contribution_swaps_cash_for_equity_without_income_or_equipment() {
 }
 #[test]
 fn public_support_records_unfunded_budget_without_creating_cash_or_consumption() {
-    let mut state = opening([0, 0, 0, 0, 3]);
+    let (catalog, mut state) = opening([0, 0, 0, 0, 3]);
     let f = &mut economy_mut(&mut state).financial;
     f.public_budgets.push(PublicBudget {
         public_account: treasury(),
@@ -313,7 +335,7 @@ fn public_support_records_unfunded_budget_without_creating_cash_or_consumption()
         priority: 0,
         amount_per_period: money(5),
     });
-    let t = babylon_material_circuit::advance_material_circuit(&state)
+    let t = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(t.public_budgets[0].requested, money(5));
     assert_eq!(t.public_budgets[0].paid, money(3));
@@ -325,7 +347,7 @@ fn public_support_records_unfunded_budget_without_creating_cash_or_consumption()
             .expect("the fixture book holds the payer account"),
         money(3)
     );
-    assert!(t.household_consumption.is_empty());
+    assert_eq!(t.household_consumption.len(), 0);
     assert_eq!(
         economy(&t.state)
             .book

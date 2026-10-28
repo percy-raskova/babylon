@@ -6,6 +6,9 @@ mod tests;
 mod refine;
 
 pub use refine::{
-    refine_households, HouseholdLeaf, HouseholdLeafMargins, HouseholdRefinementError,
-    HouseholdRefinementSpec, NationalHouseholdLeafRoster,
+    consolidate_background, refine_households, AuthoredCommitment, BackgroundHouseholdCohort,
+    BackgroundWorkplaceCohort, CohortConservation, ConsolidationError, DetailConservation,
+    ForegroundIdentities, ForegroundSelection, HouseholdCohortCounts, HouseholdLeaf,
+    HouseholdLeafMargins, HouseholdRefinementError, HouseholdRefinementSpec,
+    NationalDetailPartition, NationalHouseholdLeafRoster,
 };

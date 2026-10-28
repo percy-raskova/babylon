@@ -9,11 +9,13 @@ use super::Result;
 use crate::inventory::InventoryLedger;
 use crate::valuation::CostClose;
 use crate::{
-    AccountId, CircuitAccounting, MonetaryBook, MoneyTransferReceipt, OrderAccessMode, OrderId,
-    OrderRow, OutboundOrderId, ProcessOutput, ProductionDemandPolicy, PurchaseEscrow,
+    AccountId, CircuitAccounting, EquipmentPosition, MaterialCatalog, MonetaryBook,
+    MoneyTransferReceipt, OrderAccessMode, OrderId, OrderRow, OutboundOrderId, ProcessOutput,
+    ProductionDemandPolicy, PurchaseEscrow,
 };
 use babylon_kernel::currency::Currency;
 
+use super::InstalledEquipmentCohort;
 use crate::GoodId;
 use crate::SiteId;
 use crate::UnitId;
@@ -51,7 +53,11 @@ struct Evidence {
     earnings: BTreeMap<SiteId, i128>,
 }
 impl Evidence {
-    fn new(state: &MaterialCircuitState, e: &ProductiveEquipment) -> Result<Self> {
+    fn new(
+        catalog: &MaterialCatalog,
+        state: &MaterialCircuitState,
+        position: &EquipmentPosition,
+    ) -> Result<Self> {
         let stock: InventoryLedger = state
             .inventory
             .iter()
@@ -66,7 +72,7 @@ impl Evidence {
             inbound: BTreeMap::new(),
             accepted: super::choice::sale_commitments(state)?,
             pending: BTreeMap::new(),
-            outputs: state
+            outputs: catalog
                 .process_outputs
                 .iter()
                 .map(|r| (r.process_id, r.clone()))
@@ -85,7 +91,7 @@ impl Evidence {
                 .collect(),
             earnings: BTreeMap::new(),
         };
-        for pending in &e.pending {
+        for pending in &position.pending {
             add(&mut result.pending, pending.process_id, pending.units)?;
         }
         for o in &state.orders {
@@ -105,12 +111,19 @@ impl Evidence {
         super::choice::protect_sales(&mut result.inbound, &mut pledges);
         Ok(result)
     }
-    fn position(&mut self, e: &ProductiveEquipment, p: &InvestmentPolicy) -> Result<Position> {
-        let (b, d) = e.definition(p.process_id)?;
+    fn position(
+        &mut self,
+        content: &ProductiveEquipment,
+        installed_units: &[InstalledEquipmentCohort],
+        p: &InvestmentPolicy,
+    ) -> Result<Position> {
+        let (b, d) = content.definition(p.process_id)?;
         let key = (b.site_id, d.equipment_good_id, d.equipment_unit_id);
-        let installed = sum(e.cohorts[e.cohorts_for(p.process_id)]
-            .iter()
-            .map(|c| c.units))?;
+        let installed = sum(
+            installed_units[super::cohorts_for(installed_units, p.process_id)]
+                .iter()
+                .map(|c| c.units),
+        )?;
         let pending = self.pending.get(&p.process_id).copied().unwrap_or(0);
         let used = installed
             .checked_add(pending)
@@ -151,19 +164,20 @@ struct Position {
     total: u64,
 }
 fn decision(
-    e: &ProductiveEquipment,
+    content: &ProductiveEquipment,
+    position: &EquipmentPosition,
     p: &InvestmentPolicy,
     period: u64,
     evidence: &mut Evidence,
     book: &MonetaryBook,
     costs: &CostClose,
 ) -> Result<InvestmentReceipt> {
-    let (b, d) = e.definition(p.process_id)?;
+    let (b, d) = content.definition(p.process_id)?;
     let price = *evidence
         .offers
         .get(&(p.supplier_site_id, d.equipment_good_id, d.equipment_unit_id))
         .ok_or(MaterialCircuitError::EquipmentInvariant)?;
-    let position = evidence.position(e, p)?;
+    let position = evidence.position(content, &position.cohorts, p)?;
     let plan = evidence.plans.get(&p.process_id);
     let planned = plan.map_or(0, |r| r.planned_batches);
     let buffer = plan.map_or(0, |r| r.output_buffer);
@@ -238,23 +252,33 @@ fn decision(
     Ok(row)
 }
 pub(crate) fn invest(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     costs: &CostClose,
     transfers: &mut Vec<MoneyTransferReceipt>,
 ) -> Result<Vec<InvestmentReceipt>> {
-    let Some(e) = super::get(state).cloned() else {
+    let Some(content) = catalog.equipment_content() else {
         return Ok(vec![]);
     };
-    if e.investment_policies.is_empty() {
+    if content.investment_policies.is_empty() {
         return Ok(vec![]);
     }
-    let mut evidence = Evidence::new(state, &e)?;
+    let position = super::position(state).clone();
+    let mut evidence = Evidence::new(catalog, state, &position)?;
     let CircuitAccounting::Monetary(m) = &mut state.accounting else {
         return Err(MaterialCircuitError::EquipmentInvariant);
     };
-    let mut receipts = Vec::with_capacity(e.investment_policies.len());
-    for p in &e.investment_policies {
-        let row = decision(&e, p, state.period, &mut evidence, &m.book, costs)?;
+    let mut receipts = Vec::with_capacity(content.investment_policies.len());
+    for p in &content.investment_policies {
+        let row = decision(
+            content,
+            &position,
+            p,
+            state.period,
+            &mut evidence,
+            &m.book,
+            costs,
+        )?;
         if row.admitted_units > 0 {
             crate::transition::check_order_principal_limits(
                 state
@@ -265,7 +289,7 @@ pub(crate) fn invest(
                 state.final_demand_orders.len(),
                 state.service_orders.len(),
             )?;
-            let (_, d) = e.definition(p.process_id)?;
+            let (_, d) = content.definition(p.process_id)?;
             transfers.push(m.book.reserve_purchase(PurchaseEscrow::new(
                 OutboundOrderId::Delivery(row.order_id),
                 AccountId::Site(row.site_id),

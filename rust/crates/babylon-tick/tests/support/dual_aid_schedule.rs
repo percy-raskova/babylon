@@ -1,10 +1,9 @@
 //! Designed finite opening for competing and separated aid practices.
 use super::organizer_aid_fixture;
-use super::organizer_aid_fixture::{Session, MATERIAL, PRACTICE, PRODUCTS};
+use super::organizer_aid_fixture::{Materials, Session, MATERIAL, PRACTICE, PRODUCTS};
 use babylon_material_circuit::{
     AccountId, CashAccount, CircuitAccounting, FinalDemandPrincipal, FinalDemandPrincipalId,
-    HistoricalCostBook, HouseholdTimeAccounting, MaterialCircuitState, MonetaryBook,
-    StockCarryingValue,
+    HistoricalCostBook, HouseholdTimeAccounting, MonetaryBook, StockCarryingValue,
 };
 use babylon_practice_contract::{
     OrganizerAidKind, OrganizerConfig, OrganizerHouseholdBinding, OrganizerPartnerPolicy,
@@ -19,8 +18,11 @@ fn remote_principal() -> FinalDemandPrincipalId {
     clippy::too_many_lines,
     reason = "`opening` keeps one authored boundary's fixture and assertions together"
 )]
-fn opening() -> MaterialCircuitState {
-    let mut state = organizer_aid_fixture::aid_opening(false);
+fn opening() -> Materials {
+    let Materials {
+        mut catalog,
+        mut state,
+    } = organizer_aid_fixture::aid_opening(false);
     let remote = remote_principal();
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: remote,
@@ -124,7 +126,19 @@ fn opening() -> MaterialCircuitState {
     .expect("the fixture opens the authored source");
     e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
         .expect("the fixture opens the authored source");
-    state
+    let CircuitAccounting::Monetary(e) = &state.accounting else {
+        unreachable!()
+    };
+    catalog.aid_mandates.clone_from(&e.aid.mandates);
+    if let Some(recurring) = &e.recurring {
+        catalog
+            .household_needs
+            .clone_from(&recurring.household_needs);
+    }
+    if let HouseholdTimeAccounting::Modeled(time) = &e.household_time {
+        catalog.household_time_policy.clone_from(&time.policies);
+    }
+    Materials { catalog, state }
 }
 
 fn organizer(refuses_remote: bool) -> OrganizerConfig {

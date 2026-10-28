@@ -437,14 +437,12 @@ impl MonetaryBook {
 
     /// Borrow current cash principals in canonical account identity order.
     /// Owner namespaces remain distinct; no other book family is reconstructed.
-    #[must_use]
     pub fn cash_accounts(&self) -> impl ExactSizeIterator<Item = (&AccountId, &Currency)> {
         self.accounts.iter()
     }
 
     /// Borrow current purchase principals in canonical outbound identity order.
     /// Closed principals remain visible until explicitly retired by the host.
-    #[must_use]
     pub fn purchases(&self) -> impl ExactSizeIterator<Item = &PurchaseEscrow> {
         self.purchases.values()
     }

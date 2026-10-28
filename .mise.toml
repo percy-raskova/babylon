@@ -91,7 +91,7 @@ description = "One-shot bootstrap for a fresh clone: toolchain + deps + hooks + 
 run = """
 set -e
 mise install --locked
-rustup toolchain install 1.91.1 --profile minimal --component rustfmt --component clippy
+rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
 uv sync --frozen
 uv run --frozen python tools/install_git_hooks.py
 mise run db:up

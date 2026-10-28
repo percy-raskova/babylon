@@ -129,7 +129,7 @@ pub(super) fn decode(
             .map_err(|_| StorageError::Count)?
             .to_be_bytes(),
     );
-    for (&tag, row) in tags.iter().zip(common.chunks_exact(COMMON_WIDTH)) {
+    for (&tag, row) in tags.iter().zip(common.as_chunks::<COMMON_WIDTH>().0) {
         let mut row = Cursor::new(row);
         for kind in KINDS {
             let index = u32::try_from(row.number(4)?).map_err(|_| StorageError::Bounds)?;

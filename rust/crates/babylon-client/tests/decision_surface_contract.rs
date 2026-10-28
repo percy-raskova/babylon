@@ -36,6 +36,8 @@ fn observer_app() -> App {
         MinimalPlugins,
         bevy::input::InputPlugin,
         bevy::input_focus::InputDispatchPlugin,
+        bevy::input_focus::InputFocusPlugin,
+        bevy::input_focus::pointer_focus::PointerFocusPlugin,
         bevy::input_focus::tab_navigation::TabNavigationPlugin,
         AssetPlugin::default(),
         ImagePlugin::default(),

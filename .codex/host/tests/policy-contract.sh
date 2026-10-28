@@ -355,7 +355,7 @@ if (
     "$managed_dispatcher" +1.97.1 install --locked --force --version =0.17.0 \
       --root "$managed_tools/sccache/0.17.0" sccache
 ) >/dev/null 2>&1; then
-  fail "Babylon accepted a bootstrap toolchain other than its pinned +1.91.1"
+  fail "Babylon accepted a bootstrap toolchain other than its pinned +1.99.1"
 fi
 (
   cd "$babylon_repository"
@@ -364,10 +364,10 @@ fi
     CODEX_RUST_CACHE_ROOT="$temporary_root/cache" \
     CODEX_RUST_TOOLS_ROOT="$managed_tools" \
     HOST_CONTRACT_RESULT="$managed_result" \
-    "$managed_dispatcher" +1.91.1 install --locked --force --version =0.17.0 \
+    "$managed_dispatcher" +1.99.1 install --locked --force --version =0.17.0 \
       --root "$managed_tools/sccache/0.17.0" sccache
 )
-grep -Fqx '<+1.91.1>' "$managed_result" ||
+grep -Fqx '<+1.99.1>' "$managed_result" ||
   fail "Babylon's exact pinned bootstrap selector did not reach Cargo"
 grep -Fqx '<build.rustc-wrapper="">' "$managed_result" ||
   fail "Babylon's exact pinned bootstrap did not disable its self-wrapper"
@@ -384,7 +384,7 @@ printf '0::/user.slice/codex-rust.slice/codex-rust-nnsims.slice/run-test.scope\n
     RUSTC_WORKSPACE_WRAPPER=stale \
     CARGO_BUILD_RUSTC_WRAPPER=stale \
     CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER=stale \
-    "$managed_dispatcher" +1.91.1 check "argument with spaces" -- -j99
+    "$managed_dispatcher" +1.99.1 check "argument with spaces" -- -j99
 )
 grep -Fqx "cwd=$nnsims_repository" "$managed_result" ||
   fail "the dispatcher changed the caller's working directory"
@@ -415,7 +415,7 @@ grep -Fqx '<env.SCCACHE_CACHE_SIZE="10G">' "$managed_result" ||
 grep -Fqx '<env.SCCACHE_CLIENT_SIDE="0">' "$managed_result" ||
   fail "the dispatcher did not keep client-side mode disabled"
 first_forwarded_argument="$(grep '^<' "$managed_result" | sed -n '1p')"
-[ "$first_forwarded_argument" = '<+1.91.1>' ] ||
+[ "$first_forwarded_argument" = '<+1.99.1>' ] ||
   fail "the rustup toolchain selector was not Cargo's leading argument"
 grep -Fqx 'cache=unset' "$managed_result" ||
   fail "the dispatcher preserved an inherited cache directory"

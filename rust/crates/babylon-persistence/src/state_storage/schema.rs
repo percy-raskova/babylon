@@ -1,10 +1,13 @@
-//! Source-model framing for every current state19 branch. Every variable row is
-//! parsed and bounded before its raw or closed variant storage encoding is chosen.
+//! Source-model framing for every current material-circuit state branch. Every
+//! variable row is parsed and bounded before its raw or closed variant storage
+//! encoding is chosen. The circuit's own published constants own the domain and
+//! schema version, so a wire bump cannot leave this walker behind.
 use super::{StorageError, MAX_BYTES};
 use crate::state_storage::layout;
 
-pub(super) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v4\0";
-const STATE_DOMAIN: &[u8] = b"babylon.material-circuit-state.v3\0";
+pub(super) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v5\0";
+const STATE_DOMAIN: &[u8] = babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES;
+const STATE_VERSION: u16 = babylon_material_circuit::MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION;
 #[derive(Clone, Debug)]
 pub(super) struct Section {
     pub id: u16,
@@ -156,50 +159,42 @@ impl StateParser<'_> {
         self.rows(72)?;
         Ok(())
     }
-    fn capacity(&mut self) -> Result<(), StorageError> {
-        if !self.branch(55)? {
-            return Ok(());
-        }
-        if self.branch(56)? {
-            for id in 57..=63 {
-                self.rows(id)?;
-            }
-        } else {
-            self.rows(68)?;
-        }
-        self.rows(64)?;
-        self.rows(65)?;
-        Ok(())
-    }
     fn state(&mut self, tick: usize) -> Result<(), StorageError> {
         let start = self.cursor.pos;
         self.cursor.expect(STATE_DOMAIN)?;
-        if self.cursor.number(2)? != 19 {
+        // The domain is NUL-terminated and followed by the published version.
+        self.cursor.expect(&[0])?;
+        if self.cursor.number(2)? != usize::from(STATE_VERSION) {
             return Err(StorageError::Version);
         }
+        // The admitting catalog digest authenticates the definitions this frame
+        // was encoded against; the definitions themselves live in the catalog.
+        self.cursor.take(32)?;
         if self.cursor.number(8)? != tick.checked_add(1).ok_or(StorageError::Bounds)? {
             return Err(StorageError::Framing);
         }
         self.record(1, start, None);
-        for id in 2..=5 {
+        self.rows(66)?;
+        self.rows(67)?;
+        for id in 9..=11 {
             self.rows(id)?;
         }
-        self.variable(6, commodity)?;
-        for id in 7..=21 {
+        self.rows(13)?;
+        for id in 14..=17 {
+            self.rows(id)?;
+        }
+        for id in 20..=21 {
             self.rows(id)?;
         }
         let start = self.cursor.pos;
         if self.cursor.tag(&[0, 1])? == 1 {
-            self.cursor.take(192)?;
-        }
-        if self.cursor.tag(&[0, 1])? == 1 {
             self.cursor.take(16)?;
         }
         self.record(22, start, None);
+        self.rows(60)?;
+        self.rows(61)?;
+        self.rows(65)?;
         self.accounting()?;
-        self.capacity()?;
-        self.rows(66)?;
-        self.rows(67)?;
         self.cursor.done()
     }
 }
@@ -211,15 +206,6 @@ fn aid_mandate(c: &mut Cursor<'_>) -> Result<(), StorageError> {
     c.take(224)?;
     if c.tag(&[1, 2])? == 2 {
         c.take(96)?;
-    }
-    Ok(())
-}
-fn commodity(c: &mut Cursor<'_>) -> Result<(), StorageError> {
-    c.take(64)?;
-    if c.tag(&[1, 2])? == 1 {
-        c.take(8)?;
-    } else {
-        c.tag(&[1, 2])?;
     }
     Ok(())
 }
@@ -253,7 +239,7 @@ pub(super) fn sections(bytes: &[u8]) -> Result<Vec<Section>, StorageError> {
     }
     let mut register = Cursor::new(bytes);
     register.expect(REGISTER_DOMAIN)?;
-    if register.number(4)? != 4 {
+    if register.number(4)? != 5 {
         return Err(StorageError::Version);
     }
     let tick = register.number(8)?;
@@ -277,7 +263,8 @@ pub(super) fn sections(bytes: &[u8]) -> Result<Vec<Section>, StorageError> {
     parser.state(tick)?;
     let start = register.pos;
     if register.tag(&[0, 1])? == 1 {
-        for _ in 0..2 {
+        // Config, compact state and the retained evidence window.
+        for _ in 0..3 {
             let size = register.number(8)?;
             register.take(size)?;
         }

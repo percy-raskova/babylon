@@ -9,6 +9,7 @@ use crate::InventoryRow;
 use crate::LaborCapacityRow;
 use crate::LaborCoefficient;
 use crate::LogisticsNodeId;
+use crate::MaterialCatalog;
 use crate::MaterialCircuitState;
 use crate::ProcessId;
 use crate::ProcessOutput;
@@ -39,18 +40,19 @@ fn identity(index: usize) -> [u8; 32] {
     bytes
 }
 
-fn empty_production() -> MaterialCircuitState {
-    let mut state = crate::opening();
-    state.process_outputs.clear();
-    state.input_coefficients.clear();
-    state.labor_coefficients.clear();
+fn empty_production() -> (MaterialCatalog, MaterialCircuitState) {
+    let (mut catalog, mut state) = crate::opening();
+    catalog.process_outputs.clear();
+    catalog.input_coefficients.clear();
+    catalog.labor_coefficients.clear();
     state.capacities.clear();
     state.inventory.clear();
     state.labor.clear();
-    state
+    (catalog, state)
 }
 
 fn append_process(
+    catalog: &mut MaterialCatalog,
     state: &mut MaterialCircuitState,
     index: usize,
     owner: SiteId,
@@ -58,7 +60,7 @@ fn append_process(
     batches: u64,
 ) {
     let id = ProcessId::from_bytes(identity(index));
-    state.process_outputs.push(ProcessOutput {
+    catalog.process_outputs.push(ProcessOutput {
         process_id: id,
         site_id: owner,
         good_id: crate::good(2),
@@ -66,14 +68,14 @@ fn append_process(
         quantity_per_batch: 1,
     });
     for input in inputs {
-        state.input_coefficients.push(InputOutputCoefficient {
+        catalog.input_coefficients.push(InputOutputCoefficient {
             process_id: id,
             good_id: *input,
             unit_id: crate::unit(2),
             quantity_per_batch: 1,
         });
     }
-    state.labor_coefficients.push(LaborCoefficient {
+    catalog.labor_coefficients.push(LaborCoefficient {
         process_id: id,
         unit_id: crate::unit(1),
         quantity_per_batch: 1,
@@ -104,15 +106,22 @@ fn stock_at(owner: SiteId, input: GoodId, quantity: u64) -> InventoryRow {
     }
 }
 
-fn source_ownership_case() -> (MaterialCircuitState, StaffingState) {
-    let mut state = empty_production();
+fn source_ownership_case() -> (MaterialCatalog, MaterialCircuitState, StaffingState) {
+    let (mut catalog, mut state) = empty_production();
     let mut sources = [Vec::new(), Vec::new()];
     for index in 0..FORMER_FAMILY_LIMIT {
         let pool = usize::from(index >= FORMER_FAMILY_LIMIT / 2);
         let owner =
             crate::site(u8::try_from(pool + 1).expect("the fixture value fits the target range"));
         let batches = u64::from(index == 0 || index == FORMER_FAMILY_LIMIT - 1);
-        append_process(&mut state, index, owner, &[crate::good(1)], batches);
+        append_process(
+            &mut catalog,
+            &mut state,
+            index,
+            owner,
+            &[crate::good(1)],
+            batches,
+        );
         sources[pool].push(StaffingWorkSource::Production(ProcessId::from_bytes(
             identity(index),
         )));
@@ -124,7 +133,7 @@ fn source_ownership_case() -> (MaterialCircuitState, StaffingState) {
             crate::site(u8::try_from(index + 1).expect("the fixture value fits the target range"));
         state.inventory.push(stock_at(owner, crate::good(1), 1));
         state.labor.push(labor_at(owner, 1, 0));
-        state.site_logistics_nodes.push(SiteLogisticsNode {
+        catalog.site_logistics_nodes.push(SiteLogisticsNode {
             site_id: owner,
             node_id: LogisticsNodeId::from_bytes(owner.as_bytes()),
         });
@@ -142,7 +151,7 @@ fn source_ownership_case() -> (MaterialCircuitState, StaffingState) {
                 .expect("the authored fixture satisfies the constructor invariants"),
         );
     }
-    state.merchants.push(MerchantHandling {
+    catalog.merchants.push(MerchantHandling {
         site_id: crate::site(2),
         location: "county:26163"
             .parse()
@@ -151,7 +160,7 @@ fn source_ownership_case() -> (MaterialCircuitState, StaffingState) {
         capacity_id: CorridorId::from_bytes([17; 32]),
         labor_unit_id: crate::unit(1),
     });
-    state
+    catalog
         .handling_coefficients
         .push(MerchantHandlingCoefficient {
             site_id: crate::site(2),
@@ -164,7 +173,9 @@ fn source_ownership_case() -> (MaterialCircuitState, StaffingState) {
         period: 1,
         available_grams: 0,
     });
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog is valid");
     (
+        catalog,
         state,
         StaffingState::try_new(1, pools)
             .expect("the authored fixture satisfies the constructor invariants"),
@@ -173,7 +184,7 @@ fn source_ownership_case() -> (MaterialCircuitState, StaffingState) {
 
 #[test]
 fn staffing_requests_above_former_global_bound_preserve_sources_and_people() {
-    let (state, people) = source_ownership_case();
+    let (catalog, state, people) = source_ownership_case();
     let original = state.clone();
     let bindings: Vec<_> = people.pools().iter().map(|p| p.binding().clone()).collect();
     assert_eq!(bindings[0].work_sources().len(), 32_768);
@@ -196,9 +207,10 @@ fn staffing_requests_above_former_global_bound_preserve_sources_and_people() {
     assert!(bindings
         .iter()
         .all(|b| b.work_sources().len() <= MAX_MATERIAL_CIRCUIT_ROWS));
-    let closed = crate::close_material_period(&state).expect("the material period closes");
+    let closed =
+        crate::close_material_period(&catalog, &state).expect("the material period closes");
     let requests = closed
-        .staffing_requests(&bindings)
+        .staffing_requests(&catalog, &bindings)
         .expect("the complete source union fits its independent global bound");
     assert_eq!(requests.len(), expected.len());
     assert_eq!(
@@ -235,7 +247,7 @@ fn staffing_requests_above_former_global_bound_preserve_sources_and_people() {
         .iter()
         .all(|p| (p.employed(), p.reserve()) == (0, 1)));
     let actual = closed
-        .finish_with_labor(staffing.next_labor().to_vec())
+        .finish_with_labor(&catalog, staffing.next_labor().to_vec())
         .expect("the fixture completes with labor");
     assert_eq!(
         actual
@@ -246,15 +258,15 @@ fn staffing_requests_above_former_global_bound_preserve_sources_and_people() {
             .collect::<BTreeMap<_, _>>(),
         BTreeMap::from([(active[0], 1), (active[1], 1)])
     );
-    assert!(actual.production.is_empty());
+    assert_eq!(actual.production.len(), 0);
     assert_eq!(actual.state.inventory, state.inventory);
     assert_eq!(state, original);
 }
 
-fn combined_resources_case() -> (MaterialCircuitState, Vec<LaborCapacityRow>) {
-    let mut state = empty_production();
+fn combined_resources_case() -> (MaterialCatalog, MaterialCircuitState, Vec<LaborCapacityRow>) {
+    let (mut catalog, mut state) = empty_production();
     for input in [crate::good(3), crate::good(4)] {
-        state.commodities.push(CommodityDefinition {
+        catalog.commodities.push(CommodityDefinition {
             good_id: input,
             unit_id: crate::unit(2),
             kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
@@ -264,6 +276,7 @@ fn combined_resources_case() -> (MaterialCircuitState, Vec<LaborCapacityRow>) {
     for index in 0..RESOURCE_PROCESSES {
         let owner = SiteId::from_bytes(identity(index));
         append_process(
+            &mut catalog,
             &mut state,
             index,
             owner,
@@ -283,12 +296,13 @@ fn combined_resources_case() -> (MaterialCircuitState, Vec<LaborCapacityRow>) {
             u64::from(index != RESOURCE_PROCESSES - 2),
         ));
     }
-    (state, next_labor)
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog is valid");
+    (catalog, state, next_labor)
 }
 
 #[test]
 fn planning_above_former_combined_bound_honors_late_input_and_labor_scarcity() {
-    let (state, next_labor) = combined_resources_case();
+    let (catalog, state, next_labor) = combined_resources_case();
     let original = state.clone();
     let input_keys: BTreeSet<_> = state
         .inventory
@@ -298,15 +312,16 @@ fn planning_above_former_combined_bound_honors_late_input_and_labor_scarcity() {
     let labor_keys: BTreeSet<_> = next_labor.iter().map(|r| (r.site_id, r.unit_id)).collect();
     assert_eq!((input_keys.len(), labor_keys.len()), (98_307, 32_769));
     assert_eq!(input_keys.len() + labor_keys.len(), 131_076);
-    assert!(state.input_coefficients.len() <= MAX_INPUT_COEFFICIENTS);
+    assert!(catalog.input_coefficients.len() <= MAX_INPUT_COEFFICIENTS);
     assert!(state.inventory.len() <= MAX_INVENTORY_ROWS);
-    assert!(state.process_outputs.len() <= MAX_MATERIAL_CIRCUIT_ROWS);
+    assert!(catalog.process_outputs.len() <= MAX_MATERIAL_CIRCUIT_ROWS);
     assert!(state.capacities.len() <= MAX_MATERIAL_CIRCUIT_ROWS);
     assert!(state.labor.len() <= MAX_MATERIAL_CIRCUIT_ROWS);
-    let closed = crate::close_material_period(&state).expect("the material period closes");
+    let closed =
+        crate::close_material_period(&catalog, &state).expect("the material period closes");
     assert_eq!(closed.inventory(), state.inventory);
     let actual = closed
-        .finish_with_labor(next_labor.clone())
+        .finish_with_labor(&catalog, next_labor.clone())
         .expect("admitted input and labor families fit their combined resource bound");
     assert_eq!(actual.state.period, 2);
     assert_eq!(actual.state.labor, next_labor);
@@ -325,7 +340,7 @@ fn planning_above_former_combined_bound_honors_late_input_and_labor_scarcity() {
         };
         assert_eq!(plans.get(&ProcessId::from_bytes(identity(index))), expected);
     }
-    assert!(actual.production.is_empty());
+    assert_eq!(actual.production.len(), 0);
     assert_eq!(actual.state.inventory, state.inventory);
     assert_eq!(state, original);
 }

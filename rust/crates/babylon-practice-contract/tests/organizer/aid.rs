@@ -1,13 +1,15 @@
 use super::support;
+use babylon_practice_contract::ResolvedOrganizerPeriod;
 use babylon_practice_contract::{
     OrganizerAidBinding, OrganizerAidKind, OrganizerAidMaterialPostings, OrganizerAidSupport,
     OrganizerAidSupportStatus, OrganizerChoice, OrganizerCollectionFact,
     OrganizerCollectionMandate, OrganizerCollectionOutcome, OrganizerCommitment, OrganizerConfig,
     OrganizerContribution, OrganizerError, OrganizerGiftConsent, OrganizerHouseholdBinding,
     OrganizerOutcome, OrganizerParticipant, OrganizerPartner, OrganizerPartnerPolicy,
-    OrganizerPartnerResponse, OrganizerPeriodTimeResources, OrganizerRefusal, OrganizerState,
-    OrganizerTimeBinding, OrganizerTimeBindingMode, OrganizerTimeUse, OrganizerWorkplaceFacts,
-    PracticeId, PracticeResourceAllocationMode, PracticeResourceCapacity, PracticeResourceId,
+    OrganizerPartnerResponse, OrganizerPeriodJournal, OrganizerPeriodJournalEntries,
+    OrganizerPeriodTimeResources, OrganizerRefusal, OrganizerState, OrganizerTimeBinding,
+    OrganizerTimeBindingMode, OrganizerTimeUse, OrganizerWorkplaceFacts, PracticeId,
+    PracticeResourceAllocationMode, PracticeResourceCapacity, PracticeResourceId,
     PracticeResourceOwner, PracticeTargetTag, ORGANIZER_SCHEMA_VERSION,
 };
 use std::collections::BTreeSet;
@@ -68,7 +70,11 @@ fn captured() -> OrganizerConfig {
         .expect("the authored organizer config passes validation");
     config
 }
-fn time(config: &OrganizerConfig, recipient: u64, available: u64) -> OrganizerPeriodTimeResources {
+pub(crate) fn time(
+    config: &OrganizerConfig,
+    recipient: u64,
+    available: u64,
+) -> OrganizerPeriodTimeResources {
     let unit = babylon_practice_contract::organizer_time_unit_id();
     OrganizerPeriodTimeResources {
         period: 1,
@@ -129,14 +135,15 @@ fn gift_admission_precedes_recipient_time_and_practice_can_fail_afterward() {
     )
     .expect("the supported aid resolves");
     let receipt = &next
+        .journal
         .aid_receipts
         .last()
         .expect("the fixture sequence is non-empty")
         .practice;
     assert_eq!(receipt.outcome, OrganizerOutcome::InsufficientTime);
-    assert!(receipt.time_use.is_empty());
+    assert_eq!(receipt.time_use.len(), 0);
     assert_eq!(next.standing, opening.standing);
-    assert!(next.contact_products.is_empty());
+    assert_eq!(next.contact_products.len(), 0);
     assert_eq!(
         next.agreements,
         babylon_practice_contract::reduce_organizer_products(
@@ -174,6 +181,7 @@ fn captured_receiving_consent_does_not_force_partner_practice() {
     )
     .expect("the supported aid resolves");
     let receipt = &next
+        .journal
         .aid_receipts
         .last()
         .expect("the fixture sequence is non-empty")
@@ -185,7 +193,7 @@ fn captured_receiving_consent_does_not_force_partner_practice() {
         .time_use
         .iter()
         .all(|row| row.actor_id == config.controlled_actor_id));
-    assert!(next.contact_products.is_empty());
+    assert_eq!(next.contact_products.len(), 0);
     babylon_practice_contract::validate_organizer_aid_commitment(&config, &gift)
         .expect("the authored fixture satisfies the rule");
 }
@@ -216,7 +224,7 @@ fn both_actual_practices_use_mutual_aid_and_separate_authorities() {
             row.intent.target.identity.as_bytes(),
             config.aid_bindings[0].social_class_target
         );
-        assert!(row.intent.parameters.is_empty());
+        assert_eq!(row.intent.parameters.len(), 0);
         assert_eq!(row.intent.evidence_digests, vec![[51; 32], [61; 32]]);
         authorities.insert(row.intent.input_authority_id);
     }
@@ -230,13 +238,14 @@ fn both_actual_practices_use_mutual_aid_and_separate_authorities() {
     )
     .expect("the supported aid resolves");
     let receipt = &next
+        .journal
         .aid_receipts
         .last()
         .expect("the fixture sequence is non-empty")
         .practice;
     assert_eq!(receipt.outcome, OrganizerOutcome::AidPracticeCompleted);
     assert_eq!(receipt.time_use.iter().map(|row| row.hours).sum::<u64>(), 5);
-    assert!(next.contact_products.is_empty());
+    assert_eq!(next.contact_products.len(), 0);
 }
 
 #[test]
@@ -344,20 +353,24 @@ fn later_donor_scarcity_and_wrong_authority_do_not_create_practice_time() {
     )
     .expect("the supported aid resolves");
     assert_eq!(
-        next.aid_receipts
+        next.journal
+            .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .practice
             .outcome,
         OrganizerOutcome::InsufficientTime
     );
-    assert!(next
-        .aid_receipts
-        .last()
-        .expect("the fixture sequence is non-empty")
-        .practice
-        .time_use
-        .is_empty());
+    assert_eq!(
+        next.journal
+            .aid_receipts
+            .last()
+            .expect("the fixture sequence is non-empty")
+            .practice
+            .time_use
+            .len(),
+        0
+    );
     assert_eq!(next.standing, opening.standing);
     babylon_practice_contract::validate_organizer_aid_commitment(&config, &gift)
         .expect("the authored fixture satisfies the rule");
@@ -383,6 +396,7 @@ fn aid_receipt_cannot_be_retyped_into_automatic_contact_agreement() {
     )
     .expect("the supported aid resolves");
     let mut receipt = next
+        .journal
         .aid_receipts
         .last()
         .expect("the fixture sequence is non-empty")
@@ -452,7 +466,7 @@ fn resolve_supported_aid(
     facts: &OrganizerWorkplaceFacts,
     accepted: Option<&OrganizerCommitment>,
     resources: &OrganizerPeriodTimeResources,
-) -> Result<OrganizerState, OrganizerError> {
+) -> Result<ResolvedOrganizerPeriod, OrganizerError> {
     let support = support_for(
         config,
         accepted.expect("the fixture audit returns the accepted value"),
@@ -481,7 +495,11 @@ fn next_resources(config: &OrganizerConfig, period: u64) -> OrganizerPeriodTimeR
     resources
 }
 
-fn remote_pending() -> (OrganizerConfig, OrganizerCommitment, OrganizerState) {
+fn remote_pending() -> (
+    OrganizerConfig,
+    OrganizerCommitment,
+    ResolvedOrganizerPeriod,
+) {
     let config = captured();
     let opening = babylon_practice_contract::initial_organizer_state(&config)
         .expect("the authored config admits an opening organizer state");
@@ -518,6 +536,7 @@ fn remote_authorization_survives_then_attempts_after_real_grant_and_consumption(
     assert_eq!(pending.pending_aid.len(), 1);
     assert_eq!(
         pending
+            .journal
             .receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -526,6 +545,7 @@ fn remote_authorization_survives_then_attempts_after_real_grant_and_consumption(
     );
     assert_eq!(
         pending
+            .journal
             .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -538,7 +558,7 @@ fn remote_authorization_survives_then_attempts_after_real_grant_and_consumption(
         .expect("the fixture value encodes to its canonical bytes");
     let restored = babylon_practice_contract::decode_organizer_state(&encoded)
         .expect("the canonical bytes decode into the declared type");
-    assert_eq!(restored, pending);
+    assert_eq!(restored, pending.state);
     // A later ordinary command cannot re-admit the original stale gift.
     assert_eq!(
         babylon_practice_contract::admit_organizer(&config, &restored, &accepted.command),
@@ -565,8 +585,9 @@ fn remote_authorization_survives_then_attempts_after_real_grant_and_consumption(
         },
     )
     .expect("the organizer period resolves with time");
-    assert!(next.pending_aid.is_empty());
+    assert_eq!(next.pending_aid.len(), 0);
     let row = next
+        .journal
         .aid_receipts
         .last()
         .expect("the fixture sequence is non-empty");
@@ -575,9 +596,10 @@ fn remote_authorization_survives_then_attempts_after_real_grant_and_consumption(
     assert_eq!(row.practice.period, 2);
     assert_eq!(row.practice.outcome, OrganizerOutcome::AidPracticeCompleted);
     assert!(row.practice.contact_product_id.is_none());
-    assert!(row.practice.observation_ids.is_empty());
+    assert_eq!(row.practice.observation_ids.len(), 0);
     assert!(
-        next.receipts
+        next.journal
+            .receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .standing_work
@@ -594,10 +616,14 @@ fn remote_authorization_survives_then_attempts_after_real_grant_and_consumption(
         },
     )
     .expect("the organizer period resolves with time");
-    assert_eq!(later.aid_receipts, next.aid_receipts);
+    assert!(
+        later.journal.aid_receipts.is_empty(),
+        "a resolved aid attempt is not repeated as a new period receipt"
+    );
     assert_eq!(
         organizer_actual_time_uses(&later, 3).count(),
         later
+            .journal
             .receipts
             .last()
             .expect("the fixture sequence is non-empty")
@@ -632,14 +658,16 @@ fn awaiting_surviving_freight_does_not_turn_ordinary_scarcity_into_aid_failure()
     )
     .expect("the organizer period resolves with time");
     assert_eq!(
-        next.receipts
+        next.journal
+            .receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .outcome,
         OrganizerOutcome::InsufficientTime
     );
     assert_eq!(
-        next.aid_receipts
+        next.journal
+            .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .practice
@@ -681,9 +709,10 @@ fn unshipped_or_granted_unconsumed_support_never_completes_and_retires_once() {
             },
         )
         .expect("the organizer period resolves with time");
-        assert!(next.pending_aid.is_empty());
+        assert_eq!(next.pending_aid.len(), 0);
         assert_eq!(
-            next.aid_receipts
+            next.journal
+                .aid_receipts
                 .last()
                 .expect("the fixture sequence is non-empty")
                 .practice
@@ -775,10 +804,10 @@ fn missing_foreign_duplicate_future_and_changed_support_fail_without_mutating_op
 #[test]
 fn delayed_partner_authority_tamper_and_third_pending_slot_refuse() {
     let (config, _accepted, opening) = remote_pending();
-    let mut altered = opening.clone();
+    let mut altered = opening.state.clone();
     altered.pending_aid[0].partner_authorization.authority_id = [99; 16];
     assert!(babylon_practice_contract::validate_organizer_pair(&config, &altered).is_err());
-    let mut oversized = opening.clone();
+    let mut oversized = opening.state.clone();
     oversized.pending_aid = vec![opening.pending_aid[0].clone(); 3];
     assert_eq!(
         babylon_practice_contract::validate_organizer_state(&oversized),
@@ -854,21 +883,23 @@ fn later_ordinary_work_precedes_aid_and_cannot_double_spend_actual_supply() {
     )
     .expect("the organizer period resolves with time");
     assert_eq!(
-        next.receipts
+        next.journal
+            .receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .hours_spent,
         config.contact_hours
     );
     assert_eq!(
-        next.aid_receipts
+        next.journal
+            .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .practice
             .outcome,
         OrganizerOutcome::InsufficientTime
     );
-    assert!(next.pending_aid.is_empty());
+    assert_eq!(next.pending_aid.len(), 0);
     assert_eq!(
         organizer_actual_time_uses(&next, 2)
             .filter(|row| row.contributor_id == 201)
@@ -930,6 +961,7 @@ fn independently_refused_delayed_practice_keeps_valid_grant_and_consumption_evid
     )
     .expect("the organizer period resolves with time");
     let row = next
+        .journal
         .aid_receipts
         .last()
         .expect("the fixture sequence is non-empty");
@@ -948,7 +980,7 @@ fn independently_refused_delayed_practice_keeps_valid_grant_and_consumption_evid
         .iter()
         .any(|use_row| use_row.actor_id == 106));
     assert!(row.practice.contact_product_id.is_none());
-    assert!(next.pending_aid.is_empty());
+    assert_eq!(next.pending_aid.len(), 0);
 }
 
 #[test]
@@ -962,16 +994,83 @@ fn product_reduction_can_carry_pending_authorization_but_cannot_be_saved_before_
     .expect("the organizer products aggregate");
     assert_eq!(reduced.pending_aid, opening.pending_aid);
     assert_eq!(
-        babylon_practice_contract::encode_organizer_state(&reduced),
+        babylon_practice_contract::validate_organizer_journal(
+            &config,
+            &reduced,
+            &support::journal_of(&reduced.journal),
+        ),
         Err(OrganizerError::InvalidState)
     );
 }
 
+#[test]
+fn dropped_aid_resolution_period_is_refused_by_the_window_chain() {
+    let (config, accepted, first) = remote_pending();
+    let waiting = support_for(
+        &config,
+        &accepted,
+        2,
+        OrganizerAidSupportStatus::AwaitingDelivery,
+    );
+    let second = babylon_practice_contract::resolve_organizer_period_with_time(
+        &config,
+        &first,
+        &support::facts(2, 160),
+        None,
+        &next_resources(&config, 2),
+        babylon_practice_contract::OrganizerMaterialSupport {
+            aid: &[waiting],
+            collection: None,
+        },
+    )
+    .expect("the second waiting period resolves");
+    let granted = support_for(
+        &config,
+        &accepted,
+        3,
+        OrganizerAidSupportStatus::Granted {
+            granted_quantity: 2,
+            consumed_quantity: 1,
+        },
+    );
+    let third = babylon_practice_contract::resolve_organizer_period_with_time(
+        &config,
+        &second,
+        &support::facts(3, 160),
+        None,
+        &next_resources(&config, 3),
+        babylon_practice_contract::OrganizerMaterialSupport {
+            aid: &[granted],
+            collection: None,
+        },
+    )
+    .expect("the terminal period resolves");
+    let mut complete = OrganizerPeriodJournal::empty();
+    for entries in [&first.journal, &second.journal, &third.journal] {
+        complete
+            .append(entries.clone())
+            .expect("the resolved periods extend the window");
+    }
+    babylon_practice_contract::validate_organizer_journal(&config, &third.state, &complete)
+        .expect("the complete consecutive chain validates");
+    let mut dropped = OrganizerPeriodJournal::empty();
+    for entries in [&first.journal, &third.journal] {
+        dropped
+            .append(entries.clone())
+            .expect("the shortened window is still ordered");
+    }
+    assert_eq!(
+        babylon_practice_contract::validate_organizer_journal(&config, &third.state, &dropped),
+        Err(OrganizerError::InvalidState),
+        "a silently dropped resolution period must refuse, not collapse the chain"
+    );
+}
+
 fn organizer_actual_time_uses(
-    state: &OrganizerState,
-    period: u64,
+    period_state: &ResolvedOrganizerPeriod,
+    _period: u64,
 ) -> impl Iterator<Item = &OrganizerTimeUse> {
-    babylon_practice_contract::organizer_period_receipts(state, period)
+    babylon_practice_contract::organizer_period_receipts(&period_state.journal)
         .flat_map(|row| row.time_use.iter())
 }
 
@@ -980,7 +1079,7 @@ fn pending_original_date_and_nonce_cannot_be_rewritten_as_current_admission() {
     let (config, accepted, opening) = remote_pending();
     let before = opening.clone();
     for changed in 0..3 {
-        let mut forged = opening.clone();
+        let mut forged = opening.state.clone();
         let original = &mut forged.pending_aid[0].gift.commitment;
         match changed {
             0 => original.command.expected_period = opening.period,
@@ -1021,15 +1120,17 @@ fn cutting_real_support_with_unrelated_free_time_blocks_delayed_completion() {
         )
         .expect("the organizer period resolves with time");
         let row = next
+            .journal
             .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty");
         assert_eq!(row.practice.outcome, OrganizerOutcome::AidNotProvisioned);
-        assert!(row.practice.time_use.is_empty());
-        assert!(next.pending_aid.is_empty());
+        assert_eq!(row.practice.time_use.len(), 0);
+        assert_eq!(next.pending_aid.len(), 0);
         // Ordinary authorized standing work still ran; it is not aid completion.
         assert!(
-            next.receipts
+            next.journal
+                .receipts
                 .last()
                 .expect("the fixture sequence is non-empty")
                 .standing_work
@@ -1040,14 +1141,14 @@ fn cutting_real_support_with_unrelated_free_time_blocks_delayed_completion() {
 #[test]
 fn current_aid_support_requires_actual_postings_and_exact_decimal_money() {
     let (_, _, pending) = remote_pending();
-    let mut state = serde_json::to_value(&pending).expect("the value serializes to JSON");
-    state["aid_receipts"][0]["support"]
+    let mut entries = serde_json::to_value(&pending.journal).expect("the value serializes to JSON");
+    entries["aid_receipts"][0]["support"]
         .as_object_mut()
         .expect("the JSON fixture field is an object")
         .remove("material_postings");
-    assert!(serde_json::from_value::<OrganizerState>(state).is_err());
+    assert!(serde_json::from_value::<OrganizerPeriodJournalEntries>(entries).is_err());
 
-    let mut support = serde_json::to_value(&pending.aid_receipts[0].support)
+    let mut support = serde_json::to_value(&pending.journal.aid_receipts[0].support)
         .expect("the value serializes to JSON");
     support["material_postings"] = serde_json::json!({
         "dispatched_quantity": 1,
@@ -1113,7 +1214,7 @@ fn later_support_cannot_repeat_dispatch_postings_or_foreign_actor_authority() {
             Err(OrganizerError::AidSupportMismatch)
         );
     }
-    let mut foreign = opening.clone();
+    let mut foreign = opening.state.clone();
     foreign.pending_aid[0].gift.donor_actor_id = config.aid_bindings[0].partner.actor_id;
     assert!(babylon_practice_contract::validate_organizer_pair(&config, &foreign).is_err());
     assert_eq!(opening.pending_aid[0].gift.commitment, accepted);
@@ -1121,7 +1222,7 @@ fn later_support_cannot_repeat_dispatch_postings_or_foreign_actor_authority() {
 
 #[test]
 fn current_organizer_refuses_prior_schema_even_without_aid() {
-    assert_eq!(ORGANIZER_SCHEMA_VERSION, 7);
+    assert_eq!(ORGANIZER_SCHEMA_VERSION, 8);
     let mut prior = support::config();
     prior.schema_version = 6;
     assert_eq!(
@@ -1253,10 +1354,11 @@ fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
         },
     )
     .expect("the organizer period resolves with time");
-    assert_eq!(next.collection_receipts.len(), 1);
-    assert_eq!(next.collection_receipts[0].commitment, accepted);
+    assert_eq!(next.journal.collection_receipts.len(), 1);
+    assert_eq!(next.journal.collection_receipts[0].commitment, accepted);
     assert_eq!(
-        next.aid_receipts
+        next.journal
+            .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .practice
@@ -1264,14 +1366,15 @@ fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
         OrganizerOutcome::AidPracticeCompleted
     );
     assert_eq!(
-        next.aid_receipts
+        next.journal
+            .aid_receipts
             .last()
             .expect("the fixture sequence is non-empty")
             .practice
             .hours_spent,
         3
     );
-    assert_eq!(next.collection_receipts[0].practice.hours_spent, 2);
+    assert_eq!(next.journal.collection_receipts[0].practice.hours_spent, 2);
     assert_eq!(next.agreements, pending.agreements);
     for field in [0_u8, 1, 2, 3] {
         let mut changed = fact.clone();

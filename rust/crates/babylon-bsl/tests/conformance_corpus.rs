@@ -304,13 +304,13 @@ fn missing_tag_reads_the_declared_default() {
     assert!(eval_when(&adventurism, &HashMap::new()));
     // The allowlist covers every :default this corpus declares — zero
     // sign-off findings.
-    assert!(adventurism.default_findings.is_empty());
+    assert_eq!(adventurism.default_findings.len(), 0);
     let absorbing = load(
         ABSORBING,
         "tests/conformance/doctrine_liquidation_absorbing.bsl",
     )
     .expect("the fixture artifact loads");
-    assert!(absorbing.default_findings.is_empty());
+    assert_eq!(absorbing.default_findings.len(), 0);
 }
 
 /// test_mechanics.py:85-134 (TestMeasuredPracticeVocabulary) — the U11

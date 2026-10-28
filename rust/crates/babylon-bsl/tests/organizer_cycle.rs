@@ -53,7 +53,7 @@ fn organizer_operations_load_only_as_explicit_native_execution() {
         let rule = load(&source(operation, role, position)).expect("governed organizer operation");
         assert_ne!(rule.execution, RuleExecution::Graph);
         assert_eq!(rule.static_bound, 1_000_000);
-        assert!(rule.bindings.is_empty());
+        assert_eq!(rule.bindings.len(), 0);
         assert!(rule.domain.is_none());
     }
 }
@@ -103,7 +103,7 @@ fn organizer_graph_refusal_identifies_the_operation_even_without_subjects() {
             "refusal must identify the unsupported invocation: {error}"
         );
         assert!(error.message.contains("material runtime host"));
-        assert!(sink.events.is_empty());
+        assert_eq!(sink.events.len(), 0);
     }
 }
 

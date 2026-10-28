@@ -18,6 +18,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::observer_reader::ObserverEconomySnapshot;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_tick::material_world;
 use economic::Boundary;
 use economic::Summary;
@@ -164,6 +165,7 @@ impl MaterialAudit {
     /// overruns or invalid joins. A refusal leaves every fold unchanged.
     pub fn read(
         &mut self,
+        catalog: &MaterialCatalog,
         observation: &CommittedMaterialObservation,
         register: &MaterialWorldRegister,
     ) -> Result<BoundaryFacts, Refusal> {
@@ -221,9 +223,13 @@ impl MaterialAudit {
         let production_renewal = match tick.cmp(&self.scope.renewal_seed_tick) {
             Ordering::Less => None,
             Ordering::Equal => {
-                let audit =
-                    production_renewal::Audit::seed(register.state(), tick, register.digest())
-                        .map_err(Refusal::Renewal)?;
+                let audit = production_renewal::Audit::seed(
+                    catalog,
+                    register.state(),
+                    tick,
+                    register.digest(),
+                )
+                .map_err(Refusal::Renewal)?;
                 let evidence = audit.evidence().map_err(Refusal::Renewal)?;
                 candidate.renewal = Some(audit);
                 Some(evidence)

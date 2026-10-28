@@ -23,6 +23,7 @@ use crate::michigan_material::MichiganWorkforceSeed;
 use crate::michigan_sectors::MichiganSectorCode;
 use babylon_kernel::content_digest;
 use babylon_material_circuit::AidBook;
+use babylon_material_circuit::EquipmentPosition;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::{
     CapacityRow, CommodityDefinition, CommodityKind, CorridorCapacity, CorridorId,
@@ -129,6 +130,7 @@ pub fn import_michigan_opening(catalog: &MichiganMaterialCatalog) -> Result<Econ
         institutions: FinancialInstitutions::empty(),
         equity: vec![],
         equipment: vec![],
+        equipment_position: EquipmentPosition::default(),
         capacity,
         policies: CatalogPolicies {
             aid: AidBook::default(),

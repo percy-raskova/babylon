@@ -4,39 +4,33 @@ use super::{
     Budgets, CompletedReservations, MaterialCircuitState, ProductionProjectionError,
     ReservationInput, Result,
 };
-use babylon_material_circuit::{CorridorId, FutureCapacityReservation, RollingCapacitySupply};
+use babylon_material_circuit::{
+    CapacitySupply, CorridorId, FutureCapacityReservation, MaterialCatalog,
+};
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn reconcile(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
-    before: &RollingCapacitySupply,
-    after: &RollingCapacitySupply,
     reservations: ReservationInput,
     receipt: &MaterialTickReceipts,
 ) -> Result<CompletedReservations> {
     // Mutable assets may differ only after the actual installation/wear book join succeeds.
-    super::super::equipment::validate(prior, current, receipt)?;
-    let same_processes = match (&before.processes, &after.processes) {
-        (
-            babylon_material_circuit::RollingProcessSupply::Equipment(_),
-            babylon_material_circuit::RollingProcessSupply::Equipment(_),
-        ) => true,
-        (a, b) => a == b,
-    };
-    if !same_processes || shared_identity(before) != shared_identity(after) {
+    super::super::equipment::validate(catalog, prior, current, receipt)?;
+    let CapacitySupply::Rolling(supply_rows) = &catalog.capacity_policy else {
         return Err(ProductionProjectionError::State);
-    }
-    let supply: BTreeMap<_, _> = before
+    };
+    let supply: BTreeMap<_, _> = supply_rows
         .shared
         .iter()
         .map(|row| (row.corridor_id, row.grams_per_period))
         .collect();
-    if supply.len() != before.shared.len() {
+    if supply.len() != supply_rows.shared.len() {
         return Err(ProductionProjectionError::State);
     }
-    let previous_book = reservation_book(&before.future_reservations, prior.period)?;
+    let previous_book = reservation_book(&prior.capacity_reservations.future, prior.period)?;
     let mut dates: BTreeSet<_> = previous_book.keys().copied().collect();
     dates.extend(reservations.0.keys().copied());
     dates.extend(supply.keys().map(|id| (*id, current.period)));
@@ -69,7 +63,7 @@ pub(super) fn reconcile(
             expected_book.insert(*key, booked);
         }
     }
-    if expected_book != reservation_book(&after.future_reservations, current.period)? {
+    if expected_book != reservation_book(&current.capacity_reservations.future, current.period)? {
         return Err(ProductionProjectionError::State);
     }
     Ok(result)
@@ -95,14 +89,4 @@ fn reservation_book(rows: &[FutureCapacityReservation], period: u64) -> Result<B
         }
     }
     Ok(result)
-}
-
-fn shared_identity(supply: &RollingCapacitySupply) -> Vec<(CorridorId, u64)> {
-    let mut rows: Vec<_> = supply
-        .shared
-        .iter()
-        .map(|r| (r.corridor_id, r.grams_per_period))
-        .collect();
-    rows.sort_unstable();
-    rows
 }

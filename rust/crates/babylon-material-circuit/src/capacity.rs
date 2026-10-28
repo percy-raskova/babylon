@@ -1,48 +1,65 @@
 //! One supply boundary for existing process and shared freight allocators.
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::CapacityReservations;
+use crate::InstalledProcessCapacity;
 use crate::{
     CapacityRow, CapacitySupply, CorridorCapacity, CorridorId, FutureCapacityReservation,
-    MaterialCircuitError, MaterialCircuitState, ProcessId, SiteId, MAX_MATERIAL_CIRCUIT_ROWS,
+    MaterialCatalog, MaterialCircuitError, MaterialCircuitState, ProcessId, RollingProcessSupply,
+    SiteId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
 use std::result::Result as StdResult;
 
 type Result<T> = StdResult<T, MaterialCircuitError>;
 
-pub(crate) fn row_limits(state: &MaterialCircuitState) -> Result<()> {
-    if let CapacitySupply::Rolling(rows) = &state.capacity_supply {
-        if [
-            match &rows.processes {
-                crate::RollingProcessSupply::CapturedNameplate(r) => r.len(),
-                crate::RollingProcessSupply::Equipment(e) => {
-                    crate::equipment::row_limits(e)?;
+pub(crate) fn row_limits(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> Result<()> {
+    let policy_rows = match &catalog.capacity_policy {
+        CapacitySupply::Rolling(rows) => {
+            let processes = match &rows.processes {
+                RollingProcessSupply::CapturedNameplate(r) => r.len(),
+                RollingProcessSupply::Equipment(e) => {
+                    crate::equipment::row_limits_content(e)?;
                     e.bindings.len()
                 }
-            },
-            rows.shared.len(),
-            rows.future_reservations.len(),
-        ]
-        .into_iter()
-        .any(|n| n > MAX_MATERIAL_CIRCUIT_ROWS)
-        {
-            return Err(MaterialCircuitError::RowLimit);
+            };
+            processes.max(rows.shared.len())
         }
+        CapacitySupply::FiniteSchedule => 0,
+    };
+    if policy_rows > MAX_MATERIAL_CIRCUIT_ROWS
+        || state.capacity_reservations.future.len() > MAX_MATERIAL_CIRCUIT_ROWS
+        || state.capacity_reservations.equipment.cohorts.len() > MAX_MATERIAL_CIRCUIT_ROWS
+        || state.capacity_reservations.equipment.pending.len() > MAX_MATERIAL_CIRCUIT_ROWS
+    {
+        return Err(MaterialCircuitError::RowLimit);
     }
     Ok(())
 }
 
-pub(crate) fn canonicalize(supply: &mut CapacitySupply) {
+pub(crate) fn canonicalize_policy(supply: &mut CapacitySupply) {
     if let CapacitySupply::Rolling(rows) = supply {
         match &mut rows.processes {
-            crate::RollingProcessSupply::CapturedNameplate(r) => {
+            RollingProcessSupply::CapturedNameplate(r) => {
                 r.sort_by_key(|r| (r.site_id, r.process_id));
             }
-            crate::RollingProcessSupply::Equipment(e) => crate::equipment::canonicalize(e),
+            RollingProcessSupply::Equipment(e) => crate::equipment::canonicalize(e),
         }
         rows.shared.sort_by_key(|r| r.corridor_id);
-        rows.future_reservations
-            .sort_by_key(|r| (r.departure_period, r.corridor_id));
     }
+}
+
+pub(crate) fn canonicalize_position(reservations: &mut CapacityReservations) {
+    reservations
+        .equipment
+        .cohorts
+        .sort_by_key(|r| (r.process_id, r.id));
+    reservations
+        .equipment
+        .pending
+        .sort_by_key(|r| (r.process_id, r.id));
+    reservations
+        .future
+        .sort_by_key(|r| (r.departure_period, r.corridor_id));
 }
 
 fn unique<T, K: Ord>(rows: &[T], key: impl Fn(&T) -> K) -> Result<()> {
@@ -53,20 +70,20 @@ fn unique<T, K: Ord>(rows: &[T], key: impl Fn(&T) -> K) -> Result<()> {
     }
 }
 
-pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
-    let CapacitySupply::Rolling(rows) = &state.capacity_supply else {
+pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> Result<()> {
+    let CapacitySupply::Rolling(rows) = &catalog.capacity_policy else {
         return Ok(());
     };
-    let installed_processes = rows.processes.capacities(state.period)?;
-    if let crate::RollingProcessSupply::Equipment(e) = &rows.processes {
-        crate::equipment::validate(state, e)?;
+    if let RollingProcessSupply::Equipment(content) = &rows.processes {
+        crate::equipment::validate(catalog, state, content)?;
     }
+    let installed_processes = installed_processes(catalog, state, state.period)?;
     unique(&installed_processes, |r| (r.site_id, r.process_id))?;
     unique(&rows.shared, |r| r.corridor_id)?;
-    unique(&rows.future_reservations, |r| {
+    unique(&state.capacity_reservations.future, |r| {
         (r.departure_period, r.corridor_id)
     })?;
-    let processes: BTreeSet<_> = state
+    let processes: BTreeSet<_> = catalog
         .process_outputs
         .iter()
         .map(|r| (r.site_id, r.process_id))
@@ -79,7 +96,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
         .route_stage_capacities
         .iter()
         .map(|r| r.corridor_id)
-        .chain(state.merchants.iter().map(|r| r.capacity_id))
+        .chain(catalog.merchants.iter().map(|r| r.capacity_id))
         .collect();
     let supply: BTreeMap<_, _> = rows
         .shared
@@ -110,8 +127,8 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
             return Err(MaterialCircuitError::CapacityInvariant);
         }
     }
-    let horizons = departure_horizons(state)?;
-    for reservation in &rows.future_reservations {
+    let horizons = departure_horizons(catalog, state)?;
+    for reservation in &state.capacity_reservations.future {
         let offset = reservation
             .departure_period
             .checked_sub(state.period)
@@ -131,11 +148,26 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
     Ok(())
 }
 
-fn departure_horizons(state: &MaterialCircuitState) -> Result<BTreeMap<CorridorId, u64>> {
+fn installed_processes(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+    period: u64,
+) -> Result<Vec<InstalledProcessCapacity>> {
+    let CapacitySupply::Rolling(rows) = &catalog.capacity_policy else {
+        return Ok(Vec::new());
+    };
+    rows.processes
+        .capacities(&state.capacity_reservations.equipment.cohorts, period)
+}
+
+fn departure_horizons(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+) -> Result<BTreeMap<CorridorId, u64>> {
     let mut offsets = BTreeMap::new();
     let mut route = None;
     let mut arrival = 0_u64;
-    for stage in &state.route_stages {
+    for stage in &catalog.route_stages {
         if route != Some(stage.route_id) {
             route = Some(stage.route_id);
             arrival = 0;
@@ -157,33 +189,36 @@ fn departure_horizons(state: &MaterialCircuitState) -> Result<BTreeMap<CorridorI
 }
 
 pub(crate) fn process_available(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     process: ProcessId,
     site: SiteId,
     period: u64,
 ) -> Result<u64> {
     if period > state.period {
-        if let CapacitySupply::Rolling(rows) = &state.capacity_supply {
+        if let CapacitySupply::Rolling(rows) = &catalog.capacity_policy {
             return match &rows.processes {
-                crate::RollingProcessSupply::CapturedNameplate(r) => Ok(r
+                RollingProcessSupply::CapturedNameplate(r) => Ok(r
                     .binary_search_by_key(&(site, process), |r| (r.site_id, r.process_id))
                     .ok()
                     .map_or(0, |i| r[i].batches_per_period)),
-                crate::RollingProcessSupply::Equipment(e) => {
-                    let (b, d) = e.definition(process)?;
+                RollingProcessSupply::Equipment(content) => {
+                    let (b, d) = content.definition(process)?;
                     if b.site_id != site {
                         return Err(MaterialCircuitError::EquipmentInvariant);
                     }
-                    e.cohorts[e.cohorts_for(process)]
+                    let cohorts = &state.capacity_reservations.equipment.cohorts;
+                    cohorts[crate::equipment::cohorts_for(cohorts, process)]
                         .iter()
                         .filter(|c| c.usable_from_period <= period)
-                        .try_fold(0_u64, |n, c| {
-                            let v = c
+                        .try_fold(0_u64, |total, c| {
+                            let nameplate = c
                                 .units
                                 .checked_mul(d.batches_per_unit_per_period)
-                                .ok_or(MaterialCircuitError::Arithmetic)?
-                                .min(c.remaining_service_batches);
-                            n.checked_add(v).ok_or(MaterialCircuitError::Arithmetic)
+                                .ok_or(MaterialCircuitError::Arithmetic)?;
+                            total
+                                .checked_add(nameplate.min(c.remaining_service_batches))
+                                .ok_or(MaterialCircuitError::Arithmetic)
                         })
                 }
             };
@@ -199,22 +234,24 @@ pub(crate) fn process_available(
 }
 
 pub(crate) fn shared_available(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     period: u64,
     corridor: CorridorId,
 ) -> Result<u64> {
     if period > state.period {
-        if let CapacitySupply::Rolling(rows) = &state.capacity_supply {
+        if let CapacitySupply::Rolling(rows) = &catalog.capacity_policy {
             let gross = rows
                 .shared
                 .binary_search_by_key(&corridor, |r| r.corridor_id)
                 .ok()
                 .map_or(0, |i| rows.shared[i].grams_per_period);
-            let reserved = rows
-                .future_reservations
+            let reserved = state
+                .capacity_reservations
+                .future
                 .binary_search_by_key(&(period, corridor), |r| (r.departure_period, r.corridor_id))
                 .ok()
-                .map_or(0, |i| rows.future_reservations[i].reserved_grams);
+                .map_or(0, |i| state.capacity_reservations.future[i].reserved_grams);
             return gross
                 .checked_sub(reserved)
                 .ok_or(MaterialCircuitError::CapacityInvariant);
@@ -228,6 +265,7 @@ pub(crate) fn shared_available(
 }
 
 pub(crate) fn reserve(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     period: u64,
     corridor: CorridorId,
@@ -236,26 +274,26 @@ pub(crate) fn reserve(
     if grams == 0 || period < state.period {
         return Err(MaterialCircuitError::CapacityInvariant);
     }
-    let remaining = shared_available(state, period, corridor)?
+    let remaining = shared_available(catalog, state, period, corridor)?
         .checked_sub(grams)
         .ok_or(MaterialCircuitError::CapacityInvariant)?;
     if period > state.period {
-        if let CapacitySupply::Rolling(rows) = &mut state.capacity_supply {
-            match rows
-                .future_reservations
+        if let CapacitySupply::Rolling(_) = &catalog.capacity_policy {
+            let reservations = &mut state.capacity_reservations.future;
+            match reservations
                 .binary_search_by_key(&(period, corridor), |r| (r.departure_period, r.corridor_id))
             {
                 Ok(i) => {
-                    rows.future_reservations[i].reserved_grams = rows.future_reservations[i]
+                    reservations[i].reserved_grams = reservations[i]
                         .reserved_grams
                         .checked_add(grams)
                         .ok_or(MaterialCircuitError::Arithmetic)?;
                 }
                 Err(i) => {
-                    if rows.future_reservations.len() >= MAX_MATERIAL_CIRCUIT_ROWS {
+                    if reservations.len() >= MAX_MATERIAL_CIRCUIT_ROWS {
                         return Err(MaterialCircuitError::RowLimit);
                     }
-                    rows.future_reservations.insert(
+                    reservations.insert(
                         i,
                         FutureCapacityReservation {
                             departure_period: period,
@@ -276,19 +314,21 @@ pub(crate) fn reserve(
     Ok(())
 }
 
-pub(crate) fn roll_forward(state: &mut MaterialCircuitState, next_period: u64) -> Result<()> {
+pub(crate) fn roll_forward(
+    catalog: &MaterialCatalog,
+    state: &mut MaterialCircuitState,
+    next_period: u64,
+) -> Result<()> {
     if state.period.checked_add(1) != Some(next_period) {
         return Err(MaterialCircuitError::PeriodInvariant);
     }
-    let CapacitySupply::Rolling(rows) = &mut state.capacity_supply else {
+    let CapacitySupply::Rolling(rows) = &catalog.capacity_policy else {
         state
             .corridor_capacities
             .retain(|r| r.period >= next_period);
         return Ok(());
     };
-    let capacities = rows
-        .processes
-        .capacities(next_period)?
+    let capacities = installed_processes(catalog, state, next_period)?
         .iter()
         .map(|r| CapacityRow {
             site_id: r.site_id,
@@ -301,13 +341,14 @@ pub(crate) fn roll_forward(state: &mut MaterialCircuitState, next_period: u64) -
         .shared
         .iter()
         .map(|r| {
-            let reserved = rows
-                .future_reservations
+            let reserved = state
+                .capacity_reservations
+                .future
                 .binary_search_by_key(&(next_period, r.corridor_id), |r| {
                     (r.departure_period, r.corridor_id)
                 })
                 .ok()
-                .map_or(0, |i| rows.future_reservations[i].reserved_grams);
+                .map_or(0, |i| state.capacity_reservations.future[i].reserved_grams);
             Ok(CorridorCapacity {
                 corridor_id: r.corridor_id,
                 period: next_period,
@@ -318,7 +359,9 @@ pub(crate) fn roll_forward(state: &mut MaterialCircuitState, next_period: u64) -
             })
         })
         .collect::<Result<Vec<_>>>()?;
-    rows.future_reservations
+    state
+        .capacity_reservations
+        .future
         .retain(|r| r.departure_period > next_period);
     state.capacities = capacities;
     state.corridor_capacities = corridor_capacities;

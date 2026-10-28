@@ -24,6 +24,8 @@ use crate::observer_ui::{ObserverFrame, ObserverUiState, ObserverViewport, RoadL
 use crate::production::PrimaryView;
 use crate::production::ProductionNavigation;
 use crate::production_layout;
+use crate::ui;
+use crate::ui::Interaction;
 use babylon_persistence::production_observation::PhysicalRouteIndex;
 use bevy::camera::visibility::RenderLayers;
 use bevy::window::PrimaryWindow;
@@ -493,7 +495,7 @@ fn spawn_road_credit(commands: &mut Commands) {
                 credit: true,
             },
             TextFont {
-                font_size: 13.0,
+                font_size: FontSize::Px(13.0),
                 ..default()
             },
             ZIndex(13),
@@ -611,7 +613,7 @@ fn label_bundle(caption: String, anchor: Option<Vec3>, order: usize, color: Colo
         DeclaredSurface::new(SurfaceId::ObserverProduction),
         Text::new(caption),
         TextFont {
-            font_size: 15.0,
+            font_size: FontSize::Px(15.0),
             ..default()
         },
         TextColor(theme::PAPER),
@@ -817,7 +819,7 @@ fn spawn_relationships(
             label.insert(Pickable::IGNORE);
         } else if let Some(selected_county) = selected {
             label.insert((
-                Button,
+                ui::pressable(),
                 RelationshipJump {
                     context: context.clone(),
                     selected_county,
@@ -1528,7 +1530,7 @@ mod tests {
             .resource_mut::<ProductionNavigation>()
             .selected_site = None;
         app.update();
-        assert!(road_batch_vertices(&mut app).is_empty());
+        assert_eq!(road_batch_vertices(&mut app).len(), 0);
         app.world_mut().resource_mut::<ObserverUiState>().road_layer = RoadLayer::CapturedRoads;
         app.update();
         assert_eq!(road_batch_vertices(&mut app), [(RoadBatch::Captured, 24)]);
@@ -1573,7 +1575,7 @@ mod tests {
         assert_eq!(road_batch_vertices(&mut app).len(), 2);
         *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
         app.update();
-        assert!(road_batch_vertices(&mut app).is_empty());
+        assert_eq!(road_batch_vertices(&mut app).len(), 0);
     }
 
     #[test]

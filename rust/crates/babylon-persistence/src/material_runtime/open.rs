@@ -98,7 +98,13 @@ pub(super) fn restore<C>(
             .to_owned();
         let components = MaterialComponentIdentity::from_foundation(&foundation.graph_foundation);
         Some(checkpoint.admit(
-            MaterialReadAuthority::cold(&scope, digest, &components, &lookup),
+            MaterialReadAuthority::cold(
+                &scope,
+                digest,
+                &components,
+                &lookup,
+                foundation.material_catalog(),
+            ),
             MaterialEnvelopeRead::CanonicalBytes,
         )?)
     } else {
@@ -183,7 +189,7 @@ fn revalidate_capture(
         return Err(MaterialRuntimeError::FoundationMismatch);
     }
     if capture_identity::rows_digest(marker.iter())?
-        != capture_identity::rows_digest(original_marker.into_iter())?
+        != capture_identity::rows_digest(original_marker)?
     {
         return Err(MaterialRuntimeError::TailConflict);
     }

@@ -2,11 +2,13 @@ use babylon_kernel::currency::Currency;
 use babylon_material_circuit::{
     AccountId, CashAccount, FinalDemandPrincipalId, FundedShift, MonetaryBook,
     MonetaryBookSnapshot, MonetaryError, OrderId, OutboundOrderId, PurchaseEscrow, ShiftId, SiteId,
-    MAX_MATERIAL_CIRCUIT_ROWS,
+    MAX_DELIVERY_ORDERS, MAX_MATERIAL_CIRCUIT_ROWS, MAX_MATERIAL_ORDER_PRINCIPALS,
 };
 
 const FAMILY: usize = MAX_MATERIAL_CIRCUIT_ROWS;
-const COMBINED: usize = 5 * FAMILY;
+const DELIVERY: usize = MAX_DELIVERY_ORDERS;
+const RETAIL: usize = MAX_MATERIAL_CIRCUIT_ROWS;
+const COMBINED: usize = MAX_MATERIAL_ORDER_PRINCIPALS;
 
 fn identity(index: usize) -> [u8; 32] {
     let mut bytes = [0; 32];
@@ -24,12 +26,12 @@ fn seller() -> AccountId {
     AccountId::Site(SiteId::from_bytes([2; 32]))
 }
 fn purchase(index: usize) -> PurchaseEscrow {
-    let order = if index < 2 * FAMILY {
+    let order = if index < DELIVERY {
         OutboundOrderId::Delivery(OrderId::from_bytes(identity(index)))
-    } else if index < 3 * FAMILY {
-        OutboundOrderId::LocalFinalDemand(OrderId::from_bytes(identity(index - 2 * FAMILY)))
+    } else if index < DELIVERY + RETAIL {
+        OutboundOrderId::LocalFinalDemand(OrderId::from_bytes(identity(index - DELIVERY)))
     } else {
-        OutboundOrderId::Service(OrderId::from_bytes(identity(index - 3 * FAMILY)))
+        OutboundOrderId::Service(OrderId::from_bytes(identity(index - DELIVERY - RETAIL)))
     };
     PurchaseEscrow::new(order, buyer(), seller(), 1, Currency::from_micro_units(1))
         .expect("the constructor accepts the authored fixture arguments")

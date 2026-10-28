@@ -3,6 +3,7 @@
 use crate::michigan_economy;
 use std::collections::{BTreeMap, BTreeSet};
 
+use minijinja::value::Serde;
 use minijinja::{context, Environment, UndefinedBehavior};
 use postgres::types::FromSqlOwned;
 use postgres::{Config, GenericClient, IsolationLevel, NoTls, Row};
@@ -96,8 +97,7 @@ impl ArchivePageRef {
             || matches!(
                 kind,
                 ArchiveSubjectKind::Workplace | ArchiveSubjectKind::Organization
-            ) && (id.parse::<u64>().ok().filter(|value| *value > 0).is_none()
-                || id.starts_with('0'))
+            ) && (id.parse::<u64>().ok().is_none_or(|value| value == 0) || id.starts_with('0'))
             || id.len() != expected
             || id.len() > MAX_ID_BYTES
             || !id.bytes().all(|byte| byte.is_ascii_digit())
@@ -592,8 +592,12 @@ impl FogSafeArchiveRenderer {
                 verified_tick => verified_tick,
                 tick_content_hash => tick_content_hash,
                 decision_question => emission.question(),
-                signals => signals,
-                links => links,
+                // MiniJinja 3 converts `serde::Serialize` types only through
+                // the explicit `value::Serde` wrapper; the blanket
+                // `From<T: Serialize>` conversion that MiniJinja 2 provided is
+                // gone. The rendered bytes are unchanged.
+                signals => Serde(signals),
+                links => Serde(links),
             })
             .map_err(|_| SemanticArchiveError::Template)?;
         let search_text = emission.search_text(subject);
@@ -905,7 +909,7 @@ impl ArchiveAtomSubject {
                 id.len() == 7 && id.bytes().all(|byte| byte.is_ascii_digit())
             }
             ArchiveAtomSubjectKind::Workplace | ArchiveAtomSubjectKind::Organization => {
-                id.parse::<u64>().ok().is_some_and(|value| value > 0) && !id.starts_with('0')
+                id.parse::<u64>().is_ok_and(|value| value > 0) && !id.starts_with('0')
             }
             ArchiveAtomSubjectKind::Concept => {
                 let mut bytes = id.bytes();

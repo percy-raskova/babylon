@@ -253,7 +253,7 @@ fn assert_aggregate_refusal(rule_source: &str, code: &str) {
         .expect_err("the aggregate composition gate must refuse");
     assert!(error.contains(code), "{error}");
     assert_eq!(graph.state_hash().expect("refused graph hashes"), before);
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
 
     let diagnostics = babylon_tick::diagnose_content_set_sources(
         ORDERING_SCENARIO,
@@ -305,7 +305,7 @@ fn severing_the_input_condition_removes_the_downstream_state_and_receipts() {
 
     assert_ne!(connected.after, severed.after);
     assert_eq!(connected.audit_receipts.len(), 2);
-    assert!(severed.audit_receipts.is_empty());
+    assert_eq!(severed.audit_receipts.len(), 0);
     assert!(connected_graph
         .node_attribute(NodeId(0), "social-class/imperial-rent")
         .is_ok());
@@ -345,7 +345,7 @@ fn restricted_roles_cannot_author_an_outcome_field() {
                 .expect("the fixture graph hashes its state"),
             before
         );
-        assert!(sink.events.is_empty());
+        assert_eq!(sink.events.len(), 0);
     }
 }
 
@@ -386,7 +386,7 @@ fn a_failed_working_tick_publishes_neither_effects_nor_a_receipt_report() {
             .expect("the fixture graph hashes its state"),
         before
     );
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
 }
 
 #[test]
@@ -398,15 +398,18 @@ fn aggregate_loader_refuses_a_rank_aware_stale_default_before_publication() {
 #[test]
 fn aggregate_loader_accepts_the_phase_rank_clean_inverse() {
     assert!("consciousness/a-reader" < "solidarity/z-writer");
-    assert!(babylon_tick::diagnose_content_set_sources(
-        ORDERING_SCENARIO,
-        None,
-        &[ContentRuleSource {
-            source_id: "rules/rank-clean-inverse.bsl",
-            source: RANK_CLEAN_INVERSE
-        }]
-    )
-    .is_empty());
+    assert_eq!(
+        babylon_tick::diagnose_content_set_sources(
+            ORDERING_SCENARIO,
+            None,
+            &[ContentRuleSource {
+                source_id: "rules/rank-clean-inverse.bsl",
+                source: RANK_CLEAN_INVERSE
+            }]
+        )
+        .len(),
+        0
+    );
     let (report, graph) = run(ORDERING_SCENARIO, RANK_CLEAN_INVERSE);
     assert_eq!(report.fired, 2);
     assert_eq!(

@@ -40,7 +40,7 @@ fn national_source_keeps_every_county_and_explicit_island_access() {
         .filter(|row| row.mode() == TransportMode::Air)
         .all(|row| row.cargo() == [CargoClass::General]));
     assert!(source.general_diameter() <= 16);
-    assert!(!source.unavailable_bulk_access().is_empty());
+    assert_ne!(source.unavailable_bulk_access().len(), 0);
 }
 
 #[test]

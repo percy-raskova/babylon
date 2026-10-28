@@ -1,13 +1,17 @@
 //! One bounded repair dependency; whole jobs enable only the following period.
 
 use crate::inventory;
+use crate::MaterialCatalog;
 use crate::{
     MaintenanceBinding, MaintenanceReceipt, MaintenanceService, MaterialCircuitError,
     MaterialCircuitState, ProcessId, ProductionReceipt,
 };
 
-pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircuitError> {
-    let (binding, service) = match (&state.maintenance_binding, state.maintenance_service) {
+pub(crate) fn validate(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+) -> Result<(), MaterialCircuitError> {
+    let (binding, service) = match (&catalog.maintenance_binding, state.maintenance_service) {
         (None, None) => return Ok(()),
         (Some(binding), Some(service)) => (binding, service),
         _ => return Err(MaterialCircuitError::MaintenanceInvariant),
@@ -28,12 +32,12 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
     if service.available_batches > maximum {
         return Err(MaterialCircuitError::MaintenanceInvariant);
     }
-    let consumer = state
+    let consumer = catalog
         .process_outputs
         .iter()
         .find(|row| row.process_id == binding.consumer_process_id)
         .ok_or(MaterialCircuitError::MaintenanceInvariant)?;
-    let inputs: Vec<_> = state
+    let inputs: Vec<_> = catalog
         .input_coefficients
         .iter()
         .filter(|row| row.process_id == binding.consumer_process_id)
@@ -44,15 +48,15 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
         || inputs.is_empty()
         || consumer.good_id != binding.spare_good_id
         || consumer.unit_id != binding.spare_unit_id
-        || !state
+        || !catalog
             .site_logistics_nodes
             .iter()
             .any(|row| row.site_id == binding.provider_site_id)
-        || state.process_outputs.iter().any(|row| {
+        || catalog.process_outputs.iter().any(|row| {
             row.site_id == binding.provider_site_id
                 || (row.site_id == consumer.site_id && row.process_id != consumer.process_id)
         })
-        || state
+        || catalog
             .merchants
             .iter()
             .any(|row| row.site_id == binding.provider_site_id)
@@ -76,12 +80,13 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
 }
 
 pub(crate) fn limit_batches(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     process: ProcessId,
     period: u64,
     batches: u64,
 ) -> Result<u64, MaterialCircuitError> {
-    let Some(binding) = &state.maintenance_binding else {
+    let Some(binding) = &catalog.maintenance_binding else {
         return Ok(batches);
     };
     if binding.consumer_process_id != process {
@@ -109,11 +114,12 @@ fn spare_parts(state: &MaterialCircuitState, binding: &MaintenanceBinding) -> u6
 }
 
 pub(crate) fn execute(
+    catalog: &MaterialCatalog,
     opening: &MaterialCircuitState,
     state: &mut MaterialCircuitState,
     production: &[ProductionReceipt],
 ) -> Result<Option<MaintenanceReceipt>, MaterialCircuitError> {
-    let Some(binding) = state.maintenance_binding.clone() else {
+    let Some(binding) = catalog.maintenance_binding.clone() else {
         return Ok(None);
     };
     let service = state
@@ -131,8 +137,12 @@ pub(crate) fn execute(
         .available_batches
         .checked_sub(consumed_service_batches)
         .ok_or(MaterialCircuitError::MaintenanceInvariant)?;
-    let prospective_batches =
-        crate::production::prospective_batches(state, binding.consumer_process_id, next_period)?;
+    let prospective_batches = crate::production::prospective_batches(
+        catalog,
+        state,
+        binding.consumer_process_id,
+        next_period,
+    )?;
     let requested_jobs = prospective_batches.div_ceil(binding.enabled_batches_per_job);
     // Reject unrepresentable staffing demand even when current resources are zero.
     requested_jobs

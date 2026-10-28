@@ -11,8 +11,9 @@ use crate::CampaignFoundation;
 use babylon_kernel::content_digest;
 use babylon_kernel::replay::ReplaySeed;
 use babylon_kernel::replay::ReplaySessionId;
+use babylon_material_circuit::MaterialCatalog;
+use babylon_material_circuit::MaterialCircuitState;
 use babylon_tick::material_staffing::StaffingComposition;
-use babylon_tick::material_world::MaterialWorldRegister;
 use serde::{Deserialize, Serialize};
 use std::fmt::Formatter;
 
@@ -355,10 +356,9 @@ impl SimulationExperimentV1 {
     }
 }
 
-pub(crate) fn validate_freight_authority(
+pub(crate) fn admitted_freight_material(
     graph: &CampaignFoundation,
-    register: &MaterialWorldRegister,
     spec: &MaterialFoundationSpec,
-) -> Result<StaffingComposition> {
-    freight::validate_authority(graph, register, spec)
+) -> Result<(MaterialCatalog, MaterialCircuitState, StaffingComposition)> {
+    freight::admitted_material(graph, spec)
 }

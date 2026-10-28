@@ -238,7 +238,9 @@ mod tests {
     fn hex_bytes(hex: &str) -> Vec<u8> {
         assert_eq!(hex.len() % 2, 0);
         hex.as_bytes()
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| {
                 u8::from_str_radix(
                     std::str::from_utf8(pair).expect("the fixture bytes came from a UTF-8 string"),

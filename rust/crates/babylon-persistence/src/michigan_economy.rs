@@ -258,6 +258,30 @@ pub(crate) fn foundation_from_sources_with_seed(
     defines: &[u8],
     seed: i64,
 ) -> Result<(ReplayTickSession<HypergraphStore>, FoundationContentBundle), MichiganEconomyError> {
+    foundation_from_authored_sources_with_seed(
+        scenario_source,
+        None,
+        rule_source,
+        session_identity,
+        defines,
+        seed,
+    )
+}
+
+/// Prepare one authored scenario, optional declaration prelude and rules over the
+/// real checked Michigan geography.
+///
+/// The geographic `MaterialState` and its reference manifest are the same
+/// artifacts the ordinary material campaign uses; an authored graph campaign is
+/// not given an empty reference or a second simulation engine.
+pub(crate) fn foundation_from_authored_sources_with_seed(
+    scenario_source: &str,
+    prelude_source: Option<&str>,
+    rule_source: &str,
+    session_identity: &str,
+    defines: &[u8],
+    seed: i64,
+) -> Result<(ReplayTickSession<HypergraphStore>, FoundationContentBundle), MichiganEconomyError> {
     let (_, rules) =
         rule_pipeline::split_content(rule_source).map_err(|_| MichiganEconomyError::Scenario)?;
     let forms = rules.into_iter().map(|rule| rule.form).collect::<Vec<_>>();
@@ -278,7 +302,7 @@ pub(crate) fn foundation_from_sources_with_seed(
     // covers the QCEW rows while the existing H3 reference identity stays intact.
     let session = ReplayTickSession::new(
         scenario_source,
-        None,
+        prelude_source,
         rule_source,
         HypergraphStore::new(),
         ReplaySessionId::try_from(session_identity).map_err(|_| MichiganEconomyError::Scenario)?,
@@ -288,9 +312,14 @@ pub(crate) fn foundation_from_sources_with_seed(
         MaterialState::try_new(foundation).map_err(|_| MichiganEconomyError::Foundation)?,
     )
     .map_err(|_| MichiganEconomyError::Foundation)?;
-    let bundle =
-        FoundationContentBundle::try_new(scenario_source, None, rule_source, defines, &manifest)
-            .map_err(|_| MichiganEconomyError::Foundation)?;
+    let bundle = FoundationContentBundle::try_new(
+        scenario_source,
+        prelude_source,
+        rule_source,
+        defines,
+        &manifest,
+    )
+    .map_err(|_| MichiganEconomyError::Foundation)?;
     Ok((session, bundle))
 }
 
@@ -386,8 +415,8 @@ mod tests {
             .expect("the fixture advances the authored period");
         assert_eq!(report.report().considered, 0);
         assert_eq!(report.report().fired, 0);
-        assert!(report.report().audit_receipts.is_empty());
-        assert!(sink.events.is_empty());
+        assert_eq!(report.report().audit_receipts.len(), 0);
+        assert_eq!(sink.events.len(), 0);
         report
     }
 
@@ -440,8 +469,8 @@ mod tests {
         let (mut revised, revised_bundle) = build_observer_foundation(&changed).expect(
             "the fixture call `build_observer_foundation` succeeds for the authored inputs",
         );
-        assert!(original_bundle.rule_source_bytes().is_empty());
-        assert!(revised_bundle.rule_source_bytes().is_empty());
+        assert_eq!(original_bundle.rule_source_bytes().len(), 0);
+        assert_eq!(revised_bundle.rule_source_bytes().len(), 0);
         let original_foundation = CampaignFoundation::capture(&original, original_bundle)
             .expect("the fixture captures the authored state");
         let revised_foundation = CampaignFoundation::capture(&revised, revised_bundle)

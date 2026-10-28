@@ -60,7 +60,7 @@ fn full_opening_conserves_counted_households_and_uses_finite_connected_accounts(
     let aid = opening.aid;
     let opening = opening.opening;
     assert_eq!(opening.policies.aid.mandates, aid.mandates);
-    assert!(opening.policies.aid.freight.is_empty());
+    assert_eq!(opening.policies.aid.freight.len(), 0);
     eprintln!("native opening generation: {:?}", start.elapsed());
     household_controls::assert_people(&opening, &policy, &aid);
     household_controls::assert_endowments_and_ownership(&opening, &policy, &aid);
@@ -79,7 +79,7 @@ fn assert_managed_equipment(opening: &EconomicOpening) {
     else {
         panic!("national play requires managed equipment, not permanent nameplate capacity");
     };
-    assert!(equipment.pending.is_empty());
+    assert_eq!(opening.equipment_position.pending.len(), 0);
     assert_eq!(
         equipment.bindings.len(),
         opening
@@ -107,8 +107,8 @@ fn assert_managed_equipment(opening: &EconomicOpening) {
             .contains(&StaffingWorkSource::Installation(policy.process_id)));
         assert!(policy.maximum_hours_per_period <= pool.labor_force() * 160);
     }
-    assert_eq!(carrying.len(), equipment.cohorts.len());
-    for cohort in &equipment.cohorts {
+    assert_eq!(carrying.len(), opening.equipment_position.cohorts.len());
+    for cohort in &opening.equipment_position.cohorts {
         let value = carrying[&EquipmentAssetId::Installed(cohort.id)];
         let owner = bindings[&cohort.process_id].site_id;
         assert_eq!(value.owner, owner);

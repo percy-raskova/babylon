@@ -188,6 +188,11 @@ pub struct ObserverOpeningFoundations {
 }
 
 impl ObserverMaterialCursor {
+    /// The campaign admission this cursor's evidence belongs to, when still alive.
+    #[must_use]
+    pub fn admission_handle(&self) -> Option<EconomicContentHandle> {
+        self.admission.upgrade()
+    }
     pub(crate) fn admission(&self, campaign: CampaignId) -> Option<EconomicContentHandle> {
         (self.campaign == campaign)
             .then(|| self.admission.upgrade())
@@ -354,12 +359,14 @@ impl MaterialHistory {
             opening: None,
             receipt: None,
             receipt_witness: None,
-            orders: OrderHistory::from_opening(expected.initial_register().state()).map_err(
-                |error| {
-                    let _ = diagnostics::projection::<()>(Stage::InitialHistory, 0, Err(error));
-                    ObserverEconomyError::InvalidProjection
-                },
-            )?,
+            orders: OrderHistory::from_opening(
+                expected.material_catalog(),
+                expected.initial_register().state(),
+            )
+            .map_err(|error| {
+                let _ = diagnostics::projection::<()>(Stage::InitialHistory, 0, Err(error));
+                ObserverEconomyError::InvalidProjection
+            })?,
             prior_world: None,
             storage_prefix: storage_witness::seed(),
         })
@@ -422,8 +429,11 @@ impl MaterialHistory {
             if register_storage_bytes != expected.initial_register().canonical_bytes() {
                 // Preserve malformed-register diagnostics on the refusal path.
                 drop(
-                    MaterialWorldRegister::decode(&register_storage_bytes)
-                        .map_err(|_| diagnostics::invalid(Stage::RegisterDecode, index))?,
+                    MaterialWorldRegister::decode_external(
+                        expected.material_catalog(),
+                        register_storage_bytes.clone(),
+                    )
+                    .map_err(|_| diagnostics::invalid(Stage::RegisterDecode, index))?,
                 );
                 return Err(ObserverEconomyError::ScenarioMismatch);
             }
@@ -447,6 +457,7 @@ impl MaterialHistory {
         )
         .map_err(|_| diagnostics::invalid(Stage::LookupDecode, index))?;
         let admitted = crate::material_storage::decode_typed(
+            expected.material_catalog(),
             &self.lookup,
             index,
             &register_storage_bytes,
@@ -532,6 +543,7 @@ impl MaterialHistory {
             );
         }
         let period_orders = crate::production_projection::lifecycle::validate_period(
+            expected.material_catalog(),
             prior_register.state(),
             next.state(),
             &receipt,
@@ -545,7 +557,11 @@ impl MaterialHistory {
         // A refusal discards the candidate, so a second index copy is redundant.
         let order_timing = Timing::start(Stage::OrderHistory, index);
         self.orders
-            .record(prior_register.state(), &period_orders)
+            .record(
+                expected.material_catalog(),
+                prior_register.state(),
+                &period_orders,
+            )
             .map_err(|error| {
                 let _ = diagnostics::projection::<()>(Stage::OrderHistory, index, Err(error));
                 ObserverEconomyError::InvalidProjection
@@ -674,6 +690,7 @@ pub(crate) fn material_observation(
     let projection_timing = Timing::start(Stage::CurrentProjection, tick);
     let mut production = production_projection::project_economic_current(
         expected.view(),
+        expected.material_catalog(),
         history.register(expected),
         history.opening(expected),
         history.receipt(),
@@ -746,9 +763,12 @@ pub(crate) fn production_history(
                     transaction,
                     campaign,
                     period,
-                    expected.foundation_graph().scenario_scope(),
-                    expected.digest(),
-                    &expected.component_identity,
+                    material_runtime::ObserverReadAuthority {
+                        scope: expected.foundation_graph().scenario_scope(),
+                        foundation_digest: expected.digest(),
+                        components: &expected.component_identity,
+                        catalog: expected.material_catalog(),
+                    },
                     (
                         &history.lookup,
                         history.lookup_chain,
@@ -766,6 +786,7 @@ pub(crate) fn production_history(
                 let projected = sites::project_process(
                     &metadata,
                     &Quantities::new(
+                        expected.material_catalog(),
                         history.register(expected).state(),
                         history.receipt.as_ref().map(|(r, _)| r.as_ref()),
                     ),
@@ -798,9 +819,12 @@ pub(crate) fn authenticated_history_endpoints<'w>(
         transaction,
         campaign,
         tick,
-        expected.foundation_graph().scenario_scope(),
-        expected.digest(),
-        &expected.component_identity,
+        material_runtime::ObserverReadAuthority {
+            scope: expected.foundation_graph().scenario_scope(),
+            foundation_digest: expected.digest(),
+            components: &expected.component_identity,
+            catalog: expected.material_catalog(),
+        },
         ObserverEndpointLookup {
             opening: &history.lookup,
             current_chain: history.lookup_chain,
@@ -903,6 +927,7 @@ pub(crate) fn committed_observation(
     let projection_timing = Timing::start(Stage::CurrentProjection, tick);
     let mut production = production_projection::project_economic_current(
         expected.view(),
+        expected.material_catalog(),
         history.register(expected),
         history.opening(expected),
         history.receipt(),

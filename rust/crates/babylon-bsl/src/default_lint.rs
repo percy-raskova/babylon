@@ -153,20 +153,20 @@ mod tests {
             optional: false,
             default: None,
         };
-        assert!(lint_defaults("mods/example.bsl", &[decl]).is_empty());
+        assert_eq!(lint_defaults("mods/example.bsl", &[decl]).len(), 0);
     }
 
     #[test]
     fn every_allowlist_row_carries_full_governance_metadata() {
         for entry in DEFAULT_ALLOWLIST {
-            assert!(!entry.rule_file.is_empty());
-            assert!(!entry.binding_name.is_empty());
+            assert_ne!(entry.rule_file.len(), 0);
+            assert_ne!(entry.binding_name.len(), 0);
             assert!(
                 !entry.reason.is_empty(),
                 "a row without a reason is not a row"
             );
-            assert!(!entry.owner.is_empty());
-            assert!(!entry.date.is_empty());
+            assert_ne!(entry.owner.len(), 0);
+            assert_ne!(entry.date.len(), 0);
         }
     }
 }

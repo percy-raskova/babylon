@@ -22,6 +22,7 @@ use babylon_material_circuit::AidOutcome;
 use babylon_material_circuit::AidResolveInput;
 use babylon_material_circuit::AidTransport;
 use babylon_material_circuit::AttendancePlan;
+use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacityRow;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CashAccount;
@@ -55,6 +56,7 @@ use babylon_material_circuit::LaborCapacityRow;
 use babylon_material_circuit::LaborCoefficient;
 use babylon_material_circuit::LaborCompensation;
 use babylon_material_circuit::LogisticsNodeId;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
@@ -362,7 +364,7 @@ fn time() -> HouseholdTimeAccounting {
     clippy::too_many_lines,
     reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
 )]
-pub fn opening() -> MaterialCircuitState {
+pub fn opening() -> (MaterialCatalog, MaterialCircuitState) {
     let location = "county:26163"
         .parse()
         .expect("the authored literal parses as the declared type");
@@ -431,50 +433,8 @@ pub fn opening() -> MaterialCircuitState {
         }],
         ..FinancialInstitutions::empty()
     };
-    MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
-        period: 1,
-        accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
-            book,
-            costs,
-            financial,
-            recurring: Some(Box::new(recurring())),
-            household_time: time(),
-            aid: AidBook {
-                mandates: vec![AidMandate {
-                    id: [91; 32],
-                    source_hash: [92; 32],
-                    donor_actor: 101,
-                    donor_contributor_id: 201,
-                    recipient_actor: 120,
-                    payer: organization(),
-                    donor: donor(),
-                    recipient: recipient(),
-                    good_id: good(FOOD),
-                    unit_id: unit(FOOD),
-                    labor_unit_id: hours(),
-                    hours_per_unit: 2,
-                    maximum_quantity: 4,
-                    cash_per_unit: money(100_000),
-                    transport: AidTransport::Local,
-                }],
-                freight: vec![],
-            },
-            employment: (1..=6)
-                .map(|id| EmploymentTerms {
-                    member_id: StaffingMemberId::from_bytes(site(id).as_bytes()),
-                    site_id: site(id),
-                    unit_id: hours(),
-                    payee: if id == EMPLOYER { donor() } else { suppliers() },
-                    compensation: if id == EMPLOYER {
-                        LaborCompensation::Wage(money(24_000_000))
-                    } else {
-                        LaborCompensation::WorkingOwner
-                    },
-                })
-                .collect(),
-            member_labor: PERIODS.flat_map(members).collect(),
-        })),
+    let catalog = MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
         commodities: (1..=7)
             .map(|g| CommodityDefinition {
                 good_id: good(g),
@@ -517,6 +477,73 @@ pub fn opening() -> MaterialCircuitState {
                 quantity_per_batch: 1,
             })
             .collect(),
+        supplier_routes: vec![],
+        route_stages: vec![],
+        merchants: vec![MerchantHandling {
+            site_id: site(RETAILER),
+            location,
+            role: MerchantRole::Retail,
+            capacity_id: CorridorId::from_bytes([2; 32]),
+            labor_unit_id: hours(),
+        }],
+        handling_coefficients: [MATERIALS, FOOD]
+            .map(|g| MerchantHandlingCoefficient {
+                site_id: site(RETAILER),
+                good_id: good(g),
+                unit_id: unit(g),
+                hours_per_unit: 1,
+            })
+            .to_vec(),
+        maintenance_binding: None,
+        aid_mandates: vec![],
+        household_time_policy: vec![],
+        service_inputs: vec![],
+        household_needs: vec![],
+        catalog_digest: [0; 32],
+    };
+    let state = MaterialCircuitState {
+        period: 1,
+        accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+            book,
+            costs,
+            financial,
+            recurring: Some(Box::new(recurring())),
+            household_time: time(),
+            aid: AidBook {
+                mandates: vec![AidMandate {
+                    id: [91; 32],
+                    source_hash: [92; 32],
+                    donor_actor: 101,
+                    donor_contributor_id: 201,
+                    recipient_actor: 120,
+                    payer: organization(),
+                    donor: donor(),
+                    recipient: recipient(),
+                    good_id: good(FOOD),
+                    unit_id: unit(FOOD),
+                    labor_unit_id: hours(),
+                    hours_per_unit: 2,
+                    maximum_quantity: 4,
+                    cash_per_unit: money(100_000),
+                    transport: AidTransport::Local,
+                }],
+                freight: vec![],
+            },
+            employment: (1..=6)
+                .map(|id| EmploymentTerms {
+                    member_id: StaffingMemberId::from_bytes(site(id).as_bytes()),
+                    site_id: site(id),
+                    unit_id: hours(),
+                    payee: if id == EMPLOYER { donor() } else { suppliers() },
+                    compensation: if id == EMPLOYER {
+                        LaborCompensation::Wage(money(24_000_000))
+                    } else {
+                        LaborCompensation::WorkingOwner
+                    },
+                })
+                .collect(),
+            member_labor: PERIODS.flat_map(members).collect(),
+        })),
         capacities: PERIODS
             .flat_map(|period| {
                 process_roster().map(move |g| CapacityRow {
@@ -539,11 +566,8 @@ pub fn opening() -> MaterialCircuitState {
             })
             .collect(),
         service_orders: vec![],
-        supplier_routes: vec![],
-        route_stages: vec![],
         route_stage_capacities: vec![],
         orders: vec![],
-        backlog: vec![],
         freight: vec![],
         corridor_capacities: PERIODS
             .map(|period| CorridorCapacity {
@@ -552,33 +576,38 @@ pub fn opening() -> MaterialCircuitState {
                 available_grams: 300_000,
             })
             .collect(),
-        merchants: vec![MerchantHandling {
-            site_id: site(RETAILER),
-            location,
-            role: MerchantRole::Retail,
-            capacity_id: CorridorId::from_bytes([2; 32]),
-            labor_unit_id: hours(),
-        }],
-        handling_coefficients: [MATERIALS, FOOD]
-            .map(|g| MerchantHandlingCoefficient {
-                site_id: site(RETAILER),
-                good_id: good(g),
-                unit_id: unit(g),
-                hours_per_unit: 1,
-            })
-            .to_vec(),
         final_demand_principals: [donor(), recipient(), suppliers()]
             .map(|id| FinalDemandPrincipal { id, location })
             .to_vec(),
         final_demand_orders: vec![],
-        maintenance_binding: None,
         maintenance_service: None,
+        capacity_reservations: CapacityReservations::default(),
+    };
+    let CircuitAccounting::Monetary(economy) = &state.accounting else {
+        panic!("the fixture opens a paid circuit")
+    };
+    let mut catalog = catalog;
+    catalog.aid_mandates.clone_from(&economy.aid.mandates);
+    if let Some(recurring) = &economy.recurring {
+        catalog
+            .household_needs
+            .clone_from(&recurring.household_needs);
+        catalog.service_inputs.clone_from(&recurring.service_inputs);
     }
+    if let HouseholdTimeAccounting::Modeled(book) = &economy.household_time {
+        catalog.household_time_policy.clone_from(&book.policies);
+    }
+    catalog.catalog_digest = [0; 32];
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog is valid");
+    (catalog, state)
 }
 
 /// Install only the next selected exogenous component plans; no authoritative
 /// cash, inventory, receipt, time, fiscal or reproduction result changes here.
-pub fn controlled_opening(mut state: MaterialCircuitState) -> MaterialCircuitState {
+pub fn controlled_opening(
+    catalog: MaterialCatalog,
+    mut state: MaterialCircuitState,
+) -> (MaterialCatalog, MaterialCircuitState) {
     let period = state.period;
     economy_mut(&mut state)
         .recurring
@@ -586,7 +615,7 @@ pub fn controlled_opening(mut state: MaterialCircuitState) -> MaterialCircuitSta
         .expect("the fixture set the optional field before this borrow")
         .attendance = attendance(period);
     state.production_commitments = production(period);
-    state
+    (catalog, state)
 }
 pub fn collection(period: u64) -> CollectionResolveInput {
     CollectionResolveInput {
@@ -619,15 +648,16 @@ pub fn aid(period: u64) -> AidResolveInput {
     }
 }
 pub fn close(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     aid: &[AidResolveInput],
     collection: &[CollectionResolveInput],
 ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
     let period = state.period + 1;
-    babylon_material_circuit::close_material_period_with_support(state, aid, collection)?
-        .finish_with_workforce(labor(period), members(period))
+    babylon_material_circuit::close_material_period_with_support(catalog, state, aid, collection)?
+        .finish_with_workforce(catalog, labor(period), members(period))
 }
-pub fn coordinate(transition: &mut MaterialCircuitTransition) {
+pub fn coordinate(catalog: &MaterialCatalog, transition: &mut MaterialCircuitTransition) {
     assert_eq!(transition.state.period, 3);
     assert!(transition
         .aid
@@ -652,14 +682,24 @@ pub fn coordinate(transition: &mut MaterialCircuitTransition) {
             hours: 2,
         },
     );
-    babylon_material_circuit::consume_household_contributions(&mut transition.state, 2, &uses)
-        .expect("the fixture consumes the authored contributions");
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&transition.state)
+    babylon_material_circuit::consume_household_contributions(
+        catalog,
+        &mut transition.state,
+        2,
+        &uses,
+    )
+    .expect("the fixture consumes the authored contributions");
+    let bytes = babylon_material_circuit::encode_material_circuit_state(catalog, &transition.state)
         .expect("the canonical material state encodes");
-    babylon_material_circuit::consume_household_contributions(&mut transition.state, 2, &uses)
-        .expect("the fixture consumes the authored contributions");
+    babylon_material_circuit::consume_household_contributions(
+        catalog,
+        &mut transition.state,
+        2,
+        &uses,
+    )
+    .expect("the fixture consumes the authored contributions");
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&transition.state)
+        babylon_material_circuit::encode_material_circuit_state(catalog, &transition.state)
             .expect("the canonical material state encodes"),
         bytes
     );

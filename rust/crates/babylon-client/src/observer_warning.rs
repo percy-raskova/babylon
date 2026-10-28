@@ -12,6 +12,8 @@ use crate::observer_io::ObserverSet;
 use crate::observer_opening::{OpeningPresentation, OpeningStage};
 use crate::observer_theme as theme;
 use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
+use crate::ui;
+use crate::ui::Interaction;
 use bevy::text::LineBreak;
 
 const FICTION: &str = "Babylon is a work of fiction built from real places, records and material relationships. Some of it may feel uncomfortably familiar.";
@@ -38,12 +40,12 @@ fn text(value: &str, size: f32, color: Color) -> impl Bundle {
     (
         Text::new(value),
         TextFont {
-            font_size: size,
+            font_size: FontSize::Px(size),
             ..default()
         },
         TextColor(color),
         ObserverFontRole::Body,
-        TextLayout::new_with_linebreak(LineBreak::WordOrCharacter),
+        TextLayout::linebreak(LineBreak::WordOrCharacter),
         Node {
             max_width: percent(100),
             min_width: px(0),
@@ -150,7 +152,7 @@ fn action_button(parent: &mut ChildSpawnerCommands, action: WarningAction, capti
     };
     parent
         .spawn((
-            Button,
+            ui::pressable(),
             action,
             Node {
                 min_height: px(48),
@@ -189,7 +191,7 @@ fn request_action(
     }
 }
 fn pointer_action(
-    event: On<Pointer<Click>>,
+    event: On<PointerClick>,
     actions: Query<&WarningAction>,
     ui: Res<ObserverUiState>,
     mut continues: MessageWriter<ContinueWarning>,
@@ -313,8 +315,8 @@ fn layout(
     let headline_size = (logical_height * 0.15).clamp(64.0, 120.0);
     let padding = (logical_height * 0.035).clamp(16.0, 32.0);
     for mut title in &mut titles {
-        if title.font_size.to_bits() != headline_size.to_bits() {
-            title.font_size = headline_size;
+        if title.font_size != FontSize::Px(headline_size) {
+            title.font_size = FontSize::Px(headline_size);
         }
     }
     for mut root in &mut roots {
@@ -382,25 +384,30 @@ mod tests {
 
     fn app(width: u32, height: u32) -> (App, Entity) {
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, InputPlugin, ObserverWarningPlugin))
-            .init_resource::<InstallTrace>()
-            .configure_sets(
-                Update,
-                (
-                    ObserverSet::Input,
-                    ObserverSet::Receive,
-                    ObserverSet::Install,
-                    ObserverSet::Paint,
-                )
-                    .chain(),
+        app.add_plugins((
+            MinimalPlugins,
+            InputPlugin,
+            ObserverWarningPlugin,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .init_resource::<InstallTrace>()
+        .configure_sets(
+            Update,
+            (
+                ObserverSet::Input,
+                ObserverSet::Receive,
+                ObserverSet::Install,
+                ObserverSet::Paint,
             )
-            .add_systems(
-                Update,
-                (|ui: Res<ObserverUiState>, mut trace: ResMut<InstallTrace>| {
-                    trace.0.push(ui.splash_visible);
-                })
-                .in_set(ObserverSet::Install),
-            );
+                .chain(),
+        )
+        .add_systems(
+            Update,
+            (|ui: Res<ObserverUiState>, mut trace: ResMut<InstallTrace>| {
+                trace.0.push(ui.splash_visible);
+            })
+            .in_set(ObserverSet::Install),
+        );
         let window = app
             .world_mut()
             .spawn((
@@ -463,27 +470,23 @@ mod tests {
     fn real_continue_click_queues_dismissal_without_leaking_a_gameplay_command() {
         let (mut app, _) = app(1366, 768);
         let entity = button(&mut app, WarningAction::Continue);
-        app.world_mut().trigger(Pointer::new(
-            PointerId::Mouse,
-            Location {
-                target: bevy::camera::NormalizedRenderTarget::None {
-                    width: 0,
-                    height: 0,
-                },
-                position: Vec2::ZERO,
-            },
-            Click {
-                button: PointerButton::Primary,
-                hit: HitData {
-                    camera: Entity::PLACEHOLDER,
-                    depth: 0.0,
-                    position: None,
-                    normal: None,
-                },
-                duration: Duration::ZERO,
-            },
+        app.world_mut().trigger(PointerClick {
             entity,
-        ));
+            pointer: Pointer::new(
+                PointerId::Mouse,
+                Location {
+                    target: bevy::camera::NormalizedRenderTarget::None {
+                        width: 0,
+                        height: 0,
+                    },
+                    position: Vec2::ZERO,
+                },
+            ),
+            button: PointerButton::Primary,
+            hit: HitData::new(Entity::PLACEHOLDER, 0.0, None, None),
+            duration: Duration::ZERO,
+            count: 1,
+        });
         assert!(app.world().resource::<ObserverUiState>().splash_visible);
         app.update();
         assert!(app.world().resource::<ObserverUiState>().splash_visible);
@@ -549,7 +552,10 @@ mod tests {
                 .query_filtered::<&TextFont, With<WarningHeadline>>()
                 .single(world)
                 .expect("the fixture holds exactly one matching row");
-            assert!((64.0..=120.0).contains(&title.font_size));
+            assert!(matches!(
+                title.font_size,
+                FontSize::Px(size) if (64.0..=120.0).contains(&size)
+            ));
             let reading = world
                 .query_filtered::<&ChildOf, With<WarningReading>>()
                 .single(world)

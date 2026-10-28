@@ -37,8 +37,8 @@ fn projection_uses_exact_committed_state_and_refuses_future_history() {
     )
     .expect("the fixture projection accepts the authored input");
     assert!(initial.provenance[0].starts_with("Designed finite 16-period economic circuit"));
-    assert!(initial.freight.is_empty());
-    assert!(initial.events.is_empty());
+    assert_eq!(initial.freight.len(), 0);
+    assert_eq!(initial.events.len(), 0);
     assert!(initial.material_balance.is_none());
     assert_eq!(initial.labor_accounts.len(), 5);
     assert!(initial
@@ -144,11 +144,15 @@ fn projection_provenance_uses_the_saved_campaign_horizon() {
         .expect("the committed canonical bytes decode");
     let snapshot = projection::project_economic_current(
         decoded.view(),
+        foundation.material_catalog(),
         foundation.initial_register(),
         None,
         None,
-        &OrderHistory::from_opening(foundation.initial_register().state())
-            .expect("the opening register admits its sections"),
+        &OrderHistory::from_opening(
+            foundation.material_catalog(),
+            foundation.initial_register().state(),
+        )
+        .expect("the opening register admits its sections"),
     )
     .expect("the fixture projection accepts the authored input");
     assert_eq!(
@@ -183,7 +187,7 @@ fn period_three(preset: MichiganDeliveryPreset) -> ProductionSnapshot {
         ));
         opening = Some(session.material().clone());
         session
-            .commit_prepared_and_publish(&mut CollectingSink::default(), next, |_| {
+            .commit_prepared_and_publish(&mut CollectingSink::default(), next, |_, _| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
             .expect("the prepared period commits");
@@ -313,7 +317,7 @@ fn native_route_projection_keeps_every_relation_and_shares_exact_stage_definitio
         .map(|row| &row.physical_route_id)
         .collect();
     assert_eq!(snapshot.physical_routes.len(), unique.len());
-    assert!(!snapshot.routes.is_empty());
+    assert_ne!(snapshot.routes.len(), 0);
     for relation in &snapshot.routes {
         let definition = index
             .get(relation)
@@ -382,8 +386,9 @@ fn shared_physical_definitions_equal_actual_closed_material_route_rows() {
     let index = PhysicalRouteIndex::try_new(&snapshot)
         .expect("the authored fixture satisfies the constructor invariants");
     let actual = next.material().register().state();
-    assert_eq!(snapshot.routes.len(), actual.supplier_routes.len());
-    for supplier in &actual.supplier_routes {
+    let catalog = session.catalog();
+    assert_eq!(snapshot.routes.len(), catalog.supplier_routes.len());
+    for supplier in &catalog.supplier_routes {
         let relation = snapshot
             .routes
             .iter()
@@ -400,7 +405,7 @@ fn shared_physical_definitions_equal_actual_closed_material_route_rows() {
         let definition = index
             .get(relation)
             .expect("the fixture holds the addressed entry");
-        let expected: Vec<_> = actual
+        let expected: Vec<_> = catalog
             .route_stages
             .iter()
             .filter(|row| row.route_id == supplier.route_id)

@@ -232,7 +232,13 @@ fn unsigned(data: &Value, name: &str) -> u64 {
 fn hex_bytes(value: &str) -> Vec<u8> {
     assert!(value.len() <= MAX_LINE_BYTES && value.len().is_multiple_of(2));
     let mut output = Vec::with_capacity(value.len() / 2);
-    for chunk in value.as_bytes().chunks_exact(2).take(MAX_LINE_BYTES / 2) {
+    for chunk in value
+        .as_bytes()
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .take(MAX_LINE_BYTES / 2)
+    {
         let text = std::str::from_utf8(chunk).expect("ASCII hex");
         output.push(u8::from_str_radix(text, 16).expect("lowercase hex byte"));
     }
@@ -637,10 +643,13 @@ fn verify_outer_vector(vectors: &[VectorRow]) {
     let session = ReplaySessionId::try_from(text(data, "session")).expect("outer session");
     let action_row = row_by_id(vectors, text(data, "actions_id"));
     assert_eq!(action_row.kind, "ordered_action_batch");
-    assert!(action_row.data["items"]
-        .as_array()
-        .expect("runtime action items")
-        .is_empty());
+    assert_eq!(
+        action_row.data["items"]
+            .as_array()
+            .expect("runtime action items")
+            .len(),
+        0
+    );
     assert_eq!(text(&action_row.data, "session"), text(data, "session"));
     assert_eq!(
         unsigned(&action_row.data, "resolve_tick"),

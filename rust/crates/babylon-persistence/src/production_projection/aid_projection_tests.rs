@@ -61,14 +61,20 @@ fn assert_aid_projection(routed: bool) {
             projected.is_ok(),
             "routed={routed} period={period}: {projected:?}"
         );
-        assert!(!projected
-            .expect("the fixture projection returns its value")
-            .is_empty());
-        let (capacity, _definitions) =
-            freight::project_with_labels(current, Some(&prior), Some(&receipts), |_| {
-                Some("Shared route capacity".to_owned())
-            })
-            .expect("the fixture projection accepts the authored input");
+        assert_ne!(
+            projected
+                .expect("the fixture projection returns its value")
+                .len(),
+            0
+        );
+        let (capacity, _definitions) = freight::project_with_labels(
+            session.catalog(),
+            current,
+            Some(&prior),
+            Some(&receipts),
+            |_| Some("Shared route capacity".to_owned()),
+        )
+        .expect("the fixture projection accepts the authored input");
         if routed && period == 1 {
             assert!(capacity
                 .iter()

@@ -3,7 +3,9 @@ use super::{
     lifecycle, Key, MaterialCircuitState, MaterialTickReceipts, PriceReceipt,
     ProductionProjectionError, Result,
 };
-use babylon_material_circuit::{CommodityKind, GoodsPriceCostBasis, OutboundOrderId, SiteId};
+use babylon_material_circuit::{
+    CommodityKind, GoodsPriceCostBasis, MaterialCatalog, OutboundOrderId, SiteId,
+};
 use lifecycle::PeriodOrders;
 use std::collections::{BTreeMap, BTreeSet};
 #[derive(Default)]
@@ -32,13 +34,13 @@ fn add_money(rows: &mut BTreeMap<SiteId, i128>, site: SiteId, amount: i128) -> R
 }
 impl Flows {
     pub(super) fn new(
-        prior: &MaterialCircuitState,
+        catalog: &MaterialCatalog,
         current: &MaterialCircuitState,
         receipt: &MaterialTickReceipts,
         orders: &PeriodOrders,
     ) -> Result<Self> {
         let mut result = Self::default();
-        result.production(prior, receipt)?;
+        result.production(catalog, receipt)?;
         for (before, after) in orders.deliveries.values() {
             add(
                 &mut result.released,
@@ -87,16 +89,16 @@ impl Flows {
     }
     fn production(
         &mut self,
-        prior: &MaterialCircuitState,
+        catalog: &MaterialCatalog,
         receipt: &MaterialTickReceipts,
     ) -> Result<()> {
-        let goods: BTreeSet<_> = prior
+        let goods: BTreeSet<_> = catalog
             .commodities
             .iter()
             .filter(|r| matches!(r.kind, CommodityKind::Storable { .. }))
             .map(|r| (r.good_id, r.unit_id))
             .collect();
-        let outputs: BTreeMap<_, _> = prior
+        let outputs: BTreeMap<_, _> = catalog
             .process_outputs
             .iter()
             .map(|r| (r.process_id, r))

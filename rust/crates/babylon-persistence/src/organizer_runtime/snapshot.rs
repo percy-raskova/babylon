@@ -16,9 +16,10 @@ use crate::identity::CampaignId;
 use crate::material_runtime::{DurableMaterialRuntime, MaterialRuntimeError};
 use crate::runtime_session::RuntimeSessionErrorCode;
 use babylon_kernel::clock::CampaignDuration;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_practice_contract::OrganizerCollectionResolution;
-use babylon_practice_contract::OrganizerState;
+use babylon_practice_contract::OrganizerPeriodJournal;
 use postgres::Row;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +38,7 @@ pub struct OrganizerSnapshot {
 
 /// Bind received aid disclosures to the exact authenticated material register.
 pub(crate) fn aid_snapshot_matches(
+    catalog: &MaterialCatalog,
     register: &babylon_tick::material_world::MaterialWorldRegister,
     snapshot: &OrganizerSnapshot,
 ) -> Result<bool, RuntimeSessionErrorCode> {
@@ -46,23 +48,34 @@ pub(crate) fn aid_snapshot_matches(
     let state = register
         .organizer_state()
         .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
-    Ok(
-        babylon_practice_contract::organizer_view(config, state, config.controlled_actor_id)
-            .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?
-            == snapshot.view
-            && material_preview::projections(register.state(), config, state.period)?
-                == snapshot.aid
-            && state
-                .pending_aid
-                .iter()
-                .map(material_preview::pending)
-                .collect::<Vec<_>>()
-                == snapshot.pending_aid
-            && material_preview::resolutions(state) == snapshot.aid_resolutions,
+    let journal = register
+        .organizer_journal()
+        .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
+    Ok(babylon_practice_contract::organizer_view(
+        config,
+        state,
+        journal,
+        config.controlled_actor_id,
     )
+    .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?
+        == snapshot.view
+        && material_preview::projections(catalog, register.state(), config, state.period)?
+            == snapshot.aid
+        && state
+            .pending_aid
+            .iter()
+            .map(material_preview::pending)
+            .collect::<Vec<_>>()
+            == snapshot.pending_aid
+        && journal
+            .latest()
+            .map(material_preview::resolutions)
+            .unwrap_or_default()
+            == snapshot.aid_resolutions)
 }
 
 pub(crate) fn captured_organizer_snapshot(
+    catalog: &MaterialCatalog,
     register: &babylon_tick::material_world::MaterialWorldRegister,
     pending: Option<OrganizerCommitment>,
     duration: CampaignDuration,
@@ -73,18 +86,29 @@ pub(crate) fn captured_organizer_snapshot(
     let state = register
         .organizer_state()
         .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
-    let view = babylon_practice_contract::organizer_view(config, state, config.controlled_actor_id)
-        .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
+    let journal = register
+        .organizer_journal()
+        .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
+    let view = babylon_practice_contract::organizer_view(
+        config,
+        state,
+        journal,
+        config.controlled_actor_id,
+    )
+    .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
     Ok(OrganizerSnapshot {
-        aid: material_preview::projections(register.state(), config, state.period)?,
+        aid: material_preview::projections(catalog, register.state(), config, state.period)?,
         pending_aid: state
             .pending_aid
             .iter()
             .map(material_preview::pending)
             .collect(),
-        aid_resolutions: material_preview::resolutions(state),
+        aid_resolutions: journal
+            .latest()
+            .map(material_preview::resolutions)
+            .unwrap_or_default(),
         collection: collection_preview::projection(register.state(), config, state.period)?,
-        collection_resolutions: collection_history(state, &view),
+        collection_resolutions: collection_history(journal, &view),
         view,
         pending,
         duration,
@@ -94,12 +118,13 @@ pub(crate) fn captured_organizer_snapshot(
 // Collection amounts and outcomes follow the actor's retained practice
 // receipts, joined to their original command and period.
 pub(crate) fn collection_history(
-    state: &OrganizerState,
+    journal: &OrganizerPeriodJournal,
     view: &OrganizerView,
 ) -> Vec<OrganizerCollectionResolution> {
-    state
-        .collection_receipts
+    journal
+        .periods
         .iter()
+        .flat_map(|entries| &entries.collection_receipts)
         .filter(|row| {
             row.practice.actor_id == view.actor_id
                 && row.fact.period <= view.period
@@ -254,7 +279,12 @@ impl DurableMaterialRuntime {
                 .ok_or(RuntimeSessionErrorCode::CommitRefused)?,
         )
         .map_err(|error| classify(&error))?;
-        captured_organizer_snapshot(register, pending, self.session().duration())
+        captured_organizer_snapshot(
+            self.session().catalog(),
+            register,
+            pending,
+            self.session().duration(),
+        )
     }
     /// Preview a ruling from the current actor-safe knowledge and commitments.
     /// # Errors
@@ -375,6 +405,7 @@ mod collection_history_tests {
         let foundation =
             crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds");
         let base = fixture::authored_session(foundation, fixture::config(), false, false);
+        let catalog = base.catalog().clone();
         let mut material = base.material().state().clone();
         let CircuitAccounting::Monetary(economy) = &mut material.accounting else {
             panic!("monetary collection fixture");
@@ -447,7 +478,10 @@ mod collection_history_tests {
                 fixture::PRODUCTS,
                 fixture::PRACTICE,
             ),
-            material,
+            fixture::Materials {
+                catalog,
+                state: material,
+            },
             config,
         )
         .expect("the fixture opens a session")
@@ -462,6 +496,9 @@ mod collection_history_tests {
             register
                 .organizer_state()
                 .expect("the fixture register carries organizer state"),
+            register
+                .organizer_journal()
+                .expect("the fixture register carries organizer journal"),
             config.controlled_actor_id,
         )
         .expect("the fixture call `organizer_view` succeeds for the authored inputs")
@@ -476,8 +513,9 @@ mod collection_history_tests {
         fixture::commit(&mut session, &mut sink, first);
         let original = session
             .material()
-            .organizer_state()
-            .expect("the fixture register carries organizer state")
+            .organizer_journal()
+            .and_then(|journal| journal.latest())
+            .expect("the fixture register carries organizer journal entries")
             .collection_receipts[0]
             .clone();
         assert_eq!(original.fact.requested_cash_micros, 8);
@@ -492,20 +530,23 @@ mod collection_history_tests {
             collection_history(
                 session
                     .material()
-                    .organizer_state()
-                    .expect("the fixture register carries organizer state"),
+                    .organizer_journal()
+                    .expect("the fixture register carries organizer journal"),
                 &current_view(session.material()),
             ),
             vec![original.clone()],
         );
         let later = fixture::prepare(&session, None);
         fixture::commit(&mut session, &mut sink, later);
-        let reopened = MaterialWorldRegister::decode(session.material().canonical_bytes())
-            .expect("the committed canonical bytes decode");
+        let reopened = MaterialWorldRegister::decode_external(
+            session.catalog(),
+            session.material().canonical_bytes().to_vec(),
+        )
+        .expect("the committed canonical bytes decode");
         assert_eq!(reopened, *session.material());
-        let state = reopened
-            .organizer_state()
-            .expect("the fixture register carries organizer state");
+        let journal = reopened
+            .organizer_journal()
+            .expect("the fixture register carries organizer journal");
         let view = current_view(&reopened);
         assert_eq!(view.period, 2);
         assert!(view
@@ -517,7 +558,7 @@ mod collection_history_tests {
                 && row.period == original.fact.period
                 && row.commitment_id == Some(accepted.commitment_id)
         }));
-        assert_eq!(collection_history(state, &view), vec![original]);
+        assert_eq!(collection_history(journal, &view), vec![original]);
     }
 
     #[test]
@@ -528,17 +569,27 @@ mod collection_history_tests {
         let first = fixture::prepare(&session, Some(&accepted));
         let mut sink = CollectingSink::default();
         fixture::commit(&mut session, &mut sink, first);
-        let reopened = MaterialWorldRegister::decode(session.material().canonical_bytes())
-            .expect("the committed canonical bytes decode");
-        let state = reopened
-            .organizer_state()
-            .expect("the fixture register carries organizer state");
-        assert_eq!(state.collection_receipts.len(), 1);
-        assert!(collection_history(state, &opening_view).is_empty());
+        let reopened = MaterialWorldRegister::decode_external(
+            session.catalog(),
+            session.material().canonical_bytes().to_vec(),
+        )
+        .expect("the committed canonical bytes decode");
+        let journal = reopened
+            .organizer_journal()
+            .expect("the fixture register carries organizer journal");
+        assert_eq!(
+            journal
+                .periods
+                .iter()
+                .map(|entries| entries.collection_receipts.len())
+                .sum::<usize>(),
+            1
+        );
+        assert_eq!(collection_history(journal, &opening_view).len(), 0);
         // Restrict only the presentation window, never the canonical successful
         // receipt. A fact outside retained practice IDs must not be disclosed.
         let mut no_retained_receipts = current_view(&reopened);
         no_retained_receipts.receipts.clear();
-        assert!(collection_history(state, &no_retained_receipts).is_empty());
+        assert_eq!(collection_history(journal, &no_retained_receipts).len(), 0);
     }
 }

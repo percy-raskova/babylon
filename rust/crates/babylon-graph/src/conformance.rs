@@ -1760,10 +1760,13 @@ where
         .remove_hyperedge(witness.cell)
         .expect("the fixture hyperedge exists before removal");
     assert_eq!(source.hyperedges("COALITION"), vec![HyperedgeId(1)]);
-    assert!(source
-        .hyperedges_of(witness.a, "COALITION")
-        .expect("the fixture graph holds the authored hyperedges")
-        .is_empty());
+    assert_eq!(
+        source
+            .hyperedges_of(witness.a, "COALITION")
+            .expect("the fixture graph holds the authored hyperedges")
+            .len(),
+        0
+    );
     assert_eq!(
         source
             .members_of(HyperedgeId(1))

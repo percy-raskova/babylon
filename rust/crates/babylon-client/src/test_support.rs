@@ -1,5 +1,9 @@
 //! Test-only helpers shared across the crate's unit tests.
 
+use bevy::camera::visibility::InheritedVisibility;
+use bevy::ecs::schedule::IntoScheduleConfigs as _;
+use bevy::input_focus::InputFocusSystems;
+use bevy::prelude::{App, Plugin, PreUpdate, Query};
 use std::ffi::OsString;
 use std::sync::PoisonError;
 use std::sync::{Mutex, MutexGuard};
@@ -46,6 +50,34 @@ impl Drop for EnvVarGuard {
         match self.prior.take() {
             Some(value) => std::env::set_var(self.key, value),
             None => std::env::remove_var(self.key),
+        }
+    }
+}
+
+/// Marks every UI node visible, standing in for the render pipeline.
+///
+/// Bevy 0.20's tab navigation skips descendants whose `InheritedVisibility` is
+/// false, and only the visibility plugin (installed by the render stack)
+/// computes that component from the `Visibility` hierarchy. A headless fixture
+/// runs no renderer and never spawns a camera, so every node would stay
+/// invisible and no control could ever be tabbed to. The observer's own focus
+/// tree still decides tabbability from `Display`, `Visibility`, and policy, so
+/// modelling "rendered and visible" here preserves the fixture's intent.
+pub(crate) struct HeadlessVisibilityPlugin;
+
+impl Plugin for HeadlessVisibilityPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            PreUpdate,
+            reveal_ui_nodes.before(InputFocusSystems::Dispatch),
+        );
+    }
+}
+
+fn reveal_ui_nodes(mut nodes: Query<&mut InheritedVisibility>) {
+    for mut visibility in &mut nodes {
+        if !visibility.get() {
+            *visibility = InheritedVisibility::VISIBLE;
         }
     }
 }

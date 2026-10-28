@@ -17,10 +17,12 @@ use super::super::SupplyPath;
 use super::super::UnitId;
 
 use crate::valuation::CostClose;
+use crate::MaterialCatalog;
 
 use super::super::merchant_admission;
 use crate::aid::PreparedAid;
 use crate::production;
+use crate::transition::MaterialContext;
 use crate::AccountId;
 use crate::AidMandate;
 use crate::AidOutcome;
@@ -142,6 +144,7 @@ pub(in crate::transition) fn outbound_orders(
 }
 
 pub(in crate::transition) fn add_route_requests(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     route: RouteId,
     request: FreightRequest,
@@ -149,7 +152,7 @@ pub(in crate::transition) fn add_route_requests(
     count: &mut usize,
 ) -> Result<(), MaterialCircuitError> {
     let mut departure_period = state.period;
-    for stage in super::super::route_stages(state, route) {
+    for stage in super::super::route_stages(catalog, route) {
         for capacity in super::super::stage_capacities(state, route, stage.stage_index) {
             add_request(
                 groups,
@@ -168,6 +171,7 @@ pub(in crate::transition) fn add_route_requests(
 }
 
 pub(in crate::transition) fn resource_groups(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     orders: &[OutboundOrder],
 ) -> Result<BTreeMap<FreightResourceKey, Vec<FreightRequest>>, MaterialCircuitError> {
@@ -188,9 +192,10 @@ pub(in crate::transition) fn resource_groups(
         if matches!(order.id, OutboundOrderId::Service(_)) {
             continue;
         }
-        let grams = super::super::grams_per_unit(state, order.stock.1, order.stock.2)?;
+        let grams = super::super::grams_per_unit(catalog, order.stock.1, order.stock.2)?;
         if let Some(route) = order.route {
             add_route_requests(
+                catalog,
                 state,
                 route,
                 FreightRequest {
@@ -202,7 +207,7 @@ pub(in crate::transition) fn resource_groups(
                 &mut count,
             )?;
         }
-        if let Some(merchant) = merchant_admission::merchant(state, order.stock.0) {
+        if let Some(merchant) = merchant_admission::merchant(catalog, order.stock.0) {
             add_request(
                 &mut groups,
                 &mut count,
@@ -227,6 +232,7 @@ pub(in crate::transition) fn ensure_resource_group_count(
 }
 
 pub(in crate::transition) fn resource_available(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     inventory: &InventoryLedger,
     key: FreightResourceKey,
@@ -241,7 +247,7 @@ pub(in crate::transition) fn resource_available(
             Ok(inventory.get(&inventory_key).copied().unwrap_or(0))
         }
         FreightResourceKey::Corridor((period, corridor)) => {
-            crate::capacity::shared_available(state, period, corridor)
+            crate::capacity::shared_available(catalog, state, period, corridor)
         }
         FreightResourceKey::Labor(site, unit) => {
             Ok(labor_index(state, site, unit).map_or(0, |index| state.labor[index].available))
@@ -250,6 +256,7 @@ pub(in crate::transition) fn resource_available(
 }
 
 pub(in crate::transition) fn order_allocations(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     inventory: &InventoryLedger,
     groups: &BTreeMap<FreightResourceKey, Vec<FreightRequest>>,
@@ -269,11 +276,12 @@ pub(in crate::transition) fn order_allocations(
             }
         }
     }
-    limit_allocations(state, inventory, groups, &mut allocations, aid)?;
+    limit_allocations(catalog, state, inventory, groups, &mut allocations, aid)?;
     Ok(allocations)
 }
 
 pub(in crate::transition) fn limit_allocations(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     inventory: &InventoryLedger,
     groups: &BTreeMap<FreightResourceKey, Vec<FreightRequest>>,
@@ -287,7 +295,7 @@ pub(in crate::transition) fn limit_allocations(
             sum.checked_add(requested)
                 .ok_or(MaterialCircuitError::Arithmetic)
         })?;
-        let available = resource_available(state, inventory, *key, aid)?;
+        let available = resource_available(catalog, state, inventory, *key, aid)?;
         for request in requests {
             let resource_request =
                 u128::from(request.requested) * u128::from(request.resource_per_unit);
@@ -304,6 +312,7 @@ pub(in crate::transition) fn limit_allocations(
 }
 
 pub(in crate::transition) fn allocation_matrix(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     inventory: &InventoryLedger,
     groups: &Groups,
@@ -322,7 +331,7 @@ pub(in crate::transition) fn allocation_matrix(
         }
     }
     Matrix::new(groups, bounds, |key| {
-        resource_available(state, inventory, key, aid)
+        resource_available(catalog, state, inventory, key, aid)
     })
 }
 
@@ -343,6 +352,7 @@ pub(in crate::transition) fn canonical_requests(
 }
 
 pub(in crate::transition) fn complete_allocations(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     inventory: &InventoryLedger,
     orders: &[OutboundOrder],
@@ -350,39 +360,53 @@ pub(in crate::transition) fn complete_allocations(
     count: usize,
     aid: &PreparedAid,
 ) -> Result<(Vec<u64>, Vec<u64>), MaterialCircuitError> {
-    let base_physical = order_allocations(state, inventory, groups, count, aid)?;
+    let base_physical = order_allocations(catalog, state, inventory, groups, count, aid)?;
     let physical = residual::aggregate(groups)?;
-    let ceilings = allocation_matrix(state, inventory, &physical, count, aid)?.ceilings();
+    let ceilings = allocation_matrix(catalog, state, inventory, &physical, count, aid)?.ceilings();
     let request_count = groups.values().try_fold(0_usize, |n, rows| {
         n.checked_add(rows.len())
             .ok_or(MaterialCircuitError::Arithmetic)
     })?;
-    let base_labor = labor_groups(state, orders, &base_physical, request_count)?;
+    let base_labor = labor_groups(catalog, orders, &base_physical, request_count)?;
     let mut allocations = base_physical;
-    limit_allocations(state, inventory, &base_labor, &mut allocations, aid)?;
+    limit_allocations(
+        catalog,
+        state,
+        inventory,
+        &base_labor,
+        &mut allocations,
+        aid,
+    )?;
     // Zero base grants still require every handling coefficient in the residual
     // cuts. Ceilings are independent of competition and current staffing.
-    let labor = labor_groups(state, orders, &ceilings, request_count)?;
+    let labor = labor_groups(catalog, orders, &ceilings, request_count)?;
     let mut all = physical;
     for (key, rows) in labor {
         all.entry(key).or_default().extend(rows);
     }
     let all = residual::aggregate(&all)?;
-    let matrix = allocation_matrix(state, inventory, &all, count, aid)?;
+    let matrix = allocation_matrix(catalog, state, inventory, &all, count, aid)?;
     matrix.augment(&mut allocations, &canonical_requests(orders, aid))?;
     Ok((ceilings, allocations))
 }
 
 pub(in crate::transition) fn reserve_route_capacity(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     route: RouteId,
     grams: u64,
 ) -> Result<u64, MaterialCircuitError> {
     let mut departure_period = state.period;
-    for stage in super::super::route_stages(state, route).to_vec() {
+    for stage in super::super::route_stages(catalog, route).to_vec() {
         let capacities = super::super::stage_capacities(state, route, stage.stage_index).to_vec();
         for capacity in capacities {
-            crate::capacity::reserve(state, departure_period, capacity.corridor_id, grams)?;
+            crate::capacity::reserve(
+                catalog,
+                state,
+                departure_period,
+                capacity.corridor_id,
+                grams,
+            )?;
         }
         departure_period = departure_period
             .checked_add(u64::from(stage.travel_periods))
@@ -428,6 +452,7 @@ pub(in crate::transition) fn apply_local_transfer(
 }
 
 pub(in crate::transition) fn apply_dispatches(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     inventory: &mut InventoryLedger,
     routes: &BTreeMap<SupplierKey, SupplyPath>,
@@ -465,7 +490,7 @@ pub(in crate::transition) fn apply_dispatches(
             quantity,
             lot_id,
         )?;
-        let legs = super::super::route_stages(state, route);
+        let legs = super::super::route_stages(catalog, route);
         let first_arrival_period = state
             .period
             .checked_add(u64::from(legs[0].travel_periods))
@@ -478,12 +503,12 @@ pub(in crate::transition) fn apply_dispatches(
         )?;
         let grams = quantity
             .checked_mul(super::super::grams_per_unit(
-                state,
+                catalog,
                 order.good_id,
                 order.unit_id,
             )?)
             .ok_or(MaterialCircuitError::Arithmetic)?;
-        let final_arrival_period = reserve_route_capacity(state, route, grams)?;
+        let final_arrival_period = reserve_route_capacity(catalog, state, route, grams)?;
         state.orders[index].shipped = state.orders[index]
             .shipped
             .checked_add(quantity)
@@ -526,7 +551,7 @@ pub(in crate::transition) fn labor_index(
 }
 
 pub(in crate::transition) fn labor_groups(
-    state: &MaterialCircuitState,
+    catalog: &MaterialCatalog,
     orders: &[OutboundOrder],
     feasible: &[u64],
     existing_requests: usize,
@@ -537,9 +562,9 @@ pub(in crate::transition) fn labor_groups(
         if !order.included {
             continue;
         }
-        if let Some(merchant) = merchant_admission::merchant(state, order.stock.0) {
+        if let Some(merchant) = merchant_admission::merchant(catalog, order.stock.0) {
             let hours = merchant_admission::hours_per_unit(
-                state,
+                catalog,
                 order.stock.0,
                 order.stock.1,
                 order.stock.2,
@@ -558,6 +583,7 @@ pub(in crate::transition) fn labor_groups(
 }
 
 pub(in crate::transition) fn apply_handling(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     orders: &[OutboundOrder],
     feasible: &[u64],
@@ -569,11 +595,15 @@ pub(in crate::transition) fn apply_handling(
         if !order.included {
             continue;
         }
-        let Some(merchant) = merchant_admission::merchant(state, order.stock.0).cloned() else {
+        let Some(merchant) = merchant_admission::merchant(catalog, order.stock.0).cloned() else {
             continue;
         };
-        let hours =
-            merchant_admission::hours_per_unit(state, order.stock.0, order.stock.1, order.stock.2)?;
+        let hours = merchant_admission::hours_per_unit(
+            catalog,
+            order.stock.0,
+            order.stock.1,
+            order.stock.2,
+        )?;
         let needed_hours = feasible_quantity
             .checked_mul(hours)
             .ok_or(MaterialCircuitError::Arithmetic)?;
@@ -595,12 +625,12 @@ pub(in crate::transition) fn apply_handling(
                 .ok_or(MaterialCircuitError::Arithmetic)?;
             let grams = handled_quantity
                 .checked_mul(super::super::grams_per_unit(
-                    state,
+                    catalog,
                     order.stock.1,
                     order.stock.2,
                 )?)
                 .ok_or(MaterialCircuitError::Arithmetic)?;
-            crate::capacity::reserve(state, state.period, merchant.capacity_id, grams)?;
+            crate::capacity::reserve(catalog, state, state.period, merchant.capacity_id, grams)?;
         }
         receipts.push(MerchantHandlingReceipt {
             site_id: merchant.site_id,
@@ -661,6 +691,7 @@ pub(in crate::transition) struct OutboundReceipts {
 }
 
 pub(in crate::transition) fn dispatch_orders(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     inventory: &mut InventoryLedger,
     receipts: &mut Vec<RoutedDispatchReceipt>,
@@ -668,6 +699,7 @@ pub(in crate::transition) fn dispatch_orders(
     costs: &mut CostClose,
 ) -> Result<OutboundReceipts, MaterialCircuitError> {
     dispatch_orders_with_aid(
+        catalog,
         state,
         inventory,
         receipts,
@@ -688,6 +720,7 @@ pub(in crate::transition) struct AidDispatch<'a> {
 }
 
 pub(in crate::transition) fn dispatch_orders_with_aid(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     inventory: &mut InventoryLedger,
     receipts: &mut Vec<RoutedDispatchReceipt>,
@@ -700,19 +733,20 @@ pub(in crate::transition) fn dispatch_orders_with_aid(
         money,
         receipts: aid_receipts,
     } = aid;
-    let routes = super::super::supplier_routes(state);
+    let routes = super::super::supplier_routes(catalog);
     let orders = outbound_orders(state, &routes, selection);
-    let mut groups = resource_groups(state, &orders)?;
-    add_aid_requests(state, aid, orders.len(), &mut groups)?;
+    let mut groups = resource_groups(catalog, state, &orders)?;
+    add_aid_requests(catalog, state, aid, orders.len(), &mut groups)?;
     let count = orders
         .len()
         .checked_add(aid.orders.len())
         .ok_or(MaterialCircuitError::Arithmetic)?;
     let (feasible, allocations) =
-        complete_allocations(state, inventory, &orders, &groups, count, aid)?;
-    let handling = apply_handling(state, &orders, &feasible, &allocations, costs)?;
+        complete_allocations(catalog, state, inventory, &orders, &groups, count, aid)?;
+    let handling = apply_handling(catalog, state, &orders, &feasible, &allocations, costs)?;
     let routed_count = state.orders.len();
     let local_transfers = apply_dispatches(
+        catalog,
         state,
         inventory,
         &routes,
@@ -727,6 +761,7 @@ pub(in crate::transition) fn dispatch_orders_with_aid(
         costs,
     )?;
     apply_aid_dispatches(
+        catalog,
         state,
         aid,
         &allocations[orders.len()..],
@@ -759,6 +794,7 @@ pub(in crate::transition) fn credit_local_transfers(
 
 /// Services reuse the native-unit outbound allocation; no freight or handling resource exists.
 pub(crate) fn allocate_services(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     services: &[ServiceOrder],
     available: &InventoryLedger,
@@ -774,16 +810,18 @@ pub(crate) fn allocate_services(
             included: true,
         })
         .collect();
-    let groups = resource_groups(state, &orders)?;
+    let groups = resource_groups(catalog, state, &orders)?;
     let aid = PreparedAid::empty();
-    let mut allocations = order_allocations(state, available, &groups, orders.len(), &aid)?;
+    let mut allocations =
+        order_allocations(catalog, state, available, &groups, orders.len(), &aid)?;
     let groups = residual::aggregate(&groups)?;
-    let matrix = allocation_matrix(state, available, &groups, orders.len(), &aid)?;
+    let matrix = allocation_matrix(catalog, state, available, &groups, orders.len(), &aid)?;
     matrix.augment(&mut allocations, &canonical_requests(&orders, &aid))?;
     Ok(allocations)
 }
 
 pub(in crate::transition) fn add_aid_requests(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     aid: &PreparedAid,
     offset: usize,
@@ -815,13 +853,14 @@ pub(in crate::transition) fn add_aid_requests(
         )?;
         if let AidTransport::Routed { route_id, .. } = mandate.transport {
             add_route_requests(
+                catalog,
                 state,
                 route_id,
                 FreightRequest {
                     order_index: index,
                     requested: *quantity,
                     resource_per_unit: super::super::grams_per_unit(
-                        state,
+                        catalog,
                         mandate.good_id,
                         mandate.unit_id,
                     )?,
@@ -835,6 +874,7 @@ pub(in crate::transition) fn add_aid_requests(
 }
 
 pub(in crate::transition) fn apply_aid_dispatches(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     aid: &PreparedAid,
     allocations: &[u64],
@@ -865,7 +905,18 @@ pub(in crate::transition) fn apply_aid_dispatches(
             ));
         }
         if *quantity > 0 {
-            apply_one_aid_dispatch(state, mandate, *id, *quantity, costs, money, receipts)?;
+            apply_one_aid_dispatch(
+                MaterialContext {
+                    catalog,
+                    state: &mut *state,
+                },
+                mandate,
+                *id,
+                *quantity,
+                costs,
+                money,
+                receipts,
+            )?;
         }
         let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting else {
             return Err(MaterialCircuitError::AidInvariant);
@@ -884,7 +935,7 @@ pub(in crate::transition) fn apply_aid_dispatches(
 }
 
 pub(in crate::transition) fn apply_one_aid_dispatch(
-    state: &mut MaterialCircuitState,
+    context: MaterialContext<'_>,
     mandate: &AidMandate,
     id: OrderId,
     quantity: u64,
@@ -892,6 +943,7 @@ pub(in crate::transition) fn apply_one_aid_dispatch(
     money: &mut Vec<MoneyTransferReceipt>,
     receipts: &mut Vec<AidReceipt>,
 ) -> Result<(), MaterialCircuitError> {
+    let MaterialContext { catalog, state } = context;
     let available = crate::aid::take_household_stock(state, mandate, quantity)?;
     let lot_id = crate::aid::aid_lot_id(id);
     let cash = crate::aid::cash_amount(quantity, mandate)?;
@@ -923,13 +975,13 @@ pub(in crate::transition) fn apply_one_aid_dispatch(
             let carrying = costs.dispatch_aid(mandate, available, quantity, lot_id)?;
             let grams = quantity
                 .checked_mul(super::super::grams_per_unit(
-                    state,
+                    catalog,
                     mandate.good_id,
                     mandate.unit_id,
                 )?)
                 .ok_or(MaterialCircuitError::Arithmetic)?;
-            reserve_route_capacity(state, route_id, grams)?;
-            let first_leg = super::super::route_stages(state, route_id)
+            reserve_route_capacity(catalog, state, route_id, grams)?;
+            let first_leg = super::super::route_stages(catalog, route_id)
                 .first()
                 .ok_or(MaterialCircuitError::AidInvariant)?;
             let stage_arrival_period = state

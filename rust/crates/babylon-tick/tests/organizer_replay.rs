@@ -14,6 +14,7 @@ use babylon_kernel::content_digest;
 use babylon_kernel::content_digest::ContentDigest;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_kernel::tick_content_hash::RefDigest;
+use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacityRow;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CircuitAccounting;
@@ -26,6 +27,7 @@ use babylon_material_circuit::LaborCoefficient;
 use babylon_material_circuit::LogisticsNodeId;
 use babylon_material_circuit::MaintenanceBinding;
 use babylon_material_circuit::MaintenanceService;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::ProcessId;
 use babylon_material_circuit::ProcessOutput;
@@ -46,6 +48,7 @@ use babylon_practice_contract::OrganizerInquiry;
 use babylon_practice_contract::OrganizerParticipant;
 use babylon_practice_contract::OrganizerPartner;
 use babylon_practice_contract::OrganizerPartnerPolicy;
+use babylon_practice_contract::OrganizerPeriodJournal;
 use babylon_practice_contract::OrganizerReport;
 use babylon_practice_contract::OrganizerTimeBindingMode;
 use babylon_practice_contract::ORGANIZER_SCHEMA_VERSION;
@@ -121,10 +124,9 @@ fn process() -> ProcessId {
     clippy::too_many_lines,
     reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
 )]
-fn opening() -> MaterialCircuitState {
-    MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
-        period: 1,
+fn opening() -> (MaterialCatalog, MaterialCircuitState) {
+    let catalog = MaterialCatalog::try_new(MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: (1..=2)
             .map(|id| SiteLogisticsNode {
                 site_id: site(id),
@@ -149,8 +151,6 @@ fn opening() -> MaterialCircuitState {
             unit_id: unit(2),
             quantity_per_batch: 60,
         }],
-        service_connections: vec![],
-        service_orders: vec![],
         commodities: [1, 2]
             .into_iter()
             .map(|id| CommodityDefinition {
@@ -163,6 +163,30 @@ fn opening() -> MaterialCircuitState {
             .collect(),
         supplier_routes: vec![],
         route_stages: vec![],
+        merchants: vec![],
+        handling_coefficients: vec![],
+        maintenance_binding: Some(MaintenanceBinding {
+            provider_site_id: site(2),
+            consumer_process_id: process(),
+            spare_good_id: good(2),
+            spare_unit_id: unit(1),
+            labor_unit_id: unit(2),
+            spare_units_per_job: 1,
+            labor_units_per_job: 10,
+            enabled_batches_per_job: 1,
+            maximum_jobs_per_period: 16,
+        }),
+        aid_mandates: vec![],
+        household_time_policy: vec![],
+        service_inputs: vec![],
+        household_needs: vec![],
+        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
+    })
+    .expect("the fixture catalog canonicalizes");
+    let state = MaterialCircuitState {
+        period: 1,
+        service_connections: vec![],
+        service_orders: vec![],
         route_stage_capacities: vec![],
         inventory: vec![
             InventoryRow {
@@ -179,7 +203,6 @@ fn opening() -> MaterialCircuitState {
             },
         ],
         orders: vec![],
-        backlog: vec![],
         freight: vec![],
         corridor_capacities: vec![],
         capacities: (1..=8)
@@ -210,27 +233,16 @@ fn opening() -> MaterialCircuitState {
             period: 1,
             planned_batches: 16,
         }],
-        merchants: vec![],
-        handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
         accounting: CircuitAccounting::PhysicalControl,
-        maintenance_binding: Some(MaintenanceBinding {
-            provider_site_id: site(2),
-            consumer_process_id: process(),
-            spare_good_id: good(2),
-            spare_unit_id: unit(1),
-            labor_unit_id: unit(2),
-            spare_units_per_job: 1,
-            labor_units_per_job: 10,
-            enabled_batches_per_job: 1,
-            maximum_jobs_per_period: 16,
-        }),
         maintenance_service: Some(MaintenanceService {
             period: 1,
             available_batches: 16,
         }),
-    }
+        capacity_reservations: CapacityReservations::default(),
+    };
+    (catalog, state)
 }
 
 fn config() -> OrganizerConfig {
@@ -339,8 +351,9 @@ fn staffing() -> StaffingComposition {
 
 fn try_session(
     rules: &str,
-    material: MaterialCircuitState,
+    material: (MaterialCatalog, MaterialCircuitState),
 ) -> Result<Session, MaterialReplayError> {
+    let (catalog, material_state) = material;
     let foundation = michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
         .expect("the Michigan hex foundation builds");
     let (_, parsed) =
@@ -367,13 +380,14 @@ fn try_session(
     let config = config();
     let state = babylon_practice_contract::initial_organizer_state(&config)
         .expect("the authored config admits an opening organizer state");
-    let material = MaterialWorldRegister::try_new(0, material)
+    let material = MaterialWorldRegister::try_new(&catalog, 0, material_state)
         .expect("the authored fixture satisfies the constructor invariants")
-        .with_organizer(config, state)
+        .with_organizer(&catalog, config, state, OrganizerPeriodJournal::empty())
         .expect("the fixture builder accepts the authored options");
     MaterialReplaySession::new(
         graph,
         material,
+        catalog,
         content_digest::sha256_of(b"organizer-replay-fixture-foundation"),
         babylon_kernel::clock::CampaignDuration::Finite { final_period: 8 },
         staffing(),
@@ -433,7 +447,7 @@ fn prepare(session: &Session, accepted: Option<&OrganizerCommitment>) -> Candida
 
 fn commit(session: &mut Session, sink: &mut CollectingSink, candidate: Candidate) {
     session
-        .commit_prepared_and_publish(sink, candidate, |_| {
+        .commit_prepared_and_publish(sink, candidate, |_, _| {
             Ok::<_, &'static str>(ReplayCommitDisposition::Committed)
         })
         .expect("the prepared period commits");
@@ -465,10 +479,13 @@ fn idle_workplace_without_a_production_commitment_closes_and_reports_zero_work()
         "expired opening service prevents another committed batch"
     );
     let second = prepare(&session, None);
-    assert!(decode_material_receipts(second.material().receipt_bytes())
-        .expect("the canonical bytes decode into the declared type")
-        .production
-        .is_empty());
+    assert_eq!(
+        decode_material_receipts(second.material().receipt_bytes())
+            .expect("the canonical bytes decode into the declared type")
+            .production
+            .len(),
+        0
+    );
     let organizer = second
         .material()
         .register()
@@ -483,9 +500,12 @@ fn idle_workplace_without_a_production_commitment_closes_and_reports_zero_work()
         (2, 0, 0)
     );
     assert!(matches!(
-        organizer
-            .observations
-            .last()
+        second
+            .material()
+            .register()
+            .organizer_journal()
+            .and_then(|journal| journal.latest())
+            .and_then(|entries| entries.observations.last())
             .expect("the fixture sequence is non-empty")
             .report,
         OrganizerReport::ReducedWork {
@@ -504,9 +524,12 @@ fn idle_workplace_without_a_production_commitment_closes_and_reports_zero_work()
         .register()
         .organizer_state()
         .expect("the fixture register carries organizer state");
-    let observed = organizer
-        .observations
-        .last()
+    let observed = third
+        .material()
+        .register()
+        .organizer_journal()
+        .and_then(|journal| journal.latest())
+        .and_then(|entries| entries.observations.last())
         .expect("the fixture sequence is non-empty");
     assert_eq!((observed.observed_period, observed.acquired_period), (2, 3));
     assert!(matches!(
@@ -591,10 +614,9 @@ fn distinct_rulings_change_organizer_receipts_and_preserve_identical_material_re
         .map(|(_, row)| {
             row.material()
                 .register()
-                .organizer_state()
-                .expect("the fixture register carries organizer state")
-                .receipts
-                .last()
+                .organizer_journal()
+                .and_then(|journal| journal.latest())
+                .and_then(|entries| entries.receipts.last())
                 .expect("the fixture sequence is non-empty")
                 .hours_spent
         })
@@ -621,7 +643,7 @@ fn rejected_commit_publishes_nothing_and_identical_pending_input_retries_determi
         .expect("the committed session publishes a world hash");
     let candidate = prepare(&session, Some(&accepted));
     let expected_identity = *candidate.identity();
-    let result = session.commit_prepared_and_publish(&mut sink, candidate, |_| {
+    let result = session.commit_prepared_and_publish(&mut sink, candidate, |_, _| {
         Err::<ReplayCommitDisposition, _>("injected durable failure")
     });
     assert!(matches!(
@@ -646,28 +668,21 @@ fn rejected_commit_publishes_nothing_and_identical_pending_input_retries_determi
     );
     assert_eq!(session.completed_tick(), 0);
     assert_eq!(session.graph_session().completed_tick(), 0);
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
     assert_eq!(accepted, accepted_before);
     let retry = prepare(&session, Some(&accepted));
     assert_eq!(*retry.identity(), expected_identity);
     commit(&mut session, &mut sink, retry);
     assert_eq!(session.completed_tick(), 1);
-    assert_eq!(
-        session
-            .material()
-            .organizer_state()
-            .expect("the fixture register carries organizer state")
-            .receipts
-            .len(),
-        1
-    );
-    assert_eq!(
-        session
-            .material()
-            .organizer_state()
-            .expect("the fixture register carries organizer state")
-            .receipts[0]
-            .hours_spent,
-        8
-    );
+    let journal = session
+        .material()
+        .organizer_journal()
+        .expect("the fixture register carries organizer journal");
+    let receipts = journal
+        .latest()
+        .expect("the fixture resolves one period")
+        .receipts
+        .clone();
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].hours_spent, 8);
 }

@@ -848,7 +848,7 @@ fn live_retained_comparison_has_constant_capture_queries_and_audits_beyond_head(
         |plan, tick, hash| Ok(retained_comparison_input(plan.0, tick, hash, false)),
     )
     .expect("the fixture call `select_dirty_pages` succeeds for the authored inputs");
-    assert!(quiet.batch().pages().is_empty());
+    assert_eq!(quiet.batch().pages().len(), 0);
     assert_eq!(quiet.remaining(), 0);
     let capture_queries = crate::archive_revision::storage::reset_capture_queries();
     let dirty = crate::archive_revision::publication::select_dirty_pages(

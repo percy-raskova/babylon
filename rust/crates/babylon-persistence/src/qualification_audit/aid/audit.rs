@@ -19,6 +19,7 @@ use serde_json::{json, Value};
 use crate::runtime_session::OrganizerAidTransportPreview;
 use babylon_kernel::clock::CampaignDuration;
 use babylon_material_circuit::AidTransport;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_practice_contract::OrganizerOutcome;
 use babylon_tick::material_world;
 use std::collections::{BTreeMap, BTreeSet};
@@ -255,13 +256,14 @@ pub struct Boundary {
 /// # Errors
 /// Refuses unavailable organizer state or an invalid captured campaign duration.
 pub fn material_disclosure(
+    catalog: &MaterialCatalog,
     register: &MaterialWorldRegister,
     duration: CampaignDuration,
 ) -> Result<OrganizerSnapshot> {
     if !duration.contains(register.completed_tick()) {
         return Err(Refusal::Period);
     }
-    crate::organizer_runtime::captured_organizer_snapshot(register, None, duration)
+    crate::organizer_runtime::captured_organizer_snapshot(catalog, register, None, duration)
         .map_err(|_| Refusal::Capture)
 }
 
@@ -273,13 +275,14 @@ impl Audit {
     /// ordinary prices, route stages, capacities and remaining household time.
     pub fn open(
         &mut self,
+        catalog: &MaterialCatalog,
         register: &MaterialWorldRegister,
         snapshot: &OrganizerSnapshot,
     ) -> Result<()> {
         if register.completed_tick() != self.period {
             return Err(Refusal::Period);
         }
-        if !crate::organizer_runtime::aid_snapshot_matches(register, snapshot)
+        if !crate::organizer_runtime::aid_snapshot_matches(catalog, register, snapshot)
             .map_err(|_| Refusal::Identity)?
         {
             return Err(Refusal::Identity);
@@ -336,6 +339,7 @@ impl Audit {
     /// Every refusal leaves the complete fold unchanged.
     pub fn read(
         &mut self,
+        catalog: &MaterialCatalog,
         admitted: &CommittedMaterialReceipts,
         register: &MaterialWorldRegister,
         after: &OrganizerSnapshot,
@@ -356,7 +360,7 @@ impl Audit {
         let config = register.organizer_config().ok_or(Refusal::Capture)?;
         if self.campaign != Some(config.campaign_id)
             || config.campaign_id != *admitted.campaign_id.canonical_bytes()
-            || !crate::organizer_runtime::aid_snapshot_matches(register, after)
+            || !crate::organizer_runtime::aid_snapshot_matches(catalog, register, after)
                 .map_err(|_| Refusal::Identity)?
         {
             return Err(Refusal::Identity);
@@ -414,7 +418,7 @@ impl Audit {
             .facts
             .push(serde_json::to_value(&fact).map_err(|_| Refusal::Identity)?);
         candidate.period = tick;
-        candidate.open(register, after)?;
+        candidate.open(catalog, register, after)?;
         *self = candidate;
         Ok(fact)
     }

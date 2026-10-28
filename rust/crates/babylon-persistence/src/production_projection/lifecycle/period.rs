@@ -7,9 +7,9 @@ use super::super::ProductionProjectionError;
 use babylon_kernel::currency::Currency;
 
 use babylon_material_circuit::{
-    AccountId, CircuitAccounting, FinalDemandOrder, MaterialCircuitState, MonetaryCircuit,
-    MoneyLocation, MoneyTransferPurpose, OrderAccessMode, OrderId, OrderRow, OutboundOrderId,
-    PurchaseEscrow, RecurringEconomy,
+    AccountId, CircuitAccounting, FinalDemandOrder, MaterialCatalog, MaterialCircuitState,
+    MonetaryCircuit, MoneyLocation, MoneyTransferPurpose, OrderAccessMode, OrderId, OrderRow,
+    OutboundOrderId, PurchaseEscrow, RecurringEconomy,
 };
 
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -53,6 +53,7 @@ pub(in crate::production_projection) fn monetary(
 }
 
 pub(in crate::production_projection) fn join(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipts: &MaterialTickReceipts,
@@ -100,10 +101,17 @@ pub(in crate::production_projection) fn join(
         }
     }
     let mut admissions = BTreeMap::new();
-    admit_households(prior, receipts, &mut orders, &mut admissions)?;
+    admit_households(catalog, prior, receipts, &mut orders, &mut admissions)?;
     admit_firms(prior, receipts, &mut orders, &mut admissions)?;
-    investment::admit(prior, receipts, &mut orders, &mut admissions)?;
-    services::admit(prior, current, receipts, &mut orders, &mut admissions)?;
+    investment::admit(catalog, prior, receipts, &mut orders, &mut admissions)?;
+    services::admit(
+        catalog,
+        prior,
+        current,
+        receipts,
+        &mut orders,
+        &mut admissions,
+    )?;
     add_movements(receipts, &mut orders)?;
     for id in &orders.after_outbound {
         let (before, after) = orders
@@ -120,6 +128,7 @@ pub(in crate::production_projection) fn join(
 }
 
 pub(in crate::production_projection) fn admit_households(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     receipts: &MaterialTickReceipts,
     orders: &mut PeriodOrders,
@@ -129,7 +138,7 @@ pub(in crate::production_projection) fn admit_households(
     let policies = recurring(prior)
         .map(|rows| rows.household_purchases.as_slice())
         .unwrap_or_default();
-    let services: BTreeSet<_> = prior
+    let services: BTreeSet<_> = catalog
         .commodities
         .iter()
         .filter(|r| {
@@ -806,28 +815,32 @@ pub(in crate::production_projection) fn advance_purchase(
 
 /// Authenticate active and ephemeral principals before a committed period enters history.
 pub(crate) fn validate_period(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
 ) -> Result<PeriodOrders> {
     use super::super::diagnostics::Stage;
     let tick = receipt.resolve_tick;
-    let orders =
-        diagnostics::projection(Stage::LifecycleOrders, tick, join(prior, current, receipt))?;
+    let orders = diagnostics::projection(
+        Stage::LifecycleOrders,
+        tick,
+        join(catalog, prior, current, receipt),
+    )?;
     diagnostics::projection(
         Stage::LifecycleServices,
         tick,
-        super::super::services::validate(prior, current, receipt),
+        super::super::services::validate(catalog, prior, current, receipt),
     )?;
     diagnostics::projection(
         Stage::LifecycleEquipment,
         tick,
-        super::super::equipment::validate(prior, current, receipt),
+        super::super::equipment::validate(catalog, prior, current, receipt),
     )?;
     diagnostics::projection(
         Stage::LifecyclePrices,
         tick,
-        super::super::prices::validate(prior, current, receipt, &orders),
+        super::super::prices::validate(catalog, prior, current, receipt, &orders),
     )?;
     if recurring(prior).is_some() {
         diagnostics::projection(

@@ -1,23 +1,19 @@
 use super::{
     AssetBook, Definitions, MaterialCircuitState, MaterialTickReceipts, ProductionProjectionError,
-    ProductiveEquipment, Result,
+    Result,
 };
 use babylon_material_circuit::{
-    AccountId, EquipmentAssetId, EquipmentCohortId, InstalledEquipmentCohort,
+    AccountId, EquipmentAssetId, EquipmentCohortId, EquipmentPosition, InstalledEquipmentCohort,
 };
 use std::collections::{BTreeMap, BTreeSet};
 pub(super) fn reconcile(
     prior: &MaterialCircuitState,
-    equipment: &ProductiveEquipment,
+    position: &EquipmentPosition,
     receipt: &MaterialTickReceipts,
     definitions: &Definitions<'_>,
     assets: &mut AssetBook,
 ) -> Result<BTreeMap<EquipmentCohortId, InstalledEquipmentCohort>> {
-    let mut cohorts: BTreeMap<_, _> = equipment
-        .cohorts
-        .iter()
-        .map(|r| (r.id, r.clone()))
-        .collect();
+    let mut cohorts: BTreeMap<_, _> = position.cohorts.iter().map(|r| (r.id, r.clone())).collect();
     let mut seen = BTreeSet::new();
     let mut used = BTreeMap::new();
     let mut costs = BTreeMap::new();

@@ -1708,7 +1708,7 @@ mod tests {
     fn governed_allowance_rows_carry_the_required_provenance() {
         assert_eq!(GOVERNED_EFFECT_ALLOWANCES.len(), 7);
         for row in GOVERNED_EFFECT_ALLOWANCES {
-            assert!(!row.reason.is_empty());
+            assert_ne!(row.reason.len(), 0);
             assert_eq!(row.owner, "Director");
             if row.rule_id == "organizer/organizer-practice" {
                 assert_eq!(row.date, "2026-09-13");

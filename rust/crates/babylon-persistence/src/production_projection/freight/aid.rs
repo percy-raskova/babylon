@@ -1,11 +1,15 @@
 //! Gift capacity reservations are separate from commercial supplier orders.
-use super::{MaterialCircuitState, ProductionProjectionError, Reservations, Result, RouteIndex};
+use super::{
+    MaterialCatalog, MaterialCircuitState, ProductionProjectionError, Reservations, Result,
+    RouteIndex,
+};
 use crate::production_observation::ProductionAidCapacityOrder;
 
 use crate::michigan_economy;
 use babylon_material_circuit::{AidOutcome, AidTransport};
 use babylon_tick::material_world::MaterialTickReceipts;
 pub(super) fn append(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
@@ -21,7 +25,7 @@ pub(super) fn append(
         let AidTransport::Routed { route_id, .. } = row.transport else {
             return Err(ProductionProjectionError::State);
         };
-        let commodity = prior
+        let commodity = catalog
             .commodities
             .iter()
             .find(|c| c.good_id == row.good_id && c.unit_id == row.unit_id)

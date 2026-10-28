@@ -6,9 +6,12 @@ use super::OrganizerCommand;
 use super::OrganizerCommitment;
 use super::OrganizerConfig;
 use super::OrganizerError;
+use super::OrganizerLearnedAuthority;
 use super::OrganizerObservation;
 use super::OrganizerOutcome;
 use super::OrganizerPartnerResponse;
+use super::OrganizerPeriodJournal;
+use super::OrganizerPeriodJournalEntries;
 use super::OrganizerPosition;
 use super::OrganizerPreview;
 use super::OrganizerReceipt;
@@ -201,6 +204,9 @@ fn validate_time_binding(config: &OrganizerConfig) -> Result<(), OrganizerError>
 
 /// Validate the schema version, size ceilings, and row invariants of a state.
 ///
+/// Historical receipts and observations are not part of causal state; see
+/// [`validate_organizer_journal`] for the exact evidence contract.
+///
 /// # Errors
 ///
 /// Returns [`OrganizerError::UnsupportedSchema`] for a foreign schema version,
@@ -208,15 +214,13 @@ fn validate_time_binding(config: &OrganizerConfig) -> Result<(), OrganizerError>
 /// [`OrganizerError::InvalidState`] for a malformed stored row.
 #[allow(
     clippy::too_many_lines,
-    reason = "one linear pass over each stored row family; splitting it would duplicate the ceiling and ordering invariants"
+    reason = "one linear pass over each live causal family; splitting it would duplicate the ceiling and ordering invariants"
 )]
 pub fn validate_organizer_state(state: &OrganizerState) -> Result<(), OrganizerError> {
     if state.schema_version != ORGANIZER_SCHEMA_VERSION {
         return Err(OrganizerError::UnsupportedSchema);
     }
-    if state.observations.len() > MAX_ORGANIZER_ROWS
-        || state.receipts.len() > MAX_ORGANIZER_ROWS
-        || state.aid_receipts.len() > MAX_ORGANIZER_ROWS
+    if state.learned_authority_index.len() > MAX_ORGANIZER_ROWS
         || state.pending_aid.len() > 2
         || state.contact_products.len() > MAX_ORGANIZER_ROWS
         || state.consumed_product_ids.len() > MAX_ORGANIZER_ROWS
@@ -237,58 +241,12 @@ pub fn validate_organizer_state(state: &OrganizerState) -> Result<(), OrganizerE
             return Err(OrganizerError::InvalidState);
         }
     }
-    let mut receipt_ids = BTreeSet::new();
-    let mut prior_period = 0;
-    for receipt in &state.receipts {
-        validate_organizer_receipt(receipt)?;
-        if receipt.period == 0
-            || receipt.period > state.period
-            || receipt.period <= prior_period
-            || !receipt_ids.insert(receipt.receipt_id)
-        {
-            return Err(OrganizerError::InvalidState);
-        }
-        prior_period = receipt.period;
-        let own_hours = receipt
-            .time_use
-            .iter()
-            .filter(|row| row.actor_id == receipt.actor_id)
-            .try_fold(0_u64, |sum, row| {
-                sum.checked_add(row.hours).ok_or(OrganizerError::Arithmetic)
-            })?;
-        if own_hours != receipt.hours_spent {
-            return Err(OrganizerError::InvalidState);
-        }
-    }
     super::aid::validate_aid_state(state)?;
-    super::collection::validate_collection_state_shape(state)?;
-    let mut observation_ids = BTreeSet::new();
-    for observation in &state.observations {
-        if observation.observed_period > observation.acquired_period
-            || observation.acquired_period > state.period
-            || !observation_ids.insert(observation.observation_id)
-            || observation
-                .receipt_id
-                .is_some_and(|id| !receipt_ids.contains(&id))
-        {
-            return Err(OrganizerError::InvalidState);
-        }
-    }
     let mut product_ids = BTreeSet::new();
     for product in &state.contact_products {
         if product.produced_period == 0
             || product.produced_period > state.period
-            || !receipt_ids.contains(&product.receipt_id)
             || !product_ids.insert(product.product_id)
-            || !state.receipts.iter().any(|receipt| {
-                receipt.receipt_id == product.receipt_id
-                    && receipt.period == product.produced_period
-                    && receipt.outcome == OrganizerOutcome::ContactCompleted
-                    && receipt.partner_response == OrganizerPartnerResponse::Participated
-                    && receipt.contact_product_id == Some(product.product_id)
-                    && product.actor_id == receipt.actor_id
-                    && Some(product.partner_actor_id) == receipt.partner_actor_id
-            })
         {
             return Err(OrganizerError::InvalidState);
         }
@@ -306,9 +264,33 @@ pub fn validate_organizer_state(state: &OrganizerState) -> Result<(), OrganizerE
             return Err(OrganizerError::InvalidState);
         }
     }
+    // Tombstones are permanent: the live product may already be gone, but the
+    // identity can never be offered again.
     let mut consumed_ids = BTreeSet::new();
     for id in &state.consumed_product_ids {
-        if !product_ids.contains(id) || !consumed_ids.insert(*id) {
+        if product_ids.contains(id) || !consumed_ids.insert(*id) {
+            return Err(OrganizerError::InvalidState);
+        }
+    }
+    let mut observation_ids = BTreeSet::new();
+    let mut learned_keys = BTreeSet::new();
+    for row in &state.learned_authority_index {
+        if row.observed_period > row.acquired_period
+            || row.acquired_period > state.period
+            || !observation_ids.insert(row.observation_id)
+            || !learned_keys.insert((row.subject_id, row.source_actor_id, row.report_kind()))
+        {
+            return Err(OrganizerError::InvalidState);
+        }
+    }
+    if let Some(witness) = &state.last_period_time_witness {
+        if witness.period == 0
+            || witness.period > state.period
+            || !witness
+                .contribution_use_ids
+                .windows(2)
+                .all(|rows| rows[0] < rows[1])
+        {
             return Err(OrganizerError::InvalidState);
         }
     }
@@ -319,6 +301,160 @@ pub fn validate_organizer_state(state: &OrganizerState) -> Result<(), OrganizerE
     {
         return Err(OrganizerError::InvalidState);
     }
+    Ok(())
+}
+
+/// Validate one period's exact evidence against the captured contracts.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::InvalidState`] for a malformed, misordered, or
+/// duplicated evidence row and [`OrganizerError::SizeLimit`] past a ceiling.
+pub fn validate_organizer_period_entries(
+    config: &OrganizerConfig,
+    entries: &OrganizerPeriodJournalEntries,
+) -> Result<(), OrganizerError> {
+    validate_organizer_config(config)?;
+    if entries.period == 0
+        || entries.observations.len() > MAX_ORGANIZER_ROWS
+        || entries.receipts.len() > MAX_ORGANIZER_ROWS
+        || entries.collection_receipts.len() > MAX_ORGANIZER_ROWS
+        || entries.aid_receipts.len() > MAX_ORGANIZER_ROWS
+    {
+        return Err(OrganizerError::SizeLimit);
+    }
+    let mut receipt_ids = BTreeSet::new();
+    for receipt in &entries.receipts {
+        validate_organizer_receipt(receipt)?;
+        if receipt.period != entries.period || !receipt_ids.insert(receipt.receipt_id) {
+            return Err(OrganizerError::InvalidState);
+        }
+    }
+    for row in &entries.aid_receipts {
+        super::aid::validate_resolution_shape(row)?;
+        if row.practice.period != entries.period || !receipt_ids.insert(row.practice.receipt_id) {
+            return Err(OrganizerError::InvalidState);
+        }
+    }
+    let mut observation_ids = BTreeSet::new();
+    for observation in &entries.observations {
+        if observation.actor_id != config.controlled_actor_id
+            || observation.subject_id != config.workplace_id
+            || observation.source_actor_id != config.workplace_partner.actor_id
+            || observation.observed_period > observation.acquired_period
+            || observation.acquired_period != entries.period
+            || !observation_ids.insert(observation.observation_id)
+            || observation
+                .receipt_id
+                .is_some_and(|id| !receipt_ids.contains(&id))
+        {
+            return Err(OrganizerError::InvalidState);
+        }
+    }
+    super::collection::validate_collection_history(config, entries)?;
+    super::aid::validate_aid_history(config, entries)?;
+    super::aid::validate_period_allocations(config, entries)?;
+    Ok(())
+}
+
+/// Validate the retained evidence window against the compact causal state.
+///
+/// # Errors
+///
+/// Returns each fault [`validate_organizer_pair`] reports plus
+/// [`OrganizerError::InvalidState`] when a witness, tombstone, live product, or
+/// learned index row has no exact retained evidence.
+pub fn validate_organizer_journal(
+    config: &OrganizerConfig,
+    state: &OrganizerState,
+    journal: &OrganizerPeriodJournal,
+) -> Result<(), OrganizerError> {
+    validate_organizer_pair(config, state)?;
+    let mut prior = None;
+    for entries in &journal.periods {
+        if prior.is_some_and(|period| period >= entries.period) {
+            return Err(OrganizerError::InvalidState);
+        }
+        prior = Some(entries.period);
+        validate_organizer_period_entries(config, entries)?;
+    }
+    let latest = journal.latest();
+    if state.period == 0 {
+        if latest.is_some() {
+            return Err(OrganizerError::InvalidState);
+        }
+        return Ok(());
+    }
+    let latest = latest.ok_or(OrganizerError::InvalidState)?;
+    if latest.period != state.period {
+        return Err(OrganizerError::InvalidState);
+    }
+    let receipt_ids: BTreeSet<_> = journal
+        .periods
+        .iter()
+        .flat_map(|entries| entries.receipts().map(|row| row.receipt_id))
+        .collect();
+    let observations: BTreeMap<_, _> = journal
+        .periods
+        .iter()
+        .flat_map(|entries| &entries.observations)
+        .map(|row| (row.observation_id, row))
+        .collect();
+    for product in &state.contact_products {
+        if !receipt_ids.contains(&product.receipt_id)
+            || !latest.receipts.iter().any(|receipt| {
+                receipt.receipt_id == product.receipt_id
+                    && receipt.period == product.produced_period
+                    && receipt.outcome == OrganizerOutcome::ContactCompleted
+                    && receipt.partner_response == OrganizerPartnerResponse::Participated
+                    && receipt.contact_product_id == Some(product.product_id)
+                    && product.actor_id == receipt.actor_id
+                    && Some(product.partner_actor_id) == receipt.partner_actor_id
+            })
+        {
+            return Err(OrganizerError::InvalidState);
+        }
+    }
+    for row in &state.learned_authority_index {
+        // The retained evidence window is still unbounded (Task 8 owns the
+        // finite retention window), so every compact learned row must find its
+        // exact observation in retained evidence. Task 8 must either preserve
+        // the referenced evidence or amend this refusal when it prunes.
+        let exact = observations
+            .get(&row.observation_id)
+            .is_some_and(|observation| {
+                observation.subject_id == row.subject_id
+                    && observation.source_actor_id == row.source_actor_id
+                    && observation.observed_period == row.observed_period
+                    && observation.acquired_period == row.acquired_period
+                    && observation.receipt_id == row.receipt_id
+                    && observation.report == row.report
+            });
+        let seeded = config.initial_observations.iter().any(|observation| {
+            observation.observation_id == row.observation_id
+                && observation.report == row.report
+                && observation.receipt_id.is_none()
+        });
+        if !exact && !seeded {
+            return Err(OrganizerError::InvalidState);
+        }
+    }
+    if let Some(witness) = &state.last_period_time_witness {
+        if witness.period == latest.period {
+            let charged = charged_time_ids(latest);
+            if witness
+                .contribution_use_ids
+                .iter()
+                .any(|id| !charged.contains(id))
+            {
+                // An hour already debited must stay visible in exact evidence;
+                // an evicted receipt can never let it be spent a second time.
+                return Err(OrganizerError::InvalidState);
+            }
+        }
+    }
+    super::aid::validate_completed_aid(state, latest)?;
+    super::aid::validate_aid_window(state, journal)?;
     Ok(())
 }
 
@@ -343,15 +479,14 @@ pub fn validate_organizer_pair(
             row.actor_id != config.controlled_actor_id
                 || !partner_ids.contains(&row.partner_actor_id)
         })
-        || state.observations.iter().any(|row| {
+        || state.contact_products.iter().any(|row| {
             row.actor_id != config.controlled_actor_id
-                || row.subject_id != config.workplace_id
+                || !partner_ids.contains(&row.partner_actor_id)
+        })
+        || state.learned_authority_index.iter().any(|row| {
+            row.subject_id != config.workplace_id
                 || row.source_actor_id != config.workplace_partner.actor_id
         })
-        || state
-            .receipts
-            .iter()
-            .any(|row| row.actor_id != config.controlled_actor_id)
         || state
             .last_workplace_facts
             .as_ref()
@@ -359,64 +494,9 @@ pub fn validate_organizer_pair(
     {
         return Err(OrganizerError::InvalidState);
     }
-    super::collection::validate_collection_history(config, state)?;
     for pending in &state.pending_aid {
         super::aid::validate_pending(config, pending)?;
     }
-    for row in &state.aid_receipts {
-        super::aid::validate_pending(config, &row.authorization)?;
-        super::aid::validate_resolution_allocation(config, row)?;
-    }
-    let all_receipts = state
-        .receipts
-        .iter()
-        .chain(state.aid_receipts.iter().map(|row| &row.practice));
-    for receipt in all_receipts {
-        if let Some(kind) = super::aid::aid_kind(receipt.choice) {
-            let binding = config
-                .aid_bindings
-                .iter()
-                .find(|row| row.kind == kind)
-                .ok_or(OrganizerError::InvalidState)?;
-            if receipt
-                .partner_actor_id
-                .is_some_and(|id| id != binding.partner.actor_id)
-                || receipt.time_use.iter().any(|row| {
-                    (row.actor_id == config.controlled_actor_id
-                        && row.contributor_id != binding.donor_contributor_id)
-                        || (row.actor_id == binding.partner.actor_id
-                            && row.contributor_id != binding.recipient_contributor_id)
-                        || (row.actor_id != config.controlled_actor_id
-                            && row.actor_id != binding.partner.actor_id)
-                })
-            {
-                return Err(OrganizerError::InvalidState);
-            }
-        }
-        for participant in &config.participants {
-            let spent = receipt
-                .time_use
-                .iter()
-                .filter(|row| row.contributor_id == participant.contributor_id)
-                .try_fold(0_u64, |sum, row| {
-                    sum.checked_add(row.hours).ok_or(OrganizerError::Arithmetic)
-                })?;
-            if spent > participant.available_hours {
-                return Err(OrganizerError::InvalidState);
-            }
-        }
-        if receipt.time_use.iter().any(|row| {
-            !config.participants.iter().any(|participant| {
-                participant.contributor_id == row.contributor_id
-                    && participant.commitments.iter().any(|commitment| {
-                        commitment.actor_id == row.actor_id && commitment.hours >= row.hours
-                    })
-            })
-        }) {
-            return Err(OrganizerError::InvalidState);
-        }
-    }
-    super::aid::validate_period_allocations(config, state)?;
     Ok(())
 }
 
@@ -457,8 +537,7 @@ pub fn decode_organizer_config(bytes: &[u8]) -> Result<OrganizerConfig, Organize
 /// exceeds the encoded ceiling.
 pub fn encode_organizer_state(state: &OrganizerState) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_state(state)?;
-    super::aid::validate_completed_aid(state)?;
-    canonical(b"babylon.organizer-state.v5", state)
+    canonical(b"babylon.organizer-state.v6", state)
 }
 
 /// Decode a canonical state and refuse anything that would not re-encode.
@@ -469,9 +548,81 @@ pub fn encode_organizer_state(state: &OrganizerState) -> Result<Vec<u8>, Organiz
 /// [`OrganizerError::Codec`] for a foreign domain frame or non-canonical body,
 /// and the validation faults [`validate_organizer_state`] reports.
 pub fn decode_organizer_state(bytes: &[u8]) -> Result<OrganizerState, OrganizerError> {
-    let value = decode(b"babylon.organizer-state.v5", bytes)?;
+    let value = decode(b"babylon.organizer-state.v6", bytes)?;
     validate_organizer_state(&value)?;
-    super::aid::validate_completed_aid(&value)?;
+    Ok(value)
+}
+
+/// Encode one validated period's evidence in its canonical framed form.
+///
+/// # Errors
+///
+/// Returns the validation faults of [`validate_organizer_period_entries`] plus
+/// [`OrganizerError::Codec`] or [`OrganizerError::SizeLimit`] when canonical
+/// serialization fails or exceeds the encoded ceiling.
+pub fn encode_organizer_period_entries(
+    config: &OrganizerConfig,
+    entries: &OrganizerPeriodJournalEntries,
+) -> Result<Vec<u8>, OrganizerError> {
+    validate_organizer_period_entries(config, entries)?;
+    canonical(b"babylon.organizer-period-entries.v1", entries)
+}
+
+/// Decode one canonical period of evidence.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::Codec`] for a foreign frame or non-canonical body
+/// and every fault [`validate_organizer_period_entries`] reports.
+pub fn decode_organizer_period_entries(
+    config: &OrganizerConfig,
+    bytes: &[u8],
+) -> Result<OrganizerPeriodJournalEntries, OrganizerError> {
+    let value = decode(b"babylon.organizer-period-entries.v1", bytes)?;
+    validate_organizer_period_entries(config, &value)?;
+    Ok(value)
+}
+
+/// Encode the retained evidence window in its canonical framed form.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::InvalidState`] for a misordered or malformed
+/// window plus the codec faults of [`encode_organizer_period_entries`].
+pub fn encode_organizer_journal(
+    config: &OrganizerConfig,
+    journal: &OrganizerPeriodJournal,
+) -> Result<Vec<u8>, OrganizerError> {
+    let mut prior = None;
+    for entries in &journal.periods {
+        if prior.is_some_and(|period| period >= entries.period) {
+            return Err(OrganizerError::InvalidState);
+        }
+        prior = Some(entries.period);
+        validate_organizer_period_entries(config, entries)?;
+    }
+    canonical(b"babylon.organizer-journal.v1", journal)
+}
+
+/// Decode a canonical retained evidence window.
+///
+/// # Errors
+///
+/// Returns [`OrganizerError::Codec`] for a foreign frame or non-canonical body
+/// and the same faults [`encode_organizer_journal`] reports.
+pub fn decode_organizer_journal(
+    config: &OrganizerConfig,
+    bytes: &[u8],
+) -> Result<OrganizerPeriodJournal, OrganizerError> {
+    let value: OrganizerPeriodJournal = decode(b"babylon.organizer-journal.v1", bytes)?;
+    let mut prior = None;
+    for entries in &value.periods {
+        if prior.is_some_and(|period| period >= entries.period) {
+            return Err(OrganizerError::InvalidState);
+        }
+        prior = Some(entries.period);
+        validate_organizer_period_entries(config, entries)?;
+    }
     Ok(value)
 }
 
@@ -646,15 +797,105 @@ pub fn initial_organizer_state(config: &OrganizerConfig) -> Result<OrganizerStat
             paused_reason: None,
         },
         agreements,
-        observations: config.initial_observations.clone(),
-        receipts: vec![],
         pending_aid: vec![],
-        aid_receipts: vec![],
-        collection_receipts: vec![],
         contact_products: vec![],
         consumed_product_ids: vec![],
         last_workplace_facts: None,
+        learned_authority_index: learned_authority_index(&config.initial_observations),
+        last_period_time_witness: None,
     })
+}
+
+/// Keep only the newest exact report per subject, source, and report kind.
+pub(super) fn learned_authority_index(
+    observations: &[OrganizerObservation],
+) -> Vec<OrganizerLearnedAuthority> {
+    let mut rows = BTreeMap::new();
+    for observation in observations {
+        let row = OrganizerLearnedAuthority {
+            observation_id: observation.observation_id,
+            receipt_id: observation.receipt_id,
+            subject_id: observation.subject_id,
+            source_actor_id: observation.source_actor_id,
+            observed_period: observation.observed_period,
+            acquired_period: observation.acquired_period,
+            report: observation.report.clone(),
+        };
+        let key = (row.subject_id, row.source_actor_id, row.report_kind());
+        let candidate = (row.observed_period, row.acquired_period, row.observation_id);
+        if rows
+            .get(&key)
+            .is_none_or(|old: &OrganizerLearnedAuthority| {
+                candidate > (old.observed_period, old.acquired_period, old.observation_id)
+            })
+        {
+            rows.insert(key, row);
+        }
+    }
+    rows.into_values().collect()
+}
+
+/// Exact household-hour identity charged by one organizer time use.
+#[must_use]
+pub fn household_contribution_use_id(
+    receipt_id: &[u8; 32],
+    actor_id: u64,
+    contributor_id: u64,
+) -> [u8; 32] {
+    let mut identity = b"babylon.organizer-household-contribution.v1\0".to_vec();
+    identity.extend_from_slice(receipt_id);
+    identity.extend_from_slice(&actor_id.to_be_bytes());
+    identity.extend_from_slice(&contributor_id.to_be_bytes());
+    content_digest::sha256_of(&identity)
+}
+
+/// Exact household-hour identities charged by one period's evidence.
+pub(super) fn charged_time_ids(entries: &OrganizerPeriodJournalEntries) -> BTreeSet<[u8; 32]> {
+    let mut ids = BTreeSet::new();
+    for receipt in entries.receipts() {
+        if receipt.choice == OrganizerChoice::Collect {
+            // Collection hours charge the exact fact identity below.
+            continue;
+        }
+        for usage in &receipt.time_use {
+            ids.insert(household_contribution_use_id(
+                &receipt.receipt_id,
+                usage.actor_id,
+                usage.contributor_id,
+            ));
+        }
+    }
+    for row in &entries.collection_receipts {
+        if row.fact.performed_hours > 0 {
+            ids.insert(row.fact.contribution_use_id);
+        }
+    }
+    ids
+}
+
+/// Insert or replace one compact learned row, keeping key order deterministic.
+pub(super) fn upsert_learned_authority(
+    index: &mut Vec<OrganizerLearnedAuthority>,
+    row: OrganizerLearnedAuthority,
+) {
+    let key = (row.subject_id, row.source_actor_id, row.report_kind());
+    if let Some(position) = index
+        .iter()
+        .position(|old| (old.subject_id, old.source_actor_id, old.report_kind()) == key)
+    {
+        if (row.observed_period, row.acquired_period, row.observation_id)
+            > (
+                index[position].observed_period,
+                index[position].acquired_period,
+                index[position].observation_id,
+            )
+        {
+            index[position] = row;
+        }
+    } else {
+        index.push(row);
+    }
+    index.sort_by_key(|old| (old.subject_id, old.source_actor_id, old.report_kind()));
 }
 
 pub(super) fn committed_hours(
@@ -686,15 +927,17 @@ pub(super) fn committed_hours(
 pub fn organizer_view(
     config: &OrganizerConfig,
     state: &OrganizerState,
+    journal: &OrganizerPeriodJournal,
     actor_id: u64,
 ) -> Result<OrganizerView, OrganizerError> {
-    validate_organizer_pair(config, state)?;
+    validate_organizer_journal(config, state, journal)?;
     if actor_id != config.controlled_actor_id {
         return Err(OrganizerError::Refused(OrganizerRefusal::WrongAuthority));
     }
-    let mut receipts = state
-        .receipts
+    let mut receipts = journal
+        .periods
         .iter()
+        .flat_map(OrganizerPeriodJournalEntries::receipts)
         .filter(|row| row.actor_id == actor_id)
         .collect::<Vec<_>>();
     let total_receipt_count =
@@ -714,9 +957,10 @@ pub fn organizer_view(
             receipt
         })
         .collect();
-    let mut observations = state
-        .observations
+    let mut observations = journal
+        .periods
         .iter()
+        .flat_map(|entries| &entries.observations)
         .filter(|row| row.actor_id == actor_id)
         .collect::<Vec<_>>();
     let total_observation_count =
@@ -745,6 +989,9 @@ pub fn organizer_view(
         .map(|row| row.observation_id)
         .collect();
     selected.extend(latest.values().map(|row| row.observation_id));
+    for row in &state.learned_authority_index {
+        selected.insert(row.observation_id);
+    }
     let observations = observations
         .into_iter()
         .filter(|row| selected.contains(&row.observation_id))
@@ -916,7 +1163,11 @@ pub fn preview_organizer(
             ),
         refusal,
         observations: if authorized {
-            state.observations.clone()
+            state
+                .learned_authority_index
+                .iter()
+                .map(|row| row.observation(config.controlled_actor_id))
+                .collect()
         } else {
             vec![]
         },

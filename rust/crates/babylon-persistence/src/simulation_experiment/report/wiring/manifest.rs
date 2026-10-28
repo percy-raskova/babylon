@@ -244,11 +244,12 @@ pub(in crate::simulation_experiment::report) fn material_families(
     foundation: &MaterialRuntimeFoundation,
 ) -> Result<Vec<MaterialFamily>> {
     let state = foundation.initial_register().state();
+    let catalog = foundation.material_catalog();
     [
         ("final_demand", state.final_demand_orders.len()),
         (
             "local_transfer",
-            state
+            catalog
                 .supplier_routes
                 .iter()
                 .filter(|r| r.transport_kind == SupplierTransport::Local)
@@ -256,14 +257,14 @@ pub(in crate::simulation_experiment::report) fn material_families(
         ),
         (
             "maintenance",
-            usize::from(state.maintenance_binding.is_some()),
+            usize::from(catalog.maintenance_binding.is_some()),
         ),
-        ("merchant_handling", state.merchants.len()),
-        ("production", state.process_outputs.len()),
+        ("merchant_handling", catalog.merchants.len()),
+        ("production", catalog.process_outputs.len()),
         ("staffing", foundation.labor().bindings().len()),
         (
             "staged_freight",
-            state
+            catalog
                 .supplier_routes
                 .iter()
                 .filter(|r| r.transport_kind == SupplierTransport::Staged)

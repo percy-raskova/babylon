@@ -718,7 +718,6 @@ struct AccountedBoundary {
     production_timing: NativeTimingSample,
 }
 
-#[derive(Default)]
 struct QualificationAccounting {
     aid: national_aid_accounting::Audit,
     trade: national_trade_accounting::Audit,
@@ -778,9 +777,18 @@ impl QualificationAccounting {
         );
         let evidence = if tick == seed_tick {
             assert!(self.production_renewal.is_none());
-            let audit =
-                national_production_renewal::Audit::seed(register.state(), tick, register.digest())
-                    .expect("renewal seed agrees with authenticated material state");
+            let admission = self
+                .production_cursor
+                .as_ref()
+                .and_then(ObserverMaterialCursor::admission_handle)
+                .expect("the authenticated cursor retains its campaign admission");
+            let audit = national_production_renewal::Audit::seed(
+                admission.material_catalog(),
+                register.state(),
+                tick,
+                register.digest(),
+            )
+            .expect("renewal seed agrees with authenticated material state");
             let evidence = audit
                 .evidence()
                 .expect("the fixture call `evidence` succeeds for the authored inputs");
@@ -838,9 +846,14 @@ impl<'a> QualificationRun<'a> {
             .production_cursor
             .as_ref()
             .expect("the fixture set the optional field before this read");
+        let admission = cursor
+            .admission_handle()
+            .expect("the authenticated cursor retains its campaign admission");
         cursor
             .with_opening_register(self.campaign, |register| {
-                accounting.aid.open(register, before)
+                accounting
+                    .aid
+                    .open(admission.material_catalog(), register, before)
             })
             .expect("the fixture builder accepts the authored options")
             .expect("the nested fixture result is present");
@@ -1005,6 +1018,13 @@ impl<'a> QualificationRun<'a> {
         accounting
             .aid
             .read(
+                accounting
+                    .production_cursor
+                    .as_ref()
+                    .and_then(ObserverMaterialCursor::admission_handle)
+                    .map(|admission| admission.material_catalog().clone())
+                    .as_ref()
+                    .expect("the authenticated cursor retains its campaign admission"),
                 &observation.accounting,
                 accounting
                     .production_cursor
@@ -1106,7 +1126,14 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
     let mut session = Session::start(config, campaign, true);
     assert_eq!(session.tail.resolve_tick, 0);
     super::snapshot("opening-created", campaign);
-    let mut accounting = QualificationAccounting::default();
+    let mut accounting = QualificationAccounting {
+        aid: national_aid_accounting::Audit::default(),
+        trade: national_trade_accounting::Audit::default(),
+        economic: national_economic_accounting::Audit::default(),
+        production_renewal: None,
+        production_renewal_evidence: None,
+        production_cursor: None,
+    };
     let foundation = session.foundation.clone();
     let mut advances = Vec::new();
     let mut cold_reopens = Vec::new();

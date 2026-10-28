@@ -50,7 +50,9 @@ fn hex_bytes(value: &str) -> Vec<u8> {
     assert!(value.len() <= MAX_LINE_BYTES && value.len().is_multiple_of(2));
     value
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .take(MAX_LINE_BYTES / 2)
         .map(|chunk| {
             let text = std::str::from_utf8(chunk).expect("ASCII hex");

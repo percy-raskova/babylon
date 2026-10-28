@@ -1,6 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::{envelope, observer_actions, open, runtime_checkpoint, MaterialComponentIdentity};
+use babylon_practice_contract::OrganizerPeriodJournalEntries;
 
 use super::observer_endpoints::AuthenticatedPreviousMaterialTick;
 
@@ -26,9 +27,12 @@ use babylon_graph::hypergraph_store::HypergraphStore;
 
 use babylon_graph::stable_state::StableGraphState;
 
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitState;
 
 use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_practice_contract::OrganizerConfig;
+use babylon_practice_contract::OrganizerState;
 
 use babylon_tick::choice_receipt::ChoiceReceipt;
 
@@ -130,6 +134,18 @@ pub struct MaterialFoundationSpec {
     pub content_digest: [u8; 32],
 }
 
+/// One captured definition set, its authorized opening and staffing authority.
+///
+/// The catalog is derived exactly once from the captured sources; every register
+/// in the campaign is admitted and advanced beneath it.
+pub(crate) struct AdmittedMaterial {
+    pub(crate) catalog: MaterialCatalog,
+    pub(crate) state: MaterialCircuitState,
+    pub(crate) staffing: StaffingComposition,
+    /// Explicit organizer authority captured beside the material opening.
+    pub(crate) organizer: Option<(OrganizerConfig, OrganizerState)>,
+}
+
 /// Fresh tick-zero owners and their exact combined foundation.
 pub struct MaterialRuntimeFoundation {
     pub(crate) graph: ReplayTickSession<HypergraphStore>,
@@ -138,6 +154,8 @@ pub struct MaterialRuntimeFoundation {
     pub(super) spec: MaterialFoundationSpec,
     digest: [u8; 32],
     pub(super) labor: StaffingComposition,
+    /// The one immutable definition set shared by every period of this campaign.
+    pub(super) catalog: MaterialCatalog,
 }
 
 /// Precise successor refusal classes. No fallback to a graph-only campaign.
@@ -281,8 +299,9 @@ impl MaterialRuntimeFoundation {
     ) -> Result<Self, MaterialRuntimeError> {
         validate_foundation_spec(&spec)?;
         let graph_foundation = CampaignFoundation::capture(&graph, bundle)?;
-        let register = MaterialWorldRegister::try_new(0, state)?;
-        Self::from_parts(graph, graph_foundation, register, spec)
+        let admitted = admitted_material(&graph_foundation, &spec)?;
+        let register = MaterialWorldRegister::try_new(&admitted.catalog, 0, state)?;
+        Self::from_parts(graph, graph_foundation, admitted, register, spec)
     }
 
     /// Capture an explicitly composed current register, including organizer authority.
@@ -296,7 +315,8 @@ impl MaterialRuntimeFoundation {
     ) -> Result<Self, MaterialRuntimeError> {
         validate_foundation_spec(&spec)?;
         let graph_foundation = CampaignFoundation::capture(&graph, bundle)?;
-        Self::from_parts(graph, graph_foundation, register, spec)
+        let admitted = admitted_material(&graph_foundation, &spec)?;
+        Self::from_parts(graph, graph_foundation, admitted, register, spec)
     }
 
     // Both initial capture and stored reconstruction use this exact encoder.
@@ -304,6 +324,7 @@ impl MaterialRuntimeFoundation {
     fn from_parts(
         graph: ReplayTickSession<HypergraphStore>,
         graph_foundation: CampaignFoundation,
+        admitted: AdmittedMaterial,
         register: MaterialWorldRegister,
         spec: MaterialFoundationSpec,
     ) -> Result<Self, MaterialRuntimeError> {
@@ -314,22 +335,19 @@ impl MaterialRuntimeFoundation {
         graph
             .validate_material_cycle()
             .map_err(|error| MaterialRuntimeError::Replay(MaterialReplayError::Graph(error)))?;
-        let labor = if let Some(catalog) = graph_foundation.content_bundle().economic_catalog() {
-            catalog
-                .validate_foundation(&graph_foundation, &register, &spec)
-                .map_err(|error| {
-                    MaterialRuntimeError::Graph(RustPersistenceRuntimeError::EconomicCatalog(error))
-                })?
-        } else if spec.preset_id == ExperimentProfile::HistoricalFreight.foundation_id() {
-            crate::simulation_experiment::validate_freight_authority(
-                &graph_foundation,
-                &register,
-                &spec,
-            )
-            .map_err(|_| MaterialRuntimeError::FoundationMismatch)?
-        } else {
+        let AdmittedMaterial {
+            catalog,
+            state,
+            staffing: labor,
+            organizer,
+        } = admitted;
+        if register.state() != &state
+            || register.catalog_digest() != catalog.catalog_digest
+            || register.organizer_config() != organizer.as_ref().map(|(config, _)| config)
+            || register.organizer_state() != organizer.as_ref().map(|(_, state)| state)
+        {
             return Err(MaterialRuntimeError::FoundationMismatch);
-        };
+        }
         let digest = CanonicalMaterialFoundation::new(
             spec.preset_id.as_bytes(),
             spec.duration,
@@ -345,6 +363,7 @@ impl MaterialRuntimeFoundation {
             spec,
             digest,
             labor,
+            catalog,
         })
     }
     /// Reconstruct from the exact captured components, through the same path as
@@ -435,6 +454,11 @@ impl MaterialRuntimeFoundation {
     pub const fn labor(&self) -> &StaffingComposition {
         &self.labor
     }
+    /// The immutable authored definitions every period of this campaign shares.
+    #[must_use]
+    pub const fn material_catalog(&self) -> &MaterialCatalog {
+        &self.catalog
+    }
     /// Consume the exact foundation into its admitted graph and labor authority.
     /// # Errors
     /// Refuses invalid initial clocks or material replay bounds.
@@ -444,6 +468,7 @@ impl MaterialRuntimeFoundation {
         Ok(MaterialReplaySession::new(
             self.graph,
             self.register,
+            self.catalog,
             self.digest,
             self.spec.duration,
             self.labor,
@@ -814,7 +839,7 @@ impl DurableMaterialRuntime {
             tx.rollback()?;
             let (ack, _) = self
                 .session
-                .commit_prepared_and_publish(sink, candidate, |_| {
+                .commit_prepared_and_publish(sink, candidate, |_, _| {
                     Ok::<_, MaterialRuntimeError>(
                         ReplayCommitDisposition::ReconciledAfterAmbiguousCommit,
                     )
@@ -872,7 +897,7 @@ impl DurableMaterialRuntime {
         let components = MaterialComponentIdentity::from_session(self.session.graph_session());
         let (ack, disposition) = self
             .session
-            .commit_prepared_and_publish(sink, candidate, |_| {
+            .commit_prepared_and_publish(sink, candidate, |_, catalog| {
                 commit_material_envelope(
                     tx,
                     &self.config,
@@ -884,6 +909,7 @@ impl DurableMaterialRuntime {
                         foundation_digest: identity.foundation_digest(),
                         components: &components,
                         opening: &self.lookup,
+                        catalog,
                         lookup_chain: None,
                         witnesses: [None, None],
                         receipt_witness: None,
@@ -919,6 +945,7 @@ pub(crate) fn commit_material_envelope(
         scope,
         components,
         opening,
+        catalog,
         ..
     } = authority;
     let tick = i64::try_from(identity.resolve_tick()).map_err(|_| MaterialRuntimeError::Bounds)?;
@@ -960,6 +987,7 @@ pub(crate) fn commit_material_envelope(
                     foundation_digest: identity.foundation_digest(),
                     components,
                     opening,
+                    catalog,
                     lookup_chain: None,
                     witnesses: [None, None],
                     receipt_witness: None,
@@ -1314,6 +1342,33 @@ impl CapturedMaterialFoundation {
     }
 }
 
+/// Derive the one admitted definition set the captured sources authorize.
+pub(crate) fn admitted_material(
+    graph_foundation: &CampaignFoundation,
+    spec: &MaterialFoundationSpec,
+) -> Result<AdmittedMaterial, MaterialRuntimeError> {
+    if let Some(catalog) = graph_foundation.content_bundle().economic_catalog() {
+        let admitted = catalog
+            .admitted_material(graph_foundation, spec)
+            .map_err(|error| {
+                MaterialRuntimeError::Graph(RustPersistenceRuntimeError::EconomicCatalog(error))
+            })?;
+        return Ok(admitted);
+    }
+    if spec.preset_id != ExperimentProfile::HistoricalFreight.foundation_id() {
+        return Err(MaterialRuntimeError::FoundationMismatch);
+    }
+    let (catalog, state, staffing) =
+        crate::simulation_experiment::admitted_freight_material(graph_foundation, spec)
+            .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
+    Ok(AdmittedMaterial {
+        catalog,
+        state,
+        staffing,
+        organizer: None,
+    })
+}
+
 pub(crate) fn reconstruct_material_foundation(
     stored: StoredMaterialFoundation,
     graph_foundation: CampaignFoundation,
@@ -1341,8 +1396,14 @@ pub(crate) fn reconstruct_material_foundation(
         return Err(MaterialRuntimeError::FoundationMismatch);
     }
     drop(component_timing);
+    // The catalog is regenerated from the captured sources before any stored
+    // register frame is decoded: state bytes never carry their definitions.
+    let catalog_timing = Timing::start(Stage::FoundationAdmission, 0);
+    let admitted = admitted_material(&graph_foundation, &stored.spec)?;
+    drop(catalog_timing);
     let register_timing = Timing::start(Stage::FoundationRegisterDecode, 0);
-    let register = MaterialWorldRegister::decode_owned(stored.initial_register_bytes)?;
+    let register =
+        MaterialWorldRegister::decode_external(&admitted.catalog, stored.initial_register_bytes)?;
     if register.completed_tick() != 0 {
         return Err(MaterialRuntimeError::FoundationMismatch);
     }
@@ -1351,8 +1412,13 @@ pub(crate) fn reconstruct_material_foundation(
     let graph = runtime::reconstruct_graph_foundation_session(&graph_foundation)?;
     drop(graph_timing);
     let _admission_timing = Timing::start(Stage::FoundationAdmission, 0);
-    let reconstructed =
-        MaterialRuntimeFoundation::from_parts(graph, graph_foundation, register, stored.spec)?;
+    let reconstructed = MaterialRuntimeFoundation::from_parts(
+        graph,
+        graph_foundation,
+        admitted,
+        register,
+        stored.spec,
+    )?;
     if reconstructed.digest() != expected_foundation_digest {
         return Err(MaterialRuntimeError::FoundationMismatch);
     }
@@ -1494,11 +1560,15 @@ pub(crate) fn read_observer_material_tick<'w>(
     client: &mut impl GenericClient,
     campaign: CampaignId,
     tick: u64,
-    scope: &str,
-    foundation_digest: [u8; 32],
-    components: &MaterialComponentIdentity,
+    read: ObserverReadAuthority<'_>,
     lookup_authority: (&OpeningRegister, [u8; 32], RegisterWitnesses<'w>),
 ) -> Result<StoredMaterialTick<'w>, MaterialRuntimeError> {
+    let ObserverReadAuthority {
+        scope,
+        foundation_digest,
+        components,
+        catalog,
+    } = read;
     let (opening, chain, witnesses) = lookup_authority;
     read_authenticated_material_tick(
         client,
@@ -1510,6 +1580,7 @@ pub(crate) fn read_observer_material_tick<'w>(
             foundation_digest,
             components,
             opening,
+            catalog,
             lookup_chain: Some(chain),
             witnesses,
             receipt_witness: None,
@@ -1542,6 +1613,7 @@ pub(crate) fn read_stored_material_tick(
             foundation_digest: session.foundation_digest(),
             components: &components,
             opening,
+            catalog: session.catalog(),
             lookup_chain: None,
             witnesses: [None, None],
             receipt_witness: None,
@@ -1611,6 +1683,7 @@ impl CapturedArchiveOrganizerRegister {
                 admitted.digest(),
                 &admitted.component_identity,
                 opening,
+                admitted.material_catalog(),
             ),
             MaterialEnvelopeRead::AuthenticatedRead,
         )?;
@@ -1645,12 +1718,27 @@ pub(crate) fn admit_archive_foundation(
     }
 }
 
+/// Campaign-scoped authorities every authenticated observer read shares.
+///
+/// The two-endpoint reader and the single-tick reader authenticate against the
+/// same admitted content; bundling them keeps the catalog beside the identity it
+/// authenticates instead of adding a trailing parameter to each signature.
+#[derive(Clone, Copy)]
+pub(crate) struct ObserverReadAuthority<'a> {
+    pub(crate) scope: &'a str,
+    pub(crate) foundation_digest: [u8; 32],
+    pub(crate) components: &'a MaterialComponentIdentity,
+    pub(crate) catalog: &'a MaterialCatalog,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct MaterialReadAuthority<'a, 'w> {
     pub(super) scope: &'a str,
     pub(crate) foundation_digest: [u8; 32],
     pub(crate) components: &'a MaterialComponentIdentity,
     pub(crate) opening: &'a OpeningRegister,
+    /// The captured definitions that authenticate every stored state frame.
+    pub(crate) catalog: &'a MaterialCatalog,
     pub(super) lookup_chain: Option<[u8; 32]>,
     pub(super) witnesses: RegisterWitnesses<'w>,
     pub(super) receipt_witness: Option<&'w AdmittedReceiptWitness>,
@@ -1663,12 +1751,14 @@ impl<'a, 'w> MaterialReadAuthority<'a, 'w> {
         foundation_digest: [u8; 32],
         components: &'a MaterialComponentIdentity,
         opening: &'a OpeningRegister,
+        catalog: &'a MaterialCatalog,
     ) -> Self {
         Self {
             scope,
             foundation_digest,
             components,
             opening,
+            catalog,
             lookup_chain: None,
             witnesses: [None, None],
             receipt_witness: None,
@@ -1868,6 +1958,7 @@ impl CapturedMaterialTick {
             scope,
             opening,
             components,
+            catalog,
             ..
         } = authority;
         let storage_timing = Timing::start(Stage::TickStorageAdmission, tick);
@@ -1879,7 +1970,7 @@ impl CapturedMaterialTick {
         drop(row);
         let lookup_chain = decoded.chain;
         let admitted = material_storage::decode_typed_with_witness(
-            opening,
+            material_storage::MaterialProvenance { catalog, opening },
             tick,
             &register_storage,
             &receipt_storage,
@@ -1961,10 +2052,15 @@ pub(crate) fn authenticated_organizer_actions(
     source: StoredTickReadSource,
     campaign: CampaignId,
     tick: u64,
-    components: &MaterialComponentIdentity,
     stored: &StoredMaterialTick<'_>,
-    foundation_opening: &OpeningRegister,
+    authority: MaterialReadAuthority<'_, '_>,
 ) -> Result<Option<OrderedPracticeActionBatch>, MaterialRuntimeError> {
+    let MaterialReadAuthority {
+        components,
+        opening: foundation_opening,
+        catalog,
+        ..
+    } = authority;
     let register = &stored.register;
     let Some(config) = register.organizer_config() else {
         return Ok(None);
@@ -1989,6 +2085,7 @@ pub(crate) fn authenticated_organizer_actions(
                 foundation_digest: stored.identity.foundation_digest(),
                 components,
                 opening: foundation_opening,
+                catalog,
                 lookup_chain: None,
                 witnesses: [None, None],
                 receipt_witness: None,
@@ -2015,11 +2112,15 @@ pub(crate) fn authenticated_organizer_actions(
     }
     let commitment = command.map(|(commitment, _)| commitment);
     let receipt = register
-        .organizer_state()
-        .and_then(|state| {
-            state.receipts.iter().find(|receipt| {
-                receipt.actor_id == config.controlled_actor_id && receipt.period == tick
-            })
+        .organizer_journal()
+        .and_then(|journal| {
+            journal
+                .periods
+                .iter()
+                .flat_map(OrganizerPeriodJournalEntries::receipts)
+                .find(|receipt| {
+                    receipt.actor_id == config.controlled_actor_id && receipt.period == tick
+                })
         })
         .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
     if receipt.commitment_id != commitment.as_ref().map(|input| input.commitment_id) {
@@ -2046,6 +2147,7 @@ pub(crate) fn observer_organizer_actions(
     let MaterialReadAuthority {
         components,
         opening,
+        catalog,
         witnesses,
         previous,
         ..
@@ -2079,6 +2181,7 @@ pub(crate) fn observer_organizer_actions(
                 foundation_digest: stored.identity.foundation_digest(),
                 components,
                 opening,
+                catalog,
                 lookup_chain: None,
                 witnesses,
                 receipt_witness: None,
@@ -2101,10 +2204,15 @@ pub(crate) fn observer_organizer_actions(
         .register
         .organizer_state()
         .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
+    let journal = stored
+        .register
+        .organizer_journal()
+        .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
     observer_actions::reconstruct(
         config,
         &prior,
         current,
+        journal,
         components.session_id(),
         tick,
         bytes,
@@ -2120,11 +2228,7 @@ pub(crate) fn validate_component_identity(
     stored: &StoredMaterialTick<'_>,
     authority: MaterialReadAuthority<'_, '_>,
 ) -> Result<(), MaterialRuntimeError> {
-    let MaterialReadAuthority {
-        components,
-        opening,
-        ..
-    } = authority;
+    let MaterialReadAuthority { components, .. } = authority;
     components.validate_sections(&stored.sections)?;
     let tick_sql = i64::try_from(tick).map_err(|_| MaterialRuntimeError::Bounds)?;
     let row = client
@@ -2139,9 +2243,9 @@ pub(crate) fn validate_component_identity(
         .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
     let bytes = row.try_get::<_, Vec<u8>>(2)?;
     let accepted = match source {
-        StoredTickReadSource::Runtime => authenticated_organizer_actions(
-            client, source, campaign, tick, components, stored, opening,
-        )?,
+        StoredTickReadSource::Runtime => {
+            authenticated_organizer_actions(client, source, campaign, tick, stored, authority)?
+        }
         StoredTickReadSource::FullObserver => {
             observer_organizer_actions(client, campaign, tick, stored, authority, &bytes)?
         }

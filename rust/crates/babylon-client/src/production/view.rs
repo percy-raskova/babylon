@@ -6,6 +6,7 @@ use babylon_persistence::production_observation::{ProductionSite, ProductionSnap
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{ScalingMode, Viewport};
+use bevy::core_pipeline::tonemapping::Tonemapping;
 
 use bevy::ecs::system::SystemParam;
 
@@ -285,7 +286,7 @@ pub(crate) fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bu
     (
         Text::new(value),
         TextFont {
-            font_size: size,
+            font_size: FontSize::Px(size),
             ..default()
         },
         TextColor(color),
@@ -297,7 +298,7 @@ pub(crate) fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bu
 pub(crate) fn button_node(command: ProductionCommand) -> impl Bundle {
     let context = production_command_context(&command).cloned();
     (
-        Button,
+        ui::pressable(),
         ProductionButton(command),
         ObserverFocusTarget::action(context),
         Node {
@@ -326,6 +327,10 @@ pub(crate) fn button(
 pub(crate) fn setup(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
+        // LUT-free tonemapper: the client ships no `tonemapping_luts` feature,
+        // so the default TonyMcMapface curve cannot resolve its LUT. AcesFitted
+        // keeps exposure and color grading while needing no texture.
+        Tonemapping::AcesFitted,
         Camera {
             is_active: false,
             ..default()
@@ -338,7 +343,7 @@ pub(crate) fn setup(mut commands: Commands) {
     commands.spawn((
         DirectionalLight {
             illuminance: 9000.0,
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         Transform::from_xyz(-500.0, 900.0, 400.0).looking_at(Vec3::ZERO, Vec3::Y),
@@ -998,7 +1003,7 @@ pub(crate) fn spawn_site_label(
         .id();
     commands
         .spawn((
-            Button,
+            ui::pressable(),
             ProductionButton(ProductionCommand::Select {
                 site_id: site.id.clone(),
                 context: context.clone(),
@@ -1879,9 +1884,12 @@ use crate::observer_ui::ObserverFontRole;
 use crate::production_brief;
 use crate::production_freight;
 use crate::production_layout;
+use crate::ui;
+use crate::ui::Interaction;
 use babylon_persistence::identity::CampaignId;
 use bevy::input::mouse::MouseMotion;
 use bevy::input::mouse::MouseWheel;
 use bevy::ui::UiSystems;
+use bevy::ui_widgets::Button;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;

@@ -292,10 +292,14 @@ impl ReadSession {
             .as_ref()
             .and_then(ObserverMaterialCursor::current_register)
             .ok_or(Refusal::Reader)?;
+        let admission = cursor
+            .as_ref()
+            .and_then(ObserverMaterialCursor::admission_handle)
+            .ok_or(Refusal::Reader)?;
         let audit_started = Instant::now();
         let mut audit = self.audit.clone();
         let facts = audit
-            .read(&observation, register)
+            .read(admission.material_catalog(), &observation, register)
             .map_err(Refusal::Material)?;
         let audit_elapsed_ns = nanos(audit_started.elapsed().as_nanos())?;
         let result = BoundaryRead {

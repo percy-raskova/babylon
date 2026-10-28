@@ -1,7 +1,7 @@
 use super::Cursor;
 use crate::{
     CommodityDefinition, CommodityKind, GoodId, MaterialCircuitError, OrderId, ServiceConnection,
-    ServiceOrder, ServiceStage, SiteId, UnitId,
+    ServiceOrder, SiteId, UnitId,
 };
 pub(super) fn append_commodities(
     out: &mut Vec<u8>,
@@ -20,29 +20,6 @@ pub(super) fn append_commodities(
                 b.push(stage as u8);
             }
         }
-    })
-}
-pub(super) fn decode_commodities(
-    c: &mut Cursor<'_>,
-) -> Result<Vec<CommodityDefinition>, MaterialCircuitError> {
-    super::decode_rows(c, |b| {
-        Ok(CommodityDefinition {
-            good_id: GoodId::from_bytes(b.array()?),
-            unit_id: UnitId::from_bytes(b.array()?),
-            kind: match b.u8()? {
-                1 => CommodityKind::Storable {
-                    grams_per_unit: b.u64()?,
-                },
-                2 => CommodityKind::PeriodService {
-                    stage: match b.u8()? {
-                        1 => ServiceStage::UtilityProvision,
-                        2 => ServiceStage::LocalServiceProvision,
-                        _ => return Err(MaterialCircuitError::WireEnum),
-                    },
-                },
-                _ => return Err(MaterialCircuitError::WireEnum),
-            },
-        })
     })
 }
 pub(super) fn append_connections(

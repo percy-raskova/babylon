@@ -2164,7 +2164,7 @@ mod tests {
             Err(ReplayTickError::Stable(_))
         ));
         assert_eq!(session.completed_tick, 0);
-        assert!(sink.events.is_empty());
+        assert_eq!(sink.events.len(), 0);
         assert_eq!(
             session
                 .graph
@@ -2213,7 +2213,7 @@ mod tests {
         .expect_err("the fixture run completes");
         assert!(matches!(error, ReplayTickError::Composer { .. }));
         assert_eq!(session.completed_tick, 0);
-        assert!(sink.events.is_empty());
+        assert_eq!(sink.events.len(), 0);
         assert_eq!(
             session
                 .graph
@@ -2273,7 +2273,7 @@ mod tests {
         let prepared = session
             .prepare_advance(&actions)
             .expect("the session prepares the authored advance");
-        assert!(!prepared.events.is_empty());
+        assert_ne!(prepared.events.len(), 0);
         let before_graph = session
             .graph
             .encode_state()
@@ -2774,6 +2774,6 @@ mod tests {
             Err(ReplayTickError::TickCounterOverflow)
         ));
         assert_eq!(session.completed_tick, i64::MAX);
-        assert!(sink.events.is_empty());
+        assert_eq!(sink.events.len(), 0);
     }
 }

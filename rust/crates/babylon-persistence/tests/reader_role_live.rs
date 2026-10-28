@@ -661,11 +661,14 @@ fn assert_confined_reader_search_and_card(
         dark.state,
         ArchiveDossierState::Unavailable(ArchiveDossierUnavailable::SubjectNotDisclosed)
     );
-    assert!(reader
-        .search_as_of(scope, "99901", 10)
-        .expect("the fixture call `search_as_of` succeeds for the authored inputs")
-        .hits
-        .is_empty());
+    assert_eq!(
+        reader
+            .search_as_of(scope, "99901", 10)
+            .expect("the fixture call `search_as_of` succeeds for the authored inputs")
+            .hits
+            .len(),
+        0
+    );
 }
 
 fn assert_first_county_revision_evidence(page: &ArchiveDossierPage) {
@@ -826,7 +829,7 @@ fn assert_quiet_receipt_verification(
     let idle = restarted
         .sweep_once(target.campaign_id, &NullArchiveDossierProducer::new())
         .expect("the fixture sweep completes");
-    assert!(idle.dispositions().is_empty());
+    assert_eq!(idle.dispositions().len(), 0);
     assert_eq!(idle.verified_tick(), 2);
     assert_eq!(
         reader
@@ -856,7 +859,7 @@ fn assert_quiet_retry(target: &ReaderTarget, scope: &ArchiveReadScope) {
         retry.disposition(),
         babylon_persistence::ArchiveMaterializeDisposition::AlreadyConsumed
     );
-    assert!(retry.pages().is_empty());
+    assert_eq!(retry.pages().len(), 0);
 }
 
 fn assert_pending_retained_page(
@@ -1445,7 +1448,7 @@ fn assert_material_lock_refusal(
     );
     assert_eq!(runtime.session().material().canonical_bytes(), opening);
     assert!(runtime.tail().is_none());
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
     let durable: i64 = owner
         .query_one(
             "SELECT count(*) FROM babylon_state.tick_commit WHERE campaign_id=$1::uuid",
@@ -1480,7 +1483,7 @@ fn assert_material_marker_rollback(
         before
     );
     assert_eq!(runtime.session().material().canonical_bytes(), opening);
-    assert!(sink.events.is_empty());
+    assert_eq!(sink.events.len(), 0);
     for table in [
         "tick_commit",
         "material_tick_v3",

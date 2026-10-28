@@ -154,8 +154,7 @@ fn run_case(
         .len();
     let mut session = foundation.into_session()?;
     if session
-        .material()
-        .state()
+        .catalog()
         .route_stages
         .iter()
         .any(|stage| stage.stage_index != 0 || stage.travel_periods != 1)
@@ -188,12 +187,13 @@ fn run_case(
         }
         let row = facts::period(
             &selected,
+            session.catalog(),
             session.material().state(),
             &prepared,
             selected_capacity,
         )?;
         session
-            .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_| {
+            .commit_prepared_and_publish(&mut CollectingSink::default(), prepared, |_, _| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
             .map_err(|error| {

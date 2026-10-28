@@ -235,9 +235,9 @@ fn zero_population_and_empty_world_are_explicit_valid_states() {
     assert_eq!(result.next_labor()[0].available, 0);
     conservation(&result.receipts()[0]);
     let empty_world = super::advance_staffing(&state(vec![]), &[]).expect("declared empty state");
-    assert!(empty_world.state().pools().is_empty());
-    assert!(empty_world.receipts().is_empty());
-    assert!(empty_world.next_labor().is_empty());
+    assert_eq!(empty_world.state().pools().len(), 0);
+    assert_eq!(empty_world.receipts().len(), 0);
+    assert_eq!(empty_world.next_labor().len(), 0);
     assert_eq!(empty_world.state().period(), 2);
 }
 

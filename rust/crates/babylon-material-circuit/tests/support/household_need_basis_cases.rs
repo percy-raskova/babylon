@@ -2,6 +2,7 @@
 use crate::money;
 use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::HouseholdNeedBasis;
+use babylon_material_circuit::MaterialCatalog;
 
 #[test]
 fn resident_and_household_bases_drive_real_consumption_without_changing_counts() {
@@ -9,16 +10,19 @@ fn resident_and_household_bases_drive_real_consumption_without_changing_counts()
         (HouseholdNeedBasis::Persons, 8),
         (HouseholdNeedBasis::Households, 4),
     ] {
-        let mut state = crate::opening();
+        let (mut catalog, mut state) = crate::opening();
         let recurring = crate::recurring_mut(&mut state);
         recurring.household_needs[0].basis = basis;
         recurring.household_needs[0].units_per_basis = 2;
         recurring.household_purchases[0].enabled = false;
-        let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+        catalog.household_needs[0].basis = basis;
+        catalog.household_needs[0].units_per_basis = 2;
+        catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+        let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
             .expect("the canonical material state encodes");
-        let restored = babylon_material_circuit::decode_material_circuit_state(&bytes)
+        let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
             .expect("the canonical material bytes decode");
-        let close = babylon_material_circuit::advance_material_circuit(&restored)
+        let close = babylon_material_circuit::advance_material_circuit(&catalog, &restored)
             .expect("the authored material state advances one period");
         assert_eq!(close.household_consumption[0].required_quantity, expected);
         assert_eq!(close.household_consumption[0].consumed_quantity, expected);

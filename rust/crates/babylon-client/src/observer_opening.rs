@@ -15,6 +15,7 @@ use crate::observer::ObserverSession;
 use crate::observer_focus::{ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate};
 use crate::observer_io::ObserverSet;
 use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
+use crate::ui;
 use bevy::picking::pointer::PointerButton;
 use bevy::text::LineHeight;
 
@@ -118,12 +119,12 @@ fn label(value: &str, size: f32) -> impl Bundle {
     (
         Text::new(value),
         TextFont {
-            font_size: size,
+            font_size: FontSize::Px(size),
             ..default()
         },
         TextColor(Color::srgb(0.98, 0.88, 0.78)),
         ObserverFontRole::Display,
-        TextLayout::new_with_justify(Justify::Center),
+        TextLayout::justify(Justify::Center),
         DeclaredSurface::new(SurfaceId::TitleLockup),
     )
 }
@@ -133,13 +134,13 @@ fn spawn_production(
     server: Res<AssetServer>,
     mut materials: ResMut<Assets<SignatureMaterial>>,
 ) {
-    let ink = server.load_with_settings(
-        "embedded://opening/signature-ink.png",
-        |settings: &mut ImageLoaderSettings| {
+    let ink = server
+        .load_builder()
+        .with_settings(|settings: &mut ImageLoaderSettings| {
             settings.is_srgb = false;
             settings.sampler = ImageSampler::nearest();
-        },
-    );
+        })
+        .load("embedded://opening/signature-ink.png");
     let material = materials.add(SignatureMaterial {
         clock: Vec4::ZERO,
         pen: Vec4::ZERO,
@@ -186,7 +187,7 @@ fn spawn_production(
                 Text::new("Persephone\nRaskova"),
                 TextFont::from_font_size(300.0),
                 TextColor(Color::srgb(0.97, 0.80, 0.91)),
-                TextLayout::new_with_justify(Justify::Center),
+                TextLayout::justify(Justify::Center),
                 LineHeight::RelativeToFont(0.9),
                 ObserverFontRole::Script,
                 Node {
@@ -211,7 +212,7 @@ fn spawn_production(
             ));
             screen
                 .spawn((
-                    Button,
+                    ui::pressable(),
                     SkipProduction,
                     Node {
                         position_type: PositionType::Absolute,
@@ -235,7 +236,7 @@ fn spawn_production(
 }
 
 fn skip_pointer(
-    event: On<Pointer<Click>>,
+    event: On<PointerClick>,
     opening: Res<OpeningPresentation>,
     mut skips: MessageWriter<ProductionSkip>,
 ) {
@@ -400,7 +401,7 @@ fn animate(
         } else {
             Display::None
         };
-        font.font_size = size.x * 0.227;
+        font.font_size = FontSize::Px(size.x * 0.227);
     }
     for (mut node, handle) in &mut nodes.signature {
         node.display = if ui.reduced_motion {
@@ -412,7 +413,7 @@ fn animate(
         node.height = px(size.y);
         node.left = px((width - size.x) * 0.5);
         node.top = px((height - size.y) * 0.12);
-        if let Some(material) = materials.get_mut(handle) {
+        if let Some(mut material) = materials.get_mut(handle) {
             material.clock = Vec4::new(
                 seconds,
                 if ui.reduced_motion { 1.0 } else { 0.0 },
@@ -425,12 +426,13 @@ fn animate(
     for (caption, mut font, mut color) in &mut nodes.captions {
         let base = height * if caption.0 { 0.073 } else { 0.05 };
         let impact = ((seconds - IMPACT) * 10.0).max(0.0);
-        font.font_size = base
-            * if caption.0 && seconds >= IMPACT && !ui.reduced_motion {
+        font.font_size = FontSize::Px(
+            base * if caption.0 && seconds >= IMPACT && !ui.reduced_motion {
                 1.0 + (-impact).exp() * 1.5
             } else {
                 1.0
-            };
+            },
+        );
         color.0 = Color::srgba(
             0.98,
             0.88,

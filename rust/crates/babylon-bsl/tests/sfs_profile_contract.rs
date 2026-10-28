@@ -381,7 +381,7 @@ fn forbidden_manifest() -> (Vec<ManifestRow>, Vec<u8>) {
     let mut previous = "";
     for index in 0..MAX_FIXTURE_ROWS {
         let Some(line) = lines.next() else { break };
-        assert!(!line.is_empty());
+        assert_ne!(line.len(), 0);
         if index > 0 {
             assert!(previous.as_bytes() < line.as_bytes());
         }

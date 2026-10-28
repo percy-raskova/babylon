@@ -81,7 +81,7 @@ pub(super) fn pack(rows: &[u8], count: usize) -> Result<Option<PackedAmounts>> {
     values
         .try_reserve_exact(count)
         .map_err(|_| Error::Allocation)?;
-    for row in rows.chunks_exact(NORMALIZED_WIDTH) {
+    for row in rows.as_chunks::<NORMALIZED_WIDTH>().0 {
         values.push(context_amount(row)?.1);
     }
     values.sort_unstable();
@@ -101,7 +101,7 @@ pub(super) fn pack(rows: &[u8], count: usize) -> Result<Option<PackedAmounts>> {
             columns[dictionary_start + column * values.len() + index] = byte;
         }
     }
-    for (index, row) in rows.chunks_exact(NORMALIZED_WIDTH).enumerate() {
+    for (index, row) in rows.as_chunks::<NORMALIZED_WIDTH>().0.iter().enumerate() {
         let (context, amount) = context_amount(row)?;
         let reference = values
             .binary_search(&amount)

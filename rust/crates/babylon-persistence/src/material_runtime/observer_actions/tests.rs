@@ -8,7 +8,8 @@ use babylon_practice_contract::{
     InputAuthorityId, OrganizerAidKind, OrganizerChoice, OrganizerInquiry, ProposalNonce,
 };
 use babylon_practice_contract::{
-    OrganizerConfig, OrganizerState, PracticeIntent, ORDERED_PRACTICE_ACTION_BATCH_DOMAIN_BYTES,
+    OrganizerConfig, OrganizerPeriodJournal, OrganizerPeriodJournalEntries, OrganizerState,
+    PracticeIntent, ORDERED_PRACTICE_ACTION_BATCH_DOMAIN_BYTES,
 };
 use fixture::Session;
 
@@ -58,31 +59,38 @@ fn verify_advance(session: &mut Session, choice: Option<OrganizerChoice>) {
         .material()
         .organizer_state()
         .expect("the fixture register carries organizer state");
+    let journal = session
+        .material()
+        .organizer_journal()
+        .expect("the fixture register carries organizer journal");
+    let entries = journal.latest().expect("the fixture resolved one period");
     let tick = current.period;
     let bytes = batch.canonical_bytes();
     if prior.period == 1 && choice == Some(OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost)) {
-        assert_mixed_batch(&config, &prior, current, &identity, tick, bytes);
+        assert_mixed_batch(&config, &prior, current, journal, &identity, tick, bytes);
     }
     assert_eq!(
-        reconstruct(&config, &prior, current, &identity, tick, bytes)
+        reconstruct(&config, &prior, current, journal, &identity, tick, bytes)
             .expect("the fixture call `reconstruct` succeeds for the authored inputs"),
         batch
     );
-    assert!(reconstruct(&config, current, current, &identity, tick, bytes).is_err());
-    let mut changed = current.clone();
+    assert!(reconstruct(&config, current, current, journal, &identity, tick, bytes).is_err());
+    let mut changed = entries.clone();
     let receipt = changed
         .receipts
         .iter_mut()
         .find(|row| row.period == tick && row.actor_id == config.controlled_actor_id)
         .expect("the fixture holds the searched element");
     receipt.choice = OrganizerChoice::PauseStanding;
-    assert!(reconstruct(&config, &prior, &changed, &identity, tick, bytes).is_err());
-    let mut changed = current.clone();
+    let changed = window(changed);
+    assert!(reconstruct(&config, &prior, current, &changed, &identity, tick, bytes).is_err());
+    let mut changed = entries.clone();
     changed
         .receipts
         .retain(|row| row.period != tick || row.actor_id != config.controlled_actor_id);
-    assert!(reconstruct(&config, &prior, &changed, &identity, tick, bytes).is_err());
-    let mut changed = current.clone();
+    let changed = window(changed);
+    assert!(reconstruct(&config, &prior, current, &changed, &identity, tick, bytes).is_err());
+    let mut changed = entries.clone();
     let receipt = changed
         .receipts
         .iter()
@@ -90,11 +98,13 @@ fn verify_advance(session: &mut Session, choice: Option<OrganizerChoice>) {
         .expect("the fixture holds the searched element")
         .clone();
     changed.receipts.push(receipt);
-    assert!(reconstruct(&config, &prior, &changed, &identity, tick, bytes).is_err());
+    let changed = window(changed);
+    assert!(reconstruct(&config, &prior, current, &changed, &identity, tick, bytes).is_err());
     assert!(reconstruct(
         &config,
         &prior,
         current,
+        journal,
         &identity,
         tick,
         &bytes[..bytes.len() - 1]
@@ -102,7 +112,7 @@ fn verify_advance(session: &mut Session, choice: Option<OrganizerChoice>) {
     .is_err());
     let mut trailing = bytes.to_vec();
     trailing.push(0);
-    assert!(reconstruct(&config, &prior, current, &identity, tick, &trailing).is_err());
+    assert!(reconstruct(&config, &prior, current, journal, &identity, tick, &trailing).is_err());
 }
 
 #[test]
@@ -168,6 +178,10 @@ fn observer_checked_action_identity_nonce_and_authority_refuse() {
                 .material()
                 .organizer_state()
                 .expect("the fixture register carries organizer state"),
+            actual
+                .material()
+                .organizer_journal()
+                .expect("the fixture register carries organizer journal"),
             identity,
             batch.resolve_tick(),
             &bytes
@@ -187,6 +201,10 @@ fn observer_checked_action_identity_nonce_and_authority_refuse() {
             .material()
             .organizer_state()
             .expect("the fixture register carries organizer state"),
+        actual
+            .material()
+            .organizer_journal()
+            .expect("the fixture register carries organizer journal"),
         identity,
         batch.resolve_tick(),
         &bytes
@@ -199,6 +217,10 @@ fn observer_checked_action_identity_nonce_and_authority_refuse() {
             .material()
             .organizer_state()
             .expect("the fixture register carries organizer state"),
+        actual
+            .material()
+            .organizer_journal()
+            .expect("the fixture register carries organizer journal"),
         identity,
         batch.resolve_tick(),
         &encoded(identity, batch.resolve_tick(), &[])
@@ -243,10 +265,17 @@ fn encoded(session: &ReplaySessionId, tick: u64, intents: &[PracticeIntent]) -> 
     bytes
 }
 
+fn window(entries: OrganizerPeriodJournalEntries) -> OrganizerPeriodJournal {
+    OrganizerPeriodJournal {
+        periods: vec![entries],
+    }
+}
+
 fn assert_mixed_batch(
     config: &OrganizerConfig,
     prior: &OrganizerState,
     current: &OrganizerState,
+    journal: &OrganizerPeriodJournal,
     identity: &ReplaySessionId,
     tick: u64,
     bytes: &[u8],
@@ -267,6 +296,7 @@ fn assert_mixed_batch(
         config,
         prior,
         current,
+        journal,
         identity,
         tick,
         &encoded(identity, tick, &without_partner)
@@ -283,6 +313,7 @@ fn assert_mixed_batch(
         config,
         prior,
         current,
+        journal,
         identity,
         tick,
         &encoded(identity, tick, &without_delayed)

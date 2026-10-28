@@ -120,7 +120,7 @@ fn null_producer_returns_empty_but_valid_outcome() {
         .expect("null outcome is valid");
     let batch = outcome.batch();
 
-    assert!(batch.pages().is_empty());
+    assert_eq!(batch.pages().len(), 0);
     assert_eq!(outcome.remaining(), 0, "nothing dirty remains");
     assert_eq!(empty_batch(1, [0x11; 32]).sha256(), batch.sha256());
 }
@@ -141,7 +141,7 @@ fn pending_receipt_refuses_tick_zero_and_bigint_overflow() {
 fn empty_sweep_report_has_zero_counts_and_verified_tick() {
     let report = ArchiveWorkerSweepReport::default();
 
-    assert!(report.dispositions().is_empty());
+    assert_eq!(report.dispositions().len(), 0);
     assert_eq!(report.applied_count(), 0);
     assert_eq!(report.paged_count(), 0);
     assert_eq!(report.already_consumed_count(), 0);

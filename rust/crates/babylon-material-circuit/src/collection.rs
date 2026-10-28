@@ -1,5 +1,6 @@
 //! Bounded voluntary household cash after reproduction/taxes, before distributions.
 use crate::valuation::CostClose;
+use crate::MaterialCatalog;
 use crate::{
     AccountId, AidReceipt, CapitalContributionReceipt, CashTransferPurpose, CircuitAccounting,
     CommodityKind, FinalDemandPrincipalId, FinancialInstitutions, HouseholdConsumptionReceipt,
@@ -187,6 +188,7 @@ fn one<'a, T: 'a>(mut rows: impl Iterator<Item = &'a T>) -> Result<&'a T> {
     Ok(row)
 }
 fn protected(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     input: &CollectionResolveInput,
     facts: &CollectionEvidence<'_>,
@@ -204,14 +206,14 @@ fn protected(
         .filter(|row| row.principal_id == input.donor))?;
     let mut outcome = None;
     let mut has_needs = false;
-    for need in recurring
+    for need in catalog
         .household_needs
         .iter()
         .filter(|row| row.principal_id == input.donor)
     {
         has_needs = true;
         let required = need.required_quantity(household)?;
-        let commodity = one(state
+        let commodity = one(catalog
             .commodities
             .iter()
             .filter(|row| row.good_id == need.good_id && row.unit_id == need.unit_id))?;
@@ -392,6 +394,7 @@ struct FrozenCollection {
 }
 
 fn frozen_outcomes(
+    catalog: &MaterialCatalog,
     inputs: &[CollectionResolveInput],
     state: &MaterialCircuitState,
     money: &[MoneyTransferReceipt],
@@ -432,7 +435,7 @@ fn frozen_outcomes(
             .ok_or(MaterialCircuitError::HouseholdTimeInvariant)?;
         let outcome = if !input.cash_consent {
             Some(CollectionOutcome::CashConsentRefused)
-        } else if let Some(reason) = protected(state, input, facts)? {
+        } else if let Some(reason) = protected(catalog, state, input, facts)? {
             Some(reason)
         } else if cash.micro_units() == 0 {
             Some(CollectionOutcome::InsufficientCash)
@@ -451,6 +454,7 @@ fn frozen_outcomes(
 }
 
 pub(crate) fn close(
+    catalog: &MaterialCatalog,
     inputs: &[CollectionResolveInput],
     state: &mut MaterialCircuitState,
     costs: &mut CostClose,
@@ -463,7 +467,7 @@ pub(crate) fn close(
     if inputs.is_empty() {
         return Ok(Vec::new());
     }
-    let frozen = frozen_outcomes(inputs, state, money, &facts)?;
+    let frozen = frozen_outcomes(catalog, inputs, state, money, &facts)?;
     let mut result = Vec::with_capacity(inputs.len());
     for (input, frozen) in inputs.iter().zip(frozen) {
         let mut row = CollectionReceipt {

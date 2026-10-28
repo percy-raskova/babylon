@@ -422,8 +422,8 @@ mod tests {
             no_incident.choice_receipts[0].draw_ticket(),
             STRUGGLE_SPARK_NO_INCIDENT_TICKET
         );
-        assert!(no_incident.committed_events.is_empty());
-        assert!(no_event_sink.events.is_empty());
+        assert_eq!(no_incident.committed_events.len(), 0);
+        assert_eq!(no_event_sink.events.len(), 0);
     }
 
     #[test]

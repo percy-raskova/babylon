@@ -10,6 +10,7 @@ use super::OrganizerConfig;
 use super::OrganizerContactProduct;
 use super::OrganizerError;
 use super::OrganizerInquiry;
+use super::OrganizerLearnedAuthority;
 use super::OrganizerMaterialSupport;
 use super::OrganizerObservation;
 use super::OrganizerOutcome;
@@ -17,11 +18,14 @@ use super::OrganizerPartner;
 use super::OrganizerPartnerPolicy;
 use super::OrganizerPartnerResponse;
 use super::OrganizerPauseReason;
+use super::OrganizerPeriodJournalEntries;
+use super::OrganizerPeriodTimeWitness;
 use super::OrganizerReceipt;
 use super::OrganizerRefusal;
 use super::OrganizerReport;
 use super::OrganizerState;
 use super::OrganizerWorkplaceFacts;
+use super::ResolvedOrganizerPeriod;
 
 use std::collections::BTreeSet;
 
@@ -230,6 +234,7 @@ fn has_agreement(
 
 fn add_observation(
     state: &mut OrganizerState,
+    entries: &mut OrganizerPeriodJournalEntries,
     config: &OrganizerConfig,
     observed_period: u64,
     acquired_period: u64,
@@ -248,14 +253,18 @@ fn add_observation(
             &report,
         ),
     )?;
-    if state
+    if entries
         .observations
         .iter()
         .any(|row| row.observation_id == observation_id)
+        || state
+            .learned_authority_index
+            .iter()
+            .any(|row| row.observation_id == observation_id)
     {
         return Err(OrganizerError::InvalidState);
     }
-    state.observations.push(OrganizerObservation {
+    let observation = OrganizerObservation {
         observation_id,
         actor_id: config.controlled_actor_id,
         subject_id: config.workplace_id,
@@ -263,8 +272,21 @@ fn add_observation(
         observed_period,
         acquired_period,
         receipt_id,
-        report,
-    });
+        report: report.clone(),
+    };
+    entries.observations.push(observation);
+    super::contract::upsert_learned_authority(
+        &mut state.learned_authority_index,
+        OrganizerLearnedAuthority {
+            observation_id,
+            receipt_id,
+            subject_id: config.workplace_id,
+            source_actor_id: config.workplace_partner.actor_id,
+            observed_period,
+            acquired_period,
+            report,
+        },
+    );
     Ok(observation_id)
 }
 
@@ -280,7 +302,7 @@ pub fn reduce_organizer_products(
     config: &OrganizerConfig,
     opening: &OrganizerState,
     facts: &OrganizerWorkplaceFacts,
-) -> Result<OrganizerState, OrganizerError> {
+) -> Result<ResolvedOrganizerPeriod, OrganizerError> {
     let contacts = consume_organizer_contact_products(config, opening, facts.period)?;
     report_organizer_workplace(config, opening, &contacts, facts)
 }
@@ -305,6 +327,7 @@ pub fn consume_organizer_contact_products(
     }
     let mut next = opening.clone();
     let consumed: BTreeSet<_> = opening.consumed_product_ids.iter().copied().collect();
+    let mut spent = BTreeSet::new();
     for product in &opening.contact_products {
         if consumed.contains(&product.product_id) {
             continue;
@@ -339,8 +362,15 @@ pub fn consume_organizer_contact_products(
             agreement.valid_through_period = through;
             agreement.source_product_id = Some(product.product_id);
         }
+        // The tombstone is the durable refusal; the creation receipt may be
+        // evicted, so the consumed product never stays in live state.
         next.consumed_product_ids.push(product.product_id);
+        spent.insert(product.product_id);
     }
+    next.contact_products
+        .retain(|product| !spent.contains(&product.product_id));
+    next.consumed_product_ids.sort_unstable();
+    next.consumed_product_ids.dedup();
     super::contract::validate_organizer_pair(config, &next)?;
     Ok(next)
 }
@@ -359,7 +389,7 @@ pub fn report_organizer_workplace(
     opening: &OrganizerState,
     contacts: &OrganizerState,
     facts: &OrganizerWorkplaceFacts,
-) -> Result<OrganizerState, OrganizerError> {
+) -> Result<ResolvedOrganizerPeriod, OrganizerError> {
     super::contract::validate_organizer_pair(config, opening)?;
     super::contract::validate_organizer_pair(config, contacts)?;
     if opening.period.checked_add(1) != Some(facts.period)
@@ -371,6 +401,7 @@ pub fn report_organizer_workplace(
     let mut next = contacts.clone();
     next.period = facts.period;
     next.last_workplace_facts = Some(facts.clone());
+    let mut entries = OrganizerPeriodJournalEntries::new(facts.period);
     if config.workplace_partner.permits_work_report
         && config.workplace_partner.policy == OrganizerPartnerPolicy::Participate
         && has_agreement(
@@ -384,6 +415,7 @@ pub fn report_organizer_workplace(
             if facts.performed_labor_hours < previous.performed_labor_hours {
                 add_observation(
                     &mut next,
+                    &mut entries,
                     config,
                     facts.period,
                     facts.period,
@@ -397,7 +429,10 @@ pub fn report_organizer_workplace(
         }
     }
     super::contract::validate_organizer_pair(config, &next)?;
-    Ok(next)
+    Ok(ResolvedOrganizerPeriod {
+        state: next,
+        journal: entries,
+    })
 }
 
 fn routine_commitment(
@@ -662,14 +697,15 @@ fn inquiry_report(question: OrganizerInquiry, opening: &OrganizerState) -> Optio
     Some(match question {
         OrganizerInquiry::WorkLost => {
             let previous = opening
-                .observations
+                .learned_authority_index
                 .iter()
-                .rev()
-                .find_map(|row| match row.report {
+                .filter(|row| row.report_kind() == 1 && row.observed_period == facts.period)
+                .max_by_key(|row| (row.acquired_period, row.observation_id))
+                .and_then(|row| match row.report {
                     OrganizerReport::ReducedWork {
                         previous_labor_hours,
                         ..
-                    } if row.observed_period == facts.period => Some(previous_labor_hours),
+                    } => Some(previous_labor_hours),
                     _ => None,
                 });
             OrganizerReport::Work {
@@ -704,7 +740,7 @@ pub fn resolve_organizer_practice(
     reduced: &OrganizerState,
     facts: &OrganizerWorkplaceFacts,
     accepted: Option<&OrganizerCommitment>,
-) -> Result<OrganizerState, OrganizerError> {
+) -> Result<ResolvedOrganizerPeriod, OrganizerError> {
     super::contract::validate_organizer_pair(config, opening)?;
     if opening.period.checked_add(1) != Some(facts.period) {
         return Err(OrganizerError::PeriodMismatch);
@@ -728,6 +764,10 @@ pub fn resolve_organizer_practice(
 /// Aliases share one capacity; incomplete funding spends no actual time.
 /// # Errors
 /// Refuses malformed bindings, units, resource scope and changed commitments.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one ordered resolution keeps the receipt, aid and witness passes in causal sequence"
+)]
 pub fn resolve_organizer_practice_with_time(
     config: &OrganizerConfig,
     opening: &OrganizerState,
@@ -736,7 +776,7 @@ pub fn resolve_organizer_practice_with_time(
     accepted: Option<&OrganizerCommitment>,
     resources: &OrganizerPeriodTimeResources,
     material_support: OrganizerMaterialSupport<'_>,
-) -> Result<OrganizerState, OrganizerError> {
+) -> Result<ResolvedOrganizerPeriod, OrganizerError> {
     let aid_support = material_support.aid;
     let collection_fact = material_support.collection;
     super::contract::validate_organizer_pair(config, opening)?;
@@ -749,6 +789,13 @@ pub fn resolve_organizer_practice_with_time(
         return Err(OrganizerError::PeriodMismatch);
     }
     super::time_resources::validate_resources(config, facts.period, resources)?;
+    if opening
+        .last_period_time_witness
+        .as_ref()
+        .is_some_and(|witness| witness.period >= facts.period)
+    {
+        return Err(OrganizerError::PeriodMismatch);
+    }
     let fresh_aid = accepted.filter(|row| super::aid::aid_kind(row.command.choice).is_some());
     let routine = routine_commitment(config, opening)?;
     let commitment = accepted.unwrap_or(&routine);
@@ -769,6 +816,7 @@ pub fn resolve_organizer_practice_with_time(
         ),
     )?;
     let mut next = reduced.clone();
+    let mut entries = OrganizerPeriodJournalEntries::new(facts.period);
     let mut receipt = OrganizerReceipt {
         receipt_id,
         commitment_id: accepted.map(|row| row.commitment_id),
@@ -793,7 +841,7 @@ pub fn resolve_organizer_practice_with_time(
         let fact = collection_fact.ok_or(OrganizerError::CollectionSupportMissing)?;
         let resolution =
             super::collection::acknowledge_collection(config, commitment, fact, &mut receipt)?;
-        next.collection_receipts.push(resolution);
+        entries.collection_receipts.push(resolution);
     } else if collection_fact.is_some() {
         return Err(OrganizerError::CollectionSupportMismatch);
     } else if fresh_aid.is_some() {
@@ -821,9 +869,10 @@ pub fn resolve_organizer_practice_with_time(
             resources,
             &mut receipt,
             accepted.is_none(),
+            &mut entries,
         )?;
     }
-    next.receipts.push(receipt);
+    entries.receipts.push(receipt);
     resolve_pending_aid(
         config,
         opening,
@@ -831,11 +880,55 @@ pub fn resolve_organizer_practice_with_time(
         fresh_aid,
         resources,
         aid_support,
+        &mut entries,
     )?;
+    set_time_witness(config, &mut next, &entries)?;
     super::contract::validate_organizer_pair(config, &next)?;
-    Ok(next)
+    super::contract::validate_organizer_period_entries(config, &entries)?;
+    super::aid::validate_completed_aid(&next, &entries)?;
+    Ok(ResolvedOrganizerPeriod {
+        state: next,
+        journal: entries,
+    })
 }
 
+/// Record the last resolved household-hour partitions, refusing a replay.
+fn set_time_witness(
+    config: &OrganizerConfig,
+    next: &mut OrganizerState,
+    entries: &OrganizerPeriodJournalEntries,
+) -> Result<(), OrganizerError> {
+    if !matches!(
+        config.time_binding,
+        super::OrganizerTimeBindingMode::Household { .. }
+    ) {
+        next.last_period_time_witness = None;
+        return Ok(());
+    }
+    let ids = super::contract::charged_time_ids(entries)
+        .into_iter()
+        .collect::<Vec<_>>();
+    if let Some(previous) = &next.last_period_time_witness {
+        if ids
+            .iter()
+            .any(|id| previous.contribution_use_ids.contains(id))
+        {
+            return Err(OrganizerError::Refused(
+                OrganizerRefusal::HouseholdTimeAlreadySpent,
+            ));
+        }
+    }
+    next.last_period_time_witness = Some(OrganizerPeriodTimeWitness {
+        period: entries.period,
+        contribution_use_ids: ids,
+    });
+    Ok(())
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the practice executor binds one receipt to its exact state, evidence and supplied budgets"
+)]
 fn execute_practice(
     config: &OrganizerConfig,
     opening: &OrganizerState,
@@ -844,6 +937,7 @@ fn execute_practice(
     resources: &OrganizerPeriodTimeResources,
     receipt: &mut OrganizerReceipt,
     standing_origin: bool,
+    entries: &mut OrganizerPeriodJournalEntries,
 ) -> Result<(), OrganizerError> {
     let choice = commitment.command.choice;
     let required = super::contract::required_hours(config, opening, choice);
@@ -891,6 +985,7 @@ fn execute_practice(
                 if let Some(report) = inquiry_report(question, opening) {
                     let id = add_observation(
                         next,
+                        entries,
                         config,
                         opening.period,
                         period,
@@ -949,9 +1044,14 @@ pub fn resolve_organizer_period(
     opening: &OrganizerState,
     facts: &OrganizerWorkplaceFacts,
     accepted: Option<&OrganizerCommitment>,
-) -> Result<OrganizerState, OrganizerError> {
+) -> Result<ResolvedOrganizerPeriod, OrganizerError> {
     let reduced = reduce_organizer_products(config, opening, facts)?;
-    resolve_organizer_practice(config, opening, &reduced, facts, accepted)
+    let mut resolved =
+        resolve_organizer_practice(config, opening, &reduced.state, facts, accepted)?;
+    let mut journal = reduced.journal;
+    journal.extend(resolved.journal)?;
+    resolved.journal = journal;
+    Ok(resolved)
 }
 
 /// Resolve using exact period-specific supplied time; no absent-budget fallback.
@@ -965,17 +1065,21 @@ pub fn resolve_organizer_period_with_time(
     accepted: Option<&OrganizerCommitment>,
     resources: &OrganizerPeriodTimeResources,
     material_support: OrganizerMaterialSupport<'_>,
-) -> Result<OrganizerState, OrganizerError> {
+) -> Result<ResolvedOrganizerPeriod, OrganizerError> {
     let reduced = reduce_organizer_products(config, opening, facts)?;
-    resolve_organizer_practice_with_time(
+    let mut resolved = resolve_organizer_practice_with_time(
         config,
         opening,
-        &reduced,
+        &reduced.state,
         facts,
         accepted,
         resources,
         material_support,
-    )
+    )?;
+    let mut journal = reduced.journal;
+    journal.extend(resolved.journal)?;
+    resolved.journal = journal;
+    Ok(resolved)
 }
 
 fn resolve_pending_aid(
@@ -985,6 +1089,7 @@ fn resolve_pending_aid(
     fresh: Option<&OrganizerCommitment>,
     resources: &OrganizerPeriodTimeResources,
     supports: &[OrganizerAidSupport],
+    entries: &mut OrganizerPeriodJournalEntries,
 ) -> Result<(), OrganizerError> {
     let mut pending = opening.pending_aid.clone();
     if let Some(accepted) = fresh {
@@ -1009,8 +1114,8 @@ fn resolve_pending_aid(
     }
     next.pending_aid.clear();
     let remaining_pledge =
-        super::collection::remaining_collection_pledge(config, next, next.period)?;
-    let mut performed = super::aid::organizer_period_receipts(next, next.period)
+        super::collection::remaining_collection_pledge(config, entries, next.period)?;
+    let mut performed = super::aid::organizer_period_receipts(entries)
         .filter(|row| row.choice != OrganizerChoice::Collect)
         .flat_map(|row| row.time_use.iter())
         .cloned()
@@ -1080,7 +1185,7 @@ fn resolve_pending_aid(
             practice: receipt,
         };
         super::aid::validate_resolution_shape(&row)?;
-        next.aid_receipts.push(row);
+        entries.aid_receipts.push(row);
     }
     Ok(())
 }

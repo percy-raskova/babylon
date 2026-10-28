@@ -30,7 +30,7 @@ fn exact_current_wire_binds_explicit_version_and_all_five_fields() {
     assert_eq!(hex(&sha256_of(current.canonical_bytes())), SMALL_SHA256);
     assert_eq!(current.scenario_source_bytes(), SMALL_SOURCE.as_bytes());
     assert_eq!(current.prelude_source_bytes(), None);
-    assert!(current.rule_source_bytes().is_empty());
+    assert_eq!(current.rule_source_bytes().len(), 0);
     assert_eq!(current.defines_bytes(), b"{}");
     assert_eq!(current.reference_bundle_manifest_bytes(), b"reference");
 }

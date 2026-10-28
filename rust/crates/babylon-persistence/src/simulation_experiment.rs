@@ -16,7 +16,7 @@ mod tests;
 #[path = "simulation_experiment/experiment.rs"]
 mod experiment;
 
-pub(crate) use experiment::{digest_valid, hex, product, sum, validate_freight_authority, Result};
+pub(crate) use experiment::{admitted_freight_material, digest_valid, hex, product, sum, Result};
 pub use experiment::{
     EmploymentStartingRow, ExperimentDelivery, ExperimentError, ExperimentIntervention,
     ExperimentProfile, SimulationExperimentV1, StartingSnapshot, MAX_EXPERIMENT_HORIZON,

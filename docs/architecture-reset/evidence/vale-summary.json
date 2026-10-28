@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "level": "error",
+  "exit_code": 1,
+  "total": 890,
+  "rules_changed_or_disabled": false,
+  "note": "Editorial gate is not clean. These are retained style/terminology findings, not game test results. The full checker output was inspected through rule counts and spelling/terminology samples.",
+  "by_rule": {
+    "Vale.Spelling": 67,
+    "Vale.Terms": 25,
+    "ste.Dictionary": 112,
+    "ste.LatinAbbrev": 3,
+    "ste.Modals": 37,
+    "ste.ParagraphLength": 12,
+    "ste.ProcedureLength": 35,
+    "ste.Semicolon": 289,
+    "ste.SentenceLength": 77,
+    "strunk.ActiveVoice": 100,
+    "write-good.So": 1,
+    "write-good.ThereIs": 6,
+    "write-good.TooWordy": 117,
+    "write-good.Weasel": 9
+  },
+  "by_file": {
+    "01-evidence-and-failed-approaches.md": 90,
+    "02-victoria-3-analysis.md": 82,
+    "03-bsl-bscn-and-modding.md": 129,
+    "04-babylon-current-architecture.md": 61,
+    "05-data-and-model-contract.md": 71,
+    "06-target-runtime-and-sqlite.md": 123,
+    "07-history-replay-and-archive.md": 71,
+    "08-implementation-packets.md": 129,
+    "09-acceptance-and-governance.md": 105,
+    "README.md": 29
+  },
+  "samples": {
+    "Vale.Spelling": [
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 16,
+        "message": "Did you really mean 'unarchived'?"
+      },
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 27,
+        "message": "Did you really mean 'Unarchived'?"
+      }
+    ],
+    "Vale.Terms": [
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 37,
+        "message": "Use '[Pp]ostgres(?:ql)?' instead of 'PostgreSQL'."
+      },
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 54,
+        "message": "Use '[Pp]ostgres(?:ql)?' instead of 'PostgreSQL'."
+      }
+    ],
+    "ste.Dictionary": [
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 34,
+        "message": "STE 1.1: use the approved word 'do' instead of 'Implement'."
+      },
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 68,
+        "message": "STE 1.1: use the approved word 'make sure' instead of 'establish'."
+      }
+    ],
+    "ste.LatinAbbrev": [
+      {
+        "file": "02-victoria-3-analysis.md",
+        "line": 79,
+        "message": "STE GR-6: no Latin abbreviations. Use 'and so on (better: name the items)' instead of 'etc'."
+      },
+      {
+        "file": "03-bsl-bscn-and-modding.md",
+        "line": 362,
+        "message": "STE GR-6: no Latin abbreviations. Use 'and so on (better: name the items)' instead of 'etc'."
+      }
+    ],
+    "ste.Modals": [
+      {
+        "file": "02-victoria-3-analysis.md",
+        "line": 5,
+        "message": "STE: use 'must' instead of 'should' (approved modals: can, must, will)."
+      },
+      {
+        "file": "02-victoria-3-analysis.md",
+        "line": 64,
+        "message": "STE: use 'must' instead of 'should' (approved modals: can, must, will)."
+      }
+    ],
+    "ste.ParagraphLength": [
+      {
+        "file": "02-victoria-3-analysis.md",
+        "line": 24,
+        "message": "STE 6.6: paragraph has 7 sentences; the maximum is six."
+      },
+      {
+        "file": "02-victoria-3-analysis.md",
+        "line": 195,
+        "message": "STE 6.6: paragraph has 7 sentences; the maximum is six."
+      }
+    ],
+    "ste.ProcedureLength": [
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 92,
+        "message": "STE 5.1: list item is 42 words; procedural text maximum is 20."
+      },
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 92,
+        "message": "STE 5.1: list item is 27 words; procedural text maximum is 20."
+      }
+    ],
+    "ste.Semicolon": [
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 10,
+        "message": "STE 8.1: semicolons are not permitted. Write two separate sentences."
+      },
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 21,
+        "message": "STE 8.1: semicolons are not permitted. Write two separate sentences."
+      }
+    ],
+    "ste.SentenceLength": [
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 71,
+        "message": "STE 6.3: sentence is 34 words; the maximum is 25."
+      },
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 92,
+        "message": "STE 6.3: sentence is 27 words; the maximum is 25."
+      }
+    ],
+    "strunk.ActiveVoice": [
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 7,
+        "message": "'is pinned' may be passive voice \u2014 prefer the active (Strunk, Rule 10; his own caveat: the passive is 'frequently convenient and sometimes necessary')."
+      },
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 7,
+        "message": "'was refreshed' may be passive voice \u2014 prefer the active (Strunk, Rule 10; his own caveat: the passive is 'frequently convenient and sometimes necessary')."
+      }
+    ],
+    "write-good.So": [
+      {
+        "file": "05-data-and-model-contract.md",
+        "line": 98,
+        "message": "Don't start a sentence with 'So '."
+      }
+    ],
+    "write-good.ThereIs": [
+      {
+        "file": "02-victoria-3-analysis.md",
+        "line": 170,
+        "message": "Don't start a sentence with 'There are'."
+      },
+      {
+        "file": "03-bsl-bscn-and-modding.md",
+        "line": 137,
+        "message": "Don't start a sentence with 'There is'."
+      }
+    ],
+    "write-good.TooWordy": [
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 34,
+        "message": "'Implement' is too wordy."
+      },
+      {
+        "file": "01-evidence-and-failed-approaches.md",
+        "line": 65,
+        "message": "'maximum' is too wordy."
+      }
+    ],
+    "write-good.Weasel": [
+      {
+        "file": "02-victoria-3-analysis.md",
+        "line": 35,
+        "message": "'mostly' is a weasel word!"
+      },
+      {
+        "file": "02-victoria-3-analysis.md",
+        "line": 87,
+        "message": "'several' is a weasel word!"
+      }
+    ]
+  }
+}

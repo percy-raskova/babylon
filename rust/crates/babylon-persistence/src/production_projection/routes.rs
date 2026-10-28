@@ -9,7 +9,9 @@ use crate::production_observation::{
 
 use crate::michigan_economy;
 use babylon_kernel::content_digest;
-use babylon_material_circuit::{MaterialCircuitState, RouteId, SupplierRoute, SupplierTransport};
+use babylon_material_circuit::{
+    MaterialCatalog, MaterialCircuitState, RouteId, SupplierRoute, SupplierTransport,
+};
 use std::collections::BTreeMap;
 use std::result::Result as StdResult;
 type Result<T> = StdResult<T, ProductionProjectionError>;
@@ -37,14 +39,15 @@ fn key(row: &SupplierRoute) -> RelationKey {
 
 pub(super) fn project(
     metadata: &Metadata<'_>,
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     history: &OrderHistory,
 ) -> Result<(Vec<ProductionRoute>, Vec<PhysicalRouteDefinition>)> {
-    let stages = stage_index(state)?;
+    let stages = stage_index(catalog, state)?;
     let totals = relation_totals(history)?;
-    let mut result = Vec::with_capacity(state.supplier_routes.len());
+    let mut result = Vec::with_capacity(catalog.supplier_routes.len());
     let mut definitions = BTreeMap::<RouteId, PhysicalRouteDefinition>::new();
-    for relation in &state.supplier_routes {
+    for relation in &catalog.supplier_routes {
         if metadata.routes.get(&key(relation)).copied() != Some(relation) {
             return Err(ProductionProjectionError::Content);
         }
@@ -99,7 +102,7 @@ pub(super) fn project(
             unit_id: michigan_economy::digest_hex(&relation.unit_id.as_bytes()),
             good: good.label.clone(),
             unit: good.unit_label.clone(),
-            grams_per_unit: outbound::mass(state, relation.good_id, relation.unit_id)?,
+            grams_per_unit: outbound::mass(catalog, relation.good_id, relation.unit_id)?,
             ordered: total[0],
             shipped: total[1],
             delivered: total[2],
@@ -167,6 +170,7 @@ fn geometry(metadata: &Metadata<'_>, route: RouteId) -> (Vec<String>, Option<u64
         )
 }
 pub(super) fn stage_index(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
 ) -> Result<BTreeMap<RouteId, Vec<ProductionRouteStage>>> {
     let mut memberships = BTreeMap::<_, Vec<String>>::new();
@@ -177,7 +181,7 @@ pub(super) fn stage_index(
             .push(michigan_economy::digest_hex(&row.corridor_id.as_bytes()));
     }
     let mut result = BTreeMap::<_, Vec<ProductionRouteStage>>::new();
-    for row in &state.route_stages {
+    for row in &catalog.route_stages {
         let mut ids = memberships
             .remove(&(row.route_id, row.stage_index))
             .ok_or(ProductionProjectionError::State)?;

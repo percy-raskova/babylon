@@ -48,7 +48,7 @@ fn scenario_without_the_field_declaration_extracts_no_rows() {
         None,
     )
     .expect("undeclared scenario extracts empty");
-    assert!(rows.is_empty());
+    assert_eq!(rows.len(), 0);
 }
 
 #[test]

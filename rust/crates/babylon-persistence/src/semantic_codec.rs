@@ -1145,6 +1145,6 @@ mod allocation_tests {
                 requested: 3,
             })
         );
-        assert!(writer.as_bytes().is_empty());
+        assert_eq!(writer.as_bytes().len(), 0);
     }
 }

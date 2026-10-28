@@ -69,12 +69,13 @@ fn no_subject_grants_require_no_page_construction() {
         .expect("the authored fixture satisfies the constructor invariants");
     let receipt = PendingArchiveReceipt::try_new(7, [7; 32])
         .expect("the authored fixture satisfies the constructor invariants");
-    assert!(
+    assert_eq!(
         publish::known_page_inputs(&receipt, &known, &plans, &|_, _, _| {
             panic!("a hidden page must not be constructed")
         })
         .expect("the fixture call `known_page_inputs` succeeds for the authored inputs")
-        .is_empty()
+        .len(),
+        0
     );
 }
 

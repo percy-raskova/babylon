@@ -17,6 +17,8 @@ use crate::observer_opening::{MenuPage, OpeningPresentation, OpeningStage};
 use crate::observer_progress::OperationProgress;
 use crate::observer_theme as theme;
 use crate::observer_ui::{ObserverCommand, ObserverFontRole, ObserverUiState};
+use crate::ui;
+use crate::ui::Interaction;
 use crate::visual_assets::VisualAssets;
 use bevy::picking::pointer::PointerButton;
 
@@ -61,7 +63,7 @@ fn label(value: &str, size: f32, role: ObserverFontRole) -> impl Bundle {
     (
         Text::new(value),
         TextFont {
-            font_size: size,
+            font_size: FontSize::Px(size),
             ..default()
         },
         TextColor(theme::PAPER),
@@ -73,7 +75,7 @@ fn label(value: &str, size: f32, role: ObserverFontRole) -> impl Bundle {
 fn action_button(parent: &mut ChildSpawnerCommands, action: TitleAction, caption: &str) {
     parent
         .spawn((
-            Button,
+            ui::pressable(),
             action,
             Node {
                 width: percent(100),
@@ -356,7 +358,7 @@ impl TitleInput<'_> {
         }
     }
 }
-fn pointer_action(event: On<Pointer<Click>>, actions: Query<&TitleAction>, mut input: TitleInput) {
+fn pointer_action(event: On<PointerClick>, actions: Query<&TitleAction>, mut input: TitleInput) {
     if event.button == PointerButton::Primary {
         if let Ok(action) = actions.get(event.entity) {
             input.activate(*action);
@@ -548,7 +550,7 @@ fn layout(
         }
     }
     for mut font in &mut headings {
-        font.font_size = (viewport.x * 0.077).clamp(60.0, 126.0);
+        font.font_size = FontSize::Px((viewport.x * 0.077).clamp(60.0, 126.0));
     }
 }
 
@@ -582,19 +584,22 @@ mod tests {
         session.ready(0, None);
         session.foundation_digest = Some("admitted".into());
         assert!(session.installed(&session.context()));
-        app.add_plugins(MinimalPlugins)
-            .insert_resource(session)
-            .insert_resource(OpeningPresentation {
-                stage: OpeningStage::Title,
-                ..default()
-            })
-            .insert_resource(ObserverUiState {
-                splash_visible: false,
-                ..default()
-            })
-            .add_message::<ObserverCommand>()
-            .add_observer(focused_action)
-            .add_systems(Startup, |mut commands: Commands| spawn_home(&mut commands));
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(session)
+        .insert_resource(OpeningPresentation {
+            stage: OpeningStage::Title,
+            ..default()
+        })
+        .insert_resource(ObserverUiState {
+            splash_visible: false,
+            ..default()
+        })
+        .add_message::<ObserverCommand>()
+        .add_observer(focused_action)
+        .add_systems(Startup, |mut commands: Commands| spawn_home(&mut commands));
         app.update();
         for (action, page) in [
             (TitleAction::LoadGame, MenuPage::SavedGames),
@@ -647,29 +652,32 @@ mod tests {
         session.foundation_digest = Some("admitted".into());
         assert!(session.installed(&session.context()));
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .insert_resource(session)
-            .insert_resource(OpeningPresentation {
-                stage: OpeningStage::Game,
-                menu_page: MenuPage::InGame,
-                ..default()
-            })
-            .insert_resource(ObserverUiState {
-                splash_visible: false,
-                ..default()
-            })
-            .init_resource::<ButtonInput<KeyCode>>()
-            .init_resource::<ObserverKeyboardClaim>()
-            .add_message::<ObserverCommand>()
-            .add_observer(focused_action)
-            .add_systems(Update, (keyboard, eligibility, paint).chain())
-            .add_systems(Startup, |mut commands: Commands| {
-                spawn_home(&mut commands);
-                commands.spawn(Node::default()).with_children(|parent| {
-                    spawn_game_menu(parent);
-                    spawn_back_button(parent);
-                });
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(session)
+        .insert_resource(OpeningPresentation {
+            stage: OpeningStage::Game,
+            menu_page: MenuPage::InGame,
+            ..default()
+        })
+        .insert_resource(ObserverUiState {
+            splash_visible: false,
+            ..default()
+        })
+        .init_resource::<ButtonInput<KeyCode>>()
+        .init_resource::<ObserverKeyboardClaim>()
+        .add_message::<ObserverCommand>()
+        .add_observer(focused_action)
+        .add_systems(Update, (keyboard, eligibility, paint).chain())
+        .add_systems(Startup, |mut commands: Commands| {
+            spawn_home(&mut commands);
+            commands.spawn(Node::default()).with_children(|parent| {
+                spawn_game_menu(parent);
+                spawn_back_button(parent);
             });
+        });
         app.update();
         app
     }

@@ -296,7 +296,7 @@ fn section_header(text: &str) -> impl Bundle {
         Text::new(text),
         TextColor(palette::GOLD),
         TextFont {
-            font_size: 11.0,
+            font_size: FontSize::Px(11.0),
             ..default()
         },
         ObserverFontRole::Body,
@@ -351,7 +351,7 @@ fn spawn_dossier_card(mut commands: Commands) {
                 Text::new(""),
                 TextColor(palette::BONE),
                 TextFont {
-                    font_size: 24.0,
+                    font_size: FontSize::Px(24.0),
                     ..default()
                 },
                 ObserverFontRole::Display,
@@ -362,7 +362,7 @@ fn spawn_dossier_card(mut commands: Commands) {
                 Text::new(""),
                 TextColor(palette::GOLD),
                 TextFont {
-                    font_size: 13.0,
+                    font_size: FontSize::Px(13.0),
                     ..default()
                 },
                 ObserverFontRole::Body,
@@ -462,7 +462,7 @@ fn spawn_sealed_actions(card: &mut ChildSpawnerCommands) {
         Text::new(INVESTIGATE_SEALED_CHIP),
         TextColor(palette::DIM),
         TextFont {
-            font_size: 11.0,
+            font_size: FontSize::Px(11.0),
             ..default()
         },
         ObserverFontRole::Body,
@@ -727,7 +727,7 @@ fn set_segments(commands: &mut Commands, zone: Entity, segments: &[DossierSegmen
             TextSpan::new(segment.text.clone()),
             TextColor(tone_color(segment.tone)),
             TextFont {
-                font_size: 14.0,
+                font_size: FontSize::Px(14.0),
                 ..default()
             },
             ObserverFontRole::Body,
@@ -750,7 +750,7 @@ fn set_line(
         TextSpan::new(text),
         TextColor(color),
         TextFont {
-            font_size,
+            font_size: FontSize::Px(font_size),
             ..default()
         },
         font_role,
@@ -772,7 +772,7 @@ fn set_segment_rows(commands: &mut Commands, zone: Entity, rows: &[Vec<DossierSe
             row_gap: px(12),
             ..default()
         },
-        TextLayout::new_with_linebreak(LineBreak::WordOrCharacter),
+        TextLayout::linebreak(LineBreak::WordOrCharacter),
     ));
     for row in rows {
         commands.entity(zone).with_children(|parent| {
@@ -780,10 +780,10 @@ fn set_segment_rows(commands: &mut Commands, zone: Entity, rows: &[Vec<DossierSe
                 .spawn((
                     Text::new(""),
                     TextFont {
-                        font_size: 14.0,
+                        font_size: FontSize::Px(14.0),
                         ..default()
                     },
-                    TextLayout::new_with_linebreak(LineBreak::WordOrCharacter),
+                    TextLayout::linebreak(LineBreak::WordOrCharacter),
                     Node {
                         width: percent(100),
                         min_width: px(0),
@@ -800,11 +800,11 @@ fn set_segment_rows(commands: &mut Commands, zone: Entity, rows: &[Vec<DossierSe
                             TextSpan::new(segment.text.clone()),
                             TextColor(tone_color(segment.tone)),
                             TextFont {
-                                font_size: if segment.tone == DossierTone::Dim {
+                                font_size: FontSize::Px(if segment.tone == DossierTone::Dim {
                                     11.0
                                 } else {
                                     14.0
-                                },
+                                }),
                                 ..default()
                             },
                             ObserverFontRole::Exact,
@@ -905,7 +905,7 @@ fn spawn_control(commands: &mut Commands, zone: Entity, label: String, control: 
                 Text::new(label),
                 TextColor(palette::BONE),
                 TextFont {
-                    font_size: 13.0,
+                    font_size: FontSize::Px(13.0),
                     ..default()
                 },
                 ObserverFontRole::Body,
@@ -1024,7 +1024,7 @@ fn dispatch_control(
 }
 
 fn on_place_chip_click(
-    click: On<Pointer<Click>>,
+    click: On<PointerClick>,
     chips: Query<&PlaceChipNode>,
     context: DossierReadContext,
     view: Res<DossierPageView>,
@@ -1112,14 +1112,14 @@ fn focus_eligibility(
     }
 }
 fn on_place_chip_over(
-    over: On<Pointer<Over>>,
+    over: On<PointerOver>,
     mut chips: Query<&mut BorderColor, With<PlaceChipNode>>,
 ) {
     if let Ok(mut border) = chips.get_mut(over.entity) {
         *border = BorderColor::all(palette::GOLD);
     }
 }
-fn on_place_chip_out(out: On<Pointer<Out>>, mut chips: Query<(&mut BorderColor, &PlaceChipNode)>) {
+fn on_place_chip_out(out: On<PointerOut>, mut chips: Query<(&mut BorderColor, &PlaceChipNode)>) {
     if let Ok((mut border, chip)) = chips.get_mut(out.entity) {
         *border = BorderColor::all(chip.base_border);
     }
@@ -1608,7 +1608,7 @@ fn paint_actions(
         }),
         TextColor(palette::DIM),
         TextFont {
-            font_size: 11.0,
+            font_size: FontSize::Px(11.0),
             ..default()
         },
         ObserverFontRole::Body,
@@ -1843,33 +1843,36 @@ mod tests {
         .expect("the authored literal parses as the declared type");
         let selected = SelectedCounty(atlas.index_of_fips("26163"));
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .insert_resource(atlas)
-            .insert_resource(selected)
-            .insert_resource(session)
-            .insert_resource(frame)
-            .insert_resource(DossierCampaignId(campaign))
-            .insert_resource(ObserverUiState {
-                archive_open: true,
-                menu_open: false,
-                splash_visible: false,
-                ..default()
-            })
-            .insert_resource(ActiveCountyDossier(Some(installed)))
-            .init_resource::<DossierRefresh>()
-            .init_resource::<DossierFetchState>()
-            .init_resource::<DossierPageView>()
-            .init_resource::<DossierPresentation>()
-            .init_resource::<ObserverFeedback>()
-            .add_message::<SubjectPageRequest>()
-            .add_message::<DossierControl>()
-            .add_observer(keyboard_activate)
-            .add_systems(Startup, move |mut commands: Commands| {
-                let zone = commands.spawn((Node::default(), TabGroup::new(20))).id();
-                set_chips(&mut commands, zone, &links, &scope);
-            })
-            .add_systems(PreUpdate, focus_eligibility)
-            .add_systems(Update, apply_page_requests);
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(atlas)
+        .insert_resource(selected)
+        .insert_resource(session)
+        .insert_resource(frame)
+        .insert_resource(DossierCampaignId(campaign))
+        .insert_resource(ObserverUiState {
+            archive_open: true,
+            menu_open: false,
+            splash_visible: false,
+            ..default()
+        })
+        .insert_resource(ActiveCountyDossier(Some(installed)))
+        .init_resource::<DossierRefresh>()
+        .init_resource::<DossierFetchState>()
+        .init_resource::<DossierPageView>()
+        .init_resource::<DossierPresentation>()
+        .init_resource::<ObserverFeedback>()
+        .add_message::<SubjectPageRequest>()
+        .add_message::<DossierControl>()
+        .add_observer(keyboard_activate)
+        .add_systems(Startup, move |mut commands: Commands| {
+            let zone = commands.spawn((Node::default(), TabGroup::new(20))).id();
+            set_chips(&mut commands, zone, &links, &scope);
+        })
+        .add_systems(PreUpdate, focus_eligibility)
+        .add_systems(Update, apply_page_requests);
         app.update();
         app.update();
         let entity = app
@@ -2358,11 +2361,14 @@ mod tests {
         )];
         let expected: String = rows[0].iter().map(|part| part.text.as_str()).collect();
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .add_systems(Startup, move |mut commands: Commands| {
-                let zone = commands.spawn((Text::new(""), DossierZone::Signals)).id();
-                set_segment_rows(&mut commands, zone, &rows);
-            });
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .add_systems(Startup, move |mut commands: Commands| {
+            let zone = commands.spawn((Text::new(""), DossierZone::Signals)).id();
+            set_segment_rows(&mut commands, zone, &rows);
+        });
         app.update();
         let world = app.world_mut();
         let (_, container, children) = world

@@ -617,7 +617,7 @@ persistence:
   incompatible_campaign: Refuse reopening without changing stored data; no implicit material or content upgrade.
   material_campaign: Cannot receive a graph-only V2 marker.
 related_contracts:
-  - contracts/material_circuit_v3.yaml
+  - contracts/material_circuit_v4.yaml
   - contracts/material_world_register_v4.yaml
   - contracts/nominal_material_world_v3.yaml
   - contracts/material_campaign_foundation_v3.yaml

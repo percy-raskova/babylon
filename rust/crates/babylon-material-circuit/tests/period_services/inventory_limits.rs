@@ -14,6 +14,7 @@ use babylon_material_circuit::HouseholdNeedBasis;
 use babylon_material_circuit::HouseholdPurchasePolicy;
 use babylon_material_circuit::HouseholdStock;
 use babylon_material_circuit::InventoryRow;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MerchantHandling;
@@ -27,14 +28,15 @@ use babylon_material_circuit::MAX_CARRYING_STOCKS;
 use babylon_material_circuit::MAX_INVENTORY_ROWS;
 use std::collections::BTreeSet;
 
-fn padded_goods_inventory(include_output: bool) -> MaterialCircuitState {
-    let mut state = crate::opening();
+fn padded_goods_inventory(include_output: bool) -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = crate::opening();
     state.inventory[0].quantity = 2;
-    let mut state = crate::funded(state);
+    let mut state = crate::funded(&catalog, state);
     if !include_output {
         state.inventory.retain(|r| r.good_id != crate::good(3));
     }
     let missing = MAX_INVENTORY_ROWS - state.inventory.len();
+    let mut catalog = catalog;
     for index in 0..missing {
         let mut identity = [0; 32];
         identity[0] = 170;
@@ -45,7 +47,7 @@ fn padded_goods_inventory(include_output: bool) -> MaterialCircuitState {
         );
         let extra_good = GoodId::from_bytes(identity);
         if index % 3 == 0 {
-            state.commodities.push(CommodityDefinition {
+            catalog.commodities.push(CommodityDefinition {
                 good_id: extra_good,
                 unit_id: crate::unit(4),
                 kind: CommodityKind::Storable { grams_per_unit: 1 },
@@ -60,6 +62,8 @@ fn padded_goods_inventory(include_output: bool) -> MaterialCircuitState {
             quantity: 1,
         });
     }
+    catalog.catalog_digest = [0; 32];
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         unreachable!()
     };
@@ -80,15 +84,15 @@ fn padded_goods_inventory(include_output: bool) -> MaterialCircuitState {
         vec![],
     )
     .expect("the fixture opens the authored source");
-    state
+    (catalog, state)
 }
 
 #[test]
 fn temporary_service_outputs_and_grants_do_not_consume_durable_stock_row_budget() {
-    let opening = padded_goods_inventory(true);
-    let opening_bytes = babylon_material_circuit::encode_material_circuit_state(&opening)
+    let (catalog, opening) = padded_goods_inventory(true);
+    let opening_bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &opening)
         .expect("the canonical material state encodes");
-    let closed = babylon_material_circuit::advance_material_circuit(&opening)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("the authored material state advances one period");
     assert_eq!(closed.state.inventory.len(), MAX_INVENTORY_ROWS);
     assert_eq!(
@@ -108,15 +112,16 @@ fn temporary_service_outputs_and_grants_do_not_consume_durable_stock_row_budget(
         .service_performance
         .iter()
         .all(|r| r.performed_quantity == 1 && r.used_quantity == 1));
-    assert!(closed.state.service_orders.is_empty());
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&closed.state)
+    assert_eq!(closed.state.service_orders.len(), 0);
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &closed.state)
         .expect("the canonical material state encodes");
     assert_eq!(
-        decode_material_circuit_state(&bytes).expect("the canonical material bytes decode"),
+        decode_material_circuit_state(&catalog, &bytes)
+            .expect("the canonical material bytes decode"),
         closed.state
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&opening)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &opening)
             .expect("the canonical material state encodes"),
         opening_bytes
     );
@@ -124,10 +129,10 @@ fn temporary_service_outputs_and_grants_do_not_consume_durable_stock_row_budget(
 
 #[test]
 fn a_new_durable_stock_key_above_its_own_limit_still_refuses_the_successor() {
-    let opening = padded_goods_inventory(false);
-    let opening_bytes = babylon_material_circuit::encode_material_circuit_state(&opening)
+    let (catalog, opening) = padded_goods_inventory(false);
+    let opening_bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &opening)
         .expect("the canonical material state encodes");
-    let detached = babylon_material_circuit::close_material_period(&opening)
+    let detached = babylon_material_circuit::close_material_period(&catalog, &opening)
         .expect("the material period closes");
     assert_eq!(detached.inventory().len(), MAX_INVENTORY_ROWS + 1);
     assert!(detached
@@ -135,11 +140,11 @@ fn a_new_durable_stock_key_above_its_own_limit_still_refuses_the_successor() {
         .iter()
         .all(|r| r.good_id != crate::good(1) && r.good_id != crate::good(2)));
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&opening),
+        babylon_material_circuit::advance_material_circuit(&catalog, &opening),
         Err(MaterialCircuitError::RowLimit)
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&opening)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &opening)
             .expect("the canonical material state encodes"),
         opening_bytes
     );
@@ -149,22 +154,24 @@ fn a_new_durable_stock_key_above_its_own_limit_still_refuses_the_successor() {
     clippy::too_many_lines,
     reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
 )]
-fn padded_durable_carrying_book() -> MaterialCircuitState {
-    let mut state = super::service_cases::recurring(padded_goods_inventory(true));
+fn padded_durable_carrying_book() -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, state) = padded_goods_inventory(true);
+    let (catalog, mut state) = super::service_cases::recurring((catalog, state));
     let other = FinalDemandPrincipalId::from_bytes([10; 32]);
     let location = state.final_demand_principals[0].location;
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: other,
         location,
     });
-    state.merchants.push(MerchantHandling {
+    let mut catalog = catalog;
+    catalog.merchants.push(MerchantHandling {
         site_id: crate::site(3),
         location,
         role: MerchantRole::Retail,
         capacity_id: CorridorId::from_bytes([10; 32]),
         labor_unit_id: crate::unit(9),
     });
-    let goods: Vec<_> = state
+    let goods: Vec<_> = catalog
         .commodities
         .iter()
         .filter(|row| row.good_id.as_bytes()[0] == 170)
@@ -172,7 +179,7 @@ fn padded_durable_carrying_book() -> MaterialCircuitState {
         .map(|row| row.good_id)
         .collect();
     for commodity in &goods {
-        state
+        catalog
             .handling_coefficients
             .push(MerchantHandlingCoefficient {
                 site_id: crate::site(3),
@@ -232,6 +239,7 @@ fn padded_durable_carrying_book() -> MaterialCircuitState {
             });
         }
     }
+    let needs = recurring.household_needs.clone();
     let stocks = state
         .inventory
         .iter()
@@ -256,15 +264,18 @@ fn padded_durable_carrying_book() -> MaterialCircuitState {
     e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
         .expect("the fixture opens the authored source");
     assert_eq!(e.costs.snapshot().stocks.len(), MAX_CARRYING_STOCKS - 5);
-    state
+    catalog.household_needs = needs;
+    catalog.catalog_digest = [0; 32];
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    (catalog, state)
 }
 
 #[test]
 fn paid_service_grants_cross_the_old_carrying_cap_and_expire_before_publication() {
-    let opening = padded_durable_carrying_book();
-    let opening_bytes = babylon_material_circuit::encode_material_circuit_state(&opening)
+    let (catalog, opening) = padded_durable_carrying_book();
+    let opening_bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &opening)
         .expect("the canonical material state encodes");
-    let closed = babylon_material_circuit::advance_material_circuit(&opening)
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("the authored material state advances one period");
     assert_eq!(closed.state.inventory.len(), MAX_INVENTORY_ROWS);
     assert!(closed
@@ -299,15 +310,16 @@ fn paid_service_grants_cross_the_old_carrying_cap_and_expire_before_publication(
     assert!(stocks
         .iter()
         .all(|row| row.good_id != crate::good(1) && row.good_id != crate::good(2)));
-    assert!(closed.state.service_orders.is_empty());
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&closed.state)
+    assert_eq!(closed.state.service_orders.len(), 0);
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &closed.state)
         .expect("the canonical material state encodes");
     assert_eq!(
-        decode_material_circuit_state(&bytes).expect("the canonical material bytes decode"),
+        decode_material_circuit_state(&catalog, &bytes)
+            .expect("the canonical material bytes decode"),
         closed.state
     );
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&opening)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &opening)
             .expect("the canonical material state encodes"),
         opening_bytes
     );

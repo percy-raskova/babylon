@@ -1,18 +1,23 @@
+use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::{
-    material_circuit_state_digest, BacklogRow, CapacityRow, CommodityDefinition, GoodId,
+    material_circuit_state_digest, CapacityRow, CommodityDefinition, GoodId,
     InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
-    MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId, ProcessOutput,
-    ProductionCommitment, RouteId, SiteId, SiteLogisticsNode, SupplierRoute, SupplierTransport,
-    UnitId,
+    MaterialCatalog, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId,
+    ProcessOutput, ProductionCommitment, RouteId, SiteId, SiteLogisticsNode, SupplierRoute,
+    SupplierTransport, UnitId, UNSEALED_CATALOG_DIGEST,
 };
 
 fn id<const BYTE: u8>() -> [u8; 32] {
     [BYTE; 32]
 }
 
-fn allocation_state(available: u64, first: u64, second: u64) -> MaterialCircuitState {
+fn allocation_state(
+    available: u64,
+    first: u64,
+    second: u64,
+) -> (MaterialCatalog, MaterialCircuitState) {
     let supplier = SiteId::from_bytes(id::<1>());
     let buyer = SiteId::from_bytes(id::<2>());
     let good = GoodId::from_bytes(id::<3>());
@@ -33,16 +38,45 @@ fn allocation_state(available: u64, first: u64, second: u64) -> MaterialCircuitS
             realized: 0,
         })
         .collect::<Vec<_>>();
-    MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
-        period: 1,
+    {
+        let state = MaterialCircuitState {
+            capacity_reservations: CapacityReservations::default(),
+            period: 1,
+            final_demand_principals: vec![],
+            final_demand_orders: vec![],
+            accounting: CircuitAccounting::PhysicalControl,
+            maintenance_service: None,
+            service_connections: vec![],
+            service_orders: vec![],
+            route_stage_capacities: vec![],
+            corridor_capacities: vec![],
+            inventory: vec![InventoryRow {
+                site_id: supplier,
+                good_id: good,
+                unit_id: unit,
+                quantity: available,
+            }],
+            orders,
+            freight: Vec::new(),
+            capacities: Vec::new(),
+            labor: Vec::new(),
+            production_commitments: Vec::new(),
+        };
+        (allocation_catalog(supplier, buyer, good, unit), state)
+    }
+}
+
+fn allocation_catalog(
+    supplier: SiteId,
+    buyer: SiteId,
+    good: GoodId,
+    unit: UnitId,
+) -> MaterialCatalog {
+    MaterialCatalog::try_new(MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
-        final_demand_principals: vec![],
-        final_demand_orders: vec![],
-        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
-        maintenance_service: None,
         site_logistics_nodes: vec![
             SiteLogisticsNode {
                 site_id: supplier,
@@ -53,16 +87,12 @@ fn allocation_state(available: u64, first: u64, second: u64) -> MaterialCircuitS
                 node_id: LogisticsNodeId::from_bytes([2; 32]),
             },
         ],
-        service_connections: vec![],
-        service_orders: vec![],
         commodities: vec![CommodityDefinition {
             good_id: good,
             unit_id: unit,
             kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
         }],
         route_stages: vec![],
-        route_stage_capacities: vec![],
-        corridor_capacities: vec![],
         process_outputs: Vec::new(),
         input_coefficients: Vec::new(),
         labor_coefficients: Vec::new(),
@@ -74,25 +104,13 @@ fn allocation_state(available: u64, first: u64, second: u64) -> MaterialCircuitS
             transport_kind: SupplierTransport::Local,
             route_id: RouteId::from_bytes([7; 32]),
         }],
-        inventory: vec![InventoryRow {
-            site_id: supplier,
-            good_id: good,
-            unit_id: unit,
-            quantity: available,
-        }],
-        backlog: orders
-            .iter()
-            .map(|order| BacklogRow {
-                order_id: order.order_id,
-                quantity: order.ordered,
-            })
-            .collect(),
-        orders,
-        freight: Vec::new(),
-        capacities: Vec::new(),
-        labor: Vec::new(),
-        production_commitments: Vec::new(),
-    }
+        aid_mandates: Vec::new(),
+        household_time_policy: Vec::new(),
+        service_inputs: Vec::new(),
+        household_needs: Vec::new(),
+        catalog_digest: UNSEALED_CATALOG_DIGEST,
+    })
+    .expect("the authored fixture catalog is valid")
 }
 
 #[test]
@@ -100,8 +118,8 @@ fn proportional_base_with_residual_exhaustively_conserves_small_stocks() {
     for available in 0_u64..=20 {
         for first in 1_u64..=10 {
             for second in 1_u64..=10 {
-                let state = allocation_state(available, first, second);
-                let outcome = babylon_material_circuit::advance_material_circuit(&state)
+                let (catalog, state) = allocation_state(available, first, second);
+                let outcome = babylon_material_circuit::advance_material_circuit(&catalog, &state)
                     .expect("allocation must close");
                 let total_requested = first + second;
                 let shipped: u64 = outcome
@@ -131,38 +149,103 @@ fn proportional_base_with_residual_exhaustively_conserves_small_stocks() {
                 );
                 let mut reversed = state;
                 reversed.orders.reverse();
-                reversed.backlog.reverse();
-                let twin = babylon_material_circuit::advance_material_circuit(&reversed)
+                let twin = babylon_material_circuit::advance_material_circuit(&catalog, &reversed)
                     .expect("twin must close");
                 assert_eq!(
-                    material_circuit_state_digest(&outcome.state),
-                    material_circuit_state_digest(&twin.state)
+                    material_circuit_state_digest(&catalog, &outcome.state),
+                    material_circuit_state_digest(&catalog, &twin.state)
                 );
             }
         }
     }
 }
 
-fn production_state(input: u64, labor: u64, capacity: u64) -> MaterialCircuitState {
+fn production_state(
+    input: u64,
+    labor: u64,
+    capacity: u64,
+) -> (MaterialCatalog, MaterialCircuitState) {
     let site = SiteId::from_bytes(id::<1>());
     let input_good = GoodId::from_bytes(id::<2>());
     let output_good = GoodId::from_bytes(id::<3>());
     let goods_unit = UnitId::from_bytes(id::<4>());
     let labor_unit = UnitId::from_bytes(id::<5>());
     let process = ProcessId::from_bytes(id::<6>());
-    MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
-        period: 1,
+    {
+        let state = MaterialCircuitState {
+            capacity_reservations: CapacityReservations::default(),
+            period: 1,
+            final_demand_principals: vec![],
+            final_demand_orders: vec![],
+            accounting: CircuitAccounting::PhysicalControl,
+            maintenance_service: None,
+            service_connections: vec![],
+            service_orders: vec![],
+            route_stage_capacities: vec![],
+            corridor_capacities: vec![],
+            inventory: vec![
+                InventoryRow {
+                    site_id: site,
+                    good_id: input_good,
+                    unit_id: goods_unit,
+                    quantity: input,
+                },
+                InventoryRow {
+                    site_id: site,
+                    good_id: output_good,
+                    unit_id: goods_unit,
+                    quantity: 0,
+                },
+            ],
+            orders: Vec::new(),
+            freight: Vec::new(),
+            capacities: vec![CapacityRow {
+                process_id: process,
+                site_id: site,
+                period: 1,
+                available_batches: capacity,
+            }],
+            labor: vec![LaborCapacityRow {
+                site_id: site,
+                unit_id: labor_unit,
+                period: 1,
+                available: labor,
+            }],
+            production_commitments: vec![ProductionCommitment {
+                process_id: process,
+                site_id: site,
+                period: 1,
+                planned_batches: 10,
+            }],
+        };
+        (
+            production_catalog(
+                site,
+                input_good,
+                output_good,
+                goods_unit,
+                labor_unit,
+                process,
+            ),
+            state,
+        )
+    }
+}
+
+fn production_catalog(
+    site: SiteId,
+    input_good: GoodId,
+    output_good: GoodId,
+    goods_unit: UnitId,
+    labor_unit: UnitId,
+    process: ProcessId,
+) -> MaterialCatalog {
+    MaterialCatalog::try_new(MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
-        final_demand_principals: vec![],
-        final_demand_orders: vec![],
-        accounting: CircuitAccounting::PhysicalControl,
         maintenance_binding: None,
-        maintenance_service: None,
         site_logistics_nodes: vec![],
-        service_connections: vec![],
-        service_orders: vec![],
         commodities: vec![
             CommodityDefinition {
                 good_id: input_good,
@@ -176,8 +259,6 @@ fn production_state(input: u64, labor: u64, capacity: u64) -> MaterialCircuitSta
             },
         ],
         route_stages: vec![],
-        route_stage_capacities: vec![],
-        corridor_capacities: vec![],
         process_outputs: vec![ProcessOutput {
             process_id: process,
             site_id: site,
@@ -197,42 +278,13 @@ fn production_state(input: u64, labor: u64, capacity: u64) -> MaterialCircuitSta
             quantity_per_batch: 3,
         }],
         supplier_routes: Vec::new(),
-        inventory: vec![
-            InventoryRow {
-                site_id: site,
-                good_id: input_good,
-                unit_id: goods_unit,
-                quantity: input,
-            },
-            InventoryRow {
-                site_id: site,
-                good_id: output_good,
-                unit_id: goods_unit,
-                quantity: 0,
-            },
-        ],
-        orders: Vec::new(),
-        backlog: Vec::new(),
-        freight: Vec::new(),
-        capacities: vec![CapacityRow {
-            process_id: process,
-            site_id: site,
-            period: 1,
-            available_batches: capacity,
-        }],
-        labor: vec![LaborCapacityRow {
-            site_id: site,
-            unit_id: labor_unit,
-            period: 1,
-            available: labor,
-        }],
-        production_commitments: vec![ProductionCommitment {
-            process_id: process,
-            site_id: site,
-            period: 1,
-            planned_batches: 10,
-        }],
-    }
+        aid_mandates: Vec::new(),
+        household_time_policy: Vec::new(),
+        service_inputs: Vec::new(),
+        household_needs: Vec::new(),
+        catalog_digest: UNSEALED_CATALOG_DIGEST,
+    })
+    .expect("the authored fixture catalog is valid")
 }
 
 #[test]
@@ -240,10 +292,10 @@ fn leontief_minimum_exhaustively_bounds_small_production() {
     for input in 0_u64..=12 {
         for labor in 0_u64..=12 {
             for capacity in 0_u64..=6 {
-                let outcome = babylon_material_circuit::advance_material_circuit(
-                    &production_state(input, labor, capacity),
-                )
-                .expect("bounded production must close");
+                let (catalog, fixture) = production_state(input, labor, capacity);
+                let outcome =
+                    babylon_material_circuit::advance_material_circuit(&catalog, &fixture)
+                        .expect("bounded production must close");
                 let expected = 10_u64.min(input / 2).min(labor / 3).min(capacity);
                 assert_eq!(outcome.production[0].produced_batches, expected);
                 assert_eq!(outcome.state.inventory[0].quantity, input - expected * 2);
@@ -255,27 +307,27 @@ fn leontief_minimum_exhaustively_bounds_small_production() {
 
 #[test]
 fn shared_inputs_and_labor_allocate_without_process_order_priority() {
-    let mut state = production_state(12, 18, 4);
+    let (mut catalog, mut state) = production_state(12, 18, 4);
     let second_process = ProcessId::from_bytes(id::<7>());
-    state.process_outputs.push(ProcessOutput {
+    catalog.process_outputs.push(ProcessOutput {
         process_id: second_process,
         site_id: SiteId::from_bytes(id::<1>()),
         good_id: GoodId::from_bytes(id::<8>()),
         unit_id: UnitId::from_bytes(id::<4>()),
         quantity_per_batch: 5,
     });
-    state.commodities.push(CommodityDefinition {
+    catalog.commodities.push(CommodityDefinition {
         good_id: GoodId::from_bytes(id::<8>()),
         unit_id: UnitId::from_bytes(id::<4>()),
         kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
     });
-    state.input_coefficients.push(InputOutputCoefficient {
+    catalog.input_coefficients.push(InputOutputCoefficient {
         process_id: second_process,
         good_id: GoodId::from_bytes(id::<2>()),
         unit_id: UnitId::from_bytes(id::<4>()),
         quantity_per_batch: 2,
     });
-    state.labor_coefficients.push(LaborCoefficient {
+    catalog.labor_coefficients.push(LaborCoefficient {
         process_id: second_process,
         unit_id: UnitId::from_bytes(id::<5>()),
         quantity_per_batch: 3,
@@ -293,18 +345,19 @@ fn shared_inputs_and_labor_allocate_without_process_order_priority() {
         period: 1,
         planned_batches: 4,
     });
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let mut reversed = state.clone();
     reversed.production_commitments.reverse();
 
-    let outcome = babylon_material_circuit::advance_material_circuit(&state)
+    let outcome = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("shared allocation must close");
-    let twin = babylon_material_circuit::advance_material_circuit(&reversed)
+    let twin = babylon_material_circuit::advance_material_circuit(&catalog, &reversed)
         .expect("permuted allocation must close");
     assert_eq!(outcome.production[0].produced_batches, 3);
     assert_eq!(outcome.production[1].produced_batches, 3);
     assert_eq!(outcome.state.inventory[0].quantity, 0);
     assert_eq!(
-        material_circuit_state_digest(&outcome.state),
-        material_circuit_state_digest(&twin.state)
+        material_circuit_state_digest(&catalog, &outcome.state),
+        material_circuit_state_digest(&catalog, &twin.state)
     );
 }

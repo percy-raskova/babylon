@@ -78,7 +78,7 @@ fn material_commit_failure_leaves_graph_circuit_world_time_and_sink_unchanged() 
         }
         let hash = candidate.identity().tick_content_hash();
         let mut sink = CollectingSink::default();
-        let refused = session.commit_prepared_and_publish(&mut sink, candidate, |_| {
+        let refused = session.commit_prepared_and_publish(&mut sink, candidate, |_, _| {
             Err::<ReplayCommitDisposition, _>("refused before marker")
         });
         assert!(matches!(
@@ -101,14 +101,14 @@ fn material_commit_failure_leaves_graph_circuit_world_time_and_sink_unchanged() 
                 .expect("the committed session publishes a world hash"),
             world
         );
-        assert!(sink.events.is_empty());
+        assert_eq!(sink.events.len(), 0);
         let retry = session
             .prepare_advance(&actions(&session))
             .expect("the session prepares the authored advance");
         assert_eq!(retry.identity().tick_content_hash(), hash);
         assert_eq!(retry.material().receipt_bytes(), prepared_receipt_bytes);
         let (ack, _) = session
-            .commit_prepared_and_publish(&mut sink, retry, |_| {
+            .commit_prepared_and_publish(&mut sink, retry, |_, _| {
                 Ok::<_, ()>(ReplayCommitDisposition::Committed)
             })
             .expect("the prepared period commits");
@@ -164,9 +164,11 @@ fn staffed_arrival_feeds_following_commitments_past_the_former_campaign_expiry()
                 material_world::decode_material_receipts(candidate.material().receipt_bytes())
                     .expect("the canonical bytes decode into the declared type");
             assert_eq!(receipts.resolve_tick, tick);
-            let decoded =
-                MaterialWorldRegister::decode(candidate.material().register().canonical_bytes())
-                    .expect("the committed canonical bytes decode");
+            let decoded = MaterialWorldRegister::decode_external(
+                session.catalog(),
+                candidate.material().register().canonical_bytes().to_vec(),
+            )
+            .expect("the committed canonical bytes decode");
             assert_eq!(&decoded, candidate.material().register());
             for produced in &receipts.production {
                 let prior = session
@@ -189,7 +191,7 @@ fn staffed_arrival_feeds_following_commitments_past_the_former_campaign_expiry()
                 first.get_or_insert(tick);
             }
             session
-                .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_| {
+                .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_, _| {
                     Ok::<_, ()>(ReplayCommitDisposition::Committed)
                 })
                 .expect("the prepared period commits");

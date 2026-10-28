@@ -17,7 +17,7 @@ use crate::MemberLaborCapacityRow;
 use crate::RecurringEconomy;
 use crate::ServiceOrder;
 use crate::{
-    AccountId, BacklogRow, FinalDemandOrder, MaterialCircuitError, MaterialCircuitState,
+    AccountId, FinalDemandOrder, MaterialCatalog, MaterialCircuitError, MaterialCircuitState,
     MonetaryBook, MonetaryError, MoneyTransferReceipt, OrderRow, OutboundOrderId, PurchaseEscrow,
     ShiftState, SiteId, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
 };
@@ -141,34 +141,40 @@ pub(crate) fn validate_member_budgets(
     Ok(())
 }
 
-pub(crate) fn labor_principals(state: &MaterialCircuitState) -> BTreeSet<(SiteId, UnitId)> {
+pub(crate) fn labor_principals(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+) -> BTreeSet<(SiteId, UnitId)> {
     let mut result: BTreeSet<_> = state
         .labor
         .iter()
         .map(|row| (row.site_id, row.unit_id))
         .collect();
-    for output in &state.process_outputs {
-        if let Ok(index) = state
+    for output in &catalog.process_outputs {
+        if let Ok(index) = catalog
             .labor_coefficients
             .binary_search_by_key(&output.process_id, |row| row.process_id)
         {
-            let coefficient = &state.labor_coefficients[index];
+            let coefficient = &catalog.labor_coefficients[index];
             result.insert((output.site_id, coefficient.unit_id));
         }
     }
     result.extend(
-        state
+        catalog
             .merchants
             .iter()
             .map(|row| (row.site_id, row.labor_unit_id)),
     );
-    if let Some(binding) = &state.maintenance_binding {
+    if let Some(binding) = &catalog.maintenance_binding {
         result.insert((binding.provider_site_id, binding.labor_unit_id));
     }
     result
 }
 
-pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircuitError> {
+pub(crate) fn validate(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+) -> Result<(), MaterialCircuitError> {
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
         return Ok(());
     };
@@ -177,7 +183,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
     {
         return Err(MaterialCircuitError::RowLimit);
     }
-    let sites: BTreeSet<_> = state
+    let sites: BTreeSet<_> = catalog
         .site_logistics_nodes
         .iter()
         .map(|row| row.site_id)
@@ -217,7 +223,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
             return Err(MaterialCircuitError::PayrollInvariant);
         }
     }
-    let principals = labor_principals(state);
+    let principals = labor_principals(catalog, state);
     if !employment.is_subset(&principals)
         || state.labor.iter().any(|r| {
             r.period >= state.period
@@ -262,8 +268,8 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<(), MaterialCircu
     validate_service_purchases(state, &economy.book)?;
     economy.book.total_cash_and_reserves()?;
     crate::financial::validate(state)?;
-    crate::recurring::validate(state)?;
-    crate::household_time::validate(state)?;
+    crate::recurring::validate(catalog, state)?;
+    crate::household_time::validate(catalog, state)?;
     Ok(())
 }
 
@@ -340,11 +346,12 @@ pub(crate) fn validate_purchase(
 /// insufficient funds and any invalid resulting physical state. No mutation of
 /// `opening` or partial receipt escapes a refusal.
 pub fn admit_material_purchase(
+    catalog: &MaterialCatalog,
     opening: &MaterialCircuitState,
     purchase: MaterialPurchase,
     unit_price: Currency,
 ) -> Result<(MaterialCircuitState, MoneyTransferReceipt), MaterialCircuitError> {
-    let mut state = crate::transition::canonical_state(opening)?;
+    let mut state = crate::transition::canonical_state(catalog, opening)?;
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         return Err(MaterialCircuitError::MonetaryInvariant);
     };
@@ -399,16 +406,13 @@ pub fn admit_material_purchase(
     let receipt = economy.book.reserve_purchase(principal)?;
     match purchase {
         MaterialPurchase::Service(order) => state.service_orders.push(order),
-        MaterialPurchase::Delivery(order) => {
-            state.backlog.push(BacklogRow {
-                order_id: order.order_id,
-                quantity: order.ordered,
-            });
-            state.orders.push(order);
-        }
+        MaterialPurchase::Delivery(order) => state.orders.push(order),
         MaterialPurchase::LocalFinalDemand(order) => state.final_demand_orders.push(order),
     }
-    Ok((crate::transition::canonical_state(&state)?, receipt))
+    Ok((
+        crate::transition::canonical_state(catalog, &state)?,
+        receipt,
+    ))
 }
 
 pub(crate) fn settle_deliveries(

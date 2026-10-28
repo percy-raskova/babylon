@@ -43,11 +43,13 @@ use bevy::ecs::system::SystemParam;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::input::{ButtonState, InputSystems};
 
+use bevy::input_focus::pointer_focus::PointerFocusPlugin;
 use bevy::input_focus::tab_navigation::{
     NavAction, TabGroup, TabIndex, TabNavigation, TabNavigationPlugin,
 };
 use bevy::input_focus::{
-    FocusedInput, InputDispatchPlugin, InputFocus, InputFocusSystems, InputFocusVisible,
+    FocusedInput, InputDispatchPlugin, InputFocus, InputFocusPlugin, InputFocusSystems,
+    InputFocusVisible,
 };
 use bevy::picking::PickingSystems;
 use bevy::prelude::*;
@@ -203,7 +205,11 @@ pub(crate) struct ObserverFocusPlugin;
 
 impl Plugin for ObserverFocusPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((InputDispatchPlugin, TabNavigationPlugin))
+        // Bevy 0.20 splits the `InputFocus`/`InputFocusVisible` resources and the
+        // recorded-change event processing out of `InputDispatchPlugin` into
+        // `InputFocusPlugin`; the shell reads focus state, so it depends on it.
+        app.add_plugins((InputFocusPlugin, PointerFocusPlugin))
+            .add_plugins((InputDispatchPlugin, TabNavigationPlugin))
             .init_resource::<ObserverFocusPolicy>()
             .init_resource::<ObserverKeyboardClaim>()
             .init_resource::<FocusMemory>()
@@ -265,7 +271,7 @@ fn focus_world(
     let Ok(window) = windows.single() else {
         return;
     };
-    state.focus.set_if_neq(InputFocus(Some(window)));
+    state.focus.set_if_neq(InputFocus::from_entity(window));
     if state.visible.0 {
         state.visible.0 = false;
     }
@@ -422,7 +428,9 @@ fn reconcile_focus(mut state: FocusState, tree: FocusTree, nav: TabNavigation) {
         let candidate = modal_return_target(&mut state, previous);
         let restored = candidate.filter(|entity| tree.tabbable(*entity, &state.policy));
         let next = restored.or_else(|| first_target(&nav, state.policy.modal));
-        state.focus.set_if_neq(InputFocus(next));
+        state
+            .focus
+            .set_if_neq(next.map_or_else(InputFocus::default, InputFocus::from_entity));
         if next.is_some() && !state.visible.0 {
             state.visible.0 = true;
         }
@@ -433,7 +441,9 @@ fn reconcile_focus(mut state: FocusState, tree: FocusTree, nav: TabNavigation) {
         // put this frame's activation onto a replacement or into the world.
         state.claim.suppress_activation = true;
         let next = first_target(&nav, state.policy.modal);
-        state.focus.set_if_neq(InputFocus(next));
+        state
+            .focus
+            .set_if_neq(next.map_or_else(InputFocus::default, InputFocus::from_entity));
     }
 
     state.memory.last_registered = state
@@ -812,6 +822,8 @@ mod tests {
     use bevy::ecs::system::RunSystemOnce;
     use bevy::input::keyboard::Key;
     use bevy::input::InputPlugin;
+    use bevy::input_focus::FocusCause;
+    use bevy::ui_widgets::Button;
 
     use crate::observer::Perspective;
     use babylon_persistence::identity::CampaignId;
@@ -901,10 +913,15 @@ mod tests {
 
     fn app() -> (App, Entity) {
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, InputPlugin, ObserverFocusPlugin))
-            .init_resource::<Actions>()
-            .add_observer(existing_action)
-            .add_systems(Update, world_shortcut);
+        app.add_plugins((
+            MinimalPlugins,
+            InputPlugin,
+            ObserverFocusPlugin,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .init_resource::<Actions>()
+        .add_observer(existing_action)
+        .add_systems(Update, world_shortcut);
         let window = app
             .world_mut()
             .spawn((Window::default(), PrimaryWindow))
@@ -991,7 +1008,7 @@ mod tests {
             key(&mut app, window, code, ButtonState::Released, false);
         }
         let actions = app.world().resource::<Actions>();
-        assert!(actions.accepted.is_empty());
+        assert_eq!(actions.accepted.len(), 0);
         assert_eq!(actions.world_steps, 0);
         assert_eq!(actions.world_navigation, 0);
         press(&mut app, window, KeyCode::Tab);
@@ -1048,7 +1065,9 @@ mod tests {
         let actions = app.world().resource::<Actions>();
         assert_eq!(actions.accepted, [button, button]);
         assert_eq!(actions.world_steps, 0);
-        app.world_mut().resource_mut::<InputFocus>().set(window);
+        app.world_mut()
+            .resource_mut::<InputFocus>()
+            .set(window, FocusCause::Navigated);
         press(&mut app, window, KeyCode::Enter);
         assert_eq!(app.world().resource::<Actions>().world_steps, 1);
     }
@@ -1128,7 +1147,7 @@ mod tests {
         press(&mut app, window, KeyCode::Enter);
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(button));
         let actions = app.world().resource::<Actions>();
-        assert!(actions.accepted.is_empty());
+        assert_eq!(actions.accepted.len(), 0);
         assert_eq!(actions.refused, [button]);
         assert_eq!(actions.world_steps, 0);
     }
@@ -1199,7 +1218,7 @@ mod tests {
         );
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(safe));
         let actions = app.world().resource::<Actions>();
-        assert!(actions.accepted.is_empty());
+        assert_eq!(actions.accepted.len(), 0);
         assert_eq!(actions.world_steps, 0);
     }
 
@@ -1267,7 +1286,7 @@ mod tests {
             false,
         );
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(close));
-        assert!(app.world().resource::<Actions>().accepted.is_empty());
+        assert_eq!(app.world().resource::<Actions>().accepted.len(), 0);
         key(
             &mut app,
             window,
@@ -1285,7 +1304,7 @@ mod tests {
         );
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(original));
         let actions = app.world().resource::<Actions>();
-        assert!(actions.accepted.is_empty());
+        assert_eq!(actions.accepted.len(), 0);
         assert_eq!(actions.world_steps, 0);
     }
 
@@ -1310,7 +1329,9 @@ mod tests {
         let clipped = target(&mut app, root, None);
         app.world_mut()
             .entity_mut(clipped)
-            .insert(CalculatedClip { clip: Rect::EMPTY });
+            // Bevy 0.20 models inherited clipping as an enum; the strongest
+            // clipped state must still leave the control in the tab order.
+            .insert(CalculatedClip::FullyClipped);
         app.update();
         assert!(app.world().get::<TabIndex>(hidden).is_none());
         assert!(app.world().get::<TabIndex>(disabled).is_none());
@@ -1334,7 +1355,7 @@ mod tests {
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(button));
         assert!(app.world().get::<TabIndex>(button).is_none());
         let actions = app.world().resource::<Actions>();
-        assert!(actions.accepted.is_empty());
+        assert_eq!(actions.accepted.len(), 0);
         assert_eq!(actions.refused, [button]);
         assert_eq!(actions.world_steps, 0);
     }
@@ -1396,11 +1417,11 @@ mod tests {
         press(&mut app, window, KeyCode::Enter);
         assert!(app.world().get::<TabIndex>(stale).is_none());
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(safe));
-        assert!(app.world().resource::<Actions>().accepted.is_empty());
+        assert_eq!(app.world().resource::<Actions>().accepted.len(), 0);
         app.world_mut().despawn(safe);
         press(&mut app, window, KeyCode::Enter);
         let actions = app.world().resource::<Actions>();
-        assert!(actions.accepted.is_empty());
+        assert_eq!(actions.accepted.len(), 0);
         assert_eq!(actions.world_steps, 0);
     }
 
@@ -1497,7 +1518,7 @@ mod tests {
             Vec2::new(0.0, 100.0)
         );
         press(&mut app, window, KeyCode::Enter);
-        assert!(app.world().resource::<Actions>().accepted.is_empty());
+        assert_eq!(app.world().resource::<Actions>().accepted.len(), 0);
         assert_eq!(app.world().resource::<Actions>().world_steps, 0);
     }
 

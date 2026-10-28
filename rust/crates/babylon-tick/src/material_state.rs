@@ -14,6 +14,7 @@ use babylon_graph::stable_element::{StableElementKey, StableElementResolver, Sta
 use babylon_graph::stable_state::{StableGraphEdgeRow, StableGraphState};
 use babylon_kernel::geography::NationalCountyRoster;
 use babylon_kernel::H3CellId;
+use babylon_kernel::H3CellIdError;
 
 use crate::h3_runtime::{
     MichiganDynamicHexFoundation, MichiganDynamicHexFoundationError, MichiganDynamicHexValueBits,
@@ -91,6 +92,16 @@ pub enum MaterialStateError {
         field: &'static str,
         requested: usize,
     },
+    /// A canonical byte frame did not carry its exact domain, version, or width.
+    Frame { reason: &'static str },
+    /// A canonical row used another family tag.
+    RowTag { tag: u8 },
+    /// A canonical row used another literal field name.
+    RowField { expected: &'static str },
+    /// A stored dynamic-H3 identity was not one checked H3 cell.
+    CellIdentity(H3CellIdError),
+    /// A decoded frame did not reproduce its exact input bytes.
+    NonCanonicalState,
 }
 
 impl std::fmt::Display for MaterialStateError {
@@ -1014,6 +1025,71 @@ impl MaterialStateRows {
         })
     }
 
+    /// Decode one exact canonical aggregate material-state frame.
+    ///
+    /// This is the strict inverse of [`Self::try_from_rows`] and
+    /// [`Self::canonical_bytes`]: the decoded rows re-encode to the exact input
+    /// bytes, and every frame the encoder could not produce is refused rather
+    /// than normalized.
+    ///
+    /// # Errors
+    /// Returns the first framing, family-tag, field-name, row-order, bounds,
+    /// value, or allocation refusal.
+    pub fn decode(bytes: &[u8]) -> Result<Self, MaterialStateError> {
+        let gate = &ProductionMaterialAllocationGate;
+        let mut cursor = MaterialCursor {
+            bytes,
+            position: 0,
+            gate,
+        };
+        if cursor.take(MATERIAL_ROWS_DOMAIN.len())? != MATERIAL_ROWS_DOMAIN {
+            return Err(MaterialStateError::Frame {
+                reason: "material state rows domain",
+            });
+        }
+        if cursor.u32()? != MATERIAL_LAYOUT_VERSION {
+            return Err(MaterialStateError::Frame {
+                reason: "material state rows layout version",
+            });
+        }
+        let declared = usize::try_from(cursor.u32()?).unwrap_or(usize::MAX);
+        if declared > cursor.bytes.len() {
+            return Err(MaterialStateError::Frame {
+                reason: "material state row count",
+            });
+        }
+        let mut world_registers = reserve_vec("material world register rows", declared, gate)?;
+        let mut territories = reserve_vec("material territory rows", declared, gate)?;
+        let mut dynamic_hexes = reserve_vec("material dynamic rows", declared, gate)?;
+        let mut organizations = reserve_vec("material organization rows", declared, gate)?;
+        for _ in 0..declared {
+            let width = usize::try_from(cursor.u32()?).unwrap_or(usize::MAX);
+            let row = cursor.take(width)?;
+            decode_material_row(
+                row,
+                &mut world_registers,
+                &mut territories,
+                &mut dynamic_hexes,
+                &mut organizations,
+            )?;
+        }
+        if cursor.position != bytes.len() {
+            return Err(MaterialStateError::Frame {
+                reason: "material state rows trailing bytes",
+            });
+        }
+        let rows = Self::try_from_rows(MaterialStateRowsInput {
+            world_registers,
+            territories,
+            dynamic_hexes,
+            organizations,
+        })?;
+        if rows.canonical_bytes.as_slice() != bytes {
+            return Err(MaterialStateError::NonCanonicalState);
+        }
+        Ok(rows)
+    }
+
     fn compose(
         source: &MaterialState,
         resolve_tick: i64,
@@ -1083,7 +1159,6 @@ impl MaterialStateRows {
     }
 
     /// Iterate all rows in exact family-tag/key order without allocation.
-    #[must_use]
     pub fn rows(&self) -> impl ExactSizeIterator<Item = MaterialStateRowRef<'_>> + '_ {
         MaterialStateRowsIter {
             rows: self,
@@ -1546,6 +1621,239 @@ fn take_currency_fields<'a>(
         *index += 1;
     }
     &rows[start..*index]
+}
+
+struct MaterialCursor<'a> {
+    bytes: &'a [u8],
+    position: usize,
+    gate: &'a dyn MaterialAllocationGate,
+}
+
+impl MaterialCursor<'_> {
+    fn take(&mut self, count: usize) -> Result<&[u8], MaterialStateError> {
+        let end = self
+            .position
+            .checked_add(count)
+            .ok_or(MaterialStateError::CapacityOverflow {
+                field: "material frame offset",
+            })?;
+        let slice = self
+            .bytes
+            .get(self.position..end)
+            .ok_or(MaterialStateError::Frame {
+                reason: "the material state row frames are truncated",
+            })?;
+        self.position = end;
+        Ok(slice)
+    }
+
+    fn u8(&mut self) -> Result<u8, MaterialStateError> {
+        let mut value = [0_u8; 1];
+        value.copy_from_slice(self.take(1)?);
+        Ok(value[0])
+    }
+
+    fn u32(&mut self) -> Result<u32, MaterialStateError> {
+        let mut value = [0_u8; 4];
+        value.copy_from_slice(self.take(4)?);
+        Ok(u32::from_be_bytes(value))
+    }
+
+    fn u64(&mut self) -> Result<u64, MaterialStateError> {
+        let mut value = [0_u8; 8];
+        value.copy_from_slice(self.take(8)?);
+        Ok(u64::from_be_bytes(value))
+    }
+
+    fn count(&mut self, maximum: usize) -> Result<usize, MaterialStateError> {
+        let declared = usize::try_from(self.u32()?).unwrap_or(usize::MAX);
+        if declared > maximum || declared > self.bytes.len() {
+            return Err(MaterialStateError::Frame {
+                reason: "a material row count exceeds its governed bound",
+            });
+        }
+        Ok(declared)
+    }
+
+    fn field(&mut self, expected: &'static str) -> Result<(), MaterialStateError> {
+        let length = usize::try_from(self.u32()?).unwrap_or(usize::MAX);
+        if self.take(length)? != expected.as_bytes() {
+            return Err(MaterialStateError::RowField { expected });
+        }
+        Ok(())
+    }
+
+    fn string(&mut self, field: &'static str) -> Result<String, MaterialStateError> {
+        let length = usize::try_from(self.u32()?).unwrap_or(usize::MAX);
+        let gate = self.gate;
+        let text = std::str::from_utf8(self.take(length)?).map_err(|_| {
+            MaterialStateError::StableValue(IdentityCodecError::NonUtf8String { field })
+        })?;
+        copy_string(field, text, gate)
+    }
+
+    fn bytes(&mut self) -> Result<&[u8], MaterialStateError> {
+        let length = usize::try_from(self.u32()?).unwrap_or(usize::MAX);
+        self.take(length)
+    }
+
+    fn stable_value(&mut self) -> Result<StableBslValue, MaterialStateError> {
+        identity_codec::decode_stable_bsl_value(self.bytes()?).map_err(map_stable_value)
+    }
+
+    fn stable_key(
+        &mut self,
+        role: MaterialIdentityRole,
+    ) -> Result<StableElementKey, MaterialStateError> {
+        let bytes = self.bytes()?;
+        StableElementKey::from_canonical_bytes(bytes).map_err(|error| match role {
+            MaterialIdentityRole::Territory => map_territory_identity(error),
+            MaterialIdentityRole::Organization => map_organization_identity(error),
+        })
+    }
+
+    fn named_values(&mut self) -> Result<Vec<(String, StableBslValue)>, MaterialStateError> {
+        let count = self.count(self.bytes.len())?;
+        let mut values = reserve_vec("material named values", count, self.gate)?;
+        for _ in 0..count {
+            let name = self.string("material field name")?;
+            let value = self.stable_value()?;
+            values.push((name, value));
+        }
+        Ok(values)
+    }
+
+    fn done(&self) -> Result<(), MaterialStateError> {
+        if self.position == self.bytes.len() {
+            Ok(())
+        } else {
+            Err(MaterialStateError::Frame {
+                reason: "a material row carries trailing bytes",
+            })
+        }
+    }
+}
+
+fn decode_material_row(
+    bytes: &[u8],
+    world_registers: &mut Vec<WorldRegisterRow>,
+    territories: &mut Vec<TerritoryStateRow>,
+    dynamic_hexes: &mut Vec<DynamicHexStateRow>,
+    organizations: &mut Vec<OrganizationStateRow>,
+) -> Result<(), MaterialStateError> {
+    let gate = &ProductionMaterialAllocationGate;
+    let mut cursor = MaterialCursor {
+        bytes,
+        position: 0,
+        gate,
+    };
+    if cursor.take(MATERIAL_ROW_DOMAIN.len())? != MATERIAL_ROW_DOMAIN {
+        return Err(MaterialStateError::Frame {
+            reason: "material row domain",
+        });
+    }
+    if cursor.u32()? != MATERIAL_LAYOUT_VERSION {
+        return Err(MaterialStateError::Frame {
+            reason: "material row layout version",
+        });
+    }
+    let tag = cursor.u8()?;
+    cursor.bytes()?;
+    match tag {
+        0x01 => world_registers.push(decode_world_register(&mut cursor, gate)?),
+        0x02 => territories.push(decode_territory(&mut cursor, gate)?),
+        0x03 => dynamic_hexes.push(decode_dynamic_hex(&mut cursor, gate)?),
+        0x08 => organizations.push(decode_organization(&mut cursor, gate)?),
+        other => return Err(MaterialStateError::RowTag { tag: other }),
+    }
+    cursor.done()
+}
+
+fn decode_world_register(
+    cursor: &mut MaterialCursor<'_>,
+    gate: &dyn MaterialAllocationGate,
+) -> Result<WorldRegisterRow, MaterialStateError> {
+    cursor.field("qname")?;
+    let qname = cursor.string("material world register qname")?;
+    cursor.field("value")?;
+    let value = cursor.stable_value()?;
+    WorldRegisterRow::try_new_with_gate(qname, value, gate)
+}
+
+fn decode_territory(
+    cursor: &mut MaterialCursor<'_>,
+    gate: &dyn MaterialAllocationGate,
+) -> Result<TerritoryStateRow, MaterialStateError> {
+    cursor.field("territory_id")?;
+    let territory_id = cursor.stable_key(MaterialIdentityRole::Territory)?;
+    cursor.field("ordered_fields")?;
+    let ordered_fields = cursor.named_values()?;
+    TerritoryStateRow::try_from_projection(territory_id, ordered_fields, gate)
+}
+
+fn decode_dynamic_hex(
+    cursor: &mut MaterialCursor<'_>,
+    gate: &dyn MaterialAllocationGate,
+) -> Result<DynamicHexStateRow, MaterialStateError> {
+    cursor.field("cell_id")?;
+    let mut raw_cell = [0_u8; 8];
+    raw_cell.copy_from_slice(cursor.take(8)?);
+    let cell_id = H3CellId::try_from(u64::from_be_bytes(raw_cell))
+        .map_err(MaterialStateError::CellIdentity)?;
+    let lanes = [
+        "c",
+        "v",
+        "s",
+        "k",
+        "biocapacity_stock",
+        "energy_stock",
+        "raw_material_stock",
+        "internet_access_pct",
+        "surveillance_coupling",
+    ];
+    let mut value_bits = [0_u64; 9];
+    for (name, bits) in lanes.into_iter().zip(&mut value_bits) {
+        cursor.field(name)?;
+        *bits = cursor.u64()?;
+    }
+    let values = MichiganDynamicHexValues::try_new(MichiganDynamicHexValueBits {
+        c: value_bits[0],
+        v: value_bits[1],
+        s: value_bits[2],
+        k: value_bits[3],
+        biocapacity_stock: value_bits[4],
+        energy_stock: value_bits[5],
+        raw_material_stock: value_bits[6],
+        internet_access_pct: value_bits[7],
+        surveillance_coupling: value_bits[8],
+    })
+    .map_err(MaterialStateError::DynamicFoundation)?;
+    DynamicHexStateRow::try_from_validated(cell_id, values.value_bits(), gate)
+}
+
+fn decode_organization(
+    cursor: &mut MaterialCursor<'_>,
+    gate: &dyn MaterialAllocationGate,
+) -> Result<OrganizationStateRow, MaterialStateError> {
+    cursor.field("organization_id")?;
+    let organization_id = cursor.stable_key(MaterialIdentityRole::Organization)?;
+    cursor.field("organization_kind")?;
+    let organization_kind = cursor.stable_value()?;
+    cursor.field("ordered_territory_ids")?;
+    let count = cursor.count(cursor.bytes.len())?;
+    let mut ordered_territory_ids = reserve_vec("material presence ids", count, gate)?;
+    for _ in 0..count {
+        ordered_territory_ids.push(cursor.stable_key(MaterialIdentityRole::Territory)?);
+    }
+    cursor.field("ordered_fields")?;
+    let ordered_fields = cursor.named_values()?;
+    OrganizationStateRow::try_from_projection(
+        organization_id,
+        organization_kind,
+        ordered_territory_ids,
+        ordered_fields,
+        gate,
+    )
 }
 
 fn begin_row<'a>(

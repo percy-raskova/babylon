@@ -82,15 +82,21 @@ pub struct InvestmentPolicy {
     pub expansion_earnings_fraction_bps: u16,
     pub cash_floor: Currency,
 }
+/// Authored equipment definitions and policies; installed position is current state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProductiveEquipment {
     pub definitions: Vec<EquipmentDefinition>,
     pub bindings: Vec<EquipmentBinding>,
     pub installation_inputs: Vec<InstallationInput>,
-    pub cohorts: Vec<InstalledEquipmentCohort>,
-    pub pending: Vec<PendingInstallation>,
     pub installation_policies: Vec<InstallationPolicy>,
     pub investment_policies: Vec<InvestmentPolicy>,
+}
+
+/// Installed cohorts and work in progress; only these quantities change.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct EquipmentPosition {
+    pub cohorts: Vec<InstalledEquipmentCohort>,
+    pub pending: Vec<PendingInstallation>,
 }
 
 /// One explicit carrying row per physical asset, including an explicit zero cost.

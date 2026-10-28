@@ -14,13 +14,15 @@
 // tools/check_dynamic_linking_fence.sh.
 #[test]
 fn dynamic_linking_is_never_active_in_a_gate_build() {
-    assert!(
-        !cfg!(feature = "dynamic_linking"),
-        "bevy/dynamic_linking is compiled into this build, but this test \
+    const {
+        assert!(
+            !cfg!(feature = "dynamic_linking"),
+            "bevy/dynamic_linking is compiled into this build, but this test \
          only runs under `cargo test --workspace --locked` (no --features) \
          — the feature must have become a DEFAULT feature. That violates \
          the R1.4 fence: dynamic_linking is local-iteration-only, via \
          `mise run rust:client-dev-dylib`, and must never ship in a CI, \
          release, or pin-ceremony build."
-    );
+        );
+    };
 }

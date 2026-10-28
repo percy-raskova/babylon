@@ -49,6 +49,10 @@ COUNTERS = {
     "Private_Hugetlb": "private_hugetlb_bytes",
     "Shared_Hugetlb": "shared_hugetlb_bytes",
 }
+# A retired task can stay listed in /proc/PID/task while its records already
+# fail; membership settles within this bound before such a gap counts as fatal.
+CENSUS_SETTLE_SECONDS = 0.1
+CENSUS_SETTLE_POLL_SECONDS = 0.001
 CAPTURE_FILES = {
     "policy_sha256": "policy.json",
     "ownership_record_sha256": "ownership",
@@ -520,6 +524,18 @@ def thread_census(
     def tasks() -> tuple[Path, ...]:
         return tuple(sorted((directory / "task").iterdir(), key=lambda path: int(path.name)))
 
+    def settled_tasks() -> tuple[Path, ...]:
+        """Observe membership until it leaves this scan or the settle bound closes."""
+        settle_deadline = time.monotonic() + CENSUS_SETTLE_SECONDS
+        current = tasks()
+        while current == task_paths:
+            remaining = settle_deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(CENSUS_SETTLE_POLL_SECONDS, remaining))
+            current = tasks()
+        return current
+
     verify_incarnation()
     try:
         task_paths = tasks()
@@ -543,10 +559,12 @@ def thread_census(
         except KernelRecordMissing:
             # A vanished task can be ordinary worker retirement. Establish the
             # exact live process and a changed task set before permitting retry.
-            # Missing process identity, unchanged membership and access failures
-            # remain fatal; no partially read census is returned.
+            # The kernel can keep an already unreadable task listed through the
+            # next scan, so membership settles here instead of being sampled
+            # once. Missing process identity, unsettled membership and access
+            # failures remain fatal; no partially read census is returned.
             verify_incarnation()
-            after = tasks()
+            after = settled_tasks()
             verify_incarnation()
             if task_paths != after:
                 raise ThreadCensusChanged("native thread census changed") from None

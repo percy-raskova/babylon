@@ -3,13 +3,13 @@ use super::capture::CapturedSources;
 use super::{CapturedEconomicCatalog, EconomicCatalogError};
 
 use crate::material_runtime::{
-    MaterialFoundationSpec, MaterialRuntimeError, MaterialRuntimeFoundation,
+    AdmittedMaterial, MaterialFoundationSpec, MaterialRuntimeError, MaterialRuntimeFoundation,
 };
 use crate::{CampaignFoundation, FoundationContentBundle};
 
 use crate::RustPersistenceRuntimeError;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
-use babylon_tick::material_staffing::StaffingComposition;
+use babylon_practice_contract::OrganizerPeriodJournal;
 use babylon_tick::material_world::MaterialWorldRegister;
 
 impl CapturedEconomicCatalog {
@@ -35,11 +35,16 @@ impl CapturedEconomicCatalog {
             )
             .map_err(catalog_error)?;
         let compiled = catalog.opening.compile().map_err(catalog_error)?;
-        let mut register = MaterialWorldRegister::try_new(0, compiled.state)?;
+        let mut register = MaterialWorldRegister::try_new(&compiled.catalog, 0, compiled.state)?;
         if let Some(config) = &catalog.input.organizer {
             let state = babylon_practice_contract::initial_organizer_state(config)
                 .map_err(|_| MaterialRuntimeError::FoundationMismatch)?;
-            register = register.with_organizer(config.clone(), state)?;
+            register = register.with_organizer(
+                &compiled.catalog,
+                config.clone(),
+                state,
+                OrganizerPeriodJournal::empty(),
+            )?;
         }
         let spec = MaterialFoundationSpec {
             preset_id: catalog.input.preset_id.clone(),
@@ -48,12 +53,14 @@ impl CapturedEconomicCatalog {
         };
         MaterialRuntimeFoundation::capture_register(graph, bundle, register, spec)
     }
-    pub(crate) fn validate_foundation(
+    /// Derive the one immutable definition set and opening its sources authorize.
+    /// # Errors
+    /// Refuses a spec, graph identity or organizer binding from another capture.
+    pub(crate) fn admitted_material(
         &self,
         graph: &CampaignFoundation,
-        register: &MaterialWorldRegister,
         spec: &MaterialFoundationSpec,
-    ) -> Result<StaffingComposition, EconomicCatalogError> {
+    ) -> Result<AdmittedMaterial, EconomicCatalogError> {
         let compiled = self.opening.compile()?;
         let initial_organizer = self
             .input
@@ -67,9 +74,6 @@ impl CapturedEconomicCatalog {
             || spec.content_digest != self.digest
             || graph.content_digest().defines_hash != self.digest
             || graph.reference_digest().as_bytes() != &self.digest
-            || register.state() != &compiled.state
-            || register.organizer_config() != self.input.organizer.as_ref()
-            || register.organizer_state() != initial_organizer.as_ref()
         {
             return Err(EconomicCatalogError::Foundation);
         }
@@ -82,7 +86,12 @@ impl CapturedEconomicCatalog {
                 return Err(EconomicCatalogError::Foundation);
             }
         }
-        Ok(compiled.staffing)
+        Ok(AdmittedMaterial {
+            catalog: compiled.catalog,
+            state: compiled.state,
+            staffing: compiled.staffing,
+            organizer: self.input.organizer.clone().zip(initial_organizer),
+        })
     }
 }
 fn catalog_error(error: EconomicCatalogError) -> MaterialRuntimeError {

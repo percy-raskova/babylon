@@ -8,6 +8,7 @@ use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::CorridorCapacity;
 use babylon_material_circuit::HistoricalCostBook;
 use babylon_material_circuit::InstalledProcessCapacity;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
 use babylon_material_circuit::MemberLaborCapacityRow;
@@ -39,12 +40,12 @@ use babylon_material_circuit::StockCarryingValue;
 use babylon_material_circuit::SupplierRoute;
 use babylon_material_circuit::SupplierTransport;
 
-fn rolling(mut state: MaterialCircuitState) -> MaterialCircuitState {
+fn rolling(catalog: &mut MaterialCatalog, mut state: MaterialCircuitState) -> MaterialCircuitState {
     state.capacities.retain(|row| row.period == state.period);
     state
         .corridor_capacities
         .retain(|row| row.period == state.period);
-    state.capacity_supply = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
+    catalog.capacity_policy = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
         processes: RollingProcessSupply::CapturedNameplate(
             state
                 .capacities
@@ -64,8 +65,8 @@ fn rolling(mut state: MaterialCircuitState) -> MaterialCircuitState {
                 grams_per_period: row.available_grams,
             })
             .collect(),
-        future_reservations: vec![],
     }));
+    *catalog = MaterialCatalog::try_new(catalog.clone()).expect("the fixture catalog stays valid");
     state
 }
 
@@ -222,7 +223,8 @@ fn circuit_activity(
 
 #[test]
 fn withdrawal_and_recovery_pass_through_plans_and_conserved_resident_workforce() {
-    let mut state = rolling(crate::opening());
+    let (mut catalog, opening) = crate::opening();
+    let mut state = rolling(&mut catalog, opening);
     state.labor.retain(|row| row.period == 1);
     if let CircuitAccounting::Monetary(e) = &mut state.accounting {
         e.member_labor.retain(|row| row.period == 1);
@@ -235,11 +237,11 @@ fn withdrawal_and_recovery_pass_through_plans_and_conserved_resident_workforce()
     let mut consumed = 0;
     for period in 1..=12 {
         crate::recurring_mut(&mut state).household_purchases[0].enabled = ![3, 4].contains(&period);
-        let closed = babylon_material_circuit::close_material_period(&state)
+        let closed = babylon_material_circuit::close_material_period(&catalog, &state)
             .expect("the material period closes");
         let bindings: Vec<_> = pools.pools().iter().map(|p| p.binding().clone()).collect();
         let requests = closed
-            .staffing_requests(&bindings)
+            .staffing_requests(&catalog, &bindings)
             .expect("the fixture staffing requests are present");
         let staffing = babylon_material_circuit::advance_staffing(&pools, &requests)
             .expect("the fixture staffing advances");
@@ -248,7 +250,7 @@ fn withdrawal_and_recovery_pass_through_plans_and_conserved_resident_workforce()
         hires += period_hires;
         separations += period_separations;
         let transition = closed
-            .finish_with_workforce(staffing.next_labor().to_vec(), hours_next)
+            .finish_with_workforce(&catalog, staffing.next_labor().to_vec(), hours_next)
             .expect("the fixture call `finish_with_workforce` succeeds for the authored inputs");
         trajectory.push(circuit_activity(&transition, &members));
         consumed += transition
@@ -267,7 +269,8 @@ fn withdrawal_and_recovery_pass_through_plans_and_conserved_resident_workforce()
         );
         pools = staffing.state().clone();
         state = babylon_material_circuit::decode_material_circuit_state(
-            &babylon_material_circuit::encode_material_circuit_state(&transition.state)
+            &catalog,
+            &babylon_material_circuit::encode_material_circuit_state(&catalog, &transition.state)
                 .expect("the canonical material state encodes"),
         )
         .expect("the canonical material bytes decode");
@@ -292,17 +295,17 @@ fn withdrawal_and_recovery_pass_through_plans_and_conserved_resident_workforce()
     );
 }
 
-fn foreign_trade_opening() -> MaterialCircuitState {
-    let mut state = crate::opening();
-    state.process_outputs.clear();
-    state.input_coefficients.clear();
-    state.labor_coefficients.clear();
+fn foreign_trade_opening() -> (MaterialCatalog, MaterialCircuitState) {
+    let (mut catalog, mut state) = crate::opening();
+    catalog.process_outputs.clear();
+    catalog.input_coefficients.clear();
+    catalog.labor_coefficients.clear();
     state.production_commitments.clear();
     state.capacities.clear();
     // Keep sixteen finite goods: four exports, four imports, and eight retail units.
     state.inventory = vec![inventory(1, 1, 4), inventory(2, 2, 4), inventory(3, 2, 8)];
     crate::recurring_mut(&mut state).household_stocks[0].quantity = 0;
-    state.merchants.extend(
+    catalog.merchants.extend(
         [
             (
                 1,
@@ -321,7 +324,7 @@ fn foreign_trade_opening() -> MaterialCircuitState {
             labor_unit_id: crate::hours(),
         }),
     );
-    state
+    catalog
         .handling_coefficients
         .extend(
             [(1, 1), (2, 2)]
@@ -333,7 +336,7 @@ fn foreign_trade_opening() -> MaterialCircuitState {
                     hours_per_unit: 1,
                 }),
         );
-    state.supplier_routes = [(1, 2, 1), (2, 1, 2)]
+    catalog.supplier_routes = [(1, 2, 1), (2, 1, 2)]
         .into_iter()
         .map(|(seller, buyer, g)| SupplierRoute {
             supplier_site_id: crate::site(seller),
@@ -344,7 +347,7 @@ fn foreign_trade_opening() -> MaterialCircuitState {
             transport_kind: SupplierTransport::Staged,
         })
         .collect();
-    state.route_stages[1].to_node_id = crate::node(1);
+    catalog.route_stages[1].to_node_id = crate::node(1);
     // Warehouse handling and road freight are distinct physical capacity principals.
     state.corridor_capacities.extend((1..=9).flat_map(|period| {
         [4, 5].into_iter().map(move |id| CorridorCapacity {
@@ -355,7 +358,8 @@ fn foreign_trade_opening() -> MaterialCircuitState {
     }));
     fund_foreign_trade(&mut state);
     configure_trade_policies(crate::recurring_mut(&mut state));
-    state
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    (catalog, state)
 }
 
 fn fund_foreign_trade(state: &mut MaterialCircuitState) {
@@ -470,7 +474,7 @@ fn record_trade_settlement(
 
 #[test]
 fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery() {
-    let mut state = foreign_trade_opening();
+    let (catalog, mut state) = foreign_trade_opening();
     let mut delivered = [0_u64; 2];
     let mut settled = [0_i128; 2];
     let mut active_periods = 0;
@@ -478,15 +482,15 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
     let mut purchased = 0;
     let mut consumed = 0;
     for period in 1..=8 {
-        let transition = babylon_material_circuit::advance_material_circuit(&state)
+        let transition = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
         if !transition.dispatches.is_empty() {
             active_periods += 1;
         }
         if period == 1 {
-            assert!(transition.deliveries.is_empty());
-            assert!(transition.realizations.is_empty());
-            assert!(!transition.state.freight.is_empty());
+            assert_eq!(transition.deliveries.len(), 0);
+            assert_eq!(transition.realizations.len(), 0);
+            assert_ne!(transition.state.freight.len(), 0);
         }
         let delivered_before = delivered;
         let settled_before = settled;
@@ -525,10 +529,11 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
             .map(|r| r.consumed_quantity)
             .sum::<u64>();
         assert_conservation(&transition.state, consumed, 16, 200);
-        assert!(transition.production.is_empty());
-        assert!(transition.local_transfers.is_empty());
+        assert_eq!(transition.production.len(), 0);
+        assert_eq!(transition.local_transfers.len(), 0);
         state = babylon_material_circuit::decode_material_circuit_state(
-            &babylon_material_circuit::encode_material_circuit_state(&transition.state)
+            &catalog,
+            &babylon_material_circuit::encode_material_circuit_state(&catalog, &transition.state)
                 .expect("the canonical material state encodes"),
         )
         .expect("the canonical material bytes decode");
@@ -539,7 +544,7 @@ fn finite_foreign_imports_and_exports_settle_only_after_bidirectional_delivery()
     assert_eq!(consumed, 8);
     assert_eq!(delivered, [4, 4]);
     assert_eq!(settled, [4, 4]);
-    assert!(state.freight.is_empty());
+    assert_eq!(state.freight.len(), 0);
     assert_eq!(
         state
             .inventory

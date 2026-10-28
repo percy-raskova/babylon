@@ -238,6 +238,18 @@ impl MichiganMaterialCatalog {
         );
         Ok(result)
     }
+    /// Encode the admitted typed defines values canonically.
+    ///
+    /// The bytes are the captured values, not the authoring TOML, and the store
+    /// retains them beside the exact source unit.
+    ///
+    /// # Errors
+    ///
+    /// Refuses an unencodable captured defines value.
+    pub fn canonical_defines_bytes(&self) -> Result<Vec<u8>, MichiganDefinesError> {
+        self.capture.defines.encode()
+    }
+
     /// Capture prequalified physical paths and source-supported statewide relationships.
     /// # Errors
     /// Refuses disconnected, unqualified, mismatched or malformed authority.

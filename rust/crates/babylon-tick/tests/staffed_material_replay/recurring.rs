@@ -6,9 +6,9 @@ use crate::subject;
 use crate::CollectingSink;
 use crate::CorridorCapacity;
 use crate::CorridorId;
-use crate::MaterialCircuitState;
 use crate::MaterialCommitError;
 use crate::MaterialWorldRegister;
+use crate::Materials;
 use crate::ReplayCommitDisposition;
 use crate::Session;
 use crate::StaffingComposition;
@@ -46,11 +46,15 @@ fn capture_empty_pantry_cost(economy: &mut MonetaryCircuit) {
         HistoricalCostBook::from_snapshot(costs).expect("the snapshot admits the derived value");
 }
 
-fn opening() -> MaterialCircuitState {
-    let mut material = crate::paid_material();
+fn opening() -> Materials {
+    let Materials {
+        mut catalog,
+        mut state,
+    } = crate::paid_material();
+    let material = &mut state;
     let household = material.final_demand_principals[0].id;
     let handling = CorridorId::from_bytes([2; 32]);
-    material.merchants.push(MerchantHandling {
+    catalog.merchants.push(MerchantHandling {
         site_id: crate::site(1),
         location: "county:26163"
             .parse()
@@ -59,7 +63,7 @@ fn opening() -> MaterialCircuitState {
         capacity_id: handling,
         labor_unit_id: crate::unit(1),
     });
-    material
+    catalog
         .handling_coefficients
         .push(MerchantHandlingCoefficient {
             site_id: crate::site(1),
@@ -131,14 +135,21 @@ fn opening() -> MaterialCircuitState {
         last_household_consumption_period: 0,
     }));
     capture_empty_pantry_cost(economy);
-    material
+    catalog.household_needs.clone_from(
+        &economy
+            .recurring
+            .as_ref()
+            .expect("the fixture set the optional field before this read")
+            .household_needs,
+    );
+    Materials { catalog, state }
 }
 
 fn session() -> Session {
     session_with_material(opening())
 }
 
-fn session_with_material(material: MaterialCircuitState) -> Session {
+fn session_with_material(material: Materials) -> Session {
     let pool = StaffingPoolBinding::try_new(
         StaffingPoolId::from_bytes([1; 32]),
         crate::site(1),
@@ -167,7 +178,11 @@ fn household_time_session() -> Session {
         HouseholdNeedBasis, HouseholdTimeAccounting, HouseholdTimeBook, HouseholdTimeCommitment,
         HouseholdTimePolicy, HouseholdUnmetTimeBurden,
     };
-    let mut material = opening();
+    let Materials {
+        mut catalog,
+        mut state,
+    } = opening();
+    let material = &mut state;
     let CircuitAccounting::Monetary(economy) = &mut material.accounting else {
         panic!("paid household opening");
     };
@@ -199,7 +214,10 @@ fn household_time_session() -> Session {
         }])
         .expect("the constructor accepts the authored fixture arguments"),
     );
-    session_with_material(material)
+    if let HouseholdTimeAccounting::Modeled(time) = &economy.household_time {
+        catalog.household_time_policy.clone_from(&time.policies);
+    }
+    session_with_material(Materials { catalog, state })
 }
 
 #[test]
@@ -218,7 +236,7 @@ fn household_time_receipts_publish_atomically_and_replay_after_restart() {
     assert_eq!(time.unpaid_requested_hours, 20);
     assert_eq!(time.contribution_available_hours, 12);
     let identity = *candidate.identity();
-    let refused = session.commit_prepared_and_publish(&mut sink, candidate, |_| {
+    let refused = session.commit_prepared_and_publish(&mut sink, candidate, |_, _| {
         Err::<ReplayCommitDisposition, _>("household time commit refused")
     });
     assert!(matches!(
@@ -251,7 +269,8 @@ fn household_time_receipts_publish_atomically_and_replay_after_restart() {
             &graph,
             &graph_material,
             &registers,
-            MaterialWorldRegister::decode(&material).expect("the committed canonical bytes decode"),
+            MaterialWorldRegister::decode_external(session.catalog(), material.clone())
+                .expect("the committed canonical bytes decode"),
         )
         .expect("the committed checkpoint restores");
     assert_eq!(restored.material(), session.material());
@@ -297,14 +316,17 @@ fn household_admission_consumption_and_retirement_replay_atomically() {
     assert_eq!(receipts.household_demand[0].admitted_quantity, 1);
     assert_eq!(receipts.household_demand[0].expired_quantity, 1);
     assert_eq!(receipts.household_consumption[0].unmet_quantity, 1);
-    assert!(candidate
-        .material()
-        .register()
-        .state()
-        .final_demand_orders
-        .is_empty());
+    assert_eq!(
+        candidate
+            .material()
+            .register()
+            .state()
+            .final_demand_orders
+            .len(),
+        0
+    );
     let expected = *candidate.identity();
-    let refused = session.commit_prepared_and_publish(&mut sink, candidate, |_| {
+    let refused = session.commit_prepared_and_publish(&mut sink, candidate, |_, _| {
         Err::<ReplayCommitDisposition, _>("recurring commit refused")
     });
     assert!(matches!(
@@ -330,7 +352,8 @@ fn household_admission_consumption_and_retirement_replay_atomically() {
             &graph,
             &graph_material,
             &registers,
-            MaterialWorldRegister::decode(&material).expect("the committed canonical bytes decode"),
+            MaterialWorldRegister::decode_external(session.catalog(), material.clone())
+                .expect("the committed canonical bytes decode"),
         )
         .expect("the committed checkpoint restores");
     let mut restored_sink = CollectingSink::default();
@@ -347,12 +370,10 @@ fn household_admission_consumption_and_retirement_replay_atomically() {
             .expect("the canonical bytes decode into the declared type");
         assert_eq!(receipts.household_consumption[0].period, period);
         consumed += receipts.household_consumption[0].consumed_quantity;
-        assert!(next
-            .material()
-            .register()
-            .state()
-            .final_demand_orders
-            .is_empty());
+        assert_eq!(
+            next.material().register().state().final_demand_orders.len(),
+            0
+        );
         crate::commit(&mut session, &mut sink, next);
         crate::commit(&mut restored, &mut restored_sink, replay);
     }

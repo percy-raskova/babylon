@@ -112,7 +112,7 @@ fn covenant_3_and_4_unknown_member_is_loud_before_the_library_ever_sees_it() {
     let err = graph
         .add_hyperedge("economic_sector", &[known, NodeId(999_999)])
         .expect_err("the fixture call `add_hyperedge` fails for the authored inputs");
-    assert!(!err.message.is_empty());
+    assert_ne!(err.message.len(), 0);
     // And the hyperedge must not have been partially minted — a second,
     // now-valid attempt gets a FRESH id, proving nothing leaked from the
     // rejected attempt.

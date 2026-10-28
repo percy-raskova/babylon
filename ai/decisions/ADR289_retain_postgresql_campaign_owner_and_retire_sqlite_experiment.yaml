@@ -1,0 +1,103 @@
+ADR289_retain_postgresql_campaign_owner_and_retire_sqlite_experiment:
+  status: accepted
+  date: '2026-10-27'
+  issue: PER-354
+  title: Retain PostgreSQL as the sole campaign owner; retire the SQLite store experiment
+  evidence_class: Designed
+  authority:
+    - Director selected the PostgreSQL-retention close on 2026-10-27 with a
+      standing order to prove the game works on PostgreSQL and to remove the
+      SQLite campaign store
+    - Repository rules require an architecture decision record
+    - Plan-mode review of the full PER-354 branch verified PostgreSQL
+      end-to-end on a disposable PostgreSQL 17.11 runtime before this record
+  supersedes:
+    - >-
+      ADR287_embedded_sqlite_campaign_owner_and_compact_state in full. No
+      SQLite campaign owner will be activated; Amendment AL is repealed and
+      the Constitution returns to v4.2.0 with PostgreSQL as the durable
+      publication boundary.
+    - >-
+      ADR288_postgres_capability_comparison_and_sqlite_service_cost as a
+      decision input. Its capability matrix and ranking stand as analysis;
+      its P9a-2 hand-built ACL program is cancelled with the cutover.
+  context: |
+    PER-354 built a complete embedded SQLite campaign store (9-table STRICT
+    schema, online backup, 13-period retention, qualification harness) and
+    qualified it on a 2/52/325-period ladder. Task 14 then proved the plan's
+    P9 premise false: PostgreSQL was still the production campaign writer
+    end to end, and the only SQLite composition root was the qualification
+    harness. The P9a cutover decomposed into four packets (decoders and tick
+    identity; owner-served observation with a hand-built disclosure projector;
+    composition cut; parity), of which only the first closed. Under the
+    Director timebox (R-14) the remaining cutover exceeded the budget, and
+    the Director stopped the cutover and ordered PostgreSQL retention.
+
+    Live verification, run before this record on the unmodified branch:
+    BABYLON_POSTGRES_LIVE_FOCUS=runtime_smoke committed 15 consecutive
+    Michigan ticks across the period-13 checkpoint rollover in 61 seconds
+    (~4.0 s per period) with clean restart on a disposable PostgreSQL 17.11
+    runtime; BABYLON_POSTGRES_LIVE_FOCUS=session_progress drove the actual
+    play launcher, babylon-client, runtime session, and observer/preview
+    role provisioning to a passed one-period check with reopened-without-
+    defines identity. PostgreSQL is not a fallback here. It is the tested
+    live path.
+  decision: |
+    R1. POSTGRESQL STAYS THE SOLE CAMPAIGN OWNER. One Rust process commits
+    each adjudicated period into PostgreSQL as one atomic envelope after
+    detached adjudication, exactly as Article V v4.2.0 states. No SQLite
+    campaign owner is activated. No dual-write, storage trait, silent
+    fallback, or compatibility runtime is admitted — there is one play
+    path, and it is PostgreSQL.
+    R2. REMOVE THE SQLITE CAMPAIGN STORE IN ONE TRACEABLE PASS. Delete the
+    sqlite_store module tree, sqlite_runtime_pin, the rusqlite and
+    libsqlite3-sys dependencies with their rev-pinned forks, the
+    qualification_audit national runner wiring that only the store used,
+    the content_package store-backed admission, the SQLite qualification
+    contract and runner, and the qualification pointer report. Revert every
+    SQLite-only hook in reader, dossier, babylon-runtime CLI, and
+    qualification policy files to their PostgreSQL form. The removal lands
+    as reviewable commits; nothing SQLite-backed may remain referenced by
+    production code, tests, tooling, contracts, or tracked documentation.
+    R3. KEEP THE ENGINE WORK THAT POSTGRESQL USES. The immutable
+    MaterialCatalog split with single-pass admission, compact
+    OrganizerState causal indexes, authored uneven national detail, the
+    measured national circuit capacity bounds, and the canonical
+    strict-inverse decoders are engine improvements proven under test and
+    stay. So do the gameplay design documents and research briefings.
+    R4. ATTACK THE MEASURED COSTS WHERE THEY LIVE. The ladders breakdown
+    stands as diagnosis: per-period growth is WorldRegisters restart-package
+    rewrite churn (85.15% of the charged stored bytes at 0.969
+    stored/decoded) plus stable-graph serialization churn (14.78% at
+    0.153), and peak memory is the transient in-advance resident national
+    circuit working set. Both are now PER-360s scope against the
+    PostgreSQL store, which never stopped being the system of record.
+  alternatives_rejected:
+    - Completing the P9a-2/P9a-3/P9a-4 cutover past the Director timebox.
+    - A dual-write or SQLite-beside-PostgreSQL read store.
+    - Keeping the qualified SQLite store as an unreferenced second implementation.
+    - Migrating campaign data (nothing migrates; the PostgreSQL data never moved).
+  consequences: |
+    The campaign store question is closed: PostgreSQL owns it, Amendment AL
+    is repealed, and the Gate 3 identity returns to the PostgreSQL/H3/Archive
+    decision-loop slice. The SQLite experiment's durable outputs are the
+    qualification methodology, the growth/memory attribution, the canonical
+    decoders, and this record of why the cutover stopped.
+
+    Task 13s interim 60 s advance bar and optimization debt were SQLite-ladder
+    instruments; they do not transfer to PostgreSQL acceptance, which keeps
+    its own budgets and harnesses (PER-342/PER-344).
+  verification: |
+    - rg sqlite_store, sqlite_runtime_pin, rusqlite, libsqlite3-sys across
+      rust/ returns zero matches in code, tests, manifests, and lockfiles.
+    - tools/check_release_pins.sh exits 0 with no SQLite fork entries.
+    - mise run check exits 0 (governance unit tests pin index.yaml 1.87.0).
+    - mise run rust:check-no-docs exits 0.
+    - BABYLON_POSTGRES_LIVE_FOCUS=runtime_smoke and session_progress both
+      pass on the cleaned tree.
+  compatibility: |
+    No migration and no dual-write were ever shipped, so none is removed.
+    PostgreSQL campaign data, schemas, reference artifacts, historical ADRs,
+    contracts, golden vectors, and reports are untouched. Pinned reference
+    SQLite build artifacts remain readable as immutable inputs.
+  source_record: docs/architecture-reset/09-acceptance-and-governance.md

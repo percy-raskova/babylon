@@ -404,15 +404,18 @@ mod tests {
         let stale = session.context();
         session.generation += 1;
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .insert_resource(session)
-            .insert_resource(audit)
-            .init_resource::<ObservationCache>()
-            .init_resource::<ObserverFrame>()
-            .add_systems(
-                bevy::prelude::Update,
-                super::super::runtime::start_observation,
-            );
+        app.add_plugins((
+            MinimalPlugins,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(session)
+        .insert_resource(audit)
+        .init_resource::<ObservationCache>()
+        .init_resource::<ObserverFrame>()
+        .add_systems(
+            bevy::prelude::Update,
+            super::super::runtime::start_observation,
+        );
         let task = AsyncComputeTaskPool::get()
             .spawn(async { bevy::tasks::futures_lite::future::pending::<ObservationRead>().await });
         app.insert_resource(PendingObservation(Some((stale.clone(), task))));

@@ -29,24 +29,26 @@ path = "src/main.rs"
 dynamic_linking = ["bevy/dynamic_linking"]
 
 [dependencies]
-# Preserve Bevy 0.18's 2d/3d/ui defaults, expanding 3d because its 3d_api
-# aggregate forces ruzstd (RUSTSEC-2026-0344). The native zstd backend keeps
-# KTX2 textures and Bevy's bundled tonemapping LUTs available.
-bevy = { version = "0.18", default-features = false, features = [
+# Preserve Bevy 0.18's 2d/3d/ui/audio defaults without Bevy's optional texture
+# codecs: `3d` expands to `3d_api`, whose `ktx2`/`smaa_luts`/`tonemapping_luts`
+# and `zstd_rust` members are what pull a zstd backend into bevy_image. The
+# client ships no .ktx2 texture and uses neither SMAA nor a LUT tonemapper (both
+# Camera3d spawns declare `Tonemapping` explicitly), so those features stay off
+# and bevy_image resolves no zstd/ruzstd crate at all. Bevy 0.20's `2d`
+# aggregate no longer carries `ui` or `audio`; both are named here.
+bevy = { version = "0.20.0", default-features = false, features = [
     "2d",
+    "audio",
     "bevy_anti_alias",
     "bevy_gltf",
     "bevy_light",
     "bevy_mikktspace",
     "bevy_pbr",
     "gltf_animation",
-    "ktx2",
     "morph",
     "morph_animation",
-    "smaa_luts",
-    "tonemapping_luts",
+    "ui",
     "webp",
-    "zstd_c",
 ] }
 babylon-kernel = { path = "../babylon-kernel" }
 # Archive commands use the confined fog-safe reader. The explicit economy
@@ -66,8 +68,10 @@ uuid = "1.24"
 log = "0.4"
 
 [dev-dependencies]
-# Construct decoder-completion sinks without a native audio device.
-rodio = { version = "0.20.1", default-features = false }
+# Construct decoder-completion sinks without a native audio device. rodio
+# tracks bevy_audio: Bevy 0.20 decodes through rodio 0.22, and `AudioSink`
+# only accepts a `Player` from that same crate version.
+rodio = { version = "0.22", default-features = false, features = ["playback"] }
 babylon-tick = { path = "../babylon-tick" }
 babylon-graph = { path = "../babylon-graph" }
 babylon-bsl = { path = "../babylon-bsl" }

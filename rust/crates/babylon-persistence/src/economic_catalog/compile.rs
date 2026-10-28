@@ -1,15 +1,17 @@
 //! One initialization compiler. It creates current engine rows; it does not
 //! adjudicate a period or retain another mutable state owner.
 use super::{CatalogAccounting, CatalogCapacity, EconomicCatalogError, EconomicOpening};
+use babylon_material_circuit::CapacityReservations;
+use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::{
-    AccountId, AttendancePlan, BacklogRow, CapacityRow, CapacitySupply, CashAccount,
-    CircuitAccounting, CorridorCapacity, FinalDemandPrincipal, FinancialInstitutions,
-    HistoricalCostBook, HouseholdCohort, HouseholdNeed, HouseholdStock, InputOutputCoefficient,
-    InventoryRow, LaborCapacityRow, LaborCoefficient, MaintenanceService, MaterialCircuitState,
+    AccountId, AttendancePlan, CapacityRow, CashAccount, CircuitAccounting, CorridorCapacity,
+    FinalDemandPrincipal, FinancialInstitutions, HistoricalCostBook, HouseholdCohort,
+    HouseholdNeed, HouseholdStock, InputOutputCoefficient, InventoryRow, LaborCapacityRow,
+    LaborCoefficient, MaintenanceService, MaterialCatalog, MaterialCircuitState,
     MemberLaborCapacityRow, MerchantHandling, MerchantHandlingCoefficient, MonetaryBook,
     MonetaryCircuit, ProcessOutput, ProductionCommitment, ProductionDemandPolicy, RecurringEconomy,
-    RollingCapacitySupply, SiteLogisticsNode, StockCarryingValue,
+    RollingCapacitySupply, SiteLogisticsNode, StockCarryingValue, UNSEALED_CATALOG_DIGEST,
 };
 use babylon_tick::material_staffing::{
     StaffingComposition, StaffingMemberNodeBinding, StaffingNodeBinding,
@@ -18,64 +20,89 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::result::Result as StdResult;
 type Result<T> = StdResult<T, EconomicCatalogError>;
 
-/// Ephemeral checked output. The foundation keeps one canonical material register.
+/// Ephemeral checked output. The foundation keeps one canonical material register
+/// plus the immutable definition set that admitted it.
 pub struct CompiledEconomicOpening {
+    pub catalog: MaterialCatalog,
     pub state: MaterialCircuitState,
     pub staffing: StaffingComposition,
 }
 impl EconomicOpening {
-    /// Compile exact input rows through the sole current material admission codec.
+    /// Compile exact input rows into their catalog and opening state.
     /// # Errors
     /// Refuses ambiguous identities, inconsistent principals, overflow or an
     /// engine invariant. Monetary opening orders require a separate funded import.
     pub fn compile(&self) -> Result<CompiledEconomicOpening> {
+        let mut catalog = empty_catalog();
         let mut state = empty_state();
-        state.commodities.clone_from(&self.commodities);
-        append_sites(self, &mut state)?;
+        state.capacity_reservations.equipment = self.equipment_position.clone();
+        catalog.commodities.clone_from(&self.commodities);
+        append_sites(self, &mut catalog, &mut state)?;
         append_households(self, &mut state)?;
-        append_logistics(self, &mut state)?;
+        append_catalog_logistics(self, &mut catalog, &mut state)?;
         let (staffing, member_labor) = append_staffing(self, &mut state)?;
         state.accounting = compile_accounting(self, &state, member_labor)?;
-        let bytes = babylon_material_circuit::encode_material_circuit_state(&state)?;
+        append_catalog_policies(self, &mut catalog, &state);
+        let catalog = MaterialCatalog::try_new(catalog)?;
+        let encoding = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)?;
         drop(state);
-        let state = babylon_material_circuit::decode_material_circuit_state(&bytes)?;
-        drop(bytes);
-        Ok(CompiledEconomicOpening { state, staffing })
+        let state = babylon_material_circuit::decode_material_circuit_state(&catalog, &encoding)?;
+        drop(encoding);
+        Ok(CompiledEconomicOpening {
+            catalog,
+            state,
+            staffing,
+        })
+    }
+}
+
+fn empty_catalog() -> MaterialCatalog {
+    MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
+        site_logistics_nodes: vec![],
+        process_outputs: vec![],
+        input_coefficients: vec![],
+        labor_coefficients: vec![],
+        commodities: vec![],
+        supplier_routes: vec![],
+        route_stages: vec![],
+        merchants: vec![],
+        handling_coefficients: vec![],
+        maintenance_binding: None,
+        aid_mandates: vec![],
+        household_time_policy: vec![],
+        service_inputs: vec![],
+        household_needs: vec![],
+        catalog_digest: UNSEALED_CATALOG_DIGEST,
     }
 }
 
 fn empty_state() -> MaterialCircuitState {
     MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
         period: 1,
-        site_logistics_nodes: vec![],
-        process_outputs: vec![],
-        input_coefficients: vec![],
-        labor_coefficients: vec![],
         service_connections: vec![],
         service_orders: vec![],
-        commodities: vec![],
-        supplier_routes: vec![],
-        route_stages: vec![],
         route_stage_capacities: vec![],
         inventory: vec![],
         orders: vec![],
-        backlog: vec![],
         freight: vec![],
         corridor_capacities: vec![],
         capacities: vec![],
         labor: vec![],
         production_commitments: vec![],
-        merchants: vec![],
-        handling_coefficients: vec![],
         final_demand_principals: vec![],
         final_demand_orders: vec![],
         accounting: CircuitAccounting::PhysicalControl,
-        maintenance_binding: None,
         maintenance_service: None,
+        capacity_reservations: CapacityReservations::default(),
     }
 }
-fn append_sites(opening: &EconomicOpening, state: &mut MaterialCircuitState) -> Result<()> {
+/// Immutable definitions the engine validates are compiled once, beside the state.
+fn append_sites(
+    opening: &EconomicOpening,
+    catalog: &mut MaterialCatalog,
+    state: &mut MaterialCircuitState,
+) -> Result<()> {
     let recipes: BTreeMap<_, _> = opening.recipes.iter().map(|r| (r.id, r)).collect();
     if recipes.len() != opening.recipes.len() {
         return Err(EconomicCatalogError::Opening("duplicate recipe"));
@@ -88,7 +115,7 @@ fn append_sites(opening: &EconomicOpening, state: &mut MaterialCircuitState) -> 
         if !subjects.insert(&site.subject) || site.label.is_empty() {
             return Err(EconomicCatalogError::Opening("site identity"));
         }
-        state.site_logistics_nodes.push(SiteLogisticsNode {
+        catalog.site_logistics_nodes.push(SiteLogisticsNode {
             site_id: site.site_id,
             node_id: site.logistics_node_id,
         });
@@ -104,14 +131,14 @@ fn append_sites(opening: &EconomicOpening, state: &mut MaterialCircuitState) -> 
             let recipe = recipes
                 .get(&process.recipe)
                 .ok_or(EconomicCatalogError::Opening("absent recipe"))?;
-            state.process_outputs.push(ProcessOutput {
+            catalog.process_outputs.push(ProcessOutput {
                 process_id: process.process_id,
                 site_id: site.site_id,
                 good_id: recipe.output.good_id,
                 unit_id: recipe.output.unit_id,
                 quantity_per_batch: recipe.output.quantity,
             });
-            state
+            catalog
                 .input_coefficients
                 .extend(recipe.inputs.iter().map(|input| InputOutputCoefficient {
                     process_id: process.process_id,
@@ -120,7 +147,7 @@ fn append_sites(opening: &EconomicOpening, state: &mut MaterialCircuitState) -> 
                     quantity_per_batch: input.quantity,
                 }));
             if let Some(labor) = &recipe.labor {
-                state.labor_coefficients.push(LaborCoefficient {
+                catalog.labor_coefficients.push(LaborCoefficient {
                     process_id: process.process_id,
                     unit_id: labor.unit_id,
                     quantity_per_batch: labor.hours_per_batch,
@@ -136,14 +163,14 @@ fn append_sites(opening: &EconomicOpening, state: &mut MaterialCircuitState) -> 
             }
         }
         if let Some(merchant) = &site.merchant {
-            state.merchants.push(MerchantHandling {
+            catalog.merchants.push(MerchantHandling {
                 site_id: site.site_id,
                 location: site.location,
                 role: merchant.role,
                 capacity_id: merchant.capacity_id,
                 labor_unit_id: merchant.labor_unit_id,
             });
-            state
+            catalog
                 .handling_coefficients
                 .extend(
                     merchant
@@ -186,21 +213,17 @@ fn append_households(opening: &EconomicOpening, state: &mut MaterialCircuitState
     {
         return Err(EconomicCatalogError::Opening("non-opening order counters"));
     }
-    state.backlog = state
-        .orders
-        .iter()
-        .map(|r| BacklogRow {
-            order_id: r.order_id,
-            quantity: r.ordered,
-        })
-        .collect();
     Ok(())
 }
-fn append_logistics(opening: &EconomicOpening, state: &mut MaterialCircuitState) -> Result<()> {
-    state
+fn append_catalog_logistics(
+    opening: &EconomicOpening,
+    catalog: &mut MaterialCatalog,
+    state: &mut MaterialCircuitState,
+) -> Result<()> {
+    catalog
         .supplier_routes
         .clone_from(&opening.logistics.supplier_routes);
-    state
+    catalog
         .route_stages
         .clone_from(&opening.logistics.route_stages);
     state
@@ -215,7 +238,8 @@ fn append_logistics(opening: &EconomicOpening, state: &mut MaterialCircuitState)
             state.corridor_capacities.clone_from(freight);
         }
         CatalogCapacity::Rolling(processes) => {
-            let installed = processes.capacities(1)?;
+            let installed =
+                processes.capacities(&state.capacity_reservations.equipment.cohorts, 1)?;
             state.capacities = installed
                 .iter()
                 .map(|r| CapacityRow {
@@ -235,22 +259,44 @@ fn append_logistics(opening: &EconomicOpening, state: &mut MaterialCircuitState)
                     available_grams: r.grams_per_period,
                 })
                 .collect();
-            state.capacity_supply = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
+            catalog.capacity_policy = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
                 processes: processes.clone(),
                 shared: opening.logistics.shared_capacity.clone(),
-                future_reservations: vec![],
             }));
         }
     }
 
     if let Some(maintenance) = &opening.maintenance {
-        state.maintenance_binding = Some(maintenance.binding.clone());
+        catalog.maintenance_binding = Some(maintenance.binding.clone());
         state.maintenance_service = Some(MaintenanceService {
             period: 1,
             available_batches: maintenance.opening_enabled_batches,
         });
     }
     Ok(())
+}
+
+/// Nested policy rows stay mirrored while the engine still reads both owners.
+fn append_catalog_policies(
+    opening: &EconomicOpening,
+    catalog: &mut MaterialCatalog,
+    state: &MaterialCircuitState,
+) {
+    let CircuitAccounting::Monetary(economy) = &state.accounting else {
+        return;
+    };
+    catalog.aid_mandates.clone_from(&economy.aid.mandates);
+    catalog
+        .service_inputs
+        .clone_from(&opening.policies.service_inputs);
+    if let Some(recurring) = &economy.recurring {
+        catalog
+            .household_needs
+            .clone_from(&recurring.household_needs);
+    }
+    if let HouseholdTimeAccounting::Modeled(time) = &economy.household_time {
+        catalog.household_time_policy.clone_from(&time.policies);
+    }
 }
 fn append_staffing(
     opening: &EconomicOpening,

@@ -27,12 +27,15 @@ use babylon_material_circuit::{
 };
 
 use crate::national_household_allocation;
-use crate::national_household_refinement::HouseholdRefinementError;
+use crate::national_household_refinement::{
+    ConsolidationError, HouseholdRefinementError, NationalDetailPartition,
+};
 use crate::national_household_time_allocation;
 use crate::national_household_time_allocation::HouseholdTimeAllocationError;
 use crate::national_resident_allocation;
 use aid::NationalAidCapture;
 use babylon_material_circuit::AidBook;
+use babylon_material_circuit::EquipmentPosition;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::MaterialCircuitError;
@@ -53,6 +56,7 @@ pub enum NationalOpeningError {
     Households(HouseholdAllocationError),
     HouseholdTime(HouseholdTimeAllocationError),
     HouseholdRefinement(HouseholdRefinementError),
+    Detail(ConsolidationError),
     TimeAccount(MaterialCircuitError),
 }
 
@@ -200,9 +204,11 @@ pub fn build_national_opening(
         mandates: builder.aid.mandates.clone(),
         freight: vec![],
     };
+    let detail = super::detail::partition(&builder, &builder.aid)?;
     Ok(NationalOpening {
         opening: builder.opening,
         aid: builder.aid,
+        detail,
     })
 }
 
@@ -254,6 +260,7 @@ impl<'a> Builder<'a> {
                 institutions: FinancialInstitutions::empty(),
                 equity: vec![],
                 equipment: vec![],
+                equipment_position: EquipmentPosition::default(),
                 capacity: CatalogCapacity::Rolling(RollingProcessSupply::CapturedNameplate(vec![])),
                 policies: CatalogPolicies {
                     aid: AidBook::default(),
@@ -373,4 +380,6 @@ pub(in crate::national_economy) fn sum_amount(left: Currency, right: Currency) -
 pub struct NationalOpening {
     pub opening: EconomicOpening,
     pub aid: NationalAidCapture,
+    /// Authored foreground identities and conserved counted background cohorts.
+    pub detail: NationalDetailPartition,
 }

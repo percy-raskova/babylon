@@ -62,17 +62,17 @@ split-debuginfo = "unpacked"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-# 1.87 is bnum 0.14's declared MSRV, not a preference — declaring 1.85 while
-# depending on a crate that needs 1.87 would be a false claim about who
-# can build this workspace. The toolchain pin (rust-toolchain.toml) is
-# 1.91.1, so this is the floor we support, not the one we use.
-# The toolchain/dependency report (2026-10-23) found the true floor of this
-# crate graph is 1.89.0, set by bevy and uuid — bnum's 1.87 is not the
-# maximum requirement. The declared number stays 1.87 until PER-351 rules on
-# the bump; treat it as advisory (issue #525 rider, Director ruling 2), not a
-# tested promise: no cargo-msrv (or equivalent) check runs here, so no value
-# in this field has been mechanically confirmed as the actual minimum.
-rust-version = "1.87"
+# The declared floor is the pinned toolchain, not the dependency graph's own
+# minimum: a reader who installs 1.99.1 gets exactly the compiler every gate
+# uses, and Cargo refuses an older one instead of silently building with it.
+# The graph's requirements stay below that pin — bevy 0.20 and its WESL shader
+# front end ask for 1.97.1, bevy_ecs/bevy_reflect for 1.95, and the 2026-10-27
+# `cargo metadata` floor report puts the true minimum at 1.97.1 — so the
+# declared number is a conservative floor, not an overstated one. Treat it as
+# advisory (issue #525 rider, Director ruling 2), not a tested promise: no
+# cargo-msrv (or equivalent) check runs here, so no value in this field has
+# been mechanically confirmed as the actual minimum.
+rust-version = "1.99.1"
 license = "AGPL-3.0-or-later"   # in-tree = babylon's own license, not the sibling BSD
 
 # PER-350: every workspace crate declares `[lints] workspace = true`, so these
@@ -82,7 +82,7 @@ license = "AGPL-3.0-or-later"   # in-tree = babylon's own license, not the sibli
 [workspace.lints.rust]
 unsafe_code = "forbid"
 # `non_exhaustive_omitted_patterns` is deliberately absent: the lint is still
-# unstable on the pinned 1.91.1 toolchain (rust-lang/rust#89554), so declaring
+# unstable on the pinned 1.99.1 toolchain (rust-lang/rust#89554), so declaring
 # it here emits `unknown_lints` on every crate and fails `-D warnings`. EXC-02
 # bans internal `#[non_exhaustive]`, so rustc's E004 non-exhaustive-match error
 # and review carry that obligation; no wildcard-arm check exists.
@@ -96,7 +96,7 @@ pedantic = { level = "warn", priority = -1 }
 #
 # An `allow`/`expect` attribute is a claim that a lint is wrong here, so it must
 # carry the argument (`reason = "..."`) in the same place a reader meets the
-# suppression. Verified present on the pinned 1.91.1 clippy (`restriction`);
+# suppression. Verified present on the pinned 1.99.1 clippy (`restriction`);
 # reasoning standard is `docs/agents/rust-style.md` and Task 10b.
 allow_attributes_without_reason = "deny"
 borrowed_box = "deny"

@@ -5,12 +5,20 @@ use crate::material_world::MaterialWorldError;
 use crate::material_world::MAX_MATERIAL_TICK_RECEIPT_BYTES;
 use crate::material_world::MAX_MATERIAL_WORLD_REGISTER_BYTES;
 use crate::material_world::RECEIPT_DOMAIN;
+use babylon_material_circuit::CapacityReservations;
+use babylon_material_circuit::CapacitySupply;
+use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::GoodId;
+use babylon_material_circuit::HouseholdNeedBasis;
 use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::MaterialCatalog;
+use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MemberLaborUseReceipt;
 use babylon_material_circuit::SiteId;
 use babylon_material_circuit::StaffingMemberId;
 use babylon_material_circuit::UnitId;
+use material_world::MaterialWorldRegister;
 
 // A merchant's two physical handoffs share the same explicit handling account.
 // These bytes exercise the committed receipt boundary independently of its encoder.
@@ -44,8 +52,8 @@ fn committed_receipts_admit_explicit_merchant_handling_and_local_fulfillment() {
     let receipt = material_world::decode_material_receipts(&local_handoff_receipts())
         .expect("the canonical bytes decode into the declared type");
     assert_eq!(receipt.resolve_tick, 1);
-    assert!(receipt.dispatches.is_empty());
-    assert!(receipt.arrivals.is_empty());
+    assert_eq!(receipt.dispatches.len(), 0);
+    assert_eq!(receipt.arrivals.len(), 0);
     assert_eq!(receipt.handling.len(), 1);
     let work = &receipt.handling[0];
     assert_eq!(
@@ -118,8 +126,8 @@ fn local_transfer_receipts_preserve_both_owners_without_freight() {
     assert_eq!(transfer.supplier_site_id, SiteId::from_bytes([7; 32]));
     assert_eq!(transfer.buyer_site_id, SiteId::from_bytes([1; 32]));
     assert_eq!(transfer.quantity, 3);
-    assert!(receipts.dispatches.is_empty());
-    assert!(receipts.arrivals.is_empty());
+    assert_eq!(receipts.dispatches.len(), 0);
+    assert_eq!(receipts.arrivals.len(), 0);
 
     let mut self_transfer = bytes.clone();
     self_transfer[row_start + 64..row_start + 96].copy_from_slice(&[7; 32]);
@@ -309,7 +317,7 @@ fn register_byte_budget_is_one_gb_and_receipts_keep_their_independent_cap() {
     const ONE_GB: usize = 1_000_000_000;
     let admitted = material_world::bounded_bytes(ONE_GB, MAX_MATERIAL_WORLD_REGISTER_BYTES)
         .expect("the fixture call `bounded_bytes` succeeds for the authored inputs");
-    assert!(admitted.is_empty());
+    assert_eq!(admitted.len(), 0);
     assert!(admitted.capacity() >= ONE_GB);
     assert_eq!(
         material_world::bounded_bytes(ONE_GB + 1, MAX_MATERIAL_WORLD_REGISTER_BYTES),
@@ -335,4 +343,117 @@ fn previous_receipt17_handling_semantics_are_not_admitted_as_current() {
         material_world::decode_material_receipts(&previous),
         Err(MaterialWorldError::Wire)
     );
+}
+
+// The admission contract compares the internal candidate path with the external
+// wire path on one already-canonical engine state.
+fn admission_control() -> (MaterialCatalog, MaterialCircuitState) {
+    let catalog = MaterialCatalog::try_new(MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
+        site_logistics_nodes: vec![],
+        process_outputs: vec![],
+        input_coefficients: vec![],
+        labor_coefficients: vec![],
+        commodities: vec![],
+        supplier_routes: vec![],
+        route_stages: vec![],
+        merchants: vec![],
+        handling_coefficients: vec![],
+        maintenance_binding: None,
+        aid_mandates: vec![],
+        household_time_policy: vec![],
+        service_inputs: vec![],
+        household_needs: vec![],
+        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
+    })
+    .expect("the empty control catalog canonicalizes");
+    let state = babylon_material_circuit::advance_material_circuit(
+        &catalog,
+        &MaterialCircuitState {
+            period: 1,
+            accounting: CircuitAccounting::PhysicalControl,
+            service_connections: vec![],
+            service_orders: vec![],
+            route_stage_capacities: vec![],
+            inventory: vec![],
+            orders: vec![],
+            freight: vec![],
+            corridor_capacities: vec![],
+            capacities: vec![],
+            labor: vec![],
+            production_commitments: vec![],
+            final_demand_principals: vec![],
+            final_demand_orders: vec![],
+            maintenance_service: None,
+            capacity_reservations: CapacityReservations::default(),
+        },
+    )
+    .expect("the empty control circuit closes one period")
+    .state;
+    (catalog, state)
+}
+
+#[test]
+fn validated_candidate_admission_matches_external_decode_identity() {
+    let (catalog, state) = admission_control();
+    let candidate = MaterialWorldRegister::from_validated_candidate(&catalog, state.clone())
+        .expect("the engine's canonical successor admits in one pass");
+    assert_eq!(candidate.completed_tick(), 1);
+    assert_eq!(candidate.state(), &state);
+    assert_eq!(candidate.catalog_digest(), catalog.catalog_digest);
+    let external =
+        MaterialWorldRegister::decode_external(&catalog, candidate.canonical_bytes().to_vec())
+            .expect("the admitted canonical bytes satisfy full wire validation");
+    assert_eq!(external.digest(), candidate.digest());
+    assert_eq!(external.canonical_bytes(), candidate.canonical_bytes());
+    assert_eq!(external.state(), candidate.state());
+    assert_eq!(
+        material_world::nominal_material_world_hash([7; 32], &external),
+        material_world::nominal_material_world_hash([7; 32], &candidate)
+    );
+}
+
+#[test]
+fn external_decode_refuses_a_catalog_that_did_not_admit_the_bytes() {
+    let (catalog, state) = admission_control();
+    let admitted = MaterialWorldRegister::from_validated_candidate(&catalog, state)
+        .expect("the engine's canonical successor admits in one pass");
+    let mut foreign = catalog.clone();
+    foreign
+        .household_needs
+        .push(babylon_material_circuit::HouseholdNeed {
+            principal_id: FinalDemandPrincipalId::from_bytes([9; 32]),
+            good_id: GoodId::from_bytes([9; 32]),
+            unit_id: UnitId::from_bytes([9; 32]),
+            basis: HouseholdNeedBasis::Persons,
+            units_per_basis: 1,
+        });
+    let foreign = MaterialCatalog::try_new(foreign).expect("the foreign catalog canonicalizes");
+    assert_eq!(
+        MaterialWorldRegister::decode_external(&foreign, admitted.canonical_bytes().to_vec()),
+        Err(MaterialWorldError::Circuit(
+            babylon_material_circuit::MaterialCircuitError::WireDomain
+        ))
+    );
+}
+
+#[test]
+fn a_refused_successor_leaves_the_published_register_unchanged() {
+    let (catalog, state) = admission_control();
+    let published = MaterialWorldRegister::from_validated_candidate(&catalog, state)
+        .expect("the engine's canonical successor admits in one pass");
+    let before = published.canonical_bytes().to_vec();
+    let digest = published.digest();
+    let successor = babylon_material_circuit::advance_material_circuit(&catalog, published.state())
+        .expect("the published period closes once")
+        .state;
+    let advanced = babylon_material_circuit::advance_material_circuit(&catalog, &successor)
+        .expect("the successor period closes once");
+    assert_eq!(
+        published.prepare_transition(&catalog, advanced, None).err(),
+        Some(MaterialWorldError::PeriodMismatch)
+    );
+    assert_eq!(published.canonical_bytes(), before.as_slice());
+    assert_eq!(published.digest(), digest);
+    assert_eq!(published.completed_tick(), 1);
 }

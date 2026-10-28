@@ -1,13 +1,13 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use babylon_material_circuit::{
-    decode_material_circuit_state, AccountId, AidBook, CapacityRow, CapacitySupply, CashAccount,
-    CircuitAccounting, CommodityDefinition, CommodityKind, EmploymentTerms, FinalDemandPrincipal,
-    FinalDemandPrincipalId, GoodId, HistoricalCostBook, InputOutputCoefficient, InventoryRow,
-    LaborCapacityRow, LaborCoefficient, LogisticsNodeId, MaterialCircuitError,
-    MaterialCircuitState, MaterialPurchase, MonetaryBook, MonetaryCircuit, OrderId, ProcessId,
-    ProcessOutput, ProductionCommitment, ServiceConnection, ServiceOrder, ServiceStage, SiteId,
-    SiteLogisticsNode, StockCarryingValue, UnitId,
+    decode_material_circuit_state, AccountId, AidBook, CapacityReservations, CapacityRow,
+    CapacitySupply, CashAccount, CircuitAccounting, CommodityDefinition, CommodityKind,
+    EmploymentTerms, FinalDemandPrincipal, FinalDemandPrincipalId, GoodId, HistoricalCostBook,
+    InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
+    MaterialCatalog, MaterialCircuitError, MaterialCircuitState, MaterialPurchase, MonetaryBook,
+    MonetaryCircuit, OrderId, ProcessId, ProcessOutput, ProductionCommitment, ServiceConnection,
+    ServiceOrder, ServiceStage, SiteId, SiteLogisticsNode, StockCarryingValue, UnitId,
 };
 
 use babylon_kernel::currency::Currency;
@@ -44,7 +44,7 @@ pub(crate) fn money(n: i128) -> Currency {
     clippy::too_many_lines,
     reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
 )]
-pub(crate) fn opening() -> MaterialCircuitState {
+pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
     let inventory = vec![
         InventoryRow {
             site_id: site(1),
@@ -88,34 +88,8 @@ pub(crate) fn opening() -> MaterialCircuitState {
         vec![],
     )
     .expect("the fixture opens the authored source");
-    MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
-        period: 1,
-        accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
-            aid: AidBook::default(),
-
-            household_time: HouseholdTimeAccounting::NotModeled,
-            financial: FinancialInstitutions::empty(),
-            member_labor: (1..=3)
-                .map(|n| babylon_material_circuit::MemberLaborCapacityRow {
-                    member_id: StaffingMemberId::from_bytes(site(n).as_bytes()),
-                    period: 1,
-                    available_hours: if n == 1 { 2 } else { 1 },
-                })
-                .collect(),
-            costs,
-            book,
-            recurring: None,
-            employment: (1..=3)
-                .map(|n| EmploymentTerms {
-                    member_id: StaffingMemberId::from_bytes((site(n)).as_bytes()),
-                    site_id: site(n),
-                    unit_id: unit(9),
-                    payee: household(),
-                    compensation: LaborCompensation::Wage(money(1)),
-                })
-                .collect(),
-        })),
+    let catalog = MaterialCatalog {
+        capacity_policy: CapacitySupply::FiniteSchedule,
         commodities: vec![
             CommodityDefinition {
                 good_id: good(1),
@@ -146,27 +120,6 @@ pub(crate) fn opening() -> MaterialCircuitState {
                 },
             },
         ],
-        service_connections: vec![
-            ServiceConnection {
-                provider_site_id: site(1),
-                buyer: AccountId::Site(site(2)),
-                good_id: good(1),
-                unit_id: unit(1),
-            },
-            ServiceConnection {
-                provider_site_id: site(1),
-                buyer: AccountId::Site(site(3)),
-                good_id: good(1),
-                unit_id: unit(1),
-            },
-            ServiceConnection {
-                provider_site_id: site(2),
-                buyer: AccountId::Site(site(3)),
-                good_id: good(2),
-                unit_id: unit(2),
-            },
-        ],
-        service_orders: vec![],
         site_logistics_nodes: (1..=3)
             .map(|n| SiteLogisticsNode {
                 site_id: site(n),
@@ -217,10 +170,66 @@ pub(crate) fn opening() -> MaterialCircuitState {
             .collect(),
         supplier_routes: vec![],
         route_stages: vec![],
+        merchants: vec![],
+        handling_coefficients: vec![],
+        maintenance_binding: None,
+        aid_mandates: vec![],
+        household_time_policy: vec![],
+        service_inputs: vec![],
+        household_needs: vec![],
+        catalog_digest: [0; 32],
+    };
+    let state = MaterialCircuitState {
+        period: 1,
+        accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
+            aid: AidBook::default(),
+
+            household_time: HouseholdTimeAccounting::NotModeled,
+            financial: FinancialInstitutions::empty(),
+            member_labor: (1..=3)
+                .map(|n| babylon_material_circuit::MemberLaborCapacityRow {
+                    member_id: StaffingMemberId::from_bytes(site(n).as_bytes()),
+                    period: 1,
+                    available_hours: if n == 1 { 2 } else { 1 },
+                })
+                .collect(),
+            costs,
+            book,
+            recurring: None,
+            employment: (1..=3)
+                .map(|n| EmploymentTerms {
+                    member_id: StaffingMemberId::from_bytes((site(n)).as_bytes()),
+                    site_id: site(n),
+                    unit_id: unit(9),
+                    payee: household(),
+                    compensation: LaborCompensation::Wage(money(1)),
+                })
+                .collect(),
+        })),
+        service_connections: vec![
+            ServiceConnection {
+                provider_site_id: site(1),
+                buyer: AccountId::Site(site(2)),
+                good_id: good(1),
+                unit_id: unit(1),
+            },
+            ServiceConnection {
+                provider_site_id: site(1),
+                buyer: AccountId::Site(site(3)),
+                good_id: good(1),
+                unit_id: unit(1),
+            },
+            ServiceConnection {
+                provider_site_id: site(2),
+                buyer: AccountId::Site(site(3)),
+                good_id: good(2),
+                unit_id: unit(2),
+            },
+        ],
+        service_orders: vec![],
         route_stage_capacities: vec![],
         inventory,
         orders: vec![],
-        backlog: vec![],
         freight: vec![],
         corridor_capacities: vec![],
         capacities: (1..=3)
@@ -247,8 +256,6 @@ pub(crate) fn opening() -> MaterialCircuitState {
                 planned_batches: if n == 1 { 2 } else { 1 },
             })
             .collect(),
-        merchants: vec![],
-        handling_coefficients: vec![],
         final_demand_principals: vec![FinalDemandPrincipal {
             id: household(),
             location: "county:26163"
@@ -256,16 +263,24 @@ pub(crate) fn opening() -> MaterialCircuitState {
                 .expect("the authored literal parses as the declared type"),
         }],
         final_demand_orders: vec![],
-        maintenance_binding: None,
         maintenance_service: None,
-    }
+        capacity_reservations: CapacityReservations::default(),
+    };
+    (
+        MaterialCatalog::try_new(catalog).expect("the authored fixture catalog is valid"),
+        state,
+    )
 }
 
-pub(crate) fn funded(mut state: MaterialCircuitState) -> MaterialCircuitState {
+pub(crate) fn funded(
+    catalog: &MaterialCatalog,
+    mut state: MaterialCircuitState,
+) -> MaterialCircuitState {
     for (id, provider, buyer, commodity, price) in
         [(1, 1, 2, 1, 2), (2, 1, 3, 1, 2), (3, 2, 3, 2, 3)]
     {
         state = babylon_material_circuit::admit_material_purchase(
+            catalog,
             &state,
             MaterialPurchase::Service(ServiceOrder {
                 order_id: OrderId::from_bytes([id; 32]),
@@ -284,12 +299,19 @@ pub(crate) fn funded(mut state: MaterialCircuitState) -> MaterialCircuitState {
     state
 }
 
+fn reseal(catalog: MaterialCatalog, mutate: impl FnOnce(&mut MaterialCatalog)) -> MaterialCatalog {
+    let mut catalog = catalog;
+    mutate(&mut catalog);
+    catalog.catalog_digest = [0; 32];
+    MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid")
+}
+
 #[test]
 pub(crate) fn native_services_feed_later_stages_without_freight_or_stored_service() {
-    let mut state = opening();
+    let (catalog, mut state) = opening();
     state.inventory[0].quantity = 2;
-    let state = funded(state);
-    let closed = babylon_material_circuit::advance_material_circuit(&state)
+    let state = funded(&catalog, state);
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(
         closed
@@ -299,9 +321,9 @@ pub(crate) fn native_services_feed_later_stages_without_freight_or_stored_servic
             .collect::<Vec<_>>(),
         vec![2, 1, 1]
     );
-    assert!(closed.dispatches.is_empty());
-    assert!(closed.handling.is_empty());
-    assert!(closed.state.freight.is_empty());
+    assert_eq!(closed.dispatches.len(), 0);
+    assert_eq!(closed.handling.len(), 0);
+    assert_eq!(closed.state.freight.len(), 0);
     assert_eq!(
         closed
             .state
@@ -342,20 +364,22 @@ pub(crate) fn native_services_feed_later_stages_without_freight_or_stored_servic
             .amount,
         money(6)
     );
-    assert!(closed.state.service_orders.is_empty());
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&closed.state)
+    assert_eq!(closed.state.service_orders.len(), 0);
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &closed.state)
         .expect("the canonical material state encodes");
     assert_eq!(
-        decode_material_circuit_state(&bytes).expect("the canonical material bytes decode"),
+        decode_material_circuit_state(&catalog, &bytes)
+            .expect("the canonical material bytes decode"),
         closed.state
     );
 }
 
 #[test]
 pub(crate) fn absent_utility_constrains_services_and_goods_without_spending_work_twice() {
-    let mut state = opening();
+    let (catalog, mut state) = opening();
     state.inventory[0].quantity = 0;
-    let closed = babylon_material_circuit::advance_material_circuit(&funded(state))
+    let funded = funded(&catalog, state);
+    let closed = babylon_material_circuit::advance_material_circuit(&catalog, &funded)
         .expect("the authored material state advances one period");
     assert!(closed.production.iter().all(|r| r.produced_batches == 0));
     assert!(closed
@@ -367,18 +391,20 @@ pub(crate) fn absent_utility_constrains_services_and_goods_without_spending_work
 
 #[test]
 pub(crate) fn a_service_dependency_cycle_and_durable_service_stock_are_refused_atomically() {
-    let mut state = opening();
-    state.input_coefficients.push(InputOutputCoefficient {
-        process_id: process(1),
-        good_id: good(2),
-        unit_id: unit(2),
-        quantity_per_batch: 1,
+    let (catalog, state) = opening();
+    let catalog = reseal(catalog, |catalog| {
+        catalog.input_coefficients.push(InputOutputCoefficient {
+            process_id: process(1),
+            good_id: good(2),
+            unit_id: unit(2),
+            quantity_per_batch: 1,
+        });
     });
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(MaterialCircuitError::ServiceInvariant)
     );
-    let mut state = opening();
+    let (catalog, mut state) = opening();
     state.inventory.push(InventoryRow {
         site_id: site(1),
         good_id: good(1),
@@ -386,7 +412,7 @@ pub(crate) fn a_service_dependency_cycle_and_durable_service_stock_are_refused_a
         quantity: 0,
     });
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&state),
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
         Err(MaterialCircuitError::ServiceInvariant)
     );
 }

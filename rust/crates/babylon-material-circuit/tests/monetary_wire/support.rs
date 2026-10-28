@@ -1,18 +1,19 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use babylon_material_circuit::{
-    material_circuit_state_digest, AccountId, AidBook, BacklogRow, CashAccount, CircuitAccounting,
+    material_circuit_state_digest, AccountId, AidBook, CashAccount, CircuitAccounting,
     CommodityDefinition, EmploymentTerms, FinalDemandPrincipal, FinalDemandPrincipalId,
     FinancialInstitutions, FundedShift, GoodId, HistoricalCostBook, InstitutionLocation,
-    InventoryRow, LaborCapacityRow, LogisticsNodeId, MaterialCircuitError, MaterialCircuitState,
-    MonetaryBook, MonetaryCircuit, OrderAccessMode, OrderId, OrderRow, OrganizationAccountId,
-    OutboundOrderId, PublicAccountId, PurchaseEscrow, RouteId, ShiftId, SiteId, SiteLogisticsNode,
-    StockCarryingValue, SupplierRoute, SupplierTransport, UnitId,
-    MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES,
+    InventoryRow, LaborCapacityRow, LogisticsNodeId, MaterialCatalog, MaterialCircuitError,
+    MaterialCircuitState, MonetaryBook, MonetaryCircuit, OrderAccessMode, OrderId, OrderRow,
+    OrganizationAccountId, OutboundOrderId, PublicAccountId, PurchaseEscrow, RouteId, ShiftId,
+    SiteId, SiteLogisticsNode, StockCarryingValue, SupplierRoute, SupplierTransport, UnitId,
+    MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES, UNSEALED_CATALOG_DIGEST,
 };
 
 use babylon_kernel::content_digest::sha256_of;
 use babylon_kernel::currency::Currency;
+use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::LaborCompensation;
@@ -26,7 +27,7 @@ pub(crate) fn money(value: i128) -> Currency {
     clippy::too_many_lines,
     reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
 )]
-pub(crate) fn paid_state() -> MaterialCircuitState {
+pub(crate) fn paid_state() -> (MaterialCatalog, MaterialCircuitState) {
     let seller = SiteId::from_bytes([1; 32]);
     let buyer = SiteId::from_bytes([2; 32]);
     let household = FinalDemandPrincipalId::from_bytes([3; 32]);
@@ -102,160 +103,170 @@ pub(crate) fn paid_state() -> MaterialCircuitState {
         book.accrue_shift(shift)
             .expect("the fixture accrues the authored shift");
     }
-    MaterialCircuitState {
-        capacity_supply: CapacitySupply::FiniteSchedule,
-        period: 3,
-        accounting: CircuitAccounting::Monetary(Box::new({
-            let book = book;
-            MonetaryCircuit {
-                aid: AidBook::default(),
+    {
+        let state = MaterialCircuitState {
+            capacity_reservations: CapacityReservations::default(),
+            period: 3,
+            accounting: CircuitAccounting::Monetary(Box::new({
+                let book = book;
+                MonetaryCircuit {
+                    aid: AidBook::default(),
 
-                household_time: HouseholdTimeAccounting::NotModeled,
-                financial: {
-                    let mut financial = FinancialInstitutions::empty();
-                    financial.locations = vec![
-                        InstitutionLocation {
-                            account: AccountId::Organization(OrganizationAccountId::from_bytes(
-                                [1; 32],
-                            )),
-                            location: "county:26163"
-                                .parse()
-                                .expect("the authored literal parses as the declared type"),
-                        },
-                        InstitutionLocation {
-                            account: AccountId::Public(PublicAccountId::from_bytes([1; 32])),
-                            location: "county:26163"
-                                .parse()
-                                .expect("the authored literal parses as the declared type"),
-                        },
-                    ];
-                    financial
-                },
-                member_labor: [3, 4]
-                    .into_iter()
-                    .flat_map(|period| {
-                        [seller, buyer]
-                            .into_iter()
-                            .map(move |site| (site, period, 0))
-                    })
-                    .map(|(site, period, available_hours)| {
-                        babylon_material_circuit::MemberLaborCapacityRow {
-                            member_id: StaffingMemberId::from_bytes(site.as_bytes()),
+                    household_time: HouseholdTimeAccounting::NotModeled,
+                    financial: {
+                        let mut financial = FinancialInstitutions::empty();
+                        financial.locations = vec![
+                            InstitutionLocation {
+                                account: AccountId::Organization(
+                                    OrganizationAccountId::from_bytes([1; 32]),
+                                ),
+                                location: "county:26163"
+                                    .parse()
+                                    .expect("the authored literal parses as the declared type"),
+                            },
+                            InstitutionLocation {
+                                account: AccountId::Public(PublicAccountId::from_bytes([1; 32])),
+                                location: "county:26163"
+                                    .parse()
+                                    .expect("the authored literal parses as the declared type"),
+                            },
+                        ];
+                        financial
+                    },
+                    member_labor: [3, 4]
+                        .into_iter()
+                        .flat_map(|period| {
+                            [seller, buyer]
+                                .into_iter()
+                                .map(move |site| (site, period, 0))
+                        })
+                        .map(|(site, period, available_hours)| {
+                            babylon_material_circuit::MemberLaborCapacityRow {
+                                member_id: StaffingMemberId::from_bytes(site.as_bytes()),
+                                period,
+                                available_hours,
+                            }
+                        })
+                        .collect(),
+                    costs: HistoricalCostBook::open(
+                        &book,
+                        vec![StockCarryingValue {
+                            owner: AccountId::Site(seller),
+                            good_id: good,
+                            unit_id: unit,
+                            amount: money(0),
+                        }],
+                        vec![],
+                        vec![],
+                        vec![],
+                    )
+                    .expect("the fixture opens the authored source"),
+                    book,
+                    recurring: None,
+                    employment: [seller, buyer]
+                        .into_iter()
+                        .map(|site_id| EmploymentTerms {
+                            member_id: StaffingMemberId::from_bytes((site_id).as_bytes()),
+                            site_id,
+                            unit_id: hours,
+                            payee: household,
+                            compensation: LaborCompensation::Wage(money((1_i128 << 65) + 7)),
+                        })
+                        .collect(),
+                }
+            })),
+            service_connections: vec![],
+            service_orders: vec![],
+            route_stage_capacities: vec![],
+            inventory: vec![InventoryRow {
+                site_id: seller,
+                good_id: good,
+                unit_id: unit,
+                quantity: 10,
+            }],
+            orders,
+            freight: vec![],
+            corridor_capacities: vec![],
+            capacities: vec![],
+            labor: [3, 4]
+                .into_iter()
+                .flat_map(|period| {
+                    [seller, buyer]
+                        .into_iter()
+                        .map(move |site_id| LaborCapacityRow {
+                            site_id,
+                            unit_id: hours,
                             period,
-                            available_hours,
-                        }
+                            available: 0,
+                        })
+                })
+                .collect(),
+            production_commitments: vec![],
+            final_demand_principals: vec![FinalDemandPrincipal {
+                id: household,
+                location: "county:26163"
+                    .parse()
+                    .expect("the authored literal parses as the declared type"),
+            }],
+            final_demand_orders: vec![],
+            maintenance_service: None,
+        };
+        (
+            MaterialCatalog::try_new(MaterialCatalog {
+                capacity_policy: CapacitySupply::FiniteSchedule,
+                site_logistics_nodes: [seller, buyer]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, site_id)| SiteLogisticsNode {
+                        site_id,
+                        node_id: LogisticsNodeId::from_bytes(
+                            [u8::try_from(index + 1)
+                                .expect("the fixture value fits the target range");
+                                32],
+                        ),
                     })
                     .collect(),
-                costs: HistoricalCostBook::open(
-                    &book,
-                    vec![StockCarryingValue {
-                        owner: AccountId::Site(seller),
-                        good_id: good,
-                        unit_id: unit,
-                        amount: money(0),
-                    }],
-                    vec![],
-                    vec![],
-                    vec![],
-                )
-                .expect("the fixture opens the authored source"),
-                book,
-                recurring: None,
-                employment: [seller, buyer]
-                    .into_iter()
-                    .map(|site_id| EmploymentTerms {
-                        member_id: StaffingMemberId::from_bytes((site_id).as_bytes()),
-                        site_id,
-                        unit_id: hours,
-                        payee: household,
-                        compensation: LaborCompensation::Wage(money((1_i128 << 65) + 7)),
-                    })
-                    .collect(),
-            }
-        })),
-        site_logistics_nodes: [seller, buyer]
-            .into_iter()
-            .enumerate()
-            .map(|(index, site_id)| SiteLogisticsNode {
-                site_id,
-                node_id: LogisticsNodeId::from_bytes(
-                    [u8::try_from(index + 1).expect("the fixture value fits the target range"); 32],
-                ),
+                process_outputs: vec![],
+                input_coefficients: vec![],
+                labor_coefficients: vec![],
+                commodities: vec![CommodityDefinition {
+                    good_id: good,
+                    unit_id: unit,
+                    kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
+                }],
+                supplier_routes: vec![SupplierRoute {
+                    buyer_site_id: buyer,
+                    supplier_site_id: seller,
+                    good_id: good,
+                    unit_id: unit,
+                    route_id: RouteId::from_bytes([7; 32]),
+                    transport_kind: SupplierTransport::Local,
+                }],
+                route_stages: vec![],
+                merchants: vec![],
+                handling_coefficients: vec![],
+                maintenance_binding: None,
+                aid_mandates: Vec::new(),
+                household_time_policy: Vec::new(),
+                service_inputs: Vec::new(),
+                household_needs: Vec::new(),
+                catalog_digest: UNSEALED_CATALOG_DIGEST,
             })
-            .collect(),
-        process_outputs: vec![],
-        input_coefficients: vec![],
-        labor_coefficients: vec![],
-        service_connections: vec![],
-        service_orders: vec![],
-        commodities: vec![CommodityDefinition {
-            good_id: good,
-            unit_id: unit,
-            kind: babylon_material_circuit::CommodityKind::Storable { grams_per_unit: 1 },
-        }],
-        supplier_routes: vec![SupplierRoute {
-            buyer_site_id: buyer,
-            supplier_site_id: seller,
-            good_id: good,
-            unit_id: unit,
-            route_id: RouteId::from_bytes([7; 32]),
-            transport_kind: SupplierTransport::Local,
-        }],
-        route_stages: vec![],
-        route_stage_capacities: vec![],
-        inventory: vec![InventoryRow {
-            site_id: seller,
-            good_id: good,
-            unit_id: unit,
-            quantity: 10,
-        }],
-        backlog: orders
-            .iter()
-            .map(|row| BacklogRow {
-                order_id: row.order_id,
-                quantity: row.ordered,
-            })
-            .collect(),
-        orders,
-        freight: vec![],
-        corridor_capacities: vec![],
-        capacities: vec![],
-        labor: [3, 4]
-            .into_iter()
-            .flat_map(|period| {
-                [seller, buyer]
-                    .into_iter()
-                    .map(move |site_id| LaborCapacityRow {
-                        site_id,
-                        unit_id: hours,
-                        period,
-                        available: 0,
-                    })
-            })
-            .collect(),
-        production_commitments: vec![],
-        merchants: vec![],
-        handling_coefficients: vec![],
-        final_demand_principals: vec![FinalDemandPrincipal {
-            id: household,
-            location: "county:26163"
-                .parse()
-                .expect("the authored literal parses as the declared type"),
-        }],
-        final_demand_orders: vec![],
-        maintenance_binding: None,
-        maintenance_service: None,
+            .expect("the authored fixture catalog is valid"),
+            state,
+        )
     }
 }
 
-pub(crate) fn accounting_offset(state: &MaterialCircuitState) -> usize {
+pub(crate) fn accounting_offset(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> usize {
     let mut control = state.clone();
     control.accounting = CircuitAccounting::PhysicalControl;
-    // One accounting tag, one finite-capacity tag, and two empty service row counts.
-    babylon_material_circuit::encode_material_circuit_state(&control)
+    // The v4 state frame ends with the accounting section; the physical control
+    // accounts for exactly its one explicit mode tag.
+    babylon_material_circuit::encode_material_circuit_state(catalog, &control)
         .expect("the canonical material state encodes")
         .len()
-        - 10
+        - 1
 }
 
 // Language-neutral current monetary row widths, independent of Rust struct layout.
@@ -271,25 +282,26 @@ pub(crate) const MEMBER_LABOR_BYTES: usize = 32 + 8 + 8;
 
 #[test]
 pub(crate) fn exact_i128_accounts_escrow_and_unpaid_wages_survive_restart() {
-    let state = paid_state();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+    let (catalog, state) = paid_state();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
-    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes)
+    let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
         .expect("the canonical material bytes decode");
     assert_eq!(restored, state);
     assert_eq!(
-        babylon_material_circuit::encode_material_circuit_state(&restored)
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &restored)
             .expect("the canonical material state encodes"),
         bytes
     );
     assert_eq!(
-        material_circuit_state_digest(&restored).expect("the material state has a digest"),
+        material_circuit_state_digest(&catalog, &restored)
+            .expect("the material state has a digest"),
         sha256_of(&bytes)
     );
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&restored)
+        babylon_material_circuit::advance_material_circuit(&catalog, &restored)
             .expect("the authored material state advances one period"),
-        babylon_material_circuit::advance_material_circuit(&state)
+        babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period")
     );
     let CircuitAccounting::Monetary(economy) = &restored.accounting else {
@@ -301,7 +313,7 @@ pub(crate) fn exact_i128_accounts_escrow_and_unpaid_wages_survive_restart() {
         economy.employment[0].compensation.wage_rate().micro_units(),
         (1_i128 << 65) + 7
     );
-    let offset = accounting_offset(&state);
+    let offset = accounting_offset(&catalog, &state);
     assert_eq!(bytes[offset], 1);
     assert_eq!(&bytes[offset + 1..offset + 5], &5_u32.to_be_bytes());
     assert_eq!(
@@ -317,10 +329,10 @@ pub(crate) fn exact_i128_accounts_escrow_and_unpaid_wages_survive_restart() {
 
 #[test]
 pub(crate) fn all_monetary_row_families_reject_noncanonical_wire_order() {
-    let state = paid_state();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+    let (catalog, state) = paid_state();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
-    let accounts = accounting_offset(&state) + 1 + 4;
+    let accounts = accounting_offset(&catalog, &state) + 1 + 4;
     let purchases = accounts + 5 * ACCOUNT_BYTES + 4;
     let shifts = purchases + 2 * PURCHASE_BYTES + 4;
     let employment = shifts + 2 * SHIFT_BYTES + 4;
@@ -334,7 +346,7 @@ pub(crate) fn all_monetary_row_families_reject_noncanonical_wire_order() {
         let mut reversed = bytes.clone();
         reversed[start..start + 2 * width].rotate_left(width);
         assert_eq!(
-            babylon_material_circuit::decode_material_circuit_state(&reversed),
+            babylon_material_circuit::decode_material_circuit_state(&catalog, &reversed),
             Err(MaterialCircuitError::WireNoncanonical)
         );
     }
@@ -342,10 +354,10 @@ pub(crate) fn all_monetary_row_families_reject_noncanonical_wire_order() {
 
 #[test]
 pub(crate) fn monetary_tags_counts_and_invalid_currency_are_refused() {
-    let state = paid_state();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+    let (catalog, state) = paid_state();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
-    let accounting = accounting_offset(&state);
+    let accounting = accounting_offset(&catalog, &state);
     let accounts = accounting + 1 + 4;
     let purchases = accounts + 5 * ACCOUNT_BYTES + 4;
     let shifts = purchases + 2 * PURCHASE_BYTES + 4;
@@ -353,13 +365,17 @@ pub(crate) fn monetary_tags_counts_and_invalid_currency_are_refused() {
         let mut invalid = bytes.clone();
         invalid[offset] = 255;
         assert_eq!(
-            babylon_material_circuit::decode_material_circuit_state(&invalid),
+            babylon_material_circuit::decode_material_circuit_state(&catalog, &invalid),
             Err(MaterialCircuitError::WireEnum)
         );
     }
     for (count_offset, excess) in [
         (accounting + 1, 131_073_u32),
-        (purchases - 4, 327_681),
+        (
+            purchases - 4,
+            u32::try_from(babylon_material_circuit::MAX_MATERIAL_ORDER_PRINCIPALS + 1)
+                .expect("the purchase ceiling fits u32"),
+        ),
         (shifts - 4, 65_537),
         (shifts + 2 * SHIFT_BYTES, 131_073),
         (shifts + 2 * SHIFT_BYTES + 4 + 2 * EMPLOYMENT_BYTES, 131_073),
@@ -367,60 +383,60 @@ pub(crate) fn monetary_tags_counts_and_invalid_currency_are_refused() {
         let mut excessive = bytes.clone();
         excessive[count_offset..count_offset + 4].copy_from_slice(&excess.to_be_bytes());
         assert_eq!(
-            babylon_material_circuit::decode_material_circuit_state(&excessive),
+            babylon_material_circuit::decode_material_circuit_state(&catalog, &excessive),
             Err(MaterialCircuitError::WireLimit)
         );
     }
     let mut negative = bytes.clone();
     negative[accounts + 33..accounts + ACCOUNT_BYTES].copy_from_slice(&(-1_i128).to_be_bytes());
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&negative),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &negative),
         Err(MaterialCircuitError::MonetaryInvariant)
     );
     let mut free = bytes.clone();
     let purchase_price = purchases + 33 + 66 + 8;
     free[purchase_price..purchase_price + 16].copy_from_slice(&0_i128.to_be_bytes());
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&free),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &free),
         Err(MaterialCircuitError::MonetaryInvariant)
     );
 }
 
 #[test]
 pub(crate) fn old_schema_missing_accounting_truncation_and_trailing_bytes_are_refused() {
-    let state = paid_state();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+    let (catalog, state) = paid_state();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     let mut old_schema = bytes.clone();
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     old_schema[version..version + 2].copy_from_slice(&4_u16.to_be_bytes());
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&old_schema),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &old_schema),
         Err(MaterialCircuitError::WireVersion)
     );
     for end in [
-        accounting_offset(&state),
-        accounting_offset(&state) + 1 + 4 + 40,
+        accounting_offset(&catalog, &state),
+        accounting_offset(&catalog, &state) + 1 + 4 + 40,
         bytes.len() - 1,
     ] {
         assert_eq!(
-            babylon_material_circuit::decode_material_circuit_state(&bytes[..end]),
+            babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes[..end]),
             Err(MaterialCircuitError::WireTruncated)
         );
     }
     let mut trailing = bytes;
     trailing.push(0);
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&trailing),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &trailing),
         Err(MaterialCircuitError::WireTrailing)
     );
     let mut control = state;
     control.accounting = CircuitAccounting::PhysicalControl;
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&control)
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &control)
         .expect("the canonical material state encodes");
     assert_eq!(bytes.last(), Some(&0));
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&bytes)
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
             .expect("the canonical material bytes decode"),
         control
     );
@@ -428,22 +444,22 @@ pub(crate) fn old_schema_missing_accounting_truncation_and_trailing_bytes_are_re
 
 #[test]
 pub(crate) fn physical_binding_and_employment_remain_required_after_decoding() {
-    let state = paid_state();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+    let (catalog, state) = paid_state();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
-    let purchases = accounting_offset(&state) + 1 + 4 + 5 * ACCOUNT_BYTES + 4;
+    let purchases = accounting_offset(&catalog, &state) + 1 + 4 + 5 * ACCOUNT_BYTES + 4;
     let shifts = purchases + 2 * PURCHASE_BYTES + 4;
     let mut quantity = bytes.clone();
     let principal_quantity = purchases + 33 + 66;
     quantity[principal_quantity..principal_quantity + 8].copy_from_slice(&5_u64.to_be_bytes());
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&quantity),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &quantity),
         Err(MaterialCircuitError::PurchaseInvariant)
     );
     let mut unearned = bytes.clone();
     unearned[shifts + SHIFT_BYTES - 1] = 1;
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&unearned),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &unearned),
         Err(MaterialCircuitError::PayrollInvariant)
     );
     let employment = shifts + 2 * SHIFT_BYTES + 4;
@@ -451,7 +467,7 @@ pub(crate) fn physical_binding_and_employment_remain_required_after_decoding() {
     zero_wage[employment + 129..employment + EMPLOYMENT_BYTES]
         .copy_from_slice(&0_i128.to_be_bytes());
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&zero_wage),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &zero_wage),
         Err(MaterialCircuitError::WireEnum)
     );
 }
@@ -459,12 +475,12 @@ pub(crate) fn physical_binding_and_employment_remain_required_after_decoding() {
 #[test]
 pub(crate) fn historical_cost_opening_accrued_wages_are_assets_and_liabilities_without_repeat_income(
 ) {
-    let state = paid_state();
-    let bytes = babylon_material_circuit::encode_material_circuit_state(&state)
+    let (catalog, state) = paid_state();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
-    let restored = babylon_material_circuit::decode_material_circuit_state(&bytes)
+    let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
         .expect("the canonical material bytes decode");
-    let result = babylon_material_circuit::advance_material_circuit(&restored)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &restored)
         .expect("the authored material state advances one period");
     let household = AccountId::Household(FinalDemandPrincipalId::from_bytes([3; 32]));
     let row = result
@@ -479,7 +495,7 @@ pub(crate) fn historical_cost_opening_accrued_wages_are_assets_and_liabilities_w
     let CircuitAccounting::Monetary(economy) = &result.state.accounting else {
         panic!("paid control");
     };
-    assert!(economy.book.snapshot().shifts.is_empty());
+    assert_eq!(economy.book.snapshot().shifts.len(), 0);
     assert_eq!(
         economy
             .book
@@ -491,12 +507,13 @@ pub(crate) fn historical_cost_opening_accrued_wages_are_assets_and_liabilities_w
 
 #[test]
 pub(crate) fn previous_schema18_is_refused_before_replaying_the_new_allocation_policy() {
-    let mut previous = babylon_material_circuit::encode_material_circuit_state(&paid_state())
+    let (catalog, state) = paid_state();
+    let mut previous = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
     previous[version..version + 2].copy_from_slice(&18_u16.to_be_bytes());
     assert_eq!(
-        babylon_material_circuit::decode_material_circuit_state(&previous),
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &previous),
         Err(MaterialCircuitError::WireVersion)
     );
 }

@@ -12,6 +12,7 @@ use crate::storage_compression::StorageCompressionError;
 
 use crate::storage_compression;
 use babylon_kernel::content_digest;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_tick::material_world::{MaterialReceiptHandle, MaterialWorldRegister};
 use receipt_storage::AdmittedReceipts;
 use receipt_storage::Error as ReceiptStorageError;
@@ -93,8 +94,8 @@ pub struct EncodedMaterial {
 /// Production callers use `OpeningRegister::from_opening` on their admitted register.
 /// # Errors
 /// Refuses invalid or non-opening canonical state and typed identity bounds.
-pub fn seed(base: &[u8]) -> Result<OpeningRegister> {
-    Ok(OpeningRegister::from_canonical(base)?)
+pub fn seed(catalog: &MaterialCatalog, base: &[u8]) -> Result<OpeningRegister> {
+    Ok(OpeningRegister::from_canonical(catalog, base)?)
 }
 
 /// Exact identity of the period-local table, independent of historical table ownership.
@@ -380,6 +381,7 @@ pub fn read_period_lookup(
 /// # Errors
 /// Refuses invalid base state, package framing, lengths, kinds, references or hashes.
 pub fn decode(
+    catalog: &MaterialCatalog,
     opening: &OpeningRegister,
     tick: u64,
     state_package: &[u8],
@@ -388,6 +390,7 @@ pub fn decode(
     lookup_chain: [u8; 32],
 ) -> Result<(Vec<u8>, Vec<u8>)> {
     let admitted = decode_typed(
+        catalog,
         opening,
         tick,
         state_package,
@@ -410,6 +413,7 @@ pub(crate) struct DecodedMaterial<R = MaterialWorldRegister> {
 }
 
 pub(crate) fn decode_typed(
+    catalog: &MaterialCatalog,
     opening: &OpeningRegister,
     tick: u64,
     state_package: &[u8],
@@ -420,7 +424,8 @@ pub(crate) fn decode_typed(
     if tick == 0 {
         return Err(Error::Tick);
     }
-    let register = state_storage::decode_admitted(opening, state_package, lookup, lookup_chain)?;
+    let register =
+        state_storage::decode_admitted(catalog, opening, state_package, lookup, lookup_chain)?;
     let (receipt_bytes, receipts) = receipt_storage::decode_admitted(receipt_package, lookup)?;
     if register.completed_tick() != tick || receipts.resolve_tick != tick {
         return Err(Error::Tick);
@@ -438,9 +443,20 @@ pub(crate) fn decode_typed(
     })
 }
 
+/// The immutable authorities that authenticate one stored material package.
+///
+/// The captured catalog and the admitted opening travel together on every
+/// storage read; bundling them keeps the definition set beside the opening it
+/// admits instead of trailing two unrelated parameters.
+#[derive(Clone, Copy)]
+pub(crate) struct MaterialProvenance<'a> {
+    pub(crate) catalog: &'a MaterialCatalog,
+    pub(crate) opening: &'a OpeningRegister,
+}
+
 // Each borrowed owner is usable only after exact storage/component equality.
 pub(crate) fn decode_typed_with_witness<'w>(
-    opening: &OpeningRegister,
+    provenance: MaterialProvenance<'_>,
     tick: u64,
     state_package: &[u8],
     receipt_package: &[u8],
@@ -448,6 +464,7 @@ pub(crate) fn decode_typed_with_witness<'w>(
     lookup_chain: [u8; 32],
     witnesses: MaterialStorageWitnesses<'w>,
 ) -> Result<DecodedMaterial<Cow<'w, MaterialWorldRegister>>> {
+    let MaterialProvenance { catalog, opening } = provenance;
     if tick == 0 {
         return Err(Error::Tick);
     }
@@ -462,6 +479,7 @@ pub(crate) fn decode_typed_with_witness<'w>(
         Cow::Borrowed(witness)
     } else {
         Cow::Owned(state_storage::decode_admitted(
+            catalog,
             opening,
             state_package,
             lookup,
@@ -510,6 +528,7 @@ mod typed_decode_controls {
         let foundation =
             crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds");
         let base = fixture::authored_session(foundation, fixture::config(), false, false);
+        let catalog = base.catalog().clone();
         let mut state = base.material().state().clone();
         let CircuitAccounting::Monetary(e) = &mut state.accounting else {
             unreachable!()
@@ -540,7 +559,10 @@ mod typed_decode_controls {
                 fixture::PRODUCTS,
                 fixture::PRACTICE
             ),
-            state,
+            fixture::Materials {
+                catalog,
+                state: state.clone(),
+            },
             serde_json::from_value(cfg).expect("the JSON value matches the declared type"),
         )
         .expect("the fixture opens a session");
@@ -567,7 +589,10 @@ mod typed_decode_controls {
         .expect("the committed lookup table reads");
         for witness in [None, Some(current)] {
             let actual = decode_typed_with_witness(
-                &opening,
+                MaterialProvenance {
+                    catalog: session.catalog(),
+                    opening: &opening,
+                },
                 1,
                 &encoded.register_storage_bytes,
                 &encoded.receipt_storage_bytes,
@@ -625,7 +650,10 @@ mod typed_decode_controls {
         .expect("the committed lookup table reads");
         let decode = |package: &[u8], witness| {
             decode_typed_with_witness(
-                &opening,
+                MaterialProvenance {
+                    catalog: session.catalog(),
+                    opening: &opening,
+                },
                 1,
                 package,
                 &encoded.receipt_storage_bytes,
@@ -652,7 +680,7 @@ mod typed_decode_controls {
             ),
             "authenticated immutable register bytes must reuse their admitted owner"
         );
-        assert!(!borrowed.receipts.aid.is_empty());
+        assert_ne!(borrowed.receipts.aid.len(), 0);
         let owned = decode(&encoded.register_storage_bytes, None)
             .expect("the committed canonical bytes decode");
         assert!(matches!(owned.register, Cow::Owned(_)));
@@ -682,6 +710,10 @@ mod typed_decode_controls {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one storage witness asserts the complete canonical inverse in sequence"
+    )]
     fn admitted_storage_values_keep_nonempty_aid_and_exact_canonical_inverse() {
         let session = fixture::authored_session(
             crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds"),
@@ -707,6 +739,7 @@ mod typed_decode_controls {
         )
         .expect("the committed lookup table reads");
         let admitted = decode_typed(
+            session.catalog(),
             &opening,
             1,
             &encoded.register_storage_bytes,
@@ -726,9 +759,10 @@ mod typed_decode_controls {
             decode_material_receipts(receipts)
                 .expect("the canonical bytes decode into the declared type")
         );
-        assert!(!admitted.receipts.aid.is_empty());
+        assert_ne!(admitted.receipts.aid.len(), 0);
         assert_eq!(
             decode(
+                session.catalog(),
                 &opening,
                 1,
                 &encoded.register_storage_bytes,
@@ -743,6 +777,7 @@ mod typed_decode_controls {
             )
         );
         assert!(decode_typed(
+            session.catalog(),
             &opening,
             2,
             &encoded.register_storage_bytes,
@@ -752,6 +787,7 @@ mod typed_decode_controls {
         )
         .is_err());
         assert!(decode_typed(
+            session.catalog(),
             &opening,
             1,
             &encoded.register_storage_bytes[..encoded.register_storage_bytes.len() - 1],
@@ -761,6 +797,7 @@ mod typed_decode_controls {
         )
         .is_err());
         assert!(decode_typed(
+            session.catalog(),
             &opening,
             1,
             &encoded.register_storage_bytes,
@@ -770,6 +807,7 @@ mod typed_decode_controls {
         )
         .is_err());
         assert!(decode_typed(
+            session.catalog(),
             &opening,
             1,
             &encoded.register_storage_bytes,

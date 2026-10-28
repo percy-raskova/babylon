@@ -14,7 +14,7 @@ use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_graph::stable_element::StableElementKey;
 
-use babylon_material_circuit::{GoodId, MaterialCircuitState, ProcessId};
+use babylon_material_circuit::{GoodId, MaterialCatalog, MaterialCircuitState, ProcessId};
 
 use babylon_practice_contract::OrderedPracticeActionBatch;
 
@@ -179,8 +179,11 @@ pub(in crate::simulation_experiment) fn total(
     values.try_fold(0, super::super::sum)
 }
 
-pub(in crate::simulation_experiment) fn mass(state: &MaterialCircuitState) -> Result<u64> {
-    let coefficients: BTreeMap<_, _> = state
+pub(in crate::simulation_experiment) fn mass(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+) -> Result<u64> {
+    let coefficients: BTreeMap<_, _> = catalog
         .commodities
         .iter()
         .filter_map(|r| {
@@ -325,7 +328,7 @@ pub(in crate::simulation_experiment) fn publish(
     candidate: PreparedMaterialTick<HypergraphStore>,
 ) -> Result<()> {
     session
-        .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_| {
+        .commit_prepared_and_publish(&mut CollectingSink::default(), candidate, |_, _| {
             Ok::<_, Infallible>(ReplayCommitDisposition::Committed)
         })
         .map(|_| ())
@@ -392,6 +395,7 @@ pub(in crate::simulation_experiment) fn initial_report(
 }
 
 pub(in crate::simulation_experiment) fn period_evidence(
+    catalog: &MaterialCatalog,
     candidate: &PreparedMaterialTick<HypergraphStore>,
     initial_mass: u64,
     process_keys: &BTreeMap<ProcessId, String>,
@@ -402,7 +406,7 @@ pub(in crate::simulation_experiment) fn period_evidence(
     if receipts.resolve_tick != candidate.identity().resolve_tick() {
         return Err(ExperimentError::Observation);
     }
-    let conserved = mass(candidate.material().register().state())?;
+    let conserved = mass(catalog, candidate.material().register().state())?;
     if conserved != initial_mass {
         return Err(ExperimentError::Conservation);
     }
@@ -465,9 +469,16 @@ pub(in crate::simulation_experiment) fn qualify_activity(
 /// with its uninterrupted replay. A differing tick or failed account is an error.
 /// # Errors
 /// Refuses incomplete execution, changed identities, accounting faults or missing receipts.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one experiment run keeps its checkpoint reconstruction and publication sequence together"
+)]
 pub fn run(spec: &SimulationExperimentV1) -> Result<ExperimentRun> {
     let foundation = spec.create_foundation()?;
-    let initial_mass = mass(foundation.initial_register().state())?;
+    let initial_mass = mass(
+        foundation.material_catalog(),
+        foundation.initial_register().state(),
+    )?;
     let mut session = foundation
         .reconstruct_captured()
         .map_err(|_| ExperimentError::Foundation)?
@@ -492,7 +503,13 @@ pub fn run(spec: &SimulationExperimentV1) -> Result<ExperimentRun> {
         {
             return Err(ExperimentError::Foundation);
         }
-        let evidence = period_evidence(&candidate, initial_mass, &process_keys, &setup.wiring)?;
+        let evidence = period_evidence(
+            session.catalog(),
+            &candidate,
+            initial_mass,
+            &process_keys,
+            &setup.wiring,
+        )?;
         let report = candidate.graph_report().report();
         trajectory.observed_choice_count = super::super::sum(
             trajectory.observed_choice_count,
@@ -522,8 +539,11 @@ pub fn run(spec: &SimulationExperimentV1) -> Result<ExperimentRun> {
                     replayed.graph_report().result_stable_graph(),
                     replayed.graph_report().material_state_rows(),
                     replayed.graph_report().result_registers().canonical_bytes(),
-                    MaterialWorldRegister::decode(replayed.material().register().canonical_bytes())
-                        .map_err(|_| ExperimentError::Foundation)?,
+                    MaterialWorldRegister::decode_external(
+                        foundation.material_catalog(),
+                        replayed.material().register().canonical_bytes().to_vec(),
+                    )
+                    .map_err(|_| ExperimentError::Foundation)?,
                 )
                 .map_err(|_| ExperimentError::Foundation)?;
             Some(restored)

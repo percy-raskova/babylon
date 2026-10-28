@@ -55,13 +55,10 @@ fn labor(values: [u64; 8]) -> Vec<u8> {
 
 fn member(labor: &[u8]) -> Vec<u8> {
     let hours: Vec<_> = labor[64..]
-        .chunks_exact(8)
-        .map(|n| {
-            u64::from_be_bytes(
-                n.try_into()
-                    .expect("the fixture slice has the target length"),
-            )
-        })
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|n| u64::from_be_bytes(*n))
         .collect();
     let mut bytes = Vec::new();
     for id in [4, 1, 5, 2] {

@@ -4,20 +4,23 @@ use crate::production_observation::{CompletedProductionMaintenance, ProductionMa
 
 use super::metadata::Metadata;
 use crate::michigan_economy;
-use babylon_material_circuit::{MaintenanceBinding, MaintenanceReceipt, MaterialCircuitState};
+use babylon_material_circuit::{
+    MaintenanceBinding, MaintenanceReceipt, MaterialCatalog, MaterialCircuitState,
+};
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::result::Result as StdResult;
 type Result<T> = StdResult<T, ProductionProjectionError>;
 
 pub(super) fn project_maintenance(
     metadata: &Metadata<'_>,
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     opening: Option<&MaterialCircuitState>,
     receipt: Option<&MaterialTickReceipts>,
 ) -> Result<Option<ProductionMaintenanceAccount>> {
-    let done = completed(state, opening, receipt)?;
+    let done = completed(catalog, state, opening, receipt)?;
     let captured = metadata.opening().maintenance.as_ref().map(|r| &r.binding);
-    if state.maintenance_binding.as_ref() != captured {
+    if catalog.maintenance_binding.as_ref() != captured {
         return Err(ProductionProjectionError::Content);
     }
     let Some(binding) = captured else {
@@ -29,7 +32,7 @@ pub(super) fn project_maintenance(
         .get(&binding.consumer_process_id)
         .ok_or(ProductionProjectionError::Content)?;
     let spare = metadata.good(binding.spare_good_id, binding.spare_unit_id)?;
-    let output = state
+    let output = catalog
         .process_outputs
         .iter()
         .find(|r| r.process_id == binding.consumer_process_id)
@@ -83,13 +86,13 @@ pub(super) fn project_maintenance(
 /// Refuse omitted completed accounts and mismatched binding/period/quantity identities.
 /// This checks receipt algebra; the circuit remains the only transition authority.
 pub(super) fn completed<'a>(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     opening: Option<&MaterialCircuitState>,
     receipt: Option<&'a MaterialTickReceipts>,
 ) -> Result<Option<&'a MaintenanceReceipt>> {
-    let Some(binding) = &state.maintenance_binding else {
+    let Some(binding) = &catalog.maintenance_binding else {
         if state.maintenance_service.is_some()
-            || opening.is_some_and(|prior| prior.maintenance_binding.is_some())
             || receipt.is_some_and(|receipt| receipt.maintenance.is_some())
         {
             return Err(ProductionProjectionError::State);
@@ -119,8 +122,7 @@ pub(super) fn completed<'a>(
     let opening_service = prior
         .maintenance_service
         .ok_or(ProductionProjectionError::State)?;
-    if prior.maintenance_binding.as_ref() != Some(binding)
-        || &done.binding != binding
+    if &done.binding != binding
         || done.period != prior.period
         || opening_service.period != prior.period
         || done.opening_service_batches != opening_service.available_batches
@@ -128,12 +130,13 @@ pub(super) fn completed<'a>(
     {
         return Err(ProductionProjectionError::State);
     }
-    check_inputs(prior, receipt, binding, done)?;
+    check_inputs(catalog, prior, receipt, binding, done)?;
     check_quantities(binding, done)?;
     Ok(Some(done))
 }
 
 fn check_inputs(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
     binding: &MaintenanceBinding,
@@ -186,6 +189,7 @@ fn check_inputs(
         || done.arrived_spare_parts != arrived
         || done.available_labor_hours
             != maintenance_hours(
+                catalog,
                 prior,
                 receipt,
                 binding,
@@ -199,6 +203,7 @@ fn check_inputs(
 }
 
 fn maintenance_hours(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
     binding: &MaintenanceBinding,
@@ -234,7 +239,7 @@ fn maintenance_hours(
         .iter()
         .filter(|work| work.site_id == binding.provider_site_id)
     {
-        let coefficient = prior
+        let coefficient = catalog
             .labor_coefficients
             .iter()
             .find(|row| row.process_id == work.process_id)

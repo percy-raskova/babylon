@@ -7,6 +7,7 @@ use babylon_material_circuit::GoodsPriceCostBasis;
 use babylon_material_circuit::GoodsPriceCostEvidence;
 use babylon_material_circuit::HistoricalCostBook;
 use babylon_material_circuit::LaborCompensation;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
@@ -50,9 +51,9 @@ fn withdraw_orders(state: &mut MaterialCircuitState) {
 
 #[test]
 fn goods_cost_production_uses_inputs_and_actual_wages_without_adding_release_twice() {
-    let mut state = crate::opening();
+    let (catalog, mut state) = crate::opening();
     responsive(&mut state, 2, 2, 0);
-    let result = babylon_material_circuit::advance_material_circuit(&state)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let row = price(&result, 2);
     assert_eq!(
@@ -91,23 +92,24 @@ fn goods_cost_production_uses_inputs_and_actual_wages_without_adding_release_twi
         crate::money(24)
     );
     let restored = babylon_material_circuit::decode_material_circuit_state(
-        &babylon_material_circuit::encode_material_circuit_state(&result.state)
+        &catalog,
+        &babylon_material_circuit::encode_material_circuit_state(&catalog, &result.state)
             .expect("the canonical material state encodes"),
     )
     .expect("the canonical material bytes decode");
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&result.state)
+        babylon_material_circuit::advance_material_circuit(&catalog, &result.state)
             .expect("the authored material state advances one period"),
-        babylon_material_circuit::advance_material_circuit(&restored)
+        babylon_material_circuit::advance_material_circuit(&catalog, &restored)
             .expect("the authored material state advances one period")
     );
 }
 
 #[test]
 fn goods_cost_merchant_uses_released_carrying_and_matching_actual_handling_wages() {
-    let mut state = crate::opening();
+    let (catalog, mut state) = crate::opening();
     responsive(&mut state, 3, 3, 0);
-    let result = babylon_material_circuit::advance_material_circuit(&state)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let row = price(&result, 3);
     assert_eq!(
@@ -139,7 +141,7 @@ fn goods_cost_merchant_uses_released_carrying_and_matching_actual_handling_wages
         .find(|r| r.site_id == crate::site(3))
         .expect("the fixture holds the searched element")
         .compensation = LaborCompensation::WorkingOwner;
-    let owner_work = babylon_material_circuit::advance_material_circuit(&state)
+    let owner_work = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(price(&owner_work, 3).cost.quantity, 4);
     assert_eq!(price(&owner_work, 3).cost.handling_wages, crate::money(0));
@@ -148,10 +150,10 @@ fn goods_cost_merchant_uses_released_carrying_and_matching_actual_handling_wages
 
 #[test]
 fn goods_cost_pressure_precedes_excess_stock_but_does_not_force_recovery() {
-    let mut state = crate::opening();
+    let (catalog, mut state) = crate::opening();
     withdraw_orders(&mut state);
     responsive(&mut state, 2, 2, 0);
-    let result = babylon_material_circuit::advance_material_circuit(&state)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(price(&result, 2).closing_stock, 4);
     assert_eq!(price(&result, 2).reason, PriceDecision::CostPressure);
@@ -168,7 +170,7 @@ fn goods_cost_pressure_precedes_excess_stock_but_does_not_force_recovery() {
         crate::money(12)
     );
     responsive(&mut state, 2, 4, 0);
-    let result = babylon_material_circuit::advance_material_circuit(&state)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(price(&result, 2).reason, PriceDecision::ExcessStock);
     assert_eq!(price(&result, 2).next_price, crate::money(3));
@@ -176,7 +178,8 @@ fn goods_cost_pressure_precedes_excess_stock_but_does_not_force_recovery() {
 
 #[test]
 fn goods_cost_no_current_activity_is_unavailable_instead_of_zero_cost_or_stale_evidence() {
-    let first = babylon_material_circuit::advance_material_circuit(&crate::opening())
+    let (catalog, opening) = crate::opening();
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
         .expect("the authored material state advances one period");
     let mut state = first.state;
     withdraw_orders(&mut state);
@@ -188,7 +191,7 @@ fn goods_cost_no_current_activity_is_unavailable_instead_of_zero_cost_or_stale_e
         row.planned_hours = 0;
     }
     responsive(&mut state, 3, 4, 4);
-    let result = babylon_material_circuit::advance_material_circuit(&state)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     for row in &result.prices {
         assert_eq!(
@@ -206,7 +209,7 @@ fn goods_cost_no_current_activity_is_unavailable_instead_of_zero_cost_or_stale_e
 
 #[test]
 fn goods_cost_input_and_employee_wage_changes_reach_the_actual_output_basis() {
-    let mut state = crate::opening();
+    let (catalog, mut state) = crate::opening();
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         panic!("paid")
     };
@@ -231,7 +234,7 @@ fn goods_cost_input_and_employee_wage_changes_reach_the_actual_output_basis() {
         .expect("the fixture holds the searched element")
         .compensation = LaborCompensation::Wage(crate::money(2));
     responsive(&mut state, 2, 3, 0);
-    let result = babylon_material_circuit::advance_material_circuit(&state)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(price(&result, 2).cost.carrying_cost, crate::money(56)); // Four raw units at10 plus eight actual hours at2.
     assert_eq!(price(&result, 2).cost.quantity, 4);
@@ -241,7 +244,7 @@ fn goods_cost_input_and_employee_wage_changes_reach_the_actual_output_basis() {
 
 #[test]
 fn goods_cost_unserved_demand_keeps_precedence_over_an_observed_cost_shortfall() {
-    let mut state = crate::opening();
+    let (catalog, mut state) = crate::opening();
     responsive(&mut state, 3, 3, 0);
     state
         .corridor_capacities
@@ -249,7 +252,7 @@ fn goods_cost_unserved_demand_keeps_precedence_over_an_observed_cost_shortfall()
         .find(|r| r.corridor_id == crate::corridor(3) && r.period == 1)
         .expect("the fixture holds the searched element")
         .available_grams = 2;
-    let result = babylon_material_circuit::advance_material_circuit(&state)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let row = price(&result, 3);
     // Half the funded requests expire; remaining inventory exceeds target0, so
@@ -257,7 +260,7 @@ fn goods_cost_unserved_demand_keeps_precedence_over_an_observed_cost_shortfall()
     assert_eq!(row.unserved_quantity, 2);
     assert_eq!(row.reason, PriceDecision::CostPressure);
     responsive(&mut state, 3, 3, 2);
-    let result = babylon_material_circuit::advance_material_circuit(&state)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let row = price(&result, 3);
     assert_eq!(row.reason, PriceDecision::UnservedDemand);
@@ -333,9 +336,9 @@ fn goods_cost_exact_ceiling_and_unavailable_shape_refuse_invalid_or_overflowing_
 
 #[test]
 fn goods_cost_same_site_production_and_merchant_release_use_one_quantity_basis() {
-    let mut state = crate::opening();
+    let (mut catalog, mut state) = crate::opening();
     responsive(&mut state, 2, 2, 0);
-    state.merchants.push(MerchantHandling {
+    catalog.merchants.push(MerchantHandling {
         site_id: crate::site(2),
         location: "county:26163"
             .parse()
@@ -344,7 +347,7 @@ fn goods_cost_same_site_production_and_merchant_release_use_one_quantity_basis()
         capacity_id: crate::corridor(4),
         labor_unit_id: crate::hours(),
     });
-    state
+    catalog
         .handling_coefficients
         .push(MerchantHandlingCoefficient {
             site_id: crate::site(2),
@@ -352,6 +355,7 @@ fn goods_cost_same_site_production_and_merchant_release_use_one_quantity_basis()
             unit_id: crate::units(),
             hours_per_unit: 1,
         });
+    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state
         .corridor_capacities
         .extend((1..=9).map(|period| CorridorCapacity {
@@ -383,7 +387,7 @@ fn goods_cost_same_site_production_and_merchant_release_use_one_quantity_basis()
         .find(|r| r.site_id == crate::site(2))
         .expect("the fixture holds the searched element")
         .planned_hours = 12;
-    let result = babylon_material_circuit::advance_material_circuit(&state)
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(output(&result, 2), 4);
     assert_eq!(

@@ -28,6 +28,11 @@ fn remote_projection_preserves_admission_dispatch_and_resolution_dates() {
         .material()
         .organizer_state()
         .expect("the fixture register carries organizer state");
+    let entries = session
+        .material()
+        .organizer_journal()
+        .and_then(|journal| journal.latest())
+        .expect("the fixture register carries organizer journal entries");
     let projected = super::pending(&state.pending_aid[0]);
     assert_eq!(projected.admitted_period, 0);
     assert_eq!(projected.dispatch_period, 1);
@@ -37,7 +42,7 @@ fn remote_projection_preserves_admission_dispatch_and_resolution_dates() {
         state.pending_aid[0].material_commitment_id
     );
     assert_eq!(projected.mandate_id, state.pending_aid[0].gift.mandate_id);
-    let waiting = super::resolutions(state);
+    let waiting = super::resolutions(entries);
     assert_eq!(waiting.len(), 1);
     assert_eq!(waiting[0].pending, projected);
     assert_eq!(waiting[0].practice.period, 1);
@@ -54,8 +59,13 @@ fn remote_projection_preserves_admission_dispatch_and_resolution_dates() {
         .material()
         .organizer_state()
         .expect("the fixture register carries organizer state");
-    assert!(state.pending_aid.is_empty());
-    let returned = super::resolutions(state);
+    assert_eq!(state.pending_aid.len(), 0);
+    let entries = session
+        .material()
+        .organizer_journal()
+        .and_then(|journal| journal.latest())
+        .expect("the fixture register carries organizer journal entries");
+    let returned = super::resolutions(entries);
     assert_eq!(returned.len(), 1);
     assert_eq!(returned[0].pending, projected);
     assert_eq!(returned[0].support.period, 2);
@@ -79,6 +89,7 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
         true,
     );
     let opening = super::projections(
+        session.catalog(),
         session.material().state(),
         session
             .material()
@@ -91,6 +102,7 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
     assert_eq!(opening[0].period, 0);
     assert_eq!(opening[0].time, None);
     assert!(super::projections(
+        session.catalog(),
         session.material().state(),
         session
             .material()
@@ -107,6 +119,7 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
     fixture::commit(&mut session, &mut sink, second);
     let register = session.material();
     let preview = super::projections(
+        session.catalog(),
         register.state(),
         register
             .organizer_config()

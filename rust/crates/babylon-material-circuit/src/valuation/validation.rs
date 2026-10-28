@@ -1,9 +1,10 @@
 //! Reconcile physical identities and per-account net assets without recapture.
 use super::Result;
+use crate::MaterialCatalog;
 use crate::{AccountId, CircuitAccounting, MaterialCircuitError, MaterialCircuitState};
 use std::collections::BTreeMap;
 
-pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
+pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> Result<()> {
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
         return Ok(());
     };
@@ -61,7 +62,7 @@ pub(crate) fn validate(state: &MaterialCircuitState) -> Result<()> {
             return Err(MaterialCircuitError::ValuationInvariant);
         }
     }
-    super::equipment::validate_assets(state, costs)?;
+    super::equipment::validate_assets(catalog, state, costs)?;
     for (account, assets) in costs.net_assets(&economy.book)? {
         let row = &costs.accounts[&account];
         if assets

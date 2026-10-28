@@ -46,9 +46,9 @@ use register::ReceiptCursor;
 #[cfg(test)]
 use register::{bounded_bytes, encode_material_receipts, RECEIPT_DOMAIN};
 pub use register::{
-    decode_material_receipts, nominal_material_world_hash, receipt_family_bytes,
-    receipt_family_rows, receipt_row_limit, validate_retained_collection, MaterialReceiptHandle,
-    MaterialTickReceipts, MaterialWorldError, MaterialWorldRegister, PreparedMaterialWorld,
-    SharedCanonicalBytes, MAX_MATERIAL_TICK_RECEIPT_BYTES, MAX_MATERIAL_WORLD_REGISTER_BYTES,
-    RECEIPT_FAMILY_COUNT, RECEIPT_ROW_BYTES,
+    decode_material_receipts, nominal_material_world_hash, receipt_row_limit,
+    validate_retained_collection, MaterialReceiptHandle, MaterialTickReceipts, MaterialWorldError,
+    MaterialWorldRegister, PreparedMaterialWorld, SharedCanonicalBytes,
+    MAX_MATERIAL_TICK_RECEIPT_BYTES, MAX_MATERIAL_WORLD_REGISTER_BYTES, RECEIPT_FAMILY_COUNT,
+    RECEIPT_ROW_BYTES,
 };

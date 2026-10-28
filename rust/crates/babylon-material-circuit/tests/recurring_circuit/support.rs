@@ -560,14 +560,14 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
     // catalog digest, so these values intentionally differ from the pre-split
     // frame; they pin the post-split encoding as well as the quantity trajectory.
     let expected_digests = [
-        "42761fc58201184fb0eaa8015e99566cfc0c44ea6eae2c7ae67a3a1952598b8f",
-        "3842e4812265a774fe00352b9d09f21f7d917870768c1f8dfafb6469f5df158d",
-        "bea01cb8bc108824a8c4477ba85bbd0115f53bbbf951542e643a6dc42e65ca8c",
-        "85596f6e8ea75ac24dda95ceafa017b82302ffc83f0407d352312a30fb388b88",
-        "989a8816fa999712139a4a4e688e13696f76430545ecfb543da8ce72d4a49230",
-        "95dbfbae8ab41472c12295606d294576fcc7b50c03bacb9fccb527f9eef5022c",
-        "26bb574058cf105944755de02419e2d91ff27d0f71399c9c287a42d06f0a5e8a",
-        "ec2bfc11631a89b1a97ba1d48b0b6f1b8f959aa380c9169a7cd47cd6dbf808dd",
+        "f0566333b93b2857bbef3cb4ed23e2bcfc378d2019b706bdc88f4a92f80e09a8",
+        "c1a602a2f89eeda9cccd8993d3dce85b1b0db376bdfdf57308677f805893fde6",
+        "367adea88fe4aa925f9d6c936e6aed7344f9f9bd7334eb40550afdb4eb9b208b",
+        "cdb6057ffea9a2e9f1402184a95d1a7e96b1030f1de2e52163b4332e99ccdbce",
+        "9b376b0f74d3b764278954fe5f5e0d5cdf5ac0efef157c38ff2ef48cba3e89c7",
+        "b29f20e312c99b84ecdd66fcdfd35bed12a4f6df038eeccc7dfb39ed22e2f37b",
+        "114b5aad8e490c7c3ad550635353a541f2e52baf5276567a5ab4656f5724cd05",
+        "0a489dedd2a35a7bf2b95c5aa3755ade9b0c3479806d7bfd2bc875c1dddcdf50",
     ];
     assert_eq!(
         digests

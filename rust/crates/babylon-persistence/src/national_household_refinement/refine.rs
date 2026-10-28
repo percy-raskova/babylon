@@ -4,6 +4,7 @@ use crate::national_household_allocation::{
     HouseholdBudgetKey, HouseholdCohortKey, NationalHouseholdAllocation,
 };
 use crate::national_household_time_allocation::NationalHouseholdTimeAllocation;
+use babylon_material_circuit::HouseholdTimePolicy;
 
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
@@ -758,7 +759,7 @@ fn add_work(
 }
 
 fn time_index(
-    policies: &[babylon_material_circuit::HouseholdTimePolicy],
+    policies: &[HouseholdTimePolicy],
 ) -> Result<BTreeMap<FinalDemandPrincipalId, (u64, u64)>, ConsolidationError> {
     policies
         .iter()

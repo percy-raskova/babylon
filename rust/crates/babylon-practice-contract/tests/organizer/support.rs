@@ -7,6 +7,7 @@ use babylon_practice_contract::{
     OrganizerContribution, OrganizerHouseholdBinding, OrganizerObservation, OrganizerParticipant,
     OrganizerPartner, OrganizerTimeUse, PracticeResourceCapacity, PracticeResourceRequirement,
 };
+use std::collections::BTreeSet;
 
 use babylon_practice_contract::{
     decode_organizer_receipt, decode_practice_intent, encode_practice_intent,
@@ -1928,7 +1929,7 @@ pub(crate) fn seeded_observations_remain_visible_after_a_journal_append() {
     );
     assert_eq!(view.total_observation_count as usize, expected.len());
     assert_eq!(view.observations, expected);
-    let ids: std::collections::BTreeSet<_> = view
+    let ids: BTreeSet<_> = view
         .observations
         .iter()
         .map(|row| row.observation_id)

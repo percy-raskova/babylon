@@ -1,3 +1,4 @@
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::{
     CapacityRow, CommodityDefinition, CommodityKind, CorridorCapacity, CorridorId,
     InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
@@ -34,10 +35,7 @@ use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::material_world;
 use babylon_tick::replay_session::ReplayCommitDisposition;
 
-type Parts = (
-    babylon_material_circuit::MaterialCatalogDefinition,
-    MaterialCircuitState,
-);
+type Parts = (MaterialCatalogDefinition, MaterialCircuitState);
 type Pair = (
     MaterialCircuitState,
     MaterialCircuitState,
@@ -47,7 +45,7 @@ type Pair = (
 
 fn empty_state() -> Parts {
     (
-        babylon_material_circuit::MaterialCatalogDefinition {
+        MaterialCatalogDefinition {
             capacity_policy: CapacitySupply::FiniteSchedule,
             site_logistics_nodes: vec![],
             process_outputs: vec![],
@@ -457,10 +455,7 @@ fn two_leg_work_state() -> Parts {
     (catalog, state)
 }
 
-fn add_receiving_work(
-    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
-    state: &mut MaterialCircuitState,
-) {
+fn add_receiving_work(catalog: &mut MaterialCatalogDefinition, state: &mut MaterialCircuitState) {
     let buyer = state.orders[0].buyer_site_id;
     let (work_catalog, mut work) = production_state(&[(17, 1, 2, 1)], 5);
     let mut work_catalog = work_catalog;
@@ -495,7 +490,7 @@ fn add_receiving_work(
 }
 
 fn add_receiving_dispatch(
-    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
+    catalog: &mut MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
 ) {
     let supplier = state.orders[0].buyer_site_id;
@@ -887,7 +882,7 @@ fn retail_state() -> Parts {
     };
     let (_, mut state) = empty_state();
     let source = crate::test_support::catalog();
-    let mut catalog = babylon_material_circuit::MaterialCatalogDefinition {
+    let mut catalog = MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![],
         process_outputs: vec![],

@@ -16,6 +16,7 @@ use babylon_material_circuit::HouseholdNeedBasis;
 use babylon_material_circuit::HouseholdPurchasePolicy;
 use babylon_material_circuit::HouseholdStock;
 use babylon_material_circuit::MaterialCatalog;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
 use babylon_material_circuit::MerchantRole;
@@ -268,7 +269,7 @@ fn foreign_household() -> FinalDemandPrincipalId {
 }
 
 fn foreign_need(
-    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
+    catalog: &mut MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
     enabled: bool,
 ) {

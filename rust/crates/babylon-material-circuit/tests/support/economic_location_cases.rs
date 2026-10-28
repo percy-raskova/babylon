@@ -15,6 +15,7 @@ use babylon_material_circuit::HouseholdNeedBasis;
 use babylon_material_circuit::HouseholdPurchasePolicy;
 use babylon_material_circuit::HouseholdStock;
 use babylon_material_circuit::MaterialCatalog;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MonetaryBook;
@@ -22,7 +23,7 @@ use babylon_material_circuit::StockCarryingValue;
 use babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES;
 
 fn place(
-    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
+    catalog: &mut MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
     location: EconomicLocation,
 ) {

@@ -3,6 +3,7 @@ use super::monetary_receipt;
 use super::MaterialWorldError;
 use super::ReceiptCursor;
 use babylon_kernel::currency::Currency;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::{
     AidOutcome, AidReceipt, AidTransport, CircuitAccounting, FinalDemandPrincipalId, GoodId,
     LogisticsNodeId, MaterialCircuitState, OrderId, RouteId, UnitId,
@@ -65,7 +66,7 @@ fn validate_row(row: &AidReceipt, tick: u64) -> Result<(), MaterialWorldError> {
 }
 
 pub(super) fn validate_state(
-    catalog: &babylon_material_circuit::MaterialCatalog,
+    catalog: &MaterialCatalog,
     rows: &[AidReceipt],
     state: &MaterialCircuitState,
 ) -> Result<(), MaterialWorldError> {

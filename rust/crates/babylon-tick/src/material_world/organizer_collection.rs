@@ -2,6 +2,7 @@
 use super::{collection_receipt, MaterialWorldError};
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::AccountId;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::{
     CircuitAccounting, CollectionOutcome, CollectionReceipt, CollectionResolveInput,
     FinalDemandPrincipalId, MaterialCircuitState, OrganizationAccountId, UnitId,
@@ -14,7 +15,7 @@ use std::result::Result as StdResult;
 
 type Result<T> = StdResult<T, MaterialWorldError>;
 pub(crate) fn input(
-    catalog: &babylon_material_circuit::MaterialCatalog,
+    catalog: &MaterialCatalog,
     config: &OrganizerConfig,
     organizer: &OrganizerState,
     accepted: Option<&OrganizerCommitment>,
@@ -178,7 +179,7 @@ pub(super) fn current(
 // Current register admission precedes actor-scoped cash projection, even at
 // opening0. A structurally valid config cannot name another payer or unit.
 pub(super) fn validate_binding(
-    catalog: &babylon_material_circuit::MaterialCatalog,
+    catalog: &MaterialCatalog,
     config: &OrganizerConfig,
     state: &MaterialCircuitState,
 ) -> Result<()> {

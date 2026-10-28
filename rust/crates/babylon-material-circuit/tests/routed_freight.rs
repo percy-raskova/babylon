@@ -2,6 +2,7 @@ use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::FreightLotId;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::{
     CapacityRow, CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InputOutputCoefficient,
     InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId, MaterialCatalog,
@@ -110,7 +111,7 @@ fn base_state() -> (MaterialCatalog, MaterialCircuitState) {
 }
 
 fn base_catalog() -> MaterialCatalog {
-    MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+    MaterialCatalog::try_new(MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
@@ -318,12 +319,7 @@ fn two_route_state() -> (MaterialCatalog, MaterialCircuitState) {
     (catalog, state)
 }
 
-fn route_depth_state(
-    leg_count: usize,
-) -> (
-    babylon_material_circuit::MaterialCatalogDefinition,
-    MaterialCircuitState,
-) {
+fn route_depth_state(leg_count: usize) -> (MaterialCatalogDefinition, MaterialCircuitState) {
     let (catalog, mut state) = base_state();
     let mut catalog = catalog.into_definition();
     catalog.route_stages = (0..leg_count)

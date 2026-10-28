@@ -3,6 +3,7 @@
 use super::accounting;
 use super::capacity;
 use super::services;
+use crate::MaterialCatalogDefinition;
 
 use crate::{
     FinalDemandOrder, FinalDemandPrincipal, FinalDemandPrincipalId, MerchantHandling,
@@ -610,7 +611,7 @@ pub fn material_circuit_state_digest(
 /// # Errors
 /// Returns the first row-bound refusal.
 pub(crate) fn catalog_bytes(
-    catalog: &crate::MaterialCatalogDefinition,
+    catalog: &MaterialCatalogDefinition,
 ) -> Result<Vec<u8>, MaterialCircuitError> {
     super::catalog::bytes(catalog)
 }

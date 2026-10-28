@@ -1,6 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::michigan_dynamic_hex_foundation;
+use babylon_material_circuit::MaterialCatalogDefinition;
 
 use babylon_bsl::causal_contract::{EffectSignature, EvidenceClass, RuleRole};
 
@@ -160,12 +161,12 @@ pub(crate) fn labor(period: u64, available: u64) -> LaborCapacityRow {
 
 /// One authored definition set and its opening quantities.
 pub(crate) struct Materials {
-    pub(crate) catalog: babylon_material_circuit::MaterialCatalogDefinition,
+    pub(crate) catalog: MaterialCatalogDefinition,
     pub(crate) state: MaterialCircuitState,
 }
 
 pub(crate) fn opening() -> Materials {
-    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
+    let catalog = MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2]
             .map(|id| SiteLogisticsNode {
@@ -246,7 +247,7 @@ pub(crate) fn opening() -> Materials {
 }
 
 pub(crate) fn install_freight(
-    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
+    catalog: &mut MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
 ) {
     let route = RouteId::from_bytes([1; 32]);

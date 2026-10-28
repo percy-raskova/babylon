@@ -10,6 +10,7 @@ use babylon_material_circuit::HouseholdPurchasePolicy;
 use babylon_material_circuit::InventoryRow;
 use babylon_material_circuit::LaborCompensation;
 use babylon_material_circuit::MaterialCatalog;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialPurchase;
@@ -91,7 +92,7 @@ fn household_service_need_uses_the_selected_basis_at_admission_and_consumption()
 )]
 fn resealed(
     catalog: MaterialCatalog,
-    mutate: impl FnOnce(&mut babylon_material_circuit::MaterialCatalogDefinition),
+    mutate: impl FnOnce(&mut MaterialCatalogDefinition),
 ) -> MaterialCatalog {
     let mut catalog = catalog.into_definition();
     mutate(&mut catalog);

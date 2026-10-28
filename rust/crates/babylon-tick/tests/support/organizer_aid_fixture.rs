@@ -49,6 +49,7 @@ use babylon_material_circuit::LaborCoefficient;
 use babylon_material_circuit::LaborCompensation;
 use babylon_material_circuit::LogisticsNodeId;
 use babylon_material_circuit::MaterialCatalog;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MerchantHandling;
 use babylon_material_circuit::MerchantHandlingCoefficient;
@@ -417,7 +418,7 @@ fn route_stage_capacities() -> Vec<RouteStageCapacity> {
 
 /// One authored definition set and its opening quantities.
 pub(crate) struct Materials {
-    pub(crate) catalog: babylon_material_circuit::MaterialCatalogDefinition,
+    pub(crate) catalog: MaterialCatalogDefinition,
     pub(crate) state: MaterialCircuitState,
 }
 
@@ -427,7 +428,7 @@ pub(crate) struct Materials {
 )]
 pub(crate) fn opening() -> Materials {
     let recurring = recurring();
-    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
+    let catalog = MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2, 3]
             .into_iter()

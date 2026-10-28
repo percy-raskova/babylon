@@ -1,6 +1,7 @@
 use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CircuitAccounting;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::{
     CommodityDefinition, CommodityKind, CorridorCapacity, CorridorId, GoodId, InventoryRow,
@@ -45,7 +46,7 @@ fn empty() -> (MaterialCatalog, MaterialCircuitState) {
             production_commitments: Vec::new(),
         };
         (
-            MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+            MaterialCatalog::try_new(MaterialCatalogDefinition {
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],
@@ -69,7 +70,7 @@ fn empty() -> (MaterialCatalog, MaterialCircuitState) {
 }
 
 fn add_order(
-    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
+    catalog: &mut MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
     identity: u8,
     quantity: u64,

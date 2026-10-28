@@ -20,6 +20,7 @@ use babylon_material_circuit::InstitutionLocation;
 use babylon_material_circuit::LaborCoefficient;
 use babylon_material_circuit::LogisticsNodeId;
 use babylon_material_circuit::MaterialCatalog;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MonetaryBook;
@@ -186,7 +187,7 @@ fn service_needs() -> (MaterialCatalog, MaterialCircuitState) {
     (catalog, state)
 }
 fn declare_services(
-    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
+    catalog: &mut MaterialCatalogDefinition,
     rows: &mut RecurringEconomy,
     unit: UnitId,
     hours: UnitId,

@@ -4,6 +4,7 @@ use super::{CatalogAccounting, CatalogCapacity, EconomicCatalogError, EconomicOp
 use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::{
     AccountId, AidBook, AttendancePlan, CapacityRow, CashAccount, CircuitAccounting,
     CorridorCapacity, FinalDemandPrincipal, FinancialInstitutions, HistoricalCostBook,
@@ -56,8 +57,8 @@ impl EconomicOpening {
     }
 }
 
-fn empty_catalog() -> babylon_material_circuit::MaterialCatalogDefinition {
-    babylon_material_circuit::MaterialCatalogDefinition {
+fn empty_catalog() -> MaterialCatalogDefinition {
+    MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![],
         process_outputs: vec![],
@@ -99,7 +100,7 @@ fn empty_state() -> MaterialCircuitState {
 /// Immutable definitions the engine validates are compiled once, beside the state.
 fn append_sites(
     opening: &EconomicOpening,
-    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
+    catalog: &mut MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
 ) -> Result<()> {
     let recipes: BTreeMap<_, _> = opening.recipes.iter().map(|r| (r.id, r)).collect();
@@ -216,7 +217,7 @@ fn append_households(opening: &EconomicOpening, state: &mut MaterialCircuitState
 }
 fn append_catalog_logistics(
     opening: &EconomicOpening,
-    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
+    catalog: &mut MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
 ) -> Result<()> {
     catalog
@@ -278,7 +279,7 @@ fn append_catalog_logistics(
 /// Capture authored policy definitions for the immutable catalog.
 fn append_catalog_policies(
     opening: &EconomicOpening,
-    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
+    catalog: &mut MaterialCatalogDefinition,
     state: &MaterialCircuitState,
 ) -> Result<()> {
     let CircuitAccounting::Monetary(economy) = &state.accounting else {

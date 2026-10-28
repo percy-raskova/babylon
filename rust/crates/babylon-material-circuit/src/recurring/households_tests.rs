@@ -25,6 +25,7 @@ use crate::LaborCapacityRow;
 use crate::LocalRetailFulfillmentReceipt;
 use crate::LogisticsNodeId;
 use crate::MaterialCatalog;
+use crate::MaterialCatalogDefinition;
 use crate::MaterialCircuitError;
 use crate::MaterialCircuitState;
 use crate::MerchantHandling;
@@ -191,7 +192,7 @@ fn opening(household_cash: i128, stock: u64) -> (MaterialCatalog, MaterialCircui
         capacity_reservations: CapacityReservations::default(),
     };
     fixture(
-        crate::MaterialCatalogDefinition {
+        MaterialCatalogDefinition {
             capacity_policy: CapacitySupply::FiniteSchedule,
             site_logistics_nodes: vec![SiteLogisticsNode {
                 site_id: s(),
@@ -267,7 +268,7 @@ fn handoff(
 }
 
 fn fixture(
-    mut catalog: crate::MaterialCatalogDefinition,
+    mut catalog: MaterialCatalogDefinition,
     state: MaterialCircuitState,
 ) -> (MaterialCatalog, MaterialCircuitState) {
     if let crate::CircuitAccounting::Monetary(economy) = &state.accounting {

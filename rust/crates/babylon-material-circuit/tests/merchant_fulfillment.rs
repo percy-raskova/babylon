@@ -1,3 +1,4 @@
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::{
     CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InventoryRow, LaborCapacityRow,
@@ -20,7 +21,7 @@ fn merchant() -> (MaterialCatalog, MaterialCircuitState) {
     let order_id = OrderId::from_bytes([7; 32]);
     let source_node = LogisticsNodeId::from_bytes([1; 32]);
     let buyer_node = LogisticsNodeId::from_bytes([2; 32]);
-    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
+    let catalog = MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![
             SiteLogisticsNode {
@@ -155,10 +156,7 @@ use babylon_material_circuit::{
     StaffingState, StaffingWorkSource,
 };
 
-fn add_local_order(
-    catalog: &babylon_material_circuit::MaterialCatalogDefinition,
-    state: &mut MaterialCircuitState,
-) {
+fn add_local_order(catalog: &MaterialCatalogDefinition, state: &mut MaterialCircuitState) {
     let store = &catalog.merchants[0];
     let coefficient = &catalog.handling_coefficients[0];
     let principal = FinalDemandPrincipalId::from_bytes([10; 32]);
@@ -194,7 +192,7 @@ fn local_store() -> (MaterialCatalog, MaterialCircuitState) {
 }
 
 fn schedule(
-    catalog: &babylon_material_circuit::MaterialCatalogDefinition,
+    catalog: &MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
     periods: u64,
     hours: u64,
@@ -475,7 +473,7 @@ fn arrived_goods_are_available_to_retail_handling_in_the_same_close() {
 fn merchant_admission_refuses_invalid_coefficients_county_role_and_capacity_ownership() {
     let (catalog, base) = local_store();
     // Definition rows are refused at catalog admission.
-    let definition_mutations: &[fn(&mut babylon_material_circuit::MaterialCatalogDefinition)] = &[
+    let definition_mutations: &[fn(&mut MaterialCatalogDefinition)] = &[
         |c| c.handling_coefficients[0].hours_per_unit = 0,
         |c| c.merchants.push(c.merchants[0].clone()),
     ];
@@ -594,7 +592,7 @@ fn new_families_are_canonical_hash_bound_and_local_routed_ids_are_disjoint() {
     );
     let baseline = babylon_material_circuit::material_circuit_state_digest(&catalog, &state)
         .expect("the material state has a digest");
-    let definition_mutations: &[fn(&mut babylon_material_circuit::MaterialCatalogDefinition)] = &[
+    let definition_mutations: &[fn(&mut MaterialCatalogDefinition)] = &[
         |c| {
             c.merchants[0].location = "county:26001"
                 .parse()

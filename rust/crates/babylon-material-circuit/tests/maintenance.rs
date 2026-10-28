@@ -26,6 +26,7 @@ use babylon_material_circuit::LogisticsNodeId;
 use babylon_material_circuit::MaintenanceBinding;
 use babylon_material_circuit::MaintenanceService;
 use babylon_material_circuit::MaterialCatalog;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
@@ -138,7 +139,7 @@ fn opening(parts: u64, provider_hours: u64) -> (MaterialCatalog, MaterialCircuit
             }),
         };
         (
-            MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+            MaterialCatalog::try_new(MaterialCatalogDefinition {
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 site_logistics_nodes: (1..=3)
                     .map(|id| SiteLogisticsNode {
@@ -205,10 +206,7 @@ fn opening(parts: u64, provider_hours: u64) -> (MaterialCatalog, MaterialCircuit
         )
     }
 }
-fn restock(
-    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
-    state: &mut MaterialCircuitState,
-) {
+fn restock(catalog: &mut MaterialCatalogDefinition, state: &mut MaterialCircuitState) {
     for (id, buyer, quantity) in [(1, 2, 256), (2, 3, 3840)] {
         let order_id = OrderId::from_bytes([id; 32]);
         catalog.supplier_routes.push(SupplierRoute {
@@ -558,7 +556,7 @@ fn canonical_replay_and_restart_preserve_maintenance_and_reject_old_version() {
 #[test]
 fn invalid_maintenance_bindings_and_overflow_refuse_atomically() {
     let (catalog, state) = opening(256, 160);
-    let definition_mutations: &[fn(&mut babylon_material_circuit::MaterialCatalogDefinition)] = &[
+    let definition_mutations: &[fn(&mut MaterialCatalogDefinition)] = &[
         |c| {
             c.maintenance_binding
                 .as_mut()
@@ -609,7 +607,7 @@ fn invalid_maintenance_bindings_and_overflow_refuse_atomically() {
         babylon_material_circuit::advance_material_circuit(&unbound, &state),
         Err(MaterialCircuitError::MaintenanceInvariant)
     );
-    let relational_mutations: &[fn(&mut babylon_material_circuit::MaterialCatalogDefinition)] = &[
+    let relational_mutations: &[fn(&mut MaterialCatalogDefinition)] = &[
         |c| {
             c.maintenance_binding
                 .as_mut()

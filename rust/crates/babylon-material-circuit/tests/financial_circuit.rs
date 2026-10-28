@@ -18,6 +18,7 @@ use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::InstitutionLocation;
 use babylon_material_circuit::LogisticsNodeId;
 use babylon_material_circuit::MaterialCatalog;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MonetaryBook;
 use babylon_material_circuit::MonetaryCircuit;
@@ -114,7 +115,7 @@ fn opening(cash: [i128; 5]) -> (MaterialCatalog, MaterialCircuitState) {
         vec![],
     )
     .expect("the fixture opens the authored source");
-    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
+    let catalog = MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![SiteLogisticsNode {
             site_id: site(),
@@ -172,7 +173,7 @@ fn opening(cash: [i128; 5]) -> (MaterialCatalog, MaterialCircuitState) {
 }
 fn resealed(
     catalog: MaterialCatalog,
-    mutate: impl FnOnce(&mut babylon_material_circuit::MaterialCatalogDefinition),
+    mutate: impl FnOnce(&mut MaterialCatalogDefinition),
 ) -> MaterialCatalog {
     let mut catalog = catalog.into_definition();
     mutate(&mut catalog);

@@ -44,6 +44,7 @@ use babylon_material_circuit::HouseholdNeedBasis;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::HouseholdTimeCommitment;
 use babylon_material_circuit::HouseholdTimeReceipt;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialPurchase;
@@ -642,7 +643,7 @@ fn commitment_hours(commitment: &HouseholdTimeCommitment, cohort: &HouseholdCoho
         .expect("the fixture arithmetic stays in range")
 }
 fn install_opening_receipts(
-    catalog: &babylon_material_circuit::MaterialCatalog,
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
 ) -> (FinalDemandPrincipalId, u64) {
     state.period = 2;

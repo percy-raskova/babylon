@@ -22,6 +22,7 @@ use babylon_material_circuit::LaborCapacityRow;
 use babylon_material_circuit::LaborCoefficient;
 use babylon_material_circuit::LaborCompensation;
 use babylon_material_circuit::MaterialCatalog;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
@@ -129,7 +130,7 @@ fn service_opening(cash: [i128; 5]) -> (MaterialCatalog, MaterialCircuitState) {
     (catalog, state)
 }
 fn configure_service_money(
-    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
+    catalog: &mut MaterialCatalogDefinition,
     e: &mut MonetaryCircuit,
     process: ProcessId,
     service: GoodId,

@@ -1,5 +1,6 @@
 //! Adjacent authenticated aid evidence. No allocation, pricing or economic replay.
 use super::ProductionProjectionError;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::{
     AccountId, AidCashReserve, AidMandate, AidOutcome, AidReceipt, AidTransport, CircuitAccounting,
     FinalDemandPrincipalId, GoodId, MaterialCircuitState, MonetaryCircuit, MoneyLocation,
@@ -40,7 +41,7 @@ type Cash = BTreeMap<(OrderId, u8), Posting>;
 type Reserves = BTreeMap<OrderId, AidCashReserve>;
 type Reservations = BTreeMap<OrderId, u64>;
 pub(super) fn join(
-    catalog: &babylon_material_circuit::MaterialCatalog,
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,

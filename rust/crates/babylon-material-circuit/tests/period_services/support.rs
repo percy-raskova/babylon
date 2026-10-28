@@ -1,5 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::{
     decode_material_circuit_state, AccountId, AidBook, CapacityReservations, CapacityRow,
     CapacitySupply, CashAccount, CircuitAccounting, CommodityDefinition, CommodityKind,
@@ -88,7 +89,7 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         vec![],
     )
     .expect("the fixture opens the authored source");
-    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
+    let catalog = MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         commodities: vec![
             CommodityDefinition {
@@ -300,7 +301,7 @@ pub(crate) fn funded(
 
 fn reseal(
     catalog: MaterialCatalog,
-    mutate: impl FnOnce(&mut babylon_material_circuit::MaterialCatalogDefinition),
+    mutate: impl FnOnce(&mut MaterialCatalogDefinition),
 ) -> MaterialCatalog {
     let mut catalog = catalog.into_definition();
     mutate(&mut catalog);

@@ -6,6 +6,7 @@
 
 use crate::michigan_sectors::MichiganSectorCode;
 use crate::national_cohorts::CohortKey;
+use babylon_material_circuit::HouseholdTimePolicy;
 
 use babylon_graph::stable_element::StableElementKey;
 use babylon_kernel::currency::Currency;
@@ -183,7 +184,7 @@ pub enum CatalogAccounting {
 pub struct CatalogPolicies {
     pub aid_mandates: Vec<AidMandate>,
     pub household_time: HouseholdTimeAccounting,
-    pub household_time_policy: Vec<babylon_material_circuit::HouseholdTimePolicy>,
+    pub household_time_policy: Vec<HouseholdTimePolicy>,
     pub offers: Vec<SellerOffer>,
     pub replenishment: Vec<ReplenishmentPolicy>,
     pub household_purchases: Vec<HouseholdPurchasePolicy>,

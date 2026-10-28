@@ -1,6 +1,6 @@
 meta:
-  version: 1.87.0
-  updated: '2026-08-26'
+  version: 1.88.0
+  updated: '2026-10-28'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -25,6 +25,11 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR290_host_policy_v12:
+    title: Babylon deploys host policy v12 for its current Rust bootstrap
+    status: accepted
+    date: '2026-10-28'
+    file: ADR290_host_policy_v12.yaml
   ADR289_retain_postgresql_campaign_owner_and_retire_sqlite_experiment:
     title: Retain PostgreSQL as the sole campaign owner; retire the SQLite store experiment
     status: accepted

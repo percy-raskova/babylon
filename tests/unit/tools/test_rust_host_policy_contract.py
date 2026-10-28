@@ -1,18 +1,6 @@
-"""Repository contract for the shared Codex Rust host boundary.
+"""Repository contract for Babylon's versioned Codex Rust host bundle.
 
-PER-286 adopts the NNS-104 policy-v11 bundle without a Babylon fork. These
-digests pin the coordinated review-fix bytes; the final NNSims commit is
-recorded when the two branches are qualified together.
-Changing one file requires a coordinated policy-version change in both private
-repositories, never a same-version last-installer-wins update.
-
-PR #1037 moved Babylon's pinned compiler from 1.91.1 to 1.99.1 (bevy 0.20
-requires rustc >= 1.97.1). That pin lives in this bundle's
-`codex_rust_bootstrap_toolchain_for_repository` selector, so `policy.sh` and
-`tests/policy-contract.sh` now carry Babylon-local bytes at policy v11. NNSims
-serves no Babylon selector, so its copy is unchanged: the coordinated
-policy-version bump described above stays outstanding before the two
-repositories can be called byte-identical again.
+Version 12 is Babylon's deployment; NNSims has not adopted its bytes.
 """
 
 from __future__ import annotations
@@ -30,29 +18,19 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 HOST_ROOT = REPO_ROOT / ".codex" / "host"
-ADR_KEY = "ADR246_codex_rust_host_boundary"
+ADR_KEY = "ADR290_host_policy_v12"
 ADR_PATH = REPO_ROOT / "ai" / "decisions" / f"{ADR_KEY}.yaml"
 ADR_INDEX_PATH = REPO_ROOT / "ai" / "decisions" / "index.yaml"
-POLICY_V11_SHA256 = {
+POLICY_V12_SHA256 = {
     "cargo": "d1b3dc2124ab6ff0e064034629a6fadde0299b8a820082a80c082b11e66b63a0",
     "cargo-config.py": "efd74452a2c521dfc9a38810e75f6605fadfa987af66f547f3bc89b5077380e0",
     "install.sh": "c6408ed8592248b9aa9c9f4b08a4e3474db5b1ef4d87a8246eb6ac8e411683de",
-    "policy.sh": "246c96b81d856a47b7e7a103a46b087dc85740d1ee414e7b3113def8a63067af",
-    "systemd/codex-rust-babylon.slice": (
-        "7404997f95b7c19093bc93b364c81a6c2a2a88fc685d40cada3d50a030b2397e"
-    ),
-    "systemd/codex-rust-nnsims.slice": (
-        "d6c643553b3f688a074b0cc223c783336f7d85954e1b478a9f1b606917dcca8b"
-    ),
-    "systemd/codex-rust.slice": (
-        "9a14cbd79d34d136fdc35d23e72bff198a73ced3aacdbe4ac6dfa8a65cba0af1"
-    ),
-    "tests/installer-contract.sh": (
-        "c29ed77288b6131957e8cfee08bdca443f8ae3974ecfd45c9aa0d7e1e19996f4"
-    ),
-    "tests/policy-contract.sh": (
-        "724cd467b00c01f5839e82372c7864557ed8b4ecad1a7ecfb0d297b554ab551f"
-    ),
+    "policy.sh": "5a251a80414a41758fbba69b416412205d0f52be86cec3898de115c71ad39019",
+    "systemd/codex-rust-babylon.slice": "db18f20360e1b04cf2cd3c2e1a60e6f72df4d23141028c8b0be1e5b533c05da8",
+    "systemd/codex-rust-nnsims.slice": "ab60acb7148fb1effd1cf8c4370744a536cd6cc7cbf09eef5bdb0e3083a7d51a",
+    "systemd/codex-rust.slice": "54958cafc2b9073b8bdeceda78511a738e70fd78e555e0746741ec8ead4f1171",
+    "tests/installer-contract.sh": "38ad421118281cc2f3ad223f5a66ff1e908ec513024fd6f59bbe45d73e6d0001",
+    "tests/policy-contract.sh": "724cd467b00c01f5839e82372c7864557ed8b4ecad1a7ecfb0d297b554ab551f",
 }
 
 _WORKTREE_ENV_FIXTURE = """\
@@ -128,13 +106,13 @@ def _live_policy_version() -> str:
 
 
 @pytest.mark.unit
-def test_shared_policy_v11_bundle_is_byte_identical_to_nns_104() -> None:
-    """A one-byte Babylon fork must fail before it can become host state."""
+def test_policy_v12_bundle_matches_reviewed_bytes() -> None:
+    """A changed bundle must receive review and a new policy version."""
     actual_files = {
         path.relative_to(HOST_ROOT).as_posix() for path in HOST_ROOT.rglob("*") if path.is_file()
     }
-    assert actual_files == set(POLICY_V11_SHA256)
-    assert _bundle_mismatches(HOST_ROOT, POLICY_V11_SHA256) == []
+    assert actual_files == set(POLICY_V12_SHA256)
+    assert _bundle_mismatches(HOST_ROOT, POLICY_V12_SHA256) == []
 
 
 @pytest.mark.unit
@@ -147,29 +125,25 @@ def test_accepted_decision_and_index_name_the_live_policy_version() -> None:
     decisions = index["decisions"]
     assert isinstance(decisions, dict)
 
-    title = (
-        f"Babylon adopts NNS-104 policy v{version} as one byte-identical Codex Rust "
-        "host boundary with repository-local build state and repository-specific budgets"
-    )
+    title = "Babylon deploys host policy v12 for its current Rust bootstrap"
+    assert version == "12"
     assert decision["title"] == title
     assert decisions[ADR_KEY] == {
         "title": title,
         "status": "accepted",
-        "date": "2026-08-28",
+        "date": "2026-10-28",
         "file": ADR_PATH.name,
     }
-
-    authority = "\n".join(
-        str(decision[field]) for field in ("title", "context", "decision", "verification")
-    )
-    claimed_versions = set(re.findall(r"\bpolicy(?: |-)?v([0-9]+)\b", authority))
-    assert claimed_versions == {version}
+    toolchain = tomllib.loads((REPO_ROOT / "rust/rust-toolchain.toml").read_text())
+    channel = toolchain["toolchain"]["channel"]
+    policy = (HOST_ROOT / "policy.sh").read_text()
+    assert f"printf '%s\\n' +{channel}" in policy
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("contract", ("policy-contract.sh", "installer-contract.sh"))
 def test_host_shell_contracts_pass(contract: str, tmp_path: Path) -> None:
-    """Run v11 hermetically without installing its NNS-only helpers in Babylon."""
+    """Run the bundle hermetically without installing its NNS-only helpers in Babylon."""
     fixture_codex = tmp_path / ".codex"
     fixture_host = fixture_codex / "host"
     shutil.copytree(HOST_ROOT, fixture_host)

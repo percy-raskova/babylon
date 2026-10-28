@@ -99,6 +99,28 @@ run_installer() {
   run_installer_from "$host_dir" "$contract_home" "$@"
 }
 
+# Model both possible v11 bundles. Never overwrite either.
+for old_selector in 1.91.1 1.99.1; do
+  upgrade_home="$temporary_root/upgrade-$old_selector"
+  old_host="$temporary_root/old-$old_selector"
+  prepare_home "$upgrade_home"
+  mkdir -p "$old_host"
+  cp -R "$host_dir/." "$old_host/"
+  sed -i 's/CODEX_RUST_HOST_POLICY_VERSION=12/CODEX_RUST_HOST_POLICY_VERSION=11/; s/+1.99.1/+OLD_SELECTOR/' "$old_host/policy.sh"
+  sed -i "s/+OLD_SELECTOR/+$old_selector/" "$old_host/policy.sh"
+  sed -i 's/policy v12/policy v11/' "$old_host"/systemd/*.slice
+  run_installer_from "$old_host" "$upgrade_home" >/dev/null
+  cp -a "$upgrade_home/.local/share/codex-rust-host/v11" "$temporary_root/snapshot-$old_selector"
+  run_installer "$upgrade_home" >/dev/null || fail "v11 $old_selector could not upgrade"
+  diff -r "$temporary_root/snapshot-$old_selector" "$upgrade_home/.local/share/codex-rust-host/v11" >/dev/null ||
+    fail "upgrade modified installed v11"
+  [ "$(readlink -f -- "$upgrade_home/.local/bin/cargo")" = "$upgrade_home/.local/share/codex-rust-host/v12/cargo" ] ||
+    fail "upgrade did not activate v12"
+  if run_installer_from "$old_host" "$upgrade_home" >/dev/null 2>&1; then
+    fail "v11 repository downgraded the upgraded host"
+  fi
+done
+
 managed_home="$temporary_root/managed-home"
 prepare_home "$managed_home"
 run_installer "$managed_home" >/dev/null
@@ -110,14 +132,14 @@ run_installer "$managed_home" --check >/dev/null
   fail "the first install did not create the dedicated Cargo-only shim"
 [ "$(find "$managed_home/.local/share/codex-rust-host/bin" -mindepth 1 -maxdepth 1 -printf '%f\n')" = cargo ] ||
   fail "the dedicated managed shim directory contains more than Cargo"
-[ "$(sed -n '1p' "$managed_home/.local/share/codex-rust-host/highest-policy-version")" = 11 ] ||
-  fail "the first install did not persist policy v11 as the high-water mark"
+[ "$(sed -n '1p' "$managed_home/.local/share/codex-rust-host/highest-policy-version")" = 12 ] ||
+  fail "the first install did not persist policy v12 as the high-water mark"
 [ -d "$managed_home/cache/sccache/nnsims/0.17.0-p2" ] ||
   fail "the NNSims compiler cache was not provisioned"
 [ -d "$managed_home/cache/sccache/babylon/0.17.0-p2" ] ||
   fail "the Babylon compiler cache was not provisioned"
 printf '%s\n' '# same-version drift' >> \
-  "$managed_home/.local/share/codex-rust-host/v11/policy.sh"
+  "$managed_home/.local/share/codex-rust-host/v12/policy.sh"
 if run_installer "$managed_home" >/dev/null 2>&1; then
   fail "the installer overwrote a divergent copy of its own policy version"
 fi
@@ -167,12 +189,12 @@ set -e
 [ "$second_installer_status" -ne 0 ] ||
   fail "two divergent same-version installers both committed host policy"
 cmp -s "$host_dir/policy.sh" \
-  "$collision_home/.local/share/codex-rust-host/v11/policy.sh" ||
+  "$collision_home/.local/share/codex-rust-host/v12/policy.sh" ||
   fail "the refused concurrent installer mixed its policy into the installed bundle"
 
 partial_home="$temporary_root/partial-bundle-home"
 prepare_home "$partial_home"
-partial_root="$partial_home/.local/share/codex-rust-host/v11"
+partial_root="$partial_home/.local/share/codex-rust-host/v12"
 mkdir -p "$partial_root/real" "$partial_root/systemd"
 install -m 755 "$host_dir/cargo" \
   "$partial_root/cargo"
@@ -196,14 +218,14 @@ rm -f -- \
   "$downgrade_home/.config/systemd/user/codex-rust-babylon.slice"
 mkdir -p "$older_host"
 cp -R "$host_dir/." "$older_host/"
-sed -i 's/CODEX_RUST_HOST_POLICY_VERSION=11/CODEX_RUST_HOST_POLICY_VERSION=10/' \
+sed -i 's/CODEX_RUST_HOST_POLICY_VERSION=12/CODEX_RUST_HOST_POLICY_VERSION=10/' \
   "$older_host/policy.sh"
-sed -i 's/policy v11/policy v10/' "$older_host"/systemd/*.slice
+sed -i 's/policy v12/policy v10/' "$older_host"/systemd/*.slice
 if run_installer_from "$older_host" "$downgrade_home" >/dev/null 2>&1; then
-  fail "a missing unit set let policy v10 replace the persisted v11 high-water mark"
+  fail "a missing unit set let policy v10 replace the persisted v12 high-water mark"
 fi
 [ "$(readlink -f -- "$downgrade_home/.local/bin/cargo")" = \
-  "$downgrade_home/.local/share/codex-rust-host/v11/cargo" ] ||
+  "$downgrade_home/.local/share/codex-rust-host/v12/cargo" ] ||
   fail "the refused downgrade changed the active Cargo shim"
 
 dedicated_shim_home="$temporary_root/unrelated-dedicated-shim-home"

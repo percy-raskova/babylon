@@ -2,7 +2,7 @@
 # Shared constants for the Codex Rust host boundary. Keep this file POSIX so
 # the PATH dispatcher and the environment installer read one policy.
 
-CODEX_RUST_HOST_POLICY_VERSION=11
+CODEX_RUST_HOST_POLICY_VERSION=12
 CODEX_RUST_SCCACHE_POLICY_KEY=0.17.0-p2
 CODEX_RUST_SCCACHE_VERSION=0.17.0
 CODEX_RUST_MAX_ARGS=512

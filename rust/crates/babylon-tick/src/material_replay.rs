@@ -475,7 +475,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         if duration.validate().is_err() {
             return Err(MaterialReplayError::Horizon);
         }
-        if material.catalog_digest() != catalog.catalog_digest {
+        if material.catalog_digest() != catalog.catalog_digest() {
             return Err(MaterialReplayError::Material(MaterialWorldError::Wire));
         }
         graph.validate_material_cycle()?;
@@ -634,7 +634,7 @@ impl MaterialReplaySession<HypergraphStore> {
         let tick = material.completed_tick();
         // A foreign catalog is a provenance refusal of the stored frame, not a
         // horizon refusal; `new` refuses the same discrepancy with `Wire`.
-        if material.catalog_digest() != self.catalog.catalog_digest {
+        if material.catalog_digest() != self.catalog.catalog_digest() {
             return Err(MaterialReplayError::Material(MaterialWorldError::Wire));
         }
         if tick == 0 || !self.duration.contains(tick) {

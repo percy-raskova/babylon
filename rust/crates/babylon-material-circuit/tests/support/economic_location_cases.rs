@@ -22,7 +22,7 @@ use babylon_material_circuit::StockCarryingValue;
 use babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES;
 
 fn place(
-    catalog: &mut MaterialCatalog,
+    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
     location: EconomicLocation,
 ) {
@@ -47,9 +47,10 @@ fn national_foreign_and_dependency_locations_use_the_same_paid_consumption_close
         .chain(ForeignCounterpart::ALL.map(EconomicLocation::Foreign))
         .chain(UsDependency::ALL.map(EconomicLocation::Dependency));
     for location in locations {
-        let (mut catalog, mut state) = crate::opening();
+        let (catalog, mut state) = crate::opening();
+        let mut catalog = catalog.into_definition();
         place(&mut catalog, &mut state, location);
-        catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+        let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
         let encoded = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
             .expect("the canonical material state encodes");
         let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &encoded)
@@ -82,7 +83,8 @@ fn national_foreign_and_dependency_locations_use_the_same_paid_consumption_close
 #[test]
 fn separately_accounted_household_cohorts_can_share_one_market_location() {
     let location = EconomicLocation::Foreign(ForeignCounterpart::Canada);
-    let (mut catalog, mut state) = crate::opening();
+    let (catalog, mut state) = crate::opening();
+    let mut catalog = catalog.into_definition();
     place(&mut catalog, &mut state, location);
     let second = FinalDemandPrincipalId::from_bytes([2; 32]);
     state.final_demand_principals.push(FinalDemandPrincipal {
@@ -143,7 +145,7 @@ fn separately_accounted_household_cohorts_can_share_one_market_location() {
         maximum_purchase: 1,
         enabled: true,
     });
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let close = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(close.household_consumption.len(), 2);

@@ -338,7 +338,8 @@ fn missing_duplicate_and_excess_receipts_or_capacity_refuse() {
     reason = "`reservations_for_later_legs_debit_the_future_period_without_claiming_arrival` keeps one authored boundary's fixture and assertions together"
 )]
 fn reservations_for_later_legs_debit_the_future_period_without_claiming_arrival() {
-    let (mut catalog, mut state) = shared_opening(200, 160);
+    let (catalog, mut state) = shared_opening(200, 160);
+    let mut catalog = catalog.into_definition();
     let source = crate::test_support::catalog();
     let sheet = source
         .routes()
@@ -485,13 +486,14 @@ fn rolling_capacity_reconciles_future_bookings_and_refuses_unexplained_budget_ch
     let mut changed = next.clone();
     changed.corridor_capacities[0].available_grams -= 1;
     assert_eq!(project(&changed), Err(ProductionProjectionError::State));
-    let mut changed_material = material.clone();
+    let mut changed_material = material.clone().into_definition();
     let babylon_material_circuit::CapacitySupply::Rolling(supply) =
         &mut changed_material.capacity_policy
     else {
         unreachable!()
     };
     supply.shared[0].grams_per_period += 1;
+    let changed_material = MaterialCatalog::try_new(changed_material).expect("valid definitions");
     assert_eq!(
         projection::project_freight_capacity_accounts(
             &source,
@@ -508,7 +510,8 @@ fn rolling_two_stage_opening() -> Parts {
     use babylon_material_circuit::{
         CapacitySupply, InstalledProcessCapacity, RollingCapacitySupply, SharedCapacitySupply,
     };
-    let (mut material, mut state) = shared_opening(200, 160);
+    let (material, mut state) = shared_opening(200, 160);
+    let mut material = material.into_definition();
     let source = crate::test_support::catalog();
     let route = source
         .routes()
@@ -594,7 +597,8 @@ fn multileg_projection_encodes_each_exact_order_fact_once() {
             _ => {}
         }
     }
-    let (mut catalog, mut state) = shared_opening(200, 160);
+    let (catalog, mut state) = shared_opening(200, 160);
+    let mut catalog = catalog.into_definition();
     let source = crate::test_support::catalog();
     let sheet = source
         .routes()

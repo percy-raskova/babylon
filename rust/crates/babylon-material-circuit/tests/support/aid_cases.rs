@@ -40,7 +40,8 @@ fn recipient() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([76; 32])
 }
 fn aid_opening(routed: bool) -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = crate::opening();
+    let (catalog, mut state) = crate::opening();
+    let mut catalog = catalog.into_definition();
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: recipient(),
         location: state.final_demand_principals[0].location,
@@ -128,7 +129,7 @@ fn aid_opening(routed: bool) -> (MaterialCatalog, MaterialCircuitState) {
         freight: vec![],
     };
     catalog.aid_mandates.clone_from(&economy.aid.mandates);
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 fn input(quantity: u64) -> AidResolveInput {
@@ -390,14 +391,15 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
 
 #[test]
 fn physical_loss_refunds_donor_cash_and_never_grants_phantom_food() {
-    let (mut catalog, state) = aid_opening(true);
+    let (catalog, state) = aid_opening(true);
+    let mut catalog = catalog.into_definition();
     catalog
         .route_stages
         .iter_mut()
         .find(|r| r.route_id == crate::route(2))
         .expect("the fixture holds the searched element")
         .loss_ppm = 1_000_000;
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let first =
         close_aid(&catalog, &state, &[input(2)]).expect("the fixture closes the pending aid");
     let second =

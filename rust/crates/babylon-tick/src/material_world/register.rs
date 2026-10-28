@@ -276,7 +276,7 @@ impl MaterialWorldRegister {
     /// # Errors
     /// Refuses a zero period, an invalid circuit state under the catalog, or the
     /// aggregate register byte bound.
-    pub fn from_validated_candidate(
+    pub(super) fn from_validated_candidate(
         catalog: &MaterialCatalog,
         state: MaterialCircuitState,
     ) -> Result<Self, MaterialWorldError> {
@@ -338,7 +338,7 @@ impl MaterialWorldRegister {
             state,
             organizer,
             canonical_bytes: SharedCanonicalBytes::from_vec(bytes),
-            catalog_digest: catalog.catalog_digest,
+            catalog_digest: catalog.catalog_digest(),
             digest,
         })
     }
@@ -503,7 +503,7 @@ impl MaterialWorldRegister {
             state,
             organizer,
             canonical_bytes,
-            catalog_digest: catalog.catalog_digest,
+            catalog_digest: catalog.catalog_digest(),
             digest,
         })
     }

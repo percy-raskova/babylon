@@ -160,12 +160,12 @@ pub(crate) fn labor(period: u64, available: u64) -> LaborCapacityRow {
 
 /// One authored definition set and its opening quantities.
 pub(crate) struct Materials {
-    pub(crate) catalog: MaterialCatalog,
+    pub(crate) catalog: babylon_material_circuit::MaterialCatalogDefinition,
     pub(crate) state: MaterialCircuitState,
 }
 
 pub(crate) fn opening() -> Materials {
-    let catalog = MaterialCatalog {
+    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2]
             .map(|id| SiteLogisticsNode {
@@ -209,7 +209,6 @@ pub(crate) fn opening() -> Materials {
         household_time_policy: Vec::new(),
         service_inputs: Vec::new(),
         household_needs: Vec::new(),
-        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
     };
     let mut state = MaterialCircuitState {
         period: 1,
@@ -246,7 +245,10 @@ pub(crate) fn opening() -> Materials {
     Materials { catalog, state }
 }
 
-pub(crate) fn install_freight(catalog: &mut MaterialCatalog, state: &mut MaterialCircuitState) {
+pub(crate) fn install_freight(
+    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
+    state: &mut MaterialCircuitState,
+) {
     let route = RouteId::from_bytes([1; 32]);
     let corridor = CorridorId::from_bytes([1; 32]);
     let order = OrderId::from_bytes([1; 32]);

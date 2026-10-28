@@ -433,7 +433,7 @@ pub fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         }],
         ..FinancialInstitutions::empty()
     };
-    let catalog = MaterialCatalog {
+    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         commodities: (1..=7)
             .map(|g| CommodityDefinition {
@@ -499,7 +499,6 @@ pub fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         household_time_policy: vec![],
         service_inputs: vec![],
         household_needs: vec![],
-        catalog_digest: [0; 32],
     };
     let state = MaterialCircuitState {
         period: 1,
@@ -597,7 +596,7 @@ pub fn opening() -> (MaterialCatalog, MaterialCircuitState) {
     if let HouseholdTimeAccounting::Modeled(book) = &economy.household_time {
         catalog.household_time_policy.clone_from(&book.policies);
     }
-    catalog.catalog_digest = [0; 32];
+
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog is valid");
     (catalog, state)
 }

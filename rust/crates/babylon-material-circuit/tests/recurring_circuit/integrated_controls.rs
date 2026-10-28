@@ -45,7 +45,8 @@ fn rolling(catalog: &mut MaterialCatalog, mut state: MaterialCircuitState) -> Ma
     state
         .corridor_capacities
         .retain(|row| row.period == state.period);
-    catalog.capacity_policy = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
+    let mut definition = catalog.clone().into_definition();
+    definition.capacity_policy = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
         processes: RollingProcessSupply::CapturedNameplate(
             state
                 .capacities
@@ -66,7 +67,7 @@ fn rolling(catalog: &mut MaterialCatalog, mut state: MaterialCircuitState) -> Ma
             })
             .collect(),
     }));
-    *catalog = MaterialCatalog::try_new(catalog.clone()).expect("the fixture catalog stays valid");
+    *catalog = MaterialCatalog::try_new(definition).expect("the fixture catalog stays valid");
     state
 }
 
@@ -296,7 +297,8 @@ fn withdrawal_and_recovery_pass_through_plans_and_conserved_resident_workforce()
 }
 
 fn foreign_trade_opening() -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = crate::opening();
+    let (catalog, mut state) = crate::opening();
+    let mut catalog = catalog.into_definition();
     catalog.process_outputs.clear();
     catalog.input_coefficients.clear();
     catalog.labor_coefficients.clear();
@@ -358,7 +360,7 @@ fn foreign_trade_opening() -> (MaterialCatalog, MaterialCircuitState) {
     }));
     fund_foreign_trade(&mut state);
     configure_trade_policies(crate::recurring_mut(&mut state));
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 

@@ -65,7 +65,7 @@ fn empty_accounts(
     publics: usize,
 ) -> (MaterialCatalog, MaterialCircuitState) {
     let (catalog, mut state) = crate::opening([0; 5]);
-    let mut catalog = catalog;
+    let mut catalog = catalog.into_definition();
     catalog.site_logistics_nodes = (0..sites)
         .map(|n| SiteLogisticsNode {
             site_id: workplace(n),
@@ -100,7 +100,7 @@ fn empty_accounts(
             location: EconomicLocation::Foreign(ForeignCounterpart::Canada),
         })
         .collect();
-    catalog.catalog_digest = [0; 32];
+
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog is valid");
     (catalog, state)
 }
@@ -131,7 +131,8 @@ fn canonical_roundtrip(
 fn service_needs() -> (MaterialCatalog, MaterialCircuitState) {
     // Four distinct native services per explicit one-person household. No stock,
     // cash, employment, service orders or performed work is created by admission.
-    let (mut catalog, mut state) = empty_accounts(1, POLICY_LIMIT / 4, 0);
+    let (catalog, mut state) = empty_accounts(1, POLICY_LIMIT / 4, 0);
+    let mut catalog = catalog.into_definition();
     let unit = UnitId::from_bytes(identity(1));
     let hours = UnitId::from_bytes(identity(2));
     let mut rows = RecurringEconomy {
@@ -182,13 +183,13 @@ fn service_needs() -> (MaterialCatalog, MaterialCircuitState) {
     }
     declare_services(&mut catalog, &mut rows, unit, hours);
     catalog.household_needs.clone_from(&rows.household_needs);
-    catalog.catalog_digest = [0; 32];
+
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog is valid");
     crate::economy_mut(&mut state).recurring = Some(Box::new(rows));
     (catalog, state)
 }
 fn declare_services(
-    catalog: &mut MaterialCatalog,
+    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
     rows: &mut RecurringEconomy,
     unit: UnitId,
     hours: UnitId,

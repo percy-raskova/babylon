@@ -199,7 +199,7 @@ fn opening(household_cash: i128, stock: u64) -> (MaterialCatalog, MaterialCircui
         capacity_reservations: CapacityReservations::default(),
     };
     fixture(
-        MaterialCatalog {
+        crate::MaterialCatalogDefinition {
             capacity_policy: CapacitySupply::FiniteSchedule,
             site_logistics_nodes: vec![SiteLogisticsNode {
                 site_id: s(),
@@ -235,7 +235,6 @@ fn opening(household_cash: i128, stock: u64) -> (MaterialCatalog, MaterialCircui
             household_time_policy: Vec::new(),
             service_inputs: Vec::new(),
             household_needs: Vec::new(),
-            catalog_digest: crate::UNSEALED_CATALOG_DIGEST,
         },
         state,
     )
@@ -276,7 +275,7 @@ fn handoff(
 }
 
 fn fixture(
-    mut catalog: MaterialCatalog,
+    mut catalog: crate::MaterialCatalogDefinition,
     state: MaterialCircuitState,
 ) -> (MaterialCatalog, MaterialCircuitState) {
     if let crate::CircuitAccounting::Monetary(economy) = &state.accounting {
@@ -288,7 +287,7 @@ fn fixture(
         }
         catalog.aid_mandates.clone_from(&economy.aid.mandates);
     }
-    catalog.catalog_digest = crate::UNSEALED_CATALOG_DIGEST;
+
     let catalog = MaterialCatalog::try_new(catalog).expect("the authored fixture catalog is valid");
     (catalog, state)
 }
@@ -560,7 +559,8 @@ fn missing_or_overflowing_needs_and_invalid_prices_are_refused() {
 
 #[test]
 fn one_household_budget_is_shared_in_canonical_need_order() {
-    let (mut catalog, mut state) = opening(4, 0);
+    let (catalog, mut state) = opening(4, 0);
+    let mut catalog = catalog.into_definition();
     let other = GoodId::from_bytes([33; 32]);
     catalog.commodities.push(CommodityDefinition {
         good_id: other,
@@ -608,6 +608,7 @@ fn one_household_budget_is_shared_in_canonical_need_order() {
         unit_price: cash(4),
         pricing: PricePolicy::Fixed,
     });
+    let catalog = MaterialCatalog::try_new(catalog).expect("valid definitions");
     let mut reordered = state.clone();
     crate::canonicalize(household_rows(&mut reordered));
     let first = crate::admit_household_orders(&catalog, &mut state, &mut vec![])

@@ -93,11 +93,11 @@ fn household_service_need_uses_the_selected_basis_at_admission_and_consumption()
 )]
 fn resealed(
     catalog: MaterialCatalog,
-    mutate: impl FnOnce(&mut MaterialCatalog),
+    mutate: impl FnOnce(&mut babylon_material_circuit::MaterialCatalogDefinition),
 ) -> MaterialCatalog {
-    let mut catalog = catalog;
+    let mut catalog = catalog.into_definition();
     mutate(&mut catalog);
-    catalog.catalog_digest = [0; 32];
+
     MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid")
 }
 
@@ -226,12 +226,12 @@ pub(super) fn recurring(
         last_household_admission_period: 0,
         last_household_consumption_period: 0,
     };
-    let mut catalog = catalog;
+    let mut catalog = catalog.into_definition();
     catalog.service_inputs.clone_from(&recurring.service_inputs);
     catalog
         .household_needs
         .clone_from(&recurring.household_needs);
-    catalog.catalog_digest = [0; 32];
+
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     e.recurring = Some(Box::new(recurring));
     sync_member_hours(&mut state);

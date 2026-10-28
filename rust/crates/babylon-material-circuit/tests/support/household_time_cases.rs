@@ -21,7 +21,8 @@ use babylon_material_circuit::MoneyTransferPurpose;
 use babylon_material_circuit::ShiftId;
 
 fn time_opening(food: u64) -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = crate::opening();
+    let (catalog, mut state) = crate::opening();
+    let mut catalog = catalog.into_definition();
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         panic!("the worked control must have monetary accounts");
     };
@@ -55,7 +56,7 @@ fn time_opening(food: u64) -> (MaterialCatalog, MaterialCircuitState) {
         HouseholdTimeBook::new(vec![policy])
             .expect("the constructor accepts the authored fixture arguments"),
     );
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 

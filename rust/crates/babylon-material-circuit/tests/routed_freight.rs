@@ -8,7 +8,6 @@ use babylon_material_circuit::{
     MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId, ProcessOutput, RouteId,
     RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute, SupplierTransport,
     UnitId, MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES, MAX_ROUTE_STAGES_PER_ROUTE,
-    UNSEALED_CATALOG_DIGEST,
 };
 
 fn site(byte: u8) -> SiteId {
@@ -111,7 +110,7 @@ fn base_state() -> (MaterialCatalog, MaterialCircuitState) {
 }
 
 fn base_catalog() -> MaterialCatalog {
-    MaterialCatalog::try_new(MaterialCatalog {
+    MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
@@ -154,7 +153,6 @@ fn base_catalog() -> MaterialCatalog {
         household_time_policy: Vec::new(),
         service_inputs: Vec::new(),
         household_needs: Vec::new(),
-        catalog_digest: UNSEALED_CATALOG_DIGEST,
     })
     .expect("the authored fixture catalog is valid")
 }
@@ -169,11 +167,12 @@ fn inventory_quantity(state: &MaterialCircuitState, site_id: SiteId) -> u64 {
 
 #[test]
 fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
-    let (mut catalog, mut state) = two_route_state();
+    let (catalog, mut state) = two_route_state();
+    let mut catalog = catalog.into_definition();
     catalog.site_logistics_nodes[2].node_id = node(BUYER_NODE);
     catalog.supplier_routes[1].route_id = route(ROUTE);
     catalog.route_stages.truncate(1);
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state.route_stage_capacities.truncate(1);
     state.corridor_capacities.truncate(1);
     state.corridor_capacities[0].available_grams = 10;
@@ -203,7 +202,7 @@ fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
     assert_eq!(inventory_quantity(&arrived.state, site(12)), 4);
     assert_eq!(opening.inventory, state.inventory);
 
-    let mut duplicate_site = catalog.clone();
+    let mut duplicate_site = catalog.clone().into_definition();
     duplicate_site
         .site_logistics_nodes
         .push(duplicate_site.site_logistics_nodes[0].clone());
@@ -211,7 +210,7 @@ fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
         MaterialCatalog::try_new(duplicate_site),
         Err(babylon_material_circuit::MaterialCircuitError::DuplicateRow)
     );
-    let mut wrong_endpoint = catalog.clone();
+    let mut wrong_endpoint = catalog.clone().into_definition();
     wrong_endpoint.site_logistics_nodes[2].node_id = node(99);
     assert_eq!(
         MaterialCatalog::try_new(wrong_endpoint),
@@ -220,7 +219,8 @@ fn shared_access_point_preserves_distinct_buyers_and_one_freight_budget() {
 }
 
 fn two_leg_state(second_leg_capacity: u64) -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = base_state();
+    let (catalog, mut state) = base_state();
+    let mut catalog = catalog.into_definition();
     let middle = node(10);
     catalog.route_stages = vec![
         RouteStage {
@@ -253,12 +253,13 @@ fn two_leg_state(second_leg_capacity: u64) -> (MaterialCatalog, MaterialCircuitS
             available_grams: second_leg_capacity,
         },
     ];
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 
 fn two_route_state() -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = base_state();
+    let (catalog, mut state) = base_state();
+    let mut catalog = catalog.into_definition();
     let second_buyer = site(12);
     let second_node = node(13);
     let second_order = order(14);
@@ -313,12 +314,18 @@ fn two_route_state() -> (MaterialCatalog, MaterialCircuitState) {
         period: 1,
         available_grams: 4,
     });
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 
-fn route_depth_state(leg_count: usize) -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = base_state();
+fn route_depth_state(
+    leg_count: usize,
+) -> (
+    babylon_material_circuit::MaterialCatalogDefinition,
+    MaterialCircuitState,
+) {
+    let (catalog, mut state) = base_state();
+    let mut catalog = catalog.into_definition();
     catalog.route_stages = (0..leg_count)
         .map(|index| RouteStage {
             route_id: route(ROUTE),
@@ -409,7 +416,8 @@ fn final_route_arrival_credits_inventory_before_realization() {
 
 #[test]
 fn missing_supplier_route_remains_backlog() {
-    let (mut catalog, state) = base_state();
+    let (catalog, state) = base_state();
+    let mut catalog = catalog.into_definition();
     catalog.supplier_routes.clear();
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
 
@@ -515,7 +523,8 @@ fn completed_leg_loss_remains_attributed_before_final_delivery() {
 
 #[test]
 fn final_arrival_can_form_and_execute_following_period_production() {
-    let (mut catalog, mut state) = base_state();
+    let (catalog, mut state) = base_state();
+    let mut catalog = catalog.into_definition();
     catalog.commodities.push(CommodityDefinition {
         good_id: good(19),
         unit_id: unit(GOODS_UNIT),

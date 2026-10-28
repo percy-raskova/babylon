@@ -33,7 +33,8 @@ fn mixed_order_state_counts(
     delivery: usize,
     retail: usize,
 ) -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = crate::paid_state();
+    let (catalog, mut state) = crate::paid_state();
+    let mut catalog = catalog.into_definition();
     let template = state.orders[0].clone();
     state.orders = (0..delivery)
         .map(|index| OrderRow {
@@ -112,7 +113,7 @@ fn mixed_order_state_counts(
         vec![],
     )
     .expect("the fixture opens the authored source");
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 fn mixed_order_state() -> (MaterialCatalog, MaterialCircuitState) {

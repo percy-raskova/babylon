@@ -1,7 +1,6 @@
 use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CircuitAccounting;
-use babylon_material_circuit::UNSEALED_CATALOG_DIGEST;
 use babylon_material_circuit::{
     CapacityRow, CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InputOutputCoefficient,
     InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId, MaterialCatalog,
@@ -135,7 +134,7 @@ fn base_state() -> (MaterialCatalog, MaterialCircuitState) {
             production_commitments: Vec::new(),
         };
         (
-            MaterialCatalog::try_new(MaterialCatalog {
+            MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],
@@ -204,7 +203,6 @@ fn base_state() -> (MaterialCatalog, MaterialCircuitState) {
                 household_time_policy: Vec::new(),
                 service_inputs: Vec::new(),
                 household_needs: Vec::new(),
-                catalog_digest: UNSEALED_CATALOG_DIGEST,
             })
             .expect("the authored fixture catalog is valid"),
             state,
@@ -275,9 +273,10 @@ fn delivered_inputs_feed_the_following_period_not_the_arrival_period() {
 
 #[test]
 fn severed_supplier_relation_causes_backlog_without_creating_goods() {
-    let (mut catalog, state) = base_state();
+    let (catalog, state) = base_state();
+    let mut catalog = catalog.into_definition();
     catalog.supplier_routes.clear();
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
 
     let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("missing supply is a material outcome");
@@ -414,7 +413,7 @@ fn production_debits_all_inputs_before_crediting_any_output() {
             ],
         };
         (
-            MaterialCatalog::try_new(MaterialCatalog {
+            MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],
@@ -476,7 +475,6 @@ fn production_debits_all_inputs_before_crediting_any_output() {
                 household_time_policy: Vec::new(),
                 service_inputs: Vec::new(),
                 household_needs: Vec::new(),
-                catalog_digest: UNSEALED_CATALOG_DIGEST,
             })
             .expect("the authored fixture catalog is valid"),
             state,
@@ -583,7 +581,7 @@ fn numeric_boundary_catalog(
     labor_unit: UnitId,
     process_id: ProcessId,
 ) -> MaterialCatalog {
-    MaterialCatalog::try_new(MaterialCatalog {
+    MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
@@ -625,7 +623,6 @@ fn numeric_boundary_catalog(
         household_time_policy: Vec::new(),
         service_inputs: Vec::new(),
         household_needs: Vec::new(),
-        catalog_digest: UNSEALED_CATALOG_DIGEST,
     })
     .expect("the authored fixture catalog is valid")
 }
@@ -670,7 +667,7 @@ fn zero_production_does_not_create_an_empty_inventory_row() {
             }],
         };
         (
-            MaterialCatalog::try_new(MaterialCatalog {
+            MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],
@@ -711,7 +708,6 @@ fn zero_production_does_not_create_an_empty_inventory_row() {
                 household_time_policy: Vec::new(),
                 service_inputs: Vec::new(),
                 household_needs: Vec::new(),
-                catalog_digest: UNSEALED_CATALOG_DIGEST,
             })
             .expect("the authored fixture catalog is valid"),
             state,
@@ -731,11 +727,12 @@ fn zero_production_does_not_create_an_empty_inventory_row() {
 
 #[test]
 fn proportional_base_and_canonical_residual_are_row_order_independent() {
-    let (mut catalog, mut state) = base_state();
+    let (catalog, mut state) = base_state();
+    let mut catalog = catalog.into_definition();
     catalog.process_outputs.clear();
     catalog.input_coefficients.clear();
     catalog.labor_coefficients.clear();
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state.capacities.clear();
     state.labor.clear();
     state.inventory[0].quantity = 4;

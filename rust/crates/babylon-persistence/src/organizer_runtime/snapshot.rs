@@ -479,7 +479,7 @@ mod collection_history_tests {
                 fixture::PRACTICE,
             ),
             fixture::Materials {
-                catalog,
+                catalog: catalog.into_definition(),
                 state: material,
             },
             config,

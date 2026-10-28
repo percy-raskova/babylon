@@ -27,7 +27,7 @@ type Pair = (
 fn shared_opening() -> Parts {
     let site = SiteId::from_bytes([1; 32]);
     let labor_unit = UnitId::from_bytes([2; 32]);
-    let mut catalog = MaterialCatalog {
+    let mut catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![SiteLogisticsNode {
             site_id: site,
@@ -53,7 +53,6 @@ fn shared_opening() -> Parts {
         household_time_policy: vec![],
         service_inputs: vec![],
         household_needs: vec![],
-        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
     };
     let mut state = MaterialCircuitState {
         accounting: CircuitAccounting::PhysicalControl,
@@ -169,13 +168,15 @@ fn shared_principal_is_counted_once_and_time_closes_from_actual_receipts() {
 
 #[test]
 fn exact_unit_principals_remain_separate_at_the_same_site() {
-    let (mut catalog, mut state) = shared_opening();
+    let (catalog, mut state) = shared_opening();
+    let mut catalog = catalog.into_definition();
     let other_unit = UnitId::from_bytes([7; 32]);
     catalog.labor_coefficients[1].unit_id = other_unit;
     let mut budget = state.labor[0].clone();
     budget.unit_id = other_unit;
     budget.available = 6;
     state.labor.push(budget);
+    let catalog = MaterialCatalog::try_new(catalog).expect("valid definitions");
     let (opening, next, receipt, catalog) = committed_pair((catalog, state));
     let rows = projection::project_labor_accounts(&catalog, &next, Some(&opening), Some(&receipt))
         .expect("the fixture projection accepts the authored input");
@@ -206,8 +207,10 @@ fn exact_unit_principals_remain_separate_at_the_same_site() {
 
 #[test]
 fn multiplication_and_shared_sum_overflow_refuse_without_mutating_inputs() {
-    let (mut opening, _, mut receipt, mut catalog) = committed_pair(shared_opening());
-    catalog.labor_coefficients[0].quantity_per_batch = u64::MAX;
+    let (mut opening, _, mut receipt, catalog) = committed_pair(shared_opening());
+    let mut definition = catalog.into_definition();
+    definition.labor_coefficients[0].quantity_per_batch = u64::MAX;
+    let catalog = MaterialCatalog::try_new(definition).expect("valid definitions");
     let before = opening.clone();
     assert!(matches!(
         completed_totals(
@@ -222,9 +225,11 @@ fn multiplication_and_shared_sum_overflow_refuse_without_mutating_inputs() {
         Err(ProductionProjectionError::Arithmetic)
     ));
     assert_eq!(opening, before);
-    for coefficient in &mut catalog.labor_coefficients {
+    let mut definition = catalog.into_definition();
+    for coefficient in &mut definition.labor_coefficients {
         coefficient.quantity_per_batch = u64::MAX;
     }
+    let catalog = MaterialCatalog::try_new(definition).expect("valid definitions");
     for plan in &mut opening.production_commitments {
         plan.planned_batches = 1;
     }
@@ -281,7 +286,8 @@ fn inconsistent_accounts_refuse_instead_of_publishing_negative_or_unattributed_t
 
 #[test]
 fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_handling() {
-    let (mut catalog, mut opening) = shared_opening();
+    let (catalog, mut opening) = shared_opening();
+    let mut catalog = catalog.into_definition();
     let consumer = ProcessId::from_bytes([4; 32]);
     catalog
         .process_outputs
@@ -354,6 +360,7 @@ fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_hand
         capacity.period = 2;
     }
     opening.capacities.extend(future);
+    let catalog = MaterialCatalog::try_new(catalog).expect("valid definitions");
     let (opening, next, receipt, catalog) = committed_pair((catalog, opening));
     let rows = projection::project_labor_accounts(&catalog, &next, Some(&opening), Some(&receipt))
         .expect("the fixture projection accepts the authored input");

@@ -560,7 +560,7 @@ mod typed_decode_controls {
                 fixture::PRACTICE
             ),
             fixture::Materials {
-                catalog,
+                catalog: catalog.into_definition(),
                 state: state.clone(),
             },
             serde_json::from_value(cfg).expect("the JSON value matches the declared type"),

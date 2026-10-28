@@ -306,7 +306,8 @@ fn foreign_need(state: &mut MaterialCircuitState, enabled: bool) {
 }
 
 fn domestic_competition(enabled: bool) -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = integrated_controls::foreign_trade_opening();
+    let (catalog, mut state) = integrated_controls::foreign_trade_opening();
+    let mut catalog = catalog.into_definition();
     let foreign = EconomicLocation::Foreign(ForeignCounterpart::Canada);
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: foreign_household(),
@@ -343,7 +344,7 @@ fn domestic_competition(enabled: bool) -> (MaterialCatalog, MaterialCircuitState
     e.book = MonetaryBook::open(accounts).expect("the fixture opens the authored source");
     e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
         .expect("the fixture opens the authored source");
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 

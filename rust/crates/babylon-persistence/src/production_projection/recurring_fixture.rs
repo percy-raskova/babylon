@@ -286,7 +286,7 @@ fn labor_coefficients() -> Vec<LaborCoefficient> {
 )]
 pub(crate) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
     let recurring = recurring_policies();
-    let catalog = MaterialCatalog {
+    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2, 3]
             .into_iter()
@@ -328,7 +328,6 @@ pub(crate) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
         household_time_policy: Vec::new(),
         service_inputs: recurring.service_inputs.clone(),
         household_needs: recurring.household_needs.clone(),
-        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
     };
     let state = MaterialCircuitState {
         period: 1,

@@ -33,7 +33,8 @@ fn second_household() -> FinalDemandPrincipalId {
 }
 
 fn split_existing_household() -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = crate::opening();
+    let (catalog, mut state) = crate::opening();
+    let mut catalog = catalog.into_definition();
     let second = second_household();
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: second,
@@ -93,7 +94,7 @@ fn split_existing_household() -> (MaterialCatalog, MaterialCircuitState) {
     });
     accounts.costs = HistoricalCostBook::open(&accounts.book, stocks, vec![], vec![], vec![])
         .expect("the fixture opens the authored source");
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 

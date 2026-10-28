@@ -8,7 +8,7 @@ use babylon_material_circuit::{
     MaterialCircuitState, MonetaryBook, MonetaryCircuit, OrderAccessMode, OrderId, OrderRow,
     OrganizationAccountId, OutboundOrderId, PublicAccountId, PurchaseEscrow, RouteId, ShiftId,
     SiteId, SiteLogisticsNode, StockCarryingValue, SupplierRoute, SupplierTransport, UnitId,
-    MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES, UNSEALED_CATALOG_DIGEST,
+    MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES,
 };
 
 use babylon_kernel::content_digest::sha256_of;
@@ -212,7 +212,7 @@ pub(crate) fn paid_state() -> (MaterialCatalog, MaterialCircuitState) {
             maintenance_service: None,
         };
         (
-            MaterialCatalog::try_new(MaterialCatalog {
+            MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 site_logistics_nodes: [seller, buyer]
                     .into_iter()
@@ -250,7 +250,6 @@ pub(crate) fn paid_state() -> (MaterialCatalog, MaterialCircuitState) {
                 household_time_policy: Vec::new(),
                 service_inputs: Vec::new(),
                 household_needs: Vec::new(),
-                catalog_digest: UNSEALED_CATALOG_DIGEST,
             })
             .expect("the authored fixture catalog is valid"),
             state,

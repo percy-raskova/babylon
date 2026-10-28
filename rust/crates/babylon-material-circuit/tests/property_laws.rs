@@ -6,7 +6,7 @@ use babylon_material_circuit::{
     InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient, LogisticsNodeId,
     MaterialCatalog, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow, ProcessId,
     ProcessOutput, ProductionCommitment, RouteId, SiteId, SiteLogisticsNode, SupplierRoute,
-    SupplierTransport, UnitId, UNSEALED_CATALOG_DIGEST,
+    SupplierTransport, UnitId,
 };
 
 fn id<const BYTE: u8>() -> [u8; 32] {
@@ -72,7 +72,7 @@ fn allocation_catalog(
     good: GoodId,
     unit: UnitId,
 ) -> MaterialCatalog {
-    MaterialCatalog::try_new(MaterialCatalog {
+    MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
@@ -108,7 +108,6 @@ fn allocation_catalog(
         household_time_policy: Vec::new(),
         service_inputs: Vec::new(),
         household_needs: Vec::new(),
-        catalog_digest: UNSEALED_CATALOG_DIGEST,
     })
     .expect("the authored fixture catalog is valid")
 }
@@ -240,7 +239,7 @@ fn production_catalog(
     labor_unit: UnitId,
     process: ProcessId,
 ) -> MaterialCatalog {
-    MaterialCatalog::try_new(MaterialCatalog {
+    MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         merchants: vec![],
         handling_coefficients: vec![],
@@ -282,7 +281,6 @@ fn production_catalog(
         household_time_policy: Vec::new(),
         service_inputs: Vec::new(),
         household_needs: Vec::new(),
-        catalog_digest: UNSEALED_CATALOG_DIGEST,
     })
     .expect("the authored fixture catalog is valid")
 }
@@ -307,7 +305,8 @@ fn leontief_minimum_exhaustively_bounds_small_production() {
 
 #[test]
 fn shared_inputs_and_labor_allocate_without_process_order_priority() {
-    let (mut catalog, mut state) = production_state(12, 18, 4);
+    let (catalog, mut state) = production_state(12, 18, 4);
+    let mut catalog = catalog.into_definition();
     let second_process = ProcessId::from_bytes(id::<7>());
     catalog.process_outputs.push(ProcessOutput {
         process_id: second_process,
@@ -345,7 +344,7 @@ fn shared_inputs_and_labor_allocate_without_process_order_priority() {
         period: 1,
         planned_batches: 4,
     });
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let mut reversed = state.clone();
     reversed.production_commitments.reverse();
 

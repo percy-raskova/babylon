@@ -10,14 +10,15 @@ fn resident_and_household_bases_drive_real_consumption_without_changing_counts()
         (HouseholdNeedBasis::Persons, 8),
         (HouseholdNeedBasis::Households, 4),
     ] {
-        let (mut catalog, mut state) = crate::opening();
+        let (catalog, mut state) = crate::opening();
+        let mut catalog = catalog.into_definition();
         let recurring = crate::recurring_mut(&mut state);
         recurring.household_needs[0].basis = basis;
         recurring.household_needs[0].units_per_basis = 2;
         recurring.household_purchases[0].enabled = false;
         catalog.household_needs[0].basis = basis;
         catalog.household_needs[0].units_per_basis = 2;
-        catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+        let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
         let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
             .expect("the canonical material state encodes");
         let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)

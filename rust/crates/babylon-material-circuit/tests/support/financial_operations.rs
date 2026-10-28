@@ -52,7 +52,7 @@ fn service_opening(cash: [i128; 5]) -> (MaterialCatalog, MaterialCircuitState) {
     let input = GoodId::from_bytes([2; 32]);
     let native = UnitId::from_bytes([1; 32]);
     let hours = UnitId::from_bytes([9; 32]);
-    let mut catalog = catalog;
+    let mut catalog = catalog.into_definition();
     catalog.commodities = vec![
         CommodityDefinition {
             good_id: service,
@@ -124,12 +124,12 @@ fn service_opening(cash: [i128; 5]) -> (MaterialCatalog, MaterialCircuitState) {
         native,
         hours,
     );
-    catalog.catalog_digest = [0; 32];
+
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog is valid");
     (catalog, state)
 }
 fn configure_service_money(
-    catalog: &mut MaterialCatalog,
+    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
     e: &mut MonetaryCircuit,
     process: ProcessId,
     service: GoodId,

@@ -40,8 +40,12 @@ fn identity(index: usize) -> [u8; 32] {
     bytes
 }
 
-fn empty_production() -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = crate::opening();
+fn empty_production() -> (
+    babylon_material_circuit::MaterialCatalogDefinition,
+    MaterialCircuitState,
+) {
+    let (catalog, mut state) = crate::opening();
+    let mut catalog = catalog.into_definition();
     catalog.process_outputs.clear();
     catalog.input_coefficients.clear();
     catalog.labor_coefficients.clear();
@@ -52,7 +56,7 @@ fn empty_production() -> (MaterialCatalog, MaterialCircuitState) {
 }
 
 fn append_process(
-    catalog: &mut MaterialCatalog,
+    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
     index: usize,
     owner: SiteId,

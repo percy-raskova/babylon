@@ -35,7 +35,8 @@ use babylon_material_circuit::SupplierTransport;
 fn pledged_opening() -> (MaterialCatalog, MaterialCircuitState) {
     let (mut catalog, mut state) = crate::opening();
     crate::configure_investment(&mut catalog, &mut state, 100, 0);
-    catalog = crate::rebuild(&catalog, |content| content.investment_policies.clear());
+    let catalog = crate::rebuild(&catalog, |content| content.investment_policies.clear());
+    let mut catalog = catalog.into_definition();
     state
         .inventory
         .iter_mut()
@@ -47,7 +48,7 @@ fn pledged_opening() -> (MaterialCatalog, MaterialCircuitState) {
     catalog.supplier_routes[0].supplier_site_id = crate::site();
     catalog.route_stages[0].from_node_id = LogisticsNodeId::from_bytes([1; 32]);
     catalog.route_stages[0].to_node_id = LogisticsNodeId::from_bytes([2; 32]);
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let id = OrderId::from_bytes([3; 32]);
     let mut book = MonetaryBook::open(vec![
         CashAccount {
@@ -292,7 +293,8 @@ fn installation_choice_staffing_does_not_request_work_for_sale_inventory() {
 
 #[test]
 fn installation_choice_pledged_stock_does_not_suppress_a_real_replacement_purchase() {
-    let (mut catalog, mut state) = pledged_opening();
+    let (catalog, mut state) = pledged_opening();
+    let mut catalog = catalog.into_definition();
     state.corridor_capacities[0].available_grams = 0;
     let supplier = SiteId::from_bytes([2; 32]);
     let route = RouteId::from_bytes([4; 32]);
@@ -312,13 +314,13 @@ fn installation_choice_pledged_stock_does_not_suppress_a_real_replacement_purcha
         travel_periods: 1,
         loss_ppm: 0,
     });
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state.route_stage_capacities.push(RouteStageCapacity {
         route_id: route,
         stage_index: 0,
         corridor_id: CorridorId::from_bytes([2; 32]),
     });
-    catalog = crate::rebuild(&catalog, |content| {
+    let catalog = crate::rebuild(&catalog, |content| {
         content.investment_policies.push(InvestmentPolicy {
             process_id: crate::process(),
             supplier_site_id: supplier,

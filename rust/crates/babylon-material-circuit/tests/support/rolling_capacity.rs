@@ -38,7 +38,8 @@ fn rolling(catalog: &mut MaterialCatalog, mut state: MaterialCircuitState) -> Ma
     state
         .corridor_capacities
         .retain(|row| row.period == state.period);
-    catalog.capacity_policy = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
+    let mut definition = catalog.clone().into_definition();
+    definition.capacity_policy = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
         processes: RollingProcessSupply::CapturedNameplate(
             state
                 .capacities
@@ -59,7 +60,7 @@ fn rolling(catalog: &mut MaterialCatalog, mut state: MaterialCircuitState) -> Ma
             })
             .collect(),
     }));
-    *catalog = MaterialCatalog::try_new(catalog.clone()).expect("the fixture catalog stays valid");
+    *catalog = MaterialCatalog::try_new(definition).expect("the fixture catalog stays valid");
     state
 }
 
@@ -231,7 +232,8 @@ fn add_order(state: &mut MaterialCircuitState, buyer: u8, quantity: u64) {
 }
 
 fn freight_opening() -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = crate::opening();
+    let (catalog, mut state) = crate::opening();
+    let mut catalog = catalog.into_definition();
     state.period = 50;
     state.accounting = CircuitAccounting::PhysicalControl;
     catalog.process_outputs.clear();
@@ -303,6 +305,7 @@ fn freight_opening() -> (MaterialCatalog, MaterialCircuitState) {
         })
         .collect();
     add_order(&mut state, 2, 7);
+    let mut catalog = MaterialCatalog::try_new(catalog).expect("valid definitions");
     let state = rolling(&mut catalog, state);
     (catalog, state)
 }
@@ -437,7 +440,7 @@ fn rolling_wire_refuses_obsolete_noncanonical_and_invalid_bookings() {
     let CapacitySupply::Rolling(rows) = &catalog.capacity_policy else {
         unreachable!()
     };
-    let mut excessive = catalog.clone();
+    let mut excessive = catalog.clone().into_definition();
     let CapacitySupply::Rolling(excessive_rows) = &mut excessive.capacity_policy else {
         unreachable!()
     };
@@ -470,6 +473,7 @@ fn date_overflow_and_late_planning_failure_publish_no_capacity_or_money_changes(
 
     let (mut catalog, opening) = crate::opening();
     let mut state = rolling(&mut catalog, opening);
+    let mut catalog = catalog.into_definition();
     crate::recurring_mut(&mut state).production[0].output_buffer = u64::MAX;
     catalog.route_stages[0].to_node_id = crate::node(9);
     catalog.route_stages.push(RouteStage {
@@ -485,7 +489,7 @@ fn date_overflow_and_late_planning_failure_publish_no_capacity_or_money_changes(
         stage_index: 1,
         corridor_id: crate::corridor(1),
     });
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let before = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     // Payroll, retail settlement and a newly reserved future departure precede

@@ -439,44 +439,44 @@ mod engine_test {
         .expect("the fixture opens the authored source");
         let costs = HistoricalCostBook::open(&book, vec![], vec![], vec![], vec![])
             .expect("the fixture opens the authored source");
-        let catalog = MaterialCatalog::try_new(MaterialCatalog {
-            capacity_policy: CapacitySupply::FiniteSchedule,
-            site_logistics_nodes: vec![SiteLogisticsNode {
-                site_id: site,
-                node_id: LogisticsNodeId::from_bytes([1; 32]),
-            }],
-            process_outputs: vec![ProcessOutput {
-                process_id: process,
-                site_id: site,
-                good_id: good,
-                unit_id: unit,
-                quantity_per_batch: 2,
-            }],
-            input_coefficients: vec![],
-            labor_coefficients: vec![LaborCoefficient {
-                process_id: process,
-                unit_id: labor,
-                quantity_per_batch: 1,
-            }],
-            commodities: vec![CommodityDefinition {
-                good_id: good,
-                unit_id: unit,
-                kind: CommodityKind::PeriodService {
-                    stage: ServiceStage::UtilityProvision,
-                },
-            }],
-            supplier_routes: vec![],
-            route_stages: vec![],
-            merchants: vec![],
-            handling_coefficients: vec![],
-            maintenance_binding: None,
-            aid_mandates: vec![],
-            household_time_policy: vec![],
-            service_inputs: vec![],
-            household_needs: vec![],
-            catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
-        })
-        .expect("the fixture catalog canonicalizes");
+        let catalog =
+            MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+                capacity_policy: CapacitySupply::FiniteSchedule,
+                site_logistics_nodes: vec![SiteLogisticsNode {
+                    site_id: site,
+                    node_id: LogisticsNodeId::from_bytes([1; 32]),
+                }],
+                process_outputs: vec![ProcessOutput {
+                    process_id: process,
+                    site_id: site,
+                    good_id: good,
+                    unit_id: unit,
+                    quantity_per_batch: 2,
+                }],
+                input_coefficients: vec![],
+                labor_coefficients: vec![LaborCoefficient {
+                    process_id: process,
+                    unit_id: labor,
+                    quantity_per_batch: 1,
+                }],
+                commodities: vec![CommodityDefinition {
+                    good_id: good,
+                    unit_id: unit,
+                    kind: CommodityKind::PeriodService {
+                        stage: ServiceStage::UtilityProvision,
+                    },
+                }],
+                supplier_routes: vec![],
+                route_stages: vec![],
+                merchants: vec![],
+                handling_coefficients: vec![],
+                maintenance_binding: None,
+                aid_mandates: vec![],
+                household_time_policy: vec![],
+                service_inputs: vec![],
+                household_needs: vec![],
+            })
+            .expect("the fixture catalog canonicalizes");
         let state = MaterialCircuitState {
             period: 1,
             accounting: CircuitAccounting::Monetary(Box::new(MonetaryCircuit {

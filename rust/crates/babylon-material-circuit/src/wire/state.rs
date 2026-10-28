@@ -516,7 +516,7 @@ pub fn encode_material_circuit_state(
     output.extend_from_slice(MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES);
     output.push(0);
     output.extend_from_slice(&SCHEMA_VERSION.to_be_bytes());
-    output.extend_from_slice(&catalog.catalog_digest);
+    output.extend_from_slice(&catalog.catalog_digest());
     output.extend_from_slice(&canonical.period.to_be_bytes());
     services::append_connections(&mut output, &canonical.service_connections)?;
     services::append_orders(&mut output, &canonical.service_orders)?;
@@ -563,7 +563,7 @@ pub fn decode_material_circuit_state(
     if cursor.u16()? != SCHEMA_VERSION {
         return Err(MaterialCircuitError::WireVersion);
     }
-    if cursor.array::<32>()? != catalog.catalog_digest {
+    if cursor.array::<32>()? != catalog.catalog_digest() {
         return Err(MaterialCircuitError::WireDomain);
     }
     let state = MaterialCircuitState {
@@ -609,7 +609,9 @@ pub fn material_circuit_state_digest(
 ///
 /// # Errors
 /// Returns the first row-bound refusal.
-pub(crate) fn catalog_bytes(catalog: &MaterialCatalog) -> Result<Vec<u8>, MaterialCircuitError> {
+pub(crate) fn catalog_bytes(
+    catalog: &crate::MaterialCatalogDefinition,
+) -> Result<Vec<u8>, MaterialCircuitError> {
     super::catalog::bytes(catalog)
 }
 

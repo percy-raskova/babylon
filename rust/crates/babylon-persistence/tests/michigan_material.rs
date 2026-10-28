@@ -308,7 +308,10 @@ fn presets_share_exact_setup_except_the_single_declared_delay() {
     let delayed_foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Delayed)
         .create_foundation(&crate::test_support::catalog())
         .expect("the authored catalog builds the foundation");
-    let mut delayed_catalog = delayed_foundation.material_catalog().clone();
+    let mut delayed_catalog = delayed_foundation
+        .material_catalog()
+        .clone()
+        .into_definition();
     let delayed = delayed_foundation.initial_register().state().clone();
     let catalog = crate::test_support::catalog();
     let route = catalog

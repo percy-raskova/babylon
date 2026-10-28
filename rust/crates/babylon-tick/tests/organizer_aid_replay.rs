@@ -700,7 +700,7 @@ fn collection_control_session(protected_target: u64, no_time: bool) -> Session {
         foundation,
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         organizer_aid_fixture::Materials {
-            catalog,
+            catalog: catalog.into_definition(),
             state: opening,
         },
         collection_config_for_control(),
@@ -969,7 +969,10 @@ fn collection_savings_control(no_attendance: bool) -> Session {
     organizer_aid_fixture::try_session(
         foundation,
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
-        organizer_aid_fixture::Materials { catalog, state },
+        organizer_aid_fixture::Materials {
+            catalog: catalog.into_definition(),
+            state,
+        },
         serde_json::from_value(cfg).expect("the JSON value matches the declared type"),
     )
     .expect("the fixture opens a session")
@@ -1230,7 +1233,7 @@ fn partial_collection_preserves_protected_floor_and_matches_actual_transfer_and_
             .expect("the Michigan hex foundation builds"),
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         organizer_aid_fixture::Materials {
-            catalog: base.catalog().clone(),
+            catalog: base.catalog().clone().into_definition(),
             state: base.material().state().clone(),
         },
         cfg,
@@ -1376,7 +1379,7 @@ fn capped_collection_session(cap: i128, floor: i128) -> Session {
             .expect("the Michigan hex foundation builds"),
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         organizer_aid_fixture::Materials {
-            catalog: base.catalog().clone(),
+            catalog: base.catalog().clone().into_definition(),
             state: base.material().state().clone(),
         },
         config,

@@ -156,7 +156,7 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         last_household_admission_period: 0,
         last_household_consumption_period: 0,
     };
-    let catalog = MaterialCatalog {
+    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2, 3]
             .into_iter()
@@ -242,7 +242,6 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         household_time_policy: vec![],
         service_inputs: recurring.service_inputs.clone(),
         household_needs: recurring.household_needs.clone(),
-        catalog_digest: [0; 32],
     };
     let state = MaterialCircuitState {
         period: 1,
@@ -599,9 +598,10 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
 #[test]
 pub(crate) fn prior_funded_transit_suppresses_duplicate_procurement_and_does_not_supply_current_production(
 ) {
-    let (mut catalog, state) = opening();
+    let (catalog, state) = opening();
+    let mut catalog = catalog.into_definition();
     catalog.route_stages[0].travel_periods = 3;
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let second = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
@@ -806,7 +806,8 @@ pub(crate) fn retained_finite_purchase_restores_attendance_when_recurring_purcha
 }
 
 pub(crate) fn producer_retail_opening() -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = opening();
+    let (catalog, mut state) = opening();
+    let mut catalog = catalog.into_definition();
     catalog.merchants.push(MerchantHandling {
         site_id: site(1),
         location: "county:26163"
@@ -824,7 +825,7 @@ pub(crate) fn producer_retail_opening() -> (MaterialCatalog, MaterialCircuitStat
             unit_id: units(),
             hours_per_unit: 1,
         });
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+
     state
         .corridor_capacities
         .extend((1..=9).map(|period| CorridorCapacity {
@@ -870,6 +871,7 @@ pub(crate) fn producer_retail_opening() -> (MaterialCatalog, MaterialCircuitStat
     });
     economy.costs =
         HistoricalCostBook::from_snapshot(captured).expect("the snapshot admits the derived value");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 

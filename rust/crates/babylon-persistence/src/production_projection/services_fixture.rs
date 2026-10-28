@@ -194,7 +194,7 @@ pub(super) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
             quantity: 0,
         },
     ];
-    let catalog = MaterialCatalog {
+    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         commodities: commodities(),
         site_logistics_nodes: (1..=3)
@@ -229,7 +229,6 @@ pub(super) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
         household_time_policy: Vec::new(),
         service_inputs: Vec::new(),
         household_needs: Vec::new(),
-        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
     };
     let state = MaterialCircuitState {
         period: 1,
@@ -275,7 +274,10 @@ pub(super) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
         maintenance_service: None,
         capacity_reservations: CapacityReservations::default(),
     };
-    (catalog, state)
+    (
+        MaterialCatalog::try_new(catalog).expect("valid fixture definitions"),
+        state,
+    )
 }
 
 pub(super) fn opening() -> MaterialCircuitState {
@@ -312,7 +314,8 @@ pub(super) fn funded(
 pub(super) fn recurring(
     materials: (MaterialCatalog, MaterialCircuitState),
 ) -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = materials;
+    let (catalog, mut state) = materials;
+    let mut catalog = catalog.into_definition();
     state.inventory[0].quantity = 3;
     state.capacities[0].available_batches = 4;
     state.capacities[1].available_batches = 3;
@@ -405,7 +408,10 @@ pub(super) fn recurring(
     if let Some(recurring) = &e.recurring {
         catalog.household_needs = recurring.household_needs.clone();
     }
-    (catalog, state)
+    (
+        MaterialCatalog::try_new(catalog).expect("valid fixture definitions"),
+        state,
+    )
 }
 
 fn service_inputs() -> Vec<ServiceInputPolicy> {

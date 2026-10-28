@@ -425,7 +425,7 @@ fn route_stage_capacities() -> Vec<RouteStageCapacity> {
 
 /// One authored definition set and its opening quantities.
 pub(crate) struct Materials {
-    pub(crate) catalog: MaterialCatalog,
+    pub(crate) catalog: babylon_material_circuit::MaterialCatalogDefinition,
     pub(crate) state: MaterialCircuitState,
 }
 
@@ -435,7 +435,7 @@ pub(crate) struct Materials {
 )]
 pub(crate) fn opening() -> Materials {
     let recurring = recurring();
-    let catalog = MaterialCatalog {
+    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2, 3]
             .into_iter()
@@ -479,7 +479,6 @@ pub(crate) fn opening() -> Materials {
         household_time_policy: vec![],
         service_inputs: recurring.service_inputs.clone(),
         household_needs: recurring.household_needs.clone(),
-        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
     };
     let state = MaterialCircuitState {
         period: 1,

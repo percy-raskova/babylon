@@ -5,7 +5,7 @@ use babylon_material_circuit::{
     CapacityReservations, CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InventoryRow,
     LogisticsNodeId, MaterialCatalog, MaterialCircuitState, OrderAccessMode, OrderId, OrderRow,
     RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode, SupplierRoute,
-    SupplierTransport, UnitId, UNSEALED_CATALOG_DIGEST,
+    SupplierTransport, UnitId,
 };
 use babylon_tick::material_staffing::StaffingComposition;
 
@@ -154,54 +154,54 @@ impl CapturedFreight {
         let order = OrderId::from_bytes(id("finite-import-order"));
         let from = LogisticsNodeId::from_bytes(id("canadian-inventory-terminal"));
         let to = LogisticsNodeId::from_bytes(id("detroit-port-entry-terminal"));
-        let catalog = MaterialCatalog::try_new(MaterialCatalog {
-            capacity_policy: CapacitySupply::FiniteSchedule,
-            site_logistics_nodes: vec![
-                SiteLogisticsNode {
-                    site_id: source,
-                    node_id: from,
-                },
-                SiteLogisticsNode {
-                    site_id: destination,
-                    node_id: to,
-                },
-            ],
-            process_outputs: vec![],
-            input_coefficients: vec![],
-            labor_coefficients: vec![],
-            commodities: vec![CommodityDefinition {
-                good_id: good,
-                unit_id: unit,
-                kind: babylon_material_circuit::CommodityKind::Storable {
-                    grams_per_unit: 1000,
-                },
-            }],
-            supplier_routes: vec![SupplierRoute {
-                buyer_site_id: destination,
-                supplier_site_id: source,
-                good_id: good,
-                unit_id: unit,
-                route_id: route,
-                transport_kind: SupplierTransport::Staged,
-            }],
-            route_stages: vec![RouteStage {
-                route_id: route,
-                stage_index: 0,
-                from_node_id: from,
-                to_node_id: to,
-                travel_periods: self.travel_periods,
-                loss_ppm: 0,
-            }],
-            merchants: vec![],
-            handling_coefficients: vec![],
-            maintenance_binding: None,
-            aid_mandates: vec![],
-            household_time_policy: vec![],
-            service_inputs: vec![],
-            household_needs: vec![],
-            catalog_digest: UNSEALED_CATALOG_DIGEST,
-        })
-        .map_err(|_| ExperimentError::Content)?;
+        let catalog =
+            MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
+                capacity_policy: CapacitySupply::FiniteSchedule,
+                site_logistics_nodes: vec![
+                    SiteLogisticsNode {
+                        site_id: source,
+                        node_id: from,
+                    },
+                    SiteLogisticsNode {
+                        site_id: destination,
+                        node_id: to,
+                    },
+                ],
+                process_outputs: vec![],
+                input_coefficients: vec![],
+                labor_coefficients: vec![],
+                commodities: vec![CommodityDefinition {
+                    good_id: good,
+                    unit_id: unit,
+                    kind: babylon_material_circuit::CommodityKind::Storable {
+                        grams_per_unit: 1000,
+                    },
+                }],
+                supplier_routes: vec![SupplierRoute {
+                    buyer_site_id: destination,
+                    supplier_site_id: source,
+                    good_id: good,
+                    unit_id: unit,
+                    route_id: route,
+                    transport_kind: SupplierTransport::Staged,
+                }],
+                route_stages: vec![RouteStage {
+                    route_id: route,
+                    stage_index: 0,
+                    from_node_id: from,
+                    to_node_id: to,
+                    travel_periods: self.travel_periods,
+                    loss_ppm: 0,
+                }],
+                merchants: vec![],
+                handling_coefficients: vec![],
+                maintenance_binding: None,
+                aid_mandates: vec![],
+                household_time_policy: vec![],
+                service_inputs: vec![],
+                household_needs: vec![],
+            })
+            .map_err(|_| ExperimentError::Content)?;
         let state = MaterialCircuitState {
             period: 1,
             service_connections: vec![],

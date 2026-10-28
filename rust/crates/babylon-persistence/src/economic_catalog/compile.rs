@@ -11,7 +11,7 @@ use babylon_material_circuit::{
     LaborCoefficient, MaintenanceService, MaterialCatalog, MaterialCircuitState,
     MemberLaborCapacityRow, MerchantHandling, MerchantHandlingCoefficient, MonetaryBook,
     MonetaryCircuit, ProcessOutput, ProductionCommitment, ProductionDemandPolicy, RecurringEconomy,
-    RollingCapacitySupply, SiteLogisticsNode, StockCarryingValue, UNSEALED_CATALOG_DIGEST,
+    RollingCapacitySupply, SiteLogisticsNode, StockCarryingValue,
 };
 use babylon_tick::material_staffing::{
     StaffingComposition, StaffingMemberNodeBinding, StaffingNodeBinding,
@@ -56,8 +56,8 @@ impl EconomicOpening {
     }
 }
 
-fn empty_catalog() -> MaterialCatalog {
-    MaterialCatalog {
+fn empty_catalog() -> babylon_material_circuit::MaterialCatalogDefinition {
+    babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![],
         process_outputs: vec![],
@@ -73,7 +73,6 @@ fn empty_catalog() -> MaterialCatalog {
         household_time_policy: vec![],
         service_inputs: vec![],
         household_needs: vec![],
-        catalog_digest: UNSEALED_CATALOG_DIGEST,
     }
 }
 
@@ -100,7 +99,7 @@ fn empty_state() -> MaterialCircuitState {
 /// Immutable definitions the engine validates are compiled once, beside the state.
 fn append_sites(
     opening: &EconomicOpening,
-    catalog: &mut MaterialCatalog,
+    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
 ) -> Result<()> {
     let recipes: BTreeMap<_, _> = opening.recipes.iter().map(|r| (r.id, r)).collect();
@@ -217,7 +216,7 @@ fn append_households(opening: &EconomicOpening, state: &mut MaterialCircuitState
 }
 fn append_catalog_logistics(
     opening: &EconomicOpening,
-    catalog: &mut MaterialCatalog,
+    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
 ) -> Result<()> {
     catalog
@@ -279,7 +278,7 @@ fn append_catalog_logistics(
 /// Nested policy rows stay mirrored while the engine still reads both owners.
 fn append_catalog_policies(
     opening: &EconomicOpening,
-    catalog: &mut MaterialCatalog,
+    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
     state: &MaterialCircuitState,
 ) {
     let CircuitAccounting::Monetary(economy) = &state.accounting else {

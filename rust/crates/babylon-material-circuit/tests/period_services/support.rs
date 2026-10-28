@@ -88,7 +88,7 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         vec![],
     )
     .expect("the fixture opens the authored source");
-    let catalog = MaterialCatalog {
+    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         commodities: vec![
             CommodityDefinition {
@@ -177,7 +177,6 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         household_time_policy: vec![],
         service_inputs: vec![],
         household_needs: vec![],
-        catalog_digest: [0; 32],
     };
     let state = MaterialCircuitState {
         period: 1,
@@ -299,10 +298,13 @@ pub(crate) fn funded(
     state
 }
 
-fn reseal(catalog: MaterialCatalog, mutate: impl FnOnce(&mut MaterialCatalog)) -> MaterialCatalog {
-    let mut catalog = catalog;
+fn reseal(
+    catalog: MaterialCatalog,
+    mutate: impl FnOnce(&mut babylon_material_circuit::MaterialCatalogDefinition),
+) -> MaterialCatalog {
+    let mut catalog = catalog.into_definition();
     mutate(&mut catalog);
-    catalog.catalog_digest = [0; 32];
+
     MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid")
 }
 

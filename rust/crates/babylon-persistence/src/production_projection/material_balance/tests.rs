@@ -34,7 +34,10 @@ use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::material_world;
 use babylon_tick::replay_session::ReplayCommitDisposition;
 
-type Parts = (MaterialCatalog, MaterialCircuitState);
+type Parts = (
+    babylon_material_circuit::MaterialCatalogDefinition,
+    MaterialCircuitState,
+);
 type Pair = (
     MaterialCircuitState,
     MaterialCircuitState,
@@ -44,7 +47,7 @@ type Pair = (
 
 fn empty_state() -> Parts {
     (
-        MaterialCatalog {
+        babylon_material_circuit::MaterialCatalogDefinition {
             capacity_policy: CapacitySupply::FiniteSchedule,
             site_logistics_nodes: vec![],
             process_outputs: vec![],
@@ -60,7 +63,6 @@ fn empty_state() -> Parts {
             household_time_policy: vec![],
             service_inputs: vec![],
             household_needs: vec![],
-            catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
         },
         MaterialCircuitState {
             accounting: babylon_material_circuit::CircuitAccounting::PhysicalControl,
@@ -83,9 +85,24 @@ fn empty_state() -> Parts {
     )
 }
 
-fn pair(parts: Parts) -> Pair {
-    let (catalog, state) = parts;
-    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog canonicalizes");
+trait AdmitParts {
+    fn admit(self) -> (MaterialCatalog, MaterialCircuitState);
+}
+impl AdmitParts for Parts {
+    fn admit(self) -> (MaterialCatalog, MaterialCircuitState) {
+        (
+            MaterialCatalog::try_new(self.0).expect("the fixture catalog canonicalizes"),
+            self.1,
+        )
+    }
+}
+impl AdmitParts for (MaterialCatalog, MaterialCircuitState) {
+    fn admit(self) -> (MaterialCatalog, MaterialCircuitState) {
+        self
+    }
+}
+fn pair(parts: impl AdmitParts) -> Pair {
+    let (catalog, state) = parts.admit();
     let opening = MaterialWorldRegister::try_new(&catalog, state.period - 1, state)
         .expect("the authored fixture satisfies the constructor invariants");
     let next = opening
@@ -256,6 +273,7 @@ fn foundation_is_absent_but_committed_quiet_and_empty_accounts_are_present() {
         unit_id: UnitId::from_bytes([3; 32]),
         kind: CommodityKind::Storable { grams_per_unit: 1 },
     });
+    let catalog = MaterialCatalog::try_new(catalog).expect("valid definitions");
     assert_eq!(
         balance::project_with_labels(&catalog, &state, None, None, |_, _| None),
         Ok(None)
@@ -439,7 +457,10 @@ fn two_leg_work_state() -> Parts {
     (catalog, state)
 }
 
-fn add_receiving_work(catalog: &mut MaterialCatalog, state: &mut MaterialCircuitState) {
+fn add_receiving_work(
+    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
+    state: &mut MaterialCircuitState,
+) {
     let buyer = state.orders[0].buyer_site_id;
     let (work_catalog, mut work) = production_state(&[(17, 1, 2, 1)], 5);
     let mut work_catalog = work_catalog;
@@ -473,7 +494,10 @@ fn add_receiving_work(catalog: &mut MaterialCatalog, state: &mut MaterialCircuit
         .extend(work.production_commitments);
 }
 
-fn add_receiving_dispatch(catalog: &mut MaterialCatalog, state: &mut MaterialCircuitState) {
+fn add_receiving_dispatch(
+    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
+    state: &mut MaterialCircuitState,
+) {
     let supplier = state.orders[0].buyer_site_id;
     let buyer = SiteId::from_bytes([15; 32]);
     let destination = LogisticsNodeId::from_bytes([14; 32]);
@@ -727,12 +751,16 @@ fn refuses_unchanged(pair: &Pair, error: ProductionProjectionError) {
 #[test]
 fn products_and_shared_component_sums_refuse_overflow() {
     let mut multiplication = pair(production_state(&[(10, 1, 1, 2)], 10));
-    multiplication.3.process_outputs[0].quantity_per_batch = u64::MAX;
+    let mut definition = multiplication.3.clone().into_definition();
+    definition.process_outputs[0].quantity_per_batch = u64::MAX;
+    multiplication.3 = MaterialCatalog::try_new(definition).expect("valid definitions");
     refuses_unchanged(&multiplication, ProductionProjectionError::Arithmetic);
     let mut addition = pair(production_state(&[(10, 1, 1, 1), (11, 1, 1, 1)], 10));
-    for output in &mut addition.3.process_outputs {
+    let mut definition = addition.3.clone().into_definition();
+    for output in &mut definition.process_outputs {
         output.quantity_per_batch = u64::MAX / 2 + 1;
     }
+    addition.3 = MaterialCatalog::try_new(definition).expect("valid definitions");
     refuses_unchanged(&addition, ProductionProjectionError::Arithmetic);
     let mut arrivals = then(&pair(freight_state(0)));
     arrivals.2.arrivals[0].quantity = u64::MAX;
@@ -772,8 +800,16 @@ fn production_family_and_recipe_or_inventory_mismatches_refuse() {
             2 => changed.2.production[0].site_id = SiteId::from_bytes([99; 32]),
             3 => changed.2.production[0].process_id = ProcessId::from_bytes([99; 32]),
             4 => changed.2.production[0].planned_batches += 1,
-            5 => changed.3.process_outputs[0].quantity_per_batch += 1,
-            6 => changed.3.input_coefficients[0].quantity_per_batch += 1,
+            5 => {
+                let mut d = changed.3.clone().into_definition();
+                d.process_outputs[0].quantity_per_batch += 1;
+                changed.3 = MaterialCatalog::try_new(d).expect("valid definitions");
+            }
+            6 => {
+                let mut d = changed.3.clone().into_definition();
+                d.input_coefficients[0].quantity_per_batch += 1;
+                changed.3 = MaterialCatalog::try_new(d).expect("valid definitions");
+            }
             7 => changed.1.inventory[0].quantity += 1,
             _ => changed.0.inventory.push(changed.0.inventory[0].clone()),
         }
@@ -851,7 +887,7 @@ fn retail_state() -> Parts {
     };
     let (_, mut state) = empty_state();
     let source = crate::test_support::catalog();
-    let mut catalog = MaterialCatalog {
+    let mut catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![],
         process_outputs: vec![],
@@ -867,7 +903,6 @@ fn retail_state() -> Parts {
         household_time_policy: vec![],
         service_inputs: vec![],
         household_needs: vec![],
-        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
     };
     let good = source
         .good("meal")
@@ -933,10 +968,7 @@ fn retail_state() -> Parts {
         available_grams: 100,
     });
     state.inventory.push(inventory);
-    (
-        MaterialCatalog::try_new(catalog).expect("the fixture catalog canonicalizes"),
-        state,
-    )
+    (catalog, state)
 }
 
 #[test]
@@ -1027,6 +1059,7 @@ fn local_internal_transfer_moves_same_native_stock_without_physical_arrival() {
 fn finite_fulfillment_and_quiet_successor_reconcile_handling_work_stock_and_mass() {
     let catalog = crate::test_support::catalog();
     let (material, mut state) = retail_state();
+    let material = MaterialCatalog::try_new(material).expect("valid definitions");
     state.final_demand_orders[0].ordered = 3;
     let foundation = super::super::merchants::project_merchants(
         &catalog,

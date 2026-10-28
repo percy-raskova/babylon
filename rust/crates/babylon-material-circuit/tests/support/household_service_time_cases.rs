@@ -120,11 +120,11 @@ fn time_service_opening(input: u64) -> (MaterialCatalog, MaterialCircuitState) {
         HouseholdTimeBook::new(vec![time_policy.clone()])
             .expect("the constructor accepts the authored fixture arguments"),
     );
-    let mut catalog = catalog;
+    let mut catalog = catalog.into_definition();
     catalog.household_time_policy = vec![time_policy];
     catalog.household_needs = needs;
     catalog.service_inputs = inputs;
-    catalog.catalog_digest = [0; 32];
+
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let state = babylon_material_circuit::admit_material_purchase(
         &catalog,

@@ -683,7 +683,7 @@ fn persisted_delivery_twins_reconcile_and_restart_at_dispatch_transit_and_arriva
         .iter()
         .find(|route| route.key == "sheet-transfer")
         .expect("the fixture holds the searched element");
-    let mut normalized_catalog = normalized_catalog;
+    let mut normalized_catalog = normalized_catalog.into_definition();
     let delayed_leg = normalized_catalog
         .route_stages
         .iter_mut()

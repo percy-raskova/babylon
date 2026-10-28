@@ -6,11 +6,12 @@ use babylon_material_circuit::{
     CommodityDefinition, CommodityKind, CorridorCapacity, CorridorId, GoodId, InventoryRow,
     LogisticsNodeId, MaterialCatalog, MaterialCircuitError, MaterialCircuitState, OrderAccessMode,
     OrderId, OrderRow, RouteId, RouteStage, RouteStageCapacity, SiteId, SiteLogisticsNode,
-    SupplierRoute, UnitId, UNSEALED_CATALOG_DIGEST,
+    SupplierRoute, UnitId,
 };
 
 fn opening() -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = empty();
+    let (catalog, mut state) = empty();
+    let mut catalog = catalog.into_definition();
     for (identity, quantity) in [(1_u8, 10), (2_u8, 100)] {
         add_order(&mut catalog, &mut state, identity, quantity);
     }
@@ -19,7 +20,7 @@ fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         period: 1,
         available_grams: 60,
     });
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 
@@ -44,7 +45,7 @@ fn empty() -> (MaterialCatalog, MaterialCircuitState) {
             production_commitments: Vec::new(),
         };
         (
-            MaterialCatalog::try_new(MaterialCatalog {
+            MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],
@@ -60,7 +61,6 @@ fn empty() -> (MaterialCatalog, MaterialCircuitState) {
                 household_time_policy: Vec::new(),
                 service_inputs: Vec::new(),
                 household_needs: Vec::new(),
-                catalog_digest: UNSEALED_CATALOG_DIGEST,
             })
             .expect("the authored fixture catalog is valid"),
             state,
@@ -69,7 +69,7 @@ fn empty() -> (MaterialCatalog, MaterialCircuitState) {
 }
 
 fn add_order(
-    catalog: &mut MaterialCatalog,
+    catalog: &mut babylon_material_circuit::MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
     identity: u8,
     quantity: u64,
@@ -142,12 +142,13 @@ fn add_order(
 }
 
 fn constrained() -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = opening();
+    let (catalog, mut state) = opening();
+    let mut catalog = catalog.into_definition();
     for row in &mut state.orders {
         row.ordered = 2;
     }
     catalog.commodities[0].kind = CommodityKind::Storable { grams_per_unit: 6 };
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state.corridor_capacities[0].available_grams = 10;
     (catalog, state)
 }
@@ -168,13 +169,14 @@ fn residual_capacity_serves_remaining_feasible_commercial_native_unit() {
 }
 #[test]
 fn residual_policy_is_independent_of_input_row_order() {
-    let (mut catalog, state) = constrained();
+    let (catalog, state) = constrained();
+    let mut catalog = catalog.into_definition();
     let mut reversed = state.clone();
     reversed.orders.reverse();
     reversed.inventory.reverse();
     reversed.route_stage_capacities.reverse();
     catalog.route_stages.reverse();
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&catalog, &state),
         babylon_material_circuit::advance_material_circuit(&catalog, &reversed)
@@ -183,7 +185,8 @@ fn residual_policy_is_independent_of_input_row_order() {
 }
 #[test]
 fn residual_respects_a_future_departure_capacity() {
-    let (mut catalog, mut state) = constrained();
+    let (catalog, mut state) = constrained();
+    let mut catalog = catalog.into_definition();
     let first = catalog.route_stages[1].clone();
     let intermediate = LogisticsNodeId::from_bytes([77; 32]);
     catalog.route_stages[1].to_node_id = intermediate;
@@ -199,7 +202,7 @@ fn residual_respects_a_future_departure_capacity() {
         stage_index: 1,
         corridor_id: corridor,
     });
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state.corridor_capacities.push(CorridorCapacity {
         period: 2,
         corridor_id: corridor,
@@ -214,12 +217,13 @@ fn summed_resource_request_overflow_refuses_atomically() {
     for row in &mut state.orders {
         row.ordered = u64::MAX;
     }
-    let mut catalog = catalog;
+    let mut catalog = catalog.into_definition();
     for row in &mut catalog.commodities {
         row.kind = CommodityKind::Storable {
             grams_per_unit: u64::MAX,
         };
     }
+    let catalog = MaterialCatalog::try_new(catalog).expect("valid definitions");
     let before = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
     assert_eq!(

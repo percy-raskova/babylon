@@ -5,10 +5,10 @@ use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::{
-    AccountId, AttendancePlan, CapacityRow, CashAccount, CircuitAccounting, CorridorCapacity,
-    FinalDemandPrincipal, FinancialInstitutions, HistoricalCostBook, HouseholdCohort,
-    HouseholdNeed, HouseholdStock, InputOutputCoefficient, InventoryRow, LaborCapacityRow,
-    LaborCoefficient, MaintenanceService, MaterialCatalog, MaterialCircuitState,
+    AccountId, AidBook, AttendancePlan, CapacityRow, CashAccount, CircuitAccounting,
+    CorridorCapacity, FinalDemandPrincipal, FinancialInstitutions, HistoricalCostBook,
+    HouseholdCohort, HouseholdNeed, HouseholdStock, InputOutputCoefficient, InventoryRow,
+    LaborCapacityRow, LaborCoefficient, MaintenanceService, MaterialCatalog, MaterialCircuitState,
     MemberLaborCapacityRow, MerchantHandling, MerchantHandlingCoefficient, MonetaryBook,
     MonetaryCircuit, ProcessOutput, ProductionCommitment, ProductionDemandPolicy, RecurringEconomy,
     RollingCapacitySupply, SiteLogisticsNode, StockCarryingValue,
@@ -420,7 +420,7 @@ fn compile_accounting(
             let (book, costs) = opening_books(opening)?;
             let recurring = recurring(opening, state)?;
             Ok(CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
-                aid: Default::default(),
+                aid: AidBook::default(),
                 household_time: opening.policies.household_time.clone(),
                 financial: opening.institutions.clone(),
                 costs,

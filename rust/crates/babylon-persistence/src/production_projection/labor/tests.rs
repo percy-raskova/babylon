@@ -284,6 +284,14 @@ fn inconsistent_accounts_refuse_instead_of_publishing_negative_or_unattributed_t
     );
 }
 
+fn next_period_capacities(capacities: &[CapacityRow]) -> Vec<CapacityRow> {
+    let mut future = capacities.to_vec();
+    for capacity in &mut future {
+        capacity.period = 2;
+    }
+    future
+}
+
 #[test]
 fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_handling() {
     let (catalog, mut opening) = shared_opening();
@@ -355,10 +363,7 @@ fn maintenance_labor_is_debited_once_and_stays_separate_from_production_and_hand
         available_batches: 2,
     });
     catalog.maintenance_binding = Some(binding);
-    let mut future = opening.capacities.clone();
-    for capacity in &mut future {
-        capacity.period = 2;
-    }
+    let future = next_period_capacities(&opening.capacities);
     opening.capacities.extend(future);
     let catalog = MaterialCatalog::try_new(catalog).expect("valid definitions");
     let (opening, next, receipt, catalog) = committed_pair((catalog, opening));

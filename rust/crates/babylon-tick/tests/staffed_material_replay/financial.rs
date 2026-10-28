@@ -1,4 +1,3 @@
-use crate::site;
 use crate::CollectingSink;
 use crate::MaterialWorldRegister;
 use crate::ReplayCommitDisposition;
@@ -46,7 +45,7 @@ fn financial_session() -> Session {
         vec![],
         vec![EquityCarryingValue {
             owner: household,
-            issuer_site_id: site(2),
+            issuer_site_id: crate::site(2),
             amount: money(0),
         }],
         vec![],
@@ -60,12 +59,12 @@ fn financial_session() -> Session {
                 .expect("the authored literal parses as the declared type"),
         }],
         ownership: vec![OwnershipClaim {
-            issuer_site_id: site(2),
+            issuer_site_id: crate::site(2),
             beneficiary: household,
             shares: 1,
         }],
         distributions: vec![DistributionPolicy {
-            issuer_site_id: site(2),
+            issuer_site_id: crate::site(2),
             earnings_fraction_bps: 10000,
             period_cap: money(100),
             cash_floor: money(0),
@@ -93,7 +92,7 @@ fn financial_session() -> Session {
             id: ContributionId::from_bytes([7; 32]),
             due_period: 2,
             contributor: household,
-            issuer_site_id: site(2),
+            issuer_site_id: crate::site(2),
             amount: money(5),
         }],
     };

@@ -272,7 +272,7 @@ that Babylon needs.
 | `babylon-persistence/src/observer_material/snapshot.rs` `PeriodRegister` | Observation-history clones share one immutable completed period register. |
 | `babylon-persistence/src/economic_catalog/sources.rs` `SourceArtifact` | Captured immutable source bytes shared by every artifact clone. |
 | `babylon-persistence/src/archive_worker.rs` `ArchiveWorkerCancellation` | `Arc<AtomicBool>` cancellation flag read by the worker thread. |
-| `babylon-client/src/logging.rs` `SinkState` | Cross-thread log writer behind `Arc<Mutex<SinkState>>`. |
+| `babylon-client/src/logging.rs` `RotatingSink` | Cross-thread log writer behind `Arc<Mutex<SinkState>>`. |
 | `babylon-persistence/examples/michigan_experiment/artifacts.rs` `ProgressHandle` | Example only: the timeout watchdog reads the live progress snapshot from its own thread. |
 | `babylon-persistence/src/runtime_session/coordinator/tests/support.rs` `DriverStateHandle` | Test only: one backend, its driver and the progress writer share the control state. |
 | `babylon-persistence/tests/observer_material_live/runtime_process.rs` `Diagnostics` | Test only: one standard-error reader thread fills a bounded buffer that the test can read while the child runs. |

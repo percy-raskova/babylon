@@ -1,7 +1,6 @@
 //! Public H3 identity contracts pinned to checked-in language-neutral vectors.
 
 use babylon_kernel::{H3CellId, H3CellIdError};
-use std::mem::size_of;
 use std::str::FromStr;
 
 #[path = "support/h3_cell_vectors.rs"]
@@ -22,7 +21,7 @@ fn h3_cell_id_layout_and_order_follow_unsigned_identity() {
         .filter(|vector| vector.label.starts_with("ordinary_"))
         .collect::<Vec<_>>();
     assert_eq!(ordinary.len(), 16);
-    assert_eq!(size_of::<H3CellId>(), 8);
+    assert_eq!(std::mem::size_of::<H3CellId>(), 8);
 
     let mut ids = ordinary
         .iter()

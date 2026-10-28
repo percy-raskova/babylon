@@ -1,5 +1,4 @@
 //! Independent finite-hour witnesses through the real recurring material close.
-use crate::good;
 use babylon_material_circuit::decode_material_circuit_state;
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::CircuitAccounting;
@@ -46,7 +45,7 @@ fn time_opening(food: u64) -> (MaterialCatalog, MaterialCircuitState) {
             hours_per_basis: 3,
         },
         unmet_burdens: vec![HouseholdUnmetTimeBurden {
-            good_id: good(2),
+            good_id: crate::good(2),
             unit_id: crate::units(),
             hours_per_unmet_unit: 5,
         }],

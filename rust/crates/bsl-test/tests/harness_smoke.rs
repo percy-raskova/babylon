@@ -3,7 +3,6 @@
 use babylon_bsl::reader::Atom;
 use babylon_bsl::reader::SExpr;
 use bsl_test::fixture_harness;
-use bsl_test::fixture_harness::BslFixtureSet;
 use bsl_test::lint_harness;
 use std::path::Path;
 
@@ -59,28 +58,6 @@ fn load_bscn_fixture_returns_the_scenario_form() {
 }
 
 #[test]
-fn fixture_set_collects_rule_and_scenario_fixtures() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/smoke.bscn");
-    let mut fixtures = BslFixtureSet::new();
-    fixtures
-        .add_rule(CLEAN_RULE)
-        .expect("the smoke rule must join the fixture set");
-    fixtures
-        .add_scenario(&path)
-        .expect("the smoke scenario must join the fixture set");
-    assert_eq!(
-        fixtures.rules().len(),
-        1,
-        "the fixture set must retain the parsed rule"
-    );
-    assert_eq!(
-        fixtures.scenarios().len(),
-        1,
-        "the fixture set must retain the parsed scenario"
-    );
-}
-
-#[test]
 fn lint_harness_accepts_clean_rust_and_flags_a_style_violation() {
     lint_harness::assert_bsl_lint_clean("pub fn identity(value: u8) -> u8 { value }");
     let findings = lint_harness::run_bsl_check_on_str("pub const MASK: u64 = 0xFF;")
@@ -91,4 +68,16 @@ fn lint_harness_accepts_clean_rust_and_flags_a_style_violation() {
             .any(|finding| finding.what.contains("uppercase")),
         "the sentinel must flag uppercase hex digits: {findings:?}"
     );
+}
+
+#[test]
+fn scenario_fixture_rejects_missing_or_non_qname_identity() {
+    for (name, source) in [("missing", "(scenario)"), ("number", "(scenario 123)")] {
+        let path =
+            std::env::temp_dir().join(format!("bsl-fixture-{}-{name}.bscn", std::process::id()));
+        std::fs::write(&path, source).expect("write fixture");
+        let result = fixture_harness::load_bscn_fixture(&path);
+        std::fs::remove_file(&path).expect("remove fixture");
+        assert!(result.is_err(), "{source} must be rejected");
+    }
 }

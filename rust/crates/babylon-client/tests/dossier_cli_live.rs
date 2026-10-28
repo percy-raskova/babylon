@@ -13,7 +13,6 @@ use std::io::Write;
 use std::process::Command;
 
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_client::dossier::verified_tick;
 use babylon_client::ui::dossier_card::{
     ActiveCountyDossier, DossierCampaignId, DossierCardPlugin, DossierFetchState, DossierRefresh,
     InstalledDossier,
@@ -678,7 +677,7 @@ fn assert_quiet_sweep_refreshes_held_card(
     let held_settled = collect_held_card(held_app);
     assert_eq!(held_settled.read.durable_tick, 3);
     assert_eq!(held_settled.read.scope.tick(), 3);
-    assert_eq!(verified_tick(&held_settled.read), Some(3));
+    assert_eq!(dossier::verified_tick(&held_settled.read), Some(3));
     let before_page = dossier::retained_page(&held_before.read)
         .expect("the fixture call `retained_page` succeeds for the authored inputs");
     let settled_page = dossier::retained_page(&held_settled.read)
@@ -725,7 +724,7 @@ fn assert_pending_held_card(held_app: &mut App) {
             .tick(),
         2
     );
-    assert_eq!(verified_tick(&held_pending.read), None);
+    assert_eq!(dossier::verified_tick(&held_pending.read), None);
 }
 
 #[test]
@@ -792,7 +791,7 @@ fn live_dossier_cli_reads_through_the_confined_reader_and_survives_restart() {
             .tick(),
         2
     );
-    assert_eq!(verified_tick(&held_before.read), Some(2));
+    assert_eq!(dossier::verified_tick(&held_before.read), Some(2));
 
     let _ = writeln!(sink, "dossier_cli_live: restart proof (second process)");
     assert_restart_preserves_card(&reader_dsn, &campaign, &card);

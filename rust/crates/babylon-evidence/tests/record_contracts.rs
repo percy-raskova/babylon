@@ -1,7 +1,7 @@
 //! Language-neutral contracts for the six frozen T3 run-record envelopes.
 
 use babylon_evidence::{
-    decode_envelope, Digest32, PracticeAttemptLedger, PracticeAttemptRow, PracticeCandidateRow,
+    Digest32, PracticeAttemptLedger, PracticeAttemptRow, PracticeCandidateRow,
     PracticeCandidateSchedule, PracticeDisposition, RunIdentity, RunIdentityField,
     SfsPreregistration, SfsRecordError, SfsSample, SfsTrace, SfsWireError, T3Record,
 };
@@ -245,7 +245,7 @@ fn run_identity_encodes_all_eighteen_fields_in_exact_order() {
         expected
     );
     assert_eq!(
-        decode_envelope::<RunIdentity>(&expected)
+        babylon_evidence::decode_envelope::<RunIdentity>(&expected)
             .expect("the fixture world holds the addressed component"),
         run
     );
@@ -327,7 +327,7 @@ fn run_identity_session_and_ascii_id_bounds_are_closed() {
     )
     .expect("the fixture run completes");
     assert_eq!(
-        decode_envelope::<RunIdentity>(
+        babylon_evidence::decode_envelope::<RunIdentity>(
             &babylon_evidence::canonical_envelope(&one)
                 .expect("the record exposes its canonical envelope")
         )
@@ -345,7 +345,7 @@ fn run_identity_session_and_ascii_id_bounds_are_closed() {
         .expect("the record exposes its canonical envelope");
     assert_eq!(payload_length::<RunIdentity>(&maximum_bytes), 870);
     assert_eq!(
-        decode_envelope::<RunIdentity>(&maximum_bytes)
+        babylon_evidence::decode_envelope::<RunIdentity>(&maximum_bytes)
             .expect("the fixture world holds the addressed component"),
         maximum
     );
@@ -419,7 +419,7 @@ fn sample_wire_is_fixed_and_aggregate_validation_is_exact() {
         expected
     );
     assert_eq!(
-        decode_envelope::<SfsSample>(&expected)
+        babylon_evidence::decode_envelope::<SfsSample>(&expected)
             .expect("the fixture world holds the addressed component"),
         value
     );
@@ -447,7 +447,7 @@ fn trace_requires_exact_window_count_start_and_consecutive_ticks() {
         .expect("the record exposes its canonical envelope");
     assert_eq!(encoded.last(), Some(&(2_u8)));
     assert_eq!(
-        decode_envelope::<SfsTrace>(&encoded)
+        babylon_evidence::decode_envelope::<SfsTrace>(&encoded)
             .expect("the fixture world holds the addressed component"),
         valid
     );
@@ -507,7 +507,7 @@ fn trace_wire_is_one_complete_literal_envelope_with_nested_sample_envelopes() {
         expected
     );
     assert_eq!(
-        decode_envelope::<SfsTrace>(&expected)
+        babylon_evidence::decode_envelope::<SfsTrace>(&expected)
             .expect("the fixture world holds the addressed component"),
         trace
     );
@@ -524,7 +524,7 @@ fn trace_decode_refusal_precedence_pins_interval_and_classification() {
         .last_mut()
         .expect("the fixture sequence is non-empty") = 6;
     assert_eq!(
-        decode_envelope::<SfsTrace>(&invalid_code),
+        babylon_evidence::decode_envelope::<SfsTrace>(&invalid_code),
         Err(SfsRecordError::Wire(SfsWireError::InvalidCode {
             field: "classification",
             value: 6,
@@ -535,7 +535,7 @@ fn trace_decode_refusal_precedence_pins_interval_and_classification() {
         .last_mut()
         .expect("the fixture sequence is non-empty") = 0;
     assert_eq!(
-        decode_envelope::<SfsTrace>(&wrong_valid_class),
+        babylon_evidence::decode_envelope::<SfsTrace>(&wrong_valid_class),
         Err(SfsRecordError::ClassificationMismatch {
             stored: 0,
             computed: 2,
@@ -545,7 +545,7 @@ fn trace_decode_refusal_precedence_pins_interval_and_classification() {
     let interval = payload_start::<SfsTrace>() + 80;
     wrong_interval[interval..interval + 2].copy_from_slice(&2_u16.to_be_bytes());
     assert_eq!(
-        decode_envelope::<SfsTrace>(&wrong_interval),
+        babylon_evidence::decode_envelope::<SfsTrace>(&wrong_interval),
         Err(SfsRecordError::InvalidSampleInterval { found: 2 })
     );
 }
@@ -562,7 +562,7 @@ fn trace_maximum_of_157_complete_sample_envelopes_round_trips() {
         .expect("the record exposes its canonical envelope");
     assert_eq!(payload_length::<SfsTrace>(&envelope), 22_067);
     assert_eq!(
-        decode_envelope::<SfsTrace>(&envelope)
+        babylon_evidence::decode_envelope::<SfsTrace>(&envelope)
             .expect("the fixture world holds the addressed component"),
         trace
     );
@@ -621,7 +621,7 @@ fn candidate_schedule_sorts_exact_rows_and_rejects_duplicates_or_bad_ids() {
     let round_trip = babylon_evidence::canonical_envelope(&schedule)
         .expect("the record exposes its canonical envelope");
     assert_eq!(
-        decode_envelope::<PracticeCandidateSchedule>(&round_trip)
+        babylon_evidence::decode_envelope::<PracticeCandidateSchedule>(&round_trip)
             .expect("the fixture world holds the addressed component"),
         schedule
     );
@@ -653,7 +653,7 @@ fn candidate_schedule_sorts_exact_rows_and_rejects_duplicates_or_bad_ids() {
     let mut bad_id = expected;
     bad_id[payload_start::<PracticeCandidateSchedule>() + 4] ^= 0xff;
     assert_eq!(
-        decode_envelope::<PracticeCandidateSchedule>(&bad_id),
+        babylon_evidence::decode_envelope::<PracticeCandidateSchedule>(&bad_id),
         Err(SfsRecordError::StableRowDigestMismatch)
     );
 }
@@ -662,7 +662,7 @@ fn candidate_schedule_sorts_exact_rows_and_rejects_duplicates_or_bad_ids() {
 fn candidate_schedule_literal_malformed_payloads_refuse_before_rows_or_trailing_bytes() {
     let too_many = literal_envelope(PracticeCandidateSchedule::DOMAIN, &65_536_u32.to_be_bytes());
     assert_eq!(
-        decode_envelope::<PracticeCandidateSchedule>(&too_many),
+        babylon_evidence::decode_envelope::<PracticeCandidateSchedule>(&too_many),
         Err(SfsRecordError::Wire(SfsWireError::CountTooLarge {
             field: "candidate_rows",
             limit: 65_535,
@@ -672,7 +672,7 @@ fn candidate_schedule_literal_malformed_payloads_refuse_before_rows_or_trailing_
 
     let truncated = literal_envelope(PracticeCandidateSchedule::DOMAIN, &1_u32.to_be_bytes());
     assert_eq!(
-        decode_envelope::<PracticeCandidateSchedule>(&truncated),
+        babylon_evidence::decode_envelope::<PracticeCandidateSchedule>(&truncated),
         Err(SfsRecordError::Wire(SfsWireError::TruncatedEnvelope))
     );
 
@@ -680,7 +680,7 @@ fn candidate_schedule_literal_malformed_payloads_refuse_before_rows_or_trailing_
     trailing_payload.push(0xaa);
     let trailing = literal_envelope(PracticeCandidateSchedule::DOMAIN, &trailing_payload);
     assert_eq!(
-        decode_envelope::<PracticeCandidateSchedule>(&trailing),
+        babylon_evidence::decode_envelope::<PracticeCandidateSchedule>(&trailing),
         Err(SfsRecordError::Wire(SfsWireError::TrailingBytes {
             count: 1,
         }))
@@ -704,7 +704,7 @@ fn preregistration_derives_start_and_closes_codes_and_accessors() {
         let bytes = babylon_evidence::canonical_envelope(&value)
             .expect("the record exposes its canonical envelope");
         assert_eq!(
-            decode_envelope::<SfsPreregistration>(&bytes)
+            babylon_evidence::decode_envelope::<SfsPreregistration>(&bytes)
                 .expect("the fixture world holds the addressed component"),
             value
         );
@@ -764,7 +764,7 @@ fn preregistration_decode_rejects_stored_start_policy_cadence_and_practice_code(
     let mut wrong_start = encoded.clone();
     wrong_start[payload + 8..payload + 16].copy_from_slice(&99_u64.to_be_bytes());
     assert_eq!(
-        decode_envelope::<SfsPreregistration>(&wrong_start),
+        babylon_evidence::decode_envelope::<SfsPreregistration>(&wrong_start),
         Err(SfsRecordError::TickDiscontinuity {
             expected: 11,
             actual: 99,
@@ -773,25 +773,25 @@ fn preregistration_decode_rejects_stored_start_policy_cadence_and_practice_code(
     let mut policy = encoded.clone();
     policy[payload + 208] = 1;
     assert_eq!(
-        decode_envelope::<SfsPreregistration>(&policy),
+        babylon_evidence::decode_envelope::<SfsPreregistration>(&policy),
         Err(SfsRecordError::InvalidExogenousPolicy)
     );
     let mut cadence = encoded.clone();
     cadence[payload + 209] = 1;
     assert_eq!(
-        decode_envelope::<SfsPreregistration>(&cadence),
+        babylon_evidence::decode_envelope::<SfsPreregistration>(&cadence),
         Err(SfsRecordError::InvalidCadence)
     );
     let mut stride = encoded.clone();
     stride[payload + 218..payload + 220].copy_from_slice(&0_u16.to_be_bytes());
     assert_eq!(
-        decode_envelope::<SfsPreregistration>(&stride),
+        babylon_evidence::decode_envelope::<SfsPreregistration>(&stride),
         Err(SfsRecordError::InvalidCadence)
     );
     let mut practice = encoded;
     practice[payload + 222] = 0;
     assert_eq!(
-        decode_envelope::<SfsPreregistration>(&practice),
+        babylon_evidence::decode_envelope::<SfsPreregistration>(&practice),
         Err(SfsRecordError::InvalidPracticeCode { value: 0 })
     );
 }
@@ -829,7 +829,7 @@ fn attempt_ledger_sorts_keeps_rejections_and_projects_exact_candidates() {
     let bytes = babylon_evidence::canonical_envelope(&ledger)
         .expect("the record exposes its canonical envelope");
     assert_eq!(
-        decode_envelope::<PracticeAttemptLedger>(&bytes)
+        babylon_evidence::decode_envelope::<PracticeAttemptLedger>(&bytes)
             .expect("the fixture world holds the addressed component"),
         ledger
     );
@@ -883,13 +883,13 @@ fn attempt_rows_reject_zero_duplicate_unknown_and_mismatched_identity() {
     let mut unknown = encoded.clone();
     unknown[payload + 36 + 104] = 2;
     assert_eq!(
-        decode_envelope::<PracticeAttemptLedger>(&unknown),
+        babylon_evidence::decode_envelope::<PracticeAttemptLedger>(&unknown),
         Err(SfsRecordError::InvalidDisposition { value: 2 })
     );
     let mut bad_id = encoded;
     bad_id[payload + 36] ^= 0xff;
     assert_eq!(
-        decode_envelope::<PracticeAttemptLedger>(&bad_id),
+        babylon_evidence::decode_envelope::<PracticeAttemptLedger>(&bad_id),
         Err(SfsRecordError::StableRowDigestMismatch)
     );
 }
@@ -901,7 +901,7 @@ fn attempt_ledger_literal_malformed_payloads_refuse_before_rows_or_trailing_byte
     too_many_payload.extend_from_slice(&65_536_u32.to_be_bytes());
     let too_many = literal_envelope(PracticeAttemptLedger::DOMAIN, &too_many_payload);
     assert_eq!(
-        decode_envelope::<PracticeAttemptLedger>(&too_many),
+        babylon_evidence::decode_envelope::<PracticeAttemptLedger>(&too_many),
         Err(SfsRecordError::Wire(SfsWireError::CountTooLarge {
             field: "attempt_rows",
             limit: 65_535,
@@ -914,7 +914,7 @@ fn attempt_ledger_literal_malformed_payloads_refuse_before_rows_or_trailing_byte
     truncated_payload.extend_from_slice(&1_u32.to_be_bytes());
     let truncated = literal_envelope(PracticeAttemptLedger::DOMAIN, &truncated_payload);
     assert_eq!(
-        decode_envelope::<PracticeAttemptLedger>(&truncated),
+        babylon_evidence::decode_envelope::<PracticeAttemptLedger>(&truncated),
         Err(SfsRecordError::Wire(SfsWireError::TruncatedEnvelope))
     );
 
@@ -924,7 +924,7 @@ fn attempt_ledger_literal_malformed_payloads_refuse_before_rows_or_trailing_byte
     trailing_payload.push(0xaa);
     let trailing = literal_envelope(PracticeAttemptLedger::DOMAIN, &trailing_payload);
     assert_eq!(
-        decode_envelope::<PracticeAttemptLedger>(&trailing),
+        babylon_evidence::decode_envelope::<PracticeAttemptLedger>(&trailing),
         Err(SfsRecordError::Wire(SfsWireError::TrailingBytes {
             count: 1,
         }))

@@ -54,6 +54,8 @@
 //! content (BSL), not arithmetic baked in here; this module supplies only
 //! the operations those rules drive.
 
+mod codec;
+
 use crate::substrate::{Direction, GraphError, GraphSubstrate, NodeId};
 use std::collections::{BTreeMap, BTreeSet};
 

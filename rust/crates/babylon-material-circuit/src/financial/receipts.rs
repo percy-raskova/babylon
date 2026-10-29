@@ -31,6 +31,9 @@ impl PublicBudgetReceipt {
             ) | (
                 PublicTransferTreatment::ProviderOperatingGrant,
                 AccountId::Site(_)
+            ) | (
+                PublicTransferTreatment::AgencyAppropriation,
+                AccountId::Organization(_)
             )
         ) {
             return Err(MaterialCircuitError::FinancialInvariant);

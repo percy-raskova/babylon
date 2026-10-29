@@ -363,3 +363,236 @@ mod operations;
 
 #[path = "support/household_policy_bounds.rs"]
 mod household_policy_bounds;
+
+fn appropriation_state(
+    cash: i128,
+    floor: i128,
+    cap: i128,
+    agency_priority: u32,
+) -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut state) = opening([0, 0, 0, 0, cash]);
+    let f = &mut economy_mut(&mut state).financial;
+    f.public_budgets.push(PublicBudget {
+        public_account: treasury(),
+        period_cap: money(cap),
+        cash_floor: money(floor),
+    });
+    f.public_allocations.extend([
+        PublicAllocation {
+            public_account: treasury(),
+            recipient: owner(2),
+            treatment: PublicTransferTreatment::AgencyAppropriation,
+            priority: agency_priority,
+            amount_per_period: money(20),
+        },
+        PublicAllocation {
+            public_account: treasury(),
+            recipient: AccountId::Household(household()),
+            treatment: PublicTransferTreatment::HouseholdIncomeSupport,
+            priority: 1 - agency_priority,
+            amount_per_period: money(20),
+        },
+    ]);
+    (catalog, state)
+}
+
+#[test]
+fn agency_appropriation_uses_ordered_opening_cash_and_reconciles_income() {
+    for agency_priority in [0, 1] {
+        let (catalog, state) = appropriation_state(30, 0, 40, agency_priority);
+        let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+            .expect("funded opening advances");
+        assert_eq!(
+            result
+                .public_budgets
+                .iter()
+                .map(|r| (r.paid, r.unfunded))
+                .collect::<Vec<_>>(),
+            [(money(20), money(0)), (money(10), money(10))]
+        );
+        let agency_paid = if agency_priority == 0 {
+            money(20)
+        } else {
+            money(10)
+        };
+        assert_eq!(
+            economy(&result.state)
+                .book
+                .cash(owner(2))
+                .expect("the authored fixture is valid"),
+            agency_paid
+        );
+        assert_eq!(
+            economy(&result.state)
+                .book
+                .cash(AccountId::Public(treasury()))
+                .expect("the authored fixture is valid"),
+            money(0)
+        );
+        assert_eq!(
+            economy(&result.state)
+                .book
+                .total_cash_and_reserves()
+                .expect("the authored fixture is valid"),
+            money(30)
+        );
+        let public = result
+            .income
+            .iter()
+            .find(|r| r.account == AccountId::Public(treasury()))
+            .expect("the authored fixture is valid");
+        let agency = result
+            .income
+            .iter()
+            .find(|r| r.account == owner(2))
+            .expect("the authored fixture is valid");
+        assert_eq!(public.statement.public_transfer_expense, money(30));
+        assert_eq!(agency.statement.public_transfer_income, agency_paid);
+        assert_eq!(agency.net_income, agency_paid);
+        assert_eq!(public.net_income, money(-30));
+        assert_eq!(result.household_consumption.len(), 0);
+        assert_eq!(
+            economy(&result.state).employment,
+            economy(&state).employment
+        );
+        let bytes =
+            babylon_material_circuit::encode_material_circuit_state(&catalog, &result.state)
+                .expect("the authored fixture is valid");
+        let restored = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
+            .expect("the authored fixture is valid");
+        assert_eq!(restored, result.state);
+        let next = babylon_material_circuit::advance_material_circuit(&catalog, &restored)
+            .expect("the authored fixture is valid");
+        assert_eq!(next.public_budgets.len(), 2);
+        assert!(next
+            .public_budgets
+            .iter()
+            .all(|r| r.paid == money(0) && r.unfunded == money(20)));
+        let mut reversed = state.clone();
+        economy_mut(&mut reversed)
+            .financial
+            .public_allocations
+            .reverse();
+        assert_eq!(
+            result,
+            babylon_material_circuit::advance_material_circuit(&catalog, &reversed)
+                .expect("the authored fixture is valid")
+        );
+        assert_eq!(
+            babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
+                .expect("the authored fixture is valid"),
+            babylon_material_circuit::encode_material_circuit_state(&catalog, &reversed)
+                .expect("the authored fixture is valid")
+        );
+    }
+}
+
+#[test]
+fn agency_appropriation_respects_cash_floor_and_cap() {
+    for (cash, floor, cap, paid) in [(0, 0, 40, 0), (30, 25, 40, 5), (30, 0, 7, 7)] {
+        let (catalog, state) = appropriation_state(cash, floor, cap, 0);
+        let result = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+            .expect("the authored fixture is valid");
+        assert_eq!(result.public_budgets[0].paid, money(paid));
+        assert_eq!(result.public_budgets[0].unfunded, money(20 - paid));
+        assert_eq!(result.public_budgets[1].paid, money(0));
+        assert_eq!(
+            economy(&result.state)
+                .book
+                .total_cash_and_reserves()
+                .expect("the authored fixture is valid"),
+            money(cash)
+        );
+    }
+}
+
+#[test]
+fn agency_appropriation_rejects_invalid_inputs_without_mutating_opening() {
+    use babylon_material_circuit::MaterialCircuitError;
+    let (catalog, valid) = appropriation_state(30, 0, 40, 0);
+    for recipient in [
+        AccountId::Household(household()),
+        AccountId::Site(site()),
+        AccountId::Public(treasury()),
+    ] {
+        let mut invalid = valid.clone();
+        economy_mut(&mut invalid).financial.public_allocations[0].recipient = recipient;
+        let before = invalid.clone();
+        assert_eq!(
+            babylon_material_circuit::advance_material_circuit(&catalog, &invalid),
+            Err(MaterialCircuitError::FinancialInvariant)
+        );
+        assert_eq!(invalid, before);
+    }
+    for treatment in [
+        PublicTransferTreatment::HouseholdIncomeSupport,
+        PublicTransferTreatment::ProviderOperatingGrant,
+    ] {
+        let mut invalid = valid.clone();
+        economy_mut(&mut invalid).financial.public_allocations[0].treatment = treatment;
+        assert_eq!(
+            babylon_material_circuit::advance_material_circuit(&catalog, &invalid),
+            Err(MaterialCircuitError::FinancialInvariant)
+        );
+    }
+    let mut duplicate = valid.clone();
+    let row = economy(&duplicate).financial.public_allocations[0].clone();
+    economy_mut(&mut duplicate)
+        .financial
+        .public_allocations
+        .push(row);
+    assert_eq!(
+        babylon_material_circuit::advance_material_circuit(&catalog, &duplicate),
+        Err(MaterialCircuitError::DuplicateRow)
+    );
+    let mut missing_budget = valid.clone();
+    economy_mut(&mut missing_budget)
+        .financial
+        .public_budgets
+        .clear();
+    assert_eq!(
+        babylon_material_circuit::advance_material_circuit(&catalog, &missing_budget),
+        Err(MaterialCircuitError::FinancialInvariant)
+    );
+    let mut missing_location = valid.clone();
+    economy_mut(&mut missing_location)
+        .financial
+        .locations
+        .retain(|r| r.account != owner(2));
+    assert_eq!(
+        babylon_material_circuit::advance_material_circuit(&catalog, &missing_location),
+        Err(MaterialCircuitError::FinancialInvariant)
+    );
+}
+
+#[test]
+fn appropriation_state_wire_rejects_unknown_treatment_and_missing_account() {
+    use babylon_material_circuit::MaterialCircuitError;
+    let (catalog, mut state) = appropriation_state(30, 0, 40, 0);
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
+        .expect("the authored fixture is valid");
+    let mut needle = Vec::new();
+    needle.extend_from_slice(&treasury().as_bytes());
+    needle.push(3);
+    needle.extend_from_slice(&[2; 32]);
+    needle.push(3);
+    needle.extend_from_slice(&0_u32.to_be_bytes());
+    needle.extend_from_slice(&20_i128.to_be_bytes());
+    let locations: Vec<_> = bytes
+        .windows(needle.len())
+        .enumerate()
+        .filter_map(|(i, w)| (w == needle).then_some(i))
+        .collect();
+    assert_eq!(locations.len(), 1);
+    let mut malformed = bytes;
+    malformed[locations[0] + 65] = 9;
+    assert_eq!(
+        babylon_material_circuit::decode_material_circuit_state(&catalog, &malformed),
+        Err(MaterialCircuitError::WireEnum)
+    );
+    economy_mut(&mut state).financial.public_allocations[0].recipient = owner(99);
+    assert_eq!(
+        babylon_material_circuit::advance_material_circuit(&catalog, &state),
+        Err(MaterialCircuitError::MonetaryInvariant)
+    );
+}

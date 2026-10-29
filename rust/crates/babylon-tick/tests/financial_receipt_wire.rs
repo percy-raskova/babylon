@@ -171,3 +171,26 @@ fn financial_wire_requires_cash_match_unique_order_and_current_version() {
 
 #[path = "support/household_financial_receipt_bounds.rs"]
 mod household_financial_receipt_bounds;
+
+#[test]
+fn agency_appropriation_wire_accepts_partial_and_zero_funding_and_rejects_unknown_tags() {
+    for paid in [0_i128, 3] {
+        let mut row = public();
+        row[40] = 3; // organization account
+        row[73] = 3; // agency appropriation
+        row[94..110].copy_from_slice(&paid.to_be_bytes());
+        row[110..126].copy_from_slice(&(5_i128 - paid).to_be_bytes());
+        let cash_rows = if paid == 0 {
+            vec![]
+        } else {
+            vec![cash(2, (4, 8), (3, 9), paid)]
+        };
+        let wire = envelope(&[(11, cash_rows), (24, vec![row.clone()])]);
+        let decoded =
+            material_world::decode_material_receipts(&wire).expect("valid agency receipt");
+        assert_eq!(decoded.public_budgets[0].paid.micro_units(), paid);
+        assert_eq!(decoded.public_budgets[0].unfunded.micro_units(), 5 - paid);
+        row[73] = 4;
+        assert!(material_world::decode_material_receipts(&envelope(&[(24, vec![row])])).is_err());
+    }
+}

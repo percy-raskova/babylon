@@ -52,6 +52,7 @@ pub struct PublicBudget {
 pub enum PublicTransferTreatment {
     HouseholdIncomeSupport = 1,
     ProviderOperatingGrant = 2,
+    AgencyAppropriation = 3,
 }
 /// Lower captured priority numbers are funded first. Identity breaks ties.
 /// Capital support instead uses a finite `CapitalContributionOrder`; spending a

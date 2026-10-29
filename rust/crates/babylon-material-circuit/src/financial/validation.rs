@@ -125,6 +125,9 @@ fn validate_public(f: &FinancialInstitutions, book: &MonetaryBook) -> Result<()>
             ) | (
                 PublicTransferTreatment::ProviderOperatingGrant,
                 AccountId::Site(_)
+            ) | (
+                PublicTransferTreatment::AgencyAppropriation,
+                AccountId::Organization(_)
             )
         );
         if !valid || !budgets.contains(&r.public_account) || r.amount_per_period.micro_units() <= 0

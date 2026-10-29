@@ -58,6 +58,7 @@ pub(super) fn decode_public_budgets(
         treatment: match c.take::<1>()? {
             [1] => PublicTransferTreatment::HouseholdIncomeSupport,
             [2] => PublicTransferTreatment::ProviderOperatingGrant,
+            [3] => PublicTransferTreatment::AgencyAppropriation,
             _ => return Err(MaterialWorldError::Wire),
         },
         priority: u32::from_be_bytes(c.take()?),
@@ -302,4 +303,38 @@ fn actual_postings(money: &[MoneyTransferReceipt]) -> Result<PostingTotals> {
         accumulate(&mut actual, (tag, payer, recipient), r.credit.delta)?;
     }
     Ok(actual)
+}
+
+#[cfg(test)]
+mod agency_tests {
+    use super::*;
+    use babylon_material_circuit::OrganizationAccountId;
+
+    #[test]
+    fn agency_public_receipt_roundtrips_partial_and_zero_funding() {
+        for paid in [0, 3] {
+            let row = PublicBudgetReceipt {
+                period: 7,
+                public_account: PublicAccountId::from_bytes([8; 32]),
+                recipient: AccountId::Organization(OrganizationAccountId::from_bytes([9; 32])),
+                treatment: PublicTransferTreatment::AgencyAppropriation,
+                priority: 1,
+                requested: Currency::from_micro_units(5),
+                paid: Currency::from_micro_units(paid),
+                unfunded: Currency::from_micro_units(5 - paid),
+            };
+            let mut bytes = Vec::new();
+            encode_public_budgets(std::slice::from_ref(&row), 7, &mut bytes)
+                .expect("the authored fixture is valid");
+            let mut cursor = ReceiptCursor {
+                bytes: &bytes,
+                position: 0,
+            };
+            assert_eq!(
+                decode_public_budgets(&mut cursor, 7).expect("the authored fixture is valid"),
+                row
+            );
+            assert_eq!(cursor.position, bytes.len());
+        }
+    }
 }

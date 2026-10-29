@@ -428,3 +428,99 @@ fn late_financial_overflow_leaves_all_opening_cash_and_equity_unchanged() {
         before
     );
 }
+
+#[test]
+fn current_tax_receipts_cannot_fund_opening_agency_appropriation() {
+    let (catalog, mut state) = service_opening([2, 13, 0, 0, 0]);
+    let f = &mut crate::economy_mut(&mut state).financial;
+    f.taxes.push(TaxPolicy {
+        payer: AccountId::Site(crate::site()),
+        public_recipient: crate::treasury(),
+        basis: TaxBasis::PositiveOperatingIncome,
+        rate_bps: 2500,
+        cash_floor: crate::money(0),
+    });
+    f.public_budgets.push(PublicBudget {
+        public_account: crate::treasury(),
+        period_cap: crate::money(20),
+        cash_floor: crate::money(0),
+    });
+    f.public_allocations.push(PublicAllocation {
+        public_account: crate::treasury(),
+        recipient: crate::owner(2),
+        treatment: PublicTransferTreatment::AgencyAppropriation,
+        priority: 0,
+        amount_per_period: crate::money(20),
+    });
+    let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+        .expect("the authored fixture is valid");
+    assert_eq!(first.public_budgets[0].paid, crate::money(0));
+    assert_eq!(first.public_budgets[0].unfunded, crate::money(20));
+    assert_eq!(first.taxes[0].collected, crate::money(2));
+    assert_eq!(
+        crate::economy(&first.state)
+            .book
+            .cash(AccountId::Public(crate::treasury()))
+            .expect("the authored fixture is valid"),
+        crate::money(2)
+    );
+    let next = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
+        .expect("the authored fixture is valid");
+    assert_eq!(next.public_budgets[0].paid, crate::money(2));
+}
+
+#[test]
+fn absent_and_disabled_appropriation_leave_other_activity_unchanged() {
+    let (catalog, absent) = service_opening([2, 13, 0, 0, 30]);
+    let original = babylon_material_circuit::advance_material_circuit(&catalog, &absent)
+        .expect("the authored fixture is valid");
+    let mut enabled = absent.clone();
+    let f = &mut crate::economy_mut(&mut enabled).financial;
+    f.public_budgets.push(PublicBudget {
+        public_account: crate::treasury(),
+        period_cap: crate::money(20),
+        cash_floor: crate::money(0),
+    });
+    f.public_allocations.push(PublicAllocation {
+        public_account: crate::treasury(),
+        recipient: crate::owner(2),
+        treatment: PublicTransferTreatment::AgencyAppropriation,
+        priority: 0,
+        amount_per_period: crate::money(20),
+    });
+    let result = babylon_material_circuit::advance_material_circuit(&catalog, &enabled)
+        .expect("the authored fixture is valid");
+    assert_eq!(
+        crate::economy(&original.state).employment,
+        crate::economy(&result.state).employment
+    );
+    assert_eq!(
+        crate::economy(&original.state)
+            .recurring
+            .as_ref()
+            .expect("the authored fixture is valid")
+            .households,
+        crate::economy(&result.state)
+            .recurring
+            .as_ref()
+            .expect("the authored fixture is valid")
+            .households
+    );
+    assert_eq!(original.household_consumption, result.household_consumption);
+    assert_eq!(original.staffing_members, result.staffing_members);
+    assert_eq!(original.member_labor_use, result.member_labor_use);
+    let mut disabled = enabled;
+    crate::economy_mut(&mut disabled).financial.public_budgets[0].period_cap = crate::money(0);
+    let control = babylon_material_circuit::advance_material_circuit(&catalog, &disabled)
+        .expect("the authored fixture is valid");
+    assert_eq!(control.public_budgets[0].paid, crate::money(0));
+    assert_eq!(
+        crate::economy(&original.state).book,
+        crate::economy(&control.state).book
+    );
+    assert_eq!(original.income, control.income);
+    assert_eq!(
+        original.household_consumption,
+        control.household_consumption
+    );
+}

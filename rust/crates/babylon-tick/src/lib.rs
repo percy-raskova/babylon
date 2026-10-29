@@ -46,6 +46,7 @@ mod phase_order;
 pub mod replay_identity;
 
 pub mod replay_session;
+pub mod state_opponent;
 
 mod world_hash;
 

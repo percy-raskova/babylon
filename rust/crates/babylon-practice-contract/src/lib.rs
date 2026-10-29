@@ -31,3 +31,9 @@ pub use resource::*;
 pub use schema::*;
 pub use strike::*;
 pub use topology::{validate_topology, PracticeTopologyLoadCounter};
+
+mod state_opponent;
+mod state_opponent_codec;
+mod state_opponent_decimal;
+pub use state_opponent::*;
+pub use state_opponent_codec::*;

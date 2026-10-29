@@ -32,19 +32,20 @@
 //!
 //! Two consequences fall out rather than being coded:
 //!
-//! - **Repression against a distributed organization declines itself.** A
-//!   redundant structure divides its own yield ([`crate::exposure`]'s
-//!   replaceability quotient), so it loses the ranking to a target worth
-//!   more per unit spent. Nothing anywhere says "if the org is distributed,
-//!   skip it."
+//! - **A redundant target can rank lower.** A redundant structure divides
+//!   its own yield ([`crate::exposure`]'s replaceability quotient), so it can
+//!   rank below a target worth more per unit spent. It remains eligible for
+//!   funding, including when its finite yield is zero or negative; only
+//!   unaffordability declines a valid candidate.
 //! - **Cheap modes beat expensive ones at equal damage.** Disinformation is
 //!   the cheapest mode by state capacity and among the most expensive by
 //!   movement cost — which is exactly why it dominates the historical
 //!   record. That is the ranking's arithmetic, not a designer's thumb.
 //!
 //! **Yield is computed on `L`, never on truth.** A [`Candidate`]'s yield
-//! comes from [`crate::exposure`] evaluated over a [`crate::dossier::Dossier`]
-//! scope, so an actor allocates against what it BELIEVES it would gain. It
+//! comes from [`crate::exposure`] evaluated over the actor's
+//! [`crate::dossier::Dossier`] view and its scope, so the actor allocates
+//! against what it BELIEVES it would gain. It
 //! can spend its budget badly. That is the point, and it holds for both
 //! sides: a movement misreads the state's apparatus exactly as the state
 //! misreads a movement.
@@ -111,7 +112,7 @@ pub struct Candidate {
     /// Who it would be aimed at.
     pub target: NodeId,
     /// Expected damage, as the actor BELIEVES it — normally
-    /// [`crate::exposure::decapitation_value`] over a dossier scope.
+    /// [`crate::exposure::decapitation_value`] over the dossier view and scope.
     pub expected_yield: f64,
     /// Money consumed if taken. Never zero or negative (see
     /// [`Capacity::allocate`]).
@@ -590,10 +591,10 @@ mod tests {
     }
 
     #[test]
-    fn a_redundant_target_declines_the_strike_by_itself() {
+    fn redundancy_lowers_target_rank_under_finite_budget() {
         // exposure's replaceability quotient divides a distributed org's
-        // yield down; the ranking then declines it. There is no
-        // "if distributed, skip" branch anywhere.
+        // yield down, so the higher-yield candidate is funded first. The
+        // lower-yield candidate is then unaffordable, not inherently declined.
         let mut capacity = Capacity::new(ACTOR);
         capacity
             .replenish("political-police", money(4))

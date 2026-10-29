@@ -10,7 +10,7 @@
 //!
 //! **The graph you pass is the graph the answer is about.** The state
 //! targets its own partial, biased dossier (`L`), never ground truth — so
-//! these functions take whatever substrate and node set the caller supplies
+//! these functions take the topology view and node set the caller supplies
 //! and are silent on whose view it is. Passing the true graph asks "what
 //! WOULD a strike yield"; passing `L` asks "what does the state BELIEVE a
 //! strike would yield". Those are different questions with the same
@@ -30,6 +30,41 @@
 use crate::substrate::{Direction, GraphError, GraphSubstrate, NodeId};
 use std::collections::BTreeSet;
 
+/// The read-only topology used to calculate exposure.
+///
+/// Implementations expose their own node and typed tie knowledge. A dossier
+/// can therefore answer from belief without consulting the true substrate.
+pub trait ExposureGraph {
+    /// Whether this view contains the node.
+    fn node_exists(&self, node: NodeId) -> bool;
+
+    /// Sorted, unique neighbors connected by the requested type and direction.
+    ///
+    /// # Errors
+    /// Returns [`GraphError`] if the node is absent from this view.
+    fn neighbors(
+        &self,
+        node: NodeId,
+        edge_type: &str,
+        direction: Direction,
+    ) -> Result<Vec<NodeId>, GraphError>;
+}
+
+impl<T: GraphSubstrate> ExposureGraph for T {
+    fn node_exists(&self, node: NodeId) -> bool {
+        GraphSubstrate::node_exists(self, node)
+    }
+
+    fn neighbors(
+        &self,
+        node: NodeId,
+        edge_type: &str,
+        direction: Direction,
+    ) -> Result<Vec<NodeId>, GraphError> {
+        GraphSubstrate::neighbors(self, node, edge_type, direction)
+    }
+}
+
 /// Validate every member of `nodes` once and return the scope as a set.
 ///
 /// Every public entry point below funnels through this, so "a dangling ref
@@ -37,7 +72,7 @@ use std::collections::BTreeSet;
 /// target — a bogus id in the set would otherwise silently participate in
 /// signature comparisons.
 fn validated_scope(
-    graph: &impl GraphSubstrate,
+    graph: &impl ExposureGraph,
     nodes: &[NodeId],
 ) -> Result<BTreeSet<NodeId>, GraphError> {
     let scope: BTreeSet<NodeId> = nodes.iter().copied().collect();
@@ -71,7 +106,7 @@ fn count_as_f64(count: usize) -> Result<f64, GraphError> {
 /// # Errors
 /// Returns [`GraphError`] if any member of `nodes` does not exist.
 pub fn components(
-    graph: &impl GraphSubstrate,
+    graph: &impl ExposureGraph,
     nodes: &[NodeId],
     edge_type: &str,
 ) -> Result<Vec<Vec<NodeId>>, GraphError> {
@@ -109,7 +144,7 @@ pub fn components(
 /// Returns [`GraphError`] if `nodes` is empty (the fraction of an empty set
 /// is undefined — never a silent 0.0), or if a member does not exist.
 pub fn giant_component_fraction(
-    graph: &impl GraphSubstrate,
+    graph: &impl ExposureGraph,
     nodes: &[NodeId],
     edge_type: &str,
 ) -> Result<f64, GraphError> {
@@ -139,7 +174,7 @@ pub fn giant_component_fraction(
 /// Returns [`GraphError`] if `target` is not in `nodes`, if `nodes` is
 /// empty, or if a member does not exist.
 pub fn removal_differential(
-    graph: &impl GraphSubstrate,
+    graph: &impl ExposureGraph,
     nodes: &[NodeId],
     edge_type: &str,
     target: NodeId,
@@ -175,7 +210,7 @@ pub fn removal_differential(
 /// Returns [`GraphError`] if `target` is not in `nodes`, or a member does
 /// not exist. `hops` of 0 yields an empty signature.
 pub fn degree_signature(
-    graph: &impl GraphSubstrate,
+    graph: &impl ExposureGraph,
     nodes: &[NodeId],
     edge_type: &str,
     target: NodeId,
@@ -193,7 +228,7 @@ pub fn degree_signature(
 /// [`degree_signature`]'s body, over an ALREADY-validated scope — so a
 /// class-size sweep validates once instead of once per candidate.
 fn signature_in_scope(
-    graph: &impl GraphSubstrate,
+    graph: &impl ExposureGraph,
     scope: &BTreeSet<NodeId>,
     edge_type: &str,
     target: NodeId,
@@ -225,7 +260,7 @@ fn signature_in_scope(
 /// Returns [`GraphError`] if `target` is not in `nodes`, or a member does
 /// not exist.
 pub fn signature_class_size(
-    graph: &impl GraphSubstrate,
+    graph: &impl ExposureGraph,
     nodes: &[NodeId],
     edge_type: &str,
     target: NodeId,
@@ -253,15 +288,14 @@ pub fn signature_class_size(
 /// This is the quantity a repression mode's allocation ranks over. Because
 /// it is a quotient rather than a threshold, **the failure of decapitation
 /// against distributed organizations is not a coded exception** — a
-/// redundant structure divides its own yield down and the state's own
-/// allocation rule declines the strike. Nothing anywhere says "if the org is
-/// distributed, decapitation fails"; it falls out.
+/// redundant structure divides its own yield down. Allocation ranks this
+/// value alongside other candidates; funding still depends on affordability.
 ///
 /// # Errors
 /// Returns [`GraphError`] if `target` is not in `nodes`, `nodes` is empty,
 /// or a member does not exist.
 pub fn decapitation_value(
-    graph: &impl GraphSubstrate,
+    graph: &impl ExposureGraph,
     nodes: &[NodeId],
     edge_type: &str,
     target: NodeId,
@@ -538,13 +572,12 @@ mod tests {
     }
 
     #[test]
-    fn removing_dead_weight_scores_negative_and_the_argmax_declines_it() {
+    fn removing_dead_weight_scores_negative() {
         // A declared property, not a wart to discover later: φ is a
         // FRACTION, so removing a node that carries no coordination makes
         // the remainder proportionally MORE connected. Δφ goes negative,
-        // which under a rank-order allocation means "this strike is
-        // counterproductive" — the state's own rule refuses it without any
-        // special case.
+        // which ranks this candidate below candidates with higher yield.
+        // A negative finite yield alone does not prevent allocation.
         let (mut graph, hub, mut all) = star(2);
         let isolate = graph
             .add_node("cadre")

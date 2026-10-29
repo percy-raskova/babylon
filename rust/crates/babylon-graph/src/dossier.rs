@@ -44,7 +44,7 @@
 //! recomputed from live structure at decision time. `L` records *resolution*
 //! — which nodes and ties the state has managed to see — never a verdict
 //! about a target. The verdict is [`crate::exposure`] evaluated over
-//! [`Dossier::scope`], every time it is asked for.
+//! the `Dossier` and its [`Dossier::scope`], every time it is asked for.
 //!
 //! **Growth and decay are not symmetric, and neither is conduct-keyed.**
 //! Resolution grows through named collection channels and — Sparrow's
@@ -54,7 +54,7 @@
 //! content (BSL), not arithmetic baked in here; this module supplies only
 //! the operations those rules drive.
 
-use crate::substrate::{GraphError, GraphSubstrate, NodeId};
+use crate::substrate::{Direction, GraphError, GraphSubstrate, NodeId};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// One actor's partial, biased view of another's structure.
@@ -184,13 +184,10 @@ impl Dossier {
         self.resolved_edges.values().map(BTreeSet::len).sum()
     }
 
-    /// The scope to hand [`crate::exposure`], ascending.
+    /// The known nodes in ascending order, for exposure over this dossier.
     ///
-    /// This is the whole point of the type. Every exposure function takes a
-    /// node set and is silent on whose view it is; passing this scope asks
-    /// *"what does the state BELIEVE a strike would yield"*, while passing
-    /// the substrate's own node list asks what it WOULD yield. Same
-    /// arithmetic, different question — and the state gets the first one.
+    /// Pass both this dossier and its scope to [`crate::exposure`] to ask
+    /// what its owner believes. A scope alone cannot describe known ties.
     #[must_use]
     pub fn scope(&self) -> Vec<NodeId> {
         self.resolved_nodes.iter().copied().collect()
@@ -200,10 +197,9 @@ impl Dossier {
     ///
     /// A dossier outlives the structure it describes: arrests, deaths and
     /// dissolutions leave the state holding cards for people who are gone.
-    /// [`crate::exposure`] rejects a dangling id loudly rather than reading
-    /// it as empty, so a caller that has mutated the graph asks this first
-    /// and reconciles with [`Self::forget_node`] — the state noticing, which
-    /// is an action, not an automatic correction.
+    /// Exposure over this dossier retains stale beliefs. A caller may ask
+    /// this and reconcile with [`Self::forget_node`] when the actor notices,
+    /// which is an action, not an automatic correction.
     #[must_use]
     pub fn stale_nodes(&self, graph: &impl GraphSubstrate) -> Vec<NodeId> {
         self.resolved_nodes
@@ -268,6 +264,37 @@ impl Dossier {
     }
 }
 
+impl crate::exposure::ExposureGraph for Dossier {
+    fn node_exists(&self, node: NodeId) -> bool {
+        self.knows_node(node)
+    }
+
+    fn neighbors(
+        &self,
+        node: NodeId,
+        edge_type: &str,
+        direction: Direction,
+    ) -> Result<Vec<NodeId>, GraphError> {
+        if !self.knows_node(node) {
+            return Err(GraphError {
+                message: format!("no such node: {node:?} — a dangling ref never reads empty"),
+            });
+        }
+        let mut neighbors = BTreeSet::new();
+        if let Some(ties) = self.resolved_edges.get(edge_type) {
+            for &(from, to) in ties {
+                if from == node && matches!(direction, Direction::Out | Direction::Any) {
+                    neighbors.insert(to);
+                }
+                if to == node && matches!(direction, Direction::In | Direction::Any) {
+                    neighbors.insert(from);
+                }
+            }
+        }
+        Ok(neighbors.into_iter().collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Dossier;
@@ -297,6 +324,114 @@ mod tests {
             all.push(leaf);
         }
         (graph, hub, all)
+    }
+
+    #[test]
+    fn hidden_and_forgotten_ties_do_not_connect_known_nodes() {
+        let mut graph = MemoryGraph::new();
+        let a = graph.add_node("cadre").expect("node");
+        let b = graph.add_node("cadre").expect("node");
+        graph.add_edge("coordination", a, b, 1.0).expect("tie");
+        let mut first = Dossier::new(NodeId(900));
+        first.resolve_node(a);
+        first.resolve_node(b);
+        let mut second = Dossier::new(NodeId(901));
+        second.resolve_edge("coordination", a, b);
+        let components = |dossier: &Dossier| {
+            crate::exposure::components(dossier, &dossier.scope(), "coordination")
+                .expect("known nodes")
+        };
+        assert_eq!(components(&first), vec![vec![a], vec![b]]);
+        assert_eq!(components(&second), vec![vec![a, b]]);
+        let first_value =
+            crate::exposure::decapitation_value(&first, &first.scope(), "coordination", a, 1)
+                .expect("first belief is readable");
+        let second_value =
+            crate::exposure::decapitation_value(&second, &second.scope(), "coordination", a, 1)
+                .expect("second belief is readable");
+        assert!(first_value < second_value);
+        assert_eq!(
+            crate::exposure::components(&graph, &first.scope(), "coordination").expect("truth"),
+            vec![vec![a, b]]
+        );
+        first.resolve_edge("coordination", a, b);
+        assert_eq!(components(&first), vec![vec![a, b]]);
+        assert!(first.forget_edge("coordination", a, b));
+        assert_eq!(components(&first), vec![vec![a], vec![b]]);
+    }
+
+    #[test]
+    fn belief_neighbors_preserve_direction_type_and_deduplicate() {
+        use crate::exposure::ExposureGraph;
+        use crate::substrate::Direction;
+        let (a, b, c) = (NodeId(1), NodeId(2), NodeId(3));
+        let mut dossier = Dossier::new(OBSERVER);
+        for (from, to) in [(a, c), (a, b), (b, a), (a, a)] {
+            dossier.resolve_edge("coordination", from, to);
+        }
+        dossier.resolve_edge("other", c, b);
+        assert_eq!(
+            dossier
+                .neighbors(a, "coordination", Direction::Out)
+                .expect("known"),
+            vec![a, b, c]
+        );
+        assert_eq!(
+            dossier
+                .neighbors(a, "coordination", Direction::In)
+                .expect("known"),
+            vec![a, b]
+        );
+        assert_eq!(
+            dossier
+                .neighbors(a, "coordination", Direction::Any)
+                .expect("known"),
+            vec![a, b, c]
+        );
+        assert_eq!(
+            dossier
+                .neighbors(a, "other", Direction::Any)
+                .expect("known"),
+            Vec::<NodeId>::new()
+        );
+        assert!(dossier
+            .neighbors(NodeId(404), "coordination", Direction::Any)
+            .is_err());
+        assert!(crate::exposure::components(&dossier, &[a, NodeId(404)], "coordination").is_err());
+    }
+
+    #[test]
+    fn beliefs_and_exposure_ignore_insertion_order() {
+        let edges = [
+            (NodeId(1), NodeId(3)),
+            (NodeId(3), NodeId(2)),
+            (NodeId(2), NodeId(1)),
+        ];
+        let mut first = Dossier::new(OBSERVER);
+        let mut second = Dossier::new(OBSERVER);
+        for &(from, to) in &edges {
+            first.resolve_edge("coordination", from, to);
+        }
+        for &(from, to) in edges.iter().rev() {
+            second.resolve_edge("coordination", from, to);
+        }
+        assert_eq!(first, second);
+        assert_eq!(
+            crate::exposure::components(&first, &first.scope(), "coordination").expect("first"),
+            crate::exposure::components(&second, &second.scope(), "coordination").expect("second")
+        );
+        assert_eq!(
+            crate::exposure::degree_signature(&first, &first.scope(), "coordination", NodeId(1), 3)
+                .expect("first"),
+            crate::exposure::degree_signature(
+                &second,
+                &second.scope(),
+                "coordination",
+                NodeId(1),
+                3
+            )
+            .expect("second")
+        );
     }
 
     #[test]
@@ -405,14 +540,35 @@ mod tests {
             "the card is still in the drawer until the state looks"
         );
         assert_eq!(dossier.stale_nodes(&graph), vec![gone]);
+        assert!(
+            crate::exposure::decapitation_value(
+                &dossier,
+                &dossier.scope(),
+                "coordination",
+                gone,
+                1,
+            )
+            .is_ok(),
+            "stale targets remain rankable until reconciliation"
+        );
+        assert_eq!(
+            crate::exposure::components(&dossier, &dossier.scope(), "coordination")
+                .expect("stale beliefs remain readable"),
+            vec![all.clone()]
+        );
         assert_eq!(dossier.reconcile(&graph), vec![gone]);
+        assert_eq!(
+            crate::exposure::components(&dossier, &dossier.scope(), "coordination")
+                .expect("reconciled beliefs remain readable"),
+            vec![dossier.scope()]
+        );
         assert!(!dossier.knows_node(gone));
         assert_eq!(dossier.stale_nodes(&graph).len(), 0);
     }
 
     #[test]
     fn the_state_can_be_wrong_about_what_a_strike_would_yield() {
-        // THE anti-omniscience contract. Same arithmetic, two scopes: the
+        // THE anti-omniscience contract. Same arithmetic, two views: the
         // true graph answers what a strike WOULD yield, the dossier answers
         // what the state BELIEVES it would. A partial dossier that has
         // resolved only part of a hub's reach undervalues that hub — the
@@ -430,7 +586,7 @@ mod tests {
             dossier.resolve_edge("coordination", hub, *leaf);
         }
         let believed =
-            crate::exposure::decapitation_value(&graph, &dossier.scope(), "coordination", hub, 1)
+            crate::exposure::decapitation_value(&dossier, &dossier.scope(), "coordination", hub, 1)
                 .expect("the fixture call `decapitation_value` succeeds for the authored inputs");
 
         assert!(
@@ -454,7 +610,7 @@ mod tests {
             .resolve_neighborhood(&graph, hub, "coordination")
             .expect("the fixture resolves the authored reference");
         let believed =
-            crate::exposure::decapitation_value(&graph, &dossier.scope(), "coordination", hub, 1)
+            crate::exposure::decapitation_value(&dossier, &dossier.scope(), "coordination", hub, 1)
                 .expect("the fixture call `decapitation_value` succeeds for the authored inputs");
 
         assert!(
@@ -505,14 +661,14 @@ mod tests {
         // And the disagreement is not cosmetic: it changes what each one
         // believes a strike on the hub would be worth.
         let police_view = crate::exposure::decapitation_value(
-            &graph,
+            &wide_and_shallow,
             &wide_and_shallow.scope(),
             "coordination",
             hub,
             1,
         );
         let local_view = crate::exposure::decapitation_value(
-            &graph,
+            &narrow_and_deep,
             &narrow_and_deep.scope(),
             "coordination",
             hub,

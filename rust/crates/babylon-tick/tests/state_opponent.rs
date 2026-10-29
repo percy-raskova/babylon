@@ -255,3 +255,69 @@ fn validates_owner_provenance_closed_cases_and_case_limit() {
         Err(CityPdError::SizeLimit)
     );
 }
+
+#[test]
+fn decision_basis_literal_bytes_and_each_input_are_bound() {
+    use babylon_kernel::content_digest::sha256_of;
+    // Independent preimage: domain, config digest, actor, T, signed balance,
+    // one scope ID, and one case ID followed by its open status byte.
+    let bytes: &[u8] = &[
+        b'b', b'a', b'b', b'y', b'l', b'o', b'n', b'.', b'c', b'i', b't', b'y', b'-', b'p', b'd',
+        b'-', b'd', b'e', b'c', b'i', b's', b'i', b'o', b'n', b'-', b'b', b'a', b's', b'i', b's',
+        b'.', b'v', b'1', 0, 0xe9, 0x88, 0xe4, 0x8b, 0xc0, 0x25, 0x9e, 0x0c, 0x17, 0x1d, 0xf6,
+        0x5a, 0x78, 0xaf, 0xe1, 0x67, 0xc1, 0x79, 0x0c, 0x70, 0x23, 0xdb, 0xc2, 0xa7, 0x5d, 0x0d,
+        0x02, 0x34, 0x12, 0x55, 0x9f, 0x08, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 1,
+        65, 12, 237, 234, 57, 45, 215, 71, 133, 2, 77, 224, 113, 171, 128, 148, 108, 206, 247, 15,
+        32, 231, 86, 168, 100, 113, 107, 222, 27, 18, 34, 44, 1,
+    ];
+    let mut dossier = Dossier::new(NodeId(9));
+    dossier.resolve_node(NodeId(20));
+    let state = CityPdState {
+        dossier,
+        cases: vec![case(20, 2)],
+        last_decision: None,
+    };
+    let original = decide_city_pd(&config(), &state, Currency::from_micro_units(6), 1)
+        .expect("decision")
+        .decision_basis_digest;
+    assert_eq!(
+        sha256_of(bytes),
+        [
+            85, 52, 234, 77, 234, 10, 235, 197, 174, 187, 182, 188, 179, 121, 27, 174, 187, 84, 63,
+            146, 16, 230, 87, 183, 224, 247, 68, 111, 248, 78, 209, 76
+        ]
+    );
+    assert_eq!(original, sha256_of(bytes));
+    let basis = |c: &CityPdConfig, s: &CityPdState, balance, period| {
+        decide_city_pd(c, s, Currency::from_micro_units(balance), period)
+            .expect("changed decision")
+            .decision_basis_digest
+    };
+    let mut changed_config = config();
+    changed_config.content_digest = [10; 32];
+    assert_ne!(basis(&changed_config, &state, 6, 1), original);
+    assert_ne!(basis(&config(), &state, 7, 1), original);
+    assert_ne!(basis(&config(), &state, 6, 2), original);
+    let mut changed_scope = state.clone();
+    changed_scope.dossier.resolve_node(NodeId(30));
+    assert_ne!(basis(&config(), &changed_scope, 6, 1), original);
+    let mut changed_case = state.clone();
+    changed_case.cases[0] = case(20, 3);
+    assert_ne!(basis(&config(), &changed_case, 6, 1), original);
+    let mut added_case = state.clone();
+    added_case.cases.push(case(20, 3));
+    assert_ne!(basis(&config(), &added_case, 6, 1), original);
+    let mut closed = state.clone();
+    closed.cases[0].status = CityPdCaseStatus::Closed;
+    assert_eq!(closed.cases[0].case_id, state.cases[0].case_id);
+    assert_ne!(basis(&config(), &closed, 6, 1), original);
+    let mut actor_config = config();
+    actor_config.actor_id = 10;
+    let mut actor_state = state.clone();
+    actor_state.dossier = Dossier::new(NodeId(10));
+    actor_state.dossier.resolve_node(NodeId(20));
+    actor_state.cases[0].actor_id = 10;
+    actor_state.cases[0].case_id = city_pd_case_id(&actor_state.cases[0]).expect("changed case");
+    assert_ne!(basis(&actor_config, &actor_state, 6, 1), original);
+}

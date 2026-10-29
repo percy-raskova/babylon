@@ -1,8 +1,7 @@
 use babylon_practice_contract::{decode_city_pd_config, encode_city_pd_config, CityPdConfig};
 
-#[test]
-fn config_round_trips_and_rejects_a_bad_county() {
-    let mut config = CityPdConfig {
+fn config_fixture() -> CityPdConfig {
+    CityPdConfig {
         schema_version: 1,
         campaign_id: [1; 16],
         actor_id: 9,
@@ -20,10 +19,19 @@ fn config_round_trips_and_rejects_a_bad_county() {
         appropriation_priority: 0,
         content_digest: [8; 32],
         policy_source_digest: [9; 32],
-    };
-    let bytes = encode_city_pd_config(&config).expect("valid config");
+    }
+}
+
+fn config_wire_fixture() -> String {
     let repeated = |n: u8, count: usize| format!("[{}]", vec![n.to_string(); count].join(","));
-    let expected = format!("babylon.city-pd-config.v1\0{{\"schema_version\":1,\"campaign_id\":{},\"actor_id\":9,\"authority_id\":{},\"county\":[50,54,49,54,51],\"public_account_id\":{},\"agency_account_id\":{},\"investigator_household_account_id\":{},\"investigator_entitlement_id\":{},\"labor_unit_id\":{},\"visit_hours\":2,\"hourly_wage_micros\":\"3\",\"visit_cost_micros\":\"6\",\"appropriation_micros\":\"10\",\"appropriation_priority\":0,\"content_digest\":{},\"policy_source_digest\":{}}}", repeated(1,16), repeated(2,16), repeated(3,32), repeated(4,32), repeated(5,32), repeated(6,32), repeated(7,32), repeated(8,32), repeated(9,32));
+    format!("babylon.city-pd-config.v1\0{{\"schema_version\":1,\"campaign_id\":{},\"actor_id\":9,\"authority_id\":{},\"county\":[50,54,49,54,51],\"public_account_id\":{},\"agency_account_id\":{},\"investigator_household_account_id\":{},\"investigator_entitlement_id\":{},\"labor_unit_id\":{},\"visit_hours\":2,\"hourly_wage_micros\":\"3\",\"visit_cost_micros\":\"6\",\"appropriation_micros\":\"10\",\"appropriation_priority\":0,\"content_digest\":{},\"policy_source_digest\":{}}}", repeated(1,16), repeated(2,16), repeated(3,32), repeated(4,32), repeated(5,32), repeated(6,32), repeated(7,32), repeated(8,32), repeated(9,32))
+}
+
+#[test]
+fn config_round_trips_and_rejects_a_bad_county() {
+    let mut config = config_fixture();
+    let bytes = encode_city_pd_config(&config).expect("valid config");
+    let expected = config_wire_fixture();
     assert_eq!(bytes, expected.as_bytes());
     assert_eq!(
         city_pd_config_digest(&config).expect("valid City PD test fixture"),
@@ -356,5 +364,372 @@ fn finalizing_receipts_sorts_and_deduplicates_facts() {
         )
         .expect("valid City PD test fixture"),
         finalized
+    );
+}
+
+// These literals specify the wire layout independently of the production encoder.
+const CASE_ID: [u8; 32] = [
+    65, 12, 237, 234, 57, 45, 215, 71, 133, 2, 77, 224, 113, 171, 128, 148, 108, 206, 247, 15, 32,
+    231, 86, 168, 100, 113, 107, 222, 27, 18, 34, 44,
+];
+const INTENT_ID: [u8; 32] = [
+    4, 223, 203, 183, 28, 59, 114, 113, 230, 54, 111, 242, 105, 251, 78, 63, 99, 207, 1, 103, 229,
+    55, 18, 250, 28, 79, 32, 36, 46, 144, 67, 153,
+];
+const DECISION_ID: [u8; 32] = [
+    180, 182, 149, 206, 162, 60, 49, 112, 9, 202, 42, 179, 253, 87, 116, 122, 240, 243, 99, 235,
+    148, 160, 235, 83, 93, 36, 46, 236, 193, 49, 140, 36,
+];
+const RECEIPT_ID: [u8; 32] = [
+    29, 71, 33, 249, 133, 250, 214, 206, 247, 184, 117, 30, 50, 13, 43, 1, 108, 109, 183, 150, 150,
+    169, 135, 211, 54, 206, 48, 48, 170, 180, 239, 26,
+];
+fn wire_array(bytes: &[u8]) -> String {
+    format!(
+        "[{}]",
+        bytes
+            .iter()
+            .map(u8::to_string)
+            .collect::<Vec<_>>()
+            .join(",")
+    )
+}
+fn intent_wire_fields() -> String {
+    format!("\"intent_id\":{},\"schema_version\":1,\"campaign_id\":{},\"actor_id\":9,\"authority_id\":{},\"config_digest\":{},\"decision_basis_digest\":{},\"case_id\":{},\"subject_id\":20,\"source_period\":1,\"resolve_period\":2,\"cost_micros\":\"6\"", wire_array(&INTENT_ID), wire_array(&[1; 16]), wire_array(&[2; 16]), wire_array(&[3; 32]), wire_array(&[4; 32]), wire_array(&CASE_ID))
+}
+#[test]
+fn independent_complete_wire_fixtures_include_ids_and_case_status() {
+    let case_wire = format!("babylon.city-pd-case.v1\0{{\"case_id\":{},\"actor_id\":9,\"subject_id\":20,\"county\":[50,54,49,54,51],\"public_venue_id\":{},\"source_id\":{},\"source_kind\":\"captured_public_record\",\"source_receipt_id\":null,\"case_source_witness_id\":null,\"observed_period\":0,\"acquired_period\":0,\"status\":\"open\"}}", wire_array(&CASE_ID), wire_array(&[1; 32]), wire_array(&[2; 32]));
+    let intent_wire = format!("babylon.city-pd-intent.v1\0{{{}}}", intent_wire_fields());
+    let decision_wire = format!("babylon.city-pd-decision.v1\0{{\"decision_id\":{},\"campaign_id\":{},\"actor_id\":9,\"period\":1,\"decision_basis_digest\":{},\"decision\":{{\"kind\":\"selected\",{}}}}}", wire_array(&DECISION_ID), wire_array(&[1;16]), wire_array(&[4;32]), intent_wire_fields());
+    let receipt_wire = format!("babylon.city-pd-receipt.v1\0{{\"receipt_id\":{},\"campaign_id\":{},\"actor_id\":9,\"case_id\":{},\"intent_id\":{},\"resolve_period\":2,\"outcome\":\"completed\",\"attendance_hours\":2,\"wage_micros\":\"6\",\"shift_receipt_id\":{},\"payment_receipt_id\":{},\"acquired_public_fact_ids\":[],\"case_source_evidence_id\":null,\"player_witness_evidence_id\":null}}", wire_array(&RECEIPT_ID), wire_array(&[1;16]), wire_array(&CASE_ID), wire_array(&INTENT_ID), wire_array(&[5;32]), wire_array(&[6;32]));
+    assert_eq!(
+        encode_city_pd_case(&case()).expect("case"),
+        case_wire.as_bytes()
+    );
+    assert_eq!(
+        encode_city_pd_intent(&intent()).expect("intent"),
+        intent_wire.as_bytes()
+    );
+    assert_eq!(
+        encode_city_pd_decision(&decision()).expect("decision"),
+        decision_wire.as_bytes()
+    );
+    assert_eq!(
+        encode_city_pd_receipt(&receipt()).expect("receipt"),
+        receipt_wire.as_bytes()
+    );
+    assert_eq!(
+        decode_city_pd_case(case_wire.as_bytes()).expect("case"),
+        case()
+    );
+    assert_eq!(
+        decode_city_pd_intent(intent_wire.as_bytes()).expect("intent"),
+        intent()
+    );
+    assert_eq!(
+        decode_city_pd_decision(decision_wire.as_bytes()).expect("decision"),
+        decision()
+    );
+    assert_eq!(
+        decode_city_pd_receipt(receipt_wire.as_bytes()).expect("receipt"),
+        receipt()
+    );
+    let mut closed = case();
+    closed.status = CityPdCaseStatus::Closed;
+    assert_eq!(city_pd_case_id(&closed).expect("case identity"), CASE_ID);
+    assert_eq!(
+        encode_city_pd_case(&closed).expect("closed case"),
+        case_wire
+            .replace("\"status\":\"open\"", "\"status\":\"closed\"")
+            .as_bytes()
+    );
+    assert_eq!(
+        decode_city_pd_case(
+            case_wire
+                .replacen(&wire_array(&CASE_ID), &wire_array(&[42; 32]), 1)
+                .as_bytes()
+        ),
+        Err(CityPdError::InvalidIdentity)
+    );
+    assert_eq!(
+        decode_city_pd_intent(
+            intent_wire
+                .replacen(&wire_array(&INTENT_ID), &wire_array(&[42; 32]), 1)
+                .as_bytes()
+        ),
+        Err(CityPdError::InvalidIdentity)
+    );
+    assert_eq!(
+        decode_city_pd_decision(
+            decision_wire
+                .replacen(&wire_array(&DECISION_ID), &wire_array(&[42; 32]), 1)
+                .as_bytes()
+        ),
+        Err(CityPdError::InvalidIdentity)
+    );
+    assert_eq!(
+        decode_city_pd_receipt(
+            receipt_wire
+                .replacen(&wire_array(&RECEIPT_ID), &wire_array(&[42; 32]), 1)
+                .as_bytes()
+        ),
+        Err(CityPdError::InvalidIdentity)
+    );
+}
+
+#[test]
+fn config_digest_binds_each_valid_field() {
+    let base = config_fixture();
+    let original = city_pd_config_digest(&base).expect("config");
+    let changes: &[fn(&mut CityPdConfig)] = &[
+        |c| c.campaign_id = [11; 16],
+        |c| c.actor_id = 10,
+        |c| c.authority_id = [12; 16],
+        |c| c.county = *b"26161",
+        |c| c.public_account_id = [13; 32],
+        |c| c.agency_account_id = [14; 32],
+        |c| c.investigator_household_account_id = [15; 32],
+        |c| c.investigator_entitlement_id = [16; 32],
+        |c| c.labor_unit_id = [17; 32],
+        |c| {
+            c.visit_hours = 3;
+            c.visit_cost_micros = 9;
+        },
+        |c| {
+            c.hourly_wage_micros = 4;
+            c.visit_cost_micros = 8;
+        },
+        |c| c.appropriation_micros = 11,
+        |c| c.appropriation_priority = 1,
+        |c| c.content_digest = [18; 32],
+        |c| c.policy_source_digest = [19; 32],
+    ];
+    for change in changes {
+        let mut c = base.clone();
+        change(&mut c);
+        assert_ne!(
+            city_pd_config_digest(&c).expect("valid changed config"),
+            original
+        );
+    }
+    // Hours and wage changes necessarily change cost too. Compare complete
+    // independently specified wire bytes so the derived cost cannot be omitted.
+    let mut c = base.clone();
+    c.visit_hours = 3;
+    c.visit_cost_micros = 9;
+    let expected = config_wire_fixture()
+        .replace("\"visit_hours\":2", "\"visit_hours\":3")
+        .replace("\"visit_cost_micros\":\"6\"", "\"visit_cost_micros\":\"9\"");
+    assert_eq!(
+        city_pd_config_digest(&c).expect("changed price"),
+        babylon_kernel::content_digest::sha256_of(expected.as_bytes())
+    );
+    let mut c = base;
+    c.schema_version = 2;
+    assert_eq!(
+        city_pd_config_digest(&c),
+        Err(CityPdError::UnsupportedSchema)
+    );
+}
+
+#[test]
+fn case_identity_binds_each_source_and_material_field() {
+    let base = case();
+    let changes: &[fn(&mut CityPdCase)] = &[
+        |c| c.actor_id = 10,
+        |c| c.subject_id = 21,
+        |c| c.county = *b"26161",
+        |c| c.public_venue_id = [3; 32],
+        |c| c.source_id = [4; 32],
+        |c| {
+            c.source_kind = CityPdCaseSource::ObservedOrganizerReceipt;
+            c.source_receipt_id = Some([5; 32]);
+            c.case_source_witness_id = Some([6; 32]);
+        },
+        |c| {
+            c.observed_period = 1;
+            c.acquired_period = 1;
+        },
+        |c| c.acquired_period = 1,
+    ];
+    for change in changes {
+        let mut c = base.clone();
+        change(&mut c);
+        c.case_id = city_pd_case_id(&c).expect("case body");
+        assert_ne!(c.case_id, base.case_id);
+        assert!(validate_city_pd_case(&c).is_ok());
+    }
+    let mut earlier = base.clone();
+    earlier.acquired_period = 1;
+    earlier.case_id = city_pd_case_id(&earlier).expect("acquired case");
+    let mut later = earlier.clone();
+    later.observed_period = 1;
+    later.case_id = city_pd_case_id(&later).expect("observed case");
+    assert_ne!(later.case_id, earlier.case_id);
+    assert!(validate_city_pd_case(&later).is_ok());
+    let mut observed = base.clone();
+    observed.source_kind = CityPdCaseSource::ObservedOrganizerReceipt;
+    observed.source_receipt_id = Some([5; 32]);
+    observed.case_source_witness_id = Some([6; 32]);
+    observed.case_id = city_pd_case_id(&observed).expect("observed");
+    for change in [
+        |c: &mut CityPdCase| c.source_receipt_id = Some([7; 32]),
+        |c: &mut CityPdCase| c.case_source_witness_id = Some([8; 32]),
+    ] {
+        let mut c = observed.clone();
+        change(&mut c);
+        c.case_id = city_pd_case_id(&c).expect("changed source");
+        assert_ne!(c.case_id, observed.case_id);
+        assert!(validate_city_pd_case(&c).is_ok());
+    }
+    let mut wrong_id = base.clone();
+    wrong_id.case_id = [42; 32];
+    assert_eq!(city_pd_case_id(&wrong_id).expect("case body"), base.case_id);
+    assert_eq!(
+        validate_city_pd_case(&wrong_id),
+        Err(CityPdError::InvalidIdentity)
+    );
+}
+
+#[test]
+fn intent_identity_binds_each_field_and_excludes_own_id() {
+    let base = intent();
+    let changes: &[fn(&mut CityPdIntent)] = &[
+        |i| i.campaign_id = [11; 16],
+        |i| i.actor_id = 10,
+        |i| i.authority_id = [12; 16],
+        |i| i.config_digest = [13; 32],
+        |i| i.decision_basis_digest = [14; 32],
+        |i| i.case_id = [15; 32],
+        |i| i.subject_id = 21,
+        |i| {
+            i.source_period = 2;
+            i.resolve_period = 3;
+        },
+        |i| i.cost_micros = 7,
+    ];
+    for change in changes {
+        let mut i = base.clone();
+        change(&mut i);
+        i.intent_id = city_pd_intent_id(&i).expect("intent body");
+        assert_ne!(i.intent_id, base.intent_id);
+        assert!(validate_city_pd_intent(&i).is_ok());
+    }
+    // Either timing field is bound individually, even though only a matching
+    // source/resolve pair can be admitted by the contract.
+    for change in [
+        |i: &mut CityPdIntent| i.source_period = 2,
+        |i: &mut CityPdIntent| i.resolve_period = 3,
+    ] {
+        let mut i = base.clone();
+        change(&mut i);
+        assert_ne!(city_pd_intent_id(&i).expect("intent body"), base.intent_id);
+        assert_eq!(validate_city_pd_intent(&i), Err(CityPdError::InvalidTiming));
+    }
+    let mut wrong_id = base.clone();
+    wrong_id.intent_id = [42; 32];
+    assert_eq!(city_pd_intent_id(&wrong_id).expect("body"), base.intent_id);
+    assert_eq!(
+        validate_city_pd_intent(&wrong_id),
+        Err(CityPdError::InvalidIdentity)
+    );
+    let mut unsupported = base.clone();
+    unsupported.schema_version = 2;
+    assert_ne!(
+        city_pd_intent_id(&unsupported).expect("body"),
+        base.intent_id
+    );
+    assert_eq!(
+        validate_city_pd_intent(&unsupported),
+        Err(CityPdError::UnsupportedSchema)
+    );
+}
+
+#[test]
+fn decision_identity_binds_every_field_and_nested_decision() {
+    let mut base = decision();
+    base.decision = CityPdDecision::NoCases;
+    base.decision_id = city_pd_decision_id(&base).expect("decision body");
+    let changes: &[fn(&mut CityPdDecisionReceipt)] = &[
+        |d| d.campaign_id = [11; 16],
+        |d| d.actor_id = 10,
+        |d| d.period = 2,
+        |d| d.decision_basis_digest = [12; 32],
+        |d| {
+            d.decision = CityPdDecision::NoFunds {
+                available_micros: 1,
+                required_micros: 6,
+            }
+        },
+        |d| d.decision = CityPdDecision::Selected(intent()),
+    ];
+    for change in changes {
+        let mut d = base.clone();
+        change(&mut d);
+        d.decision_id = city_pd_decision_id(&d).expect("decision body");
+        assert_ne!(d.decision_id, base.decision_id);
+        assert!(validate_city_pd_decision(&d).is_ok());
+    }
+    let original = decision();
+    let mut nested = original.clone();
+    if let CityPdDecision::Selected(i) = &mut nested.decision {
+        i.cost_micros = 7;
+        i.intent_id = city_pd_intent_id(i).expect("intent body");
+    }
+    nested.decision_id = city_pd_decision_id(&nested).expect("decision body");
+    assert_ne!(nested.decision_id, original.decision_id);
+    assert!(validate_city_pd_decision(&nested).is_ok());
+    let mut wrong_id = original.clone();
+    wrong_id.decision_id = [42; 32];
+    assert_eq!(
+        city_pd_decision_id(&wrong_id).expect("body"),
+        original.decision_id
+    );
+    assert_eq!(
+        validate_city_pd_decision(&wrong_id),
+        Err(CityPdError::InvalidIdentity)
+    );
+}
+
+#[test]
+fn receipt_identity_binds_every_field_and_excludes_own_id() {
+    let base = receipt();
+    let changes: &[fn(&mut CityPdReceipt)] = &[
+        |r| r.campaign_id = [11; 16],
+        |r| r.actor_id = 10,
+        |r| r.case_id = [12; 32],
+        |r| r.intent_id = [13; 32],
+        |r| r.resolve_period = 3,
+        |r| {
+            r.outcome = CityPdOutcome::InsufficientFunds;
+            r.attendance_hours = 0;
+            r.wage_micros = 0;
+            r.payment_receipt_id = None;
+        },
+        |r| r.attendance_hours = 3,
+        |r| r.wage_micros = 7,
+        |r| r.shift_receipt_id = Some([14; 32]),
+        |r| r.payment_receipt_id = Some([15; 32]),
+        |r| r.acquired_public_fact_ids = vec![[16; 32]],
+        |r| r.case_source_evidence_id = Some([17; 32]),
+        |r| r.player_witness_evidence_id = Some([18; 32]),
+    ];
+    for change in changes {
+        let mut r = base.clone();
+        change(&mut r);
+        r.receipt_id = city_pd_receipt_id(&r).expect("receipt body");
+        assert_ne!(r.receipt_id, base.receipt_id);
+        assert!(validate_city_pd_receipt(&r).is_ok());
+    }
+    let mut wrong_id = base.clone();
+    wrong_id.receipt_id = [42; 32];
+    assert_eq!(
+        city_pd_receipt_id(&wrong_id).expect("body"),
+        base.receipt_id
+    );
+    assert_eq!(
+        validate_city_pd_receipt(&wrong_id),
+        Err(CityPdError::InvalidIdentity)
     );
 }

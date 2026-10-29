@@ -1,0 +1,62 @@
+ADR291_first_state_opponent_observation:
+  status: accepted
+  date: '2026-10-29'
+  title: A City PD unit observes known public organizing through finite, receipted means
+  issue: PER-355
+  authority: Director approval of the first opponent contract on 2026-10-29
+  evidence_class: Designed
+  context: |
+    The first state opponent must have its own authority, objective, resources,
+    and partial knowledge, and must act in the real campaign. ADR184 defines
+    organization-owned capacity and dossiers. The existing intent allowlist
+    admits organizer practice only. Neither the actor nor this action is live.
+  decision: |
+    Approve OBSERVE_PUBLIC_ACTIVITY: a priced, overt City PD visit to an
+    already-known, in-jurisdiction public organizing activity, selected from
+    the agency's own cases and resolved in the next period. The visit may add
+    only eligible provenance-bearing public facts available at that visit to
+    that agency's private case and dossier. It may obtain no new facts. The
+    player sees an encounter only through a lawfully disclosed witness or venue.
+
+    Approve AgencyAppropriation as a finite transfer from the captured Wayne
+    county-scoped public account to the agency organization account, explicitly
+    a Designed fiscal proxy, not a literal municipal treasury. The appropriation
+    competes against other captured public allocations under declared priorities.
+    A named investigator receives a real agency-to-household wage for bounded
+    attendance; account sources, recipient, time and payment are captured and
+    reconciled. A budget consequence is actual and receipted, not preordained.
+
+    The agency has independent authority and an objective of documenting known
+    public organizing. Its decisions, resources and knowledge may respond to
+    player acts that it lawfully observes. Candidate evaluation cannot see hidden
+    edges, actors, attributes or undisclosed player intents. An empty candidate
+    set means no visit. State and player material effects enter the same next
+    four-week period, detached execution, atomic commit and replay identity.
+
+    The approval adds no arrest, coercion, seizure, guaranteed discovery,
+    hidden-truth access, automatic relationship change or terminal outcome. It
+    adds no heat scalar, primitive or fixed political-response curve. Values and
+    fictional bindings are Designed unless separately backed by named sourced
+    wage or service data; no observed staffing count is implied.
+  implementation_status: |
+    Approved contract only. Native operation, exact allowlist, campaign content,
+    accounting, private knowledge, receipts, projections and qualification
+    remain to be implemented. No dead allowance is admitted in advance. This
+    bounded witness is partial PER-355, not its 14-cell acceptance.
+  contract_disposition: |
+    Update the active schema and conformance contracts with the implementation.
+    Captured content, agency state and pending intents enter canonical world
+    identity and checkpoint restart. Unsupported old active formats refuse
+    explicitly; no compatibility path or old-save migration is added solely to
+    preserve a prior version. Intentional baseline changes use the existing
+    ceremony, generated record and required trailer.
+  verification: |
+    Require hidden-edge and hidden-attribute noninterference, separate beliefs,
+    deterministic permutations, actual public-to-agency and agency-to-household
+    conservation, shared finite time, unavailable and unproductive outcomes,
+    lawful observed receipt, no-agency budget counterfactual, marker-last failed
+    commit, and byte-identical checkpoint restart and replay.
+  related:
+    - ADR184_capacity_belongs_to_organizations
+    - ADR262_native_organizer_practice
+    - ADR289_retain_postgresql_campaign_owner_and_retire_sqlite_experiment

@@ -515,11 +515,19 @@ def run_lifecycle(
     output = child.stdout
     buffer = b""
 
+    def scope_matches(actual: object, expected: dict[str, object]) -> bool:
+        return (
+            isinstance(actual, dict)
+            and set(actual) == {"epoch", "campaign_id"}
+            and type(actual.get("epoch")) is int
+            and actual == expected
+        )
+
     def receive(
         kind: str,
         request_id: int | None = None,
         *,
-        advance_scope: object = None,
+        advance_scope: dict[str, object] | None = None,
         advance_tick: int | None = None,
     ) -> dict[str, object]:
         nonlocal buffer
@@ -560,7 +568,7 @@ def run_lifecycle(
                     or set(message) != {"type", "request_id", "scope", "resolve_tick", "stage"}
                     or type(message.get("request_id")) is not int
                     or message.get("request_id") != request_id
-                    or message.get("scope") != advance_scope
+                    or not scope_matches(message.get("scope"), advance_scope)
                     or type(message.get("resolve_tick")) is not int
                     or message.get("resolve_tick") != advance_tick
                     or stage_index >= len(ADVANCE_STAGES)
@@ -571,7 +579,11 @@ def run_lifecycle(
                     )
                 stage_index += 1
                 continue
-            if message.get("type") == kind and message.get("request_id") == request_id:
+            if (
+                message.get("type") == kind
+                and (request_id is None or type(message.get("request_id")) is int)
+                and message.get("request_id") == request_id
+            ):
                 if kind == "committed" and stage_index != len(ADVANCE_STAGES):
                     raise ObserverLaunchError("installation check commit omitted advance stages")
                 return message
@@ -601,6 +613,8 @@ def run_lifecycle(
             raise ObserverLaunchError(
                 f"installation check requires runtime session protocol {RUNTIME_SESSION_PROTOCOL_VERSION}"
             )
+        if not scope_matches(hello.get("scope"), {"epoch": 0, "campaign_id": None}):
+            raise ObserverLaunchError("installation check Hello changed campaign scope")
         new = isinstance(target, NewCampaignTarget)
         requested = {"type": "new" if new else "open", "campaign_id": str(target.campaign)}
         if isinstance(target, NewCampaignTarget):
@@ -614,12 +628,8 @@ def run_lifecycle(
             ) // 1000
         tail = ready["tail"]
         scope = ready["scope"]
-        if (
-            not isinstance(scope, dict)
-            or set(scope) != {"epoch", "campaign_id"}
-            or type(scope.get("epoch")) is not int
-            or scope.get("epoch") != 1
-            or scope.get("campaign_id") != str(target.campaign)
+        if not isinstance(scope, dict) or not scope_matches(
+            scope, {"epoch": 1, "campaign_id": str(target.campaign)}
         ):
             raise ObserverLaunchError("installation check Ready changed campaign scope")
         foundation = ready.get("foundation_digest")
@@ -641,7 +651,7 @@ def run_lifecycle(
             committed = receive("committed", 2, advance_scope=scope, advance_tick=1)
             if timings_us is not None:
                 timings_us["advance_commit_ack"] = (time.monotonic_ns() - advance_started) // 1000
-            if committed["scope"] != scope:
+            if not scope_matches(committed.get("scope"), scope):
                 raise ObserverLaunchError("installation check commit changed campaign scope")
             tail = committed["tail"]
         if not isinstance(tail, dict):
@@ -649,7 +659,8 @@ def run_lifecycle(
         if (
             type(tail.get("resolve_tick")) is not int
             or tail.get("resolve_tick") != 1
-            or re.fullmatch(r"[0-9a-f]{64}", str(tail.get("tick_content_hash"))) is None
+            or type(tail.get("tick_content_hash")) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", tail["tick_content_hash"]) is None
         ):
             raise ObserverLaunchError(
                 "installation check did not observe one hashed committed period"
@@ -657,7 +668,7 @@ def run_lifecycle(
         stop_id = 3 if advanced else 2
         send("stop", stop_id, scope)
         stopped = receive("stopped", stop_id)
-        if stopped.get("scope") != scope:
+        if not scope_matches(stopped.get("scope"), scope):
             raise ObserverLaunchError("installation check Stop changed campaign scope")
         child.stdin.close()
         if _finish_runtime(child) != 0:
@@ -692,7 +703,7 @@ def _national_economy_status(
     status = json.loads(result.stdout)
     exact = {
         "record": "economy-status",
-        "schema_version": 1,
+        "schema_version": 2,
         "campaign_id": str(campaign),
         "resolve_tick": 1,
         "foundation_digest": expected[0],
@@ -726,7 +737,7 @@ def _national_economy_status(
             "national economic snapshot has no completed household or market accounts"
         )
     if any(
-        re.fullmatch(r"[0-9a-f]{64}", str(status.get(key))) is None
+        type(status.get(key)) is not str or re.fullmatch(r"[0-9a-f]{64}", status[key]) is None
         for key in ("nominal_world_hash", "envelope_digest")
     ):
         raise ObserverLaunchError("national economic snapshot lacks authenticated hash evidence")
@@ -776,7 +787,8 @@ def check_installation(
         not isinstance(status, dict)
         or status.get("campaign_id") != str(campaign)
         or (
-            status.get("durable_tick") != 1
+            type(status.get("durable_tick")) is not int
+            or status.get("durable_tick") != 1
             or status.get("tick_content_hash") != first[1]["tick_content_hash"]
         )
     ):

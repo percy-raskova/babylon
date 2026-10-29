@@ -579,9 +579,7 @@ def test_single_clippy_pass_preserves_the_existing_pedantic_package_boundary() -
     assert opted_in == sorted(PEDANTIC_RUST_PACKAGES)
 
 
-def test_client_postgres_shard_installs_its_native_headers_and_uses_current_cache_fallback() -> (
-    None
-):
+def test_client_postgres_shards_install_native_headers_and_use_current_cache_fallback() -> None:
     action = yaml.safe_load(
         (REPOSITORY_ROOT / ".github/actions/bootstrap-persistence/action.yml").read_text()
     )
@@ -589,7 +587,9 @@ def test_client_postgres_shard_installs_its_native_headers_and_uses_current_cach
     headers = next(
         step for step in steps if step.get("name") == "Install Bevy client system dependencies"
     )
-    assert headers["if"] == "${{ inputs.cache-key == 'client' }}"
+    assert headers["if"] == (
+        "${{ inputs.cache-key == 'client' || inputs.cache-key == 'session_progress' }}"
+    )
     assert headers["run"].split() == [
         "tools/install_ci_apt_packages.sh",
         "libasound2-dev",

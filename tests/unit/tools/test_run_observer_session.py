@@ -871,6 +871,8 @@ def _smoke_transcript_children(
     progress_rows: list[dict[str, Any]] | None = None,
     progress_before_ready: bool = False,
     ready_changes: dict[str, object] | None = None,
+    row_changes: tuple[str, dict[str, object]] | None = None,
+    durable_tick: object = 1,
 ) -> list[list[str]]:
     """Keep the real launcher/session code; replace only native process boundaries."""
     calls: list[list[str]] = []
@@ -932,6 +934,9 @@ def _smoke_transcript_children(
                         "scope": scope,
                     }
                 )
+            if row_changes is not None and new:
+                kind, changes = row_changes
+                next(row for row in rows if row["type"] == kind).update(changes)
             read_fd, write_fd = os.pipe()
             self.stdout = os.fdopen(read_fd, "rb")
             with os.fdopen(write_fd, "wb") as output:
@@ -955,7 +960,11 @@ def _smoke_transcript_children(
             args,
             0,
             stdout=json.dumps(
-                {"campaign_id": str(CAMPAIGN), "durable_tick": 1, "tick_content_hash": "a" * 64}
+                {
+                    "campaign_id": str(CAMPAIGN),
+                    "durable_tick": durable_tick,
+                    "tick_content_hash": "a" * 64,
+                }
             ),
         )
 
@@ -1087,7 +1096,7 @@ def test_preparation_refuses_database_before_reader_mutations(
 def _national_snapshot_report() -> dict[str, object]:
     return {
         "record": "economy-status",
-        "schema_version": 1,
+        "schema_version": 2,
         "campaign_id": str(CAMPAIGN),
         "resolve_tick": 1,
         "foundation_digest": "b" * 64,
@@ -1131,6 +1140,10 @@ def test_national_smoke_requires_the_authenticated_economic_snapshot(
 @pytest.mark.parametrize(
     "field,value",
     [
+        ("schema_version", 1),
+        ("schema_version", True),
+        ("schema_version", "2"),
+        ("schema_version", 3),
         ("county_count", 83),
         ("exact_national_roster", False),
         ("domestic_household_locations", 3143),
@@ -1165,6 +1178,22 @@ def test_national_smoke_refuses_incomplete_or_mismatched_economic_read(
     assert "national economic snapshot" in output.err
 
 
+@pytest.mark.parametrize("field", ["nominal_world_hash", "envelope_digest"])
+def test_national_smoke_refuses_numeric_hash_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+) -> None:
+    report = _national_snapshot_report()
+    report[field] = int("1" * 64)
+    _smoke_transcript_children(monkeypatch, tmp_path, economic_report=report)
+    assert launcher.main(["--smoke", "--no-build", "--preset", "national-world"]) == 1
+    output = capsys.readouterr()
+    assert not output.out
+    assert "national economic snapshot lacks authenticated hash evidence" in output.err
+
+
 def test_installation_check_admits_current_protocol_and_exact_progress_stream(
     monkeypatch, tmp_path, capsys
 ):
@@ -1184,6 +1213,83 @@ def test_installation_check_admits_current_protocol_and_exact_progress_stream(
             row["scope"] == {"epoch": 1, "campaign_id": str(CAMPAIGN)} for row in requests[1:]
         )
     assert json.loads(capsys.readouterr().out)["periods"] == 1
+
+
+@pytest.mark.parametrize("durable_tick", [True, 1.0])
+def test_installation_check_refuses_untyped_native_durable_tick(
+    monkeypatch, tmp_path, capsys, durable_tick
+):
+    _smoke_transcript_children(monkeypatch, tmp_path, durable_tick=durable_tick)
+    assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 1
+    assert "native reader disagrees with the committed period" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "kind,changes,error",
+    [
+        ("hello", {"scope": {"epoch": False, "campaign_id": None}}, "Hello changed campaign scope"),
+        ("hello", {"scope": {"epoch": 0.0, "campaign_id": None}}, "Hello changed campaign scope"),
+        ("ready", {"request_id": True}, "unexpected protocol response"),
+        ("ready", {"request_id": 1.0}, "unexpected protocol response"),
+        ("committed", {"request_id": 2.0}, "unexpected protocol response"),
+        ("stopped", {"request_id": 3.0}, "unexpected protocol response"),
+        (
+            "advance_progress",
+            {"scope": {"epoch": True, "campaign_id": str(CAMPAIGN)}},
+            "invalid advance progress",
+        ),
+        (
+            "advance_progress",
+            {"scope": {"epoch": 1.0, "campaign_id": str(CAMPAIGN)}},
+            "invalid advance progress",
+        ),
+        (
+            "committed",
+            {"scope": {"epoch": True, "campaign_id": str(CAMPAIGN)}},
+            "commit changed campaign scope",
+        ),
+        (
+            "committed",
+            {"scope": {"epoch": 1.0, "campaign_id": str(CAMPAIGN)}},
+            "commit changed campaign scope",
+        ),
+        (
+            "stopped",
+            {"scope": {"epoch": True, "campaign_id": str(CAMPAIGN)}},
+            "Stop changed campaign scope",
+        ),
+        (
+            "stopped",
+            {"scope": {"epoch": 1.0, "campaign_id": str(CAMPAIGN)}},
+            "Stop changed campaign scope",
+        ),
+    ],
+)
+def test_installation_check_refuses_untyped_lifecycle_identity(
+    monkeypatch, tmp_path, capsys, kind, changes, error
+):
+    _smoke_transcript_children(monkeypatch, tmp_path, row_changes=(kind, changes))
+    assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 1
+    assert error in capsys.readouterr().err
+
+
+def test_lifecycle_refuses_numeric_committed_hash(monkeypatch, tmp_path):
+    _smoke_transcript_children(
+        monkeypatch,
+        tmp_path,
+        row_changes=(
+            "committed",
+            {"tail": {"resolve_tick": 1, "tick_content_hash": int("1" * 64)}},
+        ),
+    )
+    with pytest.raises(launcher.ObserverLaunchError, match="one hashed committed period"):
+        launcher.run_lifecycle(
+            tmp_path / "runtime",
+            tmp_path,
+            {},
+            tmp_path / "defines.toml",
+            launcher.NewCampaignTarget(CAMPAIGN, "standard"),
+        )
 
 
 @pytest.mark.parametrize("version", [5, 6, 7, 8, 9, 10, 10.0, 11.0, 12])

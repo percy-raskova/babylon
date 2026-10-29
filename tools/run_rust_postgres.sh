@@ -13,7 +13,10 @@ readonly CARGO_BUILD_JOBS
 readonly TEST_HARNESS_ACK="I_UNDERSTAND_THIS_DISPOSABLE_RUNTIME_DROPS_ITS_SCRATCH_DATABASES_AND_ROLES"
 readonly LIVE_FOCUS="${BABYLON_POSTGRES_LIVE_FOCUS-runtime_smoke}"
 if [ "${1:-}" = --national-native-open ] || [ "${1:-}" = --national-native-lock-held ]; then
+  # The hook does not follow external sources; this helper calls die indirectly.
+  # shellcheck source=tools/postgres_national_lifecycle.sh disable=SC1091
   source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"
+  # shellcheck disable=SC2329
   die() { printf 'run_rust_postgres: %s\n' "$*" >&2; exit 2; }
   national_native_open "$@"
   exit "$?"
@@ -60,7 +63,8 @@ case "$LIVE_FOCUS" in
 esac
 
 if [ "$LIVE_FOCUS" = national_storage ]; then
-  # shellcheck source=tools/postgres_national_lifecycle.sh
+  # The hook does not follow external sources.
+  # shellcheck source=tools/postgres_national_lifecycle.sh disable=SC1091
   source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"
   national_capture_selection
   national_lock_entry "$@"
@@ -442,6 +446,10 @@ if [ "$status" -eq 0 ]; then
         cd "$REPO_ROOT"
         run_phase session_progress 600 env BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN" \
           mise run play -- --smoke --no-build --preset standard || status=$?
+      fi
+      if [ "$status" -eq 0 ]; then
+        run_phase session_progress_national 600 env BABYLON_RUNTIME_DSN="$BOOTSTRAP_DSN" \
+          mise run play -- --smoke --no-build --preset national-world || status=$?
       fi
       ;;
     reference_integrity)

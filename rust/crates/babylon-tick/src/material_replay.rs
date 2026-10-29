@@ -139,12 +139,12 @@ impl MaterialBaseInputs<'_> {
             .ok_or(MaterialWorldError::Wire)?;
         let gift = babylon_practice_contract::organizer_aid_commitment(config, opening, accepted)
             .map_err(|error| MaterialBaseError::World(error.into()))?;
-        let CircuitAccounting::Monetary(economy) = &self.opening.state().accounting else {
+        let CircuitAccounting::Monetary(_) = &self.opening.state().accounting else {
             return Err(MaterialWorldError::Wire.into());
         };
-        let mut matches = economy
-            .aid
-            .mandates
+        let mut matches = self
+            .catalog
+            .aid_mandates
             .iter()
             .filter(|row| row.id == gift.mandate_id);
         let mandate = matches
@@ -201,6 +201,7 @@ impl MaterialBaseInputs<'_> {
             ) {
                 (Some(config), Some(organizer)) => {
                     crate::material_world::organizer_collection::input(
+                        self.catalog,
                         config,
                         organizer,
                         self.commitment,
@@ -475,7 +476,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         if duration.validate().is_err() {
             return Err(MaterialReplayError::Horizon);
         }
-        if material.catalog_digest() != catalog.catalog_digest {
+        if material.catalog_digest() != catalog.catalog_digest() {
             return Err(MaterialReplayError::Material(MaterialWorldError::Wire));
         }
         graph.validate_material_cycle()?;
@@ -634,7 +635,7 @@ impl MaterialReplaySession<HypergraphStore> {
         let tick = material.completed_tick();
         // A foreign catalog is a provenance refusal of the stored frame, not a
         // horizon refusal; `new` refuses the same discrepancy with `Wire`.
-        if material.catalog_digest() != self.catalog.catalog_digest {
+        if material.catalog_digest() != self.catalog.catalog_digest() {
             return Err(MaterialReplayError::Material(MaterialWorldError::Wire));
         }
         if tick == 0 || !self.duration.contains(tick) {

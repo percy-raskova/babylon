@@ -92,8 +92,14 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
             pricing: PricePolicy::Fixed,
         })
         .collect();
+    let household_needs = vec![HouseholdNeed {
+        principal_id: household(),
+        good_id: good(2),
+        unit_id: units(),
+        basis: HouseholdNeedBasis::Persons,
+        units_per_basis: 1,
+    }];
     let recurring = RecurringEconomy {
-        service_inputs: vec![],
         households: vec![HouseholdCohort {
             kind: babylon_material_circuit::HouseholdKind::Ordinary,
             principal_id: household(),
@@ -105,13 +111,6 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
             good_id: good(2),
             unit_id: units(),
             quantity: 8,
-        }],
-        household_needs: vec![HouseholdNeed {
-            principal_id: household(),
-            good_id: good(2),
-            unit_id: units(),
-            basis: HouseholdNeedBasis::Persons,
-            units_per_basis: 1,
         }],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: household(),
@@ -156,7 +155,7 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         last_household_admission_period: 0,
         last_household_consumption_period: 0,
     };
-    let catalog = MaterialCatalog {
+    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2, 3]
             .into_iter()
@@ -240,9 +239,8 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         maintenance_binding: None,
         aid_mandates: vec![],
         household_time_policy: vec![],
-        service_inputs: recurring.service_inputs.clone(),
-        household_needs: recurring.household_needs.clone(),
-        catalog_digest: [0; 32],
+        service_inputs: vec![],
+        household_needs: household_needs.clone(),
     };
     let state = MaterialCircuitState {
         period: 1,
@@ -562,14 +560,14 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
     // catalog digest, so these values intentionally differ from the pre-split
     // frame; they pin the post-split encoding as well as the quantity trajectory.
     let expected_digests = [
-        "42761fc58201184fb0eaa8015e99566cfc0c44ea6eae2c7ae67a3a1952598b8f",
-        "3842e4812265a774fe00352b9d09f21f7d917870768c1f8dfafb6469f5df158d",
-        "bea01cb8bc108824a8c4477ba85bbd0115f53bbbf951542e643a6dc42e65ca8c",
-        "85596f6e8ea75ac24dda95ceafa017b82302ffc83f0407d352312a30fb388b88",
-        "989a8816fa999712139a4a4e688e13696f76430545ecfb543da8ce72d4a49230",
-        "95dbfbae8ab41472c12295606d294576fcc7b50c03bacb9fccb527f9eef5022c",
-        "26bb574058cf105944755de02419e2d91ff27d0f71399c9c287a42d06f0a5e8a",
-        "ec2bfc11631a89b1a97ba1d48b0b6f1b8f959aa380c9169a7cd47cd6dbf808dd",
+        "f0566333b93b2857bbef3cb4ed23e2bcfc378d2019b706bdc88f4a92f80e09a8",
+        "c1a602a2f89eeda9cccd8993d3dce85b1b0db376bdfdf57308677f805893fde6",
+        "367adea88fe4aa925f9d6c936e6aed7344f9f9bd7334eb40550afdb4eb9b208b",
+        "cdb6057ffea9a2e9f1402184a95d1a7e96b1030f1de2e52163b4332e99ccdbce",
+        "9b376b0f74d3b764278954fe5f5e0d5cdf5ac0efef157c38ff2ef48cba3e89c7",
+        "b29f20e312c99b84ecdd66fcdfd35bed12a4f6df038eeccc7dfb39ed22e2f37b",
+        "114b5aad8e490c7c3ad550635353a541f2e52baf5276567a5ab4656f5724cd05",
+        "0a489dedd2a35a7bf2b95c5aa3755ade9b0c3479806d7bfd2bc875c1dddcdf50",
     ];
     assert_eq!(
         digests
@@ -599,9 +597,10 @@ pub(crate) fn eight_period_control_reproduces_paid_idle_withdrawal_recovery_and_
 #[test]
 pub(crate) fn prior_funded_transit_suppresses_duplicate_procurement_and_does_not_supply_current_production(
 ) {
-    let (mut catalog, state) = opening();
+    let (catalog, state) = opening();
+    let mut catalog = catalog.into_definition();
     catalog.route_stages[0].travel_periods = 3;
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     let second = babylon_material_circuit::advance_material_circuit(&catalog, &first.state)
@@ -806,7 +805,8 @@ pub(crate) fn retained_finite_purchase_restores_attendance_when_recurring_purcha
 }
 
 pub(crate) fn producer_retail_opening() -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = opening();
+    let (catalog, mut state) = opening();
+    let mut catalog = catalog.into_definition();
     catalog.merchants.push(MerchantHandling {
         site_id: site(1),
         location: "county:26163"
@@ -824,7 +824,7 @@ pub(crate) fn producer_retail_opening() -> (MaterialCatalog, MaterialCircuitStat
             unit_id: units(),
             hours_per_unit: 1,
         });
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+
     state
         .corridor_capacities
         .extend((1..=9).map(|period| CorridorCapacity {
@@ -846,7 +846,6 @@ pub(crate) fn producer_retail_opening() -> (MaterialCatalog, MaterialCircuitStat
         basis: HouseholdNeedBasis::Persons,
         units_per_basis: 1,
     };
-    rows.household_needs.push(need.clone());
     catalog.household_needs.push(need);
     rows.household_purchases[0].enabled = false;
     rows.household_purchases.push(HouseholdPurchasePolicy {
@@ -870,6 +869,7 @@ pub(crate) fn producer_retail_opening() -> (MaterialCatalog, MaterialCircuitStat
     });
     economy.costs =
         HistoricalCostBook::from_snapshot(captured).expect("the snapshot admits the derived value");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 
@@ -975,9 +975,11 @@ pub(crate) fn cash_backed_unfilled_retail_demand_can_restart_a_producer_with_no_
 #[test]
 pub(crate) fn a_household_purchase_without_a_recipient_stock_is_refused_before_reserving_cash() {
     let (catalog, mut state) = producer_retail_opening();
+    let mut catalog = catalog.into_definition();
+    catalog.household_needs.retain(|row| row.good_id != good(1));
+    let catalog = MaterialCatalog::try_new(catalog).expect("valid fixture catalog");
     let rows = recurring_mut(&mut state);
     rows.household_stocks.retain(|row| row.good_id != good(1));
-    rows.household_needs.retain(|row| row.good_id != good(1));
     rows.household_purchases
         .retain(|row| row.good_id != good(1));
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
@@ -1024,4 +1026,24 @@ pub(crate) fn a_household_purchase_without_a_recipient_stock_is_refused_before_r
         Err(MaterialCircuitError::FinalDemandInvariant)
     );
     assert_eq!(state, original);
+}
+
+#[test]
+fn household_needs_are_catalog_authority_and_foreign_catalog_refuses_state() {
+    let (catalog, state) = opening();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
+        .expect("original catalog admits state");
+    let mut foreign = catalog.clone().into_definition();
+    foreign.household_needs[0].units_per_basis += 1;
+    let foreign = MaterialCatalog::try_new(foreign).expect("altered catalog is valid");
+    let foreign_bytes = babylon_material_circuit::encode_material_circuit_state(&foreign, &state)
+        .expect("altered catalog admits the same dynamic state");
+    let payload_offset =
+        babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1 + 2 + 32;
+    assert_eq!(&bytes[payload_offset..], &foreign_bytes[payload_offset..]);
+    assert_ne!(catalog.catalog_digest(), foreign.catalog_digest());
+    assert_eq!(
+        babylon_material_circuit::decode_material_circuit_state(&foreign, &bytes),
+        Err(MaterialCircuitError::WireDomain),
+    );
 }

@@ -125,7 +125,7 @@ fn process() -> ProcessId {
     reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
 )]
 fn opening() -> (MaterialCatalog, MaterialCircuitState) {
-    let catalog = MaterialCatalog::try_new(MaterialCatalog {
+    let catalog = MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: (1..=2)
             .map(|id| SiteLogisticsNode {
@@ -180,7 +180,6 @@ fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         household_time_policy: vec![],
         service_inputs: vec![],
         household_needs: vec![],
-        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
     })
     .expect("the fixture catalog canonicalizes");
     let state = MaterialCircuitState {

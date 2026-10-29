@@ -3,7 +3,7 @@ use super::organizer_aid_fixture;
 use super::organizer_aid_fixture::{Materials, Session, MATERIAL, PRACTICE, PRODUCTS};
 use babylon_material_circuit::{
     AccountId, CashAccount, CircuitAccounting, FinalDemandPrincipal, FinalDemandPrincipalId,
-    HistoricalCostBook, HouseholdTimeAccounting, MonetaryBook, StockCarryingValue,
+    HistoricalCostBook, MonetaryBook, StockCarryingValue,
 };
 use babylon_practice_contract::{
     OrganizerAidKind, OrganizerConfig, OrganizerHouseholdBinding, OrganizerPartnerPolicy,
@@ -51,14 +51,14 @@ fn opening() -> Materials {
         .clone();
     stock.principal_id = remote;
     rows.household_stocks.push(stock);
-    let mut need = rows
+    let mut need = catalog
         .household_needs
         .iter()
         .find(|r| r.principal_id == organizer_aid_fixture::recipient())
         .expect("the fixture holds the searched element")
         .clone();
     need.principal_id = remote;
-    rows.household_needs.push(need);
+    catalog.household_needs.push(need);
     let mut purchase = rows
         .household_purchases
         .iter()
@@ -72,25 +72,22 @@ fn opening() -> Materials {
         .find(|r| r.principal_id == organizer_aid_fixture::household())
         .expect("the fixture holds the searched element")
         .quantity = 32;
-    let HouseholdTimeAccounting::Modeled(time) = &mut e.household_time else {
-        unreachable!()
-    };
-    let mut policy = time
-        .policies
+    let mut policy = catalog
+        .household_time_policy
         .iter()
         .find(|r| r.principal_id == organizer_aid_fixture::recipient())
         .expect("the fixture holds the searched element")
         .clone();
     policy.principal_id = remote;
-    time.policies.push(policy);
-    e.aid.mandates[0].maximum_quantity = 1;
+    catalog.household_time_policy.push(policy);
+    catalog.aid_mandates[0].maximum_quantity = 1;
     let mut remote_mandate = organizer_aid_fixture::mandate(true);
     remote_mandate.id = [93; 32];
     remote_mandate.source_hash = [94; 32];
     remote_mandate.recipient = remote;
     remote_mandate.recipient_actor = 121;
     remote_mandate.maximum_quantity = 1;
-    e.aid.mandates.push(remote_mandate);
+    catalog.aid_mandates.push(remote_mandate);
     let mut stocks = e.costs.snapshot().stocks;
     stocks
         .iter_mut()
@@ -126,18 +123,7 @@ fn opening() -> Materials {
     .expect("the fixture opens the authored source");
     e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
         .expect("the fixture opens the authored source");
-    let CircuitAccounting::Monetary(e) = &state.accounting else {
-        unreachable!()
-    };
-    catalog.aid_mandates.clone_from(&e.aid.mandates);
-    if let Some(recurring) = &e.recurring {
-        catalog
-            .household_needs
-            .clone_from(&recurring.household_needs);
-    }
-    if let HouseholdTimeAccounting::Modeled(time) = &e.household_time {
-        catalog.household_time_policy.clone_from(&time.policies);
-    }
+
     Materials { catalog, state }
 }
 

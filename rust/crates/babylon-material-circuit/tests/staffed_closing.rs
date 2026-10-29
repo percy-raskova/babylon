@@ -4,7 +4,6 @@ use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::MaterialCatalog;
-use babylon_material_circuit::UNSEALED_CATALOG_DIGEST;
 use babylon_material_circuit::{
     advance_staffing, close_material_period, CapacityRow, CommodityDefinition, CorridorCapacity,
     CorridorId, GoodId, InputOutputCoefficient, InventoryRow, LaborCapacityRow, LaborCoefficient,
@@ -87,7 +86,7 @@ fn opening() -> (MaterialCatalog, MaterialCircuitState) {
             production_commitments: Vec::new(),
         };
         (
-            MaterialCatalog::try_new(MaterialCatalog {
+            MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 merchants: vec![],
                 handling_coefficients: vec![],
@@ -133,7 +132,6 @@ fn opening() -> (MaterialCatalog, MaterialCircuitState) {
                 household_time_policy: Vec::new(),
                 service_inputs: Vec::new(),
                 household_needs: Vec::new(),
-                catalog_digest: UNSEALED_CATALOG_DIGEST,
             })
             .expect("the authored fixture catalog is valid"),
             state,
@@ -142,7 +140,8 @@ fn opening() -> (MaterialCatalog, MaterialCircuitState) {
 }
 
 fn arrival_opening() -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = opening();
+    let (catalog, mut state) = opening();
+    let mut catalog = catalog.into_definition();
     state.inventory[0].site_id = site(2);
     state.inventory[0].quantity = 4;
     state.capacities[0].period = 3;
@@ -193,7 +192,7 @@ fn arrival_opening() -> (MaterialCatalog, MaterialCircuitState) {
         stage_index: 0,
         corridor_id: CorridorId::from_bytes([1; 32]),
     });
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 
@@ -268,7 +267,8 @@ fn real_arrival_requests_work_with_zero_employment_then_plans_next_period() {
 }
 
 fn shared_opening() -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = opening();
+    let (catalog, mut state) = opening();
+    let mut catalog = catalog.into_definition();
     for id in [2, 3] {
         let mut output = catalog.process_outputs[0].clone();
         output.process_id = process(id);
@@ -290,7 +290,7 @@ fn shared_opening() -> (MaterialCatalog, MaterialCircuitState) {
         capacity.available_batches = if id == 2 { 4 } else { 0 };
         state.capacities.push(capacity);
     }
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 
@@ -416,7 +416,8 @@ fn invalid_next_labor_refuses_without_mutating_opening_or_publishing_a_partial_c
 
 #[test]
 fn request_hour_overflow_and_closing_period_overflow_refuse_atomically() {
-    let (mut catalog, mut state) = opening();
+    let (catalog, mut state) = opening();
+    let mut catalog = catalog.into_definition();
     catalog.input_coefficients.clear();
     state.capacities[0].available_batches = 2;
     catalog.labor_coefficients[0].quantity_per_batch = u64::MAX;
@@ -487,7 +488,8 @@ fn zero_current_labor_still_blocks_execution_before_unconstrained_next_period_re
 
 #[test]
 fn replacement_labor_is_sorted_before_the_planner_searches_multiple_principals() {
-    let (mut catalog, mut state) = opening();
+    let (catalog, mut state) = opening();
+    let mut catalog = catalog.into_definition();
     let mut output = catalog.process_outputs[0].clone();
     output.process_id = process(2);
     output.site_id = site(2);
@@ -498,7 +500,7 @@ fn replacement_labor_is_sorted_before_the_planner_searches_multiple_principals()
     let mut coefficient = catalog.labor_coefficients[0].clone();
     coefficient.process_id = process(2);
     catalog.labor_coefficients.push(coefficient);
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let mut inventory = state.inventory[0].clone();
     inventory.site_id = site(2);
     state.inventory.push(inventory);

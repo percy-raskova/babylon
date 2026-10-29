@@ -342,7 +342,7 @@ impl MaterialRuntimeFoundation {
             organizer,
         } = admitted;
         if register.state() != &state
-            || register.catalog_digest() != catalog.catalog_digest
+            || register.catalog_digest() != catalog.catalog_digest()
             || register.organizer_config() != organizer.as_ref().map(|(config, _)| config)
             || register.organizer_state() != organizer.as_ref().map(|(_, state)| state)
         {

@@ -128,11 +128,11 @@ impl StateParser<'_> {
         }
         self.record(29, start, None);
         if present == 1 {
-            for id in 30..=33 {
+            for id in [30, 31, 33] {
                 self.rows(id)?;
             }
             self.variable(34, offer)?;
-            for id in 35..=38 {
+            for id in 35..=37 {
                 self.rows(id)?;
             }
         }
@@ -150,11 +150,9 @@ impl StateParser<'_> {
             self.rows(id)?;
         }
         if self.branch(51)? {
-            self.variable(52, time_policy)?;
             self.rows(53)?;
             self.rows(54)?;
         }
-        self.variable(70, aid_mandate)?;
         self.rows(71)?;
         self.rows(72)?;
         Ok(())
@@ -198,17 +196,6 @@ impl StateParser<'_> {
         self.cursor.done()
     }
 }
-fn aid_mandate(c: &mut Cursor<'_>) -> Result<(), StorageError> {
-    // Mandate ID, independent source hash and three actor IDs.
-    c.take(88)?;
-    c.tag(&[1, 2, 3, 4])?;
-    // Payer ID, five material identities, two quantities and exact currency.
-    c.take(224)?;
-    if c.tag(&[1, 2])? == 2 {
-        c.take(96)?;
-    }
-    Ok(())
-}
 fn offer(c: &mut Cursor<'_>) -> Result<(), StorageError> {
     c.take(112)?;
     let tag = c.tag(&[1, 2, 3])?;
@@ -218,19 +205,6 @@ fn offer(c: &mut Cursor<'_>) -> Result<(), StorageError> {
         3 => 48,
         _ => return Err(StorageError::Framing),
     })?;
-    Ok(())
-}
-fn time_policy(c: &mut Cursor<'_>) -> Result<(), StorageError> {
-    c.take(80)?;
-    c.tag(&[1, 2])?;
-    c.take(8)?;
-    c.tag(&[1, 2])?;
-    c.take(8)?;
-    let count = c.number(4)?;
-    if count > 65536 {
-        return Err(StorageError::Count);
-    }
-    c.take(count.checked_mul(72).ok_or(StorageError::Bounds)?)?;
     Ok(())
 }
 pub(super) fn sections(bytes: &[u8]) -> Result<Vec<Section>, StorageError> {

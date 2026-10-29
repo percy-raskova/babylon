@@ -1,6 +1,5 @@
 //! Actual handling proves resident payroll and mixed compensation cost attribution.
 use crate::book;
-use crate::hours;
 use crate::household;
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::CashAccount;
@@ -54,14 +53,14 @@ fn mixed(second: LaborCompensation) -> (MaterialCatalog, MaterialCircuitState) {
         EmploymentTerms {
             member_id: member(1),
             site_id: crate::store(),
-            unit_id: hours(),
+            unit_id: crate::hours(),
             payee: household(),
             compensation: LaborCompensation::Wage(crate::money(1)),
         },
         EmploymentTerms {
             member_id: member(2),
             site_id: crate::store(),
-            unit_id: hours(),
+            unit_id: crate::hours(),
             payee: other_household(),
             compensation: second,
         },

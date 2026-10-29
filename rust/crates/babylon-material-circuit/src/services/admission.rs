@@ -101,13 +101,13 @@ fn requests(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> Result<V
             .ok()
             .map(|i| &r.households[i])
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
-        let need = r
+        let need = catalog
             .household_needs
             .binary_search_by_key(&(p.principal_id, p.good_id, p.unit_id), |r| {
                 (r.principal_id, r.good_id, r.unit_id)
             })
             .ok()
-            .map(|i| &r.household_needs[i])
+            .map(|i| &catalog.household_needs[i])
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;
         let required = need.required_quantity(cohort)?;
         result.push(Request {

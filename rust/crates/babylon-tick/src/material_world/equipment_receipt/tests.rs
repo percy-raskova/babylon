@@ -68,7 +68,7 @@ fn actual_equipment_close_receipts_roundtrip_with_wip_installation_wages_and_wea
     for period in 1..=5 {
         let transition = babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period");
-        let bytes = super::super::encode_material_receipts(period, &transition)
+        let bytes = super::super::encode_material_receipts(&catalog, period, &transition)
             .expect("the fixture value encodes to its canonical bytes");
         let decoded = super::super::decode_material_receipts(&bytes)
             .expect("the canonical bytes decode into the declared type");
@@ -86,7 +86,7 @@ fn actual_equipment_close_receipts_roundtrip_with_wip_installation_wages_and_wea
     configure_investment(&mut catalog, &mut state, 100, -10);
     let transition = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
-    let bytes = super::super::encode_material_receipts(1, &transition)
+    let bytes = super::super::encode_material_receipts(&catalog, 1, &transition)
         .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(
         super::super::decode_material_receipts(&bytes)
@@ -104,15 +104,15 @@ fn equipment_receipt_refuses_invalid_work_cost_partitions_duplicates_and_old_ver
             .expect("the authored material state advances one period");
     let original = transition.clone();
     transition.installation[0].used_hours = 1;
-    assert!(super::super::encode_material_receipts(1, &transition).is_err());
+    assert!(super::super::encode_material_receipts(&catalog, 1, &transition).is_err());
     transition = original.clone();
     transition
         .installation
         .push(transition.installation[0].clone());
-    assert!(super::super::encode_material_receipts(1, &transition).is_err());
+    assert!(super::super::encode_material_receipts(&catalog, 1, &transition).is_err());
     transition = original;
     transition.installation[0].closing_carrying = money(27);
-    assert!(super::super::encode_material_receipts(1, &transition).is_err());
+    assert!(super::super::encode_material_receipts(&catalog, 1, &transition).is_err());
     let mut state = opening_state;
     for _ in 0..3 {
         state = babylon_material_circuit::advance_material_circuit(&catalog, &state)
@@ -122,7 +122,7 @@ fn equipment_receipt_refuses_invalid_work_cost_partitions_duplicates_and_old_ver
     let mut transition = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     transition.equipment_wear[0].closing_carrying = money(0);
-    assert!(super::super::encode_material_receipts(4, &transition).is_err());
+    assert!(super::super::encode_material_receipts(&catalog, 4, &transition).is_err());
     let old = b"babylon.material-tick-receipts.v11\0";
     assert!(super::super::decode_material_receipts(old).is_err());
 }
@@ -138,7 +138,7 @@ fn goods_cost_from_real_equipment_close_roundtrips_and_restart_does_not_reuse_it
     configure_output_quote(&mut state);
     let transition = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
-    let bytes = super::super::encode_material_receipts(4, &transition)
+    let bytes = super::super::encode_material_receipts(&catalog, 4, &transition)
         .expect("the fixture value encodes to its canonical bytes");
     let decoded = super::super::decode_material_receipts(&bytes)
         .expect("the canonical bytes decode into the declared type");
@@ -160,7 +160,7 @@ fn goods_cost_from_real_equipment_close_roundtrips_and_restart_does_not_reuse_it
             .expect("the authored material state advances one period")
     );
     assert_eq!(next.prices[0].cost.basis, GoodsPriceCostBasis::Unavailable);
-    let next_bytes = super::super::encode_material_receipts(5, &next)
+    let next_bytes = super::super::encode_material_receipts(&catalog, 5, &next)
         .expect("the fixture value encodes to its canonical bytes");
     assert_eq!(
         super::super::decode_material_receipts(&next_bytes)
@@ -175,7 +175,7 @@ fn installation_decisions_roundtrip_and_refuse_false_starts_positions_and_old_fo
     let (catalog, opening_state) = opening();
     let original = babylon_material_circuit::advance_material_circuit(&catalog, &opening_state)
         .expect("the authored material state advances one period");
-    let bytes = super::super::encode_material_receipts(1, &original)
+    let bytes = super::super::encode_material_receipts(&catalog, 1, &original)
         .expect("the fixture value encodes to its canonical bytes");
     let decoded = super::super::decode_material_receipts(&bytes)
         .expect("the canonical bytes decode into the declared type");
@@ -196,7 +196,7 @@ fn installation_decisions_roundtrip_and_refuse_false_starts_positions_and_old_fo
                 .push(changed.installation_decisions[0].clone()),
         }
         assert!(
-            super::super::encode_material_receipts(1, &changed).is_err(),
+            super::super::encode_material_receipts(&catalog, 1, &changed).is_err(),
             "mutation {mutation}"
         );
     }

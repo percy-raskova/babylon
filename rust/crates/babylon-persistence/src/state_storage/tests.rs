@@ -1,5 +1,4 @@
 use super::layout;
-use super::layout::kind;
 use super::lookup::{IdentityEntry, IdentityKind, TypedLookup};
 use super::register::{
     decode_admitted, expand, restore_section, Block, OpeningRegister, StorageError, StoredSection,
@@ -245,14 +244,16 @@ fn account_and_equipment_variants_use_their_own_typed_domain() {
     }
     let field = super::layout(43).expect("the fixture layout builds").fields[0];
     assert_eq!(
-        kind(field, &[0]).expect("the fixture call `kind` succeeds for the authored inputs"),
+        layout::kind(field, &[0])
+            .expect("the fixture call `kind` succeeds for the authored inputs"),
         IdentityKind::Installation
     );
     assert_eq!(
-        kind(field, &[1]).expect("the fixture call `kind` succeeds for the authored inputs"),
+        layout::kind(field, &[1])
+            .expect("the fixture call `kind` succeeds for the authored inputs"),
         IdentityKind::EquipmentCohort
     );
-    assert_eq!(kind(field, &[2]), Err(StorageError::IdentityKind));
+    assert_eq!(layout::kind(field, &[2]), Err(StorageError::IdentityKind));
 }
 #[test]
 #[allow(
@@ -517,14 +518,7 @@ fn assert_aid_period_package(
     );
     let current_sections = schema::sections(&restored.0)
         .expect("the fixture call `sections` succeeds for the authored inputs");
-    assert_eq!(
-        current_sections
-            .iter()
-            .find(|section| section.id == 70)
-            .expect("the fixture holds the searched element")
-            .count,
-        Some(1)
-    );
+    assert!(current_sections.iter().all(|section| section.id != 70));
     let organizer = current_sections
         .iter()
         .find(|section| section.id == 69)

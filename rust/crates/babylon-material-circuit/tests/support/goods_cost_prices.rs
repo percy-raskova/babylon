@@ -336,7 +336,8 @@ fn goods_cost_exact_ceiling_and_unavailable_shape_refuse_invalid_or_overflowing_
 
 #[test]
 fn goods_cost_same_site_production_and_merchant_release_use_one_quantity_basis() {
-    let (mut catalog, mut state) = crate::opening();
+    let (catalog, mut state) = crate::opening();
+    let mut catalog = catalog.into_definition();
     responsive(&mut state, 2, 2, 0);
     catalog.merchants.push(MerchantHandling {
         site_id: crate::site(2),
@@ -355,7 +356,7 @@ fn goods_cost_same_site_production_and_merchant_release_use_one_quantity_basis()
             unit_id: crate::units(),
             hours_per_unit: 1,
         });
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state
         .corridor_capacities
         .extend((1..=9).map(|period| CorridorCapacity {

@@ -538,7 +538,7 @@ mod typed_decode_controls {
             .expect("the fixture set the optional field before this borrow")
             .household_purchases[0]
             .target_closing_stock = 4;
-        let aid = &e.aid.mandates[0];
+        let aid = &catalog.aid_mandates[0];
         let mut cfg =
             serde_json::to_value(fixture::config()).expect("the value serializes to JSON");
         let babylon_material_circuit::AccountId::Organization(payer) = aid.payer else {
@@ -560,7 +560,7 @@ mod typed_decode_controls {
                 fixture::PRACTICE
             ),
             fixture::Materials {
-                catalog,
+                catalog: catalog.into_definition(),
                 state: state.clone(),
             },
             serde_json::from_value(cfg).expect("the JSON value matches the declared type"),

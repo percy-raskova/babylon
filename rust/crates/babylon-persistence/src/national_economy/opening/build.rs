@@ -34,7 +34,6 @@ use crate::national_household_time_allocation;
 use crate::national_household_time_allocation::HouseholdTimeAllocationError;
 use crate::national_resident_allocation;
 use aid::NationalAidCapture;
-use babylon_material_circuit::AidBook;
 use babylon_material_circuit::EquipmentPosition;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::HouseholdTimeAccounting;
@@ -200,10 +199,11 @@ pub fn build_national_opening(
         .opening
         .employment
         .sort_unstable_by_key(|row| row.member_id);
-    builder.opening.policies.aid = AidBook {
-        mandates: builder.aid.mandates.clone(),
-        freight: vec![],
-    };
+    builder
+        .opening
+        .policies
+        .aid_mandates
+        .clone_from(&builder.aid.mandates);
     let detail = super::detail::partition(&builder, &builder.aid)?;
     Ok(NationalOpening {
         opening: builder.opening,
@@ -263,8 +263,9 @@ impl<'a> Builder<'a> {
                 equipment_position: EquipmentPosition::default(),
                 capacity: CatalogCapacity::Rolling(RollingProcessSupply::CapturedNameplate(vec![])),
                 policies: CatalogPolicies {
-                    aid: AidBook::default(),
+                    aid_mandates: Vec::new(),
                     household_time: HouseholdTimeAccounting::NotModeled,
+                    household_time_policy: Vec::new(),
                     offers: vec![],
                     replenishment: vec![],
                     household_purchases: vec![],

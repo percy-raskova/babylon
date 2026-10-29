@@ -17,7 +17,6 @@ use bevy::tasks::{AsyncComputeTaskPool, Task};
 use crate::atlas::CountyAtlas;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::dossier;
-use crate::dossier::availability_label;
 use crate::map::SelectedCounty;
 use crate::observer::{ObservationContext, ObserverSession};
 use crate::observer_focus::{ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate};
@@ -1528,7 +1527,7 @@ fn status_segments(
             read.scope.tick(),
             read.durable_tick,
             verified.map_or_else(
-                || availability_label(read).to_owned(),
+                || dossier::availability_label(read).to_owned(),
                 |tick| format!("Archive verified through {tick}"),
             )
         ),

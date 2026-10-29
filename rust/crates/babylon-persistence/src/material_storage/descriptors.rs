@@ -27,6 +27,7 @@ enum Descriptor {
 }
 const HOUSEHOLD: u8 = 128;
 const PROCUREMENT: u8 = 129;
+/// Reserved after service input definitions moved into the catalog.
 const SERVICE_SITE: u8 = 130;
 const SERVICE_HOUSEHOLD: u8 = 131;
 const SHIFT: u8 = 133;
@@ -38,10 +39,9 @@ const FREIGHT: u8 = 135;
 /// Lookup recipes whose source rows stay in the opening register. Equipment and
 /// pool definitions moved to the immutable catalog with the state split, and an
 /// opening register no longer reads them; those additions are stored literally.
-const RECIPES: [(u8, u16); 5] = [
-    (HOUSEHOLD, 32),
+const RECIPES: [(u8, u16); 4] = [
+    (HOUSEHOLD, 33),
     (PROCUREMENT, 35),
-    (SERVICE_SITE, 38),
     (SERVICE_HOUSEHOLD, 33),
     (SHIFT, 27),
 ];
@@ -76,8 +76,8 @@ fn row_value(
             period,
             (
                 FinalDemandPrincipalId::from_bytes(field(0, K::FinalDemandPrincipal)?),
-                GoodId::from_bytes(field(1, K::Good)?),
-                UnitId::from_bytes(field(2, K::Unit)?),
+                GoodId::from_bytes(field(2, K::Good)?),
+                UnitId::from_bytes(field(3, K::Unit)?),
             ),
         ),
         PROCUREMENT => babylon_material_circuit::recurring_procurement_order_id(

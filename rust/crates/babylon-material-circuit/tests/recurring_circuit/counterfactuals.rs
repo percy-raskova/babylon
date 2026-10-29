@@ -16,6 +16,7 @@ use babylon_material_circuit::HouseholdNeedBasis;
 use babylon_material_circuit::HouseholdPurchasePolicy;
 use babylon_material_circuit::HouseholdStock;
 use babylon_material_circuit::MaterialCatalog;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
 use babylon_material_circuit::MerchantRole;
@@ -267,7 +268,11 @@ fn foreign_household() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([77; 32])
 }
 
-fn foreign_need(state: &mut MaterialCircuitState, enabled: bool) {
+fn foreign_need(
+    catalog: &mut MaterialCatalogDefinition,
+    state: &mut MaterialCircuitState,
+    enabled: bool,
+) {
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         unreachable!()
     };
@@ -287,7 +292,7 @@ fn foreign_need(state: &mut MaterialCircuitState, enabled: bool) {
         unit_id: crate::units(),
         quantity: 0,
     });
-    recurring.household_needs.push(HouseholdNeed {
+    catalog.household_needs.push(HouseholdNeed {
         principal_id: foreign_household(),
         good_id: crate::good(2),
         unit_id: crate::units(),
@@ -306,7 +311,8 @@ fn foreign_need(state: &mut MaterialCircuitState, enabled: bool) {
 }
 
 fn domestic_competition(enabled: bool) -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = integrated_controls::foreign_trade_opening();
+    let (catalog, mut state) = integrated_controls::foreign_trade_opening();
+    let mut catalog = catalog.into_definition();
     let foreign = EconomicLocation::Foreign(ForeignCounterpart::Canada);
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: foreign_household(),
@@ -324,7 +330,7 @@ fn domestic_competition(enabled: bool) -> (MaterialCatalog, MaterialCircuitState
         .find(|r| r.site_id == crate::site(2) && r.good_id == crate::good(2))
         .expect("the fixture holds the searched element")
         .quantity = 2;
-    foreign_need(&mut state, enabled);
+    foreign_need(&mut catalog, &mut state, enabled);
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         unreachable!()
     };
@@ -343,7 +349,7 @@ fn domestic_competition(enabled: bool) -> (MaterialCatalog, MaterialCircuitState
     e.book = MonetaryBook::open(accounts).expect("the fixture opens the authored source");
     e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
         .expect("the fixture opens the authored source");
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 

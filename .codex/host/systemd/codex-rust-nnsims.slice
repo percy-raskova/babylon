@@ -1,4 +1,4 @@
-# Managed by nnsims .codex/host/install.sh (policy v11).
+# Managed by nnsims .codex/host/install.sh (policy v12).
 [Unit]
 Description=NNSims Rust build budget
 

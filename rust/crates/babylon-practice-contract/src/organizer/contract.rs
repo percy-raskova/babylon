@@ -957,12 +957,20 @@ pub fn organizer_view(
             receipt
         })
         .collect();
-    let mut observations = journal
-        .periods
-        .iter()
-        .flat_map(|entries| &entries.observations)
-        .filter(|row| row.actor_id == actor_id)
-        .collect::<Vec<_>>();
+    let mut observations_by_id = BTreeMap::new();
+    for observation in config.initial_observations.iter().chain(
+        journal
+            .periods
+            .iter()
+            .flat_map(|entries| &entries.observations),
+    ) {
+        if observation.actor_id == actor_id {
+            observations_by_id
+                .entry(observation.observation_id)
+                .or_insert(observation);
+        }
+    }
+    let mut observations = observations_by_id.into_values().collect::<Vec<_>>();
     let total_observation_count =
         u32::try_from(observations.len()).map_err(|_| OrganizerError::Arithmetic)?;
     observations.sort_by_key(|row| (row.acquired_period, row.observed_period, row.observation_id));

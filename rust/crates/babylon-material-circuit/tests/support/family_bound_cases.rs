@@ -21,6 +21,7 @@ use crate::StaffingPoolId;
 use crate::StaffingPoolState;
 use crate::StaffingState;
 use crate::StaffingWorkSource;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::{
     MerchantHandling, MerchantHandlingCoefficient, MerchantRole, MAX_INPUT_COEFFICIENTS,
     MAX_INVENTORY_ROWS, MAX_MATERIAL_CIRCUIT_ROWS, MAX_STAFFING_WORK_SOURCES,
@@ -40,8 +41,9 @@ fn identity(index: usize) -> [u8; 32] {
     bytes
 }
 
-fn empty_production() -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = crate::opening();
+fn empty_production() -> (MaterialCatalogDefinition, MaterialCircuitState) {
+    let (catalog, mut state) = crate::opening();
+    let mut catalog = catalog.into_definition();
     catalog.process_outputs.clear();
     catalog.input_coefficients.clear();
     catalog.labor_coefficients.clear();
@@ -52,7 +54,7 @@ fn empty_production() -> (MaterialCatalog, MaterialCircuitState) {
 }
 
 fn append_process(
-    catalog: &mut MaterialCatalog,
+    catalog: &mut MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
     index: usize,
     owner: SiteId,

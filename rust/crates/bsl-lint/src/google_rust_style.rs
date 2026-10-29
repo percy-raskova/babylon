@@ -16,16 +16,17 @@
 
 use crate::finding::{Finding, Severity};
 use crate::repo::Repo;
-use proc_macro2::{TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{
-    Attribute, ExprPath, Fields, FnArg, GenericArgument, ImplItemFn, Item, ItemEnum, ItemFn,
-    ItemMod, ItemUse, LitInt, Macro, Meta, Pat, PatIdent, Path as SynPath, PathArguments,
-    Signature, TraitItemFn, Type, TypePath, UseGlob, UseTree, Visibility,
+    Arm, Attribute, Block, Expr, ExprClosure, ExprForLoop, ExprIf, ExprLet, ExprPath, ExprWhile,
+    Field, Fields, FnArg, GenericArgument, ImplItemFn, Item, ItemEnum, ItemFn, ItemMod, ItemStruct,
+    ItemUse, LitInt, Local, Macro, Meta, Pat, PatIdent, Path as SynPath, PathArguments, Signature,
+    TraitItemFn, Type, TypePath, UseGlob, UseTree, Visibility,
 };
 
 /// The CLI name of this check.
@@ -91,12 +92,14 @@ const RESIDUAL_MACRO_IMPORT_LINES: usize = 136;
 
 /// A lowercase leaf imported from a module, pending confirmation that the file
 /// calls it as a free function.
+#[derive(Clone)]
 struct ImportCandidate {
     name: String,
     line: usize,
     rendered: String,
     path: Vec<String>,
     scope: Vec<String>,
+    lexical: Vec<usize>,
 }
 
 /// An inline `module::Type` reference that should normally be imported instead.
@@ -147,15 +150,23 @@ struct StyleVisitor<'a> {
     in_client_crate: bool,
     module_stack: Vec<bool>,
     scope: Vec<String>,
+    lexical: Vec<usize>,
+    next_scope: usize,
     local_fns: BTreeMap<Vec<String>, BTreeSet<String>>,
     fn_depth: usize,
     item_depth: usize,
     lines: SourceLines<'a>,
     findings: Vec<Finding>,
     imports: Vec<ImportCandidate>,
-    used_names: BTreeSet<String>,
-    macro_used_names: BTreeSet<String>,
-    bound_names: BTreeSet<String>,
+    used_names: BTreeSet<(Vec<String>, Vec<usize>, String)>,
+    macro_used_names: BTreeSet<(Vec<String>, Vec<usize>, String)>,
+    bindings: Vec<BTreeSet<String>>,
+    owner: Option<String>,
+    method: Option<String>,
+    byte_table: bool,
+    field_index: usize,
+    field_name: Option<String>,
+    seen_arc_sites: BTreeSet<String>,
     imported_types: BTreeSet<String>,
     qualified: BTreeMap<(String, String), QualifiedSite>,
 }
@@ -168,6 +179,8 @@ impl<'a> StyleVisitor<'a> {
             in_client_crate,
             module_stack: Vec::new(),
             scope: Vec::new(),
+            lexical: Vec::new(),
+            next_scope: 0,
             local_fns: BTreeMap::new(),
             fn_depth: 0,
             item_depth: 0,
@@ -176,7 +189,13 @@ impl<'a> StyleVisitor<'a> {
             imports: Vec::new(),
             used_names: BTreeSet::new(),
             macro_used_names: BTreeSet::new(),
-            bound_names: BTreeSet::new(),
+            bindings: Vec::new(),
+            owner: None,
+            method: None,
+            byte_table: false,
+            field_index: 0,
+            field_name: None,
+            seen_arc_sites: BTreeSet::new(),
             imported_types: BTreeSet::new(),
             qualified: BTreeMap::new(),
         }
@@ -215,15 +234,24 @@ impl<'a> StyleVisitor<'a> {
     }
 
     fn finish_imports(&mut self) {
-        let bound_names = std::mem::take(&mut self.bound_names);
-        for candidate in std::mem::take(&mut self.imports) {
-            if bound_names.contains(&candidate.name) || self.name_is_a_local_fn(&candidate) {
-                // The file binds the name as a value, or an enclosing module
-                // in this file defines `fn <name>`. A bare use then resolves
-                // to that binding and not to the imported leaf.
+        let imports = std::mem::take(&mut self.imports);
+        for candidate in &imports {
+            if self.name_is_a_local_fn(candidate) {
+                // An enclosing module defines the imported local function.
                 continue;
             }
-            if self.used_names.contains(&candidate.name) {
+            if self.used_names.iter().any(|(scope, lexical, name)| {
+                scope.starts_with(&candidate.scope)
+                    && lexical.starts_with(&candidate.lexical)
+                    && name == &candidate.name
+                    && !imports.iter().any(|other| {
+                        other.name == *name
+                            && scope.starts_with(&other.scope)
+                            && lexical.starts_with(&other.lexical)
+                            && (other.scope.len(), other.lexical.len())
+                                > (candidate.scope.len(), candidate.lexical.len())
+                    })
+            }) {
                 self.push(
                     candidate.line,
                     "free function is imported directly instead of its module",
@@ -232,9 +260,22 @@ impl<'a> StyleVisitor<'a> {
                         candidate.rendered, candidate.name
                     ),
                 );
-            } else if self.macro_used_names.contains(&candidate.name)
-                && !residual_macro_import(&self.file, &candidate.path.join("::"), &candidate.name)
-            {
+            } else if self.macro_used_names.iter().any(|(scope, lexical, name)| {
+                scope.starts_with(&candidate.scope)
+                    && lexical.starts_with(&candidate.lexical)
+                    && name == &candidate.name
+                    && !imports.iter().any(|other| {
+                        other.name == *name
+                            && scope.starts_with(&other.scope)
+                            && lexical.starts_with(&other.lexical)
+                            && (other.scope.len(), other.lexical.len())
+                                > (candidate.scope.len(), candidate.lexical.len())
+                    })
+            }) && !residual_macro_import(
+                &self.file,
+                &candidate.path.join("::"),
+                &candidate.name,
+            ) {
                 self.push(
                     candidate.line,
                     "free function is imported directly and used inside macro bodies",
@@ -448,6 +489,7 @@ impl<'a> StyleVisitor<'a> {
             rendered,
             path: prefix.to_vec(),
             scope: self.scope.clone(),
+            lexical: self.lexical.clone(),
         });
     }
 
@@ -519,8 +561,25 @@ impl<'a> StyleVisitor<'a> {
         for segment in &path.segments {
             let line = segment.ident.span().start().line;
             if segment.ident == "Arc" {
-                let marked = registered && self.lines.has_marker(line, EXC_04, MARKER_LOOKBACK);
-                if arc_holds_vec(&segment.arguments) && !marked {
+                let exact_site = self.exact_arc_site(path);
+                let marked = exact_site
+                    && registered
+                    && self.owner.as_deref().is_some_and(|owner| {
+                        registered_owner(&self.file, owner)
+                            && (self.method.is_none()
+                                || registered_method(
+                                    owner,
+                                    self.method.as_deref().unwrap_or_default(),
+                                ))
+                    })
+                    && self.scope.is_empty()
+                    && self.lines.has_marker(line, EXC_04, MARKER_LOOKBACK);
+                let adopted = self
+                    .file
+                    .ends_with("babylon-tick/src/material_world/register.rs")
+                    && self.owner.as_deref() == Some("SharedCanonicalBytes")
+                    && self.method.is_none();
+                if arc_holds_vec(&segment.arguments) && !(marked && adopted) {
                     self.push(
                         line,
                         "Arc<Vec<_>> copies a heap buffer; use Arc<[_]>",
@@ -541,6 +600,63 @@ impl<'a> StyleVisitor<'a> {
                 );
             }
         }
+    }
+
+    fn exact_arc_site(&mut self, path: &SynPath) -> bool {
+        let Some(owner) = self.owner.as_deref() else {
+            return false;
+        };
+        let operation = path
+            .segments
+            .last()
+            .map(|segment| segment.ident.to_string())
+            .unwrap_or_default();
+        let valid = if let Some(method) = self.method.as_deref() {
+            matches!(
+                (owner, method, operation.as_str()),
+                ("SharedCanonicalBytes", "from_vec", "new")
+                    | (
+                        "SharedCanonicalBytes" | "MaterialReceiptHandle",
+                        "shares_allocation",
+                        "ptr_eq"
+                    )
+                    | (
+                        "MaterialReceiptHandle" | "EconomicContentHandle" | "PeriodRegister",
+                        "new",
+                        "new"
+                    )
+                    | ("EconomicContentHandle", "strong_count", "strong_count")
+                    | ("EconomicContentHandle", "downgrade", "downgrade")
+                    | ("OpeningRegister", "from_opening", "new")
+                    | ("RotatingSink", "open", "new")
+                    | ("Diagnostics", "writer", "clone")
+            )
+        } else {
+            matches!(
+                (owner, self.field_name.as_deref()),
+                (
+                    "NationalCountyRoster"
+                        | "MaterialReceiptHandle"
+                        | "SharedCanonicalBytes"
+                        | "EconomicContentHandle"
+                        | "PeriodRegister"
+                        | "ArchiveWorkerCancellation"
+                        | "ProgressHandle"
+                        | "DriverStateHandle"
+                        | "Diagnostics",
+                    Some("#0")
+                ) | ("EconomicAdmissionOwner", Some("candidate"))
+                    | ("OpeningRegister", Some("sections" | "lookup"))
+                    | ("SourceArtifact", Some("bytes"))
+                    | ("RotatingSink", Some("inner"))
+            )
+        };
+        let site = self.method.as_deref().map_or_else(
+            || self.field_name.clone().unwrap_or_default(),
+            |method| format!("{method}:{operation}"),
+        );
+        let key = format!("{}|{owner}|{site}", self.file);
+        valid && self.seen_arc_sites.insert(key)
     }
 
     fn check_catch_unwind(&mut self, path: &SynPath) {
@@ -565,8 +681,16 @@ impl<'a> StyleVisitor<'a> {
             return;
         };
         let name = segment.ident.to_string();
-        if is_lowercase_identifier(&name) && !is_use_keyword(&name) {
-            self.used_names.insert(name);
+        if is_lowercase_identifier(&name)
+            && !is_use_keyword(&name)
+            && !self
+                .bindings
+                .iter()
+                .rev()
+                .any(|scope| scope.contains(&name))
+        {
+            self.used_names
+                .insert((self.scope.clone(), self.lexical.clone(), name));
         }
     }
 
@@ -602,18 +726,46 @@ impl<'a> StyleVisitor<'a> {
     }
 
     fn scan_macro_tokens(&mut self, tokens: &TokenStream) {
+        let wrap =
+            |delimiter| TokenStream::from(TokenTree::Group(Group::new(delimiter, tokens.clone())));
+        let block = syn::parse2::<Block>(wrap(Delimiter::Brace));
+        let expression = syn::parse2::<Expr>(wrap(Delimiter::Parenthesis));
+        if block.is_ok() || expression.is_ok() {
+            let mut nested = StyleVisitor::new(self.file.clone(), false, self.in_client_crate, "");
+            nested.scope.clone_from(&self.scope);
+            nested.lexical.clone_from(&self.lexical);
+            nested.next_scope = self.next_scope;
+            nested.bindings.clone_from(&self.bindings);
+            if let Ok(block) = block {
+                nested.visit_block(&block);
+            } else if let Ok(expression) = expression {
+                nested.visit_expr(&expression);
+            }
+            self.next_scope = nested.next_scope;
+            self.macro_used_names.extend(nested.used_names);
+            self.macro_used_names.extend(nested.macro_used_names);
+            return;
+        }
         let trees: Vec<TokenTree> = tokens.clone().into_iter().collect();
         for (index, tree) in trees.iter().enumerate() {
             match tree {
                 TokenTree::Ident(ident) => {
                     let name = ident.to_string();
-                    if !is_lowercase_identifier(&name) || is_use_keyword(&name) {
-                        continue;
+                    if is_lowercase_identifier(&name)
+                        && !is_use_keyword(&name)
+                        && !self
+                            .bindings
+                            .iter()
+                            .rev()
+                            .any(|scope| scope.contains(&name))
+                        && !macro_ident_is_path_component(&trees, index)
+                    {
+                        self.macro_used_names.insert((
+                            self.scope.clone(),
+                            self.lexical.clone(),
+                            name,
+                        ));
                     }
-                    if macro_ident_is_path_component(&trees, index) {
-                        continue;
-                    }
-                    self.macro_used_names.insert(name);
                 }
                 TokenTree::Group(group) => self.scan_macro_tokens(&group.stream()),
                 TokenTree::Punct(_) | TokenTree::Literal(_) => {}
@@ -628,7 +780,27 @@ impl<'ast> Visit<'ast> for StyleVisitor<'_> {
             self.check_top_level_item(item);
         }
         self.item_depth += 1;
+        let previous_owner = self.owner.take();
+        self.owner = match item {
+            Item::Struct(value) => Some(value.ident.to_string()),
+            Item::Enum(value) => Some(value.ident.to_string()),
+            Item::Type(value) => Some(value.ident.to_string()),
+            Item::Impl(value) => match value.self_ty.as_ref() {
+                Type::Path(path) => path
+                    .path
+                    .segments
+                    .last()
+                    .map(|segment| segment.ident.to_string()),
+                _ => None,
+            },
+            _ => None,
+        };
+        let previous_table = self.byte_table;
+        self.byte_table =
+            matches!(item, Item::Const(value) if byte_type(&value.ty) && byte_array(&value.expr));
         syn::visit::visit_item(self, item);
+        self.owner = previous_owner;
+        self.byte_table = previous_table;
         self.item_depth -= 1;
     }
 
@@ -653,23 +825,51 @@ impl<'ast> Visit<'ast> for StyleVisitor<'_> {
                 .insert(item.sig.ident.to_string());
         }
         self.check_bool_parameters(&item.sig);
+        self.bindings.push(BTreeSet::new());
         self.fn_depth += 1;
         syn::visit::visit_item_fn(self, item);
         self.fn_depth -= 1;
+        self.bindings.pop();
     }
 
     fn visit_impl_item_fn(&mut self, item: &'ast ImplItemFn) {
+        let previous_method = self.method.replace(item.sig.ident.to_string());
         self.check_bool_parameters(&item.sig);
+        self.bindings.push(BTreeSet::new());
         self.fn_depth += 1;
         syn::visit::visit_impl_item_fn(self, item);
         self.fn_depth -= 1;
+        self.bindings.pop();
+        self.method = previous_method;
     }
 
     fn visit_trait_item_fn(&mut self, item: &'ast TraitItemFn) {
         self.check_bool_parameters(&item.sig);
+        self.bindings.push(BTreeSet::new());
         self.fn_depth += 1;
         syn::visit::visit_trait_item_fn(self, item);
         self.fn_depth -= 1;
+        self.bindings.pop();
+    }
+
+    fn visit_item_struct(&mut self, item: &'ast ItemStruct) {
+        let previous = self.field_index;
+        self.field_index = 0;
+        syn::visit::visit_item_struct(self, item);
+        self.field_index = previous;
+    }
+
+    fn visit_field(&mut self, field: &'ast Field) {
+        let previous = self.field_name.take();
+        self.field_name = Some(
+            field
+                .ident
+                .as_ref()
+                .map_or_else(|| format!("#{}", self.field_index), ToString::to_string),
+        );
+        self.field_index += 1;
+        syn::visit::visit_field(self, field);
+        self.field_name = previous;
     }
 
     fn visit_item_enum(&mut self, item: &'ast ItemEnum) {
@@ -702,8 +902,90 @@ impl<'ast> Visit<'ast> for StyleVisitor<'_> {
     }
 
     fn visit_pat_ident(&mut self, pat: &'ast PatIdent) {
-        self.bound_names.insert(pat.ident.to_string());
+        if let Some(scope) = self.bindings.last_mut() {
+            scope.insert(pat.ident.to_string());
+        }
         syn::visit::visit_pat_ident(self, pat);
+    }
+
+    fn visit_block(&mut self, block: &'ast Block) {
+        self.next_scope += 1;
+        self.lexical.push(self.next_scope);
+        self.bindings.push(BTreeSet::new());
+        syn::visit::visit_block(self, block);
+        self.bindings.pop();
+        self.lexical.pop();
+    }
+
+    fn visit_local(&mut self, local: &'ast Local) {
+        let previous = self.byte_table;
+        self.byte_table = matches!(&local.pat, Pat::Type(value) if byte_type(&value.ty))
+            && local
+                .init
+                .as_ref()
+                .is_some_and(|init| byte_array(&init.expr));
+        for attribute in &local.attrs {
+            self.visit_attribute(attribute);
+        }
+        if let Some(init) = &local.init {
+            self.visit_local_init(init);
+        }
+        self.visit_pat(&local.pat);
+        self.byte_table = previous;
+    }
+
+    fn visit_expr_let(&mut self, expr: &'ast ExprLet) {
+        for attr in &expr.attrs {
+            self.visit_attribute(attr);
+        }
+        self.visit_expr(&expr.expr);
+        self.visit_pat(&expr.pat);
+    }
+
+    fn visit_expr_if(&mut self, expr: &'ast ExprIf) {
+        for attr in &expr.attrs {
+            self.visit_attribute(attr);
+        }
+        self.bindings.push(BTreeSet::new());
+        self.visit_expr(&expr.cond);
+        self.visit_block(&expr.then_branch);
+        self.bindings.pop();
+        if let Some((_, branch)) = &expr.else_branch {
+            self.visit_expr(branch);
+        }
+    }
+
+    fn visit_expr_while(&mut self, expr: &'ast ExprWhile) {
+        for attr in &expr.attrs {
+            self.visit_attribute(attr);
+        }
+        self.bindings.push(BTreeSet::new());
+        self.visit_expr(&expr.cond);
+        self.visit_block(&expr.body);
+        self.bindings.pop();
+    }
+
+    fn visit_expr_closure(&mut self, closure: &'ast ExprClosure) {
+        self.bindings.push(BTreeSet::new());
+        syn::visit::visit_expr_closure(self, closure);
+        self.bindings.pop();
+    }
+
+    fn visit_arm(&mut self, arm: &'ast Arm) {
+        self.bindings.push(BTreeSet::new());
+        syn::visit::visit_arm(self, arm);
+        self.bindings.pop();
+    }
+
+    fn visit_expr_for_loop(&mut self, expr: &'ast ExprForLoop) {
+        for attr in &expr.attrs {
+            self.visit_attribute(attr);
+        }
+        self.visit_expr(&expr.expr);
+        self.bindings.push(BTreeSet::new());
+        self.visit_pat(&expr.pat);
+        self.visit_block(&expr.body);
+        self.bindings.pop();
     }
 
     fn visit_macro(&mut self, mac: &'ast Macro) {
@@ -723,7 +1005,7 @@ impl<'ast> Visit<'ast> for StyleVisitor<'_> {
             let line = attribute.span().start().line;
             let registered = is_registered_file(&self.file, EXC_05_REGISTERED_FILES);
             let marked = registered && self.lines.has_marker(line, EXC_05, MARKER_LOOKBACK);
-            if !registered {
+            if !registered || !self.byte_table {
                 self.push(
                     line,
                     "rustfmt::skip is outside the EXC-05 byte tables",
@@ -1116,6 +1398,103 @@ fn dedup_findings(findings: &mut Vec<Finding>) {
             && left.what == right.what
             && left.evidence == right.evidence
     });
+}
+
+fn byte_array(expr: &Expr) -> bool {
+    match expr {
+        Expr::Reference(reference) => byte_array(&reference.expr),
+        Expr::Array(array) => array.elems.iter().all(|element| match element {
+            Expr::Lit(lit) => match &lit.lit {
+                syn::Lit::Int(value) => value.base10_parse::<u8>().is_ok(),
+                syn::Lit::Byte(_) => true,
+                _ => false,
+            },
+            _ => false,
+        }),
+        _ => false,
+    }
+}
+
+fn registered_owner(file: &str, owner: &str) -> bool {
+    const SITES: &[(&str, &[&str])] = &[
+        (
+            "babylon-kernel/src/geography/roster.rs",
+            &["NationalCountyRoster"],
+        ),
+        (
+            "babylon-tick/src/material_world/register.rs",
+            &["MaterialReceiptHandle", "SharedCanonicalBytes"],
+        ),
+        (
+            "babylon-persistence/src/economic_content.rs",
+            &[
+                "EconomicContentHandle",
+                "EconomicContentRef",
+                "EconomicAdmissionOwner",
+            ],
+        ),
+        (
+            "babylon-persistence/src/state_storage/register.rs",
+            &["OpeningRegister"],
+        ),
+        (
+            "babylon-persistence/src/observer_material/snapshot.rs",
+            &["PeriodRegister"],
+        ),
+        (
+            "babylon-persistence/src/economic_catalog/sources.rs",
+            &["SourceArtifact"],
+        ),
+        (
+            "babylon-persistence/src/archive_worker.rs",
+            &["ArchiveWorkerCancellation"],
+        ),
+        ("babylon-client/src/logging.rs", &["RotatingSink"]),
+        (
+            "babylon-persistence/examples/michigan_experiment/artifacts.rs",
+            &["ProgressHandle"],
+        ),
+        (
+            "babylon-persistence/src/runtime_session/coordinator/tests/support.rs",
+            &["DriverStateHandle"],
+        ),
+        (
+            "babylon-persistence/tests/observer_material_live/runtime_process.rs",
+            &["Diagnostics"],
+        ),
+    ];
+    SITES
+        .iter()
+        .any(|(path, owners)| file.ends_with(path) && owners.contains(&owner))
+}
+
+fn byte_type(ty: &Type) -> bool {
+    match ty {
+        Type::Reference(reference) => byte_type(&reference.elem),
+        Type::Slice(slice) => {
+            matches!(slice.elem.as_ref(), Type::Path(path) if path.path.is_ident("u8"))
+        }
+        Type::Array(array) => {
+            matches!(array.elem.as_ref(), Type::Path(path) if path.path.is_ident("u8"))
+        }
+        _ => false,
+    }
+}
+
+fn registered_method(owner: &str, method: &str) -> bool {
+    matches!(
+        (owner, method),
+        ("SharedCanonicalBytes", "from_vec" | "shares_allocation")
+            | ("MaterialReceiptHandle", "new" | "shares_allocation")
+            | (
+                "EconomicContentHandle",
+                "new" | "strong_count" | "downgrade"
+            )
+            | ("OpeningRegister", "from_opening")
+            | ("PeriodRegister", "new")
+            | ("RotatingSink", "open")
+            | ("Diagnostics", "writer")
+    )
 }
 
 #[cfg(test)]

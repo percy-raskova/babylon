@@ -180,7 +180,7 @@ fn requests(
         .map(|r| (r.good_id, r.unit_id))
         .collect();
     let mut limits = BTreeMap::<Key, u64>::new();
-    for p in &recurring.service_inputs {
+    for p in &catalog.service_inputs {
         if limits
             .insert(
                 (

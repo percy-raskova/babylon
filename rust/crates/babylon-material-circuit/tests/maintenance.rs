@@ -26,6 +26,7 @@ use babylon_material_circuit::LogisticsNodeId;
 use babylon_material_circuit::MaintenanceBinding;
 use babylon_material_circuit::MaintenanceService;
 use babylon_material_circuit::MaterialCatalog;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
@@ -55,7 +56,6 @@ use babylon_material_circuit::SupplierRoute;
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::UnitId;
 use babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES;
-use babylon_material_circuit::UNSEALED_CATALOG_DIGEST;
 
 fn site(id: u8) -> SiteId {
     SiteId::from_bytes([id; 32])
@@ -139,7 +139,7 @@ fn opening(parts: u64, provider_hours: u64) -> (MaterialCatalog, MaterialCircuit
             }),
         };
         (
-            MaterialCatalog::try_new(MaterialCatalog {
+            MaterialCatalog::try_new(MaterialCatalogDefinition {
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 site_logistics_nodes: (1..=3)
                     .map(|id| SiteLogisticsNode {
@@ -200,14 +200,13 @@ fn opening(parts: u64, provider_hours: u64) -> (MaterialCatalog, MaterialCircuit
                 household_time_policy: Vec::new(),
                 service_inputs: Vec::new(),
                 household_needs: Vec::new(),
-                catalog_digest: UNSEALED_CATALOG_DIGEST,
             })
             .expect("the authored fixture catalog is valid"),
             state,
         )
     }
 }
-fn restock(catalog: &mut MaterialCatalog, state: &mut MaterialCircuitState) {
+fn restock(catalog: &mut MaterialCatalogDefinition, state: &mut MaterialCircuitState) {
     for (id, buyer, quantity) in [(1, 2, 256), (2, 3, 3840)] {
         let order_id = OrderId::from_bytes([id; 32]);
         catalog.supplier_routes.push(SupplierRoute {
@@ -305,8 +304,10 @@ fn stock(state: &MaterialCircuitState, site_id: SiteId, good_id: GoodId) -> u64 
 #[test]
 fn four_cases_bind_labor_and_parts_then_rehire_and_recover() {
     for (parts, employed) in [(256, 1), (256, 0), (0, 1), (0, 0)] {
-        let (mut catalog, mut state) = opening(parts, employed * 160);
-        restock(&mut catalog, &mut state);
+        let (catalog, mut state) = opening(parts, employed * 160);
+        let mut definition = catalog.into_definition();
+        restock(&mut definition, &mut state);
+        let catalog = MaterialCatalog::try_new(definition).expect("valid definitions");
         let original = state.clone();
         let (first, staff1) = staffed(&catalog, &state, &people(employed));
         let receipt = first
@@ -360,7 +361,8 @@ fn four_cases_bind_labor_and_parts_then_rehire_and_recover() {
 
 #[test]
 fn whole_jobs_debit_exact_inputs_and_expire_unused_service() {
-    let (mut catalog, mut state) = opening(7, 19);
+    let (catalog, mut state) = opening(7, 19);
+    let mut catalog = catalog.into_definition();
     catalog
         .maintenance_binding
         .as_mut()
@@ -517,16 +519,18 @@ fn zero_service_and_zero_employment_preserve_both_staffing_requests() {
 
 #[test]
 fn canonical_replay_and_restart_preserve_maintenance_and_reject_old_version() {
-    let (mut catalog, mut state) = opening(256, 160);
+    let (catalog, mut state) = opening(256, 160);
+    let mut catalog = catalog.into_definition();
     restock(&mut catalog, &mut state);
-    let expected = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+    let expected_catalog = MaterialCatalog::try_new(catalog.clone()).expect("valid definitions");
+    let expected = babylon_material_circuit::advance_material_circuit(&expected_catalog, &state)
         .expect("the authored material state advances one period");
     state.inventory.reverse();
     state.labor.reverse();
     state.capacities.reverse();
     state.orders.reverse();
     catalog.supplier_routes.reverse();
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period"),
@@ -552,7 +556,7 @@ fn canonical_replay_and_restart_preserve_maintenance_and_reject_old_version() {
 #[test]
 fn invalid_maintenance_bindings_and_overflow_refuse_atomically() {
     let (catalog, state) = opening(256, 160);
-    let definition_mutations: &[fn(&mut MaterialCatalog)] = &[
+    let definition_mutations: &[fn(&mut MaterialCatalogDefinition)] = &[
         |c| {
             c.maintenance_binding
                 .as_mut()
@@ -579,14 +583,14 @@ fn invalid_maintenance_bindings_and_overflow_refuse_atomically() {
         },
     ];
     for mutate in definition_mutations {
-        let mut invalid = catalog.clone();
+        let mut invalid = catalog.clone().into_definition();
         mutate(&mut invalid);
         assert_eq!(
             MaterialCatalog::try_new(invalid),
             Err(MaterialCircuitError::MaintenanceInvariant)
         );
     }
-    let mut overflow = catalog.clone();
+    let mut overflow = catalog.clone().into_definition();
     overflow
         .maintenance_binding
         .as_mut()
@@ -596,13 +600,14 @@ fn invalid_maintenance_bindings_and_overflow_refuse_atomically() {
         MaterialCatalog::try_new(overflow),
         Err(MaterialCircuitError::Arithmetic)
     );
-    let mut unbound = catalog.clone();
+    let mut unbound = catalog.clone().into_definition();
     unbound.maintenance_binding = None;
+    let unbound = MaterialCatalog::try_new(unbound).expect("valid definitions");
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&unbound, &state),
         Err(MaterialCircuitError::MaintenanceInvariant)
     );
-    let relational_mutations: &[fn(&mut MaterialCatalog)] = &[
+    let relational_mutations: &[fn(&mut MaterialCatalogDefinition)] = &[
         |c| {
             c.maintenance_binding
                 .as_mut()
@@ -617,7 +622,7 @@ fn invalid_maintenance_bindings_and_overflow_refuse_atomically() {
         },
     ];
     for mutate in relational_mutations {
-        let mut invalid = catalog.clone();
+        let mut invalid = catalog.clone().into_definition();
         mutate(&mut invalid);
         let invalid = MaterialCatalog::try_new(invalid).expect("the changed catalog is valid");
         assert_eq!(
@@ -645,7 +650,8 @@ fn invalid_maintenance_bindings_and_overflow_refuse_atomically() {
 
 #[test]
 fn due_freight_supplies_jobs_before_local_outbound_credits() {
-    let (mut catalog, mut state) = opening(0, 160);
+    let (catalog, mut state) = opening(0, 160);
+    let mut catalog = catalog.into_definition();
     let order_id = OrderId::from_bytes([4; 32]);
     let route_id = RouteId::from_bytes([4; 32]);
     let corridor_id = CorridorId::from_bytes([4; 32]);
@@ -694,7 +700,7 @@ fn due_freight_supplies_jobs_before_local_outbound_credits() {
         period: 1,
         available_grams: 17_000,
     });
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(
@@ -737,7 +743,8 @@ fn due_freight_supplies_jobs_before_local_outbound_credits() {
 
 #[test]
 fn resource_sharing_is_refused_instead_of_imposing_hidden_priority() {
-    let (mut catalog, state) = opening(256, 160);
+    let (catalog, state) = opening(256, 160);
+    let catalog = catalog.into_definition();
     let mut shared_process = catalog.clone();
     let other = ProcessId::from_bytes([9; 32]);
     shared_process.process_outputs.push(ProcessOutput {
@@ -759,7 +766,8 @@ fn resource_sharing_is_refused_instead_of_imposing_hidden_priority() {
         unit_id: unit(2),
         quantity_per_batch: 1,
     });
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let shared_process = MaterialCatalog::try_new(shared_process).expect("valid definitions");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&shared_process, &state),
         Err(MaterialCircuitError::MaintenanceInvariant)
@@ -789,8 +797,10 @@ fn resource_sharing_is_refused_instead_of_imposing_hidden_priority() {
 
 #[test]
 fn failed_later_outbound_credit_publishes_no_maintenance_or_debits() {
-    let (mut catalog, mut state) = opening(u64::MAX, 160);
-    restock(&mut catalog, &mut state);
+    let (catalog, mut state) = opening(u64::MAX, 160);
+    let mut definition = catalog.into_definition();
+    restock(&mut definition, &mut state);
+    let catalog = MaterialCatalog::try_new(definition).expect("valid definitions");
     let original = state.clone();
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&catalog, &state),
@@ -801,7 +811,8 @@ fn failed_later_outbound_credit_publishes_no_maintenance_or_debits() {
 
 #[test]
 fn unrepresentable_maintenance_demand_does_not_disappear_with_zero_resources() {
-    let (mut catalog, mut state) = opening(0, 0);
+    let (catalog, mut state) = opening(0, 0);
+    let mut catalog = catalog.into_definition();
     state
         .maintenance_service
         .as_mut()
@@ -811,7 +822,7 @@ fn unrepresentable_maintenance_demand_does_not_disappear_with_zero_resources() {
     state.inventory[0].quantity = u64::MAX;
     catalog.input_coefficients[0].quantity_per_batch = 1;
     catalog.labor_coefficients[0].quantity_per_batch = 1;
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     for row in &mut state.capacities {
         row.available_batches = u64::MAX;
     }
@@ -823,7 +834,8 @@ fn unrepresentable_maintenance_demand_does_not_disappear_with_zero_resources() {
 
 #[test]
 fn idle_consumer_and_provider_rehire_after_later_material_arrival() {
-    let (mut catalog, mut state) = opening(256, 160);
+    let (catalog, mut state) = opening(256, 160);
+    let mut catalog = catalog.into_definition();
     for period in [7, 8] {
         state.capacities.push(CapacityRow {
             process_id: process(),
@@ -880,7 +892,7 @@ fn idle_consumer_and_provider_rehire_after_later_material_arrival() {
         period: 1,
         available_grams: 1_280_000,
     });
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let mut staff = people(1);
     let mut output = Vec::new();
     let mut jobs = Vec::new();
@@ -913,7 +925,7 @@ fn idle_consumer_and_provider_rehire_after_later_material_arrival() {
 #[test]
 fn spare_quantity_and_labor_time_cannot_share_a_unit() {
     let (catalog, mut state) = opening(256, 160);
-    let mut shared_unit = catalog.clone();
+    let mut shared_unit = catalog.clone().into_definition();
     shared_unit
         .maintenance_binding
         .as_mut()
@@ -936,7 +948,8 @@ fn spare_quantity_and_labor_time_cannot_share_a_unit() {
 
 #[test]
 fn spare_parts_independently_limit_positive_whole_jobs() {
-    let (mut catalog, state) = opening(7, 160);
+    let (catalog, state) = opening(7, 160);
+    let mut catalog = catalog.into_definition();
     catalog
         .maintenance_binding
         .as_mut()

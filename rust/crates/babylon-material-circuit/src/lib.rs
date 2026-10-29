@@ -34,7 +34,7 @@ pub use accounts::{
     MoneyTransferReceipt, OrganizationAccountId, PublicAccountId, PurchaseEscrow,
     PurchaseMovementReceipt, ShiftId, ShiftState, WageAccrualReceipt,
 };
-pub use catalog::{MaterialCatalog, UNSEALED_CATALOG_DIGEST};
+pub use catalog::{MaterialCatalog, MaterialCatalogDefinition};
 pub use equipment::{
     equipment_installation_id, equipment_purchase_order_id, EquipmentAssetId, EquipmentBinding,
     EquipmentCarryingValue, EquipmentCohortId, EquipmentDefinition, EquipmentDefinitionId,

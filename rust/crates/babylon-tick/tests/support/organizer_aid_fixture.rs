@@ -49,6 +49,7 @@ use babylon_material_circuit::LaborCoefficient;
 use babylon_material_circuit::LaborCompensation;
 use babylon_material_circuit::LogisticsNodeId;
 use babylon_material_circuit::MaterialCatalog;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MerchantHandling;
 use babylon_material_circuit::MerchantHandlingCoefficient;
@@ -203,7 +204,6 @@ fn recurring() -> RecurringEconomy {
         })
         .collect();
     RecurringEconomy {
-        service_inputs: vec![],
         households: vec![HouseholdCohort {
             kind: babylon_material_circuit::HouseholdKind::Ordinary,
             principal_id: household(),
@@ -215,13 +215,6 @@ fn recurring() -> RecurringEconomy {
             good_id: good(2),
             unit_id: units(),
             quantity: 8,
-        }],
-        household_needs: vec![HouseholdNeed {
-            principal_id: household(),
-            good_id: good(2),
-            unit_id: units(),
-            basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
-            units_per_basis: 1,
         }],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: household(),
@@ -425,7 +418,7 @@ fn route_stage_capacities() -> Vec<RouteStageCapacity> {
 
 /// One authored definition set and its opening quantities.
 pub(crate) struct Materials {
-    pub(crate) catalog: MaterialCatalog,
+    pub(crate) catalog: MaterialCatalogDefinition,
     pub(crate) state: MaterialCircuitState,
 }
 
@@ -435,7 +428,7 @@ pub(crate) struct Materials {
 )]
 pub(crate) fn opening() -> Materials {
     let recurring = recurring();
-    let catalog = MaterialCatalog {
+    let catalog = MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2, 3]
             .into_iter()
@@ -477,9 +470,14 @@ pub(crate) fn opening() -> Materials {
         maintenance_binding: None,
         aid_mandates: vec![],
         household_time_policy: vec![],
-        service_inputs: recurring.service_inputs.clone(),
-        household_needs: recurring.household_needs.clone(),
-        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
+        service_inputs: vec![],
+        household_needs: vec![HouseholdNeed {
+            principal_id: household(),
+            good_id: good(2),
+            unit_id: units(),
+            basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
+            units_per_basis: 1,
+        }],
     };
     let state = MaterialCircuitState {
         period: 1,
@@ -575,7 +573,7 @@ pub(crate) fn aid_opening(routed: bool) -> Materials {
         unit_id: units(),
         quantity: 0,
     });
-    rows.household_needs.push(HouseholdNeed {
+    catalog.household_needs.push(HouseholdNeed {
         principal_id: recipient(),
         good_id: good(2),
         unit_id: units(),
@@ -602,50 +600,32 @@ pub(crate) fn aid_opening(routed: bool) -> Materials {
     });
     economy.costs = HistoricalCostBook::open(&economy.book, stocks, vec![], vec![], vec![])
         .expect("the fixture opens the authored source");
-    economy.household_time = HouseholdTimeAccounting::Modeled(
-        HouseholdTimeBook::new(
-            [household(), recipient()]
-                .into_iter()
-                .map(|principal_id| HouseholdTimePolicy {
-                    principal_id,
-                    labor_unit_id: hours(),
-                    eligible_persons: if principal_id == household() { 4 } else { 1 },
-                    hours_per_eligible_person: 8,
-                    protected: HouseholdTimeCommitment {
-                        basis: HouseholdNeedBasis::Households,
-                        hours_per_basis: 2,
-                    },
-                    routine_provisioning: HouseholdTimeCommitment {
-                        basis: HouseholdNeedBasis::Households,
-                        hours_per_basis: 3,
-                    },
-                    unmet_burdens: vec![HouseholdUnmetTimeBurden {
-                        good_id: good(2),
-                        unit_id: units(),
-                        hours_per_unmet_unit: 5,
-                    }],
-                })
-                .collect(),
-        )
-        .expect("the constructor accepts the authored fixture arguments"),
-    );
-    economy.aid = AidBook {
-        mandates: vec![mandate(routed)],
-        freight: vec![],
-    };
+    catalog.household_time_policy = [household(), recipient()]
+        .into_iter()
+        .map(|principal_id| HouseholdTimePolicy {
+            principal_id,
+            labor_unit_id: hours(),
+            eligible_persons: if principal_id == household() { 4 } else { 1 },
+            hours_per_eligible_person: 8,
+            protected: HouseholdTimeCommitment {
+                basis: HouseholdNeedBasis::Households,
+                hours_per_basis: 2,
+            },
+            routine_provisioning: HouseholdTimeCommitment {
+                basis: HouseholdNeedBasis::Households,
+                hours_per_basis: 3,
+            },
+            unmet_burdens: vec![HouseholdUnmetTimeBurden {
+                good_id: good(2),
+                unit_id: units(),
+                hours_per_unmet_unit: 5,
+            }],
+        })
+        .collect();
+    economy.household_time = HouseholdTimeAccounting::Modeled(HouseholdTimeBook::default());
+    catalog.aid_mandates = vec![mandate(routed)];
     // The catalog owns the definition rows the engine validates against.
-    let CircuitAccounting::Monetary(economy) = &state.accounting else {
-        panic!("monetary control");
-    };
-    catalog.aid_mandates.clone_from(&economy.aid.mandates);
-    if let Some(recurring) = &economy.recurring {
-        catalog
-            .household_needs
-            .clone_from(&recurring.household_needs);
-    }
-    if let HouseholdTimeAccounting::Modeled(time) = &economy.household_time {
-        catalog.household_time_policy.clone_from(&time.policies);
-    }
+
     Materials { catalog, state }
 }
 pub(crate) fn mandate(routed: bool) -> AidMandate {
@@ -1004,7 +984,7 @@ pub(crate) fn authored_session_with_loss(
             CashTransferPurpose::MutualAid,
         )
         .expect("the fixture transfer stays funded");
-    economy.aid.mandates[0].payer = payer;
+    catalog.aid_mandates[0].payer = payer;
     economy.financial.locations.push(InstitutionLocation {
         account: payer,
         location,
@@ -1025,22 +1005,12 @@ pub(crate) fn authored_session_with_loss(
         total
     );
     if routed {
-        let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
-            unreachable!()
-        };
-        for policy in &mut book.policies {
+        for policy in &mut catalog.household_time_policy {
             policy.hours_per_eligible_person = 12;
         }
     }
     if no_time {
-        let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
-            unreachable!()
-        };
-        let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
-            unreachable!()
-        };
-        book.policies[0].hours_per_eligible_person = 4;
-        catalog.household_time_policy.clone_from(&book.policies);
+        catalog.household_time_policy[0].hours_per_eligible_person = 4;
     }
     try_session(
         foundation,

@@ -348,7 +348,7 @@ fn previous_receipt17_handling_semantics_are_not_admitted_as_current() {
 // The admission contract compares the internal candidate path with the external
 // wire path on one already-canonical engine state.
 fn admission_control() -> (MaterialCatalog, MaterialCircuitState) {
-    let catalog = MaterialCatalog::try_new(MaterialCatalog {
+    let catalog = MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![],
         process_outputs: vec![],
@@ -364,7 +364,6 @@ fn admission_control() -> (MaterialCatalog, MaterialCircuitState) {
         household_time_policy: vec![],
         service_inputs: vec![],
         household_needs: vec![],
-        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
     })
     .expect("the empty control catalog canonicalizes");
     let state = babylon_material_circuit::advance_material_circuit(
@@ -400,7 +399,7 @@ fn validated_candidate_admission_matches_external_decode_identity() {
         .expect("the engine's canonical successor admits in one pass");
     assert_eq!(candidate.completed_tick(), 1);
     assert_eq!(candidate.state(), &state);
-    assert_eq!(candidate.catalog_digest(), catalog.catalog_digest);
+    assert_eq!(candidate.catalog_digest(), catalog.catalog_digest());
     let external =
         MaterialWorldRegister::decode_external(&catalog, candidate.canonical_bytes().to_vec())
             .expect("the admitted canonical bytes satisfy full wire validation");
@@ -418,7 +417,7 @@ fn external_decode_refuses_a_catalog_that_did_not_admit_the_bytes() {
     let (catalog, state) = admission_control();
     let admitted = MaterialWorldRegister::from_validated_candidate(&catalog, state)
         .expect("the engine's canonical successor admits in one pass");
-    let mut foreign = catalog.clone();
+    let mut foreign = catalog.clone().into_definition();
     foreign
         .household_needs
         .push(babylon_material_circuit::HouseholdNeed {

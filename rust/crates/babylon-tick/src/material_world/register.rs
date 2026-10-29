@@ -276,7 +276,7 @@ impl MaterialWorldRegister {
     /// # Errors
     /// Refuses a zero period, an invalid circuit state under the catalog, or the
     /// aggregate register byte bound.
-    pub fn from_validated_candidate(
+    pub(super) fn from_validated_candidate(
         catalog: &MaterialCatalog,
         state: MaterialCircuitState,
     ) -> Result<Self, MaterialWorldError> {
@@ -314,7 +314,8 @@ impl MaterialWorldRegister {
         organizer: Option<(OrganizerConfig, OrganizerState, OrganizerPeriodJournal)>,
         state_bytes: &[u8],
     ) -> Result<Self, MaterialWorldError> {
-        let organizer_bytes = encode_bound_organizer(completed_tick, &state, organizer.as_ref())?;
+        let organizer_bytes =
+            encode_bound_organizer(catalog, completed_tick, &state, organizer.as_ref())?;
         let length = REGISTER_DOMAIN
             .len()
             .checked_add(20)
@@ -338,7 +339,7 @@ impl MaterialWorldRegister {
             state,
             organizer,
             canonical_bytes: SharedCanonicalBytes::from_vec(bytes),
-            catalog_digest: catalog.catalog_digest,
+            catalog_digest: catalog.catalog_digest(),
             digest,
         })
     }
@@ -480,7 +481,8 @@ impl MaterialWorldRegister {
         // without assembling a second full outer register during admission.
         let canonical_state =
             babylon_material_circuit::encode_material_circuit_state(catalog, &state)?;
-        let canonical_organizer = encode_bound_organizer(tick, &state, organizer.as_ref())?;
+        let canonical_organizer =
+            encode_bound_organizer(catalog, tick, &state, organizer.as_ref())?;
         let canonical_length = header
             .checked_add(canonical_state.len())
             .and_then(|count| count.checked_add(canonical_organizer.len()))
@@ -503,7 +505,7 @@ impl MaterialWorldRegister {
             state,
             organizer,
             canonical_bytes,
-            catalog_digest: catalog.catalog_digest,
+            catalog_digest: catalog.catalog_digest(),
             digest,
         })
     }
@@ -531,15 +533,20 @@ impl MaterialWorldRegister {
         if self.state.period.checked_add(1) != Some(transition.state.period) {
             return Err(MaterialWorldError::PeriodMismatch);
         }
-        let receipts = encode_material_receipts(self.state.period, &transition)?;
+        let receipts = encode_material_receipts(catalog, self.state.period, &transition)?;
         let organizer_facts = self
             .organizer_config()
             .map(|config| organizer_workplace_facts(config, catalog, &self.state, &transition))
             .transpose()?;
         let organizer_aid_support = match (self.organizer_config(), self.organizer_state()) {
-            (Some(config), Some(organizer)) => {
-                organizer_support::facts(config, organizer, commitment, &self.state, &transition)?
-            }
+            (Some(config), Some(organizer)) => organizer_support::facts(
+                catalog,
+                config,
+                organizer,
+                commitment,
+                &self.state,
+                &transition,
+            )?,
             (None, None) if commitment.is_none() => Vec::new(),
             _ => return Err(MaterialWorldError::Wire),
         };
@@ -661,6 +668,7 @@ impl PreparedMaterialWorld {
 }
 
 pub(crate) fn encode_bound_organizer(
+    catalog: &MaterialCatalog,
     completed_tick: u64,
     circuit: &MaterialCircuitState,
     organizer: Option<&(OrganizerConfig, OrganizerState, OrganizerPeriodJournal)>,
@@ -668,7 +676,7 @@ pub(crate) fn encode_bound_organizer(
     let Some((config, state, journal)) = organizer else {
         return Ok(vec![0]);
     };
-    organizer_collection::validate_binding(config, circuit)?;
+    organizer_collection::validate_binding(catalog, config, circuit)?;
     organizer_collection::current(config, state, journal, circuit, completed_tick)?;
     babylon_practice_contract::validate_organizer_journal(config, state, journal)?;
     if state.period != completed_tick {
@@ -1024,6 +1032,7 @@ macro_rules! encode_receipt_family_rows {
     reason = "one match arm per closed receipt family keeps each family's encoder beside the shared cursor"
 )]
 pub(crate) fn encode_material_receipts(
+    catalog: &MaterialCatalog,
     tick: u64,
     transition: &MaterialCircuitTransition,
 ) -> Result<Vec<u8>, MaterialWorldError> {
@@ -1103,7 +1112,7 @@ pub(crate) fn encode_material_receipts(
     installation_decision::validate(&transition.installation_decisions, &transition.installation)?;
     income_receipt::validate_order(&transition.income)?;
     aid_receipt::validate(&transition.aid, tick)?;
-    aid_receipt::validate_state(&transition.aid, &transition.state)?;
+    aid_receipt::validate_state(catalog, &transition.aid, &transition.state)?;
     collection_receipt::validate(
         &transition.collections,
         &transition.money_transfers,
@@ -1166,72 +1175,6 @@ pub(crate) fn encode_material_receipts(
     }
     debug_assert_eq!(bytes.len(), length);
     Ok(bytes)
-}
-
-/// Encode one closed receipt family exactly as the committed V18 frame does.
-///
-/// The permanent-journal extractor hashes this deterministic row encoding for
-/// rows it summarizes rather than retains.
-///
-/// # Errors
-///
-/// Refuses a zero tick, a family tag outside the closed 1..=36 registry, or any
-/// family encoder fault.
-pub fn receipt_family_bytes(
-    tick: u64,
-    receipts: &MaterialTickReceipts,
-    family: u8,
-) -> Result<Vec<u8>, MaterialWorldError> {
-    if tick == 0 || !(1..=36).contains(&family) {
-        return Err(MaterialWorldError::Wire);
-    }
-    let mut bytes = Vec::new();
-    encode_receipt_family_rows!(usize::from(family - 1), receipts, tick, &mut bytes);
-    Ok(bytes)
-}
-
-/// Exact committed row count of one closed receipt family.
-#[must_use]
-pub fn receipt_family_rows(receipts: &MaterialTickReceipts, family: u8) -> usize {
-    match family {
-        1 => receipts.production.len(),
-        2 => receipts.dispatches.len(),
-        3 => receipts.losses.len(),
-        4 => receipts.arrivals.len(),
-        5 => receipts.deliveries.len(),
-        6 => receipts.realizations.len(),
-        7 => receipts.handling.len(),
-        8 => receipts.local_fulfillments.len(),
-        9 => receipts.local_transfers.len(),
-        10 => usize::from(receipts.maintenance.is_some()),
-        11 => receipts.money_transfers.len(),
-        12 => receipts.wage_accruals.len(),
-        13 => receipts.labor_use.len(),
-        14 => receipts.household_demand.len(),
-        15 => receipts.household_consumption.len(),
-        16 => receipts.procurement.len(),
-        17 => receipts.production_plans.len(),
-        18 => receipts.prices.len(),
-        19 => receipts.income.len(),
-        20 => receipts.service_performance.len(),
-        21 => receipts.household_services.len(),
-        22 => receipts.service_markets.len(),
-        23 => receipts.service_outputs.len(),
-        24 => receipts.public_budgets.len(),
-        25 => receipts.taxes.len(),
-        26 => receipts.distributions.len(),
-        27 => receipts.contributions.len(),
-        28 => receipts.staffing_members.len(),
-        29 => receipts.member_labor_use.len(),
-        30 => receipts.installation.len(),
-        31 => receipts.equipment_wear.len(),
-        32 => receipts.investment.len(),
-        33 => receipts.installation_decisions.len(),
-        34 => receipts.household_time.len(),
-        35 => receipts.aid.len(),
-        36 => receipts.collections.len(),
-        _ => 0,
-    }
 }
 
 /// Typed material evidence decoded only from an exact committed V18 receipt family.

@@ -6,7 +6,7 @@ use babylon_kernel::economic_location::EconomicLocation;
 
 use babylon_material_circuit::{
     FinalDemandPrincipalId, GoodId, HouseholdCohort, HouseholdConsumptionReceipt,
-    HouseholdDemandReceipt, HouseholdNeed, MaterialCircuitState, UnitId,
+    HouseholdDemandReceipt, HouseholdNeed, MaterialCatalog, MaterialCircuitState, UnitId,
 };
 
 use babylon_tick::material_world::MaterialTickReceipts;
@@ -91,6 +91,7 @@ pub struct CompletedHouseholdBalance {
 }
 
 pub(in crate::production_projection) fn project_with_labels(
+    catalog: &MaterialCatalog,
     current: &MaterialCircuitState,
     prior: Option<&MaterialCircuitState>,
     receipts: Option<&MaterialTickReceipts>,
@@ -108,7 +109,7 @@ pub(in crate::production_projection) fn project_with_labels(
     };
     let completed = match (prior, receipts) {
         (None, None) if current.period == 1 => BTreeMap::new(),
-        (Some(prior), Some(receipts)) => completed_balances(prior, current, receipts)?,
+        (Some(prior), Some(receipts)) => completed_balances(catalog, prior, current, receipts)?,
         _ => return Err(ProductionProjectionError::History),
     };
     let cohorts: BTreeMap<_, _> = rows
@@ -116,7 +117,7 @@ pub(in crate::production_projection) fn project_with_labels(
         .iter()
         .map(|row| (row.principal_id, row))
         .collect();
-    let needs: BTreeMap<_, _> = rows
+    let needs: BTreeMap<_, _> = catalog
         .household_needs
         .iter()
         .map(|row| ((row.principal_id, row.good_id, row.unit_id), row))
@@ -165,6 +166,7 @@ pub(in crate::production_projection) fn project_with_labels(
 }
 
 pub(in crate::production_projection) fn completed_balances(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
@@ -174,7 +176,7 @@ pub(in crate::production_projection) fn completed_balances(
     }
     let before = lifecycle::recurring(prior).ok_or(ProductionProjectionError::State)?;
     let after = lifecycle::recurring(current).ok_or(ProductionProjectionError::State)?;
-    if before.households != after.households || before.household_needs != after.household_needs {
+    if before.households != after.households {
         return Err(ProductionProjectionError::State);
     }
     let households: BTreeMap<_, _> = before
@@ -182,7 +184,7 @@ pub(in crate::production_projection) fn completed_balances(
         .iter()
         .map(|row| (row.principal_id, row))
         .collect();
-    let needs: BTreeMap<_, _> = before
+    let needs: BTreeMap<_, _> = catalog
         .household_needs
         .iter()
         .map(|row| ((row.principal_id, row.good_id, row.unit_id), row))
@@ -210,7 +212,7 @@ pub(in crate::production_projection) fn completed_balances(
         return Err(ProductionProjectionError::State);
     }
     let mut received = received_stock(receipt, &opening)?;
-    let gifts = super::super::aid::join(prior, current, receipt)?;
+    let gifts = super::super::aid::join(catalog, prior, current, receipt)?;
     let mut result = BTreeMap::new();
     for row in &receipt.household_consumption {
         let key = (row.principal_id, row.good_id, row.unit_id);
@@ -357,7 +359,9 @@ mod tests {
                 .expect("the fixture set the optional field before this borrow");
             recurring.households[0].kind = kind;
             recurring.households[0].households = count;
-            recurring.household_needs[0].basis = basis;
+            let mut catalog = catalog.into_definition();
+            catalog.household_needs[0].basis = basis;
+            let catalog = MaterialCatalog::try_new(catalog).expect("valid fixture catalog");
             let opening = MaterialWorldRegister::try_new(&catalog, 0, opening)
                 .expect("the authored fixture satisfies the constructor invariants");
             let next = opening
@@ -367,6 +371,7 @@ mod tests {
                 .expect("the canonical bytes decode into the declared type");
             let project = |receipts: &MaterialTickReceipts| {
                 project_with_labels(
+                    &catalog,
                     next.register().state(),
                     Some(opening.state()),
                     Some(receipts),

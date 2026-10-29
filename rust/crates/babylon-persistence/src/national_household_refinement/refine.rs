@@ -4,14 +4,15 @@ use crate::national_household_allocation::{
     HouseholdBudgetKey, HouseholdCohortKey, NationalHouseholdAllocation,
 };
 use crate::national_household_time_allocation::NationalHouseholdTimeAllocation;
+use babylon_material_circuit::HouseholdTimePolicy;
 
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::geography::CountyGeoid;
 
 use babylon_material_circuit::{
-    FinalDemandPrincipalId, GoodId, HouseholdTimeAccounting, HouseholdTimeBook,
-    OrganizationAccountId, SiteId, UnitId, MAX_MATERIAL_CIRCUIT_ROWS,
+    FinalDemandPrincipalId, GoodId, HouseholdTimeAccounting, OrganizationAccountId, SiteId, UnitId,
+    MAX_MATERIAL_CIRCUIT_ROWS,
 };
 
 use crate::economic_catalog::{
@@ -666,13 +667,13 @@ pub fn consolidate_background(
     foreground: ForegroundSelection,
     commitments: &[AuthoredCommitment],
 ) -> Result<NationalDetailPartition, ConsolidationError> {
-    let HouseholdTimeAccounting::Modeled(book) = time else {
+    let HouseholdTimeAccounting::Modeled(_) = time else {
         return Err(ConsolidationError::MissingTime);
     };
     let households = unique_households(opening)?;
     let sites = unique_sites(opening)?;
     let work = work_indexes(opening)?;
-    let time_rows = time_index(book)?;
+    let time_rows = time_index(&opening.policies.household_time_policy)?;
     if time_rows.len() != households.len() {
         return Err(ConsolidationError::MissingTime);
     }
@@ -758,9 +759,9 @@ fn add_work(
 }
 
 fn time_index(
-    book: &HouseholdTimeBook,
+    policies: &[HouseholdTimePolicy],
 ) -> Result<BTreeMap<FinalDemandPrincipalId, (u64, u64)>, ConsolidationError> {
-    book.policies
+    policies
         .iter()
         .map(|policy| {
             let hours = policy

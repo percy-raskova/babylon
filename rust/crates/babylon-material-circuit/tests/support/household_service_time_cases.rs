@@ -40,8 +40,14 @@ fn time_service_opening(input: u64) -> (MaterialCatalog, MaterialCircuitState) {
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         unreachable!()
     };
+    let household_needs = vec![HouseholdNeed {
+        principal_id: crate::household(),
+        good_id: crate::good(2),
+        unit_id: crate::unit(2),
+        basis: HouseholdNeedBasis::Households,
+        units_per_basis: 1,
+    }];
     let recurring = RecurringEconomy {
-        service_inputs: vec![],
         households: vec![HouseholdCohort {
             principal_id: crate::household(),
             kind: HouseholdKind::Ordinary,
@@ -49,13 +55,6 @@ fn time_service_opening(input: u64) -> (MaterialCatalog, MaterialCircuitState) {
             persons: 4,
         }],
         household_stocks: vec![],
-        household_needs: vec![HouseholdNeed {
-            principal_id: crate::household(),
-            good_id: crate::good(2),
-            unit_id: crate::unit(2),
-            basis: HouseholdNeedBasis::Households,
-            units_per_basis: 1,
-        }],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: crate::household(),
             retailer_site_id: crate::site(2),
@@ -94,8 +93,7 @@ fn time_service_opening(input: u64) -> (MaterialCatalog, MaterialCircuitState) {
         last_household_admission_period: 0,
         last_household_consumption_period: 0,
     };
-    let needs = recurring.household_needs.clone();
-    let inputs = recurring.service_inputs.clone();
+    let needs = household_needs.clone();
     economy.recurring = Some(Box::new(recurring));
     let time_policy = HouseholdTimePolicy {
         principal_id: crate::household(),
@@ -116,15 +114,12 @@ fn time_service_opening(input: u64) -> (MaterialCatalog, MaterialCircuitState) {
             hours_per_unmet_unit: 5,
         }],
     };
-    economy.household_time = HouseholdTimeAccounting::Modeled(
-        HouseholdTimeBook::new(vec![time_policy.clone()])
-            .expect("the constructor accepts the authored fixture arguments"),
-    );
-    let mut catalog = catalog;
+    economy.household_time = HouseholdTimeAccounting::Modeled(HouseholdTimeBook::default());
+    let mut catalog = catalog.into_definition();
     catalog.household_time_policy = vec![time_policy];
     catalog.household_needs = needs;
-    catalog.service_inputs = inputs;
-    catalog.catalog_digest = [0; 32];
+    catalog.service_inputs.clear();
+
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let state = babylon_material_circuit::admit_material_purchase(
         &catalog,

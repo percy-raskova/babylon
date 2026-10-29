@@ -6,7 +6,6 @@ use crate::state_storage::IdentityKind as K;
 use crate::state_storage::{IdentityEntry, OpeningRegister, StorageError};
 use crate::storage_compression;
 use babylon_kernel::content_digest;
-use babylon_material_circuit::CircuitAccounting;
 fn fixture() -> (OpeningRegister, IdentityEntry, IdentityEntry) {
     let session = crate::organizer_aid_fixture::authored_session(
         crate::michigan_dynamic_hex_foundation().expect("the Michigan hex foundation builds"),
@@ -16,14 +15,7 @@ fn fixture() -> (OpeningRegister, IdentityEntry, IdentityEntry) {
     );
     let opening = OpeningRegister::from_opening(session.material())
         .expect("the opening register admits its sections");
-    let CircuitAccounting::Monetary(economy) = &session.material().state().accounting else {
-        panic!("monetary fixture");
-    };
-    let need = &economy
-        .recurring
-        .as_ref()
-        .expect("the fixture set the optional field before this read")
-        .household_needs[0];
+    let need = &session.catalog().household_needs[0];
     let make = |period| IdentityEntry {
         kind: K::Order,
         bytes: babylon_material_circuit::recurring_household_order_id(

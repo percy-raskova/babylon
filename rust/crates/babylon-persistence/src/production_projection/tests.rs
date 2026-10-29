@@ -3,7 +3,6 @@ use super::projection;
 use super::projection::ProductionProjectionError;
 use crate::economic_catalog::CapturedEconomicCatalog;
 use crate::michigan_content::MichiganContentPreset;
-use crate::michigan_economy::digest_hex;
 use crate::michigan_material::{MichiganDeliveryPreset, MichiganMaterialCatalog};
 use crate::production_observation::PhysicalRouteIndex;
 use crate::production_observation::ProductionSnapshot;
@@ -83,7 +82,7 @@ fn projection_uses_exact_committed_state_and_refuses_future_history() {
         .1
         .production
         .iter()
-        .any(|row| digest_hex(&row.site_id.as_bytes()) == starved.id));
+        .any(|row| crate::michigan_economy::digest_hex(&row.site_id.as_bytes()) == starved.id));
     assert!(!snapshot
         .events
         .iter()

@@ -379,7 +379,7 @@ fn an_arc_without_a_marker_is_flagged() {
 
 #[test]
 fn an_arc_with_an_exc_04_marker_in_a_registered_file_is_allowed() {
-    let source = "pub struct Holder {\n    // STYLE-EXCEPTION(EXC-04): shared immutable snapshot.\n    value: Arc<u8>,\n}\n";
+    let source = "pub struct NationalCountyRoster(\n    // STYLE-EXCEPTION(EXC-04): shared immutable snapshot.\n    Arc<[CountyGeoid]>,\n);\n";
     assert_clean(ROSTER, source);
 }
 
@@ -406,7 +406,7 @@ fn an_arc_vec_without_a_marker_is_flagged() {
 
 #[test]
 fn an_arc_vec_with_a_registered_marker_is_allowed() {
-    let source = "pub struct Holder {\n    // STYLE-EXCEPTION(EXC-04): adopts the caller's allocation.\n    value: Arc<Vec<u8>>,\n}\n";
+    let source = "pub struct SharedCanonicalBytes(\n    // STYLE-EXCEPTION(EXC-04): adopts the caller's allocation.\n    Arc<Vec<u8>>,\n);\n";
     assert_clean(MATERIAL_REGISTER, source);
 }
 
@@ -516,4 +516,145 @@ fn the_check_runs_by_name_over_a_directory() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("widget.rs"), "{stdout}");
     assert!(stdout.contains("non-leaf"), "{stdout}");
+}
+
+#[test]
+fn unrelated_parameter_does_not_hide_import_use() {
+    let source =
+        "use std::mem::drop;\nfn first(drop: u8) { let _ = drop; }\nfn second() { drop(1); }\n";
+    assert_flags(LEAF, source, "free function is imported directly");
+}
+
+#[test]
+fn marker_on_unregistered_owner_in_registered_file_is_flagged() {
+    let source = "pub struct Unauthorized {\n    // STYLE-EXCEPTION(EXC-04): bogus.\n    value: Arc<u8>,\n}\n";
+    assert_flags(ROSTER, source, "EXC-04 register");
+}
+
+#[test]
+fn formatter_skip_on_function_in_registered_file_is_flagged() {
+    let source = "// STYLE-EXCEPTION(EXC-05): manual byte-table alignment\n#[rustfmt::skip]\nfn unrelated() {}\n";
+    assert_flags(WORLD_HASH, source, "EXC-05");
+}
+
+#[test]
+fn lexical_shadowing_does_not_escape_a_block() {
+    let source = "use std::mem::drop;\nfn run() { { drop(1); } drop(2); }\n";
+    assert_flags(LEAF, source, "free function is imported directly");
+}
+
+#[test]
+fn local_shadowing_preserves_the_import_when_only_local_is_called() {
+    let source = "use std::mem::drop;\nfn run(drop: fn(u8)) { drop(1); }\n";
+    assert_clean(LEAF, source);
+}
+
+#[test]
+fn other_owner_cannot_adopt_vec_in_registered_file() {
+    let source = "pub struct MaterialReceiptHandle {\n // STYLE-EXCEPTION(EXC-04): bogus.\n value: Arc<Vec<u8>>,\n}\n";
+    assert_flags(MATERIAL_REGISTER, source, "Arc<Vec");
+}
+
+#[test]
+fn use_in_sibling_module_does_not_resolve_to_import() {
+    let source = "mod first { use std::mem::drop; }\nmod second { fn drop(_: u8) {} fn run() { drop(1); } }\n";
+    assert_clean(LEAF, source);
+}
+
+#[test]
+fn formatter_skip_rejects_non_byte_table() {
+    let source = "// STYLE-EXCEPTION(EXC-05): manual byte-table alignment\n#[rustfmt::skip]\nconst TABLE: [u16; 2] = [0, 1];\n";
+    assert_flags(WORLD_HASH, source, "EXC-05");
+}
+
+#[test]
+fn if_let_binding_does_not_escape_the_then_branch() {
+    let source = "use std::mem::drop;\nfn run(value: Option<fn(u8)>) { if let Some(drop) = value { drop(1); } drop(2); }\n";
+    assert_flags(LEAF, source, "free function is imported directly");
+}
+
+#[test]
+fn macro_closure_parameter_does_not_count_as_import_use() {
+    let source = "use crate::alpha::amount;\nfn run() { assert_eq!(values.map(|amount| -amount), values); }\n";
+    assert_clean(LEAF, source);
+}
+
+#[test]
+fn macro_closure_binding_reaches_nested_body() {
+    assert_clean(LEAF, "use crate::alpha::amount;\nfn run() { assert_eq!(values.map(|amount| { amount }), values); }\n");
+}
+
+#[test]
+fn macro_closure_binding_ends_at_body() {
+    assert_flags(
+        LEAF,
+        "use std::mem::drop;\nfn run() { assert_eq!((|drop| drop(1), drop(2)), values); }\n",
+        "free function is imported directly",
+    );
+}
+
+#[test]
+fn extra_arc_field_in_registered_owner_is_rejected() {
+    assert_flags(ROSTER, "pub struct NationalCountyRoster(\n // STYLE-EXCEPTION(EXC-04): snapshot.\n Arc<[CountyGeoid]>,\n // STYLE-EXCEPTION(EXC-04): extra.\n Arc<u8>,\n);\n", "EXC-04 register");
+}
+
+#[test]
+fn extra_arc_allocation_in_registered_method_is_rejected() {
+    assert_flags(MATERIAL_REGISTER, "impl SharedCanonicalBytes {\n fn from_vec(bytes: Vec<u8>) -> Self {\n // STYLE-EXCEPTION(EXC-04): adopted.\n let first = Arc::new(bytes);\n // STYLE-EXCEPTION(EXC-04): extra.\n let second = Arc::new(1);\n Self(first)\n }\n}\n", "EXC-04 register");
+}
+
+#[test]
+fn function_local_import_does_not_capture_other_function_use() {
+    assert_clean(
+        LEAF,
+        "fn first() { use std::mem::drop; }\nfn second() { drop(1); }\n",
+    );
+}
+
+#[test]
+fn block_local_import_does_not_capture_sibling_use() {
+    assert_clean(LEAF, "fn run() { { use std::mem::drop; } { drop(1); } }\n");
+}
+
+#[test]
+fn local_import_is_detected_in_its_own_nested_block() {
+    assert_flags(
+        LEAF,
+        "fn run() { use std::mem::drop; { drop(1); } }\n",
+        "free function is imported directly",
+    );
+}
+
+#[test]
+fn macro_closure_after_let_has_scoped_binding() {
+    assert_clean(
+        LEAF,
+        "use std::mem::drop;\nfn run() { assert!({ let f = |drop| { drop(1); }; true }); }\n",
+    );
+}
+
+#[test]
+fn macro_closure_after_argument_has_scoped_binding() {
+    assert_clean(
+        LEAF,
+        "use std::mem::drop;\nfn run() { assert_eq!(1, |drop| { drop(1); }); }\n",
+    );
+}
+
+#[test]
+fn macro_closure_ends_before_semicolon() {
+    assert_flags(
+        LEAF,
+        "use std::mem::drop;\nfn run() { assert!({ |drop| drop(1); drop(2); true }); }\n",
+        "free function is imported directly",
+    );
+}
+
+#[test]
+fn nested_shadow_binding_does_not_escape_block() {
+    assert_flags(
+        LEAF,
+        "use std::mem::drop;\nfn run() { { let drop = |_: u8| (); drop(1); } drop(2); }\n",
+        "free function is imported directly",
+    );
 }

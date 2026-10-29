@@ -3,6 +3,7 @@
 use super::accounting;
 use super::capacity;
 use super::services;
+use crate::MaterialCatalogDefinition;
 
 use crate::{
     FinalDemandOrder, FinalDemandPrincipal, FinalDemandPrincipalId, MerchantHandling,
@@ -28,12 +29,12 @@ pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circui
 
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    199, 181, 132, 90, 166, 94, 164, 169, 182, 175, 70, 23, 172, 10, 193, 53, 150, 115, 29, 55, 41,
-    62, 17, 215, 105, 29, 5, 33, 240, 237, 203, 127,
+    69, 46, 32, 180, 200, 146, 10, 121, 77, 45, 41, 185, 171, 36, 114, 87, 4, 229, 126, 84, 148,
+    96, 130, 54, 178, 68, 1, 7, 164, 96, 29, 143,
 ];
 
 /// Published schema version of one canonical material-circuit state frame.
-pub const MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION: u16 = 20;
+pub const MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION: u16 = 21;
 
 pub(crate) const SCHEMA_VERSION: u16 = MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION;
 
@@ -516,7 +517,7 @@ pub fn encode_material_circuit_state(
     output.extend_from_slice(MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES);
     output.push(0);
     output.extend_from_slice(&SCHEMA_VERSION.to_be_bytes());
-    output.extend_from_slice(&catalog.catalog_digest);
+    output.extend_from_slice(&catalog.catalog_digest());
     output.extend_from_slice(&canonical.period.to_be_bytes());
     services::append_connections(&mut output, &canonical.service_connections)?;
     services::append_orders(&mut output, &canonical.service_orders)?;
@@ -563,7 +564,7 @@ pub fn decode_material_circuit_state(
     if cursor.u16()? != SCHEMA_VERSION {
         return Err(MaterialCircuitError::WireVersion);
     }
-    if cursor.array::<32>()? != catalog.catalog_digest {
+    if cursor.array::<32>()? != catalog.catalog_digest() {
         return Err(MaterialCircuitError::WireDomain);
     }
     let state = MaterialCircuitState {
@@ -609,7 +610,9 @@ pub fn material_circuit_state_digest(
 ///
 /// # Errors
 /// Returns the first row-bound refusal.
-pub(crate) fn catalog_bytes(catalog: &MaterialCatalog) -> Result<Vec<u8>, MaterialCircuitError> {
+pub(crate) fn catalog_bytes(
+    catalog: &MaterialCatalogDefinition,
+) -> Result<Vec<u8>, MaterialCircuitError> {
     super::catalog::bytes(catalog)
 }
 

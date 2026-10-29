@@ -194,7 +194,7 @@ pub(super) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
             quantity: 0,
         },
     ];
-    let catalog = MaterialCatalog {
+    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         commodities: commodities(),
         site_logistics_nodes: (1..=3)
@@ -229,7 +229,6 @@ pub(super) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
         household_time_policy: Vec::new(),
         service_inputs: Vec::new(),
         household_needs: Vec::new(),
-        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
     };
     let state = MaterialCircuitState {
         period: 1,
@@ -275,7 +274,10 @@ pub(super) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
         maintenance_service: None,
         capacity_reservations: CapacityReservations::default(),
     };
-    (catalog, state)
+    (
+        MaterialCatalog::try_new(catalog).expect("valid fixture definitions"),
+        state,
+    )
 }
 
 pub(super) fn opening() -> MaterialCircuitState {
@@ -312,7 +314,8 @@ pub(super) fn funded(
 pub(super) fn recurring(
     materials: (MaterialCatalog, MaterialCircuitState),
 ) -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = materials;
+    let (catalog, mut state) = materials;
+    let mut catalog = catalog.into_definition();
     state.inventory[0].quantity = 3;
     state.capacities[0].available_batches = 4;
     state.capacities[1].available_batches = 3;
@@ -330,7 +333,6 @@ pub(super) fn recurring(
         panic!()
     };
     e.recurring = Some(Box::new(RecurringEconomy {
-        service_inputs: service_inputs(),
         households: vec![HouseholdCohort {
             kind: babylon_material_circuit::HouseholdKind::Ordinary,
             principal_id: household(),
@@ -338,7 +340,6 @@ pub(super) fn recurring(
             persons: 1,
         }],
         household_stocks: vec![],
-        household_needs: household_needs(),
         household_purchases: household_purchases(),
         offers: (1..=3)
             .map(|n| SellerOffer {
@@ -400,12 +401,13 @@ pub(super) fn recurring(
             .expect("the fixture holds the searched element")
             .available;
     }
-    // Nested definition rows stay mirrored while the engine reads both owners.
+    // Capture authored service and household definitions in the catalog.
     catalog.service_inputs = service_inputs();
-    if let Some(recurring) = &e.recurring {
-        catalog.household_needs = recurring.household_needs.clone();
-    }
-    (catalog, state)
+    catalog.household_needs = household_needs();
+    (
+        MaterialCatalog::try_new(catalog).expect("valid fixture definitions"),
+        state,
+    )
 }
 
 fn service_inputs() -> Vec<ServiceInputPolicy> {

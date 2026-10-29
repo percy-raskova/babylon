@@ -1,7 +1,8 @@
 //! Keyboard focus for the existing observer widgets.
 //!
 //! Integration contract:
-//! - Add only `ObserverFocusPlugin`; it installs Bevy's input/tab plugins.
+//! - Add only `ObserverFocusPlugin`; it installs whichever of Bevy's focus,
+//!   dispatch, pointer-focus and tab plugins the app has not already added.
 //! - Put `TabGroup::new(order)` on each ordinary panel's ancestor, and
 //!   `TabGroup::modal()` on the menu and comparison roots. Do not nest groups.
 //!   A group root is not itself a focus target.
@@ -203,14 +204,29 @@ struct RevealFocus {
 
 pub(crate) struct ObserverFocusPlugin;
 
+/// Add `plugin` unless the app already carries it. Bevy panics on a duplicate
+/// plugin, and the windowed shell layers this plugin on top of `DefaultPlugins`.
+fn add_if_missing<P: Plugin>(app: &mut App, plugin: P) {
+    if !app.is_plugin_added::<P>() {
+        app.add_plugins(plugin);
+    }
+}
+
 impl Plugin for ObserverFocusPlugin {
     fn build(&self, app: &mut App) {
         // Bevy 0.20 splits the `InputFocus`/`InputFocusVisible` resources and the
         // recorded-change event processing out of `InputDispatchPlugin` into
         // `InputFocusPlugin`; the shell reads focus state, so it depends on it.
-        app.add_plugins((InputFocusPlugin, PointerFocusPlugin))
-            .add_plugins((InputDispatchPlugin, TabNavigationPlugin))
-            .init_resource::<ObserverFocusPolicy>()
+        // `DefaultPlugins` already supplies three of these — `InputFocusPlugin`
+        // and `InputDispatchPlugin` directly, `PointerFocusPlugin` through
+        // `UiWidgetsPlugins` — and adding any a second time panics before the
+        // window opens. Minimal apps (`App::new` plus `InputPlugin`) still take
+        // them from here.
+        add_if_missing(app, InputFocusPlugin);
+        add_if_missing(app, InputDispatchPlugin);
+        add_if_missing(app, PointerFocusPlugin);
+        add_if_missing(app, TabNavigationPlugin);
+        app.init_resource::<ObserverFocusPolicy>()
             .init_resource::<ObserverKeyboardClaim>()
             .init_resource::<FocusMemory>()
             .init_resource::<ReadingRequest>()
@@ -823,7 +839,7 @@ mod tests {
     use bevy::input::keyboard::Key;
     use bevy::input::InputPlugin;
     use bevy::input_focus::FocusCause;
-    use bevy::ui_widgets::Button;
+    use bevy::ui_widgets::{Button, UiWidgetsPlugins};
 
     use crate::observer::Perspective;
     use babylon_persistence::identity::CampaignId;
@@ -835,6 +851,32 @@ mod tests {
     use bevy::picking::{InteractionPlugin, PickingPlugin};
     use bevy::window::WindowRef;
     use uuid::Uuid;
+
+    /// `DefaultPlugins` installs `InputPlugin`, `InputFocusPlugin`,
+    /// `InputDispatchPlugin` and — through `UiWidgetsPlugins` —
+    /// `PointerFocusPlugin`. Adding any of them a second time panics. The
+    /// windowed shell layers this plugin on top of `DefaultPlugins`, so build
+    /// must install only what the app lacks. That input estate is reproduced
+    /// here without a window or renderer.
+    #[test]
+    fn build_tolerates_the_default_plugins_input_estate() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            InputPlugin,
+            InputFocusPlugin,
+            InputDispatchPlugin,
+            UiWidgetsPlugins,
+            ObserverFocusPlugin,
+        ));
+        // Tolerating the estate must mean "added once", not "dropped": the shell
+        // reads focus state and dispatch, so their absence would break focus
+        // silently instead of panicking.
+        assert!(app.is_plugin_added::<InputFocusPlugin>());
+        assert!(app.is_plugin_added::<InputDispatchPlugin>());
+        assert!(app.is_plugin_added::<PointerFocusPlugin>());
+        assert!(app.is_plugin_added::<TabNavigationPlugin>());
+    }
 
     #[derive(Resource, Default)]
     struct Actions {

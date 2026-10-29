@@ -73,7 +73,6 @@ impl From<MonetaryError> for MaterialCircuitError {
 
 pub(crate) fn canonicalize(accounting: &mut CircuitAccounting) {
     if let CircuitAccounting::Monetary(economy) = accounting {
-        economy.aid.mandates.sort_by_key(|r| r.id);
         economy.aid.freight.sort_by_key(|r| r.lot_id);
         crate::household_time::canonicalize(&mut economy.household_time);
         if let Some(recurring) = &mut economy.recurring {
@@ -269,7 +268,6 @@ pub(crate) fn validate(
     economy.book.total_cash_and_reserves()?;
     crate::financial::validate(state)?;
     crate::recurring::validate(catalog, state)?;
-    crate::household_time::validate(catalog, state)?;
     Ok(())
 }
 

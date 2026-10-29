@@ -25,6 +25,7 @@ use crate::LaborCapacityRow;
 use crate::LocalRetailFulfillmentReceipt;
 use crate::LogisticsNodeId;
 use crate::MaterialCatalog;
+use crate::MaterialCatalogDefinition;
 use crate::MaterialCircuitError;
 use crate::MaterialCircuitState;
 use crate::MerchantHandling;
@@ -65,7 +66,6 @@ fn hours() -> UnitId {
 
 fn recurring(stock: u64) -> RecurringEconomy {
     RecurringEconomy {
-        service_inputs: vec![],
         households: vec![HouseholdCohort {
             kind: crate::HouseholdKind::Ordinary,
             principal_id: h(),
@@ -77,13 +77,6 @@ fn recurring(stock: u64) -> RecurringEconomy {
             good_id: g(),
             unit_id: u(),
             quantity: stock,
-        }],
-        household_needs: vec![HouseholdNeed {
-            principal_id: h(),
-            good_id: g(),
-            unit_id: u(),
-            basis: HouseholdNeedBasis::Persons,
-            units_per_basis: 1,
         }],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: h(),
@@ -199,7 +192,7 @@ fn opening(household_cash: i128, stock: u64) -> (MaterialCatalog, MaterialCircui
         capacity_reservations: CapacityReservations::default(),
     };
     fixture(
-        MaterialCatalog {
+        MaterialCatalogDefinition {
             capacity_policy: CapacitySupply::FiniteSchedule,
             site_logistics_nodes: vec![SiteLogisticsNode {
                 site_id: s(),
@@ -235,7 +228,6 @@ fn opening(household_cash: i128, stock: u64) -> (MaterialCatalog, MaterialCircui
             household_time_policy: Vec::new(),
             service_inputs: Vec::new(),
             household_needs: Vec::new(),
-            catalog_digest: crate::UNSEALED_CATALOG_DIGEST,
         },
         state,
     )
@@ -276,19 +268,22 @@ fn handoff(
 }
 
 fn fixture(
-    mut catalog: MaterialCatalog,
+    mut catalog: MaterialCatalogDefinition,
     state: MaterialCircuitState,
 ) -> (MaterialCatalog, MaterialCircuitState) {
     if let crate::CircuitAccounting::Monetary(economy) = &state.accounting {
-        if let Some(recurring) = &economy.recurring {
-            catalog.service_inputs.clone_from(&recurring.service_inputs);
-            catalog
-                .household_needs
-                .clone_from(&recurring.household_needs);
+        if economy.recurring.is_some() {
+            catalog.service_inputs.clear();
+            catalog.household_needs = vec![HouseholdNeed {
+                principal_id: h(),
+                good_id: g(),
+                unit_id: u(),
+                basis: HouseholdNeedBasis::Persons,
+                units_per_basis: 1,
+            }];
         }
-        catalog.aid_mandates.clone_from(&economy.aid.mandates);
     }
-    catalog.catalog_digest = crate::UNSEALED_CATALOG_DIGEST;
+
     let catalog = MaterialCatalog::try_new(catalog).expect("the authored fixture catalog is valid");
     (catalog, state)
 }
@@ -346,8 +341,14 @@ fn fulfillment_credits_stock_expiry_refunds_and_consumption_preserves_need() {
     let mut demands = crate::admit_household_orders(&catalog, &mut state, &mut transfers)
         .expect("the fixture admits the household orders");
     let receipt = handoff(&mut state, demands[0].order_id, 2);
-    crate::complete_household_orders(&mut state, &mut demands, &[receipt], &mut transfers)
-        .expect("the fixture completes the authored orders");
+    crate::complete_household_orders(
+        &catalog,
+        &mut state,
+        &mut demands,
+        &[receipt],
+        &mut transfers,
+    )
+    .expect("the fixture completes the authored orders");
     assert_eq!(
         (demands[0].fulfilled_quantity, demands[0].expired_quantity),
         (2, 2)
@@ -369,7 +370,7 @@ fn fulfillment_credits_stock_expiry_refunds_and_consumption_preserves_need() {
             .expect("the fixture book totals without overflow"),
         cash(32)
     );
-    let consumed = crate::consume_household_needs(&mut state)
+    let consumed = crate::consume_household_needs(&catalog, &mut state)
         .expect("the fixture households consume their authored needs");
     assert_eq!(
         (
@@ -381,13 +382,10 @@ fn fulfillment_credits_stock_expiry_refunds_and_consumption_preserves_need() {
         ),
         (4, 2, 2, 2, 0)
     );
-    assert_eq!(
-        household_rows(&mut state).household_needs[0].units_per_basis,
-        1
-    );
+    assert_eq!(catalog.household_needs[0].units_per_basis, 1);
     let closed = state.clone();
     assert_eq!(
-        crate::consume_household_needs(&mut state),
+        crate::consume_household_needs(&catalog, &mut state),
         Err(MaterialCircuitError::PeriodInvariant)
     );
     assert_eq!(state, closed);
@@ -410,7 +408,7 @@ fn withdrawn_orders_do_not_erase_unemployed_residents_needs() {
         ),
         (4, 2, 0, 0)
     );
-    let consumed = crate::consume_household_needs(&mut state)
+    let consumed = crate::consume_household_needs(&catalog, &mut state)
         .expect("the fixture households consume their authored needs");
     assert_eq!(
         (consumed[0].consumed_quantity, consumed[0].unmet_quantity),
@@ -431,9 +429,9 @@ fn regenerated_orders_have_new_ids_and_same_period_retry_is_refused() {
         Err(MaterialCircuitError::PeriodInvariant)
     );
     assert_eq!(state, admitted);
-    crate::complete_household_orders(&mut state, &mut first, &[], &mut transfers)
+    crate::complete_household_orders(&catalog, &mut state, &mut first, &[], &mut transfers)
         .expect("the fixture completes the authored orders");
-    crate::consume_household_needs(&mut state)
+    crate::consume_household_needs(&catalog, &mut state)
         .expect("the fixture households consume their authored needs");
     state.period = 2;
     household_rows(&mut state).attendance[0].period = 2;
@@ -453,12 +451,17 @@ fn malformed_or_repeated_handoffs_cannot_credit_stock_or_move_money() {
     let before = (state.clone(), demands.clone(), transfers.clone());
     let mut wrong = receipt.clone();
     wrong.quantity = 3;
-    assert!(
-        crate::complete_household_orders(&mut state, &mut demands, &[wrong], &mut transfers)
-            .is_err()
-    );
+    assert!(crate::complete_household_orders(
+        &catalog,
+        &mut state,
+        &mut demands,
+        &[wrong],
+        &mut transfers
+    )
+    .is_err());
     assert_eq!((state.clone(), demands.clone(), transfers.clone()), before);
     assert!(crate::complete_household_orders(
+        &catalog,
         &mut state,
         &mut demands,
         &[receipt.clone(), receipt.clone()],
@@ -467,6 +470,7 @@ fn malformed_or_repeated_handoffs_cannot_credit_stock_or_move_money() {
     .is_err());
     assert_eq!((state.clone(), demands.clone(), transfers.clone()), before);
     crate::complete_household_orders(
+        &catalog,
         &mut state,
         &mut demands,
         std::slice::from_ref(&receipt),
@@ -474,10 +478,14 @@ fn malformed_or_repeated_handoffs_cannot_credit_stock_or_move_money() {
     )
     .expect("the fixture completes the authored orders");
     let after = (state.clone(), demands.clone(), transfers.clone());
-    assert!(
-        crate::complete_household_orders(&mut state, &mut demands, &[receipt], &mut transfers)
-            .is_err()
-    );
+    assert!(crate::complete_household_orders(
+        &catalog,
+        &mut state,
+        &mut demands,
+        &[receipt],
+        &mut transfers
+    )
+    .is_err());
     assert_eq!((state, demands, transfers), after);
 }
 
@@ -513,8 +521,14 @@ fn finite_preexisting_household_order_is_credited_but_not_expired() {
     assert_eq!(demands[0].admitted_quantity, 2);
     let old = handoff(&mut state, id, 1);
     let new = handoff(&mut state, demands[0].order_id, 1);
-    crate::complete_household_orders(&mut state, &mut demands, &[old, new], &mut transfers)
-        .expect("the fixture completes the authored orders");
+    crate::complete_household_orders(
+        &catalog,
+        &mut state,
+        &mut demands,
+        &[old, new],
+        &mut transfers,
+    )
+    .expect("the fixture completes the authored orders");
     assert_eq!(household_rows(&mut state).household_stocks[0].quantity, 2);
     assert_eq!(state.final_demand_orders.len(), 1);
     assert_eq!(state.final_demand_orders[0].order_id, id);
@@ -533,7 +547,9 @@ fn finite_preexisting_household_order_is_credited_but_not_expired() {
 fn missing_or_overflowing_needs_and_invalid_prices_are_refused() {
     let (catalog, mut state) = opening(16, 0);
     super::validate(&catalog, &state).expect("the authored fixture passes validation");
-    household_rows(&mut state).household_needs[0].units_per_basis = u64::MAX;
+    let mut catalog = catalog.into_definition();
+    catalog.household_needs[0].units_per_basis = u64::MAX;
+    let catalog = MaterialCatalog::try_new(catalog).expect("valid fixture definitions");
     assert_eq!(
         super::validate(&catalog, &state),
         Err(MaterialCircuitError::Arithmetic)
@@ -560,7 +576,8 @@ fn missing_or_overflowing_needs_and_invalid_prices_are_refused() {
 
 #[test]
 fn one_household_budget_is_shared_in_canonical_need_order() {
-    let (mut catalog, mut state) = opening(4, 0);
+    let (catalog, mut state) = opening(4, 0);
+    let mut catalog = catalog.into_definition();
     let other = GoodId::from_bytes([33; 32]);
     catalog.commodities.push(CommodityDefinition {
         good_id: other,
@@ -582,7 +599,7 @@ fn one_household_budget_is_shared_in_canonical_need_order() {
         unit_id: u(),
         quantity: 0,
     });
-    rows.household_needs.push(HouseholdNeed {
+    catalog.household_needs.push(HouseholdNeed {
         principal_id: h(),
         good_id: other,
         unit_id: u(),
@@ -608,6 +625,7 @@ fn one_household_budget_is_shared_in_canonical_need_order() {
         unit_price: cash(4),
         pricing: PricePolicy::Fixed,
     });
+    let catalog = MaterialCatalog::try_new(catalog).expect("valid definitions");
     let mut reordered = state.clone();
     crate::canonicalize(household_rows(&mut reordered));
     let first = crate::admit_household_orders(&catalog, &mut state, &mut vec![])
@@ -638,7 +656,7 @@ fn consumption_cannot_skip_an_unresolved_generated_order() {
         .expect("the fixture admits the household orders");
     let before = state.clone();
     assert_eq!(
-        crate::consume_household_needs(&mut state),
+        crate::consume_household_needs(&catalog, &mut state),
         Err(MaterialCircuitError::PurchaseInvariant)
     );
     assert_eq!(state, before);

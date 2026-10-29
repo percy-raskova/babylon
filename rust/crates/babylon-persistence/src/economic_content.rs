@@ -360,7 +360,7 @@ mod tests {
             clone.material_catalog()
         ));
         assert_eq!(
-            handle.material_catalog().catalog_digest,
+            handle.material_catalog().catalog_digest(),
             handle.initial_register().catalog_digest()
         );
         assert_eq!(

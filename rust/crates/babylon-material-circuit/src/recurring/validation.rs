@@ -19,8 +19,6 @@ pub(crate) fn canonicalize(rows: &mut RecurringEconomy) {
     rows.households.sort_by_key(|r| r.principal_id);
     rows.household_stocks
         .sort_by_key(|r| (r.principal_id, r.good_id, r.unit_id));
-    rows.household_needs
-        .sort_by_key(|r| (r.principal_id, r.good_id, r.unit_id));
     rows.household_purchases
         .sort_by_key(|r| (r.principal_id, r.good_id, r.unit_id));
     rows.offers
@@ -43,7 +41,6 @@ pub(crate) fn unique<T, K: Ord>(rows: &[T], key: impl Fn(&T) -> K) -> Result<BTr
 
 pub(crate) fn row_limits(rows: &RecurringEconomy) -> Result<()> {
     if rows.replenishment.len() > crate::MAX_REPLENISHMENT_POLICIES
-        || rows.household_needs.len() > crate::MAX_HOUSEHOLD_NEEDS
         || rows.household_purchases.len() > crate::MAX_HOUSEHOLD_NEEDS
     {
         return Err(MaterialCircuitError::RowLimit);
@@ -89,7 +86,7 @@ pub(crate) fn validate_households(
     let stock_keys = unique(&rows.household_stocks, |r| {
         (r.principal_id, r.good_id, r.unit_id)
     })?;
-    let need_keys = unique(&rows.household_needs, |r| {
+    let need_keys = unique(&catalog.household_needs, |r| {
         (r.principal_id, r.good_id, r.unit_id)
     })?;
     let purchase_keys = unique(&rows.household_purchases, |r| {
@@ -112,7 +109,7 @@ pub(crate) fn validate_households(
     }) {
         return Err(MaterialCircuitError::FinalDemandInvariant);
     }
-    for need in &rows.household_needs {
+    for need in &catalog.household_needs {
         let cohort = households
             .get(&need.principal_id)
             .ok_or(MaterialCircuitError::FinalDemandInvariant)?;

@@ -129,7 +129,7 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
             available,
         })
         .collect();
-    let catalog = MaterialCatalog {
+    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy,
         site_logistics_nodes: vec![SiteLogisticsNode {
             site_id: site(),
@@ -169,7 +169,6 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         household_time_policy: vec![],
         service_inputs: vec![],
         household_needs: vec![],
-        catalog_digest: [0; 32],
     };
     let state = MaterialCircuitState {
         period: 1,
@@ -182,7 +181,9 @@ pub(crate) fn opening() -> (MaterialCatalog, MaterialCircuitState) {
             .enumerate()
             .map(|(n, quantity)| InventoryRow {
                 site_id: site(),
-                good_id: good(u8::try_from(n + 1).expect("the fixture value fits the target range")),
+                good_id: good(
+                    u8::try_from(n + 1).expect("the fixture value fits the target range"),
+                ),
                 unit_id: unit(),
                 quantity,
             })
@@ -256,12 +257,12 @@ pub(crate) fn rebuild(
     };
     let mut content = (**existing).clone();
     mutate(&mut content);
-    let mut rebuilt = catalog.clone();
+    let mut rebuilt = catalog.clone().into_definition();
     rebuilt.capacity_policy = CapacitySupply::Rolling(Box::new(RollingCapacitySupply {
         processes: RollingProcessSupply::Equipment(Box::new(content)),
         shared: supply.shared.clone(),
     }));
-    rebuilt.catalog_digest = [0; 32];
+
     MaterialCatalog::try_new(rebuilt).expect("the rebuilt fixture catalog is valid")
 }
 pub(crate) fn equipment_cost(state: &MaterialCircuitState) -> Currency {
@@ -337,10 +338,8 @@ pub(crate) fn configure_investment(
     e.costs =
         HistoricalCostBook::from_snapshot(costs).expect("the snapshot admits the derived value");
     e.recurring = Some(Box::new(RecurringEconomy {
-        service_inputs: vec![],
         households: vec![],
         household_stocks: vec![],
-        household_needs: vec![],
         household_purchases: vec![],
         offers: vec![SellerOffer {
             site_id: seller,
@@ -366,11 +365,15 @@ pub(crate) fn configure_investment(
         last_household_consumption_period: 0,
     }));
 }
-pub(crate) fn configure_investment_supply(catalog: &mut MaterialCatalog, state: &mut MaterialCircuitState) {
+pub(crate) fn configure_investment_supply(
+    catalog: &mut MaterialCatalog,
+    state: &mut MaterialCircuitState,
+) {
+    let mut definition = catalog.clone().into_definition();
     let seller = SiteId::from_bytes([2; 32]);
     let route = RouteId::from_bytes([2; 32]);
     let corridor = CorridorId::from_bytes([2; 32]);
-    catalog.site_logistics_nodes.push(SiteLogisticsNode {
+    definition.site_logistics_nodes.push(SiteLogisticsNode {
         site_id: seller,
         node_id: LogisticsNodeId::from_bytes([2; 32]),
     });
@@ -386,7 +389,7 @@ pub(crate) fn configure_investment_supply(catalog: &mut MaterialCatalog, state: 
         unit_id: unit(),
         quantity: 2,
     });
-    catalog.supplier_routes.push(SupplierRoute {
+    definition.supplier_routes.push(SupplierRoute {
         buyer_site_id: site(),
         supplier_site_id: seller,
         good_id: good(1),
@@ -394,7 +397,7 @@ pub(crate) fn configure_investment_supply(catalog: &mut MaterialCatalog, state: 
         route_id: route,
         transport_kind: SupplierTransport::Staged,
     });
-    catalog.route_stages.push(RouteStage {
+    definition.route_stages.push(RouteStage {
         route_id: route,
         stage_index: 0,
         from_node_id: LogisticsNodeId::from_bytes([2; 32]),
@@ -412,13 +415,14 @@ pub(crate) fn configure_investment_supply(catalog: &mut MaterialCatalog, state: 
         period: 1,
         available_grams: 10,
     });
-    let CapacitySupply::Rolling(supply) = &mut catalog.capacity_policy else {
+    let CapacitySupply::Rolling(supply) = &mut definition.capacity_policy else {
         panic!("rolling")
     };
     supply.shared.push(SharedCapacitySupply {
         corridor_id: corridor,
         grams_per_period: 10,
     });
+    *catalog = MaterialCatalog::try_new(definition).expect("fixture definitions are valid");
     *catalog = rebuild(catalog, |content| {
         content.investment_policies = vec![InvestmentPolicy {
             process_id: process(),
@@ -434,10 +438,8 @@ pub(crate) fn configure_investment_supply(catalog: &mut MaterialCatalog, state: 
 pub(crate) fn configure_output_quote(state: &mut MaterialCircuitState) {
     let period = state.period;
     economy_mut(state).recurring = Some(Box::new(RecurringEconomy {
-        service_inputs: vec![],
         households: vec![],
         household_stocks: vec![],
-        household_needs: vec![],
         household_purchases: vec![],
         replenishment: vec![],
         offers: vec![SellerOffer {

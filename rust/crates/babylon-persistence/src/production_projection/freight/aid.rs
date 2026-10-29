@@ -16,7 +16,7 @@ pub(super) fn append(
     index: &RouteIndex<'_>,
     reservations: &mut Reservations,
 ) -> Result<()> {
-    super::super::aid::join(prior, current, receipt)?;
+    super::super::aid::join(catalog, prior, current, receipt)?;
     for row in receipt
         .aid
         .iter()

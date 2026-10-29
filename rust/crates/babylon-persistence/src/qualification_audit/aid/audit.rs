@@ -365,7 +365,7 @@ impl Audit {
         {
             return Err(Refusal::Identity);
         }
-        let CircuitAccounting::Monetary(economy) = &register.state().accounting else {
+        let CircuitAccounting::Monetary(_) = &register.state().accounting else {
             return Err(Refusal::Capture);
         };
         let mut candidate = self.clone();
@@ -379,7 +379,7 @@ impl Audit {
                 }),
                 Refusal::OriginalOffer,
             )?;
-            let terms = terms(accepted, config, &economy.aid.mandates)?;
+            let terms = terms(accepted, config, &catalog.aid_mandates)?;
             let uses_time = check_material(row, &terms, tick)?;
             candidate.track(row, uses_time, terms.mandate.maximum_quantity)?;
             let remaining = postings::check_time(admitted, row, &terms, after)?;
@@ -393,7 +393,7 @@ impl Audit {
                 return Err(Refusal::Duplicate);
             }
             let accepted = self.commands.get(&original).ok_or(Refusal::OriginalOffer)?;
-            let terms = terms(accepted, config, &economy.aid.mandates)?;
+            let terms = terms(accepted, config, &catalog.aid_mandates)?;
             let fact = practice::read(admitted, resolution, &terms)?;
             if resolution.practice.outcome != OrganizerOutcome::AidAwaitingSupport
                 && !candidate.terminal_practices.insert(original)

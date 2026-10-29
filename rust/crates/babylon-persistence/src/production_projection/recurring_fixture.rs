@@ -76,7 +76,6 @@ fn recurring_policies() -> RecurringEconomy {
         })
         .collect();
     RecurringEconomy {
-        service_inputs: vec![],
         households: vec![HouseholdCohort {
             kind: babylon_material_circuit::HouseholdKind::Ordinary,
             principal_id: household(),
@@ -88,13 +87,6 @@ fn recurring_policies() -> RecurringEconomy {
             good_id: good(2),
             unit_id: units(),
             quantity: 8,
-        }],
-        household_needs: vec![HouseholdNeed {
-            principal_id: household(),
-            good_id: good(2),
-            unit_id: units(),
-            basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
-            units_per_basis: 1,
         }],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: household(),
@@ -285,8 +277,7 @@ fn labor_coefficients() -> Vec<LaborCoefficient> {
     reason = "`materials` keeps one authored boundary's fixture together"
 )]
 pub(crate) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
-    let recurring = recurring_policies();
-    let catalog = MaterialCatalog {
+    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: [1, 2, 3]
             .into_iter()
@@ -326,9 +317,14 @@ pub(crate) fn materials() -> (MaterialCatalog, MaterialCircuitState) {
         maintenance_binding: None,
         aid_mandates: Vec::new(),
         household_time_policy: Vec::new(),
-        service_inputs: recurring.service_inputs.clone(),
-        household_needs: recurring.household_needs.clone(),
-        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
+        service_inputs: vec![],
+        household_needs: vec![HouseholdNeed {
+            principal_id: household(),
+            good_id: good(2),
+            unit_id: units(),
+            basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
+            units_per_basis: 1,
+        }],
     };
     let state = MaterialCircuitState {
         period: 1,

@@ -36,7 +36,7 @@ fn padded_goods_inventory(include_output: bool) -> (MaterialCatalog, MaterialCir
         state.inventory.retain(|r| r.good_id != crate::good(3));
     }
     let missing = MAX_INVENTORY_ROWS - state.inventory.len();
-    let mut catalog = catalog;
+    let mut catalog = catalog.into_definition();
     for index in 0..missing {
         let mut identity = [0; 32];
         identity[0] = 170;
@@ -62,7 +62,7 @@ fn padded_goods_inventory(include_output: bool) -> (MaterialCatalog, MaterialCir
             quantity: 1,
         });
     }
-    catalog.catalog_digest = [0; 32];
+
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let CircuitAccounting::Monetary(e) = &mut state.accounting else {
         unreachable!()
@@ -163,7 +163,7 @@ fn padded_durable_carrying_book() -> (MaterialCatalog, MaterialCircuitState) {
         id: other,
         location,
     });
-    let mut catalog = catalog;
+    let mut catalog = catalog.into_definition();
     catalog.merchants.push(MerchantHandling {
         site_id: crate::site(3),
         location,
@@ -221,7 +221,7 @@ fn padded_durable_carrying_book() -> (MaterialCatalog, MaterialCircuitState) {
                 unit_id: crate::unit(4),
                 quantity: 1,
             });
-            recurring.household_needs.push(HouseholdNeed {
+            catalog.household_needs.push(HouseholdNeed {
                 principal_id: principal,
                 good_id: *commodity,
                 unit_id: crate::unit(4),
@@ -239,7 +239,6 @@ fn padded_durable_carrying_book() -> (MaterialCatalog, MaterialCircuitState) {
             });
         }
     }
-    let needs = recurring.household_needs.clone();
     let stocks = state
         .inventory
         .iter()
@@ -264,8 +263,7 @@ fn padded_durable_carrying_book() -> (MaterialCatalog, MaterialCircuitState) {
     e.costs = HistoricalCostBook::open(&e.book, stocks, vec![], vec![], vec![])
         .expect("the fixture opens the authored source");
     assert_eq!(e.costs.snapshot().stocks.len(), MAX_CARRYING_STOCKS - 5);
-    catalog.household_needs = needs;
-    catalog.catalog_digest = [0; 32];
+
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }

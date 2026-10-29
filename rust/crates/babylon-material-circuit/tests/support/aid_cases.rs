@@ -2,7 +2,6 @@
 
 use crate::Currency;
 use babylon_material_circuit::AccountId;
-use babylon_material_circuit::AidBook;
 use babylon_material_circuit::AidMandate;
 use babylon_material_circuit::AidOutcome;
 use babylon_material_circuit::AidResolveInput;
@@ -40,7 +39,8 @@ fn recipient() -> FinalDemandPrincipalId {
     FinalDemandPrincipalId::from_bytes([76; 32])
 }
 fn aid_opening(routed: bool) -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = crate::opening();
+    let (catalog, mut state) = crate::opening();
+    let mut catalog = catalog.into_definition();
     state.final_demand_principals.push(FinalDemandPrincipal {
         id: recipient(),
         location: state.final_demand_principals[0].location,
@@ -65,7 +65,7 @@ fn aid_opening(routed: bool) -> (MaterialCatalog, MaterialCircuitState) {
         unit_id: crate::units(),
         quantity: 0,
     });
-    rows.household_needs.push(HouseholdNeed {
+    catalog.household_needs.push(HouseholdNeed {
         principal_id: recipient(),
         good_id: crate::good(2),
         unit_id: crate::units(),
@@ -92,43 +92,35 @@ fn aid_opening(routed: bool) -> (MaterialCatalog, MaterialCircuitState) {
     });
     economy.costs = HistoricalCostBook::open(&economy.book, stocks, vec![], vec![], vec![])
         .expect("the fixture opens the authored source");
-    economy.household_time = HouseholdTimeAccounting::Modeled(
-        HouseholdTimeBook::new(
-            [crate::household(), recipient()]
-                .into_iter()
-                .map(|principal_id| HouseholdTimePolicy {
-                    principal_id,
-                    labor_unit_id: crate::hours(),
-                    eligible_persons: if principal_id == crate::household() {
-                        4
-                    } else {
-                        1
-                    },
-                    hours_per_eligible_person: 8,
-                    protected: HouseholdTimeCommitment {
-                        basis: HouseholdNeedBasis::Households,
-                        hours_per_basis: 2,
-                    },
-                    routine_provisioning: HouseholdTimeCommitment {
-                        basis: HouseholdNeedBasis::Households,
-                        hours_per_basis: 3,
-                    },
-                    unmet_burdens: vec![HouseholdUnmetTimeBurden {
-                        good_id: crate::good(2),
-                        unit_id: crate::units(),
-                        hours_per_unmet_unit: 5,
-                    }],
-                })
-                .collect(),
-        )
-        .expect("the constructor accepts the authored fixture arguments"),
-    );
-    economy.aid = AidBook {
-        mandates: vec![mandate(routed)],
-        freight: vec![],
-    };
-    catalog.aid_mandates.clone_from(&economy.aid.mandates);
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    catalog.household_time_policy = [crate::household(), recipient()]
+        .into_iter()
+        .map(|principal_id| HouseholdTimePolicy {
+            principal_id,
+            labor_unit_id: crate::hours(),
+            eligible_persons: if principal_id == crate::household() {
+                4
+            } else {
+                1
+            },
+            hours_per_eligible_person: 8,
+            protected: HouseholdTimeCommitment {
+                basis: HouseholdNeedBasis::Households,
+                hours_per_basis: 2,
+            },
+            routine_provisioning: HouseholdTimeCommitment {
+                basis: HouseholdNeedBasis::Households,
+                hours_per_basis: 3,
+            },
+            unmet_burdens: vec![HouseholdUnmetTimeBurden {
+                good_id: crate::good(2),
+                unit_id: crate::units(),
+                hours_per_unmet_unit: 5,
+            }],
+        })
+        .collect();
+    economy.household_time = HouseholdTimeAccounting::Modeled(HouseholdTimeBook::default());
+    catalog.aid_mandates = vec![mandate(routed)];
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     (catalog, state)
 }
 fn input(quantity: u64) -> AidResolveInput {
@@ -390,14 +382,15 @@ fn routed_gift_shares_commercial_capacity_and_grants_only_after_actual_arrival()
 
 #[test]
 fn physical_loss_refunds_donor_cash_and_never_grants_phantom_food() {
-    let (mut catalog, state) = aid_opening(true);
+    let (catalog, state) = aid_opening(true);
+    let mut catalog = catalog.into_definition();
     catalog
         .route_stages
         .iter_mut()
         .find(|r| r.route_id == crate::route(2))
         .expect("the fixture holds the searched element")
         .loss_ppm = 1_000_000;
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let first =
         close_aid(&catalog, &state, &[input(2)]).expect("the fixture closes the pending aid");
     let second =
@@ -420,14 +413,13 @@ fn physical_loss_refunds_donor_cash_and_never_grants_phantom_food() {
 
 #[test]
 fn generic_residual_protects_own_food_and_shared_actor_aliases_cannot_double_spend() {
-    let (catalog, mut state) = aid_opening(false);
-    let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {
-        panic!("monetary");
-    };
-    let mut second = accounts.aid.mandates[0].clone();
+    let (catalog, state) = aid_opening(false);
+    let mut catalog = catalog.into_definition();
+    let mut second = catalog.aid_mandates[0].clone();
     second.id = [93; 32];
     second.donor_actor = 11;
-    accounts.aid.mandates.push(second);
+    catalog.aid_mandates.push(second);
+    let catalog = MaterialCatalog::try_new(catalog).expect("valid catalog");
     let mut alias = input(2);
     alias.mandate_id = [93; 32];
     alias.donor_actor = 11;
@@ -465,6 +457,7 @@ fn stale_changed_duplicate_and_uncaptured_aid_refuse_atomically() {
     let (catalog, state) = aid_opening(false);
     let before = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
         .expect("the canonical material state encodes");
+    assert!(close_aid(&catalog, &state, &[input(2)]).is_ok());
     let mut stale_input = input(2);
     stale_input.admitted_period = 1;
     assert_eq!(
@@ -537,7 +530,9 @@ fn real_organization_funds_pay_gift_cash_while_household_goods_keep_their_owner(
             CashTransferPurpose::MutualAid,
         )
         .expect("the fixture transfer stays funded");
-    accounts.aid.mandates[0].payer = payer;
+    let mut definition = catalog.into_definition();
+    definition.aid_mandates[0].payer = payer;
+    let catalog = MaterialCatalog::try_new(definition).expect("valid catalog");
     accounts.costs = HistoricalCostBook::open(
         &accounts.book,
         accounts.costs.snapshot().stocks,
@@ -760,4 +755,27 @@ fn donor_own_food_need_is_protected_even_when_requested_time_and_cash_are_availa
         .aid
         .iter()
         .any(|r| r.outcome == AidOutcome::Unshipped && r.quantity == 1));
+}
+
+#[test]
+fn physical_control_refuses_authored_aid() {
+    let (catalog, mut state) = aid_opening(false);
+    let mut definition = catalog.into_definition();
+    definition.household_time_policy.clear();
+    definition.household_needs.clear();
+    let catalog = MaterialCatalog::try_new(definition).expect("catalog remains valid");
+    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+        unreachable!()
+    };
+    economy.recurring = None;
+    economy.household_time = HouseholdTimeAccounting::NotModeled;
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &state).err(),
+        Some(MaterialCircuitError::AidInvariant)
+    );
+    state.accounting = CircuitAccounting::PhysicalControl;
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &state).err(),
+        Some(MaterialCircuitError::AidInvariant)
+    );
 }

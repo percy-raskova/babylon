@@ -846,7 +846,7 @@ pub(crate) fn validate_period(
         diagnostics::projection(
             Stage::LifecycleHouseholds,
             tick,
-            super::super::households::completed_balances(prior, current, receipt),
+            super::super::households::completed_balances(catalog, prior, current, receipt),
         )?;
     }
     Ok(orders)

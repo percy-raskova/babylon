@@ -141,9 +141,10 @@ fn historical_cost_unsold_output_and_quote_changes_do_not_create_income_or_reval
 
 #[test]
 fn historical_cost_lost_seller_owned_transit_is_an_expense_and_restart_preserves_basis() {
-    let (mut catalog, state) = crate::opening();
+    let (catalog, state) = crate::opening();
+    let mut catalog = catalog.into_definition();
     catalog.route_stages[0].loss_ppm = 500_000;
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(

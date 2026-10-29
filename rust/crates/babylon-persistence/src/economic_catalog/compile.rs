@@ -4,14 +4,15 @@ use super::{CatalogAccounting, CatalogCapacity, EconomicCatalogError, EconomicOp
 use babylon_material_circuit::CapacityReservations;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::{
-    AccountId, AttendancePlan, CapacityRow, CashAccount, CircuitAccounting, CorridorCapacity,
-    FinalDemandPrincipal, FinancialInstitutions, HistoricalCostBook, HouseholdCohort,
-    HouseholdNeed, HouseholdStock, InputOutputCoefficient, InventoryRow, LaborCapacityRow,
-    LaborCoefficient, MaintenanceService, MaterialCatalog, MaterialCircuitState,
+    AccountId, AidBook, AttendancePlan, CapacityRow, CashAccount, CircuitAccounting,
+    CorridorCapacity, FinalDemandPrincipal, FinancialInstitutions, HistoricalCostBook,
+    HouseholdCohort, HouseholdNeed, HouseholdStock, InputOutputCoefficient, InventoryRow,
+    LaborCapacityRow, LaborCoefficient, MaintenanceService, MaterialCatalog, MaterialCircuitState,
     MemberLaborCapacityRow, MerchantHandling, MerchantHandlingCoefficient, MonetaryBook,
     MonetaryCircuit, ProcessOutput, ProductionCommitment, ProductionDemandPolicy, RecurringEconomy,
-    RollingCapacitySupply, SiteLogisticsNode, StockCarryingValue, UNSEALED_CATALOG_DIGEST,
+    RollingCapacitySupply, SiteLogisticsNode, StockCarryingValue,
 };
 use babylon_tick::material_staffing::{
     StaffingComposition, StaffingMemberNodeBinding, StaffingNodeBinding,
@@ -42,7 +43,7 @@ impl EconomicOpening {
         append_catalog_logistics(self, &mut catalog, &mut state)?;
         let (staffing, member_labor) = append_staffing(self, &mut state)?;
         state.accounting = compile_accounting(self, &state, member_labor)?;
-        append_catalog_policies(self, &mut catalog, &state);
+        append_catalog_policies(self, &mut catalog, &state)?;
         let catalog = MaterialCatalog::try_new(catalog)?;
         let encoding = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)?;
         drop(state);
@@ -56,8 +57,8 @@ impl EconomicOpening {
     }
 }
 
-fn empty_catalog() -> MaterialCatalog {
-    MaterialCatalog {
+fn empty_catalog() -> MaterialCatalogDefinition {
+    MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![],
         process_outputs: vec![],
@@ -73,7 +74,6 @@ fn empty_catalog() -> MaterialCatalog {
         household_time_policy: vec![],
         service_inputs: vec![],
         household_needs: vec![],
-        catalog_digest: UNSEALED_CATALOG_DIGEST,
     }
 }
 
@@ -100,7 +100,7 @@ fn empty_state() -> MaterialCircuitState {
 /// Immutable definitions the engine validates are compiled once, beside the state.
 fn append_sites(
     opening: &EconomicOpening,
-    catalog: &mut MaterialCatalog,
+    catalog: &mut MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
 ) -> Result<()> {
     let recipes: BTreeMap<_, _> = opening.recipes.iter().map(|r| (r.id, r)).collect();
@@ -217,7 +217,7 @@ fn append_households(opening: &EconomicOpening, state: &mut MaterialCircuitState
 }
 fn append_catalog_logistics(
     opening: &EconomicOpening,
-    catalog: &mut MaterialCatalog,
+    catalog: &mut MaterialCatalogDefinition,
     state: &mut MaterialCircuitState,
 ) -> Result<()> {
     catalog
@@ -276,27 +276,49 @@ fn append_catalog_logistics(
     Ok(())
 }
 
-/// Nested policy rows stay mirrored while the engine still reads both owners.
+/// Capture authored policy definitions for the immutable catalog.
 fn append_catalog_policies(
     opening: &EconomicOpening,
-    catalog: &mut MaterialCatalog,
+    catalog: &mut MaterialCatalogDefinition,
     state: &MaterialCircuitState,
-) {
+) -> Result<()> {
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
-        return;
+        return Ok(());
     };
-    catalog.aid_mandates.clone_from(&economy.aid.mandates);
+    catalog
+        .aid_mandates
+        .clone_from(&opening.policies.aid_mandates);
     catalog
         .service_inputs
         .clone_from(&opening.policies.service_inputs);
-    if let Some(recurring) = &economy.recurring {
-        catalog
-            .household_needs
-            .clone_from(&recurring.household_needs);
+    if economy.recurring.is_some() {
+        let templates: BTreeMap<_, _> = opening
+            .household_templates
+            .iter()
+            .map(|r| (r.id, r))
+            .collect();
+        if templates.len() != opening.household_templates.len() {
+            return Err(EconomicCatalogError::Opening("household template identity"));
+        }
+        for household in &opening.households {
+            let template = templates
+                .get(&household.template)
+                .ok_or(EconomicCatalogError::Opening("absent household template"))?;
+            catalog
+                .household_needs
+                .extend(template.needs.iter().map(|need| HouseholdNeed {
+                    principal_id: household.principal_id,
+                    good_id: need.good_id,
+                    unit_id: need.unit_id,
+                    basis: need.basis,
+                    units_per_basis: need.units_per_basis,
+                }));
+        }
     }
-    if let HouseholdTimeAccounting::Modeled(time) = &economy.household_time {
-        catalog.household_time_policy.clone_from(&time.policies);
-    }
+    catalog
+        .household_time_policy
+        .clone_from(&opening.policies.household_time_policy);
+    Ok(())
 }
 fn append_staffing(
     opening: &EconomicOpening,
@@ -366,8 +388,7 @@ fn compile_accounting(
 ) -> Result<CircuitAccounting> {
     match opening.accounting {
         CatalogAccounting::PhysicalControl => {
-            if !opening.policies.aid.mandates.is_empty()
-                || !opening.policies.aid.freight.is_empty()
+            if !opening.policies.aid_mandates.is_empty()
                 || !opening.households.is_empty()
                 || !opening.employment.is_empty()
                 || !opening.institutional_cash.is_empty()
@@ -378,6 +399,7 @@ fn compile_accounting(
                 || !opening.policies.replenishment.is_empty()
                 || !opening.policies.household_purchases.is_empty()
                 || !opening.policies.service_inputs.is_empty()
+                || !opening.policies.household_time_policy.is_empty()
                 || opening.policies.household_time != HouseholdTimeAccounting::NotModeled
                 || opening.sites.iter().any(|s| {
                     s.opening_cash.micro_units() != 0
@@ -399,7 +421,7 @@ fn compile_accounting(
             let (book, costs) = opening_books(opening)?;
             let recurring = recurring(opening, state)?;
             Ok(CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
-                aid: opening.policies.aid.clone(),
+                aid: AidBook::default(),
                 household_time: opening.policies.household_time.clone(),
                 financial: opening.institutions.clone(),
                 costs,
@@ -467,11 +489,10 @@ fn recurring(opening: &EconomicOpening, state: &MaterialCircuitState) -> Result<
     }
     let mut households = Vec::new();
     let mut household_stocks = Vec::new();
-    let mut household_needs = Vec::new();
     for h in &opening.households {
-        let template = templates
-            .get(&h.template)
-            .ok_or(EconomicCatalogError::Opening("absent household template"))?;
+        if !templates.contains_key(&h.template) {
+            return Err(EconomicCatalogError::Opening("absent household template"));
+        }
         households.push(HouseholdCohort {
             kind: h.kind,
             principal_id: h.principal_id,
@@ -484,19 +505,10 @@ fn recurring(opening: &EconomicOpening, state: &MaterialCircuitState) -> Result<
             unit_id: s.amount.unit_id,
             quantity: s.amount.quantity,
         }));
-        household_needs.extend(template.needs.iter().map(|n| HouseholdNeed {
-            principal_id: h.principal_id,
-            good_id: n.good_id,
-            unit_id: n.unit_id,
-            basis: n.basis,
-            units_per_basis: n.units_per_basis,
-        }));
     }
     Ok(RecurringEconomy {
-        service_inputs: opening.policies.service_inputs.clone(),
         households,
         household_stocks,
-        household_needs,
         household_purchases: opening.policies.household_purchases.clone(),
         offers: opening.policies.offers.clone(),
         replenishment: opening.policies.replenishment.clone(),

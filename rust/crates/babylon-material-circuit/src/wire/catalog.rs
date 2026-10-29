@@ -4,7 +4,7 @@ use crate::CapacitySupply;
 use crate::MaintenanceBinding;
 use crate::{
     AidMandate, AidTransport, HouseholdNeed, HouseholdTimeCommitment, HouseholdTimePolicy,
-    MaterialCatalog, MaterialCircuitError, ServiceInputPolicy,
+    MaterialCatalogDefinition, MaterialCircuitError, ServiceInputPolicy,
 };
 
 /// Canonical domain for one immutable material catalog.
@@ -152,7 +152,7 @@ fn append_policy(out: &mut Vec<u8>, policy: &CapacitySupply) -> Result<(), Mater
 ///
 /// # Errors
 /// Returns the first row-bound refusal.
-pub(crate) fn bytes(catalog: &MaterialCatalog) -> Result<Vec<u8>, MaterialCircuitError> {
+pub(crate) fn bytes(catalog: &MaterialCatalogDefinition) -> Result<Vec<u8>, MaterialCircuitError> {
     let mut out = Vec::new();
     out.extend_from_slice(MATERIAL_CATALOG_DOMAIN_BYTES);
     out.push(0);

@@ -260,6 +260,7 @@ fn a_memberless_attendance_plan_requires_its_explicit_current_zero_budget() {
 
 fn split_retail_members() -> (MaterialCatalog, MaterialCircuitState) {
     let (catalog, mut state) = crate::opening();
+    let mut catalog = catalog.into_definition();
     let second = FinalDemandPrincipalId::from_bytes([77; 32]);
     let member = StaffingMemberId::from_bytes([77; 32]);
     state.final_demand_principals.push(FinalDemandPrincipal {
@@ -290,9 +291,9 @@ fn split_retail_members() -> (MaterialCatalog, MaterialCircuitState) {
         unit_id: crate::units(),
         quantity: 2,
     });
-    let mut need = recurring.household_needs[0].clone();
+    let mut need = catalog.household_needs[0].clone();
     need.principal_id = second;
-    recurring.household_needs.push(need);
+    catalog.household_needs.push(need);
     recurring.household_purchases[0].target_closing_stock = 6;
     recurring.household_purchases[0].maximum_purchase = 3;
     let mut purchase = recurring.household_purchases[0].clone();
@@ -340,7 +341,10 @@ fn split_retail_members() -> (MaterialCatalog, MaterialCircuitState) {
     });
     accounts.costs = HistoricalCostBook::open(&accounts.book, stock, vec![], vec![], vec![])
         .expect("the fixture opens the authored source");
-    (catalog, state)
+    (
+        MaterialCatalog::try_new(catalog).expect("valid fixture catalog"),
+        state,
+    )
 }
 
 #[test]

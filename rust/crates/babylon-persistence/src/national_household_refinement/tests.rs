@@ -44,6 +44,7 @@ use babylon_material_circuit::HouseholdNeedBasis;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::HouseholdTimeCommitment;
 use babylon_material_circuit::HouseholdTimeReceipt;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialPurchase;
@@ -281,8 +282,8 @@ fn household_work(opening: &EconomicOpening) -> HouseholdWork {
         }
     }
     let mut hours = BTreeMap::new();
-    if let HouseholdTimeAccounting::Modeled(book) = &opening.policies.household_time {
-        for policy in &book.policies {
+    if let HouseholdTimeAccounting::Modeled(_) = &opening.policies.household_time {
+        for policy in &opening.policies.household_time_policy {
             hours.insert(
                 policy.principal_id,
                 policy
@@ -641,7 +642,10 @@ fn commitment_hours(commitment: &HouseholdTimeCommitment, cohort: &HouseholdCoho
         .checked_mul(commitment.hours_per_basis)
         .expect("the fixture arithmetic stays in range")
 }
-fn install_opening_receipts(state: &mut MaterialCircuitState) -> (FinalDemandPrincipalId, u64) {
+fn install_opening_receipts(
+    catalog: &MaterialCatalog,
+    state: &mut MaterialCircuitState,
+) -> (FinalDemandPrincipalId, u64) {
     state.period = 2;
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         panic!("the national opening uses the monetary circuit")
@@ -657,8 +661,8 @@ fn install_opening_receipts(state: &mut MaterialCircuitState) -> (FinalDemandPri
     let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time else {
         panic!("the national opening models household time")
     };
-    let mut receipts = Vec::with_capacity(book.policies.len());
-    for policy in &book.policies {
+    let mut receipts = Vec::with_capacity(catalog.household_time_policy.len());
+    for policy in &catalog.household_time_policy {
         let (persons, households) = cohorts[&policy.principal_id];
         let cohort = HouseholdCohort {
             kind: HouseholdKind::Ordinary,
@@ -728,7 +732,7 @@ fn household_endowment_is_gross_not_the_receipts_spendable_remainder() {
     let gross = cohort.counts.endowment_hours;
     let compiled = compiled_fixture();
     let mut state = compiled.state.clone();
-    install_opening_receipts(&mut state);
+    install_opening_receipts(&compiled.catalog, &mut state);
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
         panic!("the national opening uses the monetary circuit")
     };
@@ -754,7 +758,7 @@ fn household_endowment_is_gross_not_the_receipts_spendable_remainder() {
 fn two_organizations_cannot_spend_the_same_household_contribution_hour() {
     let compiled = compiled_fixture();
     let mut state = compiled.state.clone();
-    let (principal, available) = install_opening_receipts(&mut state);
+    let (principal, available) = install_opening_receipts(&compiled.catalog, &mut state);
     let both = [
         contribution([21; 32], principal, 101, 201, available),
         contribution([22; 32], principal, 102, 202, 1),

@@ -521,7 +521,7 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
     let HouseholdTimeAccounting::Modeled(time) = &economy.household_time else {
         unreachable!()
     };
-    for policy in &time.policies {
+    for policy in &session.catalog().household_time_policy {
         let available = time
             .receipts
             .iter()
@@ -659,7 +659,7 @@ fn collection_config_for_control() -> OrganizerConfig {
         false,
         false,
     );
-    let CircuitAccounting::Monetary(e) = &base.material().state().accounting else {
+    let CircuitAccounting::Monetary(_) = &base.material().state().accounting else {
         unreachable!()
     };
     let mut value = serde_json::to_value(organizer_aid_fixture::config())
@@ -669,7 +669,7 @@ fn collection_config_for_control() -> OrganizerConfig {
         "actor_id":101,"contributor_id":201,
         "household_principal_id": organizer_aid_fixture::household().as_bytes().to_vec(),
         "organization_account_id":([96_u8;32].to_vec()),"social_class_target":([98_u8;32].to_vec()),
-        "labor_unit_id": e.aid.mandates[0].labor_unit_id.as_bytes().to_vec(),
+        "labor_unit_id": base.catalog().aid_mandates[0].labor_unit_id.as_bytes().to_vec(),
         "cash_consent":"accept","maximum_cash_micros":"2","protected_cash_floor_micros":"0","collection_hours":2
     });
     serde_json::from_value(value).expect("the JSON value matches the declared type")
@@ -700,7 +700,7 @@ fn collection_control_session(protected_target: u64, no_time: bool) -> Session {
         foundation,
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         organizer_aid_fixture::Materials {
-            catalog,
+            catalog: catalog.into_definition(),
             state: opening,
         },
         collection_config_for_control(),
@@ -969,7 +969,10 @@ fn collection_savings_control(no_attendance: bool) -> Session {
     organizer_aid_fixture::try_session(
         foundation,
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
-        organizer_aid_fixture::Materials { catalog, state },
+        organizer_aid_fixture::Materials {
+            catalog: catalog.into_definition(),
+            state,
+        },
         serde_json::from_value(cfg).expect("the JSON value matches the declared type"),
     )
     .expect("the fixture opens a session")
@@ -1230,7 +1233,7 @@ fn partial_collection_preserves_protected_floor_and_matches_actual_transfer_and_
             .expect("the Michigan hex foundation builds"),
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         organizer_aid_fixture::Materials {
-            catalog: base.catalog().clone(),
+            catalog: base.catalog().clone().into_definition(),
             state: base.material().state().clone(),
         },
         cfg,
@@ -1376,7 +1379,7 @@ fn capped_collection_session(cap: i128, floor: i128) -> Session {
             .expect("the Michigan hex foundation builds"),
         &format!("{MATERIAL}\n{PRODUCTS}\n{PRACTICE}"),
         organizer_aid_fixture::Materials {
-            catalog: base.catalog().clone(),
+            catalog: base.catalog().clone().into_definition(),
             state: base.material().state().clone(),
         },
         config,
@@ -1547,7 +1550,7 @@ fn external_register_reopen_adopts_authenticated_bytes_and_rejects_wire_changes(
         std::ptr::eq(owned.canonical_bytes().as_ptr(), allocation),
         "owned admission must retain the exact authenticated input allocation"
     );
-    let domain = b"babylon.material-world-register.v4\0".len();
+    let domain = b"babylon.material-world-register.v5\0".len();
     for offset in [0, domain, domain + 11, domain + 19, canonical.len() - 1] {
         let mut invalid = canonical.to_vec();
         invalid[offset] ^= 1;

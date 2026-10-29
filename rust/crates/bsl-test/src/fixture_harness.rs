@@ -18,55 +18,6 @@ use babylon_bsl::types::EnumRegistry;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-/// The parsed fixtures a test has collected.
-#[derive(Debug, Default)]
-pub struct BslFixtureSet {
-    rules: Vec<SExpr>,
-    scenarios: Vec<SExpr>,
-}
-
-impl BslFixtureSet {
-    /// An empty fixture set.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Parse and typecheck one `.bsl` rule, then retain its form.
-    ///
-    /// # Errors
-    /// The first failing load stage's message when the rule does not read or
-    /// fails a load-time gate.
-    pub fn add_rule(&mut self, source: &str) -> Result<(), String> {
-        let rule = parse_and_typecheck_bsl(source)?;
-        self.rules.push(rule);
-        Ok(())
-    }
-
-    /// Load one `.bscn` scenario file, then retain its form.
-    ///
-    /// # Errors
-    /// The path, read, parse, or shape failure when the file is not exactly
-    /// one `(scenario ...)` form.
-    pub fn add_scenario(&mut self, path: &Path) -> Result<(), String> {
-        let scenario = load_bscn_fixture(path)?;
-        self.scenarios.push(scenario);
-        Ok(())
-    }
-
-    /// The parsed rule forms, in insertion order.
-    #[must_use]
-    pub fn rules(&self) -> &[SExpr] {
-        &self.rules
-    }
-
-    /// The parsed scenario forms, in insertion order.
-    #[must_use]
-    pub fn scenarios(&self) -> &[SExpr] {
-        &self.scenarios
-    }
-}
-
 /// Parse one `.bsl` rule and run the load-time pipeline, typechecking included.
 ///
 /// The empty declaration environment is the point: a snippet that names a
@@ -146,7 +97,7 @@ pub fn load_bscn_fixture(path: &Path) -> Result<SExpr, String> {
             if matches!(
                 items.first(),
                 Some(SExpr::Atom(Atom::Symbol(head))) if head == "scenario"
-            )
+            ) && matches!(items.get(1), Some(SExpr::Atom(Atom::QName(_))))
     );
     if !is_scenario {
         return Err(format!("{display}: expected a (scenario <qname> ...) form"));

@@ -1,0 +1,33 @@
+ADR290_host_policy_v12:
+  status: accepted
+  date: '2026-10-28'
+  title: Babylon deploys host policy v12 for its current Rust bootstrap
+  issue: PER-362
+  context: |
+    ADR246 records the coordinated, immutable v11 host bundle. PR 1037 changed
+    its Babylon bootstrap selector from 1.91.1 to 1.99.1 without advancing its
+    version. An existing original v11 installation therefore refuses the
+    changed v11 bytes. Both original and divergent v11 installations exist as
+    possible prior states.
+  decision: |
+    Babylon advances its changed bundle to v12. Its immutable installed v11
+    directory is retained; a successful v12 installation advances the shared
+    host high-water mark and switches the managed Cargo shims. Same-version
+    drift and downgrades remain refused. Resource ceilings, remote recognition,
+    path and argument controls remain unchanged. Babylon's exact bootstrap
+    selector is 1.99.1 and its contract checks the repository toolchain pin.
+  rejected:
+    - Reusing v11 with changed bytes: existing immutable installations refuse it.
+    - Dynamic selection by the installed v11 dispatcher: its immutable code cannot be changed in place.
+  evidence_class: Designed
+  supersedes: ADR246_codex_rust_host_boundary (bootstrap version and deployment scope only)
+  deployment_limits: |
+    This decision records Babylon's v12 bytes only. NNSims has not adopted or
+    qualified this bundle. Once v12 is installed, its v11 installer refuses to
+    downgrade the host. Coordination and qualification in NNSims are required
+    before describing v12 as a shared cross-repository release. This decision
+    does not assert that the real host has been upgraded.
+  verification: |
+    Isolated installer fixtures exercise upgrades from original and divergent
+    v11, preserve each installed directory, and refuse a subsequent v11
+    downgrade. Host policy contracts exercise the selector and refusal paths.

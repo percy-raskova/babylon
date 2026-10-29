@@ -22,7 +22,6 @@ use crate::michigan_material::MichiganMaterialCorridor;
 use crate::michigan_material::MichiganWorkforceSeed;
 use crate::michigan_sectors::MichiganSectorCode;
 use babylon_kernel::content_digest;
-use babylon_material_circuit::AidBook;
 use babylon_material_circuit::EquipmentPosition;
 use babylon_material_circuit::HouseholdTimeAccounting;
 use babylon_material_circuit::{
@@ -133,8 +132,9 @@ pub fn import_michigan_opening(catalog: &MichiganMaterialCatalog) -> Result<Econ
         equipment_position: EquipmentPosition::default(),
         capacity,
         policies: CatalogPolicies {
-            aid: AidBook::default(),
+            aid_mandates: vec![],
             household_time: HouseholdTimeAccounting::NotModeled,
+            household_time_policy: Vec::new(),
             offers: vec![],
             replenishment: vec![],
             household_purchases: vec![],

@@ -85,10 +85,8 @@ fn receipts(period: u64) -> MaterialTickReceipts {
 }
 fn recurring(retailer: u8) -> RecurringEconomy {
     RecurringEconomy {
-        service_inputs: vec![],
         households: vec![],
         household_stocks: vec![],
-        household_needs: vec![],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: household(),
             retailer_site_id: site(retailer),
@@ -144,7 +142,7 @@ fn accounting(retailer: u8) -> CircuitAccounting {
     }))
 }
 fn seed(retailer: u8, opening: u64) -> (MaterialCatalog, MaterialCircuitState) {
-    let catalog = MaterialCatalog::try_new(MaterialCatalog {
+    let catalog = MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![],
         process_outputs: vec![ProcessOutput {
@@ -174,7 +172,6 @@ fn seed(retailer: u8, opening: u64) -> (MaterialCatalog, MaterialCircuitState) {
         household_time_policy: vec![],
         service_inputs: vec![],
         household_needs: vec![],
-        catalog_digest: babylon_material_circuit::UNSEALED_CATALOG_DIGEST,
     })
     .expect("the fixture catalog canonicalizes");
     let state = MaterialCircuitState {
@@ -476,8 +473,11 @@ fn payment_and_crossed_units_refuse_without_publishing_candidate() {
 }
 #[test]
 fn no_usable_producer_is_explicitly_incomplete() {
-    let (mut catalog, state) = seed(2, 0);
+    let (catalog, state) = seed(2, 0);
+    let mut catalog = catalog.into_definition();
     catalog.process_outputs.clear();
+    catalog.labor_coefficients.clear();
+    let catalog = MaterialCatalog::try_new(catalog).expect("valid definitions");
     assert_eq!(
         Audit::seed(&catalog, &state, 39, [7; 32])
             .expect("the fixture seeds the authored rows")
@@ -635,8 +635,10 @@ fn seed_transit_is_an_allowance_once() {
 }
 #[test]
 fn noncontiguous_period_and_checked_overflow_refuse_atomically() {
-    let (mut catalog, state) = seed(1, 0);
+    let (catalog, state) = seed(1, 0);
+    let mut catalog = catalog.into_definition();
     catalog.process_outputs[0].quantity_per_batch = 2;
+    let catalog = MaterialCatalog::try_new(catalog).expect("valid definitions");
     let mut audit =
         Audit::seed(&catalog, &state, 39, [7; 32]).expect("the fixture seeds the authored rows");
     let before = audit
@@ -666,7 +668,8 @@ fn noncontiguous_period_and_checked_overflow_refuse_atomically() {
 
 #[test]
 fn omitted_ninth_output_cannot_borrow_later_retained_production() {
-    let (mut catalog, state) = seed(1, 0);
+    let (catalog, state) = seed(1, 0);
+    let mut catalog = catalog.into_definition();
     catalog.process_outputs = (1..=9)
         .map(|id| ProcessOutput {
             process_id: ProcessId::from_bytes([id; 32]),
@@ -676,6 +679,16 @@ fn omitted_ninth_output_cannot_borrow_later_retained_production() {
             quantity_per_batch: 1,
         })
         .collect();
+    catalog.labor_coefficients = catalog
+        .process_outputs
+        .iter()
+        .map(|row| LaborCoefficient {
+            process_id: row.process_id,
+            unit_id: unit(),
+            quantity_per_batch: 1,
+        })
+        .collect();
+    let catalog = MaterialCatalog::try_new(catalog).expect("valid definitions");
     let mut audit =
         Audit::seed(&catalog, &state, 39, [7; 32]).expect("the fixture seeds the authored rows");
     let mut sold = receipts(40);

@@ -1,3 +1,4 @@
+use babylon_material_circuit::MaterialCatalogDefinition;
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::{
     CommodityDefinition, CorridorCapacity, CorridorId, GoodId, InventoryRow, LaborCapacityRow,
@@ -20,7 +21,7 @@ fn merchant() -> (MaterialCatalog, MaterialCircuitState) {
     let order_id = OrderId::from_bytes([7; 32]);
     let source_node = LogisticsNodeId::from_bytes([1; 32]);
     let buyer_node = LogisticsNodeId::from_bytes([2; 32]);
-    let catalog = MaterialCatalog {
+    let catalog = MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         site_logistics_nodes: vec![
             SiteLogisticsNode {
@@ -76,7 +77,6 @@ fn merchant() -> (MaterialCatalog, MaterialCircuitState) {
         household_time_policy: vec![],
         service_inputs: vec![],
         household_needs: vec![],
-        catalog_digest: [0; 32],
     };
     let state = MaterialCircuitState {
         period: 1,
@@ -156,7 +156,7 @@ use babylon_material_circuit::{
     StaffingState, StaffingWorkSource,
 };
 
-fn add_local_order(catalog: &MaterialCatalog, state: &mut MaterialCircuitState) {
+fn add_local_order(catalog: &MaterialCatalogDefinition, state: &mut MaterialCircuitState) {
     let store = &catalog.merchants[0];
     let coefficient = &catalog.handling_coefficients[0];
     let principal = FinalDemandPrincipalId::from_bytes([10; 32]);
@@ -176,21 +176,27 @@ fn add_local_order(catalog: &MaterialCatalog, state: &mut MaterialCircuitState) 
 }
 
 fn local_store() -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = merchant();
+    let (catalog, mut state) = merchant();
+    let mut catalog = catalog.into_definition();
     add_local_order(&catalog, &mut state);
     state.orders.clear();
     catalog.supplier_routes.clear();
     catalog.route_stages.clear();
     state.route_stage_capacities.clear();
     let capacity = catalog.merchants[0].capacity_id;
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state
         .corridor_capacities
         .retain(|row| row.corridor_id == capacity);
     (catalog, state)
 }
 
-fn schedule(catalog: &MaterialCatalog, state: &mut MaterialCircuitState, periods: u64, hours: u64) {
+fn schedule(
+    catalog: &MaterialCatalogDefinition,
+    state: &mut MaterialCircuitState,
+    periods: u64,
+    hours: u64,
+) {
     let merchant = catalog.merchants[0].clone();
     state.labor = (1..=periods)
         .map(|period| LaborCapacityRow {
@@ -423,7 +429,8 @@ fn empty_inventory_reports_zero_feasible_handling_and_staffing_need() {
 
 #[test]
 fn arrived_goods_are_available_to_retail_handling_in_the_same_close() {
-    let (mut catalog, mut state) = merchant();
+    let (catalog, mut state) = merchant();
+    let mut catalog = catalog.into_definition();
     add_local_order(&catalog, &mut state);
     schedule(&catalog, &mut state, 2, 4);
     let incoming_source = state.orders[0].buyer_site_id;
@@ -435,7 +442,7 @@ fn arrived_goods_are_available_to_retail_handling_in_the_same_close() {
     catalog.supplier_routes[0].supplier_site_id = incoming_source;
     let route_stage = &mut catalog.route_stages[0];
     std::mem::swap(&mut route_stage.from_node_id, &mut route_stage.to_node_id);
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
     assert_eq!(first.dispatches[0].quantity, 10);
@@ -466,20 +473,21 @@ fn arrived_goods_are_available_to_retail_handling_in_the_same_close() {
 fn merchant_admission_refuses_invalid_coefficients_county_role_and_capacity_ownership() {
     let (catalog, base) = local_store();
     // Definition rows are refused at catalog admission.
-    let definition_mutations: &[fn(&mut MaterialCatalog)] = &[
+    let definition_mutations: &[fn(&mut MaterialCatalogDefinition)] = &[
         |c| c.handling_coefficients[0].hours_per_unit = 0,
         |c| c.merchants.push(c.merchants[0].clone()),
     ];
     for mutate in definition_mutations {
-        let mut malformed = catalog.clone();
+        let mut malformed = catalog.clone().into_definition();
         mutate(&mut malformed);
         assert!(MaterialCatalog::try_new(malformed).is_err());
     }
-    let mut uncovered = catalog.clone();
+    let mut uncovered = catalog.clone().into_definition();
     uncovered.handling_coefficients.clear();
+    let uncovered = MaterialCatalog::try_new(uncovered).expect("valid definitions");
     assert!(babylon_material_circuit::advance_material_circuit(&uncovered, &base).is_err());
     // Captured semantic relations are refused by the period close.
-    let mut wholesale = catalog.clone();
+    let mut wholesale = catalog.clone().into_definition();
     wholesale.merchants[0].role = MerchantRole::Wholesale;
     let wholesale =
         MaterialCatalog::try_new(wholesale).expect("the changed fixture catalog is valid");
@@ -501,8 +509,9 @@ fn merchant_admission_refuses_invalid_coefficients_county_role_and_capacity_owne
     }
     assert!(babylon_material_circuit::advance_material_circuit(&wholesale, &base).is_err());
     let (catalog, overlap) = merchant();
-    let mut overlap_catalog = catalog.clone();
+    let mut overlap_catalog = catalog.clone().into_definition();
     overlap_catalog.merchants[0].capacity_id = overlap.route_stage_capacities[0].corridor_id;
+    let overlap_catalog = MaterialCatalog::try_new(overlap_catalog).expect("valid definitions");
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&overlap_catalog, &overlap),
         Err(MaterialCircuitError::MerchantInvariant)
@@ -512,8 +521,9 @@ fn merchant_admission_refuses_invalid_coefficients_county_role_and_capacity_owne
 #[test]
 fn handling_hour_overflow_refuses_before_any_successor_or_local_receipt_escapes() {
     let (catalog, state) = local_store();
-    let mut malformed_catalog = catalog;
+    let mut malformed_catalog = catalog.into_definition();
     malformed_catalog.handling_coefficients[0].hours_per_unit = u64::MAX;
+    let malformed_catalog = MaterialCatalog::try_new(malformed_catalog).expect("valid definitions");
     let preserved = state.clone();
     assert_eq!(
         babylon_material_circuit::advance_material_circuit(&malformed_catalog, &state),
@@ -538,7 +548,7 @@ fn new_families_are_canonical_hash_bound_and_local_routed_ids_are_disjoint() {
     state.final_demand_orders[0].order_id = state.orders[0].order_id;
     let mut duplicate_good = catalog.handling_coefficients[0].clone();
     duplicate_good.good_id = GoodId::from_bytes([99; 32]);
-    let mut catalog = catalog;
+    let mut catalog = catalog.into_definition();
     catalog.handling_coefficients.push(duplicate_good.clone());
     catalog.commodities.push(CommodityDefinition {
         good_id: duplicate_good.good_id,
@@ -562,14 +572,14 @@ fn new_families_are_canonical_hash_bound_and_local_routed_ids_are_disjoint() {
     permuted.final_demand_principals.reverse();
     permuted.final_demand_orders.reverse();
     permuted.corridor_capacities.reverse();
-    let mut permuted_catalog = catalog.clone();
+    let mut permuted_catalog = catalog.clone().into_definition();
     permuted_catalog.merchants.reverse();
     permuted_catalog.handling_coefficients.reverse();
     permuted_catalog.commodities.reverse();
     permuted_catalog.site_logistics_nodes.reverse();
     let permuted_catalog =
         MaterialCatalog::try_new(permuted_catalog).expect("the permuted catalog is valid");
-    assert_eq!(permuted_catalog.catalog_digest, catalog.catalog_digest);
+    assert_eq!(permuted_catalog.catalog_digest(), catalog.catalog_digest());
     assert_eq!(
         babylon_material_circuit::encode_material_circuit_state(&permuted_catalog, &permuted)
             .expect("the canonical material state encodes"),
@@ -582,7 +592,7 @@ fn new_families_are_canonical_hash_bound_and_local_routed_ids_are_disjoint() {
     );
     let baseline = babylon_material_circuit::material_circuit_state_digest(&catalog, &state)
         .expect("the material state has a digest");
-    let definition_mutations: &[fn(&mut MaterialCatalog)] = &[
+    let definition_mutations: &[fn(&mut MaterialCatalogDefinition)] = &[
         |c| {
             c.merchants[0].location = "county:26001"
                 .parse()
@@ -591,12 +601,12 @@ fn new_families_are_canonical_hash_bound_and_local_routed_ids_are_disjoint() {
         |c| c.handling_coefficients[0].hours_per_unit += 1,
     ];
     for mutate in definition_mutations {
-        let mut changed = catalog.clone();
+        let mut changed = catalog.clone().into_definition();
         mutate(&mut changed);
         let changed = MaterialCatalog::try_new(changed).expect("the changed catalog is valid");
-        assert_ne!(changed.catalog_digest, catalog.catalog_digest);
+        assert_ne!(changed.catalog_digest(), catalog.catalog_digest());
     }
-    let mut relocated_catalog = catalog.clone();
+    let mut relocated_catalog = catalog.clone().into_definition();
     relocated_catalog.merchants[0].location = "county:26001"
         .parse()
         .expect("the authored literal parses as the declared type");
@@ -633,7 +643,8 @@ fn new_families_are_canonical_hash_bound_and_local_routed_ids_are_disjoint() {
 
 #[test]
 fn multiple_merchants_and_county_accounts_preserve_identity_under_all_new_row_permutations() {
-    let (mut catalog, mut state) = local_store();
+    let (catalog, mut state) = local_store();
+    let mut catalog = catalog.into_definition();
     let second_site = catalog.site_logistics_nodes[1].site_id;
     let mut second_store = catalog.merchants[0].clone();
     second_store.site_id = second_site;
@@ -665,7 +676,7 @@ fn multiple_merchants_and_county_accounts_preserve_identity_under_all_new_row_pe
     });
     catalog.merchants.push(second_store);
     catalog.handling_coefficients.push(coefficient);
-    catalog = MaterialCatalog::try_new(catalog).expect("the changed fixture catalog is valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the changed fixture catalog is valid");
     state.inventory.push(stock);
     state.labor.push(labor);
     state.final_demand_principals.push(demand);
@@ -682,13 +693,12 @@ fn multiple_merchants_and_county_accounts_preserve_identity_under_all_new_row_pe
             .collect::<Vec<_>>(),
         vec![2, 3]
     );
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
-    let mut permuted_catalog = catalog.clone();
+    let mut permuted_catalog = catalog.clone().into_definition();
     permuted_catalog.merchants.reverse();
     permuted_catalog.handling_coefficients.reverse();
     let permuted_catalog =
         MaterialCatalog::try_new(permuted_catalog).expect("the permuted catalog is valid");
-    assert_eq!(permuted_catalog.catalog_digest, catalog.catalog_digest);
+    assert_eq!(permuted_catalog.catalog_digest(), catalog.catalog_digest());
     state.final_demand_principals.reverse();
     state.final_demand_orders.reverse();
     state.inventory.reverse();
@@ -728,10 +738,11 @@ fn merchant_role_encoding_rejects_unknown_tags() {
 
 #[test]
 fn local_inter_owner_transfer_needs_no_road_or_transit() {
-    let (mut catalog, mut state) = merchant();
+    let (catalog, mut state) = merchant();
+    let mut catalog = catalog.into_definition();
     catalog.supplier_routes[0].transport_kind = SupplierTransport::Local;
     catalog.route_stages.clear();
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state.route_stage_capacities.clear();
     let handling = catalog.merchants[0].capacity_id;
     state
@@ -745,12 +756,13 @@ fn local_inter_owner_transfer_needs_no_road_or_transit() {
 }
 
 fn local_supplier() -> (MaterialCatalog, MaterialCircuitState) {
-    let (mut catalog, mut state) = merchant();
+    let (catalog, mut state) = merchant();
+    let mut catalog = catalog.into_definition();
     catalog.supplier_routes[0].transport_kind = SupplierTransport::Local;
     catalog.route_stages.clear();
     state.route_stage_capacities.clear();
     let capacity = catalog.merchants[0].capacity_id;
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state
         .corridor_capacities
         .retain(|row| row.corridor_id == capacity);
@@ -801,7 +813,8 @@ fn local_transfer_has_explicit_receipt_and_still_requires_merchant_labor() {
 
 #[test]
 fn local_buyer_credits_wait_until_all_outbound_grants_are_fixed() {
-    let (mut catalog, mut state) = local_supplier();
+    let (catalog, mut state) = local_supplier();
+    let mut catalog = catalog.into_definition();
     schedule(&catalog, &mut state, 2, 4);
     let next_buyer = SiteId::from_bytes([40; 32]);
     catalog.site_logistics_nodes.push(SiteLogisticsNode {
@@ -817,7 +830,7 @@ fn local_buyer_credits_wait_until_all_outbound_grants_are_fixed() {
     relation.supplier_site_id = onward.supplier_site_id;
     relation.buyer_site_id = next_buyer;
     catalog.supplier_routes.push(relation);
-    catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
+    let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     state.orders.push(onward);
     let first = babylon_material_circuit::advance_material_circuit(&catalog, &state)
         .expect("the authored material state advances one period");
@@ -873,14 +886,14 @@ fn local_transfer_mode_and_wire_are_checked_and_buyer_overflow_is_atomic() {
         babylon_material_circuit::advance_material_circuit(&catalog, &state)
             .expect("the authored material state advances one period")
     );
-    let wrong_mode = state.clone();
-    let mut wrong_catalog = catalog.clone();
+    let mut wrong_catalog = catalog.clone().into_definition();
     wrong_catalog.supplier_routes[0].transport_kind = SupplierTransport::Staged;
     assert_eq!(
-        babylon_material_circuit::advance_material_circuit(&wrong_catalog, &wrong_mode),
+        MaterialCatalog::try_new(wrong_catalog),
         Err(MaterialCircuitError::RouteInvariant)
     );
-    let (mut wrongly_local_catalog, wrongly_local) = merchant();
+    let (wrongly_local_catalog, wrongly_local) = merchant();
+    let mut wrongly_local_catalog = wrongly_local_catalog.into_definition();
     wrongly_local_catalog.supplier_routes[0].transport_kind = SupplierTransport::Local;
     // A local relation may not keep timed stages; definition admission refuses it.
     assert_eq!(

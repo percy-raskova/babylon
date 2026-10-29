@@ -201,28 +201,6 @@ fn recurring() -> RecurringEconomy {
         quantity,
     })
     .collect();
-    let needs = (1..=6)
-        .map(|g| HouseholdNeed {
-            principal_id: donor(),
-            good_id: good(g),
-            unit_id: unit(g),
-            basis: if g == 1 || g == 5 {
-                HouseholdNeedBasis::Households
-            } else {
-                HouseholdNeedBasis::Persons
-            },
-            units_per_basis: 1,
-        })
-        .chain(
-            [recipient(), suppliers()].map(|principal_id| HouseholdNeed {
-                principal_id,
-                good_id: good(FOOD),
-                unit_id: unit(FOOD),
-                basis: HouseholdNeedBasis::Persons,
-                units_per_basis: 1,
-            }),
-        )
-        .collect();
     let purchases = (1..=6)
         .map(|g| HouseholdPurchasePolicy {
             principal_id: donor(),
@@ -252,10 +230,8 @@ fn recurring() -> RecurringEconomy {
         )
         .collect();
     RecurringEconomy {
-        service_inputs: vec![],
         households,
         household_stocks: stocks,
-        household_needs: needs,
         household_purchases: purchases,
         offers: (1..=6)
             .map(|g| SellerOffer {
@@ -327,39 +303,35 @@ fn production(period: u64) -> Vec<ProductionCommitment> {
         })
         .collect()
 }
-fn time() -> HouseholdTimeAccounting {
-    HouseholdTimeAccounting::Modeled(
-        HouseholdTimeBook::new(
-            [(donor(), 8), (recipient(), 4), (suppliers(), 5)]
-                .into_iter()
-                .map(|(principal_id, eligible_persons)| HouseholdTimePolicy {
-                    principal_id,
-                    labor_unit_id: hours(),
-                    eligible_persons,
-                    hours_per_eligible_person: 224,
-                    protected: HouseholdTimeCommitment {
-                        basis: HouseholdNeedBasis::Households,
-                        hours_per_basis: 32,
-                    },
-                    routine_provisioning: HouseholdTimeCommitment {
-                        basis: HouseholdNeedBasis::Households,
-                        hours_per_basis: 64,
-                    },
-                    unmet_burdens: if principal_id == suppliers() {
-                        vec![]
-                    } else {
-                        vec![HouseholdUnmetTimeBurden {
-                            good_id: good(FOOD),
-                            unit_id: unit(FOOD),
-                            hours_per_unmet_unit: 20,
-                        }]
-                    },
-                })
-                .collect(),
-        )
-        .expect("the constructor accepts the authored fixture arguments"),
-    )
+fn time_policies() -> Vec<HouseholdTimePolicy> {
+    [(donor(), 8), (recipient(), 4), (suppliers(), 5)]
+        .into_iter()
+        .map(|(principal_id, eligible_persons)| HouseholdTimePolicy {
+            principal_id,
+            labor_unit_id: hours(),
+            eligible_persons,
+            hours_per_eligible_person: 224,
+            protected: HouseholdTimeCommitment {
+                basis: HouseholdNeedBasis::Households,
+                hours_per_basis: 32,
+            },
+            routine_provisioning: HouseholdTimeCommitment {
+                basis: HouseholdNeedBasis::Households,
+                hours_per_basis: 64,
+            },
+            unmet_burdens: if principal_id == suppliers() {
+                vec![]
+            } else {
+                vec![HouseholdUnmetTimeBurden {
+                    good_id: good(FOOD),
+                    unit_id: unit(FOOD),
+                    hours_per_unmet_unit: 20,
+                }]
+            },
+        })
+        .collect()
 }
+
 #[allow(
     clippy::too_many_lines,
     reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
@@ -433,7 +405,7 @@ pub fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         }],
         ..FinancialInstitutions::empty()
     };
-    let catalog = MaterialCatalog {
+    let catalog = babylon_material_circuit::MaterialCatalogDefinition {
         capacity_policy: CapacitySupply::FiniteSchedule,
         commodities: (1..=7)
             .map(|g| CommodityDefinition {
@@ -499,7 +471,6 @@ pub fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         household_time_policy: vec![],
         service_inputs: vec![],
         household_needs: vec![],
-        catalog_digest: [0; 32],
     };
     let state = MaterialCircuitState {
         period: 1,
@@ -508,27 +479,8 @@ pub fn opening() -> (MaterialCatalog, MaterialCircuitState) {
             costs,
             financial,
             recurring: Some(Box::new(recurring())),
-            household_time: time(),
-            aid: AidBook {
-                mandates: vec![AidMandate {
-                    id: [91; 32],
-                    source_hash: [92; 32],
-                    donor_actor: 101,
-                    donor_contributor_id: 201,
-                    recipient_actor: 120,
-                    payer: organization(),
-                    donor: donor(),
-                    recipient: recipient(),
-                    good_id: good(FOOD),
-                    unit_id: unit(FOOD),
-                    labor_unit_id: hours(),
-                    hours_per_unit: 2,
-                    maximum_quantity: 4,
-                    cash_per_unit: money(100_000),
-                    transport: AidTransport::Local,
-                }],
-                freight: vec![],
-            },
+            household_time: HouseholdTimeAccounting::Modeled(HouseholdTimeBook::default()),
+            aid: AidBook { freight: vec![] },
             employment: (1..=6)
                 .map(|id| EmploymentTerms {
                     member_id: StaffingMemberId::from_bytes(site(id).as_bytes()),
@@ -587,17 +539,50 @@ pub fn opening() -> (MaterialCatalog, MaterialCircuitState) {
         panic!("the fixture opens a paid circuit")
     };
     let mut catalog = catalog;
-    catalog.aid_mandates.clone_from(&economy.aid.mandates);
-    if let Some(recurring) = &economy.recurring {
-        catalog
-            .household_needs
-            .clone_from(&recurring.household_needs);
-        catalog.service_inputs.clone_from(&recurring.service_inputs);
+    catalog.aid_mandates = vec![AidMandate {
+        id: [91; 32],
+        source_hash: [92; 32],
+        donor_actor: 101,
+        donor_contributor_id: 201,
+        recipient_actor: 120,
+        payer: organization(),
+        donor: donor(),
+        recipient: recipient(),
+        good_id: good(FOOD),
+        unit_id: unit(FOOD),
+        labor_unit_id: hours(),
+        hours_per_unit: 2,
+        maximum_quantity: 4,
+        cash_per_unit: money(100_000),
+        transport: AidTransport::Local,
+    }];
+    if economy.recurring.is_some() {
+        catalog.household_needs = (1..=6)
+            .map(|g| HouseholdNeed {
+                principal_id: donor(),
+                good_id: good(g),
+                unit_id: unit(g),
+                basis: if g == 1 || g == 5 {
+                    HouseholdNeedBasis::Households
+                } else {
+                    HouseholdNeedBasis::Persons
+                },
+                units_per_basis: 1,
+            })
+            .chain(
+                [recipient(), suppliers()].map(|principal_id| HouseholdNeed {
+                    principal_id,
+                    good_id: good(FOOD),
+                    unit_id: unit(FOOD),
+                    basis: HouseholdNeedBasis::Persons,
+                    units_per_basis: 1,
+                }),
+            )
+            .collect();
+        catalog.service_inputs.clear();
     }
-    if let HouseholdTimeAccounting::Modeled(book) = &economy.household_time {
-        catalog.household_time_policy.clone_from(&book.policies);
-    }
-    catalog.catalog_digest = [0; 32];
+    catalog.household_time_policy = time_policies();
+
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog is valid");
     (catalog, state)
 }

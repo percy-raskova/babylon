@@ -111,29 +111,11 @@ pub struct HouseholdContributionReceipt {
     pub contribution: HouseholdContributionUse,
 }
 
-/// Policies persist; receipts and uses describe exactly the last completed period.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Receipts and uses describe exactly the last completed period.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HouseholdTimeBook {
-    pub policies: Vec<HouseholdTimePolicy>,
     pub receipts: Vec<HouseholdTimeReceipt>,
     pub contributions: Vec<HouseholdContributionReceipt>,
-}
-
-impl HouseholdTimeBook {
-    /// Construct a policy book before its first close.
-    /// # Errors
-    /// Refuses duplicate identities, zero endowment or burden rates, excessive
-    /// rows or overflow. Explicit zero protected/provisioning controls are valid.
-    pub fn new(policies: Vec<HouseholdTimePolicy>) -> Result<Self> {
-        let mut book = Self {
-            policies,
-            receipts: Vec::new(),
-            contributions: Vec::new(),
-        };
-        canonicalize_book(&mut book);
-        validate_structure(&book)?;
-        Ok(book)
-    }
 }
 
 fn sum(values: &[u64]) -> Result<u64> {
@@ -159,12 +141,6 @@ fn requirement(commitment: &HouseholdTimeCommitment, cohort: &HouseholdCohort) -
 }
 
 fn canonicalize_book(book: &mut HouseholdTimeBook) {
-    book.policies.sort_by_key(|row| row.principal_id);
-    for policy in &mut book.policies {
-        policy
-            .unmet_burdens
-            .sort_by_key(|row| (row.good_id, row.unit_id));
-    }
     book.receipts.sort_by_key(|row| row.principal_id);
     book.contributions
         .sort_by_key(|row| row.contribution.use_id);
@@ -177,41 +153,16 @@ pub(crate) fn canonicalize(accounting: &mut HouseholdTimeAccounting) {
 }
 
 pub(crate) fn validate_structure(book: &HouseholdTimeBook) -> Result<()> {
-    if [
-        book.policies.len(),
-        book.receipts.len(),
-        book.contributions.len(),
-    ]
-    .into_iter()
-    .any(|length| length > MAX_MATERIAL_CIRCUIT_ROWS)
+    if [book.receipts.len(), book.contributions.len()]
+        .into_iter()
+        .any(|length| length > MAX_MATERIAL_CIRCUIT_ROWS)
     {
         return Err(MaterialCircuitError::RowLimit);
-    }
-    let mut policies = BTreeSet::new();
-    let mut burden_count = 0_usize;
-    for row in &book.policies {
-        if !policies.insert(row.principal_id) || row.hours_per_eligible_person == 0 {
-            return Err(MaterialCircuitError::HouseholdTimeInvariant);
-        }
-        multiply(row.eligible_persons, row.hours_per_eligible_person)?;
-        burden_count = burden_count
-            .checked_add(row.unmet_burdens.len())
-            .ok_or(MaterialCircuitError::Arithmetic)?;
-        if burden_count > MAX_MATERIAL_CIRCUIT_ROWS {
-            return Err(MaterialCircuitError::RowLimit);
-        }
-        let mut needs = BTreeSet::new();
-        for need in &row.unmet_burdens {
-            if need.hours_per_unmet_unit == 0 || !needs.insert((need.good_id, need.unit_id)) {
-                return Err(MaterialCircuitError::HouseholdTimeInvariant);
-            }
-        }
     }
     let mut receipts = BTreeMap::new();
     for row in &book.receipts {
         row.validate()?;
-        if !policies.contains(&row.principal_id) || receipts.insert(row.principal_id, row).is_some()
-        {
+        if receipts.insert(row.principal_id, row).is_some() {
             return Err(MaterialCircuitError::HouseholdTimeInvariant);
         }
     }
@@ -242,10 +193,18 @@ pub(crate) fn validate_structure(book: &HouseholdTimeBook) -> Result<()> {
 
 pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) -> Result<()> {
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
-        return Ok(());
+        return if catalog.household_time_policy.is_empty() {
+            Ok(())
+        } else {
+            Err(MaterialCircuitError::HouseholdTimeInvariant)
+        };
     };
     let HouseholdTimeAccounting::Modeled(book) = &economy.household_time else {
-        return Ok(());
+        return if catalog.household_time_policy.is_empty() {
+            Ok(())
+        } else {
+            Err(MaterialCircuitError::HouseholdTimeInvariant)
+        };
     };
     validate_structure(book)?;
     let recurring = economy
@@ -257,20 +216,23 @@ pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) 
         .iter()
         .map(|r| (r.principal_id, r))
         .collect();
-    if book.policies.len() != cohorts.len() {
+    if catalog.household_time_policy.len() != cohorts.len() {
         return Err(MaterialCircuitError::HouseholdTimeInvariant);
     }
-    let needs: Needs<'_> = recurring
+    let needs: Needs<'_> = catalog
         .household_needs
         .iter()
         .map(|r| ((r.principal_id, r.good_id, r.unit_id), r))
         .collect();
-    let policies: Policies<'_> = book.policies.iter().map(|r| (r.principal_id, r)).collect();
-    if cohorts.len() != recurring.households.len() || needs.len() != recurring.household_needs.len()
-    {
+    let policies: Policies<'_> = catalog
+        .household_time_policy
+        .iter()
+        .map(|r| (r.principal_id, r))
+        .collect();
+    if cohorts.len() != recurring.households.len() || needs.len() != catalog.household_needs.len() {
         return Err(MaterialCircuitError::HouseholdTimeInvariant);
     }
-    validate_policies(catalog, state, economy, book, &cohorts, &needs, &policies)?;
+    validate_policies(catalog, state, economy, &cohorts, &needs, &policies)?;
     validate_receipts(state.period, book, &cohorts, &needs, &policies)
 }
 
@@ -278,7 +240,6 @@ fn validate_policies(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     economy: &MonetaryCircuit,
-    book: &HouseholdTimeBook,
     cohorts: &Cohorts<'_>,
     needs: &Needs<'_>,
     policies: &Policies<'_>,
@@ -313,7 +274,7 @@ fn validate_policies(
         let available = capacities.entry(term.payee).or_default();
         *available = sum(&[*available, row.available_hours])?;
     }
-    for policy in &book.policies {
+    for policy in &catalog.household_time_policy {
         let cohort = cohorts
             .get(&policy.principal_id)
             .ok_or(MaterialCircuitError::HouseholdTimeInvariant)?;
@@ -345,7 +306,7 @@ fn validate_receipts(
         .checked_sub(1)
         .ok_or(MaterialCircuitError::PeriodInvariant)?;
     if (previous == 0 && (!book.receipts.is_empty() || !book.contributions.is_empty()))
-        || (previous != 0 && book.receipts.len() != book.policies.len())
+        || (previous != 0 && book.receipts.len() != policies.len())
     {
         return Err(MaterialCircuitError::HouseholdTimeInvariant);
     }
@@ -391,12 +352,13 @@ fn validate_receipts(
 }
 
 pub(crate) fn close(
+    catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     attendance: &[MemberLaborUseReceipt],
     consumption: &[HouseholdConsumptionReceipt],
     services: &[HouseholdServiceReceipt],
 ) -> Result<Vec<HouseholdTimeReceipt>> {
-    let result = preview(state, attendance, consumption, services)?;
+    let result = preview(catalog, state, attendance, consumption, services)?;
     if let CircuitAccounting::Monetary(economy) = &mut state.accounting {
         if let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time {
             book.receipts.clone_from(&result);
@@ -407,6 +369,7 @@ pub(crate) fn close(
 }
 
 pub(crate) fn preview(
+    catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     attendance: &[MemberLaborUseReceipt],
     consumption: &[HouseholdConsumptionReceipt],
@@ -415,7 +378,7 @@ pub(crate) fn preview(
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
         return Ok(Vec::new());
     };
-    let HouseholdTimeAccounting::Modeled(book) = &economy.household_time else {
+    let HouseholdTimeAccounting::Modeled(_) = &economy.household_time else {
         return Ok(Vec::new());
     };
     let recurring = economy
@@ -466,8 +429,8 @@ pub(crate) fn preview(
             return Err(MaterialCircuitError::HouseholdTimeInvariant);
         }
     }
-    let mut result = Vec::with_capacity(book.policies.len());
-    for policy in &book.policies {
+    let mut result = Vec::with_capacity(catalog.household_time_policy.len());
+    for policy in &catalog.household_time_policy {
         let cohort = cohorts
             .get(&policy.principal_id)
             .ok_or(MaterialCircuitError::HouseholdTimeInvariant)?;

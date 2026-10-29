@@ -7,6 +7,7 @@ use babylon_practice_contract::{
     OrganizerContribution, OrganizerHouseholdBinding, OrganizerObservation, OrganizerParticipant,
     OrganizerPartner, OrganizerTimeUse, PracticeResourceCapacity, PracticeResourceRequirement,
 };
+use std::collections::BTreeSet;
 
 use babylon_practice_contract::{
     decode_organizer_receipt, decode_practice_intent, encode_practice_intent,
@@ -1852,6 +1853,88 @@ pub(crate) fn captured_time_binding_preserves_shared_principal_budget_identity()
         ),
         Err(OrganizerError::TimeBindingMismatch)
     );
+}
+
+#[test]
+pub(crate) fn seeded_observations_remain_visible_after_a_journal_append() {
+    let mut config = config();
+    let seeded = OrganizerObservation {
+        observation_id: [9; 32],
+        actor_id: config.controlled_actor_id,
+        subject_id: config.workplace_id,
+        source_actor_id: config.workplace_partner.actor_id,
+        observed_period: 0,
+        acquired_period: 0,
+        receipt_id: None,
+        report: OrganizerReport::Work {
+            performed_labor_hours: 160,
+            output_kg: 960,
+            previous_labor_hours: None,
+            previous_output_kg: None,
+        },
+    };
+    config.initial_observations.push(seeded.clone());
+    let initial =
+        babylon_practice_contract::initial_organizer_state(&config).expect("opening state");
+    let mut journal = OrganizerPeriodJournal::empty();
+    let opening = babylon_practice_contract::organizer_view(
+        &config,
+        &initial,
+        &journal,
+        config.controlled_actor_id,
+    )
+    .expect("opening view");
+    assert_eq!(opening.total_observation_count, 1);
+    assert_eq!(opening.observations, vec![seeded.clone()]);
+    assert_eq!(
+        babylon_practice_contract::organizer_view(
+            &config,
+            &initial,
+            &journal,
+            config.workplace_partner.actor_id
+        ),
+        Err(OrganizerError::Refused(OrganizerRefusal::WrongAuthority))
+    );
+    let first = act(&config, &initial, OrganizerChoice::Hold, 160);
+    journal.append(first.journal).expect("first journal append");
+    let second = act(
+        &config,
+        &first.state,
+        OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
+        0,
+    );
+    journal
+        .append(second.journal)
+        .expect("second journal append");
+    let view = babylon_practice_contract::organizer_view(
+        &config,
+        &second.state,
+        &journal,
+        config.controlled_actor_id,
+    )
+    .expect("subsequent view");
+    let mut expected = vec![seeded];
+    expected.extend(
+        journal
+            .periods
+            .iter()
+            .flat_map(|period| &period.observations)
+            .filter(|observation| observation.actor_id == config.controlled_actor_id)
+            .cloned(),
+    );
+    expected.sort_by_key(|row| (row.acquired_period, row.observed_period, row.observation_id));
+    assert!(
+        expected.len() > 1,
+        "the journal contributes an earned report"
+    );
+    assert_eq!(view.total_observation_count as usize, expected.len());
+    assert_eq!(view.observations, expected);
+    let ids: BTreeSet<_> = view
+        .observations
+        .iter()
+        .map(|row| row.observation_id)
+        .collect();
+    assert_eq!(ids.len(), view.observations.len(), "reports appear once");
 }
 
 #[test]

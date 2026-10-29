@@ -2,6 +2,7 @@
 use super::{collection_receipt, MaterialWorldError};
 use babylon_kernel::currency::Currency;
 use babylon_material_circuit::AccountId;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::{
     CircuitAccounting, CollectionOutcome, CollectionReceipt, CollectionResolveInput,
     FinalDemandPrincipalId, MaterialCircuitState, OrganizationAccountId, UnitId,
@@ -14,6 +15,7 @@ use std::result::Result as StdResult;
 
 type Result<T> = StdResult<T, MaterialWorldError>;
 pub(crate) fn input(
+    catalog: &MaterialCatalog,
     config: &OrganizerConfig,
     organizer: &OrganizerState,
     accepted: Option<&OrganizerCommitment>,
@@ -30,7 +32,7 @@ pub(crate) fn input(
         return Err(MaterialWorldError::Wire);
     }
     let terms = config.collection.as_ref().ok_or(MaterialWorldError::Wire)?;
-    validate_binding(config, state)?;
+    validate_binding(catalog, config, state)?;
     let participant = config
         .participants
         .iter()
@@ -177,6 +179,7 @@ pub(super) fn current(
 // Current register admission precedes actor-scoped cash projection, even at
 // opening0. A structurally valid config cannot name another payer or unit.
 pub(super) fn validate_binding(
+    catalog: &MaterialCatalog,
     config: &OrganizerConfig,
     state: &MaterialCircuitState,
 ) -> Result<()> {
@@ -187,7 +190,7 @@ pub(super) fn validate_binding(
     let CircuitAccounting::Monetary(e) = &state.accounting else {
         return Err(MaterialWorldError::Wire);
     };
-    if !e.aid.mandates.iter().any(|row| {
+    if !catalog.aid_mandates.iter().any(|row| {
         row.donor.as_bytes() == terms.household_principal_id
             && row.donor_actor == terms.actor_id
             && row.donor_contributor_id == terms.contributor_id
@@ -205,11 +208,11 @@ pub(super) fn validate_binding(
     }) {
         return Err(MaterialWorldError::Wire);
     }
-    let babylon_material_circuit::HouseholdTimeAccounting::Modeled(time) = &e.household_time else {
+    let babylon_material_circuit::HouseholdTimeAccounting::Modeled(_) = &e.household_time else {
         return Err(MaterialWorldError::Wire);
     };
-    if time
-        .policies
+    if catalog
+        .household_time_policy
         .iter()
         .filter(|row| {
             row.principal_id.as_bytes() == terms.household_principal_id

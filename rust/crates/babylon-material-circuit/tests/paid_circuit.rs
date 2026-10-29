@@ -47,7 +47,6 @@ use babylon_material_circuit::StockCarryingValue;
 use babylon_material_circuit::SupplierRoute;
 use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::UnitId;
-use babylon_material_circuit::UNSEALED_CATALOG_DIGEST;
 
 fn money(value: i128) -> Currency {
     Currency::from_micro_units(value)
@@ -190,7 +189,7 @@ fn opening() -> (MaterialCatalog, MaterialCircuitState) {
             maintenance_service: None,
         };
         (
-            MaterialCatalog::try_new(MaterialCatalog {
+            MaterialCatalog::try_new(babylon_material_circuit::MaterialCatalogDefinition {
                 capacity_policy: CapacitySupply::FiniteSchedule,
                 site_logistics_nodes: vec![
                     SiteLogisticsNode {
@@ -246,7 +245,6 @@ fn opening() -> (MaterialCatalog, MaterialCircuitState) {
                 household_time_policy: Vec::new(),
                 service_inputs: Vec::new(),
                 household_needs: Vec::new(),
-                catalog_digest: UNSEALED_CATALOG_DIGEST,
             })
             .expect("the authored fixture catalog is valid"),
             state,
@@ -469,7 +467,8 @@ fn purchase_admission_cannot_spend_the_same_cash_twice_or_leave_an_order_behind(
 
 #[test]
 fn freight_loss_refunds_buyer_and_never_becomes_seller_income() {
-    let (mut catalog, state) = opening();
+    let (catalog, state) = opening();
+    let mut catalog = catalog.into_definition();
     catalog.route_stages[0].loss_ppm = 500_000;
     let catalog = MaterialCatalog::try_new(catalog).expect("the fixture catalog stays valid");
     let (state, _) = babylon_material_circuit::admit_material_purchase(
@@ -693,7 +692,8 @@ fn paid_delivery_cannot_reopen_as_an_unrealized_physical_quantity() {
 
 #[test]
 fn historical_cost_partial_dispatch_and_loss_leave_exact_remainders_without_cash_creation() {
-    let (mut catalog, mut state) = opening();
+    let (catalog, mut state) = opening();
+    let mut catalog = catalog.into_definition();
     let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
         panic!("paid control");
     };

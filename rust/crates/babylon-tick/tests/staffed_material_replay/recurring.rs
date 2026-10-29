@@ -82,7 +82,6 @@ fn opening() -> Materials {
         panic!("paid opening")
     };
     economy.recurring = Some(Box::new(RecurringEconomy {
-        service_inputs: vec![],
         households: vec![HouseholdCohort {
             kind: babylon_material_circuit::HouseholdKind::Ordinary,
             principal_id: household,
@@ -94,13 +93,6 @@ fn opening() -> Materials {
             good_id: crate::good(2),
             unit_id: crate::unit(2),
             quantity: 0,
-        }],
-        household_needs: vec![HouseholdNeed {
-            principal_id: household,
-            good_id: crate::good(2),
-            unit_id: crate::unit(2),
-            basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
-            units_per_basis: 1,
         }],
         household_purchases: vec![HouseholdPurchasePolicy {
             principal_id: household,
@@ -135,13 +127,13 @@ fn opening() -> Materials {
         last_household_consumption_period: 0,
     }));
     capture_empty_pantry_cost(economy);
-    catalog.household_needs.clone_from(
-        &economy
-            .recurring
-            .as_ref()
-            .expect("the fixture set the optional field before this read")
-            .household_needs,
-    );
+    catalog.household_needs = vec![HouseholdNeed {
+        principal_id: household,
+        good_id: crate::good(2),
+        unit_id: crate::unit(2),
+        basis: babylon_material_circuit::HouseholdNeedBasis::Persons,
+        units_per_basis: 1,
+    }];
     Materials { catalog, state }
 }
 
@@ -192,31 +184,26 @@ fn household_time_session() -> Session {
         .expect("the fixture set the optional field before this read")
         .households[0]
         .principal_id;
-    economy.household_time = HouseholdTimeAccounting::Modeled(
-        HouseholdTimeBook::new(vec![HouseholdTimePolicy {
-            principal_id: household,
-            labor_unit_id: crate::unit(1),
-            eligible_persons: 1,
-            hours_per_eligible_person: 224,
-            protected: HouseholdTimeCommitment {
-                basis: HouseholdNeedBasis::Households,
-                hours_per_basis: 32,
-            },
-            routine_provisioning: HouseholdTimeCommitment {
-                basis: HouseholdNeedBasis::Households,
-                hours_per_basis: 16,
-            },
-            unmet_burdens: vec![HouseholdUnmetTimeBurden {
-                good_id: crate::good(2),
-                unit_id: crate::unit(2),
-                hours_per_unmet_unit: 4,
-            }],
-        }])
-        .expect("the constructor accepts the authored fixture arguments"),
-    );
-    if let HouseholdTimeAccounting::Modeled(time) = &economy.household_time {
-        catalog.household_time_policy.clone_from(&time.policies);
-    }
+    catalog.household_time_policy = vec![HouseholdTimePolicy {
+        principal_id: household,
+        labor_unit_id: crate::unit(1),
+        eligible_persons: 1,
+        hours_per_eligible_person: 224,
+        protected: HouseholdTimeCommitment {
+            basis: HouseholdNeedBasis::Households,
+            hours_per_basis: 32,
+        },
+        routine_provisioning: HouseholdTimeCommitment {
+            basis: HouseholdNeedBasis::Households,
+            hours_per_basis: 16,
+        },
+        unmet_burdens: vec![HouseholdUnmetTimeBurden {
+            good_id: crate::good(2),
+            unit_id: crate::unit(2),
+            hours_per_unmet_unit: 4,
+        }],
+    }];
+    economy.household_time = HouseholdTimeAccounting::Modeled(HouseholdTimeBook::default());
     session_with_material(Materials { catalog, state })
 }
 

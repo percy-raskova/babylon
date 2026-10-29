@@ -135,9 +135,8 @@ pub(super) fn projections(
     let recurring = economy.recurring.as_ref().ok_or_else(refused)?;
     let mut result = Vec::with_capacity(config.aid_bindings.len());
     for binding in &config.aid_bindings {
-        let mandate = economy
-            .aid
-            .mandates
+        let mandate = catalog
+            .aid_mandates
             .iter()
             .find(|m| m.id == binding.mandate_id)
             .ok_or_else(refused)?;
@@ -148,7 +147,7 @@ pub(super) fn projections(
         {
             return Err(refused());
         }
-        let (donor_stock, own_need) = pantry_amounts(recurring, mandate)?;
+        let (donor_stock, own_need) = pantry_amounts(catalog, recurring, mandate)?;
         let ordinary_offer = recurring
             .household_purchases
             .iter()
@@ -205,13 +204,17 @@ pub(super) fn projections(
     }
     Ok(result)
 }
-fn pantry_amounts(recurring: &RecurringEconomy, mandate: &AidMandate) -> Result<(u64, u64)> {
+fn pantry_amounts(
+    catalog: &MaterialCatalog,
+    recurring: &RecurringEconomy,
+    mandate: &AidMandate,
+) -> Result<(u64, u64)> {
     let cohort = recurring
         .households
         .iter()
         .find(|r| r.principal_id == mandate.donor)
         .ok_or_else(refused)?;
-    let own_need = recurring
+    let own_need = catalog
         .household_needs
         .iter()
         .filter(|r| {

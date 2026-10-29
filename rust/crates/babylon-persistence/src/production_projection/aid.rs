@@ -1,5 +1,6 @@
 //! Adjacent authenticated aid evidence. No allocation, pricing or economic replay.
 use super::ProductionProjectionError;
+use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::{
     AccountId, AidCashReserve, AidMandate, AidOutcome, AidReceipt, AidTransport, CircuitAccounting,
     FinalDemandPrincipalId, GoodId, MaterialCircuitState, MonetaryCircuit, MoneyLocation,
@@ -40,6 +41,7 @@ type Cash = BTreeMap<(OrderId, u8), Posting>;
 type Reserves = BTreeMap<OrderId, AidCashReserve>;
 type Reservations = BTreeMap<OrderId, u64>;
 pub(super) fn join(
+    catalog: &MaterialCatalog,
     prior: &MaterialCircuitState,
     current: &MaterialCircuitState,
     receipt: &MaterialTickReceipts,
@@ -53,14 +55,11 @@ pub(super) fn join(
             Err(ProductionProjectionError::State)
         };
     };
-    if before.aid.mandates != after.aid.mandates
-        || receipt.resolve_tick != prior.period
-        || prior.period.checked_add(1) != Some(current.period)
-    {
+    if receipt.resolve_tick != prior.period || prior.period.checked_add(1) != Some(current.period) {
         return Err(ProductionProjectionError::History);
     }
-    let mandates: Mandates<'_> = before.aid.mandates.iter().map(|m| (m.id, m)).collect();
-    if mandates.len() != before.aid.mandates.len() {
+    let mandates: Mandates<'_> = catalog.aid_mandates.iter().map(|m| (m.id, m)).collect();
+    if mandates.len() != catalog.aid_mandates.len() {
         return Err(ProductionProjectionError::State);
     }
     let (gifts, mut flows, cash) = collect(receipt, &mandates)?;

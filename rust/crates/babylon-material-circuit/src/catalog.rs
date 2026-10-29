@@ -22,12 +22,9 @@ use crate::{
 };
 use std::collections::BTreeMap;
 
-/// Placeholder a caller supplies while building a catalog; `try_new` recomputes it.
-pub const UNSEALED_CATALOG_DIGEST: [u8; 32] = [0; 32];
-
-/// One immutable campaign definition set, hashed once at admission.
+/// Mutable authored input for admission as a campaign catalog.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MaterialCatalog {
+pub struct MaterialCatalogDefinition {
     pub capacity_policy: CapacitySupply,
     pub site_logistics_nodes: Vec<SiteLogisticsNode>,
     pub process_outputs: Vec<ProcessOutput>,
@@ -43,8 +40,32 @@ pub struct MaterialCatalog {
     pub household_time_policy: Vec<HouseholdTimePolicy>,
     pub service_inputs: Vec<ServiceInputPolicy>,
     pub household_needs: Vec<HouseholdNeed>,
-    /// SHA-256 of the canonical catalog bytes; the supplied value is replaced.
-    pub catalog_digest: [u8; 32],
+}
+
+/// Validated campaign definitions and their immutable identity.
+///
+/// An admitted catalog cannot be mutated while retaining its old identity:
+///
+/// ```compile_fail
+/// use babylon_material_circuit::MaterialCatalog;
+/// fn stale_identity(catalog: &mut MaterialCatalog) {
+///     catalog.process_outputs[0].quantity_per_batch += 1;
+/// }
+/// ```
+///
+/// Changes require consuming it with [`MaterialCatalog::into_definition`] and
+/// admitting the resulting definitions again with [`MaterialCatalog::try_new`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MaterialCatalog {
+    definition: MaterialCatalogDefinition,
+    catalog_digest: [u8; 32],
+}
+
+impl std::ops::Deref for MaterialCatalog {
+    type Target = MaterialCatalogDefinition;
+    fn deref(&self) -> &Self::Target {
+        &self.definition
+    }
 }
 
 impl MaterialCatalog {
@@ -53,13 +74,32 @@ impl MaterialCatalog {
     /// # Errors
     /// Returns the first row-bound, duplicate, route, coefficient, or definition
     /// refusal without publishing a digest.
-    pub fn try_new(mut catalog: Self) -> Result<Self, MaterialCircuitError> {
-        catalog.canonicalize();
-        catalog.validate()?;
-        catalog.catalog_digest = digest(&catalog)?;
-        Ok(catalog)
+    pub fn try_new(
+        mut definition: MaterialCatalogDefinition,
+    ) -> Result<Self, MaterialCircuitError> {
+        definition.canonicalize();
+        definition.validate()?;
+        let catalog_digest = digest(&definition)?;
+        Ok(Self {
+            definition,
+            catalog_digest,
+        })
     }
 
+    /// Return the construction input, consuming the admitted catalog.
+    #[must_use]
+    pub fn into_definition(self) -> MaterialCatalogDefinition {
+        self.definition
+    }
+
+    /// Digest of the canonical admitted definitions.
+    #[must_use]
+    pub const fn catalog_digest(&self) -> [u8; 32] {
+        self.catalog_digest
+    }
+}
+
+impl MaterialCatalogDefinition {
     /// Authored equipment definitions, when the rolling policy is equipment-owned.
     #[must_use]
     pub fn equipment_content(&self) -> Option<&ProductiveEquipment> {
@@ -82,27 +122,6 @@ impl MaterialCatalog {
             .binary_search_by_key(&(good, unit), |row| (row.good_id, row.unit_id))
             .map_err(|_| MaterialCircuitError::MassInvariant)?;
         self.commodities[index].grams_per_unit()
-    }
-
-    fn canonicalize(&mut self) {
-        self.site_logistics_nodes.sort();
-        self.process_outputs.sort();
-        self.input_coefficients.sort();
-        self.labor_coefficients.sort();
-        self.commodities
-            .sort_by_key(|row| (row.good_id, row.unit_id));
-        self.supplier_routes.sort();
-        self.route_stages.sort();
-        self.merchants.sort();
-        self.handling_coefficients.sort();
-        self.aid_mandates.sort_by_key(|row| row.id);
-        self.household_time_policy
-            .sort_by_key(|row| row.principal_id);
-        self.service_inputs
-            .sort_by_key(|row| (row.buyer_site_id, row.good_id, row.unit_id));
-        self.household_needs
-            .sort_by_key(|row| (row.principal_id, row.good_id, row.unit_id));
-        crate::capacity::canonicalize_policy(&mut self.capacity_policy);
     }
 
     pub(crate) fn validate(&self) -> Result<(), MaterialCircuitError> {
@@ -282,7 +301,18 @@ impl MaterialCatalog {
         for mandate in &self.aid_mandates {
             mandate.validate()?;
         }
+        let mut burden_count = 0_usize;
         for policy in &self.household_time_policy {
+            policy
+                .eligible_persons
+                .checked_mul(policy.hours_per_eligible_person)
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            burden_count = burden_count
+                .checked_add(policy.unmet_burdens.len())
+                .ok_or(MaterialCircuitError::Arithmetic)?;
+            if burden_count > MAX_MATERIAL_CIRCUIT_ROWS {
+                return Err(MaterialCircuitError::RowLimit);
+            }
             if policy.hours_per_eligible_person == 0 {
                 return Err(MaterialCircuitError::HouseholdTimeInvariant);
             }
@@ -347,8 +377,38 @@ impl MaterialCatalog {
 ///
 /// # Errors
 /// Returns the first encoding refusal without publishing a digest.
-pub(crate) fn digest(catalog: &MaterialCatalog) -> Result<[u8; 32], MaterialCircuitError> {
+pub(crate) fn digest(
+    catalog: &MaterialCatalogDefinition,
+) -> Result<[u8; 32], MaterialCircuitError> {
     Ok(content_digest::sha256_of(&crate::wire::catalog_bytes(
         catalog,
     )?))
+}
+
+impl MaterialCatalogDefinition {
+    fn canonicalize(&mut self) {
+        self.site_logistics_nodes.sort();
+        self.process_outputs.sort();
+        self.input_coefficients.sort();
+        self.labor_coefficients.sort();
+        self.commodities
+            .sort_by_key(|row| (row.good_id, row.unit_id));
+        self.supplier_routes.sort();
+        self.route_stages.sort();
+        self.merchants.sort();
+        self.handling_coefficients.sort();
+        self.aid_mandates.sort_by_key(|row| row.id);
+        self.household_time_policy
+            .sort_by_key(|row| row.principal_id);
+        for policy in &mut self.household_time_policy {
+            policy
+                .unmet_burdens
+                .sort_by_key(|row| (row.good_id, row.unit_id));
+        }
+        self.service_inputs
+            .sort_by_key(|row| (row.buyer_site_id, row.good_id, row.unit_id));
+        self.household_needs
+            .sort_by_key(|row| (row.principal_id, row.good_id, row.unit_id));
+        crate::capacity::canonicalize_policy(&mut self.capacity_policy);
+    }
 }

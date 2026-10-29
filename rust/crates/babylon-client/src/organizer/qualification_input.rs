@@ -26,7 +26,7 @@ use crate::observer_ui::{ObserverCommand, ObserverUiState};
 use crate::observer_warning::ContinueWarning;
 use crate::production::PrimaryView;
 use babylon_persistence::runtime_session::{
-    OrganizerChoice, OrganizerCommand, RuntimeSessionScope,
+    OrganizerChoice, OrganizerCommand, OrganizerInquiry, RuntimeSessionScope,
 };
 use mpsc::Receiver;
 use mpsc::SyncSender;
@@ -84,6 +84,10 @@ enum Action {
     CloseInspector,
     ChooseRemoteAid,
     ChooseLocalAid,
+    ChooseInquiryWorkLost,
+    ChooseInquiryMaintenanceReceived,
+    ChooseReinforce,
+    ChooseHold,
     ChoosePauseStanding,
     ChooseResumeStanding,
     Review,
@@ -103,6 +107,14 @@ impl Action {
             Self::CloseInspector => O::CloseInspector,
             Self::ChooseRemoteAid => O::Choose(OrganizerChoice::RemoteAid),
             Self::ChooseLocalAid => O::Choose(OrganizerChoice::LocalAid),
+            Self::ChooseInquiryWorkLost => {
+                O::Choose(OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost))
+            }
+            Self::ChooseInquiryMaintenanceReceived => O::Choose(OrganizerChoice::Inquiry(
+                OrganizerInquiry::MaintenanceReceived,
+            )),
+            Self::ChooseReinforce => O::Choose(OrganizerChoice::Reinforce),
+            Self::ChooseHold => O::Choose(OrganizerChoice::Hold),
             Self::ChoosePauseStanding => O::Choose(OrganizerChoice::PauseStanding),
             Self::ChooseResumeStanding => O::Choose(OrganizerChoice::ResumeStanding),
             Self::Review => O::Review,
@@ -1054,6 +1066,92 @@ mod tests {
                 .after(crate::observer_warning::apply_continue)
                 .before(ObserverSet::Paint),
         );
+    }
+
+    #[test]
+    fn qualification_new_choices_pass_through_real_handler_and_readback() {
+        for (name, expected) in [
+            ("choose_inquiry_work_lost", json!({"inquiry":"work_lost"})),
+            (
+                "choose_inquiry_maintenance_received",
+                json!({"inquiry":"maintenance_received"}),
+            ),
+            ("choose_reinforce", json!("reinforce")),
+            ("choose_hold", json!("hold")),
+        ] {
+            let (client, session) = super::super::tests::ready();
+            let mut app = App::new();
+            app.add_plugins((
+                MinimalPlugins,
+                crate::test_support::HeadlessVisibilityPlugin,
+            ))
+            .configure_sets(
+                Update,
+                (
+                    ObserverSet::Input,
+                    ObserverSet::Receive,
+                    ObserverSet::Install,
+                    ObserverSet::Paint,
+                )
+                    .chain(),
+            )
+            .insert_resource(session)
+            .insert_resource(client)
+            .insert_resource(PrimaryView::Organizer)
+            .insert_resource(ObserverUiState {
+                menu_open: false,
+                splash_visible: false,
+                ..default()
+            })
+            .insert_resource(
+                crate::atlas::CountyAtlas::parse(include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../../assets/map/county_atlas.bin"
+                )))
+                .expect("fixture atlas parses"),
+            )
+            .insert_resource(crate::map::SelectedCounty(Some(0)))
+            .init_resource::<bevy::input_focus::InputFocus>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .init_resource::<crate::observer_focus::ObserverKeyboardClaim>()
+            .init_resource::<OpeningPresentation>()
+            .add_message::<ObserverCommand>()
+            .add_message::<ContinueWarning>();
+            ui::install(&mut app);
+            let (socket, _peer) = UnixStream::pair().expect("fixture sockets");
+            let (incoming, receiver) = mpsc::channel();
+            let (outgoing, _output) = mpsc::sync_channel(1);
+            install(
+                &mut app,
+                Transport {
+                    incoming: Mutex::new(receiver),
+                    outgoing,
+                    socket,
+                },
+            );
+            app.update();
+            let mut input = pending(
+                app.world().resource::<ObserverSession>(),
+                app.world().resource::<OrganizerClient>(),
+                Action::Status,
+            )
+            .input;
+            input.action = serde_json::from_value(json!(name)).expect("private action decodes");
+            incoming
+                .send(Incoming::Input(input))
+                .expect("fixture receiver stays open");
+            app.update();
+            let reply: Value = serde_json::from_slice(
+                app.world()
+                    .resource::<Controls>()
+                    .reply
+                    .as_ref()
+                    .expect("handler yields a response"),
+            )
+            .expect("response is JSON");
+            assert_eq!(reply["event"], "applied", "{name}: {reply}");
+            assert_eq!(reply["state"]["choice"], expected, "{name}: {reply}");
+        }
     }
 
     #[test]

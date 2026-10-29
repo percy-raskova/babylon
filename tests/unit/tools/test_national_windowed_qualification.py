@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import pytest
+from pydantic import ValidationError
 from tools.devtools import national_game_memory as memory
 from tools.devtools import national_windowed_qualification as windowed
 
@@ -54,6 +55,123 @@ def response(sequence: int, event: str = "observed", **changes: Any) -> bytes:
             {"version": 2, "sequence": sequence, "event": event, "reason": None, "state": fields}
         ).encode()
         + b"\n"
+    )
+
+
+@pytest.mark.parametrize("inquiry", ["work_lost", "maintenance_received"])
+def test_native_inquiry_choice_wire_is_accepted(inquiry: str) -> None:
+    fields = state()
+    fields["choice"] = {"inquiry": inquiry}
+    parsed = windowed.ControlState.model_validate(fields)
+    assert parsed.model_dump()["choice"] == {"inquiry": inquiry}
+
+
+@pytest.mark.parametrize(
+    "choice",
+    [
+        "collect",
+        "local_aid",
+        "remote_aid",
+        "reinforce",
+        "hold",
+        "pause_standing",
+        "resume_standing",
+    ],
+)
+def test_native_unit_choice_wire_is_accepted(choice: str) -> None:
+    fields = state()
+    fields["choice"] = choice
+    assert windowed.ControlState.model_validate(fields).choice == choice
+
+
+@pytest.mark.parametrize(
+    "choice",
+    [
+        "inquiry_work_lost",
+        "unknown",
+        True,
+        None,
+        {},
+        {"inquiry": True},
+        {"inquiry": "unknown"},
+        {"inquiry": "work_lost", "extra": 1},
+        {"other": "work_lost"},
+        ["work_lost"],
+    ],
+)
+def test_native_choice_wire_rejects_unknown_shapes(choice: Any) -> None:
+    fields = state()
+    fields["choice"] = choice
+    with pytest.raises(ValidationError):
+        windowed.ControlState.model_validate(fields)
+
+
+@pytest.mark.parametrize(
+    ("choice", "wire"),
+    [
+        ("inquiry_work_lost", {"inquiry": "work_lost"}),
+        ("inquiry_maintenance_received", {"inquiry": "maintenance_received"}),
+        ("reinforce", "reinforce"),
+        ("hold", "hold"),
+    ],
+)
+@pytest.mark.parametrize("mismatched", [False, True])
+def test_new_choice_reviews_confirms_and_checks_exact_readback(
+    choice: str, wire: Any, mismatched: bool
+) -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+    fields = state()
+    command = {"choice": wire, "nonce": 42}
+    requested: list[str] = []
+
+    def reply() -> None:
+        with peer, peer.makefile("rb") as source:
+            for line in source:
+                action = json.loads(line)["action"]
+                requested.append(action)
+                event = "applied"
+                if action == "status":
+                    event = "observed"
+                elif action == "choose_" + choice:
+                    fields["choice"] = "collect" if mismatched else wire
+                elif action == "review":
+                    fields["reviewed_command"] = command
+                    fields["preview"] = {"refusal": None}
+                    event = "preview_admitted"
+                elif action == "confirm":
+                    fields["commitment"] = {"command": command}
+                    event = "acceptance_admitted"
+                peer.sendall(
+                    json.dumps(
+                        {
+                            "version": 2,
+                            "sequence": len(requested),
+                            "event": event,
+                            "reason": None,
+                            "state": fields,
+                        }
+                    ).encode()
+                    + b"\n"
+                )
+
+    worker = threading.Thread(target=reply)
+    worker.start()
+    try:
+        channel.observe(1)
+        planned = windowed.PlannedChoice.model_validate({"period": 1, "choice": choice})
+        if mismatched:
+            with pytest.raises(windowed.ControlRefusal, match="different choice"):
+                windowed.submit_choice(channel, planned, 1)
+        else:
+            windowed.submit_choice(channel, planned, 1)
+            assert channel.state is not None and channel.state.commitment == {"command": command}
+    finally:
+        channel.close()
+        worker.join(2)
+    assert not worker.is_alive()
+    assert requested == ["status", "choose_" + choice] + (
+        [] if mismatched else ["review", "confirm", "status"]
     )
 
 

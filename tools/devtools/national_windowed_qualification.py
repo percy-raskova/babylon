@@ -46,6 +46,10 @@ Action = Literal[
     "close_inspector",
     "choose_remote_aid",
     "choose_local_aid",
+    "choose_inquiry_work_lost",
+    "choose_inquiry_maintenance_received",
+    "choose_reinforce",
+    "choose_hold",
     "choose_pause_standing",
     "choose_resume_standing",
     "review",
@@ -96,6 +100,15 @@ class FrozenRecord(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
+class InquiryChoice(FrozenRecord):
+    inquiry: Literal["work_lost", "maintenance_received"]
+
+
+UnitChoice = Literal[
+    "collect", "local_aid", "remote_aid", "reinforce", "hold", "pause_standing", "resume_standing"
+]
+
+
 class ControlState(FrozenRecord):
     campaign_id: StrictStr
     scope_epoch: Nonnegative | None
@@ -111,7 +124,7 @@ class ControlState(FrozenRecord):
     organizer_pending: StrictBool
     organizer_status_due: StrictBool
     organizer_period: Nonnegative | None
-    choice: StrictStr
+    choice: UnitChoice | InquiryChoice
     reviewed_command: dict[str, JsonValue] | None
     preview: dict[str, JsonValue] | None
     commitment: dict[str, JsonValue] | None
@@ -167,7 +180,16 @@ class ControlsEvidence(FrozenRecord):
 
 class PlannedChoice(FrozenRecord):
     period: Positive
-    choice: Literal["remote_aid", "local_aid", "pause_standing", "resume_standing"]
+    choice: Literal[
+        "remote_aid",
+        "local_aid",
+        "inquiry_work_lost",
+        "inquiry_maintenance_received",
+        "reinforce",
+        "hold",
+        "pause_standing",
+        "resume_standing",
+    ]
 
 
 def _unique_object(pairs: list[tuple[str, JsonValue]]) -> dict[str, JsonValue]:
@@ -312,6 +334,10 @@ class ControlChannel:
             "close_inspector",
             "choose_remote_aid",
             "choose_local_aid",
+            "choose_inquiry_work_lost",
+            "choose_inquiry_maintenance_received",
+            "choose_reinforce",
+            "choose_hold",
             "choose_pause_standing",
             "choose_resume_standing",
         }:
@@ -387,6 +413,10 @@ class ControlChannel:
         choice = {
             "choose_remote_aid": "remote_aid",
             "choose_local_aid": "local_aid",
+            "choose_inquiry_work_lost": InquiryChoice(inquiry="work_lost"),
+            "choose_inquiry_maintenance_received": InquiryChoice(inquiry="maintenance_received"),
+            "choose_reinforce": "reinforce",
+            "choose_hold": "hold",
             "choose_pause_standing": "pause_standing",
             "choose_resume_standing": "resume_standing",
         }.get(action)
@@ -472,9 +502,15 @@ def submit_choice(channel: ControlChannel, choice: PlannedChoice, timeout: float
         if selected.inspector != "Closed":
             channel.perform("close_inspector", timeout)
     else:
-        channel.perform(
-            "choose_remote_aid" if choice.choice == "remote_aid" else "choose_local_aid", timeout
-        )
+        actions: dict[str, Action] = {
+            "remote_aid": "choose_remote_aid",
+            "local_aid": "choose_local_aid",
+            "inquiry_work_lost": "choose_inquiry_work_lost",
+            "inquiry_maintenance_received": "choose_inquiry_maintenance_received",
+            "reinforce": "choose_reinforce",
+            "hold": "choose_hold",
+        }
+        channel.perform(actions[choice.choice], timeout)
     channel.perform("review", timeout)
     channel.perform("confirm", timeout)
     wait_ready(channel, timeout, organizer=True)

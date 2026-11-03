@@ -16,7 +16,7 @@
 - One 28-day detached tick, next-period material effects, marker-last commit, no hidden-truth decision input, no new primitive or response curve, no direct coercion.
 - All fictional agency, lead, witness, prioritization and staffing bindings are Designed; a sourced wage must carry its actual provenance and vintage.
 - Keep one monetary principal: `Capacity` is a temporary allocation view of actual unreserved agency cash, never an independently persisted duplicate balance.
-- Preserve household/cohort and financial totals. Existing historical records and unsupported old campaigns remain recoverable, but incompatible active formats refuse before mutation; no compatibility migration.
+- Preserve household/cohort and financial totals. Delete confirmed obsolete data and unused build artifacts after checking current consumers; retain source, decisions, current saves and evidence still needed for development. Incompatible active formats refuse before mutation; no compatibility migration.
 - Add the exact native intent allowance only with its real effect. Do not add unused permission rows.
 - Every task starts with a meaningful failing test, makes it pass, then refactors. Each worker owns the listed files; integrate dependencies before downstream writes.
 - Run scoped tests first; serialize heavy Rust and PostgreSQL gates. Do not generate documentation.
@@ -78,6 +78,10 @@
 - [ ] GREEN: `cd rust && cargo test -p babylon-material-circuit --locked`; assert total accounts plus reserves are conserved, protected obligations and household/person counts are unchanged, and duplicate shift/time IDs fail.
 
 ### Task 4: Native scheduled observation and canonical world
+
+Implement the remaining national capture and zero-cash opening with this live host. Basic v6 storage, resolver-aware admission and restore callers belong in the same change; actor-scoped encounter SQL and Archive grants remain Tasks 5 and 6. Reconstruct the actual graph session before decoding private dossiers, and never adopt an observer's handles into a different session by matching manifest bytes alone.
+
+The bounded Designed source is a public workplace-contact desk: explicitly disclosed national Reinforce contacts can produce a public contact-completed record only after actual partner participation and charged time. Public source production is independent of PD activation. A paid overt visit can separately check in and receive a genuine venue publication; neither a configured witness nor a matching period proves presence. Use an acyclic visit-core/evidence identity. One completed paid visit retires its lead, including a zero-fact result; only actually witnessed new public records can create following-period leads. No new player action, shared time slot, guaranteed discovery or relationship effect is introduced.
 
 **Ownership:** `rust/crates/babylon-bsl/src/{native_cycle.rs,rule_pipeline.rs,causal_contract.rs,identity_codec.rs}` and related native-cycle parser/identity files; `rust/crates/babylon-tick/src/{material_world,material_replay.rs,replay_session.rs,tick_runner.rs}`; national `organizer-cycle.bsl` and scenario rule capture.
 

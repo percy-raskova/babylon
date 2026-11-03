@@ -915,10 +915,13 @@ pub(crate) fn install(app: &mut App, transport: Transport) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::atlas::CountyAtlas;
+    use crate::observer_focus::ObserverKeyboardClaim;
     use crate::observer_opening::ProductionSkip;
     use crate::observer_warning::ContinueWarning;
     use babylon_kernel::clock::CampaignDuration;
     use babylon_persistence::identity::CampaignId;
+    use bevy::input_focus::InputFocus;
     use bevy::time::TimeUpdateStrategy;
     use fs::Permissions;
     use std::io::Cursor;
@@ -1104,16 +1107,16 @@ mod tests {
                 ..default()
             })
             .insert_resource(
-                crate::atlas::CountyAtlas::parse(include_bytes!(concat!(
+                CountyAtlas::parse(include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
                     "/../../../assets/map/county_atlas.bin"
                 )))
                 .expect("fixture atlas parses"),
             )
             .insert_resource(crate::map::SelectedCounty(Some(0)))
-            .init_resource::<bevy::input_focus::InputFocus>()
+            .init_resource::<InputFocus>()
             .init_resource::<ButtonInput<KeyCode>>()
-            .init_resource::<crate::observer_focus::ObserverKeyboardClaim>()
+            .init_resource::<ObserverKeyboardClaim>()
             .init_resource::<OpeningPresentation>()
             .add_message::<ObserverCommand>()
             .add_message::<ContinueWarning>();

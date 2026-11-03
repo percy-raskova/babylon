@@ -1,123 +1,183 @@
 use babylon_graph::dossier::Dossier;
-use babylon_graph::exposure::{components, ExposureGraph};
-use babylon_graph::substrate::{Direction, NodeId};
+use babylon_graph::memory::MemoryGraph;
+use babylon_graph::stable_element::StableElementResolver;
+use babylon_graph::substrate::{GraphSubstrate, NodeId};
+use std::collections::HashMap;
 
-fn fixture() -> Dossier {
-    let mut dossier = Dossier::new(NodeId(7));
-    dossier.resolve_edge("z", NodeId(3), NodeId(1));
-    dossier.resolve_edge("a", NodeId(1), NodeId(2));
-    dossier.resolve_node(NodeId(4));
-    dossier
+#[derive(Clone, Copy)]
+enum AllocationOrder {
+    Original,
+    Reordered,
 }
 
-fn bytes(owner: u64, nodes: &[u64], edges: &[(&[u8], u64, u64)]) -> Vec<u8> {
-    let mut out = b"babylon.dossier\0\0\0\0\x01".to_vec();
-    out.extend_from_slice(&owner.to_be_bytes());
+fn substrate(
+    order: AllocationOrder,
+) -> (MemoryGraph, StableElementResolver, NodeId, NodeId, NodeId) {
+    let mut graph = MemoryGraph::new();
+    let mut names = HashMap::new();
+    if matches!(order, AllocationOrder::Reordered) {
+        let hidden = graph.add_node("actor").expect("hidden node");
+        names.insert(hidden, "unrelated".to_owned());
+    }
+    let first = graph.add_node("actor").expect("first node");
+    let second = graph.add_node("actor").expect("second node");
+    let third = graph.add_node("actor").expect("third node");
+    let (owner, alpha, beta) = if matches!(order, AllocationOrder::Reordered) {
+        (third, second, first)
+    } else {
+        (first, second, third)
+    };
+    names.insert(owner, "agency".to_owned());
+    names.insert(alpha, "alpha".to_owned());
+    names.insert(beta, "beta".to_owned());
+    let resolver = StableElementResolver::seal(&graph, "demo/world", &names, &HashMap::new())
+        .expect("sealed fixture");
+    (graph, resolver, owner, alpha, beta)
+}
+fn frame(out: &mut Vec<u8>, bytes: &[u8]) {
+    out.extend_from_slice(
+        &u32::try_from(bytes.len())
+            .expect("valid identity test fixture")
+            .to_be_bytes(),
+    );
+    out.extend_from_slice(bytes);
+}
+// Independent literal wire fixture; stable keys use the separately governed key layout.
+fn key(name: &str) -> Vec<u8> {
+    let mut out = b"babylon.stable-element\0\0\0\0\x01\x01".to_vec();
+    frame(&mut out, b"demo/world");
+    frame(&mut out, name.as_bytes());
+    out
+}
+fn bytes(owner: &str, nodes: &[&str], edges: &[(&[u8], &str, &str)]) -> Vec<u8> {
+    let mut out = b"babylon.dossier\0\0\0\0\x02".to_vec();
+    frame(&mut out, &key(owner));
     out.extend_from_slice(
         &u32::try_from(nodes.len())
-            .expect("fixture node count fits")
+            .expect("valid identity test fixture")
             .to_be_bytes(),
     );
     for node in nodes {
-        out.extend_from_slice(&node.to_be_bytes());
+        frame(&mut out, &key(node));
     }
     out.extend_from_slice(
         &u32::try_from(edges.len())
-            .expect("fixture edge count fits")
+            .expect("valid identity test fixture")
             .to_be_bytes(),
     );
     for (kind, from, to) in edges {
-        out.extend_from_slice(
-            &u32::try_from(kind.len())
-                .expect("fixture type length fits")
-                .to_be_bytes(),
-        );
-        out.extend_from_slice(kind);
-        out.extend_from_slice(&from.to_be_bytes());
-        out.extend_from_slice(&to.to_be_bytes());
+        frame(&mut out, kind);
+        frame(&mut out, &key(from));
+        frame(&mut out, &key(to));
     }
     out
 }
-
 #[test]
-fn canonical_round_trip_is_order_independent_and_retains_private_direction() {
-    let empty = Dossier::new(NodeId(8));
+fn canonical_fixture_round_trips_and_rejects_noncanonical_input() {
+    let (_, resolver, owner, alpha, beta) = substrate(AllocationOrder::Original);
+    let mut dossier = Dossier::new(owner);
+    dossier.resolve_edge("false", alpha, beta);
+    // Canonical key bytes sort the shorter local name before the longer one.
+    let expected = bytes("agency", &["beta", "alpha"], &[(b"false", "alpha", "beta")]);
     assert_eq!(
-        empty.encode_canonical().expect("empty dossier"),
-        bytes(8, &[], &[])
-    );
-    assert_eq!(
-        Dossier::decode_canonical(&bytes(8, &[], &[])).expect("empty dossier"),
-        empty
-    );
-    let dossier = fixture();
-    let expected = bytes(7, &[1, 2, 3, 4], &[(b"a", 1, 2), (b"z", 3, 1)]);
-    assert_eq!(
-        dossier.encode_canonical().expect("valid dossier fixture"),
+        dossier
+            .encode_canonical(&resolver)
+            .expect("valid identity test fixture"),
         expected
     );
-    let restored = Dossier::decode_canonical(&expected).expect("valid dossier fixture");
-    assert_eq!(restored, dossier);
     assert_eq!(
-        restored
-            .neighbors(NodeId(1), "a", Direction::Out)
-            .expect("valid dossier fixture"),
-        vec![NodeId(2)]
+        Dossier::decode_canonical(&expected, &resolver).expect("valid identity test fixture"),
+        dossier
     );
+    let mut reordered = Dossier::new(owner);
+    reordered.resolve_node(beta);
+    reordered.resolve_node(alpha);
+    reordered.resolve_edge("false", alpha, beta);
     assert_eq!(
-        components(&restored, &restored.scope(), "a").expect("valid dossier fixture"),
-        vec![vec![NodeId(1), NodeId(2)], vec![NodeId(3)], vec![NodeId(4)]]
-    );
-    let mut reordered = Dossier::new(NodeId(7));
-    reordered.resolve_node(NodeId(4));
-    reordered.resolve_edge("a", NodeId(1), NodeId(2));
-    reordered.resolve_edge("z", NodeId(3), NodeId(1));
-    assert_eq!(
-        reordered.encode_canonical().expect("valid dossier fixture"),
+        reordered
+            .encode_canonical(&resolver)
+            .expect("valid identity test fixture"),
         expected
     );
-    reordered.resolve_edge("a", NodeId(2), NodeId(3));
-    assert!(!restored.knows_edge("a", NodeId(2), NodeId(3)));
-}
-
-#[test]
-fn rejects_malformed_noncanonical_and_dangling_rows() {
-    let valid = bytes(7, &[1, 2], &[(b"a", 1, 2)]);
-    for end in 0..valid.len() {
-        assert!(
-            Dossier::decode_canonical(&valid[..end]).is_err(),
-            "truncation at {end}"
-        );
+    for end in 0..expected.len() {
+        assert!(Dossier::decode_canonical(&expected[..end], &resolver).is_err());
     }
-    let mut trailing = valid.clone();
+    let mut trailing = expected.clone();
     trailing.push(0);
-    let mut huge_count = bytes(7, &[], &[]);
-    huge_count[28..32].copy_from_slice(&u32::MAX.to_be_bytes());
-    let mut huge_edges = bytes(7, &[], &[]);
-    huge_edges[32..36].copy_from_slice(&u32::MAX.to_be_bytes());
-    let mut wrong_header = valid.clone();
-    wrong_header[0] = b'X';
+    let mut huge = expected.clone();
+    huge[19..23].copy_from_slice(&u32::MAX.to_be_bytes());
+    let mut non_node = expected.clone();
+    let tag_offset = 19 + 4 + b"babylon.stable-element".len() + 1 + 4;
+    non_node[tag_offset] = 3;
     let cases = [
         trailing,
-        huge_count,
-        huge_edges,
-        wrong_header,
+        huge,
+        non_node,
         vec![0; 16_777_217],
-        bytes(u64::MAX, &[], &[]),
-        bytes(7, &[1, 1], &[]),
-        bytes(7, &[2, 1], &[]),
-        bytes(7, &[u64::MAX], &[]),
-        bytes(7, &[1, 2], &[(b"a", 1, 2), (b"a", 1, 2)]),
-        bytes(7, &[1, 2], &[(b"z", 1, 2), (b"a", 1, 2)]),
-        bytes(7, &[1], &[(b"a", 1, 2)]),
-        bytes(7, &[1, 2], &[(b"", 1, 2)]),
-        bytes(7, &[1, 2], &[(&[0xff], 1, 2)]),
-        bytes(7, &[1, 2], &[(&[b'x'; 129], 1, 2)]),
+        b"babylon.dossier\0\0\0\0\x01".to_vec(),
+        bytes("agency", &["beta", "beta"], &[]),
+        bytes("agency", &["alpha", "beta"], &[]),
+        bytes("agency", &["alpha"], &[(b"false", "alpha", "beta")]),
+        bytes(
+            "agency",
+            &["beta", "alpha"],
+            &[(b"false", "alpha", "beta"), (b"false", "alpha", "beta")],
+        ),
+        bytes("agency", &["beta", "alpha"], &[(b"", "alpha", "beta")]),
+        bytes(
+            "agency",
+            &["beta", "alpha"],
+            &[(&[b'x'; 129], "alpha", "beta")],
+        ),
+        bytes("agency", &["beta", "alpha"], &[(&[0xff], "alpha", "beta")]),
+        bytes("missing", &[], &[]),
     ];
     for bad in cases {
-        assert!(Dossier::decode_canonical(&bad).is_err(), "accepted {bad:?}");
+        assert!(Dossier::decode_canonical(&bad, &resolver).is_err());
     }
-    let mut invalid = Dossier::new(NodeId(7));
-    invalid.resolve_edge("", NodeId(1), NodeId(2));
-    assert!(invalid.encode_canonical().is_err());
+    let mut invalid = Dossier::new(owner);
+    invalid.resolve_edge("", alpha, beta);
+    assert!(invalid.encode_canonical(&resolver).is_err());
+    assert!(Dossier::new(NodeId(u64::MAX))
+        .encode_canonical(&resolver)
+        .is_err());
+    let (foreign_graph, _, _, _, _) = substrate(AllocationOrder::Original);
+    let names = HashMap::from([
+        (NodeId(0), "agency".to_owned()),
+        (NodeId(1), "alpha".to_owned()),
+        (NodeId(2), "beta".to_owned()),
+    ]);
+    let foreign =
+        StableElementResolver::seal(&foreign_graph, "other/world", &names, &HashMap::new())
+            .expect("valid identity test fixture");
+    assert!(Dossier::decode_canonical(&expected, &foreign).is_err());
+}
+#[test]
+fn semantically_identical_dossiers_survive_handle_reallocation() {
+    let (_, resolver_a, owner_a, alpha_a, beta_a) = substrate(AllocationOrder::Original);
+    let (mut graph_b, resolver_b, owner_b, alpha_b, beta_b) = substrate(AllocationOrder::Reordered);
+    assert_ne!(owner_a, owner_b);
+    let mut first = Dossier::new(owner_a);
+    first.resolve_edge("believed-only", alpha_a, beta_a);
+    let mut second = Dossier::new(owner_b);
+    second.resolve_edge("believed-only", alpha_b, beta_b);
+    graph_b
+        .remove_node(beta_b)
+        .expect("valid identity test fixture");
+    let first_bytes = first
+        .encode_canonical(&resolver_a)
+        .expect("valid identity test fixture");
+    assert_eq!(
+        first_bytes,
+        second
+            .encode_canonical(&resolver_b)
+            .expect("valid identity test fixture")
+    );
+    let restored =
+        Dossier::decode_canonical(&first_bytes, &resolver_b).expect("valid identity test fixture");
+    assert_eq!(restored.owner(), owner_b);
+    assert!(restored.knows_node(alpha_b));
+    assert!(restored.knows_node(beta_b));
+    assert!(restored.knows_edge("believed-only", alpha_b, beta_b));
+    assert_eq!(restored.stale_nodes(&graph_b), vec![beta_b]);
 }

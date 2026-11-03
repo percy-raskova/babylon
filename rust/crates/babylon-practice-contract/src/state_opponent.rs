@@ -1,5 +1,9 @@
 //! Captured, private City PD decisions and resolution evidence.
-use crate::{city_pd_case_id, city_pd_decision_id, city_pd_intent_id, city_pd_receipt_id};
+use std::fmt::{Display, Formatter, Result as FormatResult};
+
+use babylon_kernel::geography::CountyGeoid;
+
+use crate::state_opponent_codec;
 use serde::{Deserialize, Serialize};
 
 /// Current wire schema.
@@ -31,8 +35,8 @@ pub enum CityPdError {
     NegativeBalance,
     Capacity,
 }
-impl std::fmt::Display for CityPdError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for CityPdError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         write!(f, "City PD contract: {self:?}")
     }
 }
@@ -200,7 +204,7 @@ pub fn validate_city_pd_config(c: &CityPdConfig) -> Result<(), CityPdError> {
     Ok(())
 }
 fn county(value: [u8; 5]) -> Result<(), CityPdError> {
-    babylon_kernel::geography::CountyGeoid::try_from(value)
+    CountyGeoid::try_from(value)
         .map(|_| ())
         .map_err(|_| CityPdError::InvalidCounty)
 }
@@ -233,7 +237,7 @@ pub fn validate_city_pd_case(c: &CityPdCase) -> Result<(), CityPdError> {
     if c.observed_period > c.acquired_period {
         return Err(CityPdError::InvalidTiming);
     }
-    if city_pd_case_id(c)? != c.case_id {
+    if state_opponent_codec::city_pd_case_id(c)? != c.case_id {
         return Err(CityPdError::InvalidIdentity);
     }
     Ok(())
@@ -267,7 +271,7 @@ pub fn validate_city_pd_intent(i: &CityPdIntent) -> Result<(), CityPdError> {
     {
         return Err(CityPdError::InvalidTiming);
     }
-    if city_pd_intent_id(i)? != i.intent_id {
+    if state_opponent_codec::city_pd_intent_id(i)? != i.intent_id {
         return Err(CityPdError::InvalidIdentity);
     }
     Ok(())
@@ -305,7 +309,7 @@ pub fn validate_city_pd_decision(d: &CityPdDecisionReceipt) -> Result<(), CityPd
             }
         }
     }
-    if city_pd_decision_id(d)? != d.decision_id {
+    if state_opponent_codec::city_pd_decision_id(d)? != d.decision_id {
         return Err(CityPdError::InvalidIdentity);
     }
     Ok(())
@@ -345,7 +349,7 @@ pub fn validate_city_pd_receipt(r: &CityPdReceipt) -> Result<(), CityPdError> {
                 && r.payment_receipt_id.is_none() => {}
         _ => return Err(CityPdError::InvalidReceipt),
     }
-    if city_pd_receipt_id(r)? != r.receipt_id {
+    if state_opponent_codec::city_pd_receipt_id(r)? != r.receipt_id {
         return Err(CityPdError::InvalidIdentity);
     }
     Ok(())
@@ -362,7 +366,7 @@ pub fn finalize_city_pd_receipt(mut receipt: CityPdReceipt) -> Result<CityPdRece
     }
     receipt.acquired_public_fact_ids.sort_unstable();
     receipt.acquired_public_fact_ids.dedup();
-    receipt.receipt_id = city_pd_receipt_id(&receipt)?;
+    receipt.receipt_id = state_opponent_codec::city_pd_receipt_id(&receipt)?;
     validate_city_pd_receipt(&receipt)?;
     Ok(receipt)
 }

@@ -1,4 +1,9 @@
-use babylon_practice_contract::{decode_city_pd_config, encode_city_pd_config, CityPdConfig};
+use babylon_practice_contract as practice_contract;
+use babylon_practice_contract::{
+    CityPdCase, CityPdCaseSource, CityPdCaseStatus, CityPdConfig, CityPdDecision,
+    CityPdDecisionReceipt, CityPdError, CityPdIntent, CityPdOutcome, CityPdReceipt,
+    CITY_PD_MAX_ROWS,
+};
 
 fn config_fixture() -> CityPdConfig {
     CityPdConfig {
@@ -30,23 +35,25 @@ fn config_wire_fixture() -> String {
 #[test]
 fn config_round_trips_and_rejects_a_bad_county() {
     let mut config = config_fixture();
-    let bytes = encode_city_pd_config(&config).expect("valid config");
+    let bytes = practice_contract::encode_city_pd_config(&config).expect("valid config");
     let expected = config_wire_fixture();
     assert_eq!(bytes, expected.as_bytes());
     assert_eq!(
-        city_pd_config_digest(&config).expect("valid City PD test fixture"),
+        practice_contract::city_pd_config_digest(&config).expect("valid City PD test fixture"),
         [
             0xe9, 0x88, 0xe4, 0x8b, 0xc0, 0x25, 0x9e, 0x0c, 0x17, 0x1d, 0xf6, 0x5a, 0x78, 0xaf,
             0xe1, 0x67, 0xc1, 0x79, 0x0c, 0x70, 0x23, 0xdb, 0xc2, 0xa7, 0x5d, 0x0d, 0x02, 0x34,
             0x12, 0x55, 0x9f, 0x08
         ]
     );
-    assert_eq!(decode_city_pd_config(&bytes).expect("decode"), config);
+    assert_eq!(
+        practice_contract::decode_city_pd_config(&bytes).expect("decode"),
+        config
+    );
     config.county = *b"26x63";
-    assert!(encode_city_pd_config(&config).is_err());
+    assert!(practice_contract::encode_city_pd_config(&config).is_err());
 }
 
-use babylon_practice_contract::*;
 fn case() -> CityPdCase {
     let mut c = CityPdCase {
         case_id: [0; 32],
@@ -62,7 +69,7 @@ fn case() -> CityPdCase {
         acquired_period: 0,
         status: CityPdCaseStatus::Open,
     };
-    c.case_id = city_pd_case_id(&c).expect("valid City PD test fixture");
+    c.case_id = practice_contract::city_pd_case_id(&c).expect("valid City PD test fixture");
     c
 }
 fn intent() -> CityPdIntent {
@@ -80,7 +87,7 @@ fn intent() -> CityPdIntent {
         resolve_period: 2,
         cost_micros: 6,
     };
-    i.intent_id = city_pd_intent_id(&i).expect("valid City PD test fixture");
+    i.intent_id = practice_contract::city_pd_intent_id(&i).expect("valid City PD test fixture");
     i
 }
 fn decision() -> CityPdDecisionReceipt {
@@ -92,7 +99,7 @@ fn decision() -> CityPdDecisionReceipt {
         decision_basis_digest: [4; 32],
         decision: CityPdDecision::Selected(intent()),
     };
-    d.decision_id = city_pd_decision_id(&d).expect("valid City PD test fixture");
+    d.decision_id = practice_contract::city_pd_decision_id(&d).expect("valid City PD test fixture");
     d
 }
 fn receipt() -> CityPdReceipt {
@@ -112,7 +119,7 @@ fn receipt() -> CityPdReceipt {
         case_source_evidence_id: None,
         player_witness_evidence_id: None,
     };
-    r.receipt_id = city_pd_receipt_id(&r).expect("valid City PD test fixture");
+    r.receipt_id = practice_contract::city_pd_receipt_id(&r).expect("valid City PD test fixture");
     r
 }
 #[test]
@@ -122,52 +129,60 @@ fn all_wire_contracts_round_trip_and_bind_content() {
     let d = decision();
     let r = receipt();
     assert_eq!(
-        decode_city_pd_case(&encode_city_pd_case(&c).expect("valid City PD test fixture"))
-            .expect("valid City PD test fixture"),
+        practice_contract::decode_city_pd_case(
+            &practice_contract::encode_city_pd_case(&c).expect("valid City PD test fixture")
+        )
+        .expect("valid City PD test fixture"),
         c
     );
     assert_eq!(
-        decode_city_pd_intent(&encode_city_pd_intent(&i).expect("valid City PD test fixture"))
-            .expect("valid City PD test fixture"),
+        practice_contract::decode_city_pd_intent(
+            &practice_contract::encode_city_pd_intent(&i).expect("valid City PD test fixture")
+        )
+        .expect("valid City PD test fixture"),
         i
     );
     assert_eq!(
-        decode_city_pd_decision(&encode_city_pd_decision(&d).expect("valid City PD test fixture"))
-            .expect("valid City PD test fixture"),
+        practice_contract::decode_city_pd_decision(
+            &practice_contract::encode_city_pd_decision(&d).expect("valid City PD test fixture")
+        )
+        .expect("valid City PD test fixture"),
         d
     );
     assert_eq!(
-        decode_city_pd_receipt(&encode_city_pd_receipt(&r).expect("valid City PD test fixture"))
-            .expect("valid City PD test fixture"),
+        practice_contract::decode_city_pd_receipt(
+            &practice_contract::encode_city_pd_receipt(&r).expect("valid City PD test fixture")
+        )
+        .expect("valid City PD test fixture"),
         r
     );
     let mut closed = c.clone();
     closed.status = CityPdCaseStatus::Closed;
     assert_eq!(
-        city_pd_case_id(&closed).expect("valid City PD test fixture"),
+        practice_contract::city_pd_case_id(&closed).expect("valid City PD test fixture"),
         c.case_id
     );
     closed.subject_id += 1;
     assert_ne!(
-        city_pd_case_id(&closed).expect("valid City PD test fixture"),
+        practice_contract::city_pd_case_id(&closed).expect("valid City PD test fixture"),
         c.case_id
     );
     let mut changed = i.clone();
     changed.cost_micros += 1;
     assert_ne!(
-        city_pd_intent_id(&changed).expect("valid City PD test fixture"),
+        practice_contract::city_pd_intent_id(&changed).expect("valid City PD test fixture"),
         i.intent_id
     );
     let mut changed = d.clone();
     changed.period += 1;
     assert_ne!(
-        city_pd_decision_id(&changed).expect("valid City PD test fixture"),
+        practice_contract::city_pd_decision_id(&changed).expect("valid City PD test fixture"),
         d.decision_id
     );
     let mut changed = r.clone();
     changed.wage_micros += 1;
     assert_ne!(
-        city_pd_receipt_id(&changed).expect("valid City PD test fixture"),
+        practice_contract::city_pd_receipt_id(&changed).expect("valid City PD test fixture"),
         r.receipt_id
     );
 }
@@ -176,65 +191,69 @@ fn provenance_and_wire_corruption_refuse() {
     let mut c = case();
     c.source_kind = CityPdCaseSource::ObservedOrganizerReceipt;
     assert_eq!(
-        validate_city_pd_case(&c),
+        practice_contract::validate_city_pd_case(&c),
         Err(CityPdError::InvalidProvenance)
     );
     c.source_receipt_id = Some([1; 32]);
     c.case_source_witness_id = Some([2; 32]);
-    c.case_id = city_pd_case_id(&c).expect("valid City PD test fixture");
-    assert!(validate_city_pd_case(&c).is_ok());
+    c.case_id = practice_contract::city_pd_case_id(&c).expect("valid City PD test fixture");
+    assert!(practice_contract::validate_city_pd_case(&c).is_ok());
     c.observed_period = 2;
     c.acquired_period = 1;
-    assert_eq!(validate_city_pd_case(&c), Err(CityPdError::InvalidTiming));
-    let bytes = encode_city_pd_intent(&intent()).expect("valid City PD test fixture");
+    assert_eq!(
+        practice_contract::validate_city_pd_case(&c),
+        Err(CityPdError::InvalidTiming)
+    );
+    let bytes =
+        practice_contract::encode_city_pd_intent(&intent()).expect("valid City PD test fixture");
     let mut trailing = bytes.clone();
     trailing.push(b' ');
-    assert!(decode_city_pd_intent(&trailing).is_err());
+    assert!(practice_contract::decode_city_pd_intent(&trailing).is_err());
     let raw = String::from_utf8(bytes).expect("valid City PD test fixture");
-    assert!(decode_city_pd_intent(
+    assert!(practice_contract::decode_city_pd_intent(
         raw.replace("\"cost_micros\":\"6\"", "\"cost_micros\":\"06\"")
             .as_bytes()
     )
     .is_err());
-    assert!(decode_city_pd_intent(
+    assert!(practice_contract::decode_city_pd_intent(
         raw.replace("\"schema_version\":1", "\"schema_version\":2")
             .as_bytes()
     )
     .is_err());
-    assert!(decode_city_pd_intent(
+    assert!(practice_contract::decode_city_pd_intent(
         raw.replace("\"subject_id\":20", "\"unknown\":0,\"subject_id\":20")
             .as_bytes()
     )
     .is_err());
     assert_eq!(
-        decode_city_pd_intent(&vec![0; 1024 * 1024 + 1]),
+        practice_contract::decode_city_pd_intent(&vec![0; 1024 * 1024 + 1]),
         Err(CityPdError::SizeLimit)
     );
 }
 #[test]
 fn receipt_rejects_unpaid_fabrication_and_unsorted_facts() {
     let mut r = receipt();
-    assert!(validate_city_pd_receipt(&r).is_ok());
+    assert!(practice_contract::validate_city_pd_receipt(&r).is_ok());
     r.outcome = CityPdOutcome::InsufficientTime;
-    r.receipt_id = city_pd_receipt_id(&r).expect("valid City PD test fixture");
+    r.receipt_id = practice_contract::city_pd_receipt_id(&r).expect("valid City PD test fixture");
     assert_eq!(
-        validate_city_pd_receipt(&r),
+        practice_contract::validate_city_pd_receipt(&r),
         Err(CityPdError::InvalidReceipt)
     );
     r.attendance_hours = 0;
     r.wage_micros = 0;
     r.payment_receipt_id = None;
     r.player_witness_evidence_id = Some([7; 32]);
-    r.receipt_id = city_pd_receipt_id(&r).expect("valid City PD test fixture");
+    r.receipt_id = practice_contract::city_pd_receipt_id(&r).expect("valid City PD test fixture");
     assert_eq!(
-        validate_city_pd_receipt(&r),
+        practice_contract::validate_city_pd_receipt(&r),
         Err(CityPdError::InvalidReceipt)
     );
     r.player_witness_evidence_id = None;
     r.acquired_public_fact_ids = vec![[2; 32], [1; 32]];
-    r.receipt_id = city_pd_receipt_id(&r).expect("valid City PD test fixture");
+    r.receipt_id = practice_contract::city_pd_receipt_id(&r).expect("valid City PD test fixture");
     assert_eq!(
-        validate_city_pd_receipt(&r),
+        practice_contract::validate_city_pd_receipt(&r),
         Err(CityPdError::InvalidReceipt)
     );
 }
@@ -276,8 +295,8 @@ fn independently_pinned_identity_hashes() {
 fn receipt_shapes_and_limits_are_enforced() {
     let mut r = receipt();
     r.player_witness_evidence_id = Some([7; 32]);
-    r.receipt_id = city_pd_receipt_id(&r).expect("valid City PD test fixture");
-    assert!(validate_city_pd_receipt(&r).is_ok());
+    r.receipt_id = practice_contract::city_pd_receipt_id(&r).expect("valid City PD test fixture");
+    assert!(practice_contract::validate_city_pd_receipt(&r).is_ok());
     assert_eq!(r.case_source_evidence_id, None);
     for outcome in [
         CityPdOutcome::InsufficientFunds,
@@ -288,52 +307,58 @@ fn receipt_shapes_and_limits_are_enforced() {
         r.wage_micros = 0;
         r.payment_receipt_id = None;
         r.player_witness_evidence_id = None;
-        r.receipt_id = city_pd_receipt_id(&r).expect("valid City PD test fixture");
-        assert!(validate_city_pd_receipt(&r).is_ok());
+        r.receipt_id =
+            practice_contract::city_pd_receipt_id(&r).expect("valid City PD test fixture");
+        assert!(practice_contract::validate_city_pd_receipt(&r).is_ok());
         r.acquired_public_fact_ids = vec![[1; 32]];
         assert_eq!(
-            validate_city_pd_receipt(&r),
+            practice_contract::validate_city_pd_receipt(&r),
             Err(CityPdError::InvalidReceipt)
         );
         r.acquired_public_fact_ids.clear();
         r.payment_receipt_id = Some([1; 32]);
         assert_eq!(
-            validate_city_pd_receipt(&r),
+            practice_contract::validate_city_pd_receipt(&r),
             Err(CityPdError::InvalidReceipt)
         );
         r.payment_receipt_id = None;
     }
     r.acquired_public_fact_ids = vec![[1; 32], [1; 32]];
     assert_eq!(
-        validate_city_pd_receipt(&r),
+        practice_contract::validate_city_pd_receipt(&r),
         Err(CityPdError::InvalidReceipt)
     );
     r.acquired_public_fact_ids = vec![[1; 32]; CITY_PD_MAX_ROWS + 1];
-    assert_eq!(validate_city_pd_receipt(&r), Err(CityPdError::SizeLimit));
+    assert_eq!(
+        practice_contract::validate_city_pd_receipt(&r),
+        Err(CityPdError::SizeLimit)
+    );
 }
 
 #[test]
 fn wire_rejects_wrong_domain_unknown_tag_bad_money_and_ids() {
-    let case_bytes =
-        String::from_utf8(encode_city_pd_case(&case()).expect("valid City PD test fixture"))
-            .expect("valid City PD test fixture");
-    assert!(decode_city_pd_case(
+    let case_bytes = String::from_utf8(
+        practice_contract::encode_city_pd_case(&case()).expect("valid City PD test fixture"),
+    )
+    .expect("valid City PD test fixture");
+    assert!(practice_contract::decode_city_pd_case(
         case_bytes
             .replace("captured_public_record", "unknown")
             .as_bytes()
     )
     .is_err());
-    assert!(decode_city_pd_case(
+    assert!(practice_contract::decode_city_pd_case(
         case_bytes
             .replacen("city-pd-case", "city-pd-other", 1)
             .as_bytes()
     )
     .is_err());
-    let raw =
-        String::from_utf8(encode_city_pd_intent(&intent()).expect("valid City PD test fixture"))
-            .expect("valid City PD test fixture");
+    let raw = String::from_utf8(
+        practice_contract::encode_city_pd_intent(&intent()).expect("valid City PD test fixture"),
+    )
+    .expect("valid City PD test fixture");
     for amount in ["-1", "+6", "06", "170141183460469231731687303715884105728"] {
-        assert!(decode_city_pd_intent(
+        assert!(practice_contract::decode_city_pd_intent(
             raw.replace(
                 "\"cost_micros\":\"6\"",
                 &format!("\"cost_micros\":\"{amount}\"")
@@ -344,23 +369,34 @@ fn wire_rejects_wrong_domain_unknown_tag_bad_money_and_ids() {
     }
     let mut c = case();
     c.source_id = [0; 32];
-    assert_eq!(validate_city_pd_case(&c), Err(CityPdError::InvalidId));
+    assert_eq!(
+        practice_contract::validate_city_pd_case(&c),
+        Err(CityPdError::InvalidId)
+    );
     let mut i = intent();
     i.resolve_period = 3;
-    assert_eq!(validate_city_pd_intent(&i), Err(CityPdError::InvalidTiming));
+    assert_eq!(
+        practice_contract::validate_city_pd_intent(&i),
+        Err(CityPdError::InvalidTiming)
+    );
     i.source_period = u64::MAX;
-    assert_eq!(validate_city_pd_intent(&i), Err(CityPdError::Arithmetic));
+    assert_eq!(
+        practice_contract::validate_city_pd_intent(&i),
+        Err(CityPdError::Arithmetic)
+    );
 }
 
 #[test]
 fn finalizing_receipts_sorts_and_deduplicates_facts() {
     let mut draft = receipt();
     draft.acquired_public_fact_ids = vec![[2; 32], [1; 32], [2; 32]];
-    let finalized = finalize_city_pd_receipt(draft).expect("valid City PD test fixture");
+    let finalized =
+        practice_contract::finalize_city_pd_receipt(draft).expect("valid City PD test fixture");
     assert_eq!(finalized.acquired_public_fact_ids, vec![[1; 32], [2; 32]]);
     assert_eq!(
-        decode_city_pd_receipt(
-            &encode_city_pd_receipt(&finalized).expect("valid City PD test fixture")
+        practice_contract::decode_city_pd_receipt(
+            &practice_contract::encode_city_pd_receipt(&finalized)
+                .expect("valid City PD test fixture")
         )
         .expect("valid City PD test fixture"),
         finalized
@@ -404,48 +440,51 @@ fn independent_complete_wire_fixtures_include_ids_and_case_status() {
     let decision_wire = format!("babylon.city-pd-decision.v1\0{{\"decision_id\":{},\"campaign_id\":{},\"actor_id\":9,\"period\":1,\"decision_basis_digest\":{},\"decision\":{{\"kind\":\"selected\",{}}}}}", wire_array(&DECISION_ID), wire_array(&[1;16]), wire_array(&[4;32]), intent_wire_fields());
     let receipt_wire = format!("babylon.city-pd-receipt.v1\0{{\"receipt_id\":{},\"campaign_id\":{},\"actor_id\":9,\"case_id\":{},\"intent_id\":{},\"resolve_period\":2,\"outcome\":\"completed\",\"attendance_hours\":2,\"wage_micros\":\"6\",\"shift_receipt_id\":{},\"payment_receipt_id\":{},\"acquired_public_fact_ids\":[],\"case_source_evidence_id\":null,\"player_witness_evidence_id\":null}}", wire_array(&RECEIPT_ID), wire_array(&[1;16]), wire_array(&CASE_ID), wire_array(&INTENT_ID), wire_array(&[5;32]), wire_array(&[6;32]));
     assert_eq!(
-        encode_city_pd_case(&case()).expect("case"),
+        practice_contract::encode_city_pd_case(&case()).expect("case"),
         case_wire.as_bytes()
     );
     assert_eq!(
-        encode_city_pd_intent(&intent()).expect("intent"),
+        practice_contract::encode_city_pd_intent(&intent()).expect("intent"),
         intent_wire.as_bytes()
     );
     assert_eq!(
-        encode_city_pd_decision(&decision()).expect("decision"),
+        practice_contract::encode_city_pd_decision(&decision()).expect("decision"),
         decision_wire.as_bytes()
     );
     assert_eq!(
-        encode_city_pd_receipt(&receipt()).expect("receipt"),
+        practice_contract::encode_city_pd_receipt(&receipt()).expect("receipt"),
         receipt_wire.as_bytes()
     );
     assert_eq!(
-        decode_city_pd_case(case_wire.as_bytes()).expect("case"),
+        practice_contract::decode_city_pd_case(case_wire.as_bytes()).expect("case"),
         case()
     );
     assert_eq!(
-        decode_city_pd_intent(intent_wire.as_bytes()).expect("intent"),
+        practice_contract::decode_city_pd_intent(intent_wire.as_bytes()).expect("intent"),
         intent()
     );
     assert_eq!(
-        decode_city_pd_decision(decision_wire.as_bytes()).expect("decision"),
+        practice_contract::decode_city_pd_decision(decision_wire.as_bytes()).expect("decision"),
         decision()
     );
     assert_eq!(
-        decode_city_pd_receipt(receipt_wire.as_bytes()).expect("receipt"),
+        practice_contract::decode_city_pd_receipt(receipt_wire.as_bytes()).expect("receipt"),
         receipt()
     );
     let mut closed = case();
     closed.status = CityPdCaseStatus::Closed;
-    assert_eq!(city_pd_case_id(&closed).expect("case identity"), CASE_ID);
     assert_eq!(
-        encode_city_pd_case(&closed).expect("closed case"),
+        practice_contract::city_pd_case_id(&closed).expect("case identity"),
+        CASE_ID
+    );
+    assert_eq!(
+        practice_contract::encode_city_pd_case(&closed).expect("closed case"),
         case_wire
             .replace("\"status\":\"open\"", "\"status\":\"closed\"")
             .as_bytes()
     );
     assert_eq!(
-        decode_city_pd_case(
+        practice_contract::decode_city_pd_case(
             case_wire
                 .replacen(&wire_array(&CASE_ID), &wire_array(&[42; 32]), 1)
                 .as_bytes()
@@ -453,7 +492,7 @@ fn independent_complete_wire_fixtures_include_ids_and_case_status() {
         Err(CityPdError::InvalidIdentity)
     );
     assert_eq!(
-        decode_city_pd_intent(
+        practice_contract::decode_city_pd_intent(
             intent_wire
                 .replacen(&wire_array(&INTENT_ID), &wire_array(&[42; 32]), 1)
                 .as_bytes()
@@ -461,7 +500,7 @@ fn independent_complete_wire_fixtures_include_ids_and_case_status() {
         Err(CityPdError::InvalidIdentity)
     );
     assert_eq!(
-        decode_city_pd_decision(
+        practice_contract::decode_city_pd_decision(
             decision_wire
                 .replacen(&wire_array(&DECISION_ID), &wire_array(&[42; 32]), 1)
                 .as_bytes()
@@ -469,7 +508,7 @@ fn independent_complete_wire_fixtures_include_ids_and_case_status() {
         Err(CityPdError::InvalidIdentity)
     );
     assert_eq!(
-        decode_city_pd_receipt(
+        practice_contract::decode_city_pd_receipt(
             receipt_wire
                 .replacen(&wire_array(&RECEIPT_ID), &wire_array(&[42; 32]), 1)
                 .as_bytes()
@@ -481,7 +520,7 @@ fn independent_complete_wire_fixtures_include_ids_and_case_status() {
 #[test]
 fn config_digest_binds_each_valid_field() {
     let base = config_fixture();
-    let original = city_pd_config_digest(&base).expect("config");
+    let original = practice_contract::city_pd_config_digest(&base).expect("config");
     let changes: &[fn(&mut CityPdConfig)] = &[
         |c| c.campaign_id = [11; 16],
         |c| c.actor_id = 10,
@@ -509,7 +548,7 @@ fn config_digest_binds_each_valid_field() {
         let mut c = base.clone();
         change(&mut c);
         assert_ne!(
-            city_pd_config_digest(&c).expect("valid changed config"),
+            practice_contract::city_pd_config_digest(&c).expect("valid changed config"),
             original
         );
     }
@@ -522,13 +561,13 @@ fn config_digest_binds_each_valid_field() {
         .replace("\"visit_hours\":2", "\"visit_hours\":3")
         .replace("\"visit_cost_micros\":\"6\"", "\"visit_cost_micros\":\"9\"");
     assert_eq!(
-        city_pd_config_digest(&c).expect("changed price"),
+        practice_contract::city_pd_config_digest(&c).expect("changed price"),
         babylon_kernel::content_digest::sha256_of(expected.as_bytes())
     );
     let mut c = base;
     c.schema_version = 2;
     assert_eq!(
-        city_pd_config_digest(&c),
+        practice_contract::city_pd_config_digest(&c),
         Err(CityPdError::UnsupportedSchema)
     );
 }
@@ -556,38 +595,41 @@ fn case_identity_binds_each_source_and_material_field() {
     for change in changes {
         let mut c = base.clone();
         change(&mut c);
-        c.case_id = city_pd_case_id(&c).expect("case body");
+        c.case_id = practice_contract::city_pd_case_id(&c).expect("case body");
         assert_ne!(c.case_id, base.case_id);
-        assert!(validate_city_pd_case(&c).is_ok());
+        assert!(practice_contract::validate_city_pd_case(&c).is_ok());
     }
     let mut earlier = base.clone();
     earlier.acquired_period = 1;
-    earlier.case_id = city_pd_case_id(&earlier).expect("acquired case");
+    earlier.case_id = practice_contract::city_pd_case_id(&earlier).expect("acquired case");
     let mut later = earlier.clone();
     later.observed_period = 1;
-    later.case_id = city_pd_case_id(&later).expect("observed case");
+    later.case_id = practice_contract::city_pd_case_id(&later).expect("observed case");
     assert_ne!(later.case_id, earlier.case_id);
-    assert!(validate_city_pd_case(&later).is_ok());
+    assert!(practice_contract::validate_city_pd_case(&later).is_ok());
     let mut observed = base.clone();
     observed.source_kind = CityPdCaseSource::ObservedOrganizerReceipt;
     observed.source_receipt_id = Some([5; 32]);
     observed.case_source_witness_id = Some([6; 32]);
-    observed.case_id = city_pd_case_id(&observed).expect("observed");
+    observed.case_id = practice_contract::city_pd_case_id(&observed).expect("observed");
     for change in [
         |c: &mut CityPdCase| c.source_receipt_id = Some([7; 32]),
         |c: &mut CityPdCase| c.case_source_witness_id = Some([8; 32]),
     ] {
         let mut c = observed.clone();
         change(&mut c);
-        c.case_id = city_pd_case_id(&c).expect("changed source");
+        c.case_id = practice_contract::city_pd_case_id(&c).expect("changed source");
         assert_ne!(c.case_id, observed.case_id);
-        assert!(validate_city_pd_case(&c).is_ok());
+        assert!(practice_contract::validate_city_pd_case(&c).is_ok());
     }
     let mut wrong_id = base.clone();
     wrong_id.case_id = [42; 32];
-    assert_eq!(city_pd_case_id(&wrong_id).expect("case body"), base.case_id);
     assert_eq!(
-        validate_city_pd_case(&wrong_id),
+        practice_contract::city_pd_case_id(&wrong_id).expect("case body"),
+        base.case_id
+    );
+    assert_eq!(
+        practice_contract::validate_city_pd_case(&wrong_id),
         Err(CityPdError::InvalidIdentity)
     );
 }
@@ -612,9 +654,9 @@ fn intent_identity_binds_each_field_and_excludes_own_id() {
     for change in changes {
         let mut i = base.clone();
         change(&mut i);
-        i.intent_id = city_pd_intent_id(&i).expect("intent body");
+        i.intent_id = practice_contract::city_pd_intent_id(&i).expect("intent body");
         assert_ne!(i.intent_id, base.intent_id);
-        assert!(validate_city_pd_intent(&i).is_ok());
+        assert!(practice_contract::validate_city_pd_intent(&i).is_ok());
     }
     // Either timing field is bound individually, even though only a matching
     // source/resolve pair can be admitted by the contract.
@@ -624,24 +666,33 @@ fn intent_identity_binds_each_field_and_excludes_own_id() {
     ] {
         let mut i = base.clone();
         change(&mut i);
-        assert_ne!(city_pd_intent_id(&i).expect("intent body"), base.intent_id);
-        assert_eq!(validate_city_pd_intent(&i), Err(CityPdError::InvalidTiming));
+        assert_ne!(
+            practice_contract::city_pd_intent_id(&i).expect("intent body"),
+            base.intent_id
+        );
+        assert_eq!(
+            practice_contract::validate_city_pd_intent(&i),
+            Err(CityPdError::InvalidTiming)
+        );
     }
     let mut wrong_id = base.clone();
     wrong_id.intent_id = [42; 32];
-    assert_eq!(city_pd_intent_id(&wrong_id).expect("body"), base.intent_id);
     assert_eq!(
-        validate_city_pd_intent(&wrong_id),
+        practice_contract::city_pd_intent_id(&wrong_id).expect("body"),
+        base.intent_id
+    );
+    assert_eq!(
+        practice_contract::validate_city_pd_intent(&wrong_id),
         Err(CityPdError::InvalidIdentity)
     );
     let mut unsupported = base.clone();
     unsupported.schema_version = 2;
     assert_ne!(
-        city_pd_intent_id(&unsupported).expect("body"),
+        practice_contract::city_pd_intent_id(&unsupported).expect("body"),
         base.intent_id
     );
     assert_eq!(
-        validate_city_pd_intent(&unsupported),
+        practice_contract::validate_city_pd_intent(&unsupported),
         Err(CityPdError::UnsupportedSchema)
     );
 }
@@ -650,7 +701,7 @@ fn intent_identity_binds_each_field_and_excludes_own_id() {
 fn decision_identity_binds_every_field_and_nested_decision() {
     let mut base = decision();
     base.decision = CityPdDecision::NoCases;
-    base.decision_id = city_pd_decision_id(&base).expect("decision body");
+    base.decision_id = practice_contract::city_pd_decision_id(&base).expect("decision body");
     let changes: &[fn(&mut CityPdDecisionReceipt)] = &[
         |d| d.campaign_id = [11; 16],
         |d| d.actor_id = 10,
@@ -667,27 +718,27 @@ fn decision_identity_binds_every_field_and_nested_decision() {
     for change in changes {
         let mut d = base.clone();
         change(&mut d);
-        d.decision_id = city_pd_decision_id(&d).expect("decision body");
+        d.decision_id = practice_contract::city_pd_decision_id(&d).expect("decision body");
         assert_ne!(d.decision_id, base.decision_id);
-        assert!(validate_city_pd_decision(&d).is_ok());
+        assert!(practice_contract::validate_city_pd_decision(&d).is_ok());
     }
     let original = decision();
     let mut nested = original.clone();
     if let CityPdDecision::Selected(i) = &mut nested.decision {
         i.cost_micros = 7;
-        i.intent_id = city_pd_intent_id(i).expect("intent body");
+        i.intent_id = practice_contract::city_pd_intent_id(i).expect("intent body");
     }
-    nested.decision_id = city_pd_decision_id(&nested).expect("decision body");
+    nested.decision_id = practice_contract::city_pd_decision_id(&nested).expect("decision body");
     assert_ne!(nested.decision_id, original.decision_id);
-    assert!(validate_city_pd_decision(&nested).is_ok());
+    assert!(practice_contract::validate_city_pd_decision(&nested).is_ok());
     let mut wrong_id = original.clone();
     wrong_id.decision_id = [42; 32];
     assert_eq!(
-        city_pd_decision_id(&wrong_id).expect("body"),
+        practice_contract::city_pd_decision_id(&wrong_id).expect("body"),
         original.decision_id
     );
     assert_eq!(
-        validate_city_pd_decision(&wrong_id),
+        practice_contract::validate_city_pd_decision(&wrong_id),
         Err(CityPdError::InvalidIdentity)
     );
 }
@@ -718,18 +769,18 @@ fn receipt_identity_binds_every_field_and_excludes_own_id() {
     for change in changes {
         let mut r = base.clone();
         change(&mut r);
-        r.receipt_id = city_pd_receipt_id(&r).expect("receipt body");
+        r.receipt_id = practice_contract::city_pd_receipt_id(&r).expect("receipt body");
         assert_ne!(r.receipt_id, base.receipt_id);
-        assert!(validate_city_pd_receipt(&r).is_ok());
+        assert!(practice_contract::validate_city_pd_receipt(&r).is_ok());
     }
     let mut wrong_id = base.clone();
     wrong_id.receipt_id = [42; 32];
     assert_eq!(
-        city_pd_receipt_id(&wrong_id).expect("body"),
+        practice_contract::city_pd_receipt_id(&wrong_id).expect("body"),
         base.receipt_id
     );
     assert_eq!(
-        validate_city_pd_receipt(&wrong_id),
+        practice_contract::validate_city_pd_receipt(&wrong_id),
         Err(CityPdError::InvalidIdentity)
     );
 }

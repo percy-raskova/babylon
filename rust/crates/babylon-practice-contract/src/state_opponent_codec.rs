@@ -1,11 +1,11 @@
 //! Canonical domain-framed City PD identities.
+use crate::state_opponent;
 use crate::state_opponent::{
-    validate_city_pd_case, validate_city_pd_config, validate_city_pd_decision,
-    validate_city_pd_intent, validate_city_pd_receipt, CityPdCase, CityPdConfig,
-    CityPdDecisionReceipt, CityPdError, CityPdIntent, CityPdReceipt,
+    CityPdCase, CityPdConfig, CityPdDecisionReceipt, CityPdError, CityPdIntent, CityPdReceipt,
 };
-use babylon_kernel::content_digest::sha256_of;
-use serde::{de::DeserializeOwned, Serialize};
+use babylon_kernel::content_digest;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 const MAX_BYTES: usize = 1024 * 1024;
 const CONFIG: &[u8] = b"babylon.city-pd-config.v1";
 const CASE: &[u8] = b"babylon.city-pd-case.v1";
@@ -60,14 +60,14 @@ fn identity<T: Serialize>(
     let mut result = domain.to_vec();
     result.extend_from_slice(b"\0{");
     result.extend_from_slice(body.as_bytes());
-    Ok(sha256_of(&result))
+    Ok(content_digest::sha256_of(&result))
 }
 /// Derive the canonical identity.
 ///
 /// # Errors
 /// Returns an error if the value cannot be canonically encoded within its bound.
 pub fn city_pd_config_digest(c: &CityPdConfig) -> Result<[u8; 32], CityPdError> {
-    Ok(sha256_of(&encode_city_pd_config(c)?))
+    Ok(content_digest::sha256_of(&encode_city_pd_config(c)?))
 }
 /// Derive the canonical identity.
 ///
@@ -98,7 +98,7 @@ pub fn city_pd_receipt_id(r: &CityPdReceipt) -> Result<[u8; 32], CityPdError> {
     identity(RECEIPT, r, "receipt_id", false)
 }
 macro_rules! codec {
-    ($encode:ident, $decode:ident, $ty:ty, $domain:ident, $validate:ident) => {
+    ($encode:ident, $decode:ident, $ty:ty, $domain:ident, $validate:path) => {
         /// Encode a validated value in its canonical domain.
         ///
         /// # Errors
@@ -123,33 +123,33 @@ codec!(
     decode_city_pd_config,
     CityPdConfig,
     CONFIG,
-    validate_city_pd_config
+    state_opponent::validate_city_pd_config
 );
 codec!(
     encode_city_pd_case,
     decode_city_pd_case,
     CityPdCase,
     CASE,
-    validate_city_pd_case
+    state_opponent::validate_city_pd_case
 );
 codec!(
     encode_city_pd_intent,
     decode_city_pd_intent,
     CityPdIntent,
     INTENT,
-    validate_city_pd_intent
+    state_opponent::validate_city_pd_intent
 );
 codec!(
     encode_city_pd_decision,
     decode_city_pd_decision,
     CityPdDecisionReceipt,
     DECISION,
-    validate_city_pd_decision
+    state_opponent::validate_city_pd_decision
 );
 codec!(
     encode_city_pd_receipt,
     decode_city_pd_receipt,
     CityPdReceipt,
     RECEIPT,
-    validate_city_pd_receipt
+    state_opponent::validate_city_pd_receipt
 );

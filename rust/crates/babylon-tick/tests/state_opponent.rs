@@ -1,7 +1,50 @@
-use babylon_graph::{dossier::Dossier, substrate::NodeId};
+use babylon_graph::dossier::Dossier;
+use babylon_graph::substrate::NodeId;
 use babylon_kernel::currency::Currency;
-use babylon_practice_contract::*;
-use babylon_tick::state_opponent::{decide_city_pd, CityPdState};
+use babylon_practice_contract as practice_contract;
+use babylon_practice_contract::{
+    CityPdCase, CityPdCaseSource, CityPdCaseStatus, CityPdConfig, CityPdDecision,
+    CityPdDecisionReceipt, CityPdError, CITY_PD_MAX_COST, CITY_PD_MAX_ROWS,
+};
+use babylon_tick::state_opponent::{self, CityPdState};
+fn run_decision(
+    config: &CityPdConfig,
+    state: &CityPdState,
+    available: Currency,
+    period: u64,
+) -> Result<CityPdDecisionReceipt, CityPdError> {
+    use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::stable_element::StableElementResolver;
+    use babylon_graph::substrate::GraphSubstrate;
+    use std::collections::HashMap;
+    let mut graph = MemoryGraph::new();
+    let mut names = HashMap::new();
+    for id in 0..=30 {
+        let node = graph
+            .add_node("actor")
+            .expect("valid identity test fixture");
+        let name = match id {
+            20 => "a20".to_owned(),
+            30 => "b30".to_owned(),
+            _ => format!("node{id}"),
+        };
+        names.insert(node, name);
+    }
+    let resolver = StableElementResolver::seal(&graph, "demo/world", &names, &HashMap::new())
+        .expect("valid identity test fixture");
+    let bindings = (0..=30)
+        .map(|id| {
+            (
+                id,
+                resolver
+                    .node_key(NodeId(id))
+                    .expect("valid identity test fixture")
+                    .clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    state_opponent::decide_city_pd(config, state, &resolver, &bindings, available, period)
+}
 fn config() -> CityPdConfig {
     CityPdConfig {
         schema_version: 1,
@@ -38,7 +81,7 @@ fn case(subject_id: u64, source: u8) -> CityPdCase {
         acquired_period: 0,
         status: CityPdCaseStatus::Open,
     };
-    c.case_id = city_pd_case_id(&c).expect("valid City PD test fixture");
+    c.case_id = practice_contract::city_pd_case_id(&c).expect("valid City PD test fixture");
     c
 }
 #[test]
@@ -49,7 +92,7 @@ fn decision_distinguishes_no_cases_funds_and_selection() {
         last_decision: None,
     };
     assert_eq!(
-        decide_city_pd(&config(), &state, Currency::from_micro_units(0), 0)
+        run_decision(&config(), &state, Currency::from_micro_units(0), 0)
             .expect("valid City PD test fixture")
             .decision,
         CityPdDecision::NoCases
@@ -57,7 +100,7 @@ fn decision_distinguishes_no_cases_funds_and_selection() {
     state.dossier.resolve_node(NodeId(20));
     state.cases.push(case(20, 2));
     assert_eq!(
-        decide_city_pd(&config(), &state, Currency::from_micro_units(0), 0)
+        run_decision(&config(), &state, Currency::from_micro_units(0), 0)
             .expect("valid City PD test fixture")
             .decision,
         CityPdDecision::NoFunds {
@@ -65,7 +108,7 @@ fn decision_distinguishes_no_cases_funds_and_selection() {
             required_micros: 6
         }
     );
-    let decision = decide_city_pd(&config(), &state, Currency::from_micro_units(6), 1)
+    let decision = run_decision(&config(), &state, Currency::from_micro_units(6), 1)
         .expect("valid City PD test fixture");
     let CityPdDecision::Selected(intent) = decision.decision else {
         panic!("selected")
@@ -94,12 +137,26 @@ fn choices_are_order_independent_and_choose_one() {
         cases: vec![second.clone(), first.clone(), other],
         last_decision: None,
     };
-    let d = decide_city_pd(&config(), &left, Currency::from_micro_units(100), 0)
+    let d = run_decision(&config(), &left, Currency::from_micro_units(100), 0)
         .expect("valid City PD test fixture");
     assert_eq!(
         d,
-        decide_city_pd(&config(), &right, Currency::from_micro_units(100), 0)
+        run_decision(&config(), &right, Currency::from_micro_units(100), 0)
             .expect("valid City PD test fixture")
+    );
+    let mut different_tie_belief = right.clone();
+    different_tie_belief
+        .dossier
+        .resolve_edge("believed-only", NodeId(20), NodeId(30));
+    assert_eq!(
+        d,
+        run_decision(
+            &config(),
+            &different_tie_belief,
+            Currency::from_micro_units(100),
+            0,
+        )
+        .expect("private ties are not a decision input")
     );
     let CityPdDecision::Selected(intent) = &d.decision else {
         panic!("selected")
@@ -108,7 +165,7 @@ fn choices_are_order_independent_and_choose_one() {
     assert_eq!(intent.case_id, first.case_id.min(second.case_id));
     assert_ne!(
         d.decision_basis_digest,
-        decide_city_pd(&config(), &left, Currency::from_micro_units(99), 0)
+        run_decision(&config(), &left, Currency::from_micro_units(99), 0)
             .expect("valid City PD test fixture")
             .decision_basis_digest
     );
@@ -116,7 +173,7 @@ fn choices_are_order_independent_and_choose_one() {
     different.dossier.forget_node(NodeId(20));
     different.cases.retain(|c| c.subject_id == 30);
     let CityPdDecision::Selected(intent) =
-        decide_city_pd(&config(), &different, Currency::from_micro_units(6), 0)
+        run_decision(&config(), &different, Currency::from_micro_units(6), 0)
             .expect("valid City PD test fixture")
             .decision
     else {
@@ -133,7 +190,7 @@ fn rejects_foreign_unknown_duplicate_and_bad_time() {
         cases: vec![case(20, 2)],
         last_decision: None,
     };
-    let run = |s: &CityPdState| decide_city_pd(&config(), s, Currency::from_micro_units(6), 0);
+    let run = |s: &CityPdState| run_decision(&config(), s, Currency::from_micro_units(6), 0);
     state.cases.push(state.cases[0].clone());
     assert_eq!(run(&state), Err(CityPdError::DuplicateCase));
     state.cases.pop();
@@ -141,24 +198,28 @@ fn rejects_foreign_unknown_duplicate_and_bad_time() {
     assert_eq!(run(&state), Err(CityPdError::UnknownSubject));
     state.dossier.resolve_node(NodeId(20));
     state.cases[0].actor_id = 10;
-    state.cases[0].case_id = city_pd_case_id(&state.cases[0]).expect("valid City PD test fixture");
+    state.cases[0].case_id =
+        practice_contract::city_pd_case_id(&state.cases[0]).expect("valid City PD test fixture");
     assert_eq!(run(&state), Err(CityPdError::WrongOwner));
     state.cases[0].actor_id = 9;
     state.cases[0].county = *b"26161";
-    state.cases[0].case_id = city_pd_case_id(&state.cases[0]).expect("valid City PD test fixture");
+    state.cases[0].case_id =
+        practice_contract::city_pd_case_id(&state.cases[0]).expect("valid City PD test fixture");
     assert_eq!(run(&state), Err(CityPdError::CountyMismatch));
     state.cases[0].county = *b"26163";
     state.cases[0].acquired_period = 1;
-    state.cases[0].case_id = city_pd_case_id(&state.cases[0]).expect("valid City PD test fixture");
+    state.cases[0].case_id =
+        practice_contract::city_pd_case_id(&state.cases[0]).expect("valid City PD test fixture");
     assert_eq!(run(&state), Err(CityPdError::InvalidTiming));
     assert_eq!(
-        decide_city_pd(&config(), &state, Currency::from_micro_units(-1), 0),
+        run_decision(&config(), &state, Currency::from_micro_units(-1), 0),
         Err(CityPdError::NegativeBalance)
     );
     state.cases[0].acquired_period = 0;
-    state.cases[0].case_id = city_pd_case_id(&state.cases[0]).expect("valid City PD test fixture");
+    state.cases[0].case_id =
+        practice_contract::city_pd_case_id(&state.cases[0]).expect("valid City PD test fixture");
     assert_eq!(
-        decide_city_pd(&config(), &state, Currency::from_micro_units(6), u64::MAX),
+        run_decision(&config(), &state, Currency::from_micro_units(6), u64::MAX),
         Err(CityPdError::Arithmetic)
     );
 }
@@ -172,17 +233,20 @@ fn basis_is_independently_pinned_and_price_bound_is_inclusive() {
         cases: vec![case(20, 2)],
         last_decision: None,
     };
-    let d = decide_city_pd(&config(), &state, Currency::from_micro_units(6), 1)
+    let d = run_decision(&config(), &state, Currency::from_micro_units(6), 1)
         .expect("valid City PD test fixture");
+    // Independently framed v2 preimage: known config and case digests, actor 9,
+    // period 1, balance 6, and the stable node key demo/world/a20.
     assert_eq!(
         d.decision_basis_digest,
         [
-            85, 52, 234, 77, 234, 10, 235, 197, 174, 187, 182, 188, 179, 121, 27, 174, 187, 84, 63,
-            146, 16, 230, 87, 183, 224, 247, 68, 111, 248, 78, 209, 76
+            0x97, 0x0e, 0xcc, 0xfb, 0xeb, 0x9c, 0x5a, 0x7c, 0x87, 0xe8, 0x55, 0x9b, 0x13, 0x23,
+            0x90, 0x55, 0xcd, 0xd6, 0xd1, 0xb4, 0xf9, 0x80, 0xa9, 0x77, 0x5a, 0x6d, 0xf4, 0xdf,
+            0x42, 0x4f, 0xae, 0xdc,
         ]
     );
     assert_eq!(
-        decide_city_pd(&config(), &state, Currency::from_micro_units(5), 1)
+        run_decision(&config(), &state, Currency::from_micro_units(5), 1)
             .expect("valid City PD test fixture")
             .decision,
         CityPdDecision::NoFunds {
@@ -195,7 +259,7 @@ fn basis_is_independently_pinned_and_price_bound_is_inclusive() {
     c.hourly_wage_micros = CITY_PD_MAX_COST;
     c.visit_cost_micros = CITY_PD_MAX_COST;
     assert!(matches!(
-        decide_city_pd(&c, &state, Currency::from_micro_units(CITY_PD_MAX_COST), 1)
+        run_decision(&c, &state, Currency::from_micro_units(CITY_PD_MAX_COST), 1)
             .expect("valid City PD test fixture")
             .decision,
         CityPdDecision::Selected(_)
@@ -203,7 +267,7 @@ fn basis_is_independently_pinned_and_price_bound_is_inclusive() {
     c.hourly_wage_micros += 1;
     c.visit_cost_micros += 1;
     assert_eq!(
-        decide_city_pd(
+        run_decision(
             &c,
             &state,
             Currency::from_micro_units(CITY_PD_MAX_COST + 1),
@@ -215,7 +279,7 @@ fn basis_is_independently_pinned_and_price_bound_is_inclusive() {
     c.visit_hours = 2;
     c.visit_cost_micros = 6;
     assert_eq!(
-        decide_city_pd(&c, &state, Currency::from_micro_units(6), 1),
+        run_decision(&c, &state, Currency::from_micro_units(6), 1),
         Err(CityPdError::Arithmetic)
     );
 }
@@ -231,46 +295,33 @@ fn validates_owner_provenance_closed_cases_and_case_limit() {
     };
     state.dossier = Dossier::new(NodeId(10));
     assert_eq!(
-        decide_city_pd(&config(), &state, Currency::from_micro_units(0), 0),
+        run_decision(&config(), &state, Currency::from_micro_units(0), 0),
         Err(CityPdError::WrongOwner)
     );
     state.dossier = Dossier::new(NodeId(9));
     state.dossier.resolve_node(NodeId(20));
     state.cases[0].source_kind = CityPdCaseSource::ObservedOrganizerReceipt;
     assert_eq!(
-        decide_city_pd(&config(), &state, Currency::from_micro_units(6), 0),
+        run_decision(&config(), &state, Currency::from_micro_units(6), 0),
         Err(CityPdError::InvalidProvenance)
     );
     state.cases[0] = case(20, 2);
     state.cases[0].status = CityPdCaseStatus::Closed;
     assert_eq!(
-        decide_city_pd(&config(), &state, Currency::from_micro_units(0), 0)
+        run_decision(&config(), &state, Currency::from_micro_units(0), 0)
             .expect("valid City PD test fixture")
             .decision,
         CityPdDecision::NoCases
     );
     state.cases = vec![case(20, 2); CITY_PD_MAX_ROWS + 1];
     assert_eq!(
-        decide_city_pd(&config(), &state, Currency::from_micro_units(0), 0),
+        run_decision(&config(), &state, Currency::from_micro_units(0), 0),
         Err(CityPdError::SizeLimit)
     );
 }
 
 #[test]
 fn decision_basis_literal_bytes_and_each_input_are_bound() {
-    use babylon_kernel::content_digest::sha256_of;
-    // Independent preimage: domain, config digest, actor, T, signed balance,
-    // one scope ID, and one case ID followed by its open status byte.
-    let bytes: &[u8] = &[
-        b'b', b'a', b'b', b'y', b'l', b'o', b'n', b'.', b'c', b'i', b't', b'y', b'-', b'p', b'd',
-        b'-', b'd', b'e', b'c', b'i', b's', b'i', b'o', b'n', b'-', b'b', b'a', b's', b'i', b's',
-        b'.', b'v', b'1', 0, 0xe9, 0x88, 0xe4, 0x8b, 0xc0, 0x25, 0x9e, 0x0c, 0x17, 0x1d, 0xf6,
-        0x5a, 0x78, 0xaf, 0xe1, 0x67, 0xc1, 0x79, 0x0c, 0x70, 0x23, 0xdb, 0xc2, 0xa7, 0x5d, 0x0d,
-        0x02, 0x34, 0x12, 0x55, 0x9f, 0x08, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 1,
-        65, 12, 237, 234, 57, 45, 215, 71, 133, 2, 77, 224, 113, 171, 128, 148, 108, 206, 247, 15,
-        32, 231, 86, 168, 100, 113, 107, 222, 27, 18, 34, 44, 1,
-    ];
     let mut dossier = Dossier::new(NodeId(9));
     dossier.resolve_node(NodeId(20));
     let state = CityPdState {
@@ -278,19 +329,11 @@ fn decision_basis_literal_bytes_and_each_input_are_bound() {
         cases: vec![case(20, 2)],
         last_decision: None,
     };
-    let original = decide_city_pd(&config(), &state, Currency::from_micro_units(6), 1)
-        .expect("decision")
+    let original = run_decision(&config(), &state, Currency::from_micro_units(6), 1)
+        .expect("valid identity test fixture")
         .decision_basis_digest;
-    assert_eq!(
-        sha256_of(bytes),
-        [
-            85, 52, 234, 77, 234, 10, 235, 197, 174, 187, 182, 188, 179, 121, 27, 174, 187, 84, 63,
-            146, 16, 230, 87, 183, 224, 247, 68, 111, 248, 78, 209, 76
-        ]
-    );
-    assert_eq!(original, sha256_of(bytes));
     let basis = |c: &CityPdConfig, s: &CityPdState, balance, period| {
-        decide_city_pd(c, s, Currency::from_micro_units(balance), period)
+        run_decision(c, s, Currency::from_micro_units(balance), period)
             .expect("changed decision")
             .decision_basis_digest
     };
@@ -318,6 +361,235 @@ fn decision_basis_literal_bytes_and_each_input_are_bound() {
     actor_state.dossier = Dossier::new(NodeId(10));
     actor_state.dossier.resolve_node(NodeId(20));
     actor_state.cases[0].actor_id = 10;
-    actor_state.cases[0].case_id = city_pd_case_id(&actor_state.cases[0]).expect("changed case");
+    actor_state.cases[0].case_id =
+        practice_contract::city_pd_case_id(&actor_state.cases[0]).expect("changed case");
     assert_ne!(basis(&actor_config, &actor_state, 6, 1), original);
+}
+
+#[derive(Clone, Copy)]
+enum AllocationOrder {
+    Original,
+    Reordered,
+}
+
+fn reconstructed_fixture(
+    order: AllocationOrder,
+) -> (
+    babylon_graph::stable_element::StableElementResolver,
+    CityPdState,
+) {
+    use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::stable_element::StableElementResolver;
+    use babylon_graph::substrate::GraphSubstrate;
+    use std::collections::HashMap;
+    let mut graph = MemoryGraph::new();
+    let mut names = HashMap::new();
+    if matches!(order, AllocationOrder::Reordered) {
+        let hidden = graph.add_node("actor").expect("hidden actor");
+        names.insert(hidden, "hidden".to_owned());
+    }
+    let a = graph.add_node("actor").expect("actor");
+    let b = graph.add_node("actor").expect("actor");
+    let c = graph.add_node("actor").expect("actor");
+    let (agency, alpha, beta) = if matches!(order, AllocationOrder::Reordered) {
+        (c, b, a)
+    } else {
+        (a, b, c)
+    };
+    names.insert(agency, "agency".to_owned());
+    names.insert(alpha, "a20".to_owned());
+    names.insert(beta, "b30".to_owned());
+    let resolver = StableElementResolver::seal(&graph, "demo/world", &names, &HashMap::new())
+        .expect("sealed identities");
+    let mut dossier = Dossier::new(agency);
+    dossier.resolve_edge("false-belief", alpha, beta);
+    (
+        resolver,
+        CityPdState {
+            dossier,
+            cases: vec![case(30, 3), case(20, 2)],
+            last_decision: None,
+        },
+    )
+}
+
+#[test]
+fn semantic_cases_and_decisions_survive_graph_reconstruction() {
+    use babylon_graph::stable_element::StableElementResolver;
+
+    let (resolver_a, state_a) = reconstructed_fixture(AllocationOrder::Original);
+    let (resolver_b, state_b) = reconstructed_fixture(AllocationOrder::Reordered);
+    let bindings = |resolver: &StableElementResolver| {
+        [(9, "agency"), (20, "a20"), (30, "b30")]
+            .into_iter()
+            .map(|(id, name)| {
+                (
+                    id,
+                    resolver
+                        .node_key(
+                            resolver
+                                .node_handle_by_local_name(name)
+                                .expect("valid identity test fixture"),
+                        )
+                        .expect("valid identity test fixture")
+                        .clone(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let a = state_opponent::decide_city_pd(
+        &config(),
+        &state_a,
+        &resolver_a,
+        &bindings(&resolver_a),
+        Currency::from_micro_units(6),
+        1,
+    )
+    .expect("first semantic decision");
+    let b = state_opponent::decide_city_pd(
+        &config(),
+        &state_b,
+        &resolver_b,
+        &bindings(&resolver_b),
+        Currency::from_micro_units(6),
+        1,
+    )
+    .expect("reconstructed semantic decision");
+    assert_eq!(a, b);
+    assert_eq!(
+        practice_contract::encode_city_pd_decision(&a).expect("first receipt bytes"),
+        practice_contract::encode_city_pd_decision(&b).expect("reconstructed receipt bytes")
+    );
+    for close in [false, true] {
+        let mut left = state_a.clone();
+        let mut right = state_b.clone();
+        if close {
+            for case in left.cases.iter_mut().chain(&mut right.cases) {
+                case.status = CityPdCaseStatus::Closed;
+            }
+        }
+        let decide = |state: &CityPdState, resolver: &StableElementResolver| {
+            state_opponent::decide_city_pd(
+                &config(),
+                state,
+                resolver,
+                &bindings(resolver),
+                Currency::from_micro_units(0),
+                1,
+            )
+            .expect("reconstructed refusal decision")
+        };
+        let left_decision = decide(&left, &resolver_a);
+        let right_decision = decide(&right, &resolver_b);
+        assert_eq!(left_decision, right_decision);
+        if close {
+            assert_eq!(left_decision.decision, CityPdDecision::NoCases);
+        } else {
+            assert!(matches!(
+                left_decision.decision,
+                CityPdDecision::NoFunds { .. }
+            ));
+        }
+    }
+    let CityPdDecision::Selected(intent) = a.decision else {
+        panic!("selected")
+    };
+    let CityPdDecision::Selected(intent_b) = b.decision else {
+        panic!("selected")
+    };
+    assert_eq!(
+        practice_contract::encode_city_pd_intent(&intent).expect("first intent bytes"),
+        practice_contract::encode_city_pd_intent(&intent_b).expect("reconstructed intent bytes")
+    );
+    assert_eq!(intent.subject_id, 20);
+}
+
+#[test]
+fn rejects_missing_conflicting_aliased_and_foreign_relevant_bindings() {
+    use babylon_graph::memory::MemoryGraph;
+    use babylon_graph::stable_element::{StableElementKey, StableElementResolver};
+    use babylon_graph::substrate::GraphSubstrate;
+    use std::collections::HashMap;
+    let mut graph = MemoryGraph::new();
+    let owner = graph
+        .add_node("actor")
+        .expect("valid identity test fixture");
+    let subject = graph
+        .add_node("actor")
+        .expect("valid identity test fixture");
+    let other = graph
+        .add_node("actor")
+        .expect("valid identity test fixture");
+    let names = HashMap::from([
+        (owner, "agency".to_owned()),
+        (subject, "a20".to_owned()),
+        (other, "other".to_owned()),
+    ]);
+    let resolver = StableElementResolver::seal(&graph, "demo/world", &names, &HashMap::new())
+        .expect("valid identity test fixture");
+    let agency = resolver
+        .node_key(owner)
+        .expect("valid identity test fixture")
+        .clone();
+    let target = resolver
+        .node_key(subject)
+        .expect("valid identity test fixture")
+        .clone();
+    let other_key = resolver
+        .node_key(other)
+        .expect("valid identity test fixture")
+        .clone();
+    let mut dossier = Dossier::new(owner);
+    dossier.resolve_node(subject);
+    let state = CityPdState {
+        dossier,
+        cases: vec![case(20, 2)],
+        last_decision: None,
+    };
+    let run = |bindings: &[(u64, StableElementKey)]| {
+        state_opponent::decide_city_pd(
+            &config(),
+            &state,
+            &resolver,
+            bindings,
+            Currency::from_micro_units(6),
+            0,
+        )
+    };
+    assert_eq!(
+        run(&[(9, agency.clone())]),
+        Err(CityPdError::InvalidIdentity)
+    );
+    assert_eq!(
+        run(&[(9, agency.clone()), (20, target.clone()), (20, other_key)]),
+        Err(CityPdError::InvalidIdentity)
+    );
+    assert_eq!(
+        run(&[(9, agency.clone()), (20, agency.clone())]),
+        Err(CityPdError::InvalidIdentity)
+    );
+    let foreign = StableElementKey::Node {
+        scenario: "other/world".to_owned(),
+        local_name: "a20".to_owned(),
+    };
+    assert_eq!(
+        run(&[(9, agency.clone()), (20, foreign.clone())]),
+        Err(CityPdError::InvalidIdentity)
+    );
+    let missing = StableElementKey::Node {
+        scenario: "demo/world".to_owned(),
+        local_name: "missing".to_owned(),
+    };
+    assert_eq!(
+        run(&[(9, agency.clone()), (20, missing)]),
+        Err(CityPdError::InvalidIdentity)
+    );
+    let valid = [(9, agency), (20, target)];
+    let expected = run(&valid).expect("valid identity test fixture");
+    let mut with_hidden = valid.to_vec();
+    with_hidden.push((999, foreign));
+    assert_eq!(
+        run(&with_hidden).expect("valid identity test fixture"),
+        expected
+    );
 }

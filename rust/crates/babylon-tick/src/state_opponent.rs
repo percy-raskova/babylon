@@ -133,6 +133,9 @@ fn resolve_bindings(
     resolver: &StableElementResolver,
     bindings: &[(u64, StableElementKey)],
 ) -> Result<BoundNodes, CityPdError> {
+    if cases.iter().any(|case| case.subject_id == actor_id) {
+        return Err(CityPdError::InvalidIdentity);
+    }
     let mut relevant = BTreeSet::from([actor_id]);
     relevant.extend(cases.iter().map(|case| case.subject_id));
     let mut bound_nodes = BTreeMap::new();

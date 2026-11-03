@@ -505,6 +505,31 @@ fn semantic_cases_and_decisions_survive_graph_reconstruction() {
 }
 
 #[test]
+fn rejects_case_targeting_its_own_semantic_actor() {
+    let (resolver, mut state) = reconstructed_fixture(AllocationOrder::Original);
+    let owner = state.dossier.owner();
+    state.dossier = Dossier::new(owner);
+    state.dossier.resolve_node(owner);
+    state.cases = vec![case(config().actor_id, 2)];
+    practice_contract::validate_city_pd_case(&state.cases[0]).expect("valid self-subject case");
+    let bindings = [(
+        config().actor_id,
+        resolver.node_key(owner).expect("sealed owner").clone(),
+    )];
+    assert_eq!(
+        state_opponent::decide_city_pd(
+            &config(),
+            &state,
+            &resolver,
+            &bindings,
+            Currency::from_micro_units(6),
+            0,
+        ),
+        Err(CityPdError::InvalidIdentity)
+    );
+}
+
+#[test]
 fn rejects_missing_conflicting_aliased_and_foreign_relevant_bindings() {
     use babylon_graph::memory::MemoryGraph;
     use babylon_graph::stable_element::{StableElementKey, StableElementResolver};

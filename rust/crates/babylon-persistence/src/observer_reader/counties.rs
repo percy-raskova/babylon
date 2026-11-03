@@ -64,20 +64,9 @@ fn national(
         ObserverVisibility::KnownPreview => "public.v_known_county_economy_v1",
     };
     let query = format!("SELECT {SNAPSHOT_COLUMNS} FROM {view} WHERE campaign_id=$1 AND resolve_tick=$2 ORDER BY county_geoid LIMIT 3145");
-    if visibility == ObserverVisibility::KnownPreview {
-        // Temporary diagnostic: remove after capturing the post-commit plan.
-        transaction
-            .batch_execute("SET LOCAL debug_print_plan = on; SET LOCAL debug_pretty_print = off")
-            .map_err(|_| ObserverEconomyError::Database)?;
-    }
     let rows = transaction
         .query(&query, &[campaign.as_uuid(), &tick])
         .map_err(|_| ObserverEconomyError::Database)?;
-    if visibility == ObserverVisibility::KnownPreview {
-        transaction
-            .batch_execute("SET LOCAL debug_print_plan = off")
-            .map_err(|_| ObserverEconomyError::Database)?;
-    }
     if rows.len() != NATIONAL_COUNTY_COUNT {
         return Err(ObserverEconomyError::InvalidProjection);
     }
@@ -182,6 +171,21 @@ mod tests {
         )
         .expect("the fixture projection accepts the authored state");
         assert_eq!(county.annual_avg_estabs_count, Some(12));
+        assert_eq!(county.annual_avg_emplvl, None);
+        assert_eq!(county.total_annual_wages, None);
+        assert_eq!(county.annual_avg_wkly_wage, None);
+    }
+
+    #[test]
+    fn granted_zero_remains_distinct_from_absent_value() {
+        let county = project(
+            CountyGeoid::try_from("26163").expect("the fixture value fits the target range"),
+            ObserverVisibility::KnownPreview,
+            [Some(0), None, Some(0), None],
+            [true, true, false, false],
+        )
+        .expect("the fixture projection accepts the authored state");
+        assert_eq!(county.annual_avg_estabs_count, Some(0));
         assert_eq!(county.annual_avg_emplvl, None);
         assert_eq!(county.total_annual_wages, None);
         assert_eq!(county.annual_avg_wkly_wage, None);

@@ -1,15 +1,17 @@
-# Wayne map and relationships: design draft
+# Wayne map and relationships: design
 
-**Status:** Draft for full Director review. On 2026-11-03 the Director responded
-“i feel like this is great!” to the v3 interactive preview. That approves the
-map-first visual direction, Places and Relationships views, shared selection,
-and the evidence and review direction shown there. It does not approve every
-mechanic, prove native behavior, or accept a game gate. Implementation waits
-until the Director reviews and settles this complete design.
+**Status:** Approved on 2026-11-03. The Director's exact decision was
+“Approve this design and limited disclosure”. This approves the design and
+the limited visibility ruling below. It does not prove native behavior or
+accept a game gate. The finite PER-336 closeout remains a prerequisite to
+implementation.
 
-**Scope:** PER-292's bounded national Wayne organizer experience. The draft uses
+The earlier v3 interactive preview received “i feel like this
+is great!” from the Director. That preview was visual evidence.
+
+**Scope:** PER-292's bounded national Wayne organizer experience. This design uses
 `d2b8ea14d` plus Task 7e under repair as context. That work is not yet a
-qualified base. PER-336's native contact-lifecycle closeout precedes this
+qualified base. PER-336's finite Wayne closeout precedes this
 implementation. Neither this design nor that prerequisite claims the PER-355
 14-cell acceptance or full Director acceptance of the active goal.
 
@@ -95,7 +97,7 @@ or an earned contact product. The initial workplace venue notice is not an
 earned contact. Opening report and receipt availability must come from the
 selected campaign and viewed period, not from a hard-coded preview.
 
-Native public hyperedges remain first-class. **Proposed Director visibility
+Native public hyperedges remain first-class. **Approved Director visibility
 ruling for this design:** disclose the real controlled collective's
 `ORGANIZATION_BODY` `HyperedgeId` and stable structural key. Disclose only the
 organization/contributor incidence that controlled actor positions already
@@ -104,14 +106,13 @@ with no claim of completeness or hidden-member count. It grants no
 partner-only incidence, partner ledger or whole-graph access. The current
 snapshot exposes the own position and named partners.
 
-It does not itself grant or project that hyperedge ID or its member list. This
-paragraph proposes the limited ruling for full design approval. It does not
-infer an existing grant.
+The existing snapshot does not itself project that hyperedge ID or its member
+list. This approval grants only the limited disclosure specified here. It does
+not imply that the current reader already implements it.
 
-After the Director approves that ruling and the full design, show the actual
-disclosed controlled-collective organization/contributor pair in the first
-scene. Use an authenticated projection when the viewed committed position
-supplies the pair.
+Show the actual disclosed controlled-collective organization/contributor pair
+in the first scene. Use an authenticated projection when the viewed committed
+position supplies the pair.
 Do not substitute a presentation grouping for native incidence or claim an
 unavailable body is empty. Neither an organizer scalar ID nor a visual grouping
 is a hyperedge ID. Label any separate Designed presentation grouping as such.
@@ -151,7 +152,7 @@ outcomes.
 
 ## Qualification and acceptance
 
-After PER-336 closeout and full design approval, exercise the real chain from
+After PER-336 closeout, exercise the real chain from
 captured campaign data through the authorized runtime projection and native
 Bevy selection. Continue through review, confirmation and one durable period
 commit. Inspect the actual receipt, restricted Archive evidence and restart.

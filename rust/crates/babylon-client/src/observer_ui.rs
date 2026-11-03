@@ -369,7 +369,6 @@ fn block_label(text: impl Into<String>, size: f32, color: Color) -> impl Bundle 
     (
         label(text, size, color),
         Node {
-            min_width: px(0),
             max_width: percent(100),
             flex_shrink: 0.0,
             ..default()
@@ -2048,6 +2047,26 @@ fn paint_circuit_navigation(
     }
 }
 
+/// Clear the target only when no world camera is active beneath the UI.
+pub(crate) fn clear_ui_camera(
+    view: Res<PrimaryView>,
+    mut cameras: Query<&mut Camera, With<ObserverUiCamera>>,
+) {
+    for mut camera in &mut cameras {
+        if *view == PrimaryView::Organizer {
+            if !matches!(camera.clear_color, ClearColorConfig::Default) {
+                camera.clear_color = ClearColorConfig::Default;
+            }
+        } else if !matches!(camera.clear_color, ClearColorConfig::None) {
+            camera.clear_color = ClearColorConfig::None;
+        }
+    }
+}
+
+pub(crate) fn install_ui_camera_clear(app: &mut App) {
+    app.add_systems(PostUpdate, clear_ui_camera);
+}
+
 fn inspector_visibility(ui: &ObserverUiState, view: PrimaryView) -> Visibility {
     if ui.archive_open
         || ui.history_open
@@ -2142,6 +2161,7 @@ fn reconcile_lens(
 pub struct ObserverShellPlugin;
 impl Plugin for ObserverShellPlugin {
     fn build(&self, app: &mut App) {
+        install_ui_camera_clear(app);
         app.add_plugins(crate::observer_warning::ObserverWarningPlugin)
             .add_plugins(crate::observer_title::ObserverTitlePlugin)
             .init_resource::<ObserverFrame>()
@@ -2837,6 +2857,64 @@ pub(crate) mod tests {
                 .map(|county| county.fips),
             Some("26163")
         );
+    }
+
+    #[test]
+    fn shell_block_text_is_measured_at_readable_width_with_the_real_font() {
+        let size = crate::test_support::measure_ui_text(block_label(
+            "Current evidence and available actions remain visible.",
+            16.0,
+            Color::WHITE,
+        ));
+        assert!(
+            size.x > 100.0 && size.y < 100.0,
+            "actual text layout: {size:?}"
+        );
+    }
+
+    #[test]
+    fn ui_camera_clears_organizer_and_preserves_world_overlays() {
+        let mut app = App::new();
+        app.insert_resource(PrimaryView::Organizer)
+            .add_systems(Update, clear_ui_camera);
+        let camera = app
+            .world_mut()
+            .spawn((
+                Camera {
+                    clear_color: ClearColorConfig::None,
+                    ..default()
+                },
+                ObserverUiCamera,
+            ))
+            .id();
+        app.update();
+        assert!(matches!(
+            app.world()
+                .get::<Camera>(camera)
+                .expect("camera")
+                .clear_color,
+            ClearColorConfig::Default
+        ));
+        for view in [PrimaryView::Map, PrimaryView::Production] {
+            *app.world_mut().resource_mut::<PrimaryView>() = view;
+            app.update();
+            assert!(matches!(
+                app.world()
+                    .get::<Camera>(camera)
+                    .expect("camera")
+                    .clear_color,
+                ClearColorConfig::None
+            ));
+        }
+        *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Organizer;
+        app.update();
+        assert!(matches!(
+            app.world()
+                .get::<Camera>(camera)
+                .expect("camera")
+                .clear_color,
+            ClearColorConfig::Default
+        ));
     }
 
     #[derive(Resource, Default)]

@@ -971,6 +971,64 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
 }
 
 #[test]
+fn deferred_organizer_evidence_updates_clear_before_render() {
+    use crate::observer_ui::{self, ObserverUiCamera};
+    use bevy::input_focus::InputFocus;
+    let (client, session) = crate::organizer::tests::ready();
+    let atlas = CountyAtlas::parse(include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../assets/map/county_atlas.bin"
+    )))
+    .expect("committed atlas");
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(session)
+        .insert_resource(client)
+        .insert_resource(atlas)
+        .insert_resource(PrimaryView::Map)
+        .init_resource::<ObserverFrame>()
+        .init_resource::<ProductionNavigation>()
+        .init_resource::<SelectedCounty>()
+        .init_resource::<InputFocus>()
+        .init_resource::<ObserverFeedback>()
+        .insert_resource(ObserverUiState { menu_open: false, splash_visible: false, ..default() })
+        .add_message::<ProductionCommand>()
+        // This is a legal ordering of the original Update systems.
+        .add_systems(Update, navigation::navigate.after(observer_ui::clear_ui_camera));
+    crate::organizer::ui::install_evidence_observer_for_test(&mut app);
+    observer_ui::install_ui_camera_clear(&mut app);
+    let camera = app
+        .world_mut()
+        .spawn((
+            Camera {
+                clear_color: ClearColorConfig::None,
+                ..default()
+            },
+            ObserverUiCamera,
+        ))
+        .id();
+    app.world_mut().write_message(ProductionCommand::Open);
+    app.update();
+    assert_eq!(
+        *app.world().resource::<PrimaryView>(),
+        PrimaryView::Organizer
+    );
+    assert_eq!(
+        app.world()
+            .resource::<crate::organizer::OrganizerClient>()
+            .inspector,
+        crate::organizer::OrganizerInspector::Evidence
+    );
+    assert!(matches!(
+        app.world()
+            .get::<Camera>(camera)
+            .expect("UI camera")
+            .clear_color,
+        ClearColorConfig::Default
+    ));
+}
+
+#[test]
 fn map_and_flat_controls_preserve_the_county_selected_on_geography() {
     let campaign = CampaignId::from_uuid(Uuid::nil());
     let mut state = ObserverSession::new(campaign);

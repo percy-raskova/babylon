@@ -107,7 +107,6 @@ fn text(value: impl Into<String>, size: f32, color: Color) -> impl Bundle {
         TextColor(color),
         TextLayout::linebreak(LineBreak::WordOrCharacter),
         Node {
-            min_width: px(0),
             max_width: percent(100),
             flex_shrink: 0.0,
             ..default()
@@ -1391,6 +1390,11 @@ pub(super) fn install(app: &mut App) {
 }
 
 #[cfg(test)]
+pub(crate) fn install_evidence_observer_for_test(app: &mut App) {
+    app.add_observer(open_evidence);
+}
+
+#[cfg(test)]
 mod tests {
     use super::super::draft::OrganizerDraft;
     use super::super::editor::NoteEditor;
@@ -1414,6 +1418,19 @@ mod tests {
     use bevy::time::TimeUpdateStrategy;
     use std::sync::mpsc::Sender;
     use uuid::Uuid;
+
+    #[test]
+    fn organizer_text_is_measured_at_readable_width_with_the_real_font() {
+        let size = crate::test_support::measure_ui_text(text(
+            "The organization has time to investigate workplace conditions.",
+            16.0,
+            Color::WHITE,
+        ));
+        assert!(
+            size.x > 100.0 && size.y < 100.0,
+            "actual text layout: {size:?}"
+        );
+    }
 
     #[derive(Resource, Default)]
     struct ArchiveRequests(Vec<bool>);

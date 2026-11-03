@@ -3,7 +3,8 @@
 use bevy::camera::visibility::InheritedVisibility;
 use bevy::ecs::schedule::IntoScheduleConfigs as _;
 use bevy::input_focus::InputFocusSystems;
-use bevy::prelude::{App, Plugin, PreUpdate, Query};
+use bevy::math::Vec2;
+use bevy::prelude::{App, Bundle, Plugin, PreUpdate, Query};
 use std::ffi::OsString;
 use std::sync::PoisonError;
 use std::sync::{Mutex, MutexGuard};
@@ -80,4 +81,96 @@ fn reveal_ui_nodes(mut nodes: Query<&mut InheritedVisibility>) {
             *visibility = InheritedVisibility::VISIBLE;
         }
     }
+}
+
+/// Measures a production text bundle through Bevy's real font and UI layout systems.
+pub(crate) fn measure_ui_text(bundle: impl Bundle) -> Vec2 {
+    use bevy::app::{HierarchyPropagatePlugin, PostUpdate, PropagateSet};
+    use bevy::asset::{AssetPlugin, Assets};
+    use bevy::camera::{ComputedCameraValues, RenderTargetInfo, Viewport};
+    use bevy::prelude::*;
+    use bevy::text::{self, TextPlugin};
+    use bevy::ui::ui_surface::UiSurface;
+    use bevy::ui::{self, update, widget, ComputedUiRenderTargetInfo, ComputedUiTargetCamera};
+
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        TextPlugin,
+        HierarchyPropagatePlugin::<ComputedUiTargetCamera>::new(PostUpdate),
+        HierarchyPropagatePlugin::<ComputedUiRenderTargetInfo>::new(PostUpdate),
+    ))
+    .init_resource::<UiScale>()
+    .init_resource::<UiSurface>()
+    .add_systems(
+        PostUpdate,
+        (
+            update::propagate_ui_target_cameras,
+            widget::measure_text_system
+                .after(text::load_font_assets_into_font_collection)
+                .after(text::detect_text_needs_rerender),
+            ui::ui_layout_system,
+        )
+            .chain(),
+    )
+    .configure_sets(
+        PostUpdate,
+        (
+            PropagateSet::<ComputedUiTargetCamera>::default(),
+            PropagateSet::<ComputedUiRenderTargetInfo>::default(),
+        )
+            .after(update::propagate_ui_target_cameras)
+            .before(widget::measure_text_system),
+    );
+    let viewport = UVec2::new(1366, 768);
+    app.world_mut().spawn((
+        Camera2d,
+        Camera {
+            computed: ComputedCameraValues {
+                target_info: Some(RenderTargetInfo {
+                    physical_size: viewport,
+                    scale_factor: 1.0,
+                }),
+                ..default()
+            },
+            viewport: Some(Viewport {
+                physical_size: viewport,
+                ..default()
+            }),
+            ..default()
+        },
+    ));
+    let font = Font::from_bytes(
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../assets/fonts/SourceSans3[wght].ttf"
+        ))
+        .to_vec(),
+    );
+    let font = app.world_mut().resource_mut::<Assets<Font>>().add(font);
+    let leaf = app.world_mut().spawn(bundle).id();
+    app.world_mut()
+        .get_mut::<TextFont>(leaf)
+        .expect("production text supplies a font")
+        .font = font.into();
+    let root = app
+        .world_mut()
+        .spawn(Node {
+            width: px(640),
+            height: px(300),
+            align_items: AlignItems::Start,
+            ..default()
+        })
+        .id();
+    app.world_mut().entity_mut(root).add_child(leaf);
+    app.finish();
+    app.cleanup();
+    for _ in 0..4 {
+        app.update();
+    }
+    app.world()
+        .get::<ComputedNode>(leaf)
+        .expect("production text has computed layout")
+        .size()
 }

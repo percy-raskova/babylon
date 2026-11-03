@@ -1,6 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::storage_witness;
+use crate::material_storage::MaterialProvenance;
 
 use crate::production_projection::diagnostics::{self, Stage};
 
@@ -429,9 +430,10 @@ impl MaterialHistory {
             if register_storage_bytes != expected.initial_register().canonical_bytes() {
                 // Preserve malformed-register diagnostics on the refusal path.
                 drop(
-                    MaterialWorldRegister::decode_external(
+                    MaterialWorldRegister::decode_external_with_resolver(
                         expected.material_catalog(),
                         register_storage_bytes.clone(),
+                        expected.stable_resolver(),
                     )
                     .map_err(|_| diagnostics::invalid(Stage::RegisterDecode, index))?,
                 );
@@ -457,8 +459,11 @@ impl MaterialHistory {
         )
         .map_err(|_| diagnostics::invalid(Stage::LookupDecode, index))?;
         let admitted = crate::material_storage::decode_typed(
-            expected.material_catalog(),
-            &self.lookup,
+            MaterialProvenance {
+                catalog: expected.material_catalog(),
+                opening: &self.lookup,
+                resolver: Some(expected.stable_resolver()),
+            },
             index,
             &register_storage_bytes,
             receipts
@@ -768,6 +773,7 @@ pub(crate) fn production_history(
                         foundation_digest: expected.digest(),
                         components: &expected.component_identity,
                         catalog: expected.material_catalog(),
+                        resolver: expected.stable_resolver(),
                     },
                     (
                         &history.lookup,
@@ -824,6 +830,7 @@ pub(crate) fn authenticated_history_endpoints<'w>(
             foundation_digest: expected.digest(),
             components: &expected.component_identity,
             catalog: expected.material_catalog(),
+            resolver: expected.stable_resolver(),
         },
         ObserverEndpointLookup {
             opening: &history.lookup,

@@ -58,7 +58,7 @@ if [ "${BABYLON_POSTGRES_IMAGE_ID+x}" = x ] &&
 fi
 
 case "$LIVE_FOCUS" in
-  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | client | national_storage) ;;
+  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | city_pd | client | national_storage) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
 
@@ -590,6 +590,10 @@ if [ "$status" -eq 0 ]; then
     organizer)
       run_phase organizer 900 cargo test -p babylon-persistence --test observer_material_live \
         organizer:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      ;;
+    city_pd)
+      run_phase city_pd 1800 cargo test -p babylon-persistence --test observer_material_live \
+        organizer::state_opponent::national_city_pd_committed_contact_and_paid_visit_survive_restart --locked -- --nocapture --ignored --test-threads=1 || status=$?
       ;;
     client)
       run_phase client 900 cargo test -p babylon-client --test dossier_cli_live \

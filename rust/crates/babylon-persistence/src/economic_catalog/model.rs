@@ -7,6 +7,7 @@
 use crate::michigan_sectors::MichiganSectorCode;
 use crate::national_cohorts::CohortKey;
 use babylon_material_circuit::HouseholdTimePolicy;
+use babylon_practice_contract::CityPdConfig;
 
 use babylon_graph::stable_element::StableElementKey;
 use babylon_kernel::currency::Currency;
@@ -299,6 +300,8 @@ pub struct EconomicCatalogInput {
     pub sources: Vec<SourceArtifact>,
     pub geography: CatalogGeography,
     pub organizer: Option<OrganizerConfig>,
+    /// The captured national opponent and its independent authority.
+    pub city_pd: Option<CityPdConfig>,
 }
 
 /// Captured user-facing commodity identity; labels never come from guessing a hash.

@@ -640,3 +640,90 @@ fn organizer_durable_ruling_failure_retry_earned_history_and_contact_recovery() 
     assert_eq!(runtime.session().material().canonical_bytes(), saved);
     qualify_resume_and_continuation(&mut runtime, &inquiry);
 }
+
+mod state_opponent {
+    use super::{
+        support, CampaignId, DisposableTarget, DurableMaterialRuntime, OrganizerChoice, Uuid,
+    };
+    #[test]
+    #[ignore = "requires the task-owned disposable PostgreSQL runtime and national source"]
+    fn national_city_pd_committed_contact_and_paid_visit_survive_restart() {
+        use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+        use babylon_material_circuit::AgencyAttendanceOutcome;
+        use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
+        use babylon_practice_contract::{CityPdDecision, PublicVenueRecordKind};
+
+        let target = DisposableTarget::create();
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7032));
+        let foundation = CapturedEconomicCatalog::capture_national_campaign(
+            babylon_persistence::economic_catalog::national_catalog_input(),
+            campaign,
+        )
+        .expect("actual national capture")
+        .create_foundation(
+            ReplaySessionId::try_from("national-city-pd-pg").expect("session"),
+            ReplaySeed::new(319),
+        )
+        .expect("actual national foundation");
+        let digest = foundation.digest();
+        let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation)
+            .expect("persist actual opening");
+        assert!(matches!(
+            runtime
+                .session()
+                .material()
+                .city_pd()
+                .expect("PD")
+                .state
+                .last_decision
+                .as_ref()
+                .expect("opening decision")
+                .decision,
+            CityPdDecision::NoFunds {
+                available_micros: 0,
+                ..
+            }
+        ));
+        let reinforce = super::command(&runtime, OrganizerChoice::Reinforce, 42);
+        runtime
+            .submit_organizer_command(&reinforce)
+            .expect("admit contact command");
+        support::advance_material_period(&mut runtime);
+        let p1 = runtime.session().material().canonical_bytes().to_vec();
+        let contact = runtime
+            .session()
+            .material()
+            .public_venue()
+            .expect("venue")
+            .records
+            .iter()
+            .find(|record| {
+                record.period == 1
+                    && matches!(record.kind, PublicVenueRecordKind::ContactCompleted { .. })
+            })
+            .expect("committed P1 contact")
+            .source_id;
+        drop(runtime);
+        let mut runtime = DurableMaterialRuntime::open(&target.writer, campaign, digest)
+            .expect("cold open authenticates P1 contact and original debit");
+        assert_eq!(runtime.session().material().canonical_bytes(), p1);
+        support::advance_material_period(&mut runtime);
+        let register = runtime.session().material();
+        let pd = register.city_pd().expect("PD");
+        let [attempt] = pd.attempts.as_slice() else {
+            panic!("one P2 attempt")
+        };
+        assert_eq!(attempt.funding.outcome, AgencyAttendanceOutcome::Paid);
+        assert_eq!(attempt.funding.paid.micro_units(), 24_000_000);
+        assert_eq!(attempt.funding.attended_hours, 1);
+        assert_eq!(attempt.receipt.acquired_public_fact_ids, vec![contact]);
+        assert!(attempt.receipt.player_witness_evidence_id.is_some());
+        let p2 = register.canonical_bytes().to_vec();
+        drop(runtime);
+        let mut runtime = DurableMaterialRuntime::open(&target.writer, campaign, digest)
+            .expect("cold open authenticates original P2 decision, payment and source");
+        assert_eq!(runtime.session().material().canonical_bytes(), p2);
+        support::advance_material_period(&mut runtime);
+        assert_eq!(runtime.session().completed_tick(), 3);
+    }
+}

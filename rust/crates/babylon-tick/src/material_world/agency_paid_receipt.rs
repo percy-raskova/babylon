@@ -359,3 +359,32 @@ pub(super) fn decode(
         wage: Currency::from_micro_units(i128::from_be_bytes(cursor.take()?)),
     })
 }
+
+/// Validate a retained nonpaid attempt against the original committed material receipts.
+/// The caller must separately authenticate the complete receipt bytes and original register.
+///
+/// # Errors
+/// Refuses a paid result, conflicting wage/attendance evidence, or missing cancellation.
+pub fn validate_committed_nonpaid(
+    funding: &AgencyObservationFundingReceipt,
+    receipt_bytes: &[u8],
+) -> Result<(), MaterialWorldError> {
+    if funding.outcome == AgencyAttendanceOutcome::Paid {
+        return Err(MaterialWorldError::Wire);
+    }
+    let receipts = super::decode_material_receipts(receipt_bytes)?;
+    if receipts
+        .agency_paid
+        .iter()
+        .any(|row| row.intent_id == funding.input.intent_id)
+    {
+        return Err(MaterialWorldError::Wire);
+    }
+    validate_nonpaid(
+        std::slice::from_ref(funding),
+        &receipts.wage_accruals,
+        &receipts.money_transfers,
+        &receipts.household_time,
+        receipts.resolve_tick,
+    )
+}

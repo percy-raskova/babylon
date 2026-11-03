@@ -445,7 +445,10 @@ pub(super) fn approach(view: &OrganizerView, choice: OrganizerChoice) -> String 
             };
             format!("{hours} organizer-hours · workplace committee\n{report}\n{displacement}\nResolves period {resolves} · partner decides")
         }
-        OrganizerChoice::Reinforce => format!("{hours} organizer-hours · workplace committee\nSeek contact to renew report sharing\n{displacement}\nResolves period {resolves} · partner decides"),
+        OrganizerChoice::Reinforce => {
+            let disclosure = if view.public_workplace_contact { "\nA completed contact is publicly recorded at the workplace desk" } else { "" };
+            format!("{hours} organizer-hours · workplace committee\nSeek contact to renew report sharing{disclosure}\n{displacement}\nResolves period {resolves} · partner decides")
+        },
         OrganizerChoice::Hold => {
             let routine = if view.standing.authorized {
                 "Attempt the saved contact practice\nYour routine stays authorized"
@@ -612,30 +615,7 @@ pub(super) fn review(
         return resolving_review(client);
     }
     if let Some(commitment) = &client.commitment {
-        if matches!(
-            commitment.command.choice,
-            OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
-        ) {
-            return accepted_aid_review(client, commitment);
-        }
-        if commitment.command.choice == OrganizerChoice::Collect {
-            return accepted_collection_review(client, commitment);
-        }
-        let mut text = format!(
-            "ACCEPTED · resolves period {}\n{}",
-            commitment.resolves_period,
-            choice(commitment.command.choice)
-        );
-        if let Some(view) = &client.view {
-            let hours = practice_hours(view, commitment.command.choice);
-            let _ = write!(
-                text,
-                " · {hours} of {} organizer-hours committed",
-                view.available_hours
-            );
-        }
-        text.push_str("\nRuling fixed. Advance to resolve; partners decide their participation.");
-        return text;
+        return accepted_review(client, commitment);
     }
     let Some(preview) = &client.preview else {
         let advance = client.view.as_ref().map_or_else(
@@ -673,6 +653,14 @@ pub(super) fn review(
                 "One specific practice; the neighborhood routine remains paused.",
         }
     );
+    if preview.choice == OrganizerChoice::Reinforce
+        && client
+            .view
+            .as_ref()
+            .is_some_and(|view| view.public_workplace_contact)
+    {
+        text.push_str("\nThe public workplace desk records a completed contact. Confirming alone does not create a record.");
+    }
     if matches!(
         preview.choice,
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
@@ -694,6 +682,33 @@ pub(super) fn review(
             "\nPartner participation is independent. Confirm sets our ruling; Advance resolves it.",
         );
     }
+    text
+}
+
+fn accepted_review(client: &OrganizerClient, commitment: &OrganizerCommitment) -> String {
+    if matches!(
+        commitment.command.choice,
+        OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+    ) {
+        return accepted_aid_review(client, commitment);
+    }
+    if commitment.command.choice == OrganizerChoice::Collect {
+        return accepted_collection_review(client, commitment);
+    }
+    let mut text = format!(
+        "ACCEPTED · resolves period {}\n{}",
+        commitment.resolves_period,
+        choice(commitment.command.choice)
+    );
+    if let Some(view) = &client.view {
+        let hours = practice_hours(view, commitment.command.choice);
+        let _ = write!(
+            text,
+            " · {hours} of {} organizer-hours committed",
+            view.available_hours
+        );
+    }
+    text.push_str("\nRuling fixed. Advance to resolve; partners decide their participation.");
     text
 }
 
@@ -1678,6 +1693,15 @@ mod tests {
         }
     }
 
+    #[test]
+    fn workplace_publication_is_disclosed_only_for_the_captured_route() {
+        let mut view = view();
+        assert!(!approach(&view, OrganizerChoice::Reinforce).contains("publicly recorded"));
+        view.public_workplace_contact = true;
+        assert!(approach(&view, OrganizerChoice::Reinforce).contains("publicly recorded"));
+        assert!(!approach(&view, OrganizerChoice::Hold).contains("publicly recorded"));
+    }
+
     fn view() -> OrganizerView {
         OrganizerView {
             period: 5,
@@ -1693,6 +1717,7 @@ mod tests {
             available_hours: 16,
             inquiry_hours: 12,
             contact_hours: 8,
+            public_workplace_contact: false,
             content_digest: [2; 32],
             resource_digest: [3; 32],
             standing: OrganizerStandingWork {

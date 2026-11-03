@@ -999,6 +999,7 @@ fn effect_row(effect: EffectSignature) -> String {
         EffectSignature::MaterialCycle => "material-cycle".to_owned(),
         EffectSignature::OrganizerProducts => "organizer-products".to_owned(),
         EffectSignature::OrganizerPractice => "organizer-practice".to_owned(),
+        EffectSignature::CityPdObserve => "city-pd-observe".to_owned(),
         EffectSignature::NodeField(field) => format!("node:{field}"),
         EffectSignature::EdgeField(field) => format!("edge:{field}"),
         EffectSignature::HyperedgeField(field) => format!("hyperedge:{field}"),

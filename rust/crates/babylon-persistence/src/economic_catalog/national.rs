@@ -58,7 +58,9 @@ impl NationalSources {
             ],
         )?;
         validate_declarations(input)?;
-        let expected_rules = if input.organizer.is_some() {
+        let expected_rules = if input.city_pd.is_some() {
+            super::preset::national_city_pd_rules()
+        } else if input.organizer.is_some() {
             super::preset::national_organizer_rules()
         } else {
             include_bytes!("../../../../../content/scenarios/national/material-cycle.bsl").to_vec()

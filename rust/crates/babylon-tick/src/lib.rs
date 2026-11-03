@@ -73,3 +73,5 @@ pub(crate) use tick_runner::{
 };
 #[cfg(test)]
 pub(crate) use tick_runner::{HashBoundary, PreparedEventBatchSink};
+
+pub mod public_venue;

@@ -17,8 +17,13 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId, RngSeedContext};
 use std::collections::{HashMap, HashSet};
 
 fn source(operation: &str, role: &str, position: &str) -> String {
+    let id = if operation == "city-pd-observe" {
+        "state-opponent/observe-public-activity".to_owned()
+    } else {
+        format!("organizer/{operation}")
+    };
     format!(
-        "(rule organizer/{operation} :role {role} :evidence designed \
+        "(rule {id} :role {role} :evidence designed \
          :material-basis \"Resolve captured commitments and earned reports.\" \
          :fuel 1000000 (anchor :{position} ooda) ({operation}))"
     )
@@ -45,10 +50,11 @@ fn load(source: &str) -> Result<LoadedRule, LoadError> {
 }
 
 #[test]
-fn organizer_operations_load_only_as_explicit_native_execution() {
+fn scheduled_operations_load_only_as_explicit_native_execution() {
     for (operation, role, position) in [
         ("organizer-products", "mechanic", "before"),
         ("organizer-practice", "intent", "after"),
+        ("city-pd-observe", "intent", "after"),
     ] {
         let rule = load(&source(operation, role, position)).expect("governed organizer operation");
         assert_ne!(rule.execution, RuleExecution::Graph);
@@ -59,10 +65,11 @@ fn organizer_operations_load_only_as_explicit_native_execution() {
 }
 
 #[test]
-fn organizer_graph_refusal_identifies_the_operation_even_without_subjects() {
+fn native_graph_refusal_identifies_the_operation_even_without_subjects() {
     for (operation, role, position) in [
         ("organizer-products", "mechanic", "before"),
         ("organizer-practice", "intent", "after"),
+        ("city-pd-observe", "intent", "after"),
     ] {
         let loaded = load(&source(operation, role, position)).expect("the fixture artifact loads");
         let mut graph = MemoryGraph::new();
@@ -108,10 +115,11 @@ fn organizer_graph_refusal_identifies_the_operation_even_without_subjects() {
 }
 
 #[test]
-fn organizer_native_bodies_are_not_certified_by_a_graph_only_synthetic_audit() {
+fn native_bodies_are_not_certified_by_a_graph_only_synthetic_audit() {
     for (operation, role, position) in [
         ("organizer-products", "mechanic", "before"),
         ("organizer-practice", "intent", "after"),
+        ("city-pd-observe", "intent", "after"),
     ] {
         let loaded = load(&source(operation, role, position)).expect("the fixture artifact loads");
         assert_eq!(
@@ -129,10 +137,11 @@ fn organizer_native_bodies_are_not_certified_by_a_graph_only_synthetic_audit() {
 }
 
 #[test]
-fn organizer_operations_refuse_nested_extra_or_wrong_role_execution() {
+fn native_operations_refuse_nested_extra_or_wrong_role_execution() {
     for (operation, role, position) in [
         ("organizer-products", "mechanic", "before"),
         ("organizer-practice", "intent", "after"),
+        ("city-pd-observe", "intent", "after"),
     ] {
         let original = source(operation, role, position);
         for replacement in [
@@ -151,5 +160,10 @@ fn organizer_operations_refuse_nested_extra_or_wrong_role_execution() {
         &source("organizer-practice", "intent", "after")
             .replace("organizer/organizer-practice", "unapproved/practice")
     )
+    .is_err());
+    assert!(load(&source("city-pd-observe", "intent", "after").replace(
+        "state-opponent/observe-public-activity",
+        "unapproved/observation"
+    ))
     .is_err());
 }

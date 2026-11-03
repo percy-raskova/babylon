@@ -1,4 +1,5 @@
 //! Capture one consistent Open snapshot; reconstruct only after its transaction ends.
+
 use super::{
     capture_identity, material_storage, runtime_checkpoint, CampaignId, CapturedMaterialFoundation,
     Config, DurableMaterialRuntime, FoundationReadSource, HypergraphStore, IdentifiedMaterialTick,
@@ -6,6 +7,7 @@ use super::{
     MaterialReplaySession, MaterialRuntimeError, MaterialRuntimeFoundation, NoTls,
     StoredMaterialTick, StoredTickReadSource,
 };
+use babylon_tick::public_venue::AdmittedPublicVenueSource;
 use material_storage::Error;
 use material_storage::OpeningRegister;
 use postgres::Client;
@@ -104,14 +106,29 @@ pub(super) fn restore<C>(
                 &components,
                 &lookup,
                 foundation.material_catalog(),
+                foundation.graph.stable_resolver(),
             ),
             MaterialEnvelopeRead::CanonicalBytes,
         )?)
     } else {
         None
     };
+    let sources = stored
+        .as_ref()
+        .map(|stored| {
+            reconstruct_sources(
+                &mut client,
+                campaign,
+                captured.tick,
+                &foundation,
+                &lookup,
+                stored,
+            )
+        })
+        .transpose()?;
     let mut session = foundation.into_session()?;
-    let (tail, lookup_chain) = restore_checkpoint(&mut session, stored, initial_lookup_chain)?;
+    let (tail, lookup_chain) =
+        restore_checkpoint(&mut session, stored, initial_lookup_chain, sources)?;
     revalidate_capture(
         &mut client,
         campaign,
@@ -132,19 +149,64 @@ pub(super) fn restore<C>(
     })
 }
 
+fn reconstruct_sources(
+    client: &mut Client,
+    campaign: CampaignId,
+    tick: u64,
+    foundation: &MaterialRuntimeFoundation,
+    lookup: &OpeningRegister,
+    stored: &StoredMaterialTick<'_>,
+) -> Result<Vec<AdmittedPublicVenueSource>, MaterialRuntimeError> {
+    let scope = foundation
+        .graph
+        .stable_graph_state()
+        .map_err(MaterialReplayError::Graph)?
+        .scenario_scope()
+        .to_owned();
+    let components = MaterialComponentIdentity::from_foundation(&foundation.graph_foundation);
+    let authority = MaterialReadAuthority::cold(
+        &scope,
+        foundation.digest(),
+        &components,
+        lookup,
+        foundation.material_catalog(),
+        foundation.graph.stable_resolver(),
+    );
+    let mut transaction = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()?;
+    if super::read_tail_tick(&mut transaction, campaign)? != tick {
+        return Err(MaterialRuntimeError::TailConflict);
+    }
+    let sources = super::venue_restore::reconstruct_sources(
+        &mut transaction,
+        campaign,
+        &foundation.register,
+        &stored.register,
+        authority,
+        stored.lookup_chain,
+    )?;
+    transaction.commit()?;
+    Ok(sources)
+}
+
 fn restore_checkpoint(
     session: &mut MaterialReplaySession<HypergraphStore>,
     stored: Option<StoredMaterialTick<'static>>,
     initial_lookup_chain: [u8; 32],
+    sources: Option<Vec<AdmittedPublicVenueSource>>,
 ) -> Result<(Option<IdentifiedMaterialTick>, [u8; 32]), MaterialRuntimeError> {
     let Some(stored) = stored else {
         return Ok((None, initial_lookup_chain));
     };
-    session.restore_full_checkpoint(
+    session.restore_full_checkpoint_with_sources(
         &stored.graph,
         &stored.material,
         &stored.sections.world_register,
         stored.register.into_owned(),
+        sources.ok_or(MaterialRuntimeError::InvalidCheckpoint)?,
     )?;
     if session.current_world_hash()? != stored.identity.result_world_hash() {
         return Err(MaterialRuntimeError::InvalidCheckpoint);

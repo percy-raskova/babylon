@@ -1569,7 +1569,12 @@ fn external_register_reopen_adopts_authenticated_bytes_and_rejects_wire_changes(
         std::ptr::eq(owned.canonical_bytes().as_ptr(), allocation),
         "owned admission must retain the exact authenticated input allocation"
     );
-    let domain = b"babylon.material-world-register.v5\0".len();
+    let domain = b"babylon.material-world-register.v6\0".len();
+    let mut old_v5 = canonical.to_vec();
+    old_v5[domain - 2] = b'5';
+    old_v5[domain..domain + 4].copy_from_slice(&5_u32.to_be_bytes());
+    MaterialWorldRegister::decode_external(&catalog, old_v5)
+        .expect_err("old v5 register must be refused before admission");
     for offset in [0, domain, domain + 11, domain + 19, canonical.len() - 1] {
         let mut invalid = canonical.to_vec();
         invalid[offset] ^= 1;

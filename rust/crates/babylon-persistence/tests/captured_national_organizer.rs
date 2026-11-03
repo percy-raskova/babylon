@@ -1,8 +1,14 @@
 //! Actual national source, optional organizer authority and cold foundation admission.
+
 use babylon_kernel::content_digest::sha256_of;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+use babylon_material_circuit::AccountId;
+use babylon_material_circuit::OrganizationAccountId;
+use babylon_material_circuit::PublicAccountId;
 
-use babylon_persistence::economic_catalog::{CapturedEconomicCatalog, SourceArtifactKind as Kind};
+use babylon_persistence::economic_catalog::{
+    CapturedEconomicCatalog, NationalOpponent, SourceArtifactKind as Kind,
+};
 use babylon_persistence::economic_content::EconomicContentAdmission;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::material_runtime::MaterialRuntimeFoundation;
@@ -26,7 +32,7 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
     let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7031));
     let raw = CapturedEconomicCatalog::capture(national_capture::input(), None)
         .expect("the fixture captures the authored state");
-    assert_eq!(raw.compiler_version(), "national-world-v5");
+    assert_eq!(raw.compiler_version(), "national-world-v6");
     assert_eq!(
         &raw.canonical_bytes()[raw.canonical_bytes().len() - 5..],
         &[0; 5]
@@ -39,6 +45,10 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/national/organizer-cycle.bsl"
     ));
+    let city_pd_rules = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../content/scenarios/national/state-opponent-cycle.bsl"
+    ));
     assert_eq!(
         raw.source(Kind::Rules)
             .expect("the fixture call `source` succeeds for the authored inputs"),
@@ -47,9 +57,14 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
     let playable =
         CapturedEconomicCatalog::capture_national_campaign(national_capture::input(), campaign)
             .expect("the fixture captures the authored state");
-    // One complete comparison, without cloning a second expected national opening.
-    // This includes every stock, cash, workforce and modeled household-time policy.
-    assert_eq!(raw.opening(), playable.opening());
+    assert_agency_opening(&raw, &playable);
+    let playable_rules = playable.source(Kind::Rules).expect("captured rules");
+    assert!(
+        playable_rules
+            .windows(b"state-opponent/observe-public-activity".len())
+            .any(|rule| rule == b"state-opponent/observe-public-activity"),
+        "the normal national campaign must capture its scheduled City PD rule"
+    );
     let policy = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../content/scenarios/national/defines.toml"
@@ -69,9 +84,12 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
     assert_ne!(raw.digest(), playable.digest());
     let raw_frame_size = raw.canonical_bytes().len();
     drop(raw);
+    assert_no_opponent_route(&playable, campaign);
     let mut rules = material_rules.to_vec();
     rules.push(b'\n');
     rules.extend_from_slice(organizer_rules);
+    rules.push(b'\n');
+    rules.extend_from_slice(city_pd_rules);
     assert_eq!(
         playable
             .source(Kind::Rules)
@@ -129,7 +147,7 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
         cold_catalog,
         &expected_config,
         raw_frame_size,
-        organizer_rules.len(),
+        organizer_rules.len() + 1 + city_pd_rules.len(),
     );
     // Actual native session admission validates the captured organizer rules.
     let session = foundation
@@ -147,6 +165,74 @@ fn actual_national_playable_source_and_cold_foundation_preserve_one_opening() {
         .validate_header(admitted.duration(), &catalog_digest, &foundation_digest, 0)
         .expect("the authored fixture satisfies the rule");
     assert_native_bindings(&admitted, &expected_config, &targets);
+}
+
+fn assert_agency_opening(raw: &CapturedEconomicCatalog, playable: &CapturedEconomicCatalog) {
+    // The agency's future appropriation must not finance its own opening or
+    // change the pre-existing public cash reserve.
+    let before = raw.opening();
+    let after = playable.opening();
+    let pd = playable.city_pd_config().expect("national agency captured");
+    let agency = AccountId::Organization(OrganizationAccountId::from_bytes(pd.agency_account_id));
+    assert_eq!(
+        after.institutional_cash.len(),
+        before.institutional_cash.len() + 1
+    );
+    assert_eq!(
+        &after.institutional_cash[..before.institutional_cash.len()],
+        &before.institutional_cash
+    );
+    let agency_cash = after.institutional_cash.last().expect("agency cash");
+    assert_eq!(agency_cash.id, agency);
+    assert_eq!(agency_cash.cash.micro_units(), 0);
+    let public = PublicAccountId::from_bytes(pd.public_account_id);
+    let old_budget = before
+        .institutions
+        .public_budgets
+        .iter()
+        .find(|row| row.public_account == public)
+        .expect("Wayne public budget");
+    let new_budget = after
+        .institutions
+        .public_budgets
+        .iter()
+        .find(|row| row.public_account == public)
+        .expect("Wayne public budget");
+    assert_eq!(
+        new_budget.period_cap.micro_units(),
+        old_budget.period_cap.micro_units() + 24_000_000
+    );
+    assert!(after
+        .institutions
+        .public_allocations
+        .iter()
+        .any(|row| row.public_account == public
+            && row.recipient == agency
+            && row.amount_per_period.micro_units() == 24_000_000
+            && row.priority == 0
+            && row.treatment
+                == babylon_material_circuit::PublicTransferTreatment::AgencyAppropriation));
+    assert_eq!(before.households, after.households);
+    assert_eq!(before.employment, after.employment);
+    assert_eq!(before.staffing, after.staffing);
+    assert_eq!(before.sites, after.sites);
+    assert_eq!(before.policies, after.policies);
+}
+
+fn assert_no_opponent_route(playable: &CapturedEconomicCatalog, campaign: CampaignId) {
+    let control = CapturedEconomicCatalog::capture_national_campaign_with_opponent(
+        national_capture::input(),
+        campaign,
+        NationalOpponent::None,
+    )
+    .expect("the no-PD control captures the same organizer route");
+    assert!(control.city_pd_config().is_none());
+    assert_eq!(control.organizer_config(), playable.organizer_config());
+    assert!(!control
+        .source(Kind::Rules)
+        .expect("control rules")
+        .windows(b"city-pd-observe".len())
+        .any(|row| row == b"city-pd-observe"));
 }
 
 fn assert_admitted_inputs(
@@ -293,16 +379,28 @@ fn assert_source_bindings(
 ) -> Vec<String> {
     let config_bytes = babylon_practice_contract::encode_organizer_config(config)
         .expect("the fixture value encodes to its canonical bytes");
+    let pd_bytes = babylon_practice_contract::encode_city_pd_config(
+        catalog.city_pd_config().expect("national agency captured"),
+    )
+    .expect("agency terms encode");
     assert_eq!(
         catalog.canonical_bytes().len(),
-        raw_frame_size + 1 + organizer_rule_size + config_bytes.len()
+        raw_frame_size + 1 + organizer_rule_size + config_bytes.len() + pd_bytes.len()
     );
-    let marker = catalog.canonical_bytes().len() - config_bytes.len() - 5;
+    let marker = catalog.canonical_bytes().len() - pd_bytes.len() - 5 - config_bytes.len() - 5;
     assert_eq!(catalog.canonical_bytes()[marker], 1);
-    assert_eq!(&catalog.canonical_bytes()[marker + 5..], config_bytes);
-    let mut basis = catalog.canonical_bytes()[..marker].to_vec();
-    basis.extend_from_slice(&[0; 5]);
-    assert_eq!(config.content_digest, sha256_of(&basis));
+    assert_eq!(
+        &catalog.canonical_bytes()[marker + 5..marker + 5 + config_bytes.len()],
+        config_bytes
+    );
+    assert_eq!(
+        catalog.canonical_bytes()[marker + 5 + config_bytes.len()],
+        1
+    );
+    assert_eq!(
+        &catalog.canonical_bytes()[marker + 10 + config_bytes.len()..],
+        pd_bytes
+    );
     let aid = catalog
         .national_aid_capture()
         .expect("the fixture call `national_aid_capture` succeeds for the authored inputs");

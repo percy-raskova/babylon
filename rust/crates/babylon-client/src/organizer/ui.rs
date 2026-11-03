@@ -1515,6 +1515,7 @@ mod tests {
                 available_hours: 16,
                 inquiry_hours: 12,
                 contact_hours: 8,
+                public_workplace_contact: false,
                 content_digest: [2; 32],
                 resource_digest: [3; 32],
                 standing: OrganizerStandingWork {

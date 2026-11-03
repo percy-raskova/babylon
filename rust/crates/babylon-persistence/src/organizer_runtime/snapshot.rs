@@ -51,14 +51,15 @@ pub(crate) fn aid_snapshot_matches(
     let journal = register
         .organizer_journal()
         .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
-    Ok(babylon_practice_contract::organizer_view(
+    let mut expected_view = babylon_practice_contract::organizer_view(
         config,
         state,
         journal,
         config.controlled_actor_id,
     )
-    .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?
-        == snapshot.view
+    .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
+    expected_view.public_workplace_contact = register.public_venue().is_some();
+    Ok(expected_view == snapshot.view
         && material_preview::projections(catalog, register.state(), config, state.period)?
             == snapshot.aid
         && state
@@ -89,13 +90,14 @@ pub(crate) fn captured_organizer_snapshot(
     let journal = register
         .organizer_journal()
         .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
-    let view = babylon_practice_contract::organizer_view(
+    let mut view = babylon_practice_contract::organizer_view(
         config,
         state,
         journal,
         config.controlled_actor_id,
     )
     .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
+    view.public_workplace_contact = register.public_venue().is_some();
     Ok(OrganizerSnapshot {
         aid: material_preview::projections(catalog, register.state(), config, state.period)?,
         pending_aid: state

@@ -37,4 +37,4 @@ pub use error::EconomicCatalogError;
 pub use compile::CompiledEconomicOpening;
 pub use michigan::import_michigan_opening;
 
-pub use capture::CapturedEconomicCatalog;
+pub use capture::{CapturedEconomicCatalog, NationalOpponent};

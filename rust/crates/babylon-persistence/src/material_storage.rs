@@ -27,11 +27,9 @@ pub(crate) use register::LOOKUP_DOMAIN;
 use register::{admitted_count, Cursor, Result};
 pub use register::{
     decode, encode, initial_lookup_chain, lookup_identity, read_period_lookup, seed,
-    DecodedPeriodLookup, EncodedMaterial, Error, LookupAnchor,
+    DecodedPeriodLookup, EncodedMaterial, Error, LookupAnchor, MaterialProvenance,
 };
-pub(crate) use register::{
-    decode_typed, decode_typed_with_witness, MaterialProvenance, MAX_LOOKUP_BYTES,
-};
+pub(crate) use register::{decode_typed, decode_typed_with_witness, MAX_LOOKUP_BYTES};
 
 pub use register::{
     MAX_STORED_MATERIAL_LOOKUP_DELTA_BYTES, MAX_STORED_MATERIAL_RECEIPT_BYTES,

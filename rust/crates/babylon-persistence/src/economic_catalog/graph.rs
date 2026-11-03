@@ -1,4 +1,5 @@
 //! Native instances use the ordinary BSL declaration/type admission path.
+
 use super::{EconomicCatalogError, EconomicOpening};
 use crate::national_counties::NationalCountyReference;
 use crate::national_economy::NationalAidCapture;
@@ -6,6 +7,7 @@ use babylon_bsl::scenario_seed::{
     EdgeSeed, GraphSeed, HyperedgeSeed, NodeSeed, SeedAttribute, SeedValue,
 };
 use babylon_graph::stable_element::StableElementKey;
+use babylon_practice_contract::CityPdConfig;
 use babylon_practice_contract::OrganizerConfig;
 use std::collections::{BTreeMap, BTreeSet};
 use std::result::Result as StdResult;
@@ -48,6 +50,7 @@ pub(super) fn national_seed(
     counties: &NationalCountyReference,
     aid: &NationalAidCapture,
     organizer: Option<&OrganizerConfig>,
+    city_pd: Option<&CityPdConfig>,
 ) -> Result<GraphSeed> {
     let mut nodes = Vec::new();
     for county in counties.counties() {
@@ -121,6 +124,23 @@ pub(super) fn national_seed(
         nodes.extend(organizer.nodes);
         edges = organizer.edges;
         hyperedges = organizer.hyperedges;
+    }
+    if city_pd.is_some() {
+        nodes.push(node(
+            scope,
+            &crate::national_economy::city_pd::actor_key(),
+            "ORGANIZATION",
+            vec![
+                SeedAttribute {
+                    field: "organization/kind".into(),
+                    value: SeedValue::Enum {
+                        enum_type: "OrgKind".into(),
+                        member: "STATE_APPARATUS".into(),
+                    },
+                },
+                attribute("organization/county-fips", 26163)?,
+            ],
+        )?);
     }
     GraphSeed::try_new(nodes, edges, hyperedges).map_err(EconomicCatalogError::from)
 }

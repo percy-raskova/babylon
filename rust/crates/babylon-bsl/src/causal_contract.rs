@@ -372,6 +372,14 @@ pub const GOVERNED_RULE_ATTRIBUTIONS: &[GovernedRuleAttribution] = &[
     governed_attribution("production/p4-extraction-intensity", RuleRole::Mechanic),
     governed_attribution("solidarity/p0-transmit", RuleRole::Mechanic),
     GovernedRuleAttribution {
+        rule_id: "state-opponent/observe-public-activity",
+        role: RuleRole::Intent,
+        evidence: EvidenceClass::Designed,
+        owner: "Director",
+        date: "2026-10-29",
+        adr: "ADR291",
+    },
+    GovernedRuleAttribution {
         rule_id: "struggle/spark-mechanic",
         role: RuleRole::Mechanic,
         evidence: EvidenceClass::Designed,
@@ -438,6 +446,8 @@ pub enum EffectSignature {
     OrganizerProducts,
     /// The bounded organizer commitment operation admitted for one exact rule.
     OrganizerPractice,
+    /// One overt visit limited to lawfully available public records.
+    CityPdObserve,
     /// A node attribute qualified name.
     NodeField(String),
     /// An edge attribute qualified name.
@@ -472,6 +482,8 @@ pub enum AllowanceKind {
 pub enum AllowedEffect {
     /// One typed operation with an independently checked organizer footprint.
     OrganizerPractice,
+    /// The exact bounded City PD native observation operation.
+    CityPdObserve,
     /// A node field.
     NodeField(&'static str),
     /// An edge field.
@@ -485,7 +497,8 @@ pub enum AllowedEffect {
 impl AllowedEffect {
     fn matches(self, actual: &EffectSignature) -> bool {
         match (self, actual) {
-            (Self::OrganizerPractice, EffectSignature::OrganizerPractice) => true,
+            (Self::OrganizerPractice, EffectSignature::OrganizerPractice)
+            | (Self::CityPdObserve, EffectSignature::CityPdObserve) => true,
             (Self::NodeField(expected), EffectSignature::NodeField(actual))
             | (Self::EdgeField(expected), EffectSignature::EdgeField(actual))
             | (Self::HyperedgeField(expected), EffectSignature::HyperedgeField(actual))
@@ -520,9 +533,18 @@ const RECOGNITION_OWNER: &str = "Director";
 const RECOGNITION_DATE: &str = "2026-08-23";
 const RECOGNITION_ADR: &str = "ADR224";
 
-/// The complete governed allowance table. External events remain default-deny;
-/// the sole intent allowance resolves the bounded organizer practice.
+/// The complete governed allowance table. External events remain default-deny.
 pub const GOVERNED_EFFECT_ALLOWANCES: &[GovernedEffectAllowance] = &[
+    GovernedEffectAllowance {
+        rule_id: "state-opponent/observe-public-activity",
+        role: RuleRole::Intent,
+        effect: AllowedEffect::CityPdObserve,
+        kind: AllowanceKind::NextWeekIntent,
+        reason: "resolve one funded overt visit and retain only lawfully observed public facts",
+        owner: "Director",
+        date: "2026-10-29",
+        adr: "ADR291",
+    },
     GovernedEffectAllowance {
         rule_id: "organizer/organizer-practice",
         role: RuleRole::Intent,
@@ -961,6 +983,8 @@ fn walk_effects_with_limits(
             effects.push(EffectSignature::OrganizerProducts);
         } else if head == "organizer-practice" {
             effects.push(EffectSignature::OrganizerPractice);
+        } else if head == "city-pd-observe" {
+            effects.push(EffectSignature::CityPdObserve);
         } else if let Some(effect) = field_effect(items, head) {
             effects.push(effect);
         } else if let Some(verb) = ShapeVerb::parse(head) {
@@ -1582,8 +1606,15 @@ mod tests {
                 .expect("every allowance rule must have a governed attribution");
             assert_eq!(attribution.role, allowance.role);
             assert_ne!(attribution.role, RuleRole::Mechanic);
-            let expected_evidence = if allowance.rule_id == "organizer/organizer-practice" {
-                assert_eq!(allowance.effect, AllowedEffect::OrganizerPractice);
+            let expected_evidence = if matches!(
+                allowance.rule_id,
+                "organizer/organizer-practice" | "state-opponent/observe-public-activity"
+            ) {
+                if allowance.rule_id == "organizer/organizer-practice" {
+                    assert_eq!(allowance.effect, AllowedEffect::OrganizerPractice);
+                } else {
+                    assert_eq!(allowance.effect, AllowedEffect::CityPdObserve);
+                }
                 assert_eq!(allowance.role, RuleRole::Intent);
                 EvidenceClass::Designed
             } else {
@@ -1706,13 +1737,16 @@ mod tests {
 
     #[test]
     fn governed_allowance_rows_carry_the_required_provenance() {
-        assert_eq!(GOVERNED_EFFECT_ALLOWANCES.len(), 7);
+        assert_eq!(GOVERNED_EFFECT_ALLOWANCES.len(), 8);
         for row in GOVERNED_EFFECT_ALLOWANCES {
             assert_ne!(row.reason.len(), 0);
             assert_eq!(row.owner, "Director");
             if row.rule_id == "organizer/organizer-practice" {
                 assert_eq!(row.date, "2026-09-13");
                 assert_eq!(row.adr, "ADR262");
+            } else if row.rule_id == "state-opponent/observe-public-activity" {
+                assert_eq!(row.date, "2026-10-29");
+                assert_eq!(row.adr, "ADR291");
             } else if row.rule_id.starts_with("struggle/") {
                 assert_eq!(row.date, "2026-09-01");
                 assert_eq!(row.adr, "ADR248");
@@ -1725,7 +1759,7 @@ mod tests {
 
     #[test]
     fn governed_attribution_rows_carry_the_required_provenance() {
-        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 71);
+        assert_eq!(GOVERNED_RULE_ATTRIBUTIONS.len(), 72);
         assert_eq!(
             GOVERNED_RULE_ATTRIBUTIONS
                 .iter()
@@ -1750,6 +1784,9 @@ mod tests {
                 "material/period" => (EvidenceClass::Designed, "2026-09-12", "ADR261"),
                 "organizer/organizer-practice" | "organizer/organizer-products" => {
                     (EvidenceClass::Designed, "2026-09-13", "ADR262")
+                }
+                "state-opponent/observe-public-activity" => {
+                    (EvidenceClass::Designed, "2026-10-29", "ADR291")
                 }
                 "struggle/spark-mechanic" => (EvidenceClass::Designed, "2026-09-01", "ADR248"),
                 "struggle/spark-recognizer" => (EvidenceClass::Derived, "2026-09-01", "ADR248"),

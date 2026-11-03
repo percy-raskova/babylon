@@ -64,6 +64,8 @@ pub enum RuleExecution {
     OrganizerProducts,
     /// Resolve admitted organizer practices in the typed action host.
     OrganizerPractice,
+    /// Resolve the bounded City PD public observation intent.
+    CityPdObserve,
 }
 
 /// Everything a rule loads against. Phase 1 takes each registry as an
@@ -357,7 +359,8 @@ pub fn load_rule_form(
         }
         RuleExecution::MaterialCycle
         | RuleExecution::OrganizerProducts
-        | RuleExecution::OrganizerPractice => Vec::new(),
+        | RuleExecution::OrganizerPractice
+        | RuleExecution::CityPdObserve => Vec::new(),
     };
     let binding_names: Vec<String> = bindings.iter().map(|d| d.name.clone()).collect();
     crate::scope::check_element_names(&rule, &binding_names).map_err(LoadError::ElementName)?;

@@ -534,16 +534,18 @@ pub fn run(spec: &SimulationExperimentV1) -> Result<ExperimentRun> {
                 .map_err(|_| ExperimentError::Foundation)?
                 .into_session()
                 .map_err(|_| ExperimentError::Foundation)?;
+            let material = MaterialWorldRegister::decode_external_with_resolver(
+                foundation.material_catalog(),
+                replayed.material().register().canonical_bytes().to_vec(),
+                restored.graph_session().stable_resolver(),
+            )
+            .map_err(|_| ExperimentError::Foundation)?;
             restored
                 .restore_full_checkpoint(
                     replayed.graph_report().result_stable_graph(),
                     replayed.graph_report().material_state_rows(),
                     replayed.graph_report().result_registers().canonical_bytes(),
-                    MaterialWorldRegister::decode_external(
-                        foundation.material_catalog(),
-                        replayed.material().register().canonical_bytes().to_vec(),
-                    )
-                    .map_err(|_| ExperimentError::Foundation)?,
+                    material,
                 )
                 .map_err(|_| ExperimentError::Foundation)?;
             Some(restored)

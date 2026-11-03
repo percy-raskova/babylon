@@ -33,6 +33,7 @@ pub fn national_catalog_input() -> EconomicCatalogInput {
             .collect(),
         geography: CatalogGeography::NationalCounties,
         organizer: None,
+        city_pd: None,
     }
 }
 
@@ -43,6 +44,15 @@ pub(super) fn national_organizer_rules() -> Vec<u8> {
     rules.push(b'\n');
     rules.extend_from_slice(include_bytes!(
         "../../../../../content/scenarios/national/organizer-cycle.bsl"
+    ));
+    rules
+}
+
+pub(super) fn national_city_pd_rules() -> Vec<u8> {
+    let mut rules = national_organizer_rules();
+    rules.push(b'\n');
+    rules.extend_from_slice(include_bytes!(
+        "../../../../../content/scenarios/national/state-opponent-cycle.bsl"
     ));
     rules
 }

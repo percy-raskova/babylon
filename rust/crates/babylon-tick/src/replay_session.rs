@@ -859,6 +859,44 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
         Ok(())
     }
 
+    /// Match the exact private opponent host to its single ordered native rule.
+    pub(crate) fn validate_city_pd_cycle(&self, active: bool) -> Result<(), ReplayTickError> {
+        use babylon_bsl::rule_pipeline::RuleExecution;
+        let found = self
+            .prepared
+            .rules
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, rule))| rule.execution == RuleExecution::CityPdObserve)
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        if found.len() != usize::from(active) {
+            return Err(ReplayTickError::Execution {
+                message: format!(
+                    "City PD host requires {} observations, found {}",
+                    usize::from(active),
+                    found.len()
+                ),
+            });
+        }
+        if let Some(&index) = found.first() {
+            let practice = self
+                .prepared
+                .rules
+                .iter()
+                .position(|(_, rule)| rule.execution == RuleExecution::OrganizerPractice)
+                .ok_or_else(|| ReplayTickError::Execution {
+                    message: "City PD requires organizer practice".to_owned(),
+                })?;
+            if practice >= index {
+                return Err(ReplayTickError::Execution {
+                    message: "City PD must follow organizer practice".to_owned(),
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// Admit the immutable prepared rules for native staffing ownership once.
     /// The normal effect scanner includes every possible guarded/loop write.
     pub(crate) fn validate_staffing_ownership(&self) -> Result<(), ReplayTickError> {
@@ -1259,6 +1297,12 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> ReplayT
     #[must_use]
     pub fn resolver_manifest_bytes(&self) -> &[u8] {
         self.resolver.manifest().canonical_bytes()
+    }
+
+    /// Borrow the sealed identity resolver belonging to this exact graph session.
+    #[must_use]
+    pub const fn stable_resolver(&self) -> &StableElementResolver {
+        &self.resolver
     }
 
     /// Borrow the session-owned register-manifest bytes.
@@ -1950,6 +1994,13 @@ mod tests {
 
     fn material_session() -> ReplayTickSession<MemoryGraph> {
         material_session_for_scenario(MATERIAL_ATOMIC_SCENARIO)
+    }
+
+    #[test]
+    fn city_pd_host_refuses_a_missing_rule_but_inactive_host_accepts_none() {
+        let session = material_session();
+        assert!(session.validate_city_pd_cycle(false).is_ok());
+        assert!(session.validate_city_pd_cycle(true).is_err());
     }
 
     fn material_session_for_scenario(scenario: &str) -> ReplayTickSession<MemoryGraph> {

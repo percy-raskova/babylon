@@ -8,6 +8,8 @@ mod open;
 
 mod runtime_checkpoint;
 
+mod venue_restore;
+
 pub(crate) use capture_identity::rows_digest as capture_rows_digest;
 
 mod decode;
@@ -32,6 +34,9 @@ pub(crate) use reconstruction_tests::persisted_graph_copy;
 
 #[cfg(test)]
 mod diagnostics_tests;
+
+#[cfg(test)]
+mod city_pd_witness_tests;
 
 #[cfg(test)]
 mod maintenance_tests;

@@ -450,7 +450,9 @@ fn a_refused_successor_leaves_the_published_register_unchanged() {
     let advanced = babylon_material_circuit::advance_material_circuit(&catalog, &successor)
         .expect("the successor period closes once");
     assert_eq!(
-        published.prepare_transition(&catalog, advanced, None).err(),
+        published
+            .prepare_transition(&catalog, advanced, None, &[])
+            .err(),
         Some(MaterialWorldError::PeriodMismatch)
     );
     assert_eq!(published.canonical_bytes(), before.as_slice());
@@ -620,6 +622,11 @@ fn unfunded_and_cancelled_agency_inputs_do_not_forge_paid_evidence() {
                 .len(),
             0
         );
+        material_world::validate_committed_nonpaid(&result.agency_attendance[0], &canonical)
+            .expect("the original nonpaid result joins its committed material receipts");
+        let mut forged = result.agency_attendance[0].clone();
+        forged.input.shift_id = babylon_material_circuit::agency_shift_id(1, [76; 32]);
+        assert!(material_world::validate_committed_nonpaid(&forged, &canonical).is_err());
     }
 }
 

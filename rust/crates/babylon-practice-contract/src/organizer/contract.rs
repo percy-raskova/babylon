@@ -69,6 +69,38 @@ pub(super) fn identity<T: Serialize>(domain: &[u8], value: &T) -> Result<[u8; 32
     Ok(content_digest::sha256_of(&canonical(domain, value)?))
 }
 
+/// Derive the canonical ID for a resolved organizer receipt.
+///
+/// # Errors
+/// Returns a codec or size error if the tuple cannot be encoded.
+pub fn organizer_receipt_id(
+    campaign_id: [u8; 16],
+    actor_id: u64,
+    period: u64,
+    commitment_id: [u8; 32],
+) -> Result<[u8; 32], OrganizerError> {
+    identity(
+        b"babylon.organizer-receipt.v1",
+        &(campaign_id, actor_id, period, commitment_id),
+    )
+}
+
+/// Derive the canonical ID for a contact product.
+///
+/// # Errors
+/// Returns a codec or size error if the tuple cannot be encoded.
+pub fn organizer_contact_product_id(
+    receipt_id: [u8; 32],
+    actor_id: u64,
+    partner_actor_id: u64,
+    period: u64,
+) -> Result<[u8; 32], OrganizerError> {
+    identity(
+        b"babylon.organizer-contact-product.v1",
+        &(receipt_id, actor_id, partner_actor_id, period),
+    )
+}
+
 fn label_valid(value: &str) -> bool {
     !value.is_empty() && value.len() <= 512 && !value.chars().any(char::is_control)
 }
@@ -251,14 +283,11 @@ pub fn validate_organizer_state(state: &OrganizerState) -> Result<(), OrganizerE
             return Err(OrganizerError::InvalidState);
         }
         if product.product_id
-            != identity(
-                b"babylon.organizer-contact-product.v1",
-                &(
-                    product.receipt_id,
-                    product.actor_id,
-                    product.partner_actor_id,
-                    product.produced_period,
-                ),
+            != organizer_contact_product_id(
+                product.receipt_id,
+                product.actor_id,
+                product.partner_actor_id,
+                product.produced_period,
             )?
         {
             return Err(OrganizerError::InvalidState);
@@ -1037,6 +1066,7 @@ pub fn organizer_view(
         available_hours: committed_hours(config, actor_id)?,
         inquiry_hours: config.inquiry_hours,
         contact_hours: config.contact_hours,
+        public_workplace_contact: false,
         content_digest: config.content_digest,
         resource_digest: organizer_resource_digest()?,
         standing: state.standing.clone(),

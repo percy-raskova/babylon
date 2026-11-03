@@ -1395,7 +1395,7 @@ pub(crate) fn install_evidence_observer_for_test(app: &mut App) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::super::draft::OrganizerDraft;
     use super::super::editor::NoteEditor;
 
@@ -1506,6 +1506,22 @@ mod tests {
                 0
             );
         }
+    }
+
+    pub(crate) fn dossier_navigation_fixture() -> (App, Entity, String) {
+        let (app, focus, draft) = organizer_navigation();
+        (app, focus, format!("{draft:?}"))
+    }
+
+    pub(crate) fn draft_debug(app: &App) -> String {
+        format!(
+            "{:?}",
+            app.world()
+                .resource::<OrganizerClient>()
+                .draft
+                .as_ref()
+                .expect("fixture draft")
+        )
     }
 
     fn organizer_navigation() -> (App, Entity, OrganizerDraft) {

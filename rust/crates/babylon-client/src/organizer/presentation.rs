@@ -895,7 +895,7 @@ pub(super) fn inspector(client: &OrganizerClient, period: u64) -> (String, Strin
                 let _ = writeln!(text, "PERIOD {} · {}\n{} · {} organizer-hours spent\nPartner: {}\n{} evidence record(s). {}\n", receipt.period,
                     if receipt.standing_work { "Standing work" } else { choice(receipt.choice) }, outcome(receipt.outcome), receipt.hours_spent,
                     response(receipt.partner_response), receipt.observation_ids.len(),
-                    if receipt.contact_product_id.is_some() { "Completed contact evidence can support a later report-exchange commitment." } else { "No contact product credited." });
+                    if receipt.contact_product_id.is_some() { "Completed contact evidence can support a later report-exchange commitment." } else { "No new contact product was produced by this practice." });
             }
             if !view
                 .receipts

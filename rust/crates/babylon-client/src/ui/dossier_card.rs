@@ -598,7 +598,9 @@ fn drive_dossier_fetch(
     mut view: ResMut<DossierPageView>,
     mut presentation: ResMut<DossierPresentation>,
 ) {
+    let missing_read = matches!(*state, DossierFetchState::Idle) && projection.0.is_none();
     if last.is_some()
+        && !missing_read
         && !identity.campaign.is_changed()
         && !identity.refresh.is_changed()
         && !identity.selected.is_changed()
@@ -655,7 +657,7 @@ fn drive_dossier_fetch(
         scope: scope.clone(),
         cursor: presentation.cursor.clone(),
     };
-    if last.as_ref() == Some(&key) {
+    if last.as_ref() == Some(&key) && !missing_read {
         return;
     }
     *last = Some(key);
@@ -1880,6 +1882,135 @@ mod tests {
             .single(app.world())
             .expect("the fixture holds exactly one matching row");
         (app, entity, request)
+    }
+
+    fn assert_inflight_reentry(app: &mut App, scope: &DossierRequestScope) {
+        use crate::organizer::ui::OrganizerAction;
+        let pending = AsyncComputeTaskPool::get().spawn(std::future::pending());
+        *app.world_mut().resource_mut::<DossierFetchState>() = DossierFetchState::InFlight {
+            scope: scope.clone(),
+            task: pending,
+        };
+        app.world_mut().write_message(OrganizerAction::Open);
+        app.update();
+        app.world_mut()
+            .write_message(OrganizerAction::ArchiveWorkplace);
+        app.update();
+        assert!(
+            matches!(
+                *app.world().resource::<DossierFetchState>(),
+                DossierFetchState::InFlight { .. }
+            ),
+            "reentry must replace a canceled same-context read"
+        );
+    }
+
+    fn assert_stale_completion_refused(app: &mut App, expected: &InstalledDossier) {
+        use bevy::ecs::system::RunSystemOnce;
+        let stale = expected.clone();
+        let scope = stale.scope.clone();
+        let task = AsyncComputeTaskPool::get().spawn(async move { Ok(stale) });
+        *app.world_mut().resource_mut::<DossierFetchState>() =
+            DossierFetchState::InFlight { scope, task };
+        app.world_mut().resource_mut::<DossierRefresh>().bump();
+        app.world_mut()
+            .run_system_once(collect_dossier_fetch)
+            .expect("collector runs");
+        assert!(app.world().resource::<ActiveCountyDossier>().0.is_none());
+        assert!(matches!(
+            *app.world().resource::<DossierFetchState>(),
+            DossierFetchState::Idle
+        ));
+    }
+
+    #[test]
+    fn organizer_archive_reentry_keeps_or_refetches_the_admitted_workplace() {
+        use crate::organizer::ui::tests as organizer_ui_tests;
+        let env = EnvVarGuard::lock("BABYLON_READER_DSN");
+        env.remove();
+        let (mut app, _focus, draft) = organizer_ui_tests::dossier_navigation_fixture();
+        {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.set_perspective(Perspective::PlayerKnowledge);
+            session.ready(3, Some("a".repeat(64)));
+            let context = session.context();
+            assert!(session.installed(&context));
+        }
+        app.world_mut()
+            .resource_mut::<OrganizerClient>()
+            .view
+            .as_mut()
+            .expect("fixture view")
+            .period = 3;
+        let context = app.world().resource::<ObserverSession>().context();
+        let campaign = app.world().resource::<ObserverSession>().campaign;
+        let mut snapshot = frame(app.world().resource::<ObserverSession>(), &"a".repeat(64));
+        snapshot.0.as_mut().expect("fixture frame").visibility = ObserverVisibility::KnownPreview;
+        let county = app
+            .world()
+            .resource::<CountyAtlas>()
+            .index_of_fips("26163")
+            .expect("fixture county");
+        app.world_mut().resource_mut::<SelectedCounty>().0 = Some(county);
+        app.insert_resource(DossierCampaignId(campaign))
+            .insert_resource(snapshot)
+            .init_resource::<ActiveCountyDossier>()
+            .init_resource::<DossierFetchState>()
+            .init_resource::<DossierRefresh>()
+            .init_resource::<DossierPageView>()
+            .init_resource::<DossierPresentation>()
+            .init_resource::<OrganizerArchiveOrigin>()
+            .add_observer(open_organizer_archive)
+            .add_systems(Update, drive_dossier_fetch.after(ObserverSet::Install));
+        app.world_mut()
+            .write_message(OrganizerAction::ArchiveWorkplace);
+        app.update();
+        assert_eq!(
+            *app.world().resource::<crate::production::PrimaryView>(),
+            crate::production::PrimaryView::Map
+        );
+        let scope = match app.world().resource::<DossierFetchState>() {
+            DossierFetchState::InFlight { scope, .. } => scope.clone(),
+            other => panic!("expected workplace fetch, got {other:?}"),
+        };
+        assert_inflight_reentry(&mut app, &scope);
+        let mut ready = installed(app.world().resource::<ObserverSession>(), &"a".repeat(64));
+        ready.scope = scope.clone();
+        ready.read.subject = scope.subject.clone();
+        let expected = ready.clone();
+        let task = AsyncComputeTaskPool::get().spawn(async move { Ok(ready) });
+        *app.world_mut().resource_mut::<DossierFetchState>() =
+            DossierFetchState::InFlight { scope, task };
+        app.add_systems(Update, collect_dossier_fetch.after(drive_dossier_fetch));
+        for _ in 0..1000 {
+            app.update();
+            if app.world().resource::<ActiveCountyDossier>().0.is_some() {
+                break;
+            }
+            std::thread::yield_now();
+        }
+        assert_eq!(
+            app.world().resource::<ActiveCountyDossier>().0.as_ref(),
+            Some(&expected)
+        );
+        app.world_mut().write_message(OrganizerAction::Open);
+        app.update();
+        app.world_mut()
+            .write_message(OrganizerAction::ArchiveWorkplace);
+        app.update();
+        let active = app.world().resource::<ActiveCountyDossier>();
+        let fetch = app.world().resource::<DossierFetchState>();
+        assert!(
+            active.0.as_ref() == Some(&expected) || !matches!(*fetch, DossierFetchState::Idle),
+            "same-context reentry must retain the admitted dossier or start a replacement read"
+        );
+        assert_eq!(app.world().resource::<ObserverSession>().context(), context);
+        assert_eq!(app.world().resource::<SelectedCounty>().0, Some(county));
+        app.world_mut().write_message(OrganizerAction::Open);
+        app.update();
+        assert_eq!(organizer_ui_tests::draft_debug(&app), draft);
+
+        assert_stale_completion_refused(&mut app, &expected);
     }
 
     #[test]

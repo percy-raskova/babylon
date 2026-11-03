@@ -83,6 +83,7 @@ enum Action {
     OpenOrganizer,
     OpenDirection,
     InspectReceipts,
+    OpenRelationships,
     ArchiveWorkplace,
     PreviousPeriod,
     ReturnLive,
@@ -111,6 +112,7 @@ impl Action {
             Self::OpenOrganizer => O::Open,
             Self::OpenDirection => O::Inspect(OrganizerInspector::Direction),
             Self::InspectReceipts => O::Inspect(OrganizerInspector::Receipts),
+            Self::OpenRelationships => O::Inspect(OrganizerInspector::Relationships),
             Self::ArchiveWorkplace => O::ArchiveWorkplace,
             Self::CloseInspector => O::CloseInspector,
             Self::ChooseRemoteAid => O::Choose(OrganizerChoice::RemoteAid),
@@ -452,6 +454,23 @@ fn available(
     view: PrimaryView,
     pipe: bool,
 ) -> bool {
+    if action == Action::OpenRelationships
+        && (session.phase != SessionPhase::Ready
+            || session.playing
+            || session.advance_pending()
+            || session.lifecycle_pending()
+            || session.organizer_control_pending()
+            || session.quit_requested
+            || session.viewed_tick != session.durable_tick
+            || client.status_due
+            || client.pending.is_some()
+            || client
+                .view
+                .as_ref()
+                .is_none_or(|view| view.period != session.durable_tick))
+    {
+        return false;
+    }
     if let Some(action) = action.organizer() {
         return ui::visible(action, client, session, ui, view)
             && ui::enabled(action, client, session);
@@ -1076,6 +1095,7 @@ mod tests {
     fn operator_actions_decode_only_the_bounded_native_controls() {
         for name in [
             "inspect_receipts",
+            "open_relationships",
             "archive_workplace",
             "previous_period",
             "return_live",
@@ -1403,6 +1423,123 @@ mod tests {
                 .after(crate::observer_warning::apply_continue)
                 .before(ObserverSet::Paint),
         );
+    }
+
+    fn configure_relationships_scenario(app: &mut App, scenario: &str) {
+        match scenario {
+            "playing" => app.world_mut().resource_mut::<ObserverSession>().playing = true,
+            "loading" => {
+                app.world_mut().resource_mut::<ObserverSession>().phase = SessionPhase::Loading;
+            }
+            "stale_view" => {
+                app.world_mut()
+                    .resource_mut::<OrganizerClient>()
+                    .view
+                    .as_mut()
+                    .expect("fixture view")
+                    .period = 1;
+            }
+            "status_due" => app
+                .world_mut()
+                .resource_mut::<OrganizerClient>()
+                .committed(),
+            "status_pending" => {
+                app.world_mut()
+                    .resource_mut::<ObserverSession>()
+                    .connected_fixture();
+                app.world_mut()
+                    .resource_scope(|world, mut client: Mut<OrganizerClient>| {
+                        client.queue(
+                            &mut world.resource_mut::<ObserverSession>(),
+                            RequestKind::Status,
+                            None,
+                        );
+                        assert!(client.pending.is_some());
+                    });
+            }
+            "control_pending" => app
+                .world_mut()
+                .resource_mut::<ObserverSession>()
+                .set_organizer_control_pending(true),
+            "quit" => {
+                app.world_mut()
+                    .resource_mut::<ObserverSession>()
+                    .quit_requested = true;
+            }
+            _ => (),
+        }
+    }
+
+    #[test]
+    fn relationships_control_routes_through_handler_and_refuses_stale_or_unready_context() {
+        for scenario in [
+            "ready",
+            "playing",
+            "loading",
+            "stale",
+            "stale_view",
+            "status_due",
+            "status_pending",
+            "control_pending",
+            "quit",
+        ] {
+            let (mut app, _, _) = ui::tests::dossier_navigation_fixture();
+            app.init_resource::<OpeningPresentation>()
+                .add_message::<ContinueWarning>();
+            let (socket, _peer) = UnixStream::pair().expect("fixture sockets");
+            let (incoming, receiver) = mpsc::channel();
+            let (outgoing, _output) = mpsc::sync_channel(1);
+            install(
+                &mut app,
+                Transport {
+                    incoming: Mutex::new(receiver),
+                    outgoing,
+                    socket,
+                    capture_dir: None,
+                },
+            );
+            app.update();
+            configure_relationships_scenario(&mut app, scenario);
+            let mut input = pending(
+                app.world().resource::<ObserverSession>(),
+                app.world().resource::<OrganizerClient>(),
+                Action::Status,
+            )
+            .input;
+            input.action =
+                serde_json::from_value(json!("open_relationships")).expect("action decodes");
+            if scenario == "stale" {
+                input.expected_generation += 1;
+            }
+            incoming
+                .send(Incoming::Input(input))
+                .expect("receiver open");
+            app.update();
+            let reply: Value = serde_json::from_slice(
+                app.world()
+                    .resource::<Controls>()
+                    .reply
+                    .as_ref()
+                    .expect("response"),
+            )
+            .expect("JSON");
+            if scenario == "ready" {
+                assert_eq!(reply["event"], "applied", "{reply}");
+                assert_eq!(
+                    app.world().resource::<OrganizerClient>().inspector,
+                    OrganizerInspector::Relationships
+                );
+            } else {
+                assert_eq!(
+                    reply["reason"], "control_stale_or_unavailable",
+                    "{scenario}: {reply}"
+                );
+                assert_eq!(
+                    app.world().resource::<OrganizerClient>().inspector,
+                    OrganizerInspector::Closed
+                );
+            }
+        }
     }
 
     #[test]

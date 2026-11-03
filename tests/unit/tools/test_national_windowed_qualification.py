@@ -64,6 +64,7 @@ def test_operator_controls_have_a_distinct_completed_frame_event() -> None:
     actions = set(get_args(windowed.Action))
     assert {
         "inspect_receipts",
+        "open_relationships",
         "archive_workplace",
         "previous_period",
         "return_live",
@@ -72,6 +73,32 @@ def test_operator_controls_have_a_distinct_completed_frame_event() -> None:
     assert "capture_desktop" not in actions
     assert windowed.EXPECTED["capture_frame"] == "frame_captured"
     assert "frame_captured" in get_args(windowed.Event)
+
+
+def test_relationships_control_sends_the_bounded_action() -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+    requests: list[dict[str, Any]] = []
+
+    def reply() -> None:
+        with peer, peer.makefile("rb") as source:
+            line = source.readline()
+            if line:
+                requests.append(json.loads(line))
+                peer.sendall(
+                    response(requests[0]["sequence"], "applied", inspector="Relationships")
+                )
+
+    worker = threading.Thread(target=reply)
+    worker.start()
+    try:
+        assert channel.perform("open_relationships", 5).inspector == "Relationships"
+    finally:
+        channel.close()
+        worker.join(timeout=5)
+    assert not worker.is_alive()
+    assert requests[0]["action"] == "open_relationships"
+    assert requests[0]["campaign_id"] == CAMPAIGN
 
 
 @pytest.mark.parametrize("event", ["applied", "frame_captured"])

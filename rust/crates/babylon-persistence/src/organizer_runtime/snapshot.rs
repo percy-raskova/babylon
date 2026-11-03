@@ -1,6 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{OrganizerAidPending, OrganizerAidResolution, OrganizerMaterialAidPreview};
+use super::{
+    CityPdEncounter, OrganizerAidPending, OrganizerAidResolution, OrganizerMaterialAidPreview,
+};
 
 use super::{collection_preview, material_preview, OrganizerCollectionPreview};
 
@@ -8,7 +10,7 @@ use babylon_practice_contract::{
     OrganizerCommand, OrganizerCommitment, OrganizerPreview, OrganizerView,
 };
 
-use postgres::GenericClient;
+use postgres::{GenericClient, IsolationLevel};
 
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +28,7 @@ use postgres::Row;
 #[serde(deny_unknown_fields)]
 pub struct OrganizerSnapshot {
     pub view: OrganizerView,
+    pub city_pd_encounters: Vec<CityPdEncounter>,
     pub pending: Option<OrganizerCommitment>,
     pub duration: CampaignDuration,
     pub aid: Vec<OrganizerMaterialAidPreview>,
@@ -59,7 +62,9 @@ pub(crate) fn aid_snapshot_matches(
     )
     .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
     expected_view.public_workplace_contact = register.public_venue().is_some();
-    Ok(expected_view == snapshot.view
+    let encounters_match = encounter_snapshot_matches(register, snapshot)?;
+    Ok(encounters_match
+        && expected_view == snapshot.view
         && material_preview::projections(catalog, register.state(), config, state.period)?
             == snapshot.aid
         && state
@@ -73,6 +78,17 @@ pub(crate) fn aid_snapshot_matches(
             .map(material_preview::resolutions)
             .unwrap_or_default()
             == snapshot.aid_resolutions)
+}
+
+/// Audit a response against an already authenticated register. Live admission
+/// separately validates the captured PostgreSQL projection before serialization.
+pub(crate) fn encounter_snapshot_matches(
+    register: &babylon_tick::material_world::MaterialWorldRegister,
+    snapshot: &OrganizerSnapshot,
+) -> Result<bool, RuntimeSessionErrorCode> {
+    Ok(super::encounter::projections(register)
+        .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?
+        == snapshot.city_pd_encounters)
 }
 
 pub(crate) fn captured_organizer_snapshot(
@@ -99,6 +115,8 @@ pub(crate) fn captured_organizer_snapshot(
     .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
     view.public_workplace_contact = register.public_venue().is_some();
     Ok(OrganizerSnapshot {
+        city_pd_encounters: super::encounter::projections(register)
+            .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?,
         aid: material_preview::projections(catalog, register.state(), config, state.period)?,
         pending_aid: state
             .pending_aid
@@ -270,10 +288,17 @@ impl DurableMaterialRuntime {
         let mut client = self
             .organizer_connection()
             .map_err(|error| classify(&error))?;
-        self.require_organizer_tail(&mut client)
+        let mut tx = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .map_err(MaterialRuntimeError::from)
+            .map_err(|error| classify(&error))?;
+        self.require_organizer_tail(&mut tx)
             .map_err(|error| classify(&error))?;
         let pending = pending(
-            &mut client,
+            &mut tx,
             self.campaign_id(),
             state
                 .period
@@ -281,6 +306,19 @@ impl DurableMaterialRuntime {
                 .ok_or(RuntimeSessionErrorCode::CommitRefused)?,
         )
         .map_err(|error| classify(&error))?;
+        let tick =
+            i64::try_from(state.period).map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
+        let future: bool = tx.query_one("SELECT EXISTS (SELECT 1 FROM babylon_state.organizer_encounter_v1 WHERE campaign_id=$1 AND resolve_tick>$2) OR EXISTS (SELECT 1 FROM babylon_meta.archive_knowledge_grant_v1 WHERE campaign_id=$1 AND grant_key LIKE 'city-pd-%' AND granted_tick>$2)", &[self.campaign_id().as_uuid(), &tick])
+            .map_err(MaterialRuntimeError::from).map_err(|error| classify(&error))?.get(0);
+        if future {
+            return Err(RuntimeSessionErrorCode::StorageRefused);
+        }
+        crate::organizer_archive::capture_projection(&mut tx, self.campaign_id(), state.period)
+            .and_then(|projection| projection.validate(register))
+            .map_err(|error| classify(&error))?;
+        tx.commit()
+            .map_err(MaterialRuntimeError::from)
+            .map_err(|error| classify(&error))?;
         captured_organizer_snapshot(
             self.session().catalog(),
             register,
@@ -380,11 +418,32 @@ impl DurableMaterialRuntime {
         &self,
         client: &mut impl GenericClient,
     ) -> Result<(), MaterialRuntimeError> {
-        let row = client.query_one("SELECT COALESCE(MAX(resolve_tick),0) FROM babylon_state.tick_commit WHERE campaign_id=$1", &[self.campaign_id().as_uuid()])?;
-        if u64::try_from(row.get::<_, i64>(0)).ok() != Some(self.session().completed_tick()) {
+        let row = client.query_one("SELECT count(*),coalesce(max(resolve_tick),0),coalesce(bool_and(envelope_layout_version=3),true) FROM babylon_state.tick_commit WHERE campaign_id=$1", &[self.campaign_id().as_uuid()])?;
+        let count: i64 = row.try_get(0)?;
+        let tick: i64 = row.try_get(1)?;
+        let versions: bool = row.try_get(2)?;
+        if count != tick
+            || !versions
+            || u64::try_from(tick).ok() != Some(self.session().completed_tick())
+        {
             return Err(MaterialRuntimeError::TailConflict);
         }
-        Ok(())
+        let marker = if tick == 0 {
+            None
+        } else {
+            client.query_opt("SELECT tick_content_hash,envelope_digest FROM babylon_state.tick_commit WHERE campaign_id=$1 AND resolve_tick=$2", &[self.campaign_id().as_uuid(), &tick])?
+        };
+        match (self.tail(), self.tail_envelope_digest(), marker) {
+            (None, None, None) if tick == 0 => Ok(()),
+            (Some(expected), Some(digest), Some(row))
+                if u64::try_from(tick).ok() == Some(expected.resolve_tick())
+                    && row.try_get::<_, Vec<u8>>(0)? == expected.tick_content_hash().as_bytes()
+                    && row.try_get::<_, Vec<u8>>(1)? == digest =>
+            {
+                Ok(())
+            }
+            _ => Err(MaterialRuntimeError::TailConflict),
+        }
     }
 }
 

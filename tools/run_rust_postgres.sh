@@ -58,7 +58,7 @@ if [ "${BABYLON_POSTGRES_IMAGE_ID+x}" = x ] &&
 fi
 
 case "$LIVE_FOCUS" in
-  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | city_pd | client | national_storage) ;;
+  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | city_pd | city_pd_atomic | city_pd_history | city_pd_nonwitness | client | national_storage) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
 
@@ -563,6 +563,7 @@ if [ "$status" -eq 0 ]; then
         run_phase "$reader_suite" 600 cargo test -p babylon-persistence --test "$reader_suite" \
           --locked -- --nocapture --ignored --skip statewide:: --skip statewide_qualified:: \
           --skip staffing_history::production_history --skip organizer:: \
+          --skip state_opponent_history:: --skip state_opponent_nonwitness:: \
           --test-threads="$reader_threads" || status=$?
         [ "$status" -eq 0 ] || break
       done
@@ -594,6 +595,53 @@ if [ "$status" -eq 0 ]; then
     city_pd)
       run_phase city_pd 1800 cargo test -p babylon-persistence --test observer_material_live \
         organizer::state_opponent::national_city_pd_committed_contact_and_paid_visit_survive_restart --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      ;&
+    city_pd_atomic)
+      if [ "$status" -eq 0 ]; then
+        atomic_test=runtime::live_tests::city_pd_atomic::paid_visit_marker_failure_and_ambiguous_retry_are_atomic
+        if selected="$(run_phase city_pd_atomic_list 900 cargo test -p babylon-persistence --lib "$atomic_test" --locked -- --ignored --exact --list)"; then
+          printf '%s\n' "$selected"
+          if ! printf '%s\n' "$selected" | grep -Fxq "$atomic_test: test"; then
+            printf 'Expected atomic test was not selected: %s\n' "$atomic_test" >&2
+            status=1
+          fi
+        else
+          status=$?
+        fi
+        if [ "$status" -eq 0 ]; then
+          run_phase city_pd_atomic 900 cargo test -p babylon-persistence --lib "$atomic_test" --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+        fi
+      fi
+      ;;
+    city_pd_history)
+      history_test=state_opponent_history::national_city_pd_historical_encounter_corruption_is_refused
+      if selected="$(run_phase city_pd_history_list 900 cargo test -p babylon-persistence --test observer_material_live "$history_test" --locked -- --ignored --exact --list)"; then
+        printf '%s\n' "$selected"
+        if ! printf '%s\n' "$selected" | grep -Fxq "$history_test: test"; then
+          printf 'Expected historical encounter test was not selected: %s\n' "$history_test" >&2
+          status=1
+        fi
+      else
+        status=$?
+      fi
+      if [ "$status" -eq 0 ]; then
+        run_phase city_pd_history 1800 cargo test -p babylon-persistence --test observer_material_live "$history_test" --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+      fi
+      ;;
+    city_pd_nonwitness)
+      nonwitness_test=state_opponent_nonwitness::national_city_pd_paid_nonwitness_restricted_archive
+      if selected="$(run_phase city_pd_nonwitness_list 900 cargo test -p babylon-persistence --test observer_material_live "$nonwitness_test" --locked -- --ignored --exact --list)"; then
+        printf '%s\n' "$selected"
+        if ! printf '%s\n' "$selected" | grep -Fxq "$nonwitness_test: test"; then
+          printf 'Expected non-witness test was not selected: %s\n' "$nonwitness_test" >&2
+          status=1
+        fi
+      else
+        status=$?
+      fi
+      if [ "$status" -eq 0 ]; then
+        run_phase city_pd_nonwitness 900 cargo test -p babylon-persistence --test observer_material_live "$nonwitness_test" --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+      fi
       ;;
     client)
       run_phase client 900 cargo test -p babylon-client --test dossier_cli_live \

@@ -3,10 +3,11 @@
 use super::{draft, evidence, presentation, ui};
 
 use babylon_persistence::runtime_session::{
-    OrganizerAidPending, OrganizerAidResolution, OrganizerChoice, OrganizerCollectionPreview,
-    OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment,
-    OrganizerMaterialAidPreview, OrganizerPreview, OrganizerSnapshot, OrganizerView,
-    RuntimeSessionRequest, RUNTIME_SESSION_PROTOCOL_VERSION,
+    CityPdEncounter, OrganizerAidPending, OrganizerAidResolution, OrganizerChoice,
+    OrganizerCollectionPreview, OrganizerCollectionResolution, OrganizerCommand,
+    OrganizerCommitment, OrganizerMaterialAidPreview, OrganizerPreview, OrganizerSnapshot,
+    OrganizerView, RuntimeSessionRequest, RuntimeSessionScope, CITY_PD_ENCOUNTER_SCHEMA_VERSION,
+    RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 
 use bevy::prelude::*;
@@ -21,6 +22,7 @@ use babylon_persistence::runtime_session::OrganizerAidKind;
 use babylon_persistence::runtime_session::OrganizerGiftConsent;
 use babylon_persistence::runtime_session::OrganizerObservation;
 use evidence::EvidenceInspection;
+use std::collections::BTreeSet;
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -41,10 +43,57 @@ pub(crate) enum RequestKind {
     Submit,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StatusDisposition {
+    Installed,
+    Superseded,
+}
+
 pub(crate) struct PendingRequest {
     pub(super) id: u64,
     pub(super) kind: RequestKind,
     pub(super) command: Option<OrganizerCommand>,
+    status_context: Option<StatusContext>,
+}
+
+struct StatusContext {
+    observation: ObservationContext,
+    durable_tick: u64,
+    scope: RuntimeSessionScope,
+}
+
+// The local runtime authenticates the register. This checks only the received
+// disclosure's internal joins and bounds against the requested view.
+fn encounters_match(snapshot: &OrganizerSnapshot, campaign: [u8; 16]) -> bool {
+    let mut receipt_ids = BTreeSet::new();
+    !snapshot.city_pd_encounters.windows(2).any(|pair| {
+        (pair[0].resolve_period, pair[0].receipt_id) >= (pair[1].resolve_period, pair[1].receipt_id)
+    }) && !snapshot.city_pd_encounters.iter().any(|row| {
+        row.schema_version != CITY_PD_ENCOUNTER_SCHEMA_VERSION
+            || row.campaign_id != campaign
+            || row.campaign_id == [0; 16]
+            || row.controlled_actor_id != snapshot.view.actor_id
+            || row.controlled_actor_id == 0
+            || row.authority_id != snapshot.view.authority_id
+            || row.authority_id == [0; 16]
+            || row.content_digest != snapshot.view.content_digest
+            || row.content_digest == [0; 32]
+            || row.resource_digest != snapshot.view.resource_digest
+            || row.resource_digest == [0; 32]
+            || row.subject_id != snapshot.view.workplace_id
+            || row.subject_id == 0
+            || row.resolve_period == 0
+            || row.resolve_period > snapshot.view.period
+            || row.visitor_actor_id == 0
+            || [
+                row.receipt_id,
+                row.venue_source_id,
+                row.visit_core_id,
+                row.access_evidence_id,
+            ]
+            .contains(&[0; 32])
+            || !receipt_ids.insert(row.receipt_id)
+    })
 }
 
 /// Cached lawful projection and local presentation. No authoritative state is owned here.
@@ -58,6 +107,7 @@ pub(crate) struct OrganizerClient {
     pub aid_resolutions: Vec<OrganizerAidResolution>,
     pub collection: Option<OrganizerCollectionPreview>,
     pub collection_resolutions: Vec<OrganizerCollectionResolution>,
+    pub city_pd_encounters: Vec<CityPdEncounter>,
     pub inspector: OrganizerInspector,
     pub message: String,
     pub(super) draft: Option<OrganizerDraft>,
@@ -253,6 +303,11 @@ impl OrganizerClient {
         let Some(request_id) = session.next_control_request() else {
             return;
         };
+        let status_context = (kind == RequestKind::Status).then(|| StatusContext {
+            observation: session.context(),
+            durable_tick: session.durable_tick,
+            scope: scope.clone(),
+        });
         if kind == RequestKind::Preview {
             self.clear_review();
             self.review_context = Some(session.context());
@@ -299,6 +354,7 @@ impl OrganizerClient {
             id: request_id,
             kind,
             command,
+            status_context,
         });
         self.outbox = Some(request);
         session.set_organizer_control_pending(true);
@@ -329,14 +385,32 @@ impl OrganizerClient {
         request_id: u64,
         snapshot: OrganizerSnapshot,
         session: &mut ObserverSession,
-    ) -> Result<(), String> {
-        self.take_response(request_id, RequestKind::Status)?;
-        if snapshot.view.period != session.durable_tick
+    ) -> Result<StatusDisposition, String> {
+        let pending = self.take_response(request_id, RequestKind::Status)?;
+        let context = pending
+            .status_context
+            .ok_or("Organizer status has no requested context.")?;
+        if context.observation.campaign != session.campaign
+            || context.durable_tick != session.durable_tick
+            || session.runtime_scope() != Some(&context.scope)
+            || snapshot.view.period != context.durable_tick
             || !snapshot.duration.contains(snapshot.view.period)
             || self.campaign != Some(*session.campaign.as_uuid())
         {
             return Err(
                 "Organizer situation did not match this campaign's committed period.".into(),
+            );
+        }
+        if self.view.as_ref().is_some_and(|previous| {
+            previous.period == snapshot.view.period
+                && (previous.actor_id != snapshot.view.actor_id
+                    || previous.authority_id != snapshot.view.authority_id
+                    || previous.workplace_id != snapshot.view.workplace_id
+                    || previous.content_digest != snapshot.view.content_digest
+                    || previous.resource_digest != snapshot.view.resource_digest)
+        }) {
+            return Err(
+                "Organizer situation changed its identity within the committed period.".into(),
             );
         }
         if snapshot.pending.as_ref().is_some_and(|pending| {
@@ -350,6 +424,21 @@ impl OrganizerClient {
                 || !snapshot.duration.contains(pending.resolves_period)
         }) {
             return Err("Pending organizer ruling does not match the opened campaign's authority and period.".into());
+        }
+        if !encounters_match(&snapshot, *session.campaign.as_uuid().as_bytes()) {
+            return Err(
+                "Organizer encounter disclosure does not match the opened situation.".into(),
+            );
+        }
+        // History and perspective can change while a valid status is in flight.
+        // Reconcile from the new context instead of treating that local change
+        // as a transport failure. Invalid child data was rejected above.
+        if context.observation != session.context() {
+            self.clear_review();
+            self.status_due = true;
+            self.outbox = None;
+            session.set_organizer_control_pending(false);
+            return Ok(StatusDisposition::Superseded);
         }
         if self.draft.is_none() {
             match draft::load(*session.campaign.as_uuid(), snapshot.view.workplace_id) {
@@ -370,6 +459,7 @@ impl OrganizerClient {
             session.complete();
         }
         self.collection = snapshot.collection;
+        self.city_pd_encounters = snapshot.city_pd_encounters;
         self.collection_resolutions = snapshot.collection_resolutions;
         self.aid = snapshot.aid;
         self.pending_aid = snapshot.pending_aid;
@@ -383,7 +473,7 @@ impl OrganizerClient {
             // the message line for pending operations and actionable failures.
             self.message.clear();
         }
-        Ok(())
+        Ok(StatusDisposition::Installed)
     }
 
     pub(crate) fn previewed(

@@ -9,5 +9,5 @@ pub use game::{
     GameAidPolicy, GameCommodity, GameDependencyProfile, GameEquipmentPolicy, GameFinancialPolicy,
     GameHouseholdPolicy, GameHouseholdTimePolicy, GameJourneyTiming, GameMarketPolicy, GameNeed,
     GameOrganizerPolicy, GamePrice, GameProfile, GameRecipe, GameServiceReach, NationalGamePolicy,
-    NationalGamePolicyError, ResidentOpeningCounts,
+    NationalGamePolicyError, ResidentOpeningCounts, VenueLogReader,
 };

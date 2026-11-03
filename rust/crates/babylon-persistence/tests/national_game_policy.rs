@@ -343,3 +343,21 @@ fn owner_exposure_fraction_is_required_bounded_and_separate_from_income() {
             .is_err()
     );
 }
+
+#[test]
+fn venue_log_reader_is_required_and_closed() {
+    let controlled = SOURCE.to_owned();
+    let committee = SOURCE.replace(
+        "venue_log_reader = \"controlled_organizer\"",
+        "venue_log_reader = \"workplace_committee\"",
+    );
+    let unknown = SOURCE.replace(
+        "venue_log_reader = \"controlled_organizer\"",
+        "venue_log_reader = \"unknown_actor\"",
+    );
+    let missing = SOURCE.replace("venue_log_reader = \"controlled_organizer\"", "");
+    assert!(NationalGamePolicy::parse(&controlled).is_ok());
+    assert!(NationalGamePolicy::parse(&committee).is_ok());
+    assert!(NationalGamePolicy::parse(&unknown).is_err());
+    assert!(NationalGamePolicy::parse(&missing).is_err());
+}

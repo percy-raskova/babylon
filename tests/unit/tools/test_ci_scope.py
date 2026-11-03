@@ -62,6 +62,9 @@ def test_release_events_emit_the_complete_database_matrix(tmp_path: Path, event_
         "reader",
         "client",
         "organizer",
+        "city_pd_atomic",
+        "city_pd_history",
+        "city_pd_nonwitness",
     ]
 
 
@@ -127,6 +130,9 @@ def test_weekly_database_matrix_admits_focused_dispatch_and_session_smoke() -> N
         "statewide_qualified",
         "organizer",
         "session_progress",
+        "city_pd_atomic",
+        "city_pd_history",
+        "city_pd_nonwitness",
     ]
     job = workflow["jobs"]["runtime-contracts"]
     assert job["timeout-minutes"] == 95

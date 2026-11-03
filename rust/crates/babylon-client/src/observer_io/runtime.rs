@@ -37,7 +37,7 @@ use crate::observer_progress::OperationProgress;
 use crate::observer_ui::ProductionEvidenceOutcome;
 use crate::observer_ui::RoadLayer;
 use crate::organizer::qualification_input::HandlerReceipt;
-use crate::organizer::OrganizerClient;
+use crate::organizer::{OrganizerClient, StatusDisposition};
 use crate::production::PrimaryView;
 use crate::ui::dossier_card::{
     ActiveCountyDossier, DossierCampaignId, DossierFetchState, DossierPageView, DossierRefresh,
@@ -415,7 +415,9 @@ impl CampaignReset<'_> {
         snapshot: OrganizerSnapshot,
     ) -> Result<(), String> {
         let original = self.qualification.is_some().then(|| snapshot.clone());
-        self.organizer()?.status(request_id, snapshot, state)?;
+        if self.organizer()?.status(request_id, snapshot, state)? == StatusDisposition::Superseded {
+            return Ok(());
+        }
         if let (Some(audit), Some(original)) = (&mut self.qualification, original) {
             audit.status(state, original)?;
         }

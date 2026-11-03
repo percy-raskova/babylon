@@ -1452,6 +1452,7 @@ mod tests {
             aid: client.aid.clone(),
             pending_aid: client.pending_aid.clone(),
             aid_resolutions: client.aid_resolutions.clone(),
+            city_pd_encounters: client.city_pd_encounters.clone(),
             collection: client.collection.clone(),
             collection_resolutions: client.collection_resolutions.clone(),
         };

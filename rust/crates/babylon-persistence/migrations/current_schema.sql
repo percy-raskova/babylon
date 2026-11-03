@@ -1152,8 +1152,19 @@ CREATE TABLE babylon_state.organizer_receipt_v1 (
     PRIMARY KEY (campaign_id,receipt_id),
     FOREIGN KEY (campaign_id,resolve_tick) REFERENCES babylon_state.tick_commit(campaign_id,resolve_tick) DEFERRABLE INITIALLY DEFERRED
 );
+CREATE TABLE babylon_state.organizer_encounter_v1 (
+    campaign_id UUID NOT NULL REFERENCES babylon_state.campaign(campaign_id) ON DELETE CASCADE,
+    receipt_id BYTEA NOT NULL CHECK (octet_length(receipt_id)=32),
+    actor_id TEXT NOT NULL CHECK (actor_id ~ '^[1-9][0-9]{0,19}$'),
+    subject_id TEXT NOT NULL CHECK (subject_id ~ '^[1-9][0-9]{0,19}$'),
+    resolve_tick BIGINT NOT NULL CHECK (resolve_tick >= 1),
+    encounter_bytes BYTEA NOT NULL CHECK (octet_length(encounter_bytes) BETWEEN 1 AND 1257),
+    PRIMARY KEY (campaign_id,receipt_id),
+    FOREIGN KEY (campaign_id,resolve_tick) REFERENCES babylon_state.tick_commit(campaign_id,resolve_tick) DEFERRABLE INITIALLY DEFERRED
+);
 REVOKE ALL ON babylon_state.organizer_command_v1, babylon_state.organizer_subject_v1,
-    babylon_state.organizer_observation_v1, babylon_state.organizer_receipt_v1 FROM PUBLIC;
+    babylon_state.organizer_observation_v1, babylon_state.organizer_receipt_v1,
+    babylon_state.organizer_encounter_v1 FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION babylon_state.lock_tick_event_marker_v2() FROM PUBLIC;
 REVOKE ALL ON FUNCTION babylon_state.guard_tick_event_v2_history() FROM PUBLIC;

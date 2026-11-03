@@ -6,9 +6,10 @@ use super::RuntimeSessionErrorCode;
 use crate::identity::CampaignId;
 use crate::michigan_material::MichiganDeliveryPreset;
 pub use crate::organizer_runtime::{
-    OrganizerAidCapacity, OrganizerAidOrdinaryOffer, OrganizerAidPending, OrganizerAidResolution,
-    OrganizerAidRouteStage, OrganizerAidTime, OrganizerAidTransportPreview,
+    CityPdEncounter, OrganizerAidCapacity, OrganizerAidOrdinaryOffer, OrganizerAidPending,
+    OrganizerAidResolution, OrganizerAidRouteStage, OrganizerAidTime, OrganizerAidTransportPreview,
     OrganizerCollectionPreview, OrganizerMaterialAidPreview, OrganizerSnapshot,
+    CITY_PD_ENCOUNTER_SCHEMA_VERSION,
 };
 
 pub use babylon_practice_contract::{
@@ -24,7 +25,7 @@ pub use crate::material_runtime::MaterialAdvanceStage as RuntimeAdvanceStage;
 use babylon_kernel::clock::CampaignDuration;
 use uuid::Uuid;
 
-pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 11;
+pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 12;
 pub const RUNTIME_SESSION_MAX_LINE_BYTES: usize = 131_072;
 
 /// A lifecycle incarnation, distinct even when the same campaign is reopened.
@@ -323,7 +324,7 @@ mod selection_tests {
 
 #[test]
 fn advance_progress_current_wire_is_closed_and_versioned() {
-    assert_eq!(RUNTIME_SESSION_PROTOCOL_VERSION, 11);
+    assert_eq!(RUNTIME_SESSION_PROTOCOL_VERSION, 12);
     let valid = r#"{"type":"advance_progress","request_id":2,"scope":{"epoch":1,"campaign_id":"00000000-0000-0000-0000-000000000001"},"resolve_tick":1,"stage":"preparing_commitments"}"#;
     let response: RuntimeSessionResponse =
         serde_json::from_str(valid).expect("current actual progress wire");

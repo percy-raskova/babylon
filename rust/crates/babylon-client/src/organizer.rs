@@ -19,7 +19,7 @@ mod client;
 use client::transport;
 pub use client::OrganizerPlugin;
 use client::RequestKind;
-pub(crate) use client::{report_reading, OrganizerClient, OrganizerInspector};
+pub(crate) use client::{report_reading, OrganizerClient, OrganizerInspector, StatusDisposition};
 
 #[cfg(test)]
 use crate::observer::{ObserverSession, SessionPhase};
@@ -36,14 +36,15 @@ use draft::OrganizerDraft;
 use bevy::prelude::*;
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use babylon_persistence::identity::CampaignId;
     use babylon_persistence::runtime_session::OrganizerAidKind;
     use babylon_persistence::runtime_session::OrganizerAidTransportPreview;
     use babylon_persistence::runtime_session::OrganizerGiftConsent;
     use babylon_persistence::runtime_session::{
-        OrganizerAgreement, OrganizerObservation, OrganizerReport, OrganizerStandingWork,
+        CityPdEncounter, OrganizerAgreement, OrganizerObservation, OrganizerReport,
+        OrganizerStandingWork, CITY_PD_ENCOUNTER_SCHEMA_VERSION,
     };
     use uuid::Uuid;
 
@@ -93,6 +94,49 @@ mod tests {
             },
             session,
         )
+    }
+
+    pub(crate) fn status_fixture() -> (
+        OrganizerClient,
+        ObserverSession,
+        RuntimeSessionRequest,
+        OrganizerSnapshot,
+    ) {
+        let (mut client, mut session) = ready();
+        client.queue(&mut session, RequestKind::Status, None);
+        let request = client.outbox.take().expect("status request queued");
+        let mut view = client.view.clone().expect("fixture view");
+        view.organization_label = "Updated collective".into();
+        let snapshot = OrganizerSnapshot {
+            collection: None,
+            collection_resolutions: Vec::new(),
+            aid: Vec::new(),
+            pending_aid: Vec::new(),
+            aid_resolutions: Vec::new(),
+            city_pd_encounters: vec![encounter_fixture()],
+            view,
+            pending: None,
+            duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
+        };
+        (client, session, request, snapshot)
+    }
+
+    pub(crate) fn encounter_fixture() -> CityPdEncounter {
+        CityPdEncounter {
+            schema_version: CITY_PD_ENCOUNTER_SCHEMA_VERSION,
+            campaign_id: *Uuid::from_u128(927).as_bytes(),
+            controlled_actor_id: 90,
+            authority_id: [1; 16],
+            content_digest: [2; 32],
+            resource_digest: [3; 32],
+            subject_id: 91,
+            resolve_period: 2,
+            visitor_actor_id: 94,
+            receipt_id: [4; 32],
+            venue_source_id: [5; 32],
+            visit_core_id: [6; 32],
+            access_evidence_id: [7; 32],
+        }
     }
 
     fn aid_fixture() -> OrganizerMaterialAidPreview {
@@ -277,6 +321,7 @@ mod tests {
                     aid: Vec::new(),
                     pending_aid: Vec::new(),
                     aid_resolutions: Vec::new(),
+                    city_pd_encounters: Vec::new(),
                     view: client.view.clone().expect("the fixture value clones"),
                     pending: Some(accepted.clone()),
                     duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
@@ -298,6 +343,36 @@ mod tests {
         assert!(!client.available(&session));
         assert!(client.outbox.is_none());
         assert!(client.reviewed_command.is_none());
+    }
+
+    #[test]
+    fn status_with_new_disclosure_invalidates_review() {
+        let (mut client, mut session, request, mut snapshot) = status_fixture();
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+            panic!("expected status request");
+        };
+        snapshot.view = client.view.clone().expect("fixture view");
+        session.duration = Some(snapshot.duration);
+        let command = client
+            .make_command(&session, OrganizerChoice::Hold)
+            .expect("fixture command");
+        client.review_context = Some(session.context());
+        client.reviewed_command = Some(command.clone());
+        client.preview = Some(OrganizerPreview {
+            choice: command.choice,
+            current_period: command.expected_period,
+            resolves_period: command.expected_period + 1,
+            available_hours: 16,
+            required_hours: 8,
+            replaces_standing_work: true,
+            refusal: None,
+            observations: Vec::new(),
+        });
+        client
+            .status(request_id, snapshot, &mut session)
+            .expect("coherent status");
+        assert!(client.reviewed_command.is_none());
+        assert!(client.preview.is_none());
     }
 
     #[test]
@@ -368,6 +443,7 @@ mod tests {
                         aid: Vec::new(),
                         pending_aid: Vec::new(),
                         aid_resolutions: Vec::new(),
+                        city_pd_encounters: Vec::new(),
                         view: client.view.clone().expect("the fixture value clones"),
                         pending: None,
                         duration: babylon_kernel::clock::CampaignDuration::Finite {

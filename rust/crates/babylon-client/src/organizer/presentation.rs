@@ -514,6 +514,37 @@ pub(super) fn aftermath(client: &OrganizerClient, view: &OrganizerView, period: 
     )
 }
 
+/// Show only venue-log records earned by the controlled organizer by this period.
+pub(super) fn encounter_history(
+    client: &OrganizerClient,
+    view: &OrganizerView,
+    period: u64,
+) -> String {
+    let mut text = String::new();
+    for row in client
+        .city_pd_encounters
+        .iter()
+        .filter(|row| row.resolve_period <= period)
+    {
+        let receipt = row
+            .receipt_id
+            .iter()
+            .fold(String::new(), |mut value, byte| {
+                let _ = write!(value, "{byte:02x}");
+                value
+            });
+        let source = row
+            .venue_source_id
+            .iter()
+            .fold(String::new(), |mut value, byte| {
+                let _ = write!(value, "{byte:02x}");
+                value
+            });
+        let _ = write!(text, "\n\nPUBLIC VISITOR LOG · PERIOD {}\nCity PD (actor {}) visited {}. This log records a visit; it does not establish who was present.\nSource {source}\nReceipt {receipt}\nOpen Cited workplace Archive for the cited record.", row.resolve_period, row.visitor_actor_id, view.workplace_label);
+    }
+    text
+}
+
 pub(super) fn means(view: &OrganizerView) -> String {
     let standing = if view.standing.authorized {
         "AUTHORIZED"
@@ -875,6 +906,7 @@ pub(super) fn inspector(client: &OrganizerClient, period: u64) -> (String, Strin
             }
             text.push_str(&aid_history(client, period));
             text.push_str(&collection_history(client, view, period));
+            text.push_str(&encounter_history(client, view, period));
             ("Practice receipts and aftermath".into(), text)
         }
     }

@@ -334,7 +334,7 @@ pub(super) mod tests {
         let directory = Directory::new();
         let (mut audit, mut session) = tests::fixture(&directory);
         let status: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v11.json"
+            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v12.json"
         ))
         .expect("the authored JSON matches the declared schema");
         session.ready(0, None);

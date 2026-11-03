@@ -1,6 +1,8 @@
 //! Durable organizer admission and actor-safe snapshots on the existing runtime.
 
 mod collection_preview;
+pub(crate) mod encounter;
+pub use encounter::{CityPdEncounter, CITY_PD_ENCOUNTER_SCHEMA_VERSION};
 
 mod material_preview;
 

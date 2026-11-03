@@ -33,6 +33,8 @@ use postgres::GenericClient;
 
 #[cfg(test)]
 mod live_tests {
+    #[path = "city_pd_atomic.rs"]
+    mod city_pd_atomic;
     #[path = "material_open.rs"]
     mod material_open;
     #[path = "territory_controls/controls.rs"]

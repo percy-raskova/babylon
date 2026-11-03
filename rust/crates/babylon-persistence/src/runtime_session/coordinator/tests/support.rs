@@ -522,7 +522,8 @@ pub(in crate::runtime_session::coordinator) fn malformed_actions_versions_campai
         (8, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (9, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (10, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
-        (12, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (11, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (13, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (
             RUNTIME_SESSION_PROTOCOL_VERSION,
             "other",

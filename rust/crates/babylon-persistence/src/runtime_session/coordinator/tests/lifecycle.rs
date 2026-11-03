@@ -89,6 +89,36 @@ fn hello_and_initial_stop_need_no_campaign_or_database_admission() {
 }
 
 #[test]
+fn stale_version_eleven_refuses_before_organizer_status() {
+    let rows = lifecycle(
+        &[
+            RuntimeSessionRequest::OrganizerStatus {
+                protocol_version: 11,
+                request_id: 1,
+                scope: RuntimeSessionScope::default(),
+            },
+            stop_at(RuntimeSessionScope::default()),
+        ],
+        vec![],
+    );
+    assert!(matches!(
+        rows.as_slice(),
+        [
+            RuntimeSessionResponse::Hello {
+                protocol_version: 12,
+                ..
+            },
+            RuntimeSessionResponse::Error {
+                request_id: Some(1),
+                code: RuntimeSessionErrorCode::UnsupportedVersion,
+                ..
+            },
+            RuntimeSessionResponse::Stopped { request_id: 99, .. },
+        ]
+    ));
+}
+
+#[test]
 fn hello_and_switching_are_written_before_fallible_target_admission() {
     let mut output = Vec::new();
     coordinator::serve(

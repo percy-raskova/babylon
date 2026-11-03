@@ -102,7 +102,6 @@ fn committed_contact_record(
         || policy.controlled_actor_id != config.controlled_actor_id
         || policy.committee_actor_id != config.workplace_partner.actor_id
         || policy.committee_authority_id != config.workplace_partner.authority_id
-        || policy.player_reader_actor_id != config.controlled_actor_id
         || policy.organizer_content_digest != config.content_digest
     {
         return Err(InvalidPolicy);
@@ -674,12 +673,23 @@ pub fn read_public_visit(
     {
         return Ok(None);
     }
-    Ok(Some(field_hash(
-        b"babylon.public-venue.player-access.v1",
-        &[
-            &visit.visit_core_id,
-            &visit.record.source_id,
-            &reader_actor_id.to_be_bytes(),
-        ],
+    Ok(Some(public_visit_access_identity(
+        visit.visit_core_id,
+        visit.record.source_id,
+        reader_actor_id,
     )))
+}
+
+/// Compute the access identity for a public check-in and reader.
+/// This pure identity alone does not prove occurrence or lawful access.
+#[must_use]
+pub fn public_visit_access_identity(
+    visit_core_id: [u8; 32],
+    source_id: [u8; 32],
+    reader_actor_id: u64,
+) -> [u8; 32] {
+    field_hash(
+        b"babylon.public-venue.player-access.v1",
+        &[&visit_core_id, &source_id, &reader_actor_id.to_be_bytes()],
+    )
 }

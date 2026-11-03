@@ -507,6 +507,7 @@ pub struct DurableMaterialRuntime {
     pub(super) lookup: OpeningRegister,
     pub(super) lookup_chain: [u8; 32],
     pub(super) tail: Option<IdentifiedMaterialTick>,
+    pub(super) tail_envelope_digest: Option<[u8; 32]>,
     pub(super) last_receipt: Option<crate::CommittedTickReceipt>,
     pub(super) last_choice_receipts: Vec<babylon_tick::choice_receipt::ChoiceReceipt>,
 }
@@ -607,6 +608,7 @@ impl DurableMaterialRuntime {
             lookup,
             lookup_chain: initial_lookup_chain,
             tail: None,
+            tail_envelope_digest: None,
             last_receipt: None,
             last_choice_receipts: Vec::new(),
         })
@@ -669,6 +671,9 @@ impl DurableMaterialRuntime {
     #[must_use]
     pub const fn tail(&self) -> Option<&IdentifiedMaterialTick> {
         self.tail.as_ref()
+    }
+    pub(crate) const fn tail_envelope_digest(&self) -> Option<[u8; 32]> {
+        self.tail_envelope_digest
     }
     /// Process-local diagnostics for the last acknowledged tick.
     #[must_use]
@@ -870,6 +875,7 @@ impl DurableMaterialRuntime {
                 .map_err(commit_error)?;
             self.lookup_chain = encoded.lookup_chain;
             self.tail = Some(ack);
+            self.tail_envelope_digest = Some(envelope.digest());
             diagnostic.acknowledge(ReplayCommitDisposition::ReconciledAfterAmbiguousCommit);
             self.last_receipt = Some(diagnostic);
             self.last_choice_receipts = choices;
@@ -946,6 +952,7 @@ impl DurableMaterialRuntime {
             .map_err(commit_error)?;
         self.lookup_chain = encoded.lookup_chain;
         self.tail = Some(ack);
+        self.tail_envelope_digest = Some(envelope.digest());
         diagnostic.acknowledge(disposition);
         self.last_receipt = Some(diagnostic);
         self.last_choice_receipts = choices;
@@ -1557,7 +1564,7 @@ impl MaterialEnvelopeRead {
 }
 
 impl StoredMaterialEnvelope {
-    fn digest(&self) -> [u8; 32] {
+    pub(super) fn digest(&self) -> [u8; 32] {
         match self {
             Self::Complete(envelope) => envelope.digest(),
             Self::Attested(envelope) => envelope.digest(),

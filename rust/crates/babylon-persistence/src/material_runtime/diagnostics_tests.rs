@@ -41,6 +41,7 @@ fn runtime() -> DurableMaterialRuntime {
         lookup,
         lookup_chain,
         tail: None,
+        tail_envelope_digest: None,
         last_receipt: None,
         last_choice_receipts: Vec::new(),
     }

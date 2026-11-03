@@ -76,6 +76,28 @@ fn contact_requires_actual_completed_receipt_and_closed_debits() {
     )
     .expect("public venue fixture supplies valid evidence");
     assert_eq!(publication.period, entries.period);
+    let committee_reader = PublicVenuePolicy::new(
+        config.campaign_id,
+        config.workplace_id,
+        config.controlled_actor_id,
+        config.workplace_partner.actor_id,
+        config.workplace_partner.authority_id,
+        900,
+        config.workplace_partner.actor_id,
+        config.content_digest,
+        [9; 32],
+    )
+    .expect("alternate captured log reader");
+    let alternate = public_venue::publish_public_contact(
+        &committee_reader,
+        &config,
+        &accepted,
+        state,
+        entries,
+        register.state(),
+    )
+    .expect("contact publication is independent of who reads the visitor log");
+    assert_eq!(alternate.period, publication.period);
     let context = ContactContext {
         config: &config,
         policy: &policy,
@@ -334,10 +356,10 @@ fn assert_live_scope_and_usage_refusals(context: ContactContext<'_>) {
         config.campaign_id,
         config.workplace_id,
         config.controlled_actor_id,
-        config.workplace_partner.actor_id,
+        999,
         config.workplace_partner.authority_id,
         900,
-        999,
+        config.controlled_actor_id,
         config.content_digest,
         [9; 32],
     )

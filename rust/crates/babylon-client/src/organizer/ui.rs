@@ -1269,7 +1269,11 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
                 else { format!("PERIOD {}{endpoint} · 4 weeks\n{} organizer-hours available", view.period, view.available_hours) }
             }),
             TextPart::Context => scope.client.view.as_ref().map_or_else(String::new, presentation::context),
-            TextPart::Aftermath => scope.client.view.as_ref().map_or_else(String::new, |view| presentation::aftermath(&scope.client, view, scope.session.viewed_tick)),
+            TextPart::Aftermath => scope.client.view.as_ref().map_or_else(String::new, |view| {
+                let mut text = presentation::aftermath(&scope.client, view, scope.session.viewed_tick);
+                text.push_str(&presentation::encounter_history(&scope.client, view, scope.session.viewed_tick));
+                text
+            }),
             TextPart::ChoiceHeading => if complete { "CAMPAIGN COMPLETE".into() } else if historical { "CURRENT CHOICES · RETURN LIVE TO DECIDE".into() } else { "CHOOSE OUR WORK FOR THE NEXT PERIOD".into() },
             TextPart::Approach(choice) => if complete { "No further period remains. Inspect our practice history and retained reports.".into() } else { scope.client.view.as_ref().map_or_else(String::new, |view| presentation::client_approach(&scope.client, view, *choice)) },
             TextPart::ChoiceMarker(choice) => {
@@ -1405,8 +1409,8 @@ mod tests {
     use babylon_persistence::observer_reader::ObserverEconomySnapshot;
     use babylon_persistence::runtime_session::OrganizerGiftConsent;
     use babylon_persistence::runtime_session::OrganizerPauseReason;
-    use babylon_persistence::runtime_session::RuntimeSessionResponse;
     use babylon_persistence::runtime_session::{OrganizerStandingWork, OrganizerView};
+    use babylon_persistence::runtime_session::{RuntimeSessionRequest, RuntimeSessionResponse};
     use bevy::time::TimeUpdateStrategy;
     use std::sync::mpsc::Sender;
     use uuid::Uuid;
@@ -2602,6 +2606,177 @@ mod tests {
             .resource::<Messages<ObserverCommand>>()
             .is_empty());
         return_to_organizer(&mut app, focus, &draft);
+    }
+
+    #[test]
+    fn disclosed_visit_is_period_filtered_and_uses_existing_archive_navigation() {
+        let (mut app, focus, draft) = organizer_navigation();
+        {
+            let client = app.world().resource::<OrganizerClient>();
+            assert_eq!(
+                presentation::encounter_history(
+                    client,
+                    client.view.as_ref().expect("fixture view"),
+                    3
+                ),
+                ""
+            );
+        }
+        let (mut client, session, request, snapshot) = crate::organizer::tests::status_fixture();
+        client.draft = Some(draft.clone());
+        app.insert_resource(client).insert_resource(session);
+        let replies = crate::observer_io::tests::install_status_receiver(&mut app);
+        let RuntimeSessionRequest::OrganizerStatus {
+            scope, request_id, ..
+        } = request
+        else {
+            panic!("expected status request");
+        };
+        replies
+            .send(Ok(RuntimeSessionResponse::OrganizerStatus {
+                scope,
+                request_id,
+                snapshot: Box::new(snapshot),
+            }))
+            .expect("response receiver remains open");
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<OrganizerClient>()
+                .city_pd_encounters
+                .len(),
+            1
+        );
+        {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.inspect_tick(1);
+            let context = session.context();
+            assert!(session.installed(&context));
+        }
+        app.update();
+        let aftermath = |app: &mut App| {
+            let world = app.world_mut();
+            world
+                .query::<(&TextPart, &Text)>()
+                .iter(world)
+                .find_map(|(part, text)| {
+                    matches!(part, TextPart::Aftermath).then(|| text.0.clone())
+                })
+                .expect("aftermath exists")
+        };
+        assert!(!aftermath(&mut app).contains("PUBLIC VISITOR LOG"));
+        {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.return_live();
+            let context = session.context();
+            assert!(session.installed(&context));
+        }
+        app.update();
+        let text = aftermath(&mut app);
+        assert!(text.contains("City PD (actor 94) visited Fixture workplace"));
+        assert!(text.contains("does not establish who was present"));
+        assert!(text.contains(&"05".repeat(32)));
+        assert!(text.contains(&"04".repeat(32)));
+        press_named(&mut app, "Practice history");
+        assert!(painted_text(&mut app, true).contains("PUBLIC VISITOR LOG"));
+        press_named(&mut app, "Cited workplace Archive");
+        assert_eq!(app.world().resource::<ArchiveRequests>().0, [false]);
+        return_to_organizer(&mut app, focus, &draft);
+    }
+
+    #[test]
+    fn historical_navigation_reconciles_stale_status_without_disconnecting() {
+        let (mut app, focus, draft) = organizer_navigation();
+        let (mut client, session, request, snapshot) = crate::organizer::tests::status_fixture();
+        client.draft = Some(draft.clone());
+        let command = client
+            .make_command(&session, OrganizerChoice::Hold)
+            .expect("fixture command");
+        client.preview = Some(preview_for(&command));
+        client.reviewed_command = Some(command);
+        client.review_context = Some(session.context());
+        app.insert_resource(client).insert_resource(session);
+        let (requests, replies) = crate::observer_io::tests::install_status_pipe(&mut app);
+        app.add_systems(
+            Update,
+            super::super::transport
+                .after(ObserverSet::Receive)
+                .before(ObserverSet::Paint),
+        );
+        let RuntimeSessionRequest::OrganizerStatus {
+            scope, request_id, ..
+        } = request
+        else {
+            panic!("expected status request");
+        };
+        {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.inspect_tick(1);
+            let context = session.context();
+            assert!(session.installed(&context));
+        }
+        replies
+            .send(Ok(RuntimeSessionResponse::OrganizerStatus {
+                scope: scope.clone(),
+                request_id,
+                snapshot: Box::new(snapshot.clone()),
+            }))
+            .expect("response receiver remains open");
+        app.update();
+        let session = app.world().resource::<ObserverSession>();
+        assert!(
+            !session.runtime_disconnected(),
+            "local navigation must not disconnect the runtime"
+        );
+        assert_ne!(session.phase, SessionPhase::Failed);
+        let client = app.world().resource::<OrganizerClient>();
+        assert_eq!(
+            client
+                .view
+                .as_ref()
+                .expect("original view")
+                .organization_label,
+            "Fixture collective"
+        );
+        assert_eq!(client.city_pd_encounters.len(), 0);
+        assert_eq!(client.draft.as_ref(), Some(&draft));
+        assert!(client.reviewed_command.is_none());
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(focus));
+        let RuntimeSessionRequest::OrganizerStatus {
+            request_id: retry_id,
+            scope: retry_scope,
+            ..
+        } = requests.try_recv().expect("fresh status requested")
+        else {
+            panic!("expected fresh status");
+        };
+        assert_ne!(retry_id, request_id);
+        assert_eq!(retry_scope, scope);
+        replies
+            .send(Ok(RuntimeSessionResponse::OrganizerStatus {
+                scope: retry_scope,
+                request_id: retry_id,
+                snapshot: Box::new(snapshot),
+            }))
+            .expect("response receiver remains open");
+        app.update();
+        let client = app.world().resource::<OrganizerClient>();
+        assert_eq!(
+            client
+                .view
+                .as_ref()
+                .expect("updated view")
+                .organization_label,
+            "Updated collective"
+        );
+        assert_eq!(client.city_pd_encounters.len(), 1);
+        assert_eq!(client.draft.as_ref(), Some(&draft));
+        assert!(client.reviewed_command.is_none());
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(focus));
+        assert!(!app
+            .world()
+            .resource::<ObserverSession>()
+            .runtime_disconnected());
     }
 
     #[test]

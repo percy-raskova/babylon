@@ -43,7 +43,8 @@ jobs:
           inputs.focus == 'organizer' && '{"focus":["organizer"]}' ||
           inputs.focus == 'session_progress' && '{"focus":["session_progress"]}' ||
           '{"focus":["runtime_smoke","reference_integrity","runtime","archive",
-          "reader","client","statewide_qualified","organizer","session_progress"]}') }}
+          "reader","client","statewide_qualified","organizer","session_progress",
+          "city_pd_atomic","city_pd_history","city_pd_nonwitness"]}') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

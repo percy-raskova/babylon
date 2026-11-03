@@ -641,19 +641,322 @@ fn organizer_durable_ruling_failure_retry_earned_history_and_contact_recovery() 
     qualify_resume_and_continuation(&mut runtime, &inquiry);
 }
 
-mod state_opponent {
+pub(crate) mod state_opponent {
     use super::{
         support, CampaignId, DisposableTarget, DurableMaterialRuntime, OrganizerChoice, Uuid,
     };
+    use babylon_persistence::runtime_session::OrganizerSnapshot;
+    use postgres::Client;
+    use serde_json::Value;
+
+    fn qualify_marker_tampering(
+        runtime: &DurableMaterialRuntime,
+        writer: &mut Client,
+        campaign: CampaignId,
+    ) {
+        use super::RuntimeSessionErrorCode;
+        let marker = writer.query_one("SELECT tick_content_hash,envelope_digest FROM babylon_state.tick_commit WHERE campaign_id=$1 AND resolve_tick=2", &[campaign.as_uuid()]).expect("P2 marker");
+        let tick_hash: Vec<u8> = marker.get(0);
+        let envelope_digest: Vec<u8> = marker.get(1);
+        for column in ["tick_content_hash", "envelope_digest"] {
+            writer.execute(&format!("UPDATE babylon_state.tick_commit SET {column}=decode(repeat('fd',32),'hex') WHERE campaign_id=$1 AND resolve_tick=2"), &[campaign.as_uuid()]).expect("tamper marker");
+            assert_eq!(
+                runtime.organizer_snapshot(),
+                Err(RuntimeSessionErrorCode::StaleExpectedTail)
+            );
+            writer.execute("UPDATE babylon_state.tick_commit SET tick_content_hash=$2,envelope_digest=$3 WHERE campaign_id=$1 AND resolve_tick=2", &[campaign.as_uuid(), &tick_hash, &envelope_digest]).expect("restore marker");
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    enum HistoricalChecks {
+        Separate,
+        Required,
+    }
+
+    fn assert_historical_refusal(checks: HistoricalChecks, refuses: &impl Fn() -> bool) {
+        if matches!(checks, HistoricalChecks::Required) {
+            assert!(refuses());
+        }
+    }
+
+    fn qualify_encounter_tampering(
+        runtime: &DurableMaterialRuntime,
+        config: &postgres::Config,
+        campaign: CampaignId,
+        historical_checks: HistoricalChecks,
+    ) {
+        use super::{
+            ArchiveDossierProducer, ArchiveKnowledge, NoTls, OrganizerDossierProducer,
+            PendingArchiveReceipt, RuntimeSessionErrorCode, SemanticArchiveError,
+        };
+        let tail = runtime.tail().expect("P2 marker");
+        let pending_receipt = PendingArchiveReceipt::try_new(
+            tail.resolve_tick(),
+            *tail.tick_content_hash().as_bytes(),
+        )
+        .expect("P2 Archive receipt");
+        let producer = OrganizerDossierProducer::new(config);
+        let knowledge = ArchiveKnowledge::try_new(Vec::new()).expect("empty input knowledge");
+        if matches!(historical_checks, HistoricalChecks::Required) {
+            producer
+                .produce(*campaign.as_uuid(), &pending_receipt, &knowledge, 4)
+                .expect("exact historical capture renders");
+        }
+        let history_refuses = || {
+            matches!(
+                producer.produce(*campaign.as_uuid(), &pending_receipt, &knowledge, 4),
+                Err(SemanticArchiveError::StoredPageMismatch)
+            )
+        };
+        let mut writer = config.connect(NoTls).expect("writer");
+        qualify_marker_tampering(runtime, &mut writer, campaign);
+        let row = writer.query_one("SELECT receipt_id,actor_id,subject_id,resolve_tick,encounter_bytes FROM babylon_state.organizer_encounter_v1 WHERE campaign_id=$1", &[campaign.as_uuid()]).expect("exact one encounter");
+        let receipt: Vec<u8> = row.get(0);
+        let actor: String = row.get(1);
+        let subject: String = row.get(2);
+        let period: i64 = row.get(3);
+        let bytes: Vec<u8> = row.get(4);
+        for assignment in [
+            "actor_id=(actor_id::numeric+1)::text",
+            "subject_id=(subject_id::numeric+1)::text",
+            "receipt_id=decode(repeat('fe',32),'hex')",
+            "encounter_bytes=encounter_bytes||decode('00','hex')",
+        ] {
+            writer.execute(&format!("UPDATE babylon_state.organizer_encounter_v1 SET {assignment} WHERE campaign_id=$1"), &[campaign.as_uuid()]).expect("tamper");
+            assert_eq!(
+                runtime.organizer_snapshot(),
+                Err(RuntimeSessionErrorCode::StorageRefused)
+            );
+            assert_historical_refusal(historical_checks, &history_refuses);
+            writer.execute("UPDATE babylon_state.organizer_encounter_v1 SET receipt_id=$2,actor_id=$3,subject_id=$4,resolve_tick=$5,encounter_bytes=$6 WHERE campaign_id=$1", &[campaign.as_uuid(), &receipt, &actor, &subject, &period, &bytes]).expect("restore");
+        }
+        writer
+            .execute(
+                "DELETE FROM babylon_state.organizer_encounter_v1 WHERE campaign_id=$1",
+                &[campaign.as_uuid()],
+            )
+            .expect("delete");
+        assert_eq!(
+            runtime.organizer_snapshot(),
+            Err(RuntimeSessionErrorCode::StorageRefused)
+        );
+        assert_historical_refusal(historical_checks, &history_refuses);
+        writer.execute("INSERT INTO babylon_state.organizer_encounter_v1 (campaign_id,receipt_id,actor_id,subject_id,resolve_tick,encounter_bytes) VALUES ($1,$2,$3,$4,$5,$6)", &[campaign.as_uuid(), &receipt, &actor, &subject, &period, &bytes]).expect("restore");
+        writer.execute("INSERT INTO babylon_state.organizer_encounter_v1 (campaign_id,receipt_id,actor_id,subject_id,resolve_tick,encounter_bytes) VALUES ($1,decode(repeat('fd',32),'hex'),$2,$3,$4,$5)", &[campaign.as_uuid(), &actor, &subject, &period, &bytes]).expect("insert extra row");
+        assert_eq!(
+            runtime.organizer_snapshot(),
+            Err(RuntimeSessionErrorCode::StorageRefused)
+        );
+        assert_historical_refusal(historical_checks, &history_refuses);
+        writer.execute("DELETE FROM babylon_state.organizer_encounter_v1 WHERE campaign_id=$1 AND receipt_id=decode(repeat('fd',32),'hex')", &[campaign.as_uuid()]).expect("remove extra row");
+        let grant = writer.query_one("SELECT subject_kind,subject_id,grant_key,granted_tick,provenance_ref FROM babylon_meta.archive_knowledge_grant_v1 WHERE campaign_id=$1 AND grant_key LIKE 'city-pd-%'", &[campaign.as_uuid()]).expect("encounter grant");
+        let kind: String = grant.get(0);
+        let grant_subject: String = grant.get(1);
+        let key: String = grant.get(2);
+        let tick: i64 = grant.get(3);
+        let provenance: i32 = grant.get(4);
+        writer.execute("INSERT INTO babylon_meta.archive_knowledge_grant_v1 (campaign_id,subject_kind,subject_id,grant_key,granted_tick,provenance_ref) VALUES ($1,$2,$3,'city-pd-unexpected',$4,$5)", &[campaign.as_uuid(), &kind, &grant_subject, &tick, &provenance]).expect("extra grant");
+        assert_eq!(
+            runtime.organizer_snapshot(),
+            Err(RuntimeSessionErrorCode::StorageRefused)
+        );
+        assert_historical_refusal(historical_checks, &history_refuses);
+        writer.execute("DELETE FROM babylon_meta.archive_knowledge_grant_v1 WHERE campaign_id=$1 AND grant_key='city-pd-unexpected'", &[campaign.as_uuid()]).expect("remove extra grant");
+        writer.execute("UPDATE babylon_meta.archive_knowledge_grant_v1 SET provenance_ref=(SELECT provenance_ref FROM babylon_meta.archive_knowledge_grant_v1 WHERE campaign_id=$1 AND grant_key='subject' LIMIT 1) WHERE campaign_id=$1 AND grant_key=$2", &[campaign.as_uuid(), &key]).expect("alter citation");
+        assert_eq!(
+            runtime.organizer_snapshot(),
+            Err(RuntimeSessionErrorCode::StorageRefused)
+        );
+        assert_historical_refusal(historical_checks, &history_refuses);
+        writer.execute("UPDATE babylon_meta.archive_knowledge_grant_v1 SET provenance_ref=$3 WHERE campaign_id=$1 AND grant_key=$2", &[campaign.as_uuid(), &key, &provenance]).expect("restore citation");
+        writer.execute("DELETE FROM babylon_meta.archive_knowledge_grant_v1 WHERE campaign_id=$1 AND grant_key=$2", &[campaign.as_uuid(), &key]).expect("delete grant");
+        assert_eq!(
+            runtime.organizer_snapshot(),
+            Err(RuntimeSessionErrorCode::StorageRefused)
+        );
+        assert_historical_refusal(historical_checks, &history_refuses);
+        writer.execute("INSERT INTO babylon_meta.archive_knowledge_grant_v1 (campaign_id,subject_kind,subject_id,grant_key,granted_tick,provenance_ref) VALUES ($1,$2,$3,$4,$5,$6)", &[campaign.as_uuid(), &kind, &grant_subject, &key, &tick, &provenance]).expect("restore grant");
+        assert_eq!(
+            runtime
+                .organizer_snapshot()
+                .expect("exact projection")
+                .city_pd_encounters
+                .len(),
+            1
+        );
+    }
+
+    #[derive(Clone, Copy)]
+    enum EncounterDisclosure {
+        Visible,
+        Hidden,
+    }
+
+    fn qualify_restricted_encounter_page(
+        target: &mut DisposableTarget,
+        campaign: CampaignId,
+        workplace: u64,
+        p1_hash: [u8; 32],
+        disclosure: EncounterDisclosure,
+    ) {
+        use super::{
+            ArchiveDossierBounds, ArchiveDossierState, ArchivePageRef, ArchiveSubjectKind,
+            ArchiveWorker, OrganizerDossierProducer, SemanticArchiveReader,
+        };
+        use babylon_persistence::archive_revision::ArchiveReadScope;
+        let expected_visit = matches!(disclosure, EncounterDisclosure::Visible);
+        let mut writer = target.writer.connect(super::NoTls).expect("writer");
+        let subject_grants: i64 = writer.query_one("SELECT count(*) FROM babylon_meta.archive_knowledge_grant_v1 WHERE campaign_id=$1 AND subject_kind='workplace' AND subject_id=$2 AND grant_key='subject'", &[campaign.as_uuid(), &workplace.to_string()]).expect("opening workplace grant").get(0);
+        assert_eq!(subject_grants, 1);
+        babylon_persistence::install_reader_role(&target.writer).expect("restricted reader role");
+        let reader_config = target.login(
+            "babylon_reader",
+            if expected_visit {
+                "citypd"
+            } else {
+                "citypdother"
+            },
+        );
+        let reader = SemanticArchiveReader::new(&reader_config).expect("restricted reader");
+        let mut worker = ArchiveWorker::new(&target.writer);
+        let producer = OrganizerDossierProducer::new(&target.writer);
+        for _ in 0..50 {
+            if worker
+                .sweep_once(campaign, &producer)
+                .expect("Archive sweep")
+                .verified_tick()
+                >= 2
+            {
+                break;
+            }
+        }
+        let status = reader
+            .archive_verification_status(campaign)
+            .expect("status")
+            .expect("campaign");
+        assert_eq!(status.processed_tick(), 2);
+        let page = ArchivePageRef::try_new(ArchiveSubjectKind::Workplace, workplace.to_string())
+            .expect("workplace");
+        let bounds = ArchiveDossierBounds::try_new(100, None).expect("bounds");
+        let current = support::current_archive_scope(&reader, campaign);
+        let result = reader
+            .dossier_as_of(&current, &page, &bounds)
+            .expect("current dossier");
+        let ArchiveDossierState::Ready {
+            page: current_page, ..
+        } = result.state
+        else {
+            panic!("current dossier not ready")
+        };
+        assert_eq!(
+            current_page
+                .markdown
+                .contains("published check-in records a City PD visit"),
+            expected_visit
+        );
+        let historical = ArchiveReadScope::committed(campaign, 1, p1_hash).expect("P1 scope");
+        let result = reader
+            .dossier_as_of(&historical, &page, &bounds)
+            .expect("historical dossier");
+        let ArchiveDossierState::Ready {
+            page: prior_page, ..
+        } = result.state
+        else {
+            panic!("historical dossier not ready")
+        };
+        assert!(!prior_page
+            .markdown
+            .contains("published check-in records a City PD visit"));
+    }
+
+    fn assert_paid_encounter(
+        runtime: &DurableMaterialRuntime,
+        contact: [u8; 32],
+    ) -> OrganizerSnapshot {
+        use babylon_material_circuit::AgencyAttendanceOutcome;
+        let register = runtime.session().material();
+        let pd = register.city_pd().expect("PD");
+        let [attempt] = pd.attempts.as_slice() else {
+            panic!("one P2 attempt")
+        };
+        assert_eq!(attempt.funding.outcome, AgencyAttendanceOutcome::Paid);
+        assert_eq!(attempt.funding.paid.micro_units(), 24_000_000);
+        assert_eq!(attempt.funding.attended_hours, 1);
+        assert_eq!(attempt.receipt.acquired_public_fact_ids, vec![contact]);
+        assert!(attempt.receipt.player_witness_evidence_id.is_some());
+        let snapshot = runtime.organizer_snapshot().expect("P2 snapshot");
+        let json = serde_json::to_value(&snapshot).expect("snapshot serializes");
+        let encounters = json
+            .get("city_pd_encounters")
+            .and_then(Value::as_array)
+            .expect("actor-safe encounters are present");
+        assert_eq!(
+            encounters.len(),
+            1,
+            "the player can read the paid public check-in"
+        );
+        assert_eq!(
+            snapshot.city_pd_encounters[0].receipt_id,
+            attempt.receipt.receipt_id
+        );
+        assert_eq!(
+            snapshot.city_pd_encounters[0].subject_id,
+            snapshot.view.workplace_id
+        );
+        assert_eq!(
+            snapshot.city_pd_encounters[0].visitor_actor_id,
+            pd.config.actor_id
+        );
+        assert_eq!(
+            snapshot.city_pd_encounters[0].controlled_actor_id,
+            snapshot.view.actor_id
+        );
+        snapshot
+    }
+
     #[test]
     #[ignore = "requires the task-owned disposable PostgreSQL runtime and national source"]
     fn national_city_pd_committed_contact_and_paid_visit_survive_restart() {
+        run_witnessed(HistoricalChecks::Separate);
+    }
+
+    pub(crate) fn qualify_historical_encounters() {
+        run_witnessed(HistoricalChecks::Required);
+    }
+
+    fn qualify_empty_opening(
+        runtime: &DurableMaterialRuntime,
+        config: &postgres::Config,
+        campaign: CampaignId,
+    ) {
+        assert!(runtime.tail().is_none());
+        let mut writer = config.connect(super::NoTls).expect("writer");
+        let marker_count: i64 = writer
+            .query_one(
+                "SELECT count(*) FROM babylon_state.tick_commit WHERE campaign_id=$1",
+                &[campaign.as_uuid()],
+            )
+            .expect("P0 marker count")
+            .get(0);
+        assert_eq!(marker_count, 0);
+        drop(writer);
+        assert_eq!(
+            runtime
+                .organizer_snapshot()
+                .expect("P0 status")
+                .city_pd_encounters
+                .len(),
+            0
+        );
+    }
+
+    fn run_witnessed(historical_checks: HistoricalChecks) {
         use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
-        use babylon_material_circuit::AgencyAttendanceOutcome;
         use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
         use babylon_practice_contract::{CityPdDecision, PublicVenueRecordKind};
 
-        let target = DisposableTarget::create();
+        let mut target = DisposableTarget::create();
         let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7032));
         let foundation = CapturedEconomicCatalog::capture_national_campaign(
             babylon_persistence::economic_catalog::national_catalog_input(),
@@ -666,7 +969,7 @@ mod state_opponent {
         )
         .expect("actual national foundation");
         let digest = foundation.digest();
-        let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation)
+        let runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation)
             .expect("persist actual opening");
         assert!(matches!(
             runtime
@@ -684,12 +987,21 @@ mod state_opponent {
                 ..
             }
         ));
+        drop(runtime);
+        let mut runtime = DurableMaterialRuntime::open(&target.writer, campaign, digest)
+            .expect("P0 cold open authenticates the empty opening");
+        qualify_empty_opening(&runtime, &target.writer, campaign);
         let reinforce = super::command(&runtime, OrganizerChoice::Reinforce, 42);
         runtime
             .submit_organizer_command(&reinforce)
             .expect("admit contact command");
         support::advance_material_period(&mut runtime);
         let p1 = runtime.session().material().canonical_bytes().to_vec();
+        let p1_hash = *runtime
+            .tail()
+            .expect("P1 marker")
+            .tick_content_hash()
+            .as_bytes();
         let contact = runtime
             .session()
             .material()
@@ -708,22 +1020,105 @@ mod state_opponent {
             .expect("cold open authenticates P1 contact and original debit");
         assert_eq!(runtime.session().material().canonical_bytes(), p1);
         support::advance_material_period(&mut runtime);
-        let register = runtime.session().material();
-        let pd = register.city_pd().expect("PD");
-        let [attempt] = pd.attempts.as_slice() else {
-            panic!("one P2 attempt")
-        };
-        assert_eq!(attempt.funding.outcome, AgencyAttendanceOutcome::Paid);
-        assert_eq!(attempt.funding.paid.micro_units(), 24_000_000);
-        assert_eq!(attempt.funding.attended_hours, 1);
-        assert_eq!(attempt.receipt.acquired_public_fact_ids, vec![contact]);
-        assert!(attempt.receipt.player_witness_evidence_id.is_some());
-        let p2 = register.canonical_bytes().to_vec();
+        let snapshot = assert_paid_encounter(&runtime, contact);
+        let p2 = runtime.session().material().canonical_bytes().to_vec();
+        if matches!(historical_checks, HistoricalChecks::Required) {
+            qualify_encounter_tampering(&runtime, &target.writer, campaign, historical_checks);
+            qualify_restricted_encounter_page(
+                &mut target,
+                campaign,
+                snapshot.view.workplace_id,
+                p1_hash,
+                EncounterDisclosure::Visible,
+            );
+        }
         drop(runtime);
         let mut runtime = DurableMaterialRuntime::open(&target.writer, campaign, digest)
             .expect("cold open authenticates original P2 decision, payment and source");
         assert_eq!(runtime.session().material().canonical_bytes(), p2);
         support::advance_material_period(&mut runtime);
         assert_eq!(runtime.session().completed_tick(), 3);
+    }
+
+    pub(crate) fn qualify_paid_nonwitness(target: &mut DisposableTarget) {
+        use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+        use babylon_material_circuit::AgencyAttendanceOutcome;
+        use babylon_persistence::economic_catalog::{
+            self, CapturedEconomicCatalog, SourceArtifact, SourceArtifactKind,
+        };
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7033));
+        let mut input = economic_catalog::national_catalog_input();
+        let source = input
+            .sources
+            .iter_mut()
+            .find(|source| source.kind() == SourceArtifactKind::NationalGamePolicy)
+            .expect("national policy source");
+        let original = std::str::from_utf8(source.bytes()).expect("policy text");
+        let changed = original.replace(
+            "venue_log_reader = \"controlled_organizer\"",
+            "venue_log_reader = \"workplace_committee\"",
+        );
+        assert_ne!(changed, original);
+        *source =
+            SourceArtifact::capture(SourceArtifactKind::NationalGamePolicy, changed.into_bytes());
+        let foundation = CapturedEconomicCatalog::capture_national_campaign(input, campaign)
+            .expect("capture alternate Designed reader")
+            .create_foundation(
+                ReplaySessionId::try_from("national-city-pd-nonwitness").expect("session"),
+                ReplaySeed::new(319),
+            )
+            .expect("alternate foundation");
+        let digest = foundation.digest();
+        let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation)
+            .expect("persist alternate opening");
+        let command = super::command(&runtime, OrganizerChoice::Reinforce, 43);
+        runtime
+            .submit_organizer_command(&command)
+            .expect("admit contact");
+        support::advance_material_period(&mut runtime);
+        let p1_hash = *runtime
+            .tail()
+            .expect("P1 marker")
+            .tick_content_hash()
+            .as_bytes();
+        support::advance_material_period(&mut runtime);
+        let attempt = &runtime.session().material().city_pd().expect("PD").attempts[0];
+        assert_eq!(attempt.funding.outcome, AgencyAttendanceOutcome::Paid);
+        assert!(attempt.receipt.player_witness_evidence_id.is_none());
+        assert!(runtime
+            .session()
+            .material()
+            .public_venue()
+            .expect("venue")
+            .records
+            .iter()
+            .any(|record| matches!(
+                record.kind,
+                babylon_practice_contract::PublicVenueRecordKind::PaidVisit { .. }
+            )));
+        let mut writer = target.writer.connect(super::NoTls).expect("writer");
+        let grant_count: i64 = writer.query_one("SELECT count(*) FROM babylon_meta.archive_knowledge_grant_v1 WHERE campaign_id=$1 AND grant_key LIKE 'city-pd-%'", &[campaign.as_uuid()]).expect("encounter grants").get(0);
+        assert_eq!(grant_count, 0);
+        let snapshot = runtime.organizer_snapshot().expect("non-witness status");
+        assert_eq!(snapshot.city_pd_encounters.len(), 0);
+        let workplace = snapshot.view.workplace_id;
+        drop(runtime);
+        let reopened = DurableMaterialRuntime::open(&target.writer, campaign, digest)
+            .expect("non-witness cold open");
+        assert_eq!(
+            reopened
+                .organizer_snapshot()
+                .expect("reopened status")
+                .city_pd_encounters
+                .len(),
+            0
+        );
+        qualify_restricted_encounter_page(
+            target,
+            campaign,
+            workplace,
+            p1_hash,
+            EncounterDisclosure::Hidden,
+        );
     }
 }

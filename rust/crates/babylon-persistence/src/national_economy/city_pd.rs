@@ -15,7 +15,9 @@ use babylon_practice_contract::{CityPdConfig, CITY_PD_SCHEMA_VERSION};
 use crate::economic_catalog::{
     EconomicCatalogError, EconomicCatalogInput, EconomicOpening, SourceArtifactKind,
 };
-use crate::national_economy::{NationalAidCapture, NationalGamePolicy, NATIONAL_SCENARIO_ID};
+use crate::national_economy::{
+    NationalAidCapture, NationalGamePolicy, VenueLogReader, NATIONAL_SCENARIO_ID,
+};
 
 use std::result::Result as StdResult;
 
@@ -58,6 +60,12 @@ pub(crate) fn public_venue(input: &EconomicCatalogInput) -> Result<PublicVenueHi
         .ok_or(EconomicCatalogError::Source(
             SourceArtifactKind::NationalGamePolicy,
         ))?;
+    let captured = NationalGamePolicy::from_captured_bytes(source.bytes())
+        .map_err(|_| EconomicCatalogError::Source(SourceArtifactKind::NationalGamePolicy))?;
+    let reader = match captured.organizer.venue_log_reader {
+        VenueLogReader::ControlledOrganizer => organizer.controlled_actor_id,
+        VenueLogReader::WorkplaceCommittee => organizer.workplace_partner.actor_id,
+    };
     let policy = PublicVenuePolicy::new(
         organizer.campaign_id,
         organizer.workplace_id,
@@ -65,7 +73,7 @@ pub(crate) fn public_venue(input: &EconomicCatalogInput) -> Result<PublicVenueHi
         organizer.workplace_partner.actor_id,
         organizer.workplace_partner.authority_id,
         actor_id()?,
-        organizer.controlled_actor_id,
+        reader,
         organizer.content_digest,
         source.digest(),
     )

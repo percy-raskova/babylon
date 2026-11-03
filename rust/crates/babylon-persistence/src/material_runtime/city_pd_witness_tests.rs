@@ -194,6 +194,12 @@ fn paid_visit_with_no_authorized_player_witness_still_completes() {
         [] as [[u8; 32]; 0]
     );
     assert!(attempt.receipt.player_witness_evidence_id.is_none());
+    assert_eq!(
+        crate::organizer_runtime::encounter::projections(second.material().register())
+            .expect("authenticated no-witness projection")
+            .len(),
+        0
+    );
 }
 
 fn shortage_opening(foundation: &MaterialRuntimeFoundation) -> MaterialCircuitState {

@@ -18,6 +18,7 @@ fn reply(payer: i128, gift: i128, price: i128) -> RuntimeSessionResponse {
             campaign_id: Some(Uuid::from_u128(1).to_string()),
         },
         snapshot: Box::new(OrganizerSnapshot {
+            city_pd_encounters: Vec::new(),
             view: OrganizerView {
                 period: 0,
                 actor_id: 1,

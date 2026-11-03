@@ -64,9 +64,20 @@ fn national(
         ObserverVisibility::KnownPreview => "public.v_known_county_economy_v1",
     };
     let query = format!("SELECT {SNAPSHOT_COLUMNS} FROM {view} WHERE campaign_id=$1 AND resolve_tick=$2 ORDER BY county_geoid LIMIT 3145");
+    if visibility == ObserverVisibility::KnownPreview {
+        // Temporary diagnostic: remove after capturing the post-commit plan.
+        transaction
+            .batch_execute("SET LOCAL debug_print_plan = on; SET LOCAL debug_pretty_print = off")
+            .map_err(|_| ObserverEconomyError::Database)?;
+    }
     let rows = transaction
         .query(&query, &[campaign.as_uuid(), &tick])
         .map_err(|_| ObserverEconomyError::Database)?;
+    if visibility == ObserverVisibility::KnownPreview {
+        transaction
+            .batch_execute("SET LOCAL debug_print_plan = off")
+            .map_err(|_| ObserverEconomyError::Database)?;
+    }
     if rows.len() != NATIONAL_COUNTY_COUNT {
         return Err(ObserverEconomyError::InvalidProjection);
     }

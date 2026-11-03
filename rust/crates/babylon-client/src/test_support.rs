@@ -4,7 +4,7 @@ use bevy::camera::visibility::InheritedVisibility;
 use bevy::ecs::schedule::IntoScheduleConfigs as _;
 use bevy::input_focus::InputFocusSystems;
 use bevy::math::Vec2;
-use bevy::prelude::{App, Bundle, Plugin, PreUpdate, Query};
+use bevy::prelude::{App, Bundle, Font, Handle, Plugin, PreUpdate, Query};
 use std::ffi::OsString;
 use std::sync::PoisonError;
 use std::sync::{Mutex, MutexGuard};
@@ -83,8 +83,8 @@ fn reveal_ui_nodes(mut nodes: Query<&mut InheritedVisibility>) {
     }
 }
 
-/// Measures a production text bundle through Bevy's real font and UI layout systems.
-pub(crate) fn measure_ui_text(bundle: impl Bundle) -> Vec2 {
+/// Creates the real-font UI layout environment shared by text measurement tests.
+pub(crate) fn ui_text_app() -> (App, Handle<Font>) {
     use bevy::app::{HierarchyPropagatePlugin, PostUpdate, PropagateSet};
     use bevy::asset::{AssetPlugin, Assets};
     use bevy::camera::{ComputedCameraValues, RenderTargetInfo, Viewport};
@@ -149,6 +149,14 @@ pub(crate) fn measure_ui_text(bundle: impl Bundle) -> Vec2 {
         .to_vec(),
     );
     let font = app.world_mut().resource_mut::<Assets<Font>>().add(font);
+    (app, font)
+}
+
+/// Measures a production text bundle through Bevy's real font and UI layout systems.
+pub(crate) fn measure_ui_text(bundle: impl Bundle) -> Vec2 {
+    use bevy::prelude::*;
+
+    let (mut app, font) = ui_text_app();
     let leaf = app.world_mut().spawn(bundle).id();
     app.world_mut()
         .get_mut::<TextFont>(leaf)

@@ -26,6 +26,9 @@ use crate::observer_opening::{OpeningPresentation, OpeningStage};
 use crate::observer_ui::{ObserverCommand, ObserverUiState};
 use crate::observer_warning::ContinueWarning;
 use crate::production::PrimaryView;
+use crate::ui::dossier_card::{
+    ArchiveEvidenceApplied, ArchiveEvidenceReceipt, OpenArchiveEvidence,
+};
 use babylon_persistence::runtime_session::{
     OrganizerChoice, OrganizerCommand, OrganizerInquiry, RuntimeSessionScope,
 };
@@ -85,6 +88,7 @@ enum Action {
     InspectReceipts,
     OpenRelationships,
     ArchiveWorkplace,
+    OpenArchiveEvidence,
     PreviousPeriod,
     ReturnLive,
     CaptureFrame,
@@ -301,6 +305,24 @@ struct Pending {
     capture_state: Option<Value>,
 }
 
+impl Pending {
+    fn new(input: Input, situation: &Situation, tracked: Option<Tracked>) -> Self {
+        Self {
+            capture_state: (input.action == Action::CaptureFrame)
+                .then(|| situation.capture_state()),
+            input,
+            context: situation.session.context(),
+            scope: situation.session.runtime_scope().cloned(),
+            reviewed: situation.client.reviewed_command.clone(),
+            request: None,
+            choice: situation.client.choice(),
+            handled: tracked.is_none(),
+            foundation: situation.session.foundation_digest.clone(),
+            content_hash: situation.session.content_hash.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Tracked {
     Organizer(usize, Action),
@@ -477,6 +499,17 @@ fn available(
     }
     match action {
         Action::Status => true,
+        Action::OpenArchiveEvidence => {
+            ui.archive_open
+                && !ui.splash_visible
+                && !ui.menu_open
+                && !ui.comparison_open
+                && matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
+                && !session.playing
+                && !session.advance_pending()
+                && !session.lifecycle_pending()
+                && !session.organizer_control_pending()
+        }
         Action::CaptureFrame => {
             matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
                 && !session.playing
@@ -662,7 +695,7 @@ fn request_frame(
 #[allow(
     clippy::too_many_arguments,
     reason = "`dispatch` declares each Bevy parameter explicitly"
-)] // The three message writers route distinct existing input ports.
+)] // Message writers route distinct existing input ports.
 fn dispatch(
     transport: Res<Transport>,
     mut controls: ResMut<Controls>,
@@ -671,6 +704,7 @@ fn dispatch(
     mut organizer: MessageWriter<OrganizerAction>,
     mut observer: MessageWriter<ObserverCommand>,
     mut warning: MessageWriter<ContinueWarning>,
+    mut evidence: MessageWriter<OpenArchiveEvidence>,
     mut commands: Commands,
 ) {
     match flush_reply(&transport, &mut controls) {
@@ -737,6 +771,9 @@ fn dispatch(
             Action::ContinueWarning => {
                 warning.write(ContinueWarning);
             }
+            Action::OpenArchiveEvidence => {
+                evidence.write(OpenArchiveEvidence(sequence));
+            }
             Action::ContinueTitle => {
                 commands.trigger(crate::observer_title::ContinueTitle);
             }
@@ -761,18 +798,7 @@ fn dispatch(
             _ => unreachable!("available action has one existing handler"),
         }
     }
-    controls.pending = Some(Pending {
-        capture_state: (input.action == Action::CaptureFrame).then(|| situation.capture_state()),
-        input,
-        context: situation.session.context(),
-        scope: situation.session.runtime_scope().cloned(),
-        reviewed: situation.client.reviewed_command.clone(),
-        request: None,
-        choice: situation.client.choice(),
-        handled: receipt.tracked.is_none(),
-        foundation: situation.session.foundation_digest.clone(),
-        content_hash: situation.session.content_hash.clone(),
-    });
+    controls.pending = Some(Pending::new(input, &situation, receipt.tracked));
 }
 
 fn capture_handler(pending: &mut Pending, witness: Witness) -> Result<(), &'static str> {
@@ -1007,6 +1033,7 @@ fn complete(
     mut controls: ResMut<Controls>,
     mut receipt: ResMut<HandlerReceipt>,
     situation: Situation,
+    evidence: Res<ArchiveEvidenceReceipt>,
 ) {
     if controls.reply.is_some() || controls.disabled {
         return;
@@ -1032,6 +1059,17 @@ fn complete(
                 Some(Err("capture_context_changed"))
             }
         }
+        Ok(()) if pending.input.action == Action::OpenArchiveEvidence => {
+            if situation.session.runtime_scope() != pending.scope.as_ref()
+                || situation.session.context() != pending.context
+            {
+                Some(Err("control_context_changed"))
+            } else {
+                evidence
+                    .result(pending.input.sequence)
+                    .map(|result| result.map(|()| "applied"))
+            }
+        }
         Ok(()) => outcome(pending, &situation),
         Err(reason) => Some(Err(reason)),
     };
@@ -1049,6 +1087,8 @@ fn complete(
 
 pub(crate) fn install(app: &mut App, transport: Transport) {
     app.insert_resource(transport)
+        .add_message::<OpenArchiveEvidence>()
+        .init_resource::<ArchiveEvidenceReceipt>()
         .init_resource::<Controls>()
         .init_resource::<HandlerReceipt>()
         .add_systems(Update, dispatch.before(ObserverSet::Input))
@@ -1057,6 +1097,7 @@ pub(crate) fn install(app: &mut App, transport: Transport) {
             // Witness the real warning transition before a long frame reaches Title.
             complete
                 .after(ObserverSet::Install)
+                .after(ArchiveEvidenceApplied)
                 .after(crate::observer_warning::apply_continue)
                 .before(crate::observer_opening::advance)
                 .before(ObserverSet::Paint),
@@ -1067,9 +1108,11 @@ pub(crate) fn install(app: &mut App, transport: Transport) {
 mod tests {
     use super::*;
     use crate::atlas::CountyAtlas;
-    use crate::observer_focus::ObserverKeyboardClaim;
+    use crate::map::SelectedCounty;
+    use crate::observer_focus::{ObserverKeyboardActivate, ObserverKeyboardClaim};
     use crate::observer_opening::ProductionSkip;
     use crate::observer_warning::ContinueWarning;
+    use crate::ui::dossier_card::ActiveCountyDossier;
     use babylon_kernel::clock::CampaignDuration;
     use babylon_persistence::identity::CampaignId;
     use bevy::input_focus::InputFocus;
@@ -1097,6 +1140,7 @@ mod tests {
             "inspect_receipts",
             "open_relationships",
             "archive_workplace",
+            "open_archive_evidence",
             "previous_period",
             "return_live",
             "capture_frame",
@@ -1543,6 +1587,106 @@ mod tests {
     }
 
     #[test]
+    fn queued_private_evidence_refusal_preserves_the_organizer_draft() {
+        let (mut app, _) = crate::ui::dossier_card::tests::evidence_route_app();
+        let (client, _) = super::super::tests::ready();
+        app.insert_resource(client);
+        let choice = app.world().resource::<OrganizerClient>().choice();
+        let session = app.world().resource::<ObserverSession>().context();
+        let tick = app.world().resource::<ObserverSession>().durable_tick;
+        let selected = app.world().resource::<SelectedCounty>().0;
+        let (entity, context) = crate::ui::dossier_card::tests::evidence_control(&mut app);
+        app.world_mut()
+            .trigger(ObserverKeyboardActivate { entity, context });
+        app.world_mut().write_message(OpenArchiveEvidence(10));
+        app.update();
+        assert_eq!(
+            app.world().resource::<ArchiveEvidenceReceipt>().result(10),
+            Some(Err("ordinary_handler_refused"))
+        );
+        assert_eq!(app.world().resource::<OrganizerClient>().choice(), choice);
+        assert_eq!(app.world().resource::<ObserverSession>().context(), session);
+        assert_eq!(app.world().resource::<ObserverSession>().durable_tick, tick);
+        assert_eq!(app.world().resource::<SelectedCounty>().0, selected);
+    }
+
+    #[test]
+    fn qualification_evidence_action_uses_the_real_archive_handler() {
+        for scenario in ["open", "hidden", "stale"] {
+            let (mut app, zone) = crate::ui::dossier_card::tests::evidence_route_app();
+            let (client, _) = super::super::tests::ready();
+            app.insert_resource(client)
+                .insert_resource(PrimaryView::Map)
+                .init_resource::<OpeningPresentation>()
+                .add_message::<OrganizerAction>()
+                .add_message::<ObserverCommand>()
+                .add_message::<ContinueWarning>()
+                .configure_sets(
+                    Update,
+                    (
+                        ObserverSet::Input,
+                        ObserverSet::Receive,
+                        ObserverSet::Install,
+                        ObserverSet::Paint,
+                    )
+                        .chain(),
+                );
+            let (socket, _peer) = UnixStream::pair().expect("fixture sockets");
+            let (incoming, receiver) = mpsc::channel();
+            let (outgoing, _output) = mpsc::sync_channel(1);
+            install(
+                &mut app,
+                Transport {
+                    incoming: Mutex::new(receiver),
+                    outgoing,
+                    socket,
+                    capture_dir: None,
+                },
+            );
+            if scenario == "hidden" {
+                app.world_mut().get_mut::<Node>(zone).expect("zone").display = Display::None;
+            }
+            let mut input = pending(
+                app.world().resource::<ObserverSession>(),
+                app.world().resource::<OrganizerClient>(),
+                Action::OpenArchiveEvidence,
+            )
+            .input;
+            if scenario == "stale" {
+                input.expected_generation += 1;
+            }
+            let context = app.world().resource::<ObserverSession>().context();
+            let durable_tick = app.world().resource::<ObserverSession>().durable_tick;
+            let choice = app.world().resource::<OrganizerClient>().choice();
+            let selected = app.world().resource::<SelectedCounty>().0;
+            let page = app.world().resource::<ActiveCountyDossier>().clone();
+            incoming.send(Incoming::Input(input)).expect("send request");
+            app.update();
+            assert_eq!(app.world().resource::<ObserverSession>().context(), context);
+            assert_eq!(
+                app.world().resource::<ObserverSession>().durable_tick,
+                durable_tick
+            );
+            assert_eq!(app.world().resource::<OrganizerClient>().choice(), choice);
+            assert_eq!(app.world().resource::<SelectedCounty>().0, selected);
+            assert_eq!(*app.world().resource::<ActiveCountyDossier>(), page);
+            let reply: Value = serde_json::from_slice(
+                app.world()
+                    .resource::<Controls>()
+                    .reply
+                    .as_ref()
+                    .expect("handler reply"),
+            )
+            .expect("JSON reply");
+            if scenario == "open" {
+                assert_eq!(reply["event"], "applied", "{reply}");
+            } else {
+                assert_eq!(reply["event"], "refused", "{scenario}: {reply}");
+            }
+        }
+    }
+
+    #[test]
     fn qualification_new_choices_pass_through_real_handler_and_readback() {
         for (name, expected) in [
             ("choose_inquiry_work_lost", json!({"inquiry":"work_lost"})),
@@ -1584,7 +1728,7 @@ mod tests {
                 )))
                 .expect("fixture atlas parses"),
             )
-            .insert_resource(crate::map::SelectedCounty(Some(0)))
+            .insert_resource(SelectedCounty(Some(0)))
             .init_resource::<InputFocus>()
             .init_resource::<ButtonInput<KeyCode>>()
             .init_resource::<ObserverKeyboardClaim>()

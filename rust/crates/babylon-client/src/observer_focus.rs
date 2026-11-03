@@ -301,7 +301,7 @@ fn focus_world(
 }
 
 #[derive(SystemParam)]
-struct FocusTree<'w, 's> {
+pub(crate) struct FocusTree<'w, 's> {
     targets: Query<'w, 's, &'static ObserverFocusTarget>,
     nodes: Query<'w, 's, &'static Node>,
     visibility: Query<'w, 's, &'static Visibility>,
@@ -312,7 +312,7 @@ struct FocusTree<'w, 's> {
 impl FocusTree<'_, '_> {
     /// Ignores disabled state so a focused, newly disabled control can explain
     /// its refusal. Hidden, stale and inactive-modal controls cannot retain it.
-    fn retainable(&self, entity: Entity, policy: &ObserverFocusPolicy) -> bool {
+    pub(crate) fn retainable(&self, entity: Entity, policy: &ObserverFocusPolicy) -> bool {
         let Ok(target) = self.targets.get(entity) else {
             return false;
         };
@@ -354,7 +354,7 @@ impl FocusTree<'_, '_> {
             }
     }
 
-    fn tabbable(&self, entity: Entity, policy: &ObserverFocusPolicy) -> bool {
+    pub(crate) fn tabbable(&self, entity: Entity, policy: &ObserverFocusPolicy) -> bool {
         self.retainable(entity, policy)
             && self
                 .targets

@@ -19,7 +19,10 @@ use crate::decision_surface::{DeclaredSurface, SurfaceId};
 use crate::dossier;
 use crate::map::SelectedCounty;
 use crate::observer::{ObservationContext, ObserverSession};
-use crate::observer_focus::{ObserverFocusSystems, ObserverFocusTarget, ObserverKeyboardActivate};
+use crate::observer_focus::{
+    FocusTree, ObserverFocusPolicy, ObserverFocusSystems, ObserverFocusTarget,
+    ObserverKeyboardActivate,
+};
 use crate::observer_io::ObserverSet;
 use crate::observer_layout::ObserverRegion;
 use crate::observer_ui::ObserverCommand;
@@ -824,6 +827,7 @@ enum DossierControl {
     More(DossierRequestScope, ArchiveChangeCursor),
     First(DossierRequestScope),
     Details(DossierRequestScope),
+    OpenDetails(DossierRequestScope, u64),
 }
 impl DossierControl {
     fn scope(&self) -> &DossierRequestScope {
@@ -832,7 +836,8 @@ impl DossierControl {
             Self::Back(scope)
             | Self::More(scope, _)
             | Self::First(scope)
-            | Self::Details(scope) => scope,
+            | Self::Details(scope)
+            | Self::OpenDetails(scope, _) => scope,
         }
     }
 }
@@ -984,7 +989,9 @@ fn admitted_control(
         DossierControl::More(_, cursor) => {
             page.is_some_and(|page| page.changes.next_cursor.as_ref() == Some(cursor))
         }
-        DossierControl::First(_) | DossierControl::Details(_) => page.is_some(),
+        DossierControl::First(_)
+        | DossierControl::Details(_)
+        | DossierControl::OpenDetails(_, _) => page.is_some(),
     }
 }
 
@@ -1013,14 +1020,181 @@ fn dispatch_control(
     refusal: &mut DossierRefusal,
     requests: &mut MessageWriter<DossierControl>,
     subjects: &mut MessageWriter<SubjectPageRequest>,
-) {
+) -> bool {
     if context.admits(control, view) {
         requests.write(control.clone());
         if let DossierControl::Link(request) = control {
             subjects.write(request.clone());
         }
+        true
     } else {
         refusal.reject();
+        false
+    }
+}
+
+/// A private qualification request for the existing evidence control.
+#[derive(Message)]
+pub(crate) struct OpenArchiveEvidence(pub u64);
+
+#[derive(EntityEvent)]
+struct PrivateEvidenceActivate {
+    #[event_target]
+    entity: Entity,
+    scope: DossierRequestScope,
+    sequence: u64,
+}
+
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct ArchiveEvidenceApplied;
+
+#[derive(Resource, Default)]
+pub(crate) struct ArchiveEvidenceReceipt(Option<(u64, EvidenceRouteResult)>);
+
+enum EvidenceRouteResult {
+    Pending(DossierRequestScope),
+    Finished(Result<(), &'static str>),
+}
+
+impl ArchiveEvidenceReceipt {
+    fn pending(&self, sequence: u64, scope: &DossierRequestScope) -> bool {
+        matches!(&self.0, Some((received, EvidenceRouteResult::Pending(current)))
+            if *received == sequence && current == scope)
+    }
+
+    fn finish(
+        &mut self,
+        sequence: u64,
+        scope: &DossierRequestScope,
+        result: Result<(), &'static str>,
+    ) {
+        if self.pending(sequence, scope) {
+            self.0 = Some((sequence, EvidenceRouteResult::Finished(result)));
+        }
+    }
+
+    pub(crate) fn result(&self, sequence: u64) -> Option<Result<(), &'static str>> {
+        match self.0.as_ref() {
+            Some((received, EvidenceRouteResult::Finished(result))) if *received == sequence => {
+                Some(*result)
+            }
+            _ => None,
+        }
+    }
+}
+
+#[derive(SystemParam)]
+struct EvidenceSelection<'w, 's> {
+    context: DossierReadContext<'w>,
+    view: Res<'w, DossierPageView>,
+    presentation: Res<'w, DossierPresentation>,
+    tree: FocusTree<'w, 's>,
+    policy: Res<'w, ObserverFocusPolicy>,
+    chips: Query<
+        'w,
+        's,
+        (
+            Entity,
+            &'static PlaceChipNode,
+            Option<&'static CalculatedClip>,
+        ),
+    >,
+}
+
+fn open_archive_evidence(
+    mut requests: MessageReader<OpenArchiveEvidence>,
+    selection: EvidenceSelection,
+    mut receipt: ResMut<ArchiveEvidenceReceipt>,
+    mut commands: Commands,
+) {
+    let EvidenceSelection {
+        context,
+        view,
+        presentation,
+        tree,
+        policy,
+        chips,
+    } = selection;
+    for request in requests.read() {
+        let mut visible = chips.iter().filter_map(|(entity, chip, clip)| {
+            let DossierControl::Details(scope) = &chip.control else {
+                return None;
+            };
+            (tree.retainable(entity, &policy)
+                && !matches!(clip, Some(CalculatedClip::FullyClipped)))
+            .then_some((entity, scope.clone()))
+        });
+        let selected =
+            visible
+                .next()
+                .filter(|_| visible.next().is_none())
+                .filter(|(entity, scope)| {
+                    !presentation.details_open
+                        && tree.tabbable(*entity, &policy)
+                        && context.admits(&DossierControl::Details(scope.clone()), &view)
+                });
+        receipt.0 = Some((
+            request.0,
+            match selected {
+                Some((entity, scope)) => {
+                    commands.trigger(PrivateEvidenceActivate {
+                        entity,
+                        scope: scope.clone(),
+                        sequence: request.0,
+                    });
+                    EvidenceRouteResult::Pending(scope)
+                }
+                None => EvidenceRouteResult::Finished(Err("control_stale_or_unavailable")),
+            },
+        ));
+    }
+}
+
+fn private_evidence_activate(
+    event: On<PrivateEvidenceActivate>,
+    selection: EvidenceSelection,
+    mut refusal: DossierRefusal,
+    mut requests: MessageWriter<DossierControl>,
+    mut subjects: MessageWriter<SubjectPageRequest>,
+    mut receipt: ResMut<ArchiveEvidenceReceipt>,
+) {
+    if !receipt.pending(event.sequence, &event.scope) {
+        return;
+    }
+    let EvidenceSelection {
+        context,
+        view,
+        tree,
+        policy,
+        chips,
+        ..
+    } = selection;
+    let eligible = chips.get(event.entity).is_ok_and(|(_, chip, clip)| {
+        chip.control == DossierControl::Details(event.scope.clone())
+            && tree.tabbable(event.entity, &policy)
+            && !matches!(clip, Some(CalculatedClip::FullyClipped))
+    });
+    let control = DossierControl::OpenDetails(event.scope.clone(), event.sequence);
+    if !eligible {
+        refusal.reject();
+        receipt.finish(
+            event.sequence,
+            &event.scope,
+            Err("ordinary_handler_refused"),
+        );
+    } else if !dispatch_control(
+        &control,
+        &context,
+        &view,
+        &mut refusal,
+        &mut requests,
+        &mut subjects,
+    ) {
+        receipt.finish(
+            event.sequence,
+            &event.scope,
+            Err("ordinary_handler_refused"),
+        );
     }
 }
 
@@ -1228,6 +1402,7 @@ fn apply_page_requests(
     outputs: DossierWriteState,
     ui: Option<Res<ObserverUiState>>,
     mut refusal: DossierRefusal,
+    mut receipt: Option<ResMut<ArchiveEvidenceReceipt>>,
 ) {
     let DossierWriteState {
         mut view,
@@ -1245,6 +1420,23 @@ fn apply_page_requests(
             ui.as_deref(),
             &view,
         );
+        if let DossierControl::OpenDetails(scope, sequence) = control {
+            let Some(receipt) = receipt.as_deref_mut() else {
+                continue;
+            };
+            if !receipt.pending(*sequence, scope) {
+                continue;
+            }
+            let result = if admitted && !presentation.details_open {
+                presentation.details_open = true;
+                Ok(())
+            } else {
+                refusal.reject();
+                Err("ordinary_handler_refused")
+            };
+            receipt.finish(*sequence, scope, result);
+            continue;
+        }
         if !admitted {
             refusal.reject();
             continue;
@@ -1264,6 +1456,7 @@ fn apply_page_requests(
                 presentation.details_open = !presentation.details_open;
                 continue;
             }
+            DossierControl::OpenDetails(_, _) => unreachable!("private opens are handled above"),
         }
         projection.0 = None;
         *state = DossierFetchState::Idle;
@@ -1620,7 +1813,7 @@ fn paint_actions(
 type AddedCardNodes<'w, 's> = Query<
     'w,
     's,
-    (&'static DeclaredSurface, &'static mut Node),
+    (&'static DeclaredSurface, &'static mut Node, Has<Text>),
     (Added<Node>, Without<DossierCardRoot>),
 >;
 
@@ -1677,10 +1870,12 @@ fn polish_observer_card(
             color.0 = next;
         }
     }
-    for (surface, mut node) in &mut nodes {
+    for (surface, mut node, text) in &mut nodes {
         if surface.id == CARD_SURFACE {
             node.flex_shrink = 0.0;
-            node.min_width = px(0);
+            if !text {
+                node.min_width = px(0);
+            }
             node.max_width = percent(100);
         }
     }
@@ -1691,7 +1886,9 @@ pub struct DossierCardPlugin;
 
 impl Plugin for DossierCardPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<SubjectPageRequest>()
+        app.add_message::<OpenArchiveEvidence>()
+            .init_resource::<ArchiveEvidenceReceipt>()
+            .add_message::<SubjectPageRequest>()
             .add_message::<DossierControl>()
             .add_message::<ObserverCommand>()
             .init_resource::<DossierPresentation>()
@@ -1703,6 +1900,7 @@ impl Plugin for DossierCardPlugin {
             .init_resource::<DossierFetchState>()
             .init_resource::<DossierRefresh>()
             .add_observer(keyboard_activate)
+            .add_observer(private_evidence_activate)
             .add_systems(
                 PreUpdate,
                 focus_eligibility.in_set(ObserverFocusSystems::Eligibility),
@@ -1713,7 +1911,8 @@ impl Plugin for DossierCardPlugin {
                 (
                     drive_dossier_fetch,
                     collect_dossier_fetch,
-                    apply_page_requests,
+                    open_archive_evidence,
+                    apply_page_requests.in_set(ArchiveEvidenceApplied),
                     sync_organizer_return,
                     repaint_dossier_card,
                     polish_observer_card
@@ -1727,7 +1926,7 @@ impl Plugin for DossierCardPlugin {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::observer::Perspective;
     use crate::observer_ui::ObserverCommand;
@@ -1868,12 +2067,13 @@ mod tests {
         .add_message::<SubjectPageRequest>()
         .add_message::<DossierControl>()
         .add_observer(keyboard_activate)
+        .add_observer(private_evidence_activate)
         .add_systems(Startup, move |mut commands: Commands| {
             let zone = commands.spawn((Node::default(), TabGroup::new(20))).id();
             set_chips(&mut commands, zone, &links, &scope);
         })
         .add_systems(PreUpdate, focus_eligibility)
-        .add_systems(Update, apply_page_requests);
+        .add_systems(Update, apply_page_requests.in_set(ArchiveEvidenceApplied));
         app.update();
         app.update();
         let entity = app
@@ -2444,6 +2644,311 @@ mod tests {
         assert_eq!(target.context.as_ref(), Some(&context));
         assert!(target.available);
         assert!(app.world().get::<TabIndex>(title).is_some());
+    }
+
+    pub(crate) fn evidence_route_app() -> (App, Entity) {
+        use bevy::ecs::system::RunSystemOnce;
+        let (mut app, link, _) = chip_app();
+        let zone = app
+            .world()
+            .get::<ChildOf>(link)
+            .expect("chip parent")
+            .parent();
+        let scope = app
+            .world()
+            .resource::<ActiveCountyDossier>()
+            .0
+            .as_ref()
+            .expect("installed page")
+            .scope
+            .clone();
+        let context = app.world().resource::<ObserverSession>().context();
+        app.insert_resource(ObserverFocusPolicy {
+            context: Some(context),
+            modal: None,
+        })
+        .init_resource::<ArchiveEvidenceReceipt>()
+        .add_message::<OpenArchiveEvidence>()
+        .add_systems(
+            Update,
+            open_archive_evidence
+                .after(ObserverSet::Install)
+                .before(apply_page_requests),
+        );
+        app.world_mut()
+            .run_system_once(move |mut commands: Commands| {
+                spawn_control(
+                    &mut commands,
+                    zone,
+                    "Evidence and changes".into(),
+                    DossierControl::Details(scope.clone()),
+                );
+            })
+            .expect("spawn evidence control");
+        app.update();
+        (app, zone)
+    }
+
+    #[test]
+    fn private_evidence_request_routes_and_refuses_unavailable_controls() {
+        use bevy::ecs::system::RunSystemOnce;
+        let (mut app, _) = evidence_route_app();
+        app.world_mut().write_message(OpenArchiveEvidence(1));
+        app.update();
+        assert_eq!(
+            app.world().resource::<ArchiveEvidenceReceipt>().result(1),
+            Some(Ok(()))
+        );
+        assert!(app.world().resource::<DossierPresentation>().details_open);
+        app.world_mut().write_message(OpenArchiveEvidence(2));
+        app.update();
+        assert_eq!(
+            app.world().resource::<ArchiveEvidenceReceipt>().result(2),
+            Some(Err("control_stale_or_unavailable"))
+        );
+        assert!(app.world().resource::<DossierPresentation>().details_open);
+
+        for scenario in ["hidden", "stale", "ambiguous", "absent", "clipped"] {
+            let (mut app, zone) = evidence_route_app();
+            match scenario {
+                "hidden" => {
+                    app.world_mut().get_mut::<Node>(zone).expect("zone").display = Display::None;
+                }
+                "stale" => app.world_mut().resource_mut::<DossierRefresh>().0 += 1,
+                "ambiguous" => {
+                    let scope = app
+                        .world()
+                        .resource::<ActiveCountyDossier>()
+                        .0
+                        .as_ref()
+                        .expect("page")
+                        .scope
+                        .clone();
+                    app.world_mut()
+                        .run_system_once(move |mut commands: Commands| {
+                            spawn_control(
+                                &mut commands,
+                                zone,
+                                "Duplicate".into(),
+                                DossierControl::Details(scope.clone()),
+                            );
+                        })
+                        .expect("spawn duplicate");
+                    app.update();
+                }
+                "absent" | "clipped" => {
+                    let entity = app
+                        .world_mut()
+                        .query::<(Entity, &PlaceChipNode)>()
+                        .iter(app.world())
+                        .find_map(|(entity, chip)| {
+                            matches!(chip.control, DossierControl::Details(_)).then_some(entity)
+                        })
+                        .expect("details");
+                    if scenario == "absent" {
+                        app.world_mut().despawn(entity);
+                    } else {
+                        app.world_mut()
+                            .entity_mut(entity)
+                            .insert(CalculatedClip::FullyClipped);
+                    }
+                }
+                _ => unreachable!(),
+            }
+            app.world_mut().write_message(OpenArchiveEvidence(3));
+            app.update();
+            assert_eq!(
+                app.world().resource::<ArchiveEvidenceReceipt>().result(3),
+                Some(Err("control_stale_or_unavailable")),
+                "{scenario}"
+            );
+            assert!(
+                !app.world().resource::<DossierPresentation>().details_open,
+                "{scenario}"
+            );
+        }
+    }
+
+    pub(crate) fn evidence_control(app: &mut App) -> (Entity, Option<ObservationContext>) {
+        app.world_mut()
+            .query::<(Entity, &PlaceChipNode)>()
+            .iter(app.world())
+            .find_map(|(entity, chip)| match &chip.control {
+                DossierControl::Details(scope) => Some((entity, scope.observer.clone())),
+                _ => None,
+            })
+            .expect("fixture has one evidence control")
+    }
+
+    #[test]
+    fn private_open_refuses_queued_ordinary_open_without_closing() {
+        let (mut app, _) = evidence_route_app();
+        let durable_tick = app.world().resource::<ObserverSession>().durable_tick;
+        let (entity, context) = evidence_control(&mut app);
+        let selected = app.world().resource::<SelectedCounty>().0;
+        let session = app.world().resource::<ObserverSession>().context();
+        let installed = app.world().resource::<ActiveCountyDossier>().clone();
+        app.world_mut()
+            .trigger(ObserverKeyboardActivate { entity, context });
+        app.world_mut().write_message(OpenArchiveEvidence(10));
+        app.update();
+        assert!(
+            app.world().resource::<DossierPresentation>().details_open,
+            "the private request must not close a disclosure opened ahead of it"
+        );
+        assert_eq!(
+            app.world().resource::<ArchiveEvidenceReceipt>().result(10),
+            Some(Err("ordinary_handler_refused"))
+        );
+        assert_eq!(app.world().resource::<SelectedCounty>().0, selected);
+        assert_eq!(app.world().resource::<ObserverSession>().context(), session);
+        assert_eq!(*app.world().resource::<ActiveCountyDossier>(), installed);
+        assert_eq!(
+            app.world().resource::<ObserverSession>().durable_tick,
+            durable_tick
+        );
+    }
+
+    #[test]
+    fn private_open_receipt_survives_a_later_ordinary_close() {
+        let (mut app, _) = evidence_route_app();
+        let (entity, context) = evidence_control(&mut app);
+        app.add_systems(
+            Update,
+            (move |mut commands: Commands| {
+                commands.trigger(ObserverKeyboardActivate {
+                    entity,
+                    context: context.clone(),
+                });
+            })
+            .after(open_archive_evidence)
+            .before(apply_page_requests),
+        );
+        app.world_mut().write_message(OpenArchiveEvidence(11));
+        app.update();
+        assert!(
+            !app.world().resource::<DossierPresentation>().details_open,
+            "the later ordinary activation retains toggle semantics"
+        );
+        assert_eq!(
+            app.world().resource::<ArchiveEvidenceReceipt>().result(11),
+            Some(Ok(())),
+            "the private open succeeded before the ordinary close"
+        );
+    }
+
+    #[test]
+    fn private_open_refuses_scope_changed_before_handler_consumption() {
+        let (mut app, _) = evidence_route_app();
+        let durable_tick = app.world().resource::<ObserverSession>().durable_tick;
+        let selected = app.world().resource::<SelectedCounty>().0;
+        let session = app.world().resource::<ObserverSession>().context();
+        let installed = app.world().resource::<ActiveCountyDossier>().clone();
+        app.add_systems(
+            Update,
+            (|mut refresh: ResMut<DossierRefresh>| {
+                refresh.0 += 1;
+            })
+            .after(open_archive_evidence)
+            .before(apply_page_requests),
+        );
+        app.world_mut().write_message(OpenArchiveEvidence(12));
+        app.update();
+        assert_eq!(
+            app.world().resource::<ArchiveEvidenceReceipt>().result(12),
+            Some(Err("ordinary_handler_refused"))
+        );
+        assert!(!app.world().resource::<DossierPresentation>().details_open);
+        assert_eq!(app.world().resource::<SelectedCounty>().0, selected);
+        assert_eq!(app.world().resource::<ObserverSession>().context(), session);
+        assert_eq!(*app.world().resource::<ActiveCountyDossier>(), installed);
+        assert_eq!(
+            app.world().resource::<ObserverSession>().durable_tick,
+            durable_tick
+        );
+    }
+
+    #[test]
+    fn archive_control_labels_have_real_font_layout_in_card() {
+        let campaign = CampaignId::from_uuid(Uuid::nil());
+        let mut session = ObserverSession::new(campaign);
+        session.ready(1, Some("a".repeat(64)));
+        assert!(session.installed(&session.context()));
+        let frame = frame(&session, &"a".repeat(64));
+        let installed = installed(&session, &"a".repeat(64));
+        let view = DossierPageView::Subject(Box::new(SubjectPageRequest {
+            scope: installed.scope.clone(),
+            kind: "county".into(),
+            id: "26163".into(),
+            label: Some("Wayne County".into()),
+        }));
+        let atlas = CountyAtlas::parse(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../assets/map/county_atlas.bin"
+        )))
+        .expect("fixture atlas");
+        let selected = SelectedCounty(atlas.index_of_fips("26163"));
+        let (mut app, font) = crate::test_support::ui_text_app();
+        app.insert_resource(atlas)
+            .insert_resource(selected)
+            .insert_resource(session)
+            .insert_resource(frame)
+            .insert_resource(DossierCampaignId(campaign))
+            .insert_resource(ObserverUiState {
+                archive_open: true,
+                menu_open: false,
+                splash_visible: false,
+                ..default()
+            })
+            .insert_resource(ActiveCountyDossier(Some(installed)))
+            .insert_resource(view)
+            .init_resource::<DossierRefresh>()
+            .init_resource::<DossierFetchState>()
+            .init_resource::<DossierPresentation>()
+            .add_systems(Startup, spawn_dossier_card)
+            .add_systems(Update, (repaint_dossier_card, polish_observer_card).chain());
+        app.finish();
+        app.cleanup();
+        app.update();
+        for mut text_font in app
+            .world_mut()
+            .query::<&mut TextFont>()
+            .iter_mut(app.world_mut())
+        {
+            text_font.font = font.clone().into();
+        }
+        for _ in 0..4 {
+            app.update();
+        }
+        let world = app.world_mut();
+        let controls: Vec<_> = world
+            .query::<(&PlaceChipNode, &Children, &ComputedNode)>()
+            .iter(world)
+            .filter_map(|(chip, children, node)| {
+                let label = match &chip.control {
+                    DossierControl::Back(_) => "Back to county",
+                    DossierControl::Details(_) => "Evidence and changes",
+                    _ => return None,
+                };
+                Some((label, children[0], node.size()))
+            })
+            .collect();
+        assert_eq!(controls.len(), 2);
+        for (label, child, parent_size) in controls {
+            assert_eq!(world.get::<Text>(child).expect("control label").0, label);
+            let size = world
+                .get::<ComputedNode>(child)
+                .expect("label layout")
+                .size();
+            assert!(
+                size.is_finite() && size.x > 0.0 && size.y > 0.0,
+                "{label}: {size:?}"
+            );
+            assert!(
+                size.x <= parent_size.x,
+                "{label}: {size:?} in {parent_size:?}"
+            );
+        }
     }
 
     #[test]

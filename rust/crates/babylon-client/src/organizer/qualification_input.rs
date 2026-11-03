@@ -1,18 +1,19 @@
 //! Opt-in bounded inputs to the real windowed controls. This adapter owns no
 //! runtime requests, material effects, authoritative time, or qualification result.
 
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use bevy::ecs::message::MessageId;
 use bevy::prelude::*;
+use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -81,6 +82,11 @@ enum Action {
     ContinueTitle,
     OpenOrganizer,
     OpenDirection,
+    InspectReceipts,
+    ArchiveWorkplace,
+    PreviousPeriod,
+    ReturnLive,
+    CaptureFrame,
     CloseInspector,
     ChooseRemoteAid,
     ChooseLocalAid,
@@ -104,6 +110,8 @@ impl Action {
         Some(match self {
             Self::OpenOrganizer => O::Open,
             Self::OpenDirection => O::Inspect(OrganizerInspector::Direction),
+            Self::InspectReceipts => O::Inspect(OrganizerInspector::Receipts),
+            Self::ArchiveWorkplace => O::ArchiveWorkplace,
             Self::CloseInspector => O::CloseInspector,
             Self::ChooseRemoteAid => O::Choose(OrganizerChoice::RemoteAid),
             Self::ChooseLocalAid => O::Choose(OrganizerChoice::LocalAid),
@@ -176,6 +184,7 @@ pub(crate) struct Transport {
     incoming: Mutex<Receiver<Incoming>>,
     outgoing: SyncSender<Vec<u8>>,
     socket: UnixStream,
+    capture_dir: Option<PathBuf>,
 }
 
 impl Transport {
@@ -205,7 +214,9 @@ impl Transport {
         }
         let socket =
             UnixStream::connect(path).map_err(|_| "cannot connect qualification socket")?;
-        Self::from_stream(socket, campaign)
+        let mut transport = Self::from_stream(socket, campaign)?;
+        transport.capture_dir = Some(parent.to_path_buf());
+        Ok(transport)
     }
 
     fn from_stream(socket: UnixStream, campaign: &str) -> Result<Self, String> {
@@ -264,6 +275,7 @@ impl Transport {
             incoming: Mutex::new(incoming),
             outgoing,
             socket,
+            capture_dir: None,
         })
     }
 }
@@ -284,6 +296,7 @@ struct Pending {
     handled: bool,
     foundation: Option<String>,
     content_hash: Option<String>,
+    capture_state: Option<Value>,
 }
 
 #[derive(Clone, Copy)]
@@ -373,6 +386,7 @@ struct Controls {
     pending: Option<Pending>,
     reply: Option<Vec<u8>>,
     disabled: bool,
+    capture_result: Option<Result<(), &'static str>>,
 }
 
 impl Default for Controls {
@@ -382,6 +396,7 @@ impl Default for Controls {
             pending: None,
             reply: None,
             disabled: false,
+            capture_result: None,
         }
     }
 }
@@ -443,6 +458,24 @@ fn available(
     }
     match action {
         Action::Status => true,
+        Action::CaptureFrame => {
+            matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
+                && !session.playing
+                && !session.advance_pending()
+                && !session.lifecycle_pending()
+        }
+        Action::PreviousPeriod | Action::ReturnLive => {
+            let command = if action == Action::PreviousPeriod {
+                ObserverCommand::PreviousPeriod
+            } else {
+                ObserverCommand::Live
+            };
+            pipe && !ui.splash_visible
+                && !ui.menu_open
+                && !ui.comparison_open
+                && crate::observer_controls::availability(command, session)
+                    == ControlAvailability::Enabled
+        }
         Action::ContinueWarning => ui.splash_visible && opening.stage == OpeningStage::Warning,
         Action::ContinueTitle => {
             opening.stage == OpeningStage::Title
@@ -511,6 +544,20 @@ impl Situation<'_> {
             *self.view,
         )
     }
+
+    // The caller labels these as admission/completion samples; pixels remain
+    // the evidence for asynchronous Archive contents and other visual detail.
+    fn capture_state(&self) -> Value {
+        json!({
+            "state": self.state(),
+            "playing": self.session.playing,
+            "archive_open": self.ui.archive_open,
+            "history_open": self.ui.history_open,
+            "comparison_open": self.ui.comparison_open,
+            "organizer_view": self.client.view,
+            "city_pd_encounters": self.client.city_pd_encounters,
+        })
+    }
 }
 
 impl Controls {
@@ -545,6 +592,54 @@ fn flush_reply(transport: &Transport, controls: &mut Controls) -> OutputReady {
     }
 }
 
+fn observer_command(action: Action) -> ObserverCommand {
+    match action {
+        Action::Step => ObserverCommand::Step,
+        Action::Reopen => ObserverCommand::ReopenCampaign,
+        Action::Quit => ObserverCommand::Quit,
+        Action::PreviousPeriod => ObserverCommand::PreviousPeriod,
+        Action::ReturnLive => ObserverCommand::Live,
+        _ => unreachable!("selected observer input"),
+    }
+}
+
+fn request_frame(
+    transport: &Transport,
+    controls: &mut Controls,
+    commands: &mut Commands,
+    sequence: u64,
+) -> Result<(), &'static str> {
+    let directory = transport
+        .capture_dir
+        .as_ref()
+        .ok_or("capture_directory_absent")?;
+    let path = directory.join(format!("frame-{sequence}.png"));
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|_| "capture_file_unavailable")?;
+    controls.capture_result = None;
+    commands.spawn(Screenshot::primary_window()).observe(
+        move |captured: On<ScreenshotCaptured>, mut controls: ResMut<Controls>| {
+            controls.capture_result = Some(
+                captured
+                    .image
+                    .clone()
+                    .try_into_dynamic()
+                    .map_err(|_| "capture_image_invalid")
+                    .and_then(|image| {
+                        image
+                            .to_rgb8()
+                            .save(&path)
+                            .map_err(|_| "capture_write_failed")
+                    }),
+            );
+        },
+    );
+    Ok(())
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "`dispatch` declares each Bevy parameter explicitly"
@@ -560,6 +655,7 @@ fn dispatch(
     mut commands: Commands,
 ) {
     match flush_reply(&transport, &mut controls) {
+        OutputReady::Ready if controls.disabled => return,
         OutputReady::Ready => {}
         OutputReady::Backpressure => return,
         OutputReady::Closed => {
@@ -568,9 +664,6 @@ fn dispatch(
             observer.write(ObserverCommand::Quit);
             return;
         }
-    }
-    if controls.disabled {
-        return;
     }
     let received = match transport.incoming.lock() {
         Ok(receiver) => receiver.try_recv(),
@@ -628,19 +721,29 @@ fn dispatch(
             Action::ContinueTitle => {
                 commands.trigger(crate::observer_title::ContinueTitle);
             }
-            action @ (Action::Step | Action::Reopen | Action::Quit) => {
-                let command = match action {
-                    Action::Step => ObserverCommand::Step,
-                    Action::Reopen => ObserverCommand::ReopenCampaign,
-                    Action::Quit => ObserverCommand::Quit,
-                    _ => unreachable!("selected observer input"),
-                };
-                receipt.tracked = Some(Tracked::Observer(observer.write(command).id, action));
+            Action::CaptureFrame => {
+                if let Err(reason) =
+                    request_frame(&transport, &mut controls, &mut commands, sequence)
+                {
+                    controls.respond(Some(sequence), "refused", Some(reason), &situation);
+                    return;
+                }
+            }
+            action @ (Action::Step
+            | Action::Reopen
+            | Action::Quit
+            | Action::PreviousPeriod
+            | Action::ReturnLive) => {
+                receipt.tracked = Some(Tracked::Observer(
+                    observer.write(observer_command(action)).id,
+                    action,
+                ));
             }
             _ => unreachable!("available action has one existing handler"),
         }
     }
     controls.pending = Some(Pending {
+        capture_state: (input.action == Action::CaptureFrame).then(|| situation.capture_state()),
         input,
         context: situation.session.context(),
         scope: situation.session.runtime_scope().cloned(),
@@ -696,6 +799,26 @@ fn outcome(pending: &Pending, s: &Situation) -> Option<Result<&'static str, &'st
         return Some(Err("control_context_lost"));
     }
     let action = pending.input.action;
+    if matches!(action, Action::PreviousPeriod | Action::ReturnLive) {
+        let expected = if action == Action::PreviousPeriod {
+            pending.context.tick.checked_sub(1)
+        } else {
+            Some(pending.input.expected_tick)
+        };
+        if expected != Some(s.session.viewed_tick) {
+            return Some(Err("control_view_period_changed"));
+        }
+        if !matches!(
+            s.session.phase,
+            SessionPhase::Ready | SessionPhase::Complete
+        ) || s.client.pending.is_some()
+            || s.client.status_due
+            || s.client.view.as_ref().map(|view| view.period) != Some(s.session.durable_tick)
+        {
+            return None;
+        }
+        return Some(Ok("applied"));
+    }
     if action == Action::Quit {
         return s.session.quit_requested.then_some(Ok("quit_requested"));
     }
@@ -733,6 +856,7 @@ fn outcome(pending: &Pending, s: &Situation) -> Option<Result<&'static str, &'st
         Some(OrganizerAction::Open) => *s.view == PrimaryView::Organizer,
         Some(OrganizerAction::Inspect(inspector)) => s.client.inspector == inspector,
         Some(OrganizerAction::CloseInspector) => s.client.inspector == OrganizerInspector::Closed,
+        Some(OrganizerAction::ArchiveWorkplace) => *s.view == PrimaryView::Map && s.ui.archive_open,
         _ => match action {
             Action::ContinueWarning => s.opening.stage == OpeningStage::Production,
             Action::ContinueTitle => !s.ui.menu_open,
@@ -868,6 +992,7 @@ fn complete(
     if controls.reply.is_some() || controls.disabled {
         return;
     }
+    let capture_result = controls.capture_result.take();
     let Some(pending) = controls.pending.as_mut() else {
         return;
     };
@@ -881,6 +1006,13 @@ fn complete(
             .and_then(|w| capture_handler(pending, w))
     };
     let result = match captured {
+        Ok(()) if pending.input.action == Action::CaptureFrame => {
+            if pending.capture_state.as_ref() == Some(&situation.capture_state()) {
+                capture_result.map(|result| result.map(|()| "frame_captured"))
+            } else {
+                Some(Err("capture_context_changed"))
+            }
+        }
         Ok(()) => outcome(pending, &situation),
         Err(reason) => Some(Err(reason)),
     };
@@ -938,6 +1070,207 @@ mod tests {
             let _ = fs::remove_file(self.0.join("control.sock"));
             let _ = fs::remove_dir(&self.0);
         }
+    }
+
+    #[test]
+    fn operator_actions_decode_only_the_bounded_native_controls() {
+        for name in [
+            "inspect_receipts",
+            "archive_workplace",
+            "previous_period",
+            "return_live",
+            "capture_frame",
+        ] {
+            assert!(
+                serde_json::from_value::<Action>(json!(name)).is_ok(),
+                "{name}"
+            );
+        }
+        assert!(serde_json::from_value::<Action>(json!("capture_desktop")).is_err());
+    }
+
+    fn assert_frame_scenario(app: &mut App, path: &Path, scenario: &str) {
+        if matches!(scenario, "playing" | "loading") {
+            let reply: Value = serde_json::from_slice(
+                app.world()
+                    .resource::<Controls>()
+                    .reply
+                    .as_ref()
+                    .expect("refusal"),
+            )
+            .expect("JSON");
+            assert_eq!(reply["reason"], "control_stale_or_unavailable");
+            assert!(!path.exists());
+        } else if scenario == "existing" {
+            let reply: Value = serde_json::from_slice(
+                app.world()
+                    .resource::<Controls>()
+                    .reply
+                    .as_ref()
+                    .expect("refusal"),
+            )
+            .expect("JSON");
+            assert_eq!(reply["reason"], "capture_file_unavailable");
+            assert_eq!(fs::read(path).expect("preserved"), b"preserve");
+        } else {
+            assert!(
+                app.world().resource::<Controls>().reply.is_none(),
+                "capture must wait for renderer"
+            );
+            let mut query = app.world_mut().query_filtered::<Entity, With<Screenshot>>();
+            let entity = query.single(app.world()).expect("screenshot request");
+            let mut image = Image::default();
+            if scenario == "invalid" {
+                image.data = None;
+            }
+            if scenario == "playback_changed" {
+                app.world_mut().resource_mut::<ObserverSession>().playing = true;
+            }
+            if scenario == "presentation_changed" {
+                app.world_mut()
+                    .resource_mut::<ObserverUiState>()
+                    .archive_open = true;
+            }
+            app.world_mut()
+                .trigger(ScreenshotCaptured { entity, image });
+            app.update();
+            let reply: Value = serde_json::from_slice(
+                app.world()
+                    .resource::<Controls>()
+                    .reply
+                    .as_ref()
+                    .expect("completed capture"),
+            )
+            .expect("JSON");
+            if scenario == "success" {
+                assert_eq!(reply["event"], "frame_captured");
+                assert!(fs::read(path)
+                    .expect("PNG")
+                    .starts_with(b"\x89PNG\r\n\x1a\n"));
+            } else if scenario == "invalid" {
+                assert_eq!(reply["reason"], "capture_image_invalid");
+            } else {
+                assert_eq!(reply["reason"], "capture_context_changed");
+            }
+        }
+    }
+
+    #[test]
+    fn frame_capture_waits_for_render_and_refuses_existing_or_invalid_files() {
+        for scenario in [
+            "success",
+            "existing",
+            "invalid",
+            "playing",
+            "loading",
+            "playback_changed",
+            "presentation_changed",
+        ] {
+            let fixture = SocketFixture(
+                std::env::temp_dir().join(format!("babylon-frame-{}", Uuid::new_v4())),
+            );
+            fs::create_dir(&fixture.0).expect("private fixture directory");
+            let path = fixture.0.join("frame-1.png");
+            if scenario == "existing" {
+                fs::write(&path, b"preserve").expect("existing fixture");
+            }
+            let (client, mut session) = super::super::tests::ready();
+            session.playing = scenario == "playing";
+            if scenario == "loading" {
+                session.phase = SessionPhase::Loading;
+            }
+            let mut app = App::new();
+            app.add_plugins(MinimalPlugins)
+                .configure_sets(
+                    Update,
+                    (
+                        ObserverSet::Input,
+                        ObserverSet::Receive,
+                        ObserverSet::Install,
+                        ObserverSet::Paint,
+                    )
+                        .chain(),
+                )
+                .insert_resource(session)
+                .insert_resource(client)
+                .insert_resource(PrimaryView::Organizer)
+                .insert_resource(ObserverUiState {
+                    menu_open: false,
+                    splash_visible: false,
+                    ..default()
+                })
+                .init_resource::<OpeningPresentation>()
+                .add_message::<OrganizerAction>()
+                .add_message::<ObserverCommand>()
+                .add_message::<ContinueWarning>();
+            let (socket, _peer) = UnixStream::pair().expect("fixture sockets");
+            let (incoming, receiver) = mpsc::channel();
+            let (outgoing, _output) = mpsc::sync_channel(1);
+            install(
+                &mut app,
+                Transport {
+                    incoming: Mutex::new(receiver),
+                    outgoing,
+                    socket,
+                    capture_dir: Some(fixture.0.clone()),
+                },
+            );
+            let input = pending(
+                app.world().resource::<ObserverSession>(),
+                app.world().resource::<OrganizerClient>(),
+                Action::CaptureFrame,
+            )
+            .input;
+            incoming
+                .send(Incoming::Input(input))
+                .expect("fixture receiver");
+            app.update();
+            assert_frame_scenario(&mut app, &path, scenario);
+            if !matches!(scenario, "playing" | "loading") {
+                fs::remove_file(path).expect("remove exact fixture");
+            }
+        }
+    }
+
+    #[test]
+    fn history_control_waits_for_installed_view_while_snapshot_stays_at_tail() {
+        #[derive(Resource)]
+        struct InputWitness(Pending);
+        #[derive(Resource, Default)]
+        struct Verdict(Option<Result<&'static str, &'static str>>);
+        fn inspect(situation: Situation, input: Res<InputWitness>, mut verdict: ResMut<Verdict>) {
+            verdict.0 = outcome(&input.0, &situation);
+        }
+        let (client, mut session) = super::super::tests::ready();
+        let original = pending(&session, &client, Action::PreviousPeriod);
+        session.inspect_tick(2);
+        assert_eq!(session.phase, SessionPhase::Loading);
+        let mut app = App::new();
+        app.insert_resource(session)
+            .insert_resource(client)
+            .insert_resource(InputWitness(original))
+            .init_resource::<ObserverUiState>()
+            .init_resource::<OpeningPresentation>()
+            .init_resource::<PrimaryView>()
+            .init_resource::<Verdict>()
+            .add_systems(Update, inspect);
+        app.update();
+        assert_eq!(app.world().resource::<Verdict>().0, None);
+        let mut session = app.world_mut().resource_mut::<ObserverSession>();
+        let context = session.context();
+        assert!(session.installed(&context));
+        app.update();
+        assert_eq!(app.world().resource::<Verdict>().0, Some(Ok("applied")));
+        assert_eq!(app.world().resource::<ObserverSession>().viewed_tick, 2);
+        assert_eq!(
+            app.world()
+                .resource::<OrganizerClient>()
+                .view
+                .as_ref()
+                .expect("tail view")
+                .period,
+            3
+        );
     }
 
     #[test]
@@ -1052,6 +1385,7 @@ mod tests {
             handled: false,
             foundation: session.foundation_digest.clone(),
             content_hash: session.content_hash.clone(),
+            capture_state: None,
         }
     }
 
@@ -1130,6 +1464,7 @@ mod tests {
                     incoming: Mutex::new(receiver),
                     outgoing,
                     socket,
+                    capture_dir: None,
                 },
             );
             app.update();
@@ -1204,6 +1539,7 @@ mod tests {
                 incoming: Mutex::new(receiver),
                 outgoing,
                 socket,
+                capture_dir: None,
             };
             if adapter_first {
                 install(&mut app, transport);

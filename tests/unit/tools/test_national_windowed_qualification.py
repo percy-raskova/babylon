@@ -58,6 +58,79 @@ def response(sequence: int, event: str = "observed", **changes: Any) -> bytes:
     )
 
 
+def test_operator_controls_have_a_distinct_completed_frame_event() -> None:
+    from typing import get_args
+
+    actions = set(get_args(windowed.Action))
+    assert {
+        "inspect_receipts",
+        "archive_workplace",
+        "previous_period",
+        "return_live",
+        "capture_frame",
+    } <= actions
+    assert "capture_desktop" not in actions
+    assert windowed.EXPECTED["capture_frame"] == "frame_captured"
+    assert "frame_captured" in get_args(windowed.Event)
+
+
+@pytest.mark.parametrize("event", ["applied", "frame_captured"])
+def test_capture_frame_requires_completed_event(event: str) -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+
+    def reply() -> None:
+        with peer, peer.makefile("rb") as source:
+            request = json.loads(source.readline())
+            assert request["action"] == "capture_frame"
+            peer.sendall(response(request["sequence"], event))
+
+    worker = threading.Thread(target=reply)
+    worker.start()
+    try:
+        if event == "frame_captured":
+            assert channel.perform("capture_frame", 5).campaign_id == CAMPAIGN
+        else:
+            with pytest.raises(windowed.ControlRefusal):
+                channel.perform("capture_frame", 5)
+    finally:
+        channel.close()
+        worker.join(timeout=5)
+    assert not worker.is_alive()
+
+
+def test_capture_refusal_preserves_specific_reason_and_trace() -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+
+    def reply() -> None:
+        with peer, peer.makefile("rb") as source:
+            request = json.loads(source.readline())
+            fields = state()
+            peer.sendall(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "sequence": request["sequence"],
+                        "event": "refused",
+                        "reason": "capture_image_invalid",
+                        "state": fields,
+                    }
+                ).encode()
+                + b"\n"
+            )
+
+    worker = threading.Thread(target=reply)
+    worker.start()
+    try:
+        with pytest.raises(windowed.ControlRefusal, match="capture_image_invalid"):
+            channel.perform("capture_frame", 5)
+        assert channel.records[-1].reason == "capture_image_invalid"
+    finally:
+        channel.close()
+        worker.join(timeout=5)
+
+
 @pytest.mark.parametrize("inquiry", ["work_lost", "maintenance_received"])
 def test_native_inquiry_choice_wire_is_accepted(inquiry: str) -> None:
     fields = state()

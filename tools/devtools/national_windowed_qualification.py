@@ -43,6 +43,11 @@ Action = Literal[
     "continue_title",
     "open_organizer",
     "open_direction",
+    "inspect_receipts",
+    "archive_workplace",
+    "previous_period",
+    "return_live",
+    "capture_frame",
     "close_inspector",
     "choose_remote_aid",
     "choose_local_aid",
@@ -61,6 +66,7 @@ Action = Literal[
 ]
 Event = Literal[
     "observed",
+    "frame_captured",
     "applied",
     "preview_admitted",
     "acceptance_admitted",
@@ -72,6 +78,7 @@ Event = Literal[
 ]
 EXPECTED: dict[str, str] = {
     "status": "observed",
+    "capture_frame": "frame_captured",
     "review": "preview_admitted",
     "confirm": "acceptance_admitted",
     "step": "committed_and_installed",
@@ -331,6 +338,10 @@ class ControlChannel:
             "continue_title",
             "open_organizer",
             "open_direction",
+            "inspect_receipts",
+            "archive_workplace",
+            "previous_period",
+            "return_live",
             "close_inspector",
             "choose_remote_aid",
             "choose_local_aid",
@@ -402,7 +413,8 @@ class ControlChannel:
         reply = self._exchange(action, timeout)
         if reply.event != EXPECTED.get(action, "applied") or reply.reason is not None:
             self.close()
-            raise ControlRefusal("ordinary native handler refused the requested action")
+            reason = f": {reply.reason}" if reply.reason is not None else ""
+            raise ControlRefusal("ordinary native handler refused the requested action" + reason)
         if action == "step" and (
             reply.state.phase not in {"Ready", "Complete"}
             or reply.state.viewed_tick != reply.state.durable_tick

@@ -161,6 +161,13 @@ const FIELDS_36: &[Field] = &[
     f(208, K::Unit),
 ];
 
+const FIELDS_37: &[Field] = &[
+    f(32, K::Shift),
+    f(64, K::OrganizationAccount),
+    f(96, K::FinalDemandPrincipal),
+    f(128, K::Unit),
+];
+
 pub(super) fn fields(tag: u8) -> Result<&'static [Field]> {
     Ok(match tag {
         1 | 17 => FIELDS_1,
@@ -194,6 +201,7 @@ pub(super) fn fields(tag: u8) -> Result<&'static [Field]> {
         34 => FIELDS_34,
         35 => FIELDS_35,
         36 => FIELDS_36,
+        37 => FIELDS_37,
         _ => return Err(Error::Family),
     })
 }

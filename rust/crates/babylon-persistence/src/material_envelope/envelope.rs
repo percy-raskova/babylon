@@ -324,20 +324,20 @@ mod tests {
     #[test]
     fn independent_components_and_exact_derived_framing() {
         assert_eq!(FIXED_FRAMING_BYTES, 183);
-        // Current receipts add 32 income bytes per bounded row and a complete
+        // Current receipts add 48 income bytes per bounded row and a complete
         // 327,680-row gift family (387 bytes each plus nine framing bytes),
         // and one 317-byte collection row plus nine family framing bytes.
         assert_eq!(
-            741_605_729 + 32 * 131_072 + 387 * 327_680 + 9 + 317 + 9,
-            872_612_528
+            741_605_729 + 48 * 131_072 + 387 * 327_680 + 9 + 317 + 9 + 192 + 9,
+            874_709_881
         );
         assert_eq!(
             MAX_COMMITTED_MATERIAL_TICK_BYTES,
-            1_000_000_000 + 134_217_728 + 5 * 67_108_864 + 872_612_528 + FIXED_FRAMING_BYTES
+            1_000_000_000 + 134_217_728 + 5 * 67_108_864 + 874_709_881 + FIXED_FRAMING_BYTES
         );
-        assert!(material_component_lengths(1_000_000_000, 872_612_528).is_ok());
+        assert!(material_component_lengths(1_000_000_000, 874_709_881).is_ok());
         assert!(material_component_lengths(1_000_000_001, 0).is_err());
-        assert!(material_component_lengths(0, 872_612_529).is_err());
+        assert!(material_component_lengths(0, 874_709_882).is_err());
         for index in 0..6 {
             let mut counts = [0; 6];
             let mut bodies = [0; 6];

@@ -19,7 +19,7 @@ use std::result::Result as StdResult;
 
 pub(crate) const DOMAIN: &[u8] = b"BabylonReceiptStorageV3\0";
 
-pub(crate) const CANONICAL_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v18\0";
+pub(crate) const CANONICAL_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v19\0";
 
 pub(crate) const MAX_RECEIPT_STORAGE_BYTES: usize =
     MAX_MATERIAL_TICK_RECEIPT_BYTES + DOMAIN.len() + 88 + RECEIPT_FAMILY_COUNT * 59;
@@ -321,7 +321,7 @@ pub(crate) fn encode(admitted: &AdmittedReceipts<'_>, lookup: &mut TypedLookup) 
     if cursor.take(CANONICAL_DOMAIN.len())? != CANONICAL_DOMAIN {
         return Err(Error::Domain);
     }
-    if cursor.take(4)? != 18_u32.to_be_bytes() {
+    if cursor.take(4)? != 19_u32.to_be_bytes() {
         return Err(Error::Domain);
     }
     let tick = cursor.u64()?;
@@ -471,7 +471,7 @@ pub(crate) fn restore_canonical(encoded: &[u8], lookup: &TypedLookup) -> Result<
     } = decode_header(&mut cursor, lookup)?;
     let mut out = buffer(length)?;
     out.extend_from_slice(CANONICAL_DOMAIN);
-    out.extend_from_slice(&18_u32.to_be_bytes());
+    out.extend_from_slice(&19_u32.to_be_bytes());
     out.extend_from_slice(&tick.to_be_bytes());
     for (index, &canonical_width) in RECEIPT_ROW_BYTES.iter().enumerate() {
         let tag = u8::try_from(index + 1).map_err(|_| Error::Family)?;
@@ -561,14 +561,47 @@ mod tests {
 
     fn empty_receipts() -> Vec<u8> {
         let mut bytes = CANONICAL_DOMAIN.to_vec();
-        bytes.extend_from_slice(&18_u32.to_be_bytes());
+        bytes.extend_from_slice(&19_u32.to_be_bytes());
         bytes.extend_from_slice(&1_u64.to_be_bytes());
-        for tag in 1..=36 {
+        for tag in 1..=37 {
             bytes.push(tag);
             bytes.extend_from_slice(&0_u64.to_be_bytes());
         }
         bytes
     }
+    #[test]
+    fn v19_unsubstantiated_agency_expense_and_old_version_are_refused() {
+        let mut canonical = b"babylon.material-tick-receipts.v19\0".to_vec();
+        canonical.extend_from_slice(&19_u32.to_be_bytes());
+        canonical.extend_from_slice(&1_u64.to_be_bytes());
+        let mut income_row = vec![3];
+        income_row.extend_from_slice(&[9; 32]);
+        income_row.extend_from_slice(&1_u64.to_be_bytes());
+        let mut amounts = [0_i128; 30];
+        amounts[0] = 100;
+        amounts[27] = 3;
+        amounts[28] = -3;
+        amounts[29] = -3;
+        for amount in amounts {
+            income_row.extend_from_slice(&amount.to_be_bytes());
+        }
+        for tag in 1..=37_u8 {
+            canonical.push(tag);
+            canonical.extend_from_slice(&u64::from(tag == 19).to_be_bytes());
+            if tag == 19 {
+                canonical.extend_from_slice(&income_row);
+            }
+        }
+        let mut lookup = TypedLookup::default();
+        assert!(encode_raw(&canonical, &mut lookup).is_err());
+        assert_eq!(lookup.entries().len(), 0);
+        let domain = b"babylon.material-tick-receipts.v18\0";
+        canonical[..domain.len()].copy_from_slice(domain);
+        canonical[domain.len()..domain.len() + 4].copy_from_slice(&18_u32.to_be_bytes());
+        assert!(encode_raw(&canonical, &mut lookup).is_err());
+        assert_eq!(lookup.entries().len(), 0);
+    }
+
     #[test]
     fn complete_empty_receipts_survive_later_lookup_appends() {
         let original = empty_receipts();
@@ -675,7 +708,7 @@ mod tests {
                 row
             );
             let mut envelope = empty_receipts();
-            // Aid remains family35; current framing also contains empty family36.
+            // Aid remains family35; current framing also contains empty families36 and 37.
             let count = CANONICAL_DOMAIN.len() + 4 + 8 + (35 - 1) * 9 + 1;
             assert_eq!(envelope[count - 1], 35);
             envelope[count..count + 8].copy_from_slice(&1_u64.to_be_bytes());
@@ -757,9 +790,9 @@ mod tests {
 
     fn amount_receipts(amounts: &[i128]) -> Vec<u8> {
         let mut bytes = CANONICAL_DOMAIN.to_vec();
-        bytes.extend_from_slice(&18_u32.to_be_bytes());
+        bytes.extend_from_slice(&19_u32.to_be_bytes());
         bytes.extend_from_slice(&7_u64.to_be_bytes());
-        for tag in 1..=36 {
+        for tag in 1..=37 {
             bytes.push(tag);
             bytes
                 .extend_from_slice(&if tag == 11 { amounts.len() as u64 } else { 0 }.to_be_bytes());

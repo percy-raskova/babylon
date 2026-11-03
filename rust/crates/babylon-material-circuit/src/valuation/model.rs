@@ -73,6 +73,7 @@ pub struct IncomeStatement {
     pub distribution_income: Currency,
     pub gift_income: Currency,
     pub gift_expense: Currency,
+    pub agency_observation_labor_expense: Currency,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

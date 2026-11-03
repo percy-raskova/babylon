@@ -1,5 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
+use super::agency_paid_receipt;
 use super::aid_receipt;
 use super::collection_receipt;
 use super::equipment_receipt;
@@ -15,6 +16,7 @@ use super::organizer_time;
 use super::recurring_receipt;
 use super::service_receipt;
 use super::workforce_receipt;
+use super::AgencyPaidReceipt;
 
 use babylon_material_circuit::ArrivalReceipt;
 
@@ -104,7 +106,7 @@ pub(crate) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v5\0
 
 pub(crate) const NOMINAL_DOMAIN: &[u8] = b"babylon.nominal-material-world.v3\0";
 
-pub(crate) const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v18\0";
+pub(crate) const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v19\0";
 
 /// Designed 1 GB operational headroom explicitly authorized by the Director.
 /// This standalone ceiling does not enlarge surrounding foundation or receipt bounds.
@@ -115,7 +117,7 @@ pub const MAX_MATERIAL_WORLD_REGISTER_BYTES: usize = 1_000_000_000;
 pub const MAX_MATERIAL_TICK_RECEIPT_BYTES: usize = maximum_material_receipt_bytes();
 
 /// Number of ordered families in the current canonical receipt schema.
-pub const RECEIPT_FAMILY_COUNT: usize = 36;
+pub const RECEIPT_FAMILY_COUNT: usize = 37;
 
 /// Exact canonical row widths, indexed by the zero-based receipt family.
 pub const RECEIPT_ROW_BYTES: [usize; RECEIPT_FAMILY_COUNT] = [
@@ -155,6 +157,7 @@ pub const RECEIPT_ROW_BYTES: [usize; RECEIPT_FAMILY_COUNT] = [
     household_time_receipt::ROW_BYTES,
     aid_receipt::ROW_BYTES,
     collection_receipt::ROW_BYTES,
+    agency_paid_receipt::ROW_BYTES,
 ];
 
 pub(crate) const fn maximum_material_receipt_bytes() -> usize {
@@ -835,6 +838,7 @@ pub const fn receipt_row_limit(index: usize) -> usize {
         25 => babylon_material_circuit::MAX_OWNERSHIP_CLAIMS,
         34 => babylon_material_circuit::MAX_AID_RECEIPTS_PER_PERIOD,
         35 => 1,
+        36 => babylon_material_circuit::MAX_AGENCY_ATTENDANCE_PER_PERIOD,
         _ => babylon_material_circuit::MAX_MATERIAL_CIRCUIT_ROWS,
     }
 }
@@ -1031,7 +1035,11 @@ macro_rules! encode_receipt_family_rows {
     clippy::too_many_lines,
     reason = "one match arm per closed receipt family keeps each family's encoder beside the shared cursor"
 )]
-pub(crate) fn encode_material_receipts(
+/// Encode a complete material transition as canonical receipt evidence.
+///
+/// # Errors
+/// Refuses invalid, inconsistent, or over-bound receipt families.
+pub fn encode_material_receipts(
     catalog: &MaterialCatalog,
     tick: u64,
     transition: &MaterialCircuitTransition,
@@ -1039,6 +1047,14 @@ pub(crate) fn encode_material_receipts(
     if tick == 0 {
         return Err(MaterialWorldError::Wire);
     }
+    agency_paid_receipt::validate_nonpaid(
+        &transition.agency_attendance,
+        &transition.wage_accruals,
+        &transition.money_transfers,
+        &transition.household_time,
+        tick,
+    )?;
+    let agency_paid = agency_paid_receipt::from_funding(&transition.agency_attendance)?;
     let counts: [usize; RECEIPT_FAMILY_COUNT] = [
         transition.production.len(),
         transition.dispatches.len(),
@@ -1076,6 +1092,7 @@ pub(crate) fn encode_material_receipts(
         transition.household_time.len(),
         transition.aid.len(),
         transition.collections.len(),
+        agency_paid.len(),
     ];
     let families: [(usize, usize); RECEIPT_FAMILY_COUNT] =
         std::array::from_fn(|index| (counts[index], RECEIPT_ROW_BYTES[index]));
@@ -1087,11 +1104,20 @@ pub(crate) fn encode_material_receipts(
         return Err(MaterialWorldError::ByteLimit);
     }
     monetary_receipt::validate_order(&transition.wage_accruals, &transition.labor_use)?;
+    agency_paid_receipt::validate_cancellations(&transition.money_transfers)?;
     workforce_receipt::validate_join(
         &transition.staffing_members,
         &transition.member_labor_use,
         &transition.labor_use,
         &transition.wage_accruals,
+        &agency_paid,
+    )?;
+    agency_paid_receipt::validate(
+        &agency_paid,
+        &transition.wage_accruals,
+        &transition.money_transfers,
+        &transition.income,
+        tick,
     )?;
     equipment_receipt::validate_order(
         &transition.installation,
@@ -1145,6 +1171,7 @@ pub(crate) fn encode_material_receipts(
     household_time_receipt::validate(
         &transition.household_time,
         &transition.member_labor_use,
+        &agency_paid,
         tick,
     )?;
     household_time_receipt::validate_state(&transition.state, &transition.household_time)?;
@@ -1162,7 +1189,7 @@ pub(crate) fn encode_material_receipts(
     )?;
     let mut bytes = bounded_bytes(length, MAX_MATERIAL_TICK_RECEIPT_BYTES)?;
     bytes.extend_from_slice(RECEIPT_DOMAIN);
-    bytes.extend_from_slice(&18_u32.to_be_bytes());
+    bytes.extend_from_slice(&19_u32.to_be_bytes());
     bytes.extend_from_slice(&tick.to_be_bytes());
     for (tag, (count, _)) in families.iter().enumerate() {
         bytes.push(u8::try_from(tag + 1).map_err(|_| MaterialWorldError::Arithmetic)?);
@@ -1171,15 +1198,20 @@ pub(crate) fn encode_material_receipts(
                 .map_err(|_| MaterialWorldError::Arithmetic)?
                 .to_be_bytes(),
         );
-        encode_receipt_family_rows!(tag, transition, tick, &mut bytes);
+        if tag == 36 {
+            agency_paid_receipt::encode(&agency_paid, &mut bytes);
+        } else {
+            encode_receipt_family_rows!(tag, transition, tick, &mut bytes);
+        }
     }
     debug_assert_eq!(bytes.len(), length);
     Ok(bytes)
 }
 
-/// Typed material evidence decoded only from an exact committed V18 receipt family.
+/// Typed material evidence decoded only from an exact committed V19 receipt family.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialTickReceipts {
+    pub agency_paid: Vec<AgencyPaidReceipt>,
     pub household_time: Vec<HouseholdTimeReceipt>,
     pub aid: Vec<AidReceipt>,
     pub collections: Vec<CollectionReceipt>,
@@ -1275,7 +1307,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         bytes,
         position: RECEIPT_DOMAIN.len(),
     };
-    if cursor.take::<4>()? != 18_u32.to_be_bytes() {
+    if cursor.take::<4>()? != 19_u32.to_be_bytes() {
         return Err(MaterialWorldError::Wire);
     }
     let resolve_tick = cursor.u64()?;
@@ -1283,6 +1315,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         return Err(MaterialWorldError::Wire);
     }
     let mut result = MaterialTickReceipts {
+        agency_paid: Vec::new(),
         household_time: Vec::new(),
         aid: Vec::new(),
         collections: Vec::new(),
@@ -1322,7 +1355,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         local_transfers: Vec::new(),
         maintenance: None,
     };
-    for tag in 1..=36 {
+    for tag in 1..=37 {
         if cursor.take::<1>()? != [tag] {
             return Err(MaterialWorldError::Wire);
         }
@@ -1370,6 +1403,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
             household_time_receipt::ROW_BYTES,
             aid_receipt::ROW_BYTES,
             collection_receipt::ROW_BYTES,
+            agency_paid_receipt::ROW_BYTES,
         ][usize::from(tag - 1)];
         if count
             .checked_mul(width)
@@ -1414,12 +1448,16 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
             34 => result.household_time.try_reserve_exact(count),
             35 => result.aid.try_reserve_exact(count),
             36 => result.collections.try_reserve_exact(count),
+            37 => result.agency_paid.try_reserve_exact(count),
 
             _ => return Err(MaterialWorldError::Wire),
         }
         .map_err(|_| MaterialWorldError::Allocation)?;
         for _ in 0..count {
             match tag {
+                37 => result
+                    .agency_paid
+                    .push(agency_paid_receipt::decode(&mut cursor)?),
                 36 => result
                     .collections
                     .push(collection_receipt::decode(&mut cursor, resolve_tick)?),
@@ -1674,11 +1712,20 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         return Err(MaterialWorldError::Wire);
     }
     monetary_receipt::validate_order(&result.wage_accruals, &result.labor_use)?;
+    agency_paid_receipt::validate_cancellations(&result.money_transfers)?;
     workforce_receipt::validate_join(
         &result.staffing_members,
         &result.member_labor_use,
         &result.labor_use,
         &result.wage_accruals,
+        &result.agency_paid,
+    )?;
+    agency_paid_receipt::validate(
+        &result.agency_paid,
+        &result.wage_accruals,
+        &result.money_transfers,
+        &result.income,
+        resolve_tick,
     )?;
     equipment_receipt::validate_order(
         &result.installation,
@@ -1726,6 +1773,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
     household_time_receipt::validate(
         &result.household_time,
         &result.member_labor_use,
+        &result.agency_paid,
         resolve_tick,
     )?;
     Ok(result)

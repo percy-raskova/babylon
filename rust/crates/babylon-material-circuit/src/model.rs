@@ -62,6 +62,7 @@ macro_rules! identity_type {
     };
 }
 
+use crate::AgencyObservationFundingReceipt;
 use crate::AidReceipt;
 use crate::CapitalContributionReceipt;
 use crate::CircuitAccounting;
@@ -707,6 +708,7 @@ pub struct FreightLossReceipt {
 /// Atomic successor with native quantity receipts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialCircuitTransition {
+    pub agency_attendance: Vec<AgencyObservationFundingReceipt>,
     pub aid: Vec<AidReceipt>,
     pub collections: Vec<CollectionReceipt>,
     pub aid_contributions: Vec<HouseholdContributionUse>,

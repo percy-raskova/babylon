@@ -7,6 +7,8 @@ use super::IncomeStatement;
 use super::Result;
 use crate::payments::AttendanceLedger;
 use crate::payments::LaborUse;
+use crate::AgencyAttendanceOutcome;
+use crate::AgencyObservationFundingReceipt;
 use crate::AidFreightLot;
 use crate::AidMandate;
 use crate::EquipmentWearReceipt;
@@ -16,6 +18,9 @@ use crate::LaborUseReceipt;
 use crate::LocalTransferReceipt;
 use crate::MaintenanceReceipt;
 use crate::MaterialCatalog;
+use crate::MoneyLocation;
+use crate::MoneyTransferPurpose;
+use crate::MoneyTransferReceipt;
 use crate::ServicePerformanceReceipt;
 use crate::{
     AccountId, CircuitAccounting, FinalDemandOrder, FreightLotId, MaterialCircuitError,
@@ -584,6 +589,8 @@ impl CostClose {
         state: &MaterialCircuitState,
         labor: &[MemberLaborUseReceipt],
         accruals: &[WageAccrualReceipt],
+        agency: Option<&AgencyObservationFundingReceipt>,
+        transfers: &[MoneyTransferReceipt],
     ) -> Result<()> {
         let Some(active) = &mut self.active else {
             return Ok(());
@@ -597,6 +604,45 @@ impl CostClose {
             *total = super::add(*total, row.amount)?;
             let statement = active.statement(row.payee)?;
             statement.wage_income = super::add(statement.wage_income, row.amount)?;
+        }
+        if let Some(receipt) = agency {
+            let input = &receipt.input;
+            let matching: Vec<_> = accruals
+                .iter()
+                .filter(|row| row.shift == input.shift_id)
+                .collect();
+            let payments: Vec<_> = transfers
+                .iter()
+                .filter(|row| row.purpose == MoneyTransferPurpose::WagePayment(input.shift_id))
+                .collect();
+            if receipt.outcome == AgencyAttendanceOutcome::Paid {
+                if matching.len() != 1
+                    || payments.len() != 1
+                    || matching[0].employer != AccountId::Organization(input.agency)
+                    || matching[0].payee != AccountId::Household(input.principal_id)
+                    || matching[0].period != input.due_period
+                    || matching[0].obligated_hours != input.hours
+                    || matching[0].amount != receipt.paid
+                    || receipt.paid != receipt.reserved
+                    || payments[0].debit.location != MoneyLocation::PayrollReserve(input.shift_id)
+                    || payments[0].credit.location
+                        != MoneyLocation::Cash(AccountId::Household(input.principal_id))
+                    || payments[0].credit.delta != receipt.paid
+                    || receipt.attended_hours != input.hours
+                    || receipt.attendance.is_none()
+                {
+                    return Err(MaterialCircuitError::ValuationInvariant);
+                }
+                let statement = active.statement(AccountId::Organization(input.agency))?;
+                statement.agency_observation_labor_expense =
+                    super::add(statement.agency_observation_labor_expense, receipt.paid)?;
+            } else if !matching.is_empty()
+                || !payments.is_empty()
+                || receipt.attended_hours != 0
+                || receipt.attendance.is_some()
+            {
+                return Err(MaterialCircuitError::ValuationInvariant);
+            }
         }
         for row in labor {
             row.validate()?;
@@ -615,8 +661,10 @@ impl CostClose {
                     statement.maintenance_labor_expense,
                 )?,
             )?;
-            if super::add(classified, statement.installation_labor_capitalized)?
-                != wages.get(account).copied().unwrap_or_else(super::zero)
+            if super::add(
+                super::add(classified, statement.installation_labor_capitalized)?,
+                statement.agency_observation_labor_expense,
+            )? != wages.get(account).copied().unwrap_or_else(super::zero)
             {
                 return Err(MaterialCircuitError::ValuationInvariant);
             }

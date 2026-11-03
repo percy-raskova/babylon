@@ -1,5 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
+use super::super::AgencyPaidReceipt;
 use super::super::MaterialWorldError;
 use super::super::ReceiptCursor;
 
@@ -200,6 +201,7 @@ pub(in crate::material_world) fn validate_join(
     members: &[MemberLaborUseReceipt],
     labor: &[LaborUseReceipt],
     wages: &[WageAccrualReceipt],
+    agency: &[AgencyPaidReceipt],
 ) -> Result<(), MaterialWorldError> {
     use std::collections::{BTreeMap, BTreeSet};
     if staffing
@@ -258,6 +260,11 @@ pub(in crate::material_world) fn validate_join(
                 .ok_or(MaterialWorldError::Wire)?;
             validate_wage(row, wage)?;
         }
+    }
+    for row in agency {
+        actual
+            .remove(&row.shift_id)
+            .ok_or(MaterialWorldError::Wire)?;
     }
     if !actual.is_empty() || aggregates.into_values().collect::<Vec<_>>() != labor {
         return Err(MaterialWorldError::Wire);

@@ -203,8 +203,22 @@ fn installation_decisions_roundtrip_and_refuse_false_starts_positions_and_old_fo
     assert_eq!(decoded.household_time.len(), 0);
     assert_eq!(decoded.aid.len(), 0);
     assert_eq!(decoded.collections.len(), 0);
-    // Empty time34, aid35 and collection36 each retain a tag and u64 count.
-    let start = bytes.len() - 3 * (1 + 8) - super::super::installation_decision::ROW_BYTES;
+    // Locate the actual tag-33 installation decision rather than assuming a trailing offset.
+    let mut start = super::super::RECEIPT_DOMAIN.len() + 12;
+    for (index, width) in super::super::RECEIPT_ROW_BYTES.iter().enumerate() {
+        assert_eq!(usize::from(bytes[start]), index + 1);
+        let count = u64::from_be_bytes(
+            bytes[start + 1..start + 9]
+                .try_into()
+                .expect("family count"),
+        );
+        start += 9;
+        if index == 32 {
+            assert_eq!(count, 1, "one installation decision");
+            break;
+        }
+        start += usize::try_from(count).expect("count fits") * width;
+    }
     let mut malformed = bytes.clone();
     malformed[start + 112..start + 120].copy_from_slice(&0_u64.to_be_bytes());
     assert!(super::super::decode_material_receipts(&malformed).is_err());

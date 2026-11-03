@@ -19,6 +19,7 @@ use babylon_tick::material_world::MaterialTickReceipts;
 use economic::{Audit, Refusal};
 fn receipts(period: u64) -> MaterialTickReceipts {
     MaterialTickReceipts {
+        agency_paid: vec![],
         household_time: vec![],
         aid: vec![],
         collections: vec![],

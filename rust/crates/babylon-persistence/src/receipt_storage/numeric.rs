@@ -27,7 +27,7 @@ pub(super) fn retained_width(tag: u8, mode: u8, original: usize) -> Result<usize
         (1, 11) => Ok(30),
         (1, 28) => Ok(66),
         (1, 29) => Ok(89),
-        (1, 19) => Ok(421),
+        (1, 19) => Ok(437),
         _ => Err(Error::Mode),
     }
 }
@@ -87,7 +87,7 @@ fn keep(tag: u8, row: &[u8]) -> Result<Vec<u8>> {
             16,
             &[
                 0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-                24, 25, 26,
+                24, 25, 26, 27,
             ],
         ),
         _ => return Err(Error::Mode),
@@ -281,32 +281,33 @@ fn unpack_member_labor(row: &[u8], tick: u64, out: &mut Vec<u8>) -> Result<()> {
 fn unpack_income(row: &[u8], tick: u64, out: &mut Vec<u8>) -> Result<()> {
     out.extend_from_slice(&row[..5]);
     out.extend_from_slice(&tick.to_be_bytes());
-    let mut values = [0_i128; 29];
+    let mut values = [0_i128; 30];
     let mut source = 5;
     for (index, value) in values.iter_mut().enumerate() {
-        if !matches!(index, 4 | 27 | 28) {
+        if !matches!(index, 4 | 28 | 29) {
             *value = c(row, source)?;
             source += 16;
         }
     }
     for index in [
         0, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+        27,
     ] {
         if values[index] < 0 {
             return Err(Error::Canonical);
         }
     }
-    let expenses = sum([8, 12, 13, 14, 15, 16, 17, 18, 19].map(|i| values[i]))?;
+    let expenses = sum([8, 12, 13, 14, 15, 16, 17, 18, 19, 27].map(|i| values[i]))?;
     let operating = values[6].checked_sub(expenses).ok_or(Error::Arithmetic)?;
     let income = sum([7, 20, 22, 24, 25].map(|i| values[i]))?;
     let outlays = sum([21, 23, 26].map(|i| values[i]))?;
     values[4] = values[2].checked_add(values[3]).ok_or(Error::Arithmetic)?;
-    values[27] = operating
+    values[28] = operating
         .checked_add(income)
         .and_then(|n| n.checked_sub(outlays))
         .ok_or(Error::Arithmetic)?;
-    values[28] = values[1]
-        .checked_add(values[27])
+    values[29] = values[1]
+        .checked_add(values[28])
         .and_then(|n| n.checked_sub(values[5]))
         .ok_or(Error::Arithmetic)?;
     for value in values {
@@ -346,25 +347,25 @@ mod tests {
     }
     #[test]
     fn capitalized_costs_remain_inputs_without_becoming_expenses() {
-        let mut row = vec![0; 477];
-        let mut values = [0_i128; 29];
+        let mut row = vec![0; 493];
+        let mut values = [0_i128; 30];
         values[6] = 100;
         values[8] = 10;
         values[9] = 50;
         values[10] = 20;
         values[11] = 30;
-        values[27] = 90;
         values[28] = 90;
+        values[29] = 90;
         row[5..13].copy_from_slice(&1_u64.to_be_bytes());
         for (i, value) in values.into_iter().enumerate() {
             row[13 + i * 16..29 + i * 16].copy_from_slice(&value.to_be_bytes());
         }
-        let (mode, width, packed) = pack_family(19, &row, 1, 477, 1)
+        let (mode, width, packed) = pack_family(19, &row, 1, 493, 1)
             .expect("the fixture call `pack_family` succeeds for the authored inputs");
         assert_eq!(mode, 1);
-        assert_eq!(width, 421);
+        assert_eq!(width, 437);
         assert_eq!(
-            unpack_row(19, mode, &packed, 1, 477)
+            unpack_row(19, mode, &packed, 1, 493)
                 .expect("the fixture call `unpack_row` succeeds for the authored inputs"),
             row
         );
@@ -379,9 +380,9 @@ mod tests {
     }
     #[test]
     fn gifts_preserve_independent_income_and_expense_inputs() {
-        let mut row = vec![0; 477];
+        let mut row = vec![0; 493];
         row[5..13].copy_from_slice(&1_u64.to_be_bytes());
-        let mut amounts = [0_i128; 29];
+        let mut amounts = [0_i128; 30];
         amounts[1] = 50;
         amounts[2] = 10;
         amounts[3] = 20;
@@ -390,16 +391,16 @@ mod tests {
         amounts[8] = 10;
         amounts[25] = 17;
         amounts[26] = 9;
-        amounts[27] = 98;
-        amounts[28] = 148;
+        amounts[28] = 98;
+        amounts[29] = 148;
         for (i, amount) in amounts.into_iter().enumerate() {
             row[13 + i * 16..29 + i * 16].copy_from_slice(&amount.to_be_bytes());
         }
-        let (mode, width, packed) = pack_family(19, &row, 1, 477, 1)
+        let (mode, width, packed) = pack_family(19, &row, 1, 493, 1)
             .expect("the fixture call `pack_family` succeeds for the authored inputs");
-        assert_eq!((mode, width), (1, 421));
+        assert_eq!((mode, width), (1, 437));
         assert_eq!(
-            unpack_row(19, mode, &packed, 1, 477)
+            unpack_row(19, mode, &packed, 1, 493)
                 .expect("the fixture call `unpack_row` succeeds for the authored inputs"),
             row
         );
@@ -411,9 +412,9 @@ mod tests {
             c(&row, 13 + 26 * 16).expect("the fixture call `c` succeeds for the authored inputs"),
             9
         );
-        let (mode, width, packed) = pack_family(19, &row, 1, 477, 2)
+        let (mode, width, packed) = pack_family(19, &row, 1, 493, 2)
             .expect("the fixture call `pack_family` succeeds for the authored inputs");
-        assert_eq!((mode, width), (0, 477));
+        assert_eq!((mode, width), (0, 493));
         assert_eq!(packed, row);
     }
 

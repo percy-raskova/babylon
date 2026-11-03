@@ -216,6 +216,7 @@ impl MaterialBaseInputs<'_> {
                 self.opening.state(),
                 &aid_inputs,
                 &collection_inputs,
+                &[],
             )?;
             let bindings = composition
                 .bindings()

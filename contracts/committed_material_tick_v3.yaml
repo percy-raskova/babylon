@@ -30,7 +30,7 @@ envelope:
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
     - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v5_bytes}
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v18_bytes}
+    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v19_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
@@ -43,14 +43,14 @@ envelope:
     graph_full_checkpoint: 67108864
     archive_dirty_receipt: 67108864
   graph_maximum_basis: Designed_headroom_for_measured_national_graph_batch_85346543_bytes
-  maximum_complete_bytes: 2342374759
-  maximum_complete_basis: register_1000000000_plus_graph_134217728_plus_five_component_families_67108864_each_plus_derived_receipts_872612528_plus_framing_183
+  maximum_complete_bytes: 2344472112
+  maximum_complete_basis: register_1000000000_plus_graph_134217728_plus_five_component_families_67108864_each_plus_derived_receipts_874709881_plus_framing_183
 receipts:
-  version: 18
-  domain: "babylon.material-tick-receipts.v18\0"
-  header: u32_big_endian_version_18_then_u64_big_endian_positive_resolve_tick
+  version: 19
+  domain: "babylon.material-tick-receipts.v19\0"
+  header: u32_big_endian_version_19_then_u64_big_endian_positive_resolve_tick
   family_frame: u8_tag_then_u64_big_endian_count
-  family_count: 36
+  family_count: 37
   identities: exact_32_bytes
   quantities_periods_and_hours: u64_big_endian
   stage_index: u16_big_endian_less_than_16
@@ -237,8 +237,9 @@ receipts:
                idle_labor_expense, handling_expense, maintenance_labor_expense,
                maintenance_material_expense, freight_loss_expense, consumption_expense, final_demand_outlay,
                unused_service_expense, tax_income, tax_expense, public_transfer_income, public_transfer_expense,
-               distribution_income, gift_income, gift_expense, net_income, closing_retained_earnings]
-      width: 505
+               distribution_income, gift_income, gift_expense, agency_observation_labor_expense,
+               net_income, closing_retained_earnings]
+      width: 521
       meaning: historical_transaction_cost_income_and_retained_earnings
     - tag: 20
       fields: [period, order_id, provider_site_id, buyer_account, good_id, unit_id, requested_quantity,
@@ -373,6 +374,12 @@ receipts:
                actor_id, contributor_id, donor, recipient, labor_unit_id, requested, collected,
                performed_hours, outcome_tag, transfer_ordinal, contribution_use_id]
       meaning: original_authenticated_collection_actual_cash_posting_and_shared_household_time
+    - tag: 37
+      name: agency_paid_attendance
+      width: 192
+      fields: [intent_id, shift_id, agency, principal_id, labor_unit_id, period, hours, wage]
+      meaning: actual_paid_shift_joined_to_agency_wages_payment_and_household_time
+  agency_paid_attendance_row_limit: 1
   collection_row_limit: 1
   collection_outcome_tag: {collected: 1, cash_consent_refused: 2, protected_consumption_unmet: 3,
                            protected_service_unmet: 4, protected_closing_stock_unmet: 5,
@@ -389,12 +396,12 @@ receipts:
   aid_outcome_tag: {requested: 1, dispatched: 2, granted: 3, lost: 4, unshipped: 5}
   aid_row_limit: 327680
   aid_row_limit_basis: MAX_AID_RECEIPTS_PER_PERIOD equals five times MAX_MATERIAL_CIRCUIT_ROWS.
-  complete_receipt_maximum_bytes: 872612528
-  complete_receipt_maximum_basis: Derived existing family bounds, Income505 and Aid387 times 327680, Collection317
-    times one, plus complete framing.
+  complete_receipt_maximum_bytes: 874709881
+  complete_receipt_maximum_basis: Derived existing family bounds, Income521 and Aid387 times 327680, Collection317
+    times one, AgencyPaid192 times one, plus complete framing.
   compensation_tag: {wage: 1, working_owner: 2, unpaid_family: 3}
   ordering:
-    families: Tags 1 through 36 appear exactly once in declared order, including empty families.
+    families: Tags 1 through 37 appear exactly once in declared order, including empty families.
     original_families: Preserve deterministic encounter order from babylon_material_circuit::advance_material_circuit.
     handling: Strict increasing unique site_id_and_tagged_outbound_order.
     local_fulfillment: Strict increasing unique order_id.
@@ -500,7 +507,7 @@ receipts:
     - Income rows have unique canonical account order and period equal to resolve_tick.
     - Income flows are nonnegative; net income and retained earnings are signed exact micro-currency.
     - Net income includes sales, wages, tax, operating transfers, distributions and gift income less COGS, named
-      expenses and gift expense.
+      expenses including agency-observation labor and gift expense.
     - Capital contributions and productive capitalization are not income or current expenses.
     - Closing retained earnings equal opening retained earnings plus net income less distributions paid.
     - Closing contributed capital equals opening contributed capital plus contributions received.
@@ -561,6 +568,7 @@ receipts:
   maximum_income_account_rows: 131072
   maximum_aid_rows: 327680 # Five closed outcomes times 65536 material rows.
   maximum_collection_rows: 1 # One original authenticated collection ruling per period.
+  maximum_agency_paid_rows: 1 # One selected agency shift per period.
   maximum_tax_rows: 131072 # One per captured payer account.
   maximum_distribution_rows: 131072 # One per captured ownership claim.
   maximum_money_transfer_rows: 1441792
@@ -569,15 +577,15 @@ receipts:
     Independent Designed close ceiling retained at 3M + 16N. The original sum does not cover
     every simultaneously maximal admitted family after named policy limits grow. A valid
     opening does not promise that every possible close fits this or the complete-byte ceiling.
-  maximum_complete_bytes: 872612528
-  maximum_complete_basis: closed_36_family_row_limits_times_codec_widths_plus_framing_371
+  maximum_complete_bytes: 874709881
+  maximum_complete_basis: closed_37_family_row_limits_times_codec_widths_plus_framing_380
 persistence:
   material_rows: babylon_state.material_tick_v3
   register_storage: Compiled section layouts, typed lookup references, exact columns and opening-relative XOR.
     Variable seller offers retain ordinal pricing tags, literal numeric bytes and typed Site/Good/Unit references;
     normalization reuses the existing lookup prefix, falling back to literal storage for absent identities.
     The normalized candidate is retained only when its compressed frame is smaller than the literal frame.
-  receipt_storage: All thirty-six families, exact columns and checked redundant numeric factors.
+  receipt_storage: All thirty-seven families, exact columns and checked redundant numeric factors.
   lookup_storage: One current period table shares the immutable opening seed and exact ordered recipe-or-literal
     state/receipt additions in the same transaction.
   lookup_descriptors: Authenticate bounded descriptor bytes separately; reconstruct exact logical typed additions from

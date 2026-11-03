@@ -158,7 +158,13 @@ fn member_receipts_authenticate_payee_and_earned_wages_against_the_aggregate() {
     let validate = |staff: &[StaffingMemberReceipt],
                     members: &[MemberLaborUseReceipt],
                     wages: &[WageAccrualReceipt]| {
-        workforce_receipt::validate_join(staff, members, std::slice::from_ref(&aggregate), wages)
+        workforce_receipt::validate_join(
+            staff,
+            members,
+            std::slice::from_ref(&aggregate),
+            wages,
+            &[],
+        )
     };
     validate(
         std::slice::from_ref(&staff),

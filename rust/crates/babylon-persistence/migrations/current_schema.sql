@@ -1524,7 +1524,8 @@ BEGIN
  OR EXISTS(SELECT 1 FROM parents e LEFT JOIN babylon_state.tick_choice_receipt_v1 r ON r.campaign_id=e.campaign_id AND r.resolve_tick=e.resolve_tick AND r.encounter_ordinal=e.choice_receipt_ordinal WHERE e.ordinal NOT BETWEEN 0 AND 4294967295 OR e.event_type IS NULL OR e.emitting_rule IS NULL OR (e.choice_receipt_ordinal IS NOT NULL AND (e.choice_receipt_ordinal NOT BETWEEN 0 AND 4294967295 OR r.encounter_ordinal IS NULL)))
  OR EXISTS(SELECT 1 FROM fields GROUP BY ordinal,position HAVING count(*)<>1)
  OR EXISTS(SELECT 1 FROM fields GROUP BY ordinal HAVING min(position)<>0 OR max(position)<>count(*)-1)
- OR EXISTS(SELECT 1 FROM fields f LEFT JOIN parents e USING(ordinal) WHERE f.position NOT BETWEEN 0 AND 4294967295 OR f.field_name IS NULL OR (f.value_tag=6 AND (f.enum_type IS NULL OR f.enum_member IS NULL)) OR (f.value_tag>=7 AND f.stable_key IS NULL) OR e.ordinal IS NULL)
+ OR EXISTS(SELECT 1 FROM fields f WHERE f.ordinal IS NULL OR f.position NOT BETWEEN 0 AND 4294967295 OR f.field_name IS NULL OR (f.value_tag=6 AND (f.enum_type IS NULL OR f.enum_member IS NULL)) OR (f.value_tag>=7 AND f.stable_key IS NULL))
+ OR EXISTS(SELECT f.ordinal FROM fields f WHERE f.ordinal IS NOT NULL EXCEPT SELECT e.ordinal FROM parents e)
  OR EXISTS(SELECT 1 FROM fields GROUP BY ordinal,field_name HAVING count(*)<>1)
  OR EXISTS(SELECT 1 FROM (SELECT field_name,lead(field_name) OVER(PARTITION BY ordinal ORDER BY position) AS next_name FROM fields) ordered WHERE field_name>=next_name)
  INTO bad;

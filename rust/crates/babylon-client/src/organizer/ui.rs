@@ -9,7 +9,6 @@ use babylon_persistence::ArchiveEvidenceClass;
 use bevy::ecs::system::SystemParam;
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::ButtonState;
-use std::collections::BTreeMap;
 
 use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::input_focus::{FocusedInput, InputFocus};
@@ -94,7 +93,6 @@ struct RelationSubject(OrganizerSubject);
 struct RelationEdge {
     from: OrganizerSubject,
     to: OrganizerSubject,
-    label: bool,
 }
 
 #[derive(Resource, Default)]
@@ -518,10 +516,6 @@ fn scene_detail(scene: Option<&OrganizerScene>, selected: Option<OrganizerSubjec
 }
 
 fn spawn_places(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene) {
-    parent.spawn(Node {
-        flex_grow: 1.0,
-        ..default()
-    });
     parent
         .spawn((
             Node {
@@ -552,6 +546,10 @@ fn spawn_places(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene) {
                 theme::PAPER,
             ));
         });
+    parent.spawn(Node {
+        flex_grow: 1.0,
+        ..default()
+    });
 }
 
 fn spawn_relationships(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene) {
@@ -574,13 +572,15 @@ fn spawn_relationships(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene
                     theme::GRAY,
                 ));
             }
-            stage
+            let region = stage
                 .spawn((
                     Node {
                         position_type: PositionType::Relative,
                         flex_grow: 1.0,
                         min_height: px(0),
-                        overflow: Overflow::clip(),
+                        overflow: Overflow::scroll_y(),
+                        justify_content: JustifyContent::SpaceBetween,
+                        padding: UiRect::axes(percent(2), px(8)),
                         ..default()
                     },
                     RelationStage,
@@ -588,19 +588,28 @@ fn spawn_relationships(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene
                 .with_children(|space| {
                     spawn_relation_edges(space, scene);
                     spawn_relation_subjects(space, scene);
+                })
+                .id();
+            stage
+                .spawn((text("", 12.0, theme::GRAY), ScrollHint(region)))
+                .insert(Node {
+                    height: px(16),
+                    min_height: px(16),
+                    flex_shrink: 0.0,
+                    ..default()
                 });
         });
 }
 
 fn spawn_relation_edges(space: &mut ChildSpawnerCommands, scene: &OrganizerScene) {
-    let mut grouped = BTreeMap::<_, Vec<&str>>::new();
-    for relation in &scene.relations {
-        grouped
-            .entry((relation.from, relation.to))
-            .or_default()
-            .push(&relation.label);
-    }
-    for ((from, to), labels) in grouped {
+    let mut pairs = scene
+        .relations
+        .iter()
+        .map(|relation| (relation.from, relation.to))
+        .collect::<Vec<_>>();
+    pairs.sort_unstable();
+    pairs.dedup();
+    for (from, to) in pairs {
         space.spawn((
             Node {
                 position_type: PositionType::Absolute,
@@ -610,30 +619,27 @@ fn spawn_relation_edges(space: &mut ChildSpawnerCommands, scene: &OrganizerScene
             BackgroundColor(theme::YELLOW),
             UiTransform::IDENTITY,
             Pickable::IGNORE,
-            RelationEdge {
-                from,
-                to,
-                label: false,
-            },
+            RelationEdge { from, to },
         ));
-        space
-            .spawn((
-                text(labels.join(" · "), 12.0, theme::PAPER),
-                Pickable::IGNORE,
-                RelationEdge {
-                    from,
-                    to,
-                    label: true,
-                },
-            ))
-            .insert((
-                Node {
-                    position_type: PositionType::Absolute,
-                    max_width: px(220),
-                    ..default()
-                },
-                BackgroundColor(theme::INK),
-            ));
+    }
+}
+
+fn relation_labels(
+    parent: &mut ChildSpawnerCommands,
+    scene: &OrganizerScene,
+    subject: OrganizerSubject,
+) {
+    let labels = scene
+        .relations
+        .iter()
+        .filter(|relation| relation.to == subject)
+        .map(|relation| relation.label.as_str())
+        .collect::<Vec<_>>();
+    if !labels.is_empty() {
+        parent.spawn((
+            text(labels.join("\n"), 12.0, theme::PAPER),
+            Pickable::IGNORE,
+        ));
     }
 }
 
@@ -657,10 +663,9 @@ fn spawn_relation_subjects(space: &mut ChildSpawnerCommands, scene: &OrganizerSc
     space
         .spawn((
             Node {
-                position_type: PositionType::Absolute,
-                left: percent(2),
-                top: percent(20),
-                width: percent(35),
+                width: percent(38),
+                flex_shrink: 0.0,
+                align_self: AlignSelf::FlexStart,
                 padding: UiRect::all(px(12)),
                 row_gap: px(8),
                 border: UiRect::all(px(if scene.body_shape.is_some() { 2 } else { 0 })),
@@ -674,15 +679,15 @@ fn spawn_relation_subjects(space: &mut ChildSpawnerCommands, scene: &OrganizerSc
             for member in &members {
                 if let Some(node) = scene.nodes.iter().find(|node| node.subject == *member) {
                     relation_subject(body, node);
+                    relation_labels(body, scene, node.subject);
                 }
             }
         });
     space
         .spawn(Node {
-            position_type: PositionType::Absolute,
-            right: percent(2),
-            top: percent(10),
-            width: percent(35),
+            width: percent(42),
+            flex_shrink: 0.0,
+            align_self: AlignSelf::FlexStart,
             row_gap: px(12),
             ..column()
         })
@@ -690,6 +695,7 @@ fn spawn_relation_subjects(space: &mut ChildSpawnerCommands, scene: &OrganizerSc
             for node in &scene.nodes {
                 if !members.contains(&node.subject) {
                     relation_subject(others, node);
+                    relation_labels(others, scene, node.subject);
                 }
             }
         });
@@ -697,8 +703,8 @@ fn spawn_relation_subjects(space: &mut ChildSpawnerCommands, scene: &OrganizerSc
 
 fn position_relations(
     stage: Query<(&ComputedNode, &UiGlobalTransform), With<RelationStage>>,
-    subjects: Query<(&RelationSubject, &UiGlobalTransform)>,
-    mut edges: Query<(&RelationEdge, &mut Node, Option<&mut UiTransform>)>,
+    subjects: Query<(&RelationSubject, &ComputedNode, &UiGlobalTransform)>,
+    mut edges: Query<(&RelationEdge, &mut Node, &mut UiTransform)>,
 ) {
     let Ok((computed, stage_transform)) = stage.single() else {
         return;
@@ -711,33 +717,44 @@ fn position_relations(
     let point = |subject| {
         subjects
             .iter()
-            .find(|(node, _)| node.0 == subject)
-            .map(|(_, transform)| {
-                (inverse.transform_point2(transform.affine().translation) + computed.size() * 0.5)
-                    * computed.inverse_scale_factor()
+            .find(|(node, _, _)| node.0 == subject)
+            .map(|(_, size, transform)| {
+                let scale = computed.inverse_scale_factor();
+                (
+                    (inverse.transform_point2(transform.affine().translation)
+                        + computed.size() * 0.5
+                        + computed.scroll_position)
+                        * scale,
+                    size.size() * scale * 0.5,
+                )
             })
     };
-    for (edge, mut node, transform) in &mut edges {
-        let (Some(from), Some(to)) = (point(edge.from), point(edge.to)) else {
+    for (edge, mut node, mut transform) in &mut edges {
+        let (Some((from, from_half)), Some((to, to_half))) = (point(edge.from), point(edge.to))
+        else {
             continue;
         };
         let delta = to - from;
-        let center = (from + to) * 0.5;
-        if !center.is_finite() || !delta.is_finite() {
+        let distance = delta.length();
+        if !distance.is_finite() || distance <= f32::EPSILON {
+            continue;
+        }
+        let direction = delta / distance;
+        let boundary = |half: Vec2| (half.x / direction.x.abs()).min(half.y / direction.y.abs());
+        let start = from + direction * boundary(from_half);
+        let end = to - direction * boundary(to_half);
+        let length = (end - start).dot(direction).max(0.0);
+        let center = start + direction * (length * 0.5);
+        if !center.is_finite() || !length.is_finite() {
             continue;
         }
         let mut next = node.clone();
-        if edge.label {
-            next.left = px(center.x);
-            next.top = px(center.y + 4.0);
-        } else if let Some(mut transform) = transform {
-            next.left = px(center.x - delta.length() * 0.5);
-            next.top = px(center.y - 1.0);
-            next.width = px(delta.length());
-            transform.set_if_neq(UiTransform::from_rotation(Rot2::radians(
-                delta.y.atan2(delta.x),
-            )));
-        }
+        next.left = px(center.x - length * 0.5);
+        next.top = px(center.y - 1.0);
+        next.width = px(length);
+        transform.set_if_neq(UiTransform::from_rotation(Rot2::radians(
+            delta.y.atan2(delta.x),
+        )));
         node.set_if_neq(next);
     }
 }
@@ -2409,7 +2426,7 @@ pub(crate) mod tests {
             let mut edges = world.query::<(Entity, &RelationEdge)>();
             let (edge, relation) = edges
                 .iter(world)
-                .find(|(_, edge)| !edge.label)
+                .next()
                 .expect("disclosed relationship line");
             (stage, (endpoints, relation.from, relation.to), edge)
         };
@@ -2429,14 +2446,30 @@ pub(crate) mod tests {
             } else {
                 Vec2::ZERO
             };
-            app.world_mut()
-                .entity_mut(entity)
-                .insert(UiGlobalTransform::from_translation(position));
+            app.world_mut().entity_mut(entity).insert((
+                UiGlobalTransform::from_translation(position),
+                ComputedNode {
+                    size: Vec2::new(100.0, 50.0),
+                    inverse_scale_factor: 1.0,
+                    ..default()
+                },
+            ));
         }
         app.update();
         assert_eq!(
             app.world().get::<Node>(edge).expect("line geometry").width,
-            px(300)
+            px(200),
+            "the connector must stop at each subject boundary"
+        );
+        app.world_mut()
+            .get_mut::<ComputedNode>(stage)
+            .expect("stage geometry")
+            .scroll_position = Vec2::new(0.0, 40.0);
+        app.update();
+        assert_eq!(
+            app.world().get::<Node>(edge).expect("line geometry").top,
+            px(239),
+            "the connector stays attached when its stage scrolls"
         );
     }
 

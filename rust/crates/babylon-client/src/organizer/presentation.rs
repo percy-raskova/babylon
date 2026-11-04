@@ -155,6 +155,8 @@ pub(super) fn situation(view: &OrganizerView, period: u64) -> String {
         || {
             if period == 0 {
                 "No completed-period report exists yet. An inquiry now still costs time; it cannot obtain that report.".into()
+            } else if period != view.period {
+                "Open Cited workplace Archive to review earned reports at the inspected period.".into()
             } else if view.total_observation_count > 0 {
                 "The recent snapshot includes no workplace report for this inspected period. Open Cited workplace Archive to review earned older reports.".into()
             } else {
@@ -363,7 +365,12 @@ fn aid_history(client: &OrganizerClient, period: u64) -> String {
     use babylon_persistence::runtime_session::OrganizerAidSupportStatus;
     let mut text = String::from("\nAID SUPPORT · separate from workplace observations\n");
     for pending in &client.pending_aid {
-        if pending.admitted_period <= period {
+        if client
+            .view
+            .as_ref()
+            .is_some_and(|view| view.period == period)
+            && pending.admitted_period <= period
+        {
             let label = match pending.kind {
                 babylon_persistence::runtime_session::OrganizerAidKind::Local => "local aid",
                 babylon_persistence::runtime_session::OrganizerAidKind::Remote => {
@@ -380,7 +387,7 @@ fn aid_history(client: &OrganizerClient, period: u64) -> String {
     for row in client
         .aid_resolutions
         .iter()
-        .filter(|row| row.practice.period <= period)
+        .filter(|row| row.practice.period <= period && row.support.period <= period)
     {
         let _ = writeln!(
             text,
@@ -469,7 +476,9 @@ pub(super) fn aftermath(client: &OrganizerClient, view: &OrganizerView, period: 
         .filter(|receipt| receipt.actor_id == view.actor_id && receipt.period <= period)
         .max_by_key(|receipt| receipt.period)
     else {
-        return if view.total_receipt_count > 0 && period > 0 {
+        return if period != view.period && period > 0 {
+            format!("Open Our practice Archive to review period {period}.")
+        } else if view.total_receipt_count > 0 && period > 0 {
             format!("No receipt from this period is included in the recent window. Open Our practice Archive to review period {period}.")
         } else {
             format!("No practice completed at period {period}.")
@@ -790,35 +799,58 @@ fn evidence_inspector(
     let title = format!(
         "{} · {}",
         if saved {
-            "Personal draft references"
+            "Current personal draft references"
         } else {
             "Circuit evidence"
         },
         view.workplace_label
     );
     let mut text = String::from("WORKPLACE EVIDENCE\nThese reports describe one observed period. References are personal presentation, not new knowledge or executable instructions. Provider-private accounts remain undisclosed. Workplace reports do not establish aid delivery, household consumption or independent participation.\n\n");
-    let _ = writeln!(text, "{} recent and latest report(s) shown; {} acquired through committed period {}. Older reports remain in Cited workplace Archive.\n", view.observations.len(), view.total_observation_count, view.period);
+    if saved {
+        text.push_str("CURRENT PERSONAL DRAFT · saved references are present-day notebook context, not a historical reconstruction.\n\n");
+    }
+    if period == view.period {
+        let _ = writeln!(text, "{} recent and latest report(s) shown; {} acquired through committed period {}. Older reports remain in Cited workplace Archive.\n", view.observations.len(), view.total_observation_count, view.period);
+    } else {
+        text.push_str("The as-of total is unavailable. Open Cited workplace Archive for earned reports at the inspected period.\n\n");
+    }
     let Some(id) = client.selected_evidence_id(period) else {
         text.push_str(if saved {
             "No saved references. Open Workplace evidence and keep a report in the draft."
+        } else if period != view.period {
+            "Open Cited workplace Archive to inspect earned reports at this period."
         } else {
             "No acquired workplace report is available at this period."
         });
         return (title, text);
     };
     let ids = client.evidence_ids(period);
-    if let Some(index) = ids.iter().position(|item| *item == id) {
-        let _ = writeln!(text, "REPORT {} OF {}\n", index + 1, ids.len());
+    if saved || period == view.period {
+        if let Some(index) = ids.iter().position(|item| *item == id) {
+            let label = if saved {
+                "CURRENT DRAFT REFERENCE"
+            } else {
+                "REPORT"
+            };
+            let _ = writeln!(text, "{label} {} OF {}\n", index + 1, ids.len());
+        }
     }
     let Some(item) = client.lawful_evidence(id, period) else {
-        text.push_str("This reference is outside the current report window or unavailable in this inspected view. Open Cited workplace Archive to review earned older reports at the inspected period, or select another recent report. The reference remains in your draft and grants no additional access.");
+        if saved {
+            text.push_str("This reference is unavailable in this inspected view. Open Cited workplace Archive to review earned reports, or select another reference. It remains in the current draft and grants no additional access.");
+        } else {
+            text.push_str("The selected report is unavailable in this inspected view. Open Cited workplace Archive to review earned reports, or select another report.");
+        }
         return (title, text);
     };
-    text.push_str(if client.evidence_is_saved(id) {
-        "IN PERSONAL DRAFT\n\n"
-    } else {
-        "NOT IN PERSONAL DRAFT\n\n"
-    });
+    text.push_str(
+        match (client.evidence_is_saved(id), period == view.period) {
+            (true, true) => "IN PERSONAL DRAFT\n\n",
+            (false, true) => "NOT IN PERSONAL DRAFT\n\n",
+            (true, false) => "IN CURRENT PERSONAL DRAFT\n\n",
+            (false, false) => "NOT IN CURRENT PERSONAL DRAFT\n\n",
+        },
+    );
     text.push_str(&observation(view, item, period));
     (title, text)
 }
@@ -885,7 +917,11 @@ pub(super) fn inspector(client: &OrganizerClient, period: u64) -> (String, Strin
                 .iter()
                 .filter(|receipt| receipt.period <= period && receipt.actor_id == view.actor_id)
                 .count();
-            let mut text = format!("RECENT COMMITTED PRACTICE HISTORY\nShowing {visible} recent receipt(s) of {} committed through period {}. Open Our practice Archive for older receipts at the inspected period.\nFactory output and maintenance recovery remain separate from organizational outcomes.\n\n", view.total_receipt_count, view.period);
+            let mut text = if period == view.period {
+                format!("RECENT COMMITTED PRACTICE HISTORY\nShowing {visible} recent receipt(s) of {} committed through period {}. Open Our practice Archive for older receipts at the inspected period.\nFactory output and maintenance recovery remain separate from organizational outcomes.\n\n", view.total_receipt_count, view.period)
+            } else {
+                "RECENT COMMITTED PRACTICE HISTORY\nThe as-of total is unavailable. Open Our practice Archive for receipts at the inspected period.\nFactory output and maintenance recovery remain separate from organizational outcomes.\n\n".into()
+            };
             let visible_receipts = view
                 .receipts
                 .iter()
@@ -897,12 +933,13 @@ pub(super) fn inspector(client: &OrganizerClient, period: u64) -> (String, Strin
                     response(receipt.partner_response), receipt.observation_ids.len(),
                     if receipt.contact_product_id.is_some() { "Completed contact evidence can support a later report-exchange commitment." } else { "No new contact product was produced by this practice." });
             }
-            if !view
-                .receipts
-                .iter()
-                .any(|receipt| receipt.period <= period && receipt.actor_id == view.actor_id)
+            if period == view.period
+                && !view
+                    .receipts
+                    .iter()
+                    .any(|receipt| receipt.period <= period && receipt.actor_id == view.actor_id)
             {
-                text.push_str(if view.total_receipt_count > 0 && period > 0 { "No receipt from this period is included in the recent window. Older receipts remain in Our practice Archive." } else { "No practice has completed at this period." });
+                text.push_str(if view.total_receipt_count > 0 && period > 0 { "No receipt for this period is included in the available window. Open Our practice Archive for the inspected period." } else { "No practice has completed at this period." });
             }
             text.push_str(&aid_history(client, period));
             text.push_str(&collection_history(client, view, period));
@@ -1020,13 +1057,29 @@ mod tests {
             ..OrganizerClient::default()
         };
         let (_, text) = inspector(&client, 1);
-        assert!(text.contains("Showing 0 recent receipt(s) of 325 committed through period 325"));
+        assert!(!text.contains("325"));
+        assert!(text.contains("as-of total is unavailable"));
         assert!(text.contains("Open Our practice Archive"));
         assert!(!text.contains("No practice has completed"));
         assert!(
             aftermath(&OrganizerClient::default(), &view, 1).contains("Open Our practice Archive")
         );
         assert!(situation(&view, 1).contains("Open Cited workplace Archive"));
+
+        let mut no_current_totals = view.clone();
+        no_current_totals.total_receipt_count = 0;
+        no_current_totals.total_observation_count = 0;
+        assert_eq!(situation(&view, 1), situation(&no_current_totals, 1));
+        assert_eq!(
+            aftermath(&client, &view, 1),
+            aftermath(&client, &no_current_totals, 1)
+        );
+        let without_totals = OrganizerClient {
+            view: Some(no_current_totals),
+            inspector: OrganizerInspector::Receipts,
+            ..OrganizerClient::default()
+        };
+        assert_eq!(text, inspector(&without_totals, 1).1);
     }
 
     #[test]
@@ -1051,12 +1104,14 @@ mod tests {
         assert!(!earlier.contains("Pending remote solidarity"));
         assert!(!earlier.contains("Scheduled dispatch"));
         let (_, admitted) = inspector(&client, 2);
-        assert!(admitted.contains("Pending remote solidarity: original admission 2"));
-        assert!(admitted.contains("Scheduled dispatch: period 3; no delivery is credited."));
+        assert!(!admitted.contains("Pending remote solidarity"));
+        assert!(!admitted.contains("Scheduled dispatch"));
         assert!(!admitted.contains("Surviving delivery awaits actual arrival"));
         let (_, dispatched) = inspector(&client, 3);
-        assert!(dispatched.contains("Pending remote solidarity: original admission 2; dispatch 3"));
-        assert!(dispatched.contains("Surviving delivery awaits actual arrival"));
+        assert!(!dispatched.contains("Pending remote solidarity"));
+        assert!(!dispatched.contains("Surviving delivery awaits actual arrival"));
+        let (_, live) = inspector(&client, 5);
+        assert!(live.contains("Pending remote solidarity: original admission 2; dispatch 3"));
         assert!(!dispatched.contains("Scheduled dispatch"));
         assert!(!dispatched.contains("Granted "));
         assert!(!dispatched.contains("Completed contact evidence"));
@@ -1883,7 +1938,7 @@ mod tests {
         assert!(!text.contains("999"), "{text}");
         assert!(!text.contains("source actor"), "{text}");
         assert!(!text.contains(&"07".repeat(32)), "{text}");
-        assert!(situation(&view, 1).contains("No workplace report obtained"));
+        assert!(situation(&view, 1).contains("Open Cited workplace Archive"));
     }
 
     #[test]

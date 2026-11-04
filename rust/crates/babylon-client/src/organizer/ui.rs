@@ -102,11 +102,23 @@ struct RenderedScene {
     scene: Option<OrganizerScene>,
     mode: Option<OrganizerSceneMode>,
     historical: Option<bool>,
+    availability: Option<SceneAvailability>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SceneAvailability {
+    Ready,
+    Loading,
+    HistoricalUnavailable,
+    Refused(String),
+    Unavailable,
 }
 #[derive(Component)]
 struct InspectorShield;
 #[derive(Component, Clone, Copy)]
 struct ActionButton(OrganizerAction);
+#[derive(Component)]
+struct ButtonStateMarker;
 #[derive(Component)]
 struct NotesField;
 #[derive(Component)]
@@ -192,6 +204,7 @@ pub(crate) fn button(parent: &mut ChildSpawnerCommands, label: &str, action: Org
         ))
         .with_children(|children| {
             children.spawn(text(label, 15.0, theme::PAPER));
+            children.spawn((text("", 15.0, theme::PAPER), ButtonStateMarker));
             if let OrganizerAction::SetSceneMode(mode) = action {
                 children.spawn((
                     text("", 15.0, theme::PAPER),
@@ -219,7 +232,10 @@ fn relation_subject(parent: &mut ChildSpawnerCommands, node: &SceneNode) {
             BorderColor::all(theme::GRAY),
             DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
         ))
-        .with_child(text(node.caption(), 15.0, theme::PAPER));
+        .with_children(|children| {
+            children.spawn(text(node.caption(), 15.0, theme::PAPER));
+            children.spawn((text("", 15.0, theme::PAPER), ButtonStateMarker));
+        });
 }
 
 fn spawn(mut commands: Commands) {
@@ -304,6 +320,55 @@ fn history_inspector_allowed(inspector: OrganizerInspector) -> bool {
     )
 }
 
+fn scene_refresh_pending(scope: &Scope) -> bool {
+    scope.client.status_due
+        || scope
+            .client
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.kind == RequestKind::Status)
+        || scope.session.advance_pending()
+        || scope.session.lifecycle_pending()
+        || matches!(
+            scope.session.phase,
+            SessionPhase::Connecting | SessionPhase::Loading | SessionPhase::Advancing
+        )
+}
+
+fn scene_availability(scope: &Scope, scene: Option<&OrganizerScene>) -> SceneAvailability {
+    if scene.is_some() {
+        SceneAvailability::Ready
+    } else if scope.session.phase == SessionPhase::Failed || scope.session.runtime_disconnected() {
+        SceneAvailability::Refused(
+            scope
+                .session
+                .error
+                .clone()
+                .unwrap_or_else(|| "Organizer connection lost.".into()),
+        )
+    } else if scene_refresh_pending(scope) {
+        SceneAvailability::Loading
+    } else if scope.session.viewed_tick != scope.session.durable_tick {
+        SceneAvailability::HistoricalUnavailable
+    } else if !scope.client.message.is_empty() {
+        SceneAvailability::Refused(scope.client.message.clone())
+    } else {
+        SceneAvailability::Unavailable
+    }
+}
+
+fn scene_placeholder(availability: &SceneAvailability) -> &str {
+    match availability {
+        SceneAvailability::Ready => "",
+        SceneAvailability::Loading => "Loading organizer scene…",
+        SceneAvailability::HistoricalUnavailable => {
+            "Historical organizer scene is unavailable for this period."
+        }
+        SceneAvailability::Refused(message) => message,
+        SceneAvailability::Unavailable => "Organizer scene is unavailable.",
+    }
+}
+
 fn render_scene(
     mut commands: Commands,
     scope: Scope,
@@ -336,6 +401,9 @@ fn render_scene(
         root.set_if_neq(next);
     }
     let next = scope.client.scene_for(&scope.session);
+    let historical = scope.session.viewed_tick != scope.session.durable_tick;
+    let availability = scene_availability(&scope, next.as_ref());
+    let placeholder = scene_placeholder(&availability);
     let workplace_selected = next.as_ref().is_some_and(|scene| {
         scene.nodes.iter().any(|node| {
             Some(node.subject) == scope.client.selected_subject
@@ -353,29 +421,29 @@ fn render_scene(
         };
     }
     for mut detail in &mut details {
-        let value = scene_detail(next.as_ref(), scope.client.selected_subject);
+        let value = next.as_ref().map_or_else(
+            || placeholder.into(),
+            |scene| retained_scene_detail(&scope, scene),
+        );
         detail.set_if_neq(Text::new(value));
     }
-    let historical = scope.session.viewed_tick != scope.session.durable_tick;
     if rendered.scene == next
         && rendered.mode == Some(scope.client.scene_mode)
         && rendered.historical == Some(historical)
+        && rendered.availability.as_ref() == Some(&availability)
     {
         return;
     }
     rendered.scene.clone_from(&next);
     rendered.mode = Some(scope.client.scene_mode);
     rendered.historical = Some(historical);
+    rendered.availability = Some(availability.clone());
     for content in &contents {
         commands.entity(content).despawn_children();
         commands.entity(content).with_children(|parent| {
             let Some(scene) = &next else {
                 parent.spawn((
-                    text(
-                        "This period's organizer scene is unavailable.",
-                        17.0,
-                        theme::PAPER,
-                    ),
+                    text(placeholder, 17.0, theme::PAPER),
                     BackgroundColor(theme::INK),
                 ));
                 if scope.session.viewed_tick != scope.session.durable_tick {
@@ -405,6 +473,22 @@ fn render_scene(
                 spawn_relationships(parent, scene);
             }
         });
+    }
+}
+
+fn retained_scene_detail(scope: &Scope, scene: &OrganizerScene) -> String {
+    let detail = scene_detail(Some(scene), scope.client.selected_subject);
+    if scope.session.phase == SessionPhase::Failed || scope.session.runtime_disconnected() {
+        let error = scope
+            .session
+            .error
+            .as_deref()
+            .unwrap_or("Organizer connection lost.");
+        format!("Organizer scene error: {error}\n{detail}")
+    } else if scene_refresh_pending(scope) {
+        format!("Refreshing organizer scene · showing the last committed view.\n{detail}")
+    } else {
+        detail
     }
 }
 
@@ -892,6 +976,7 @@ fn spawn_approach(cards: &mut ChildSpawnerCommands, choice: OrganizerChoice) {
             DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
         ))
         .with_children(|card| {
+            card.spawn((text("", 11.0, theme::PAPER), ButtonStateMarker));
             card.spawn((
                 text("SELECT", 11.0, theme::YELLOW),
                 TextPart::ChoiceMarker(choice),
@@ -1902,6 +1987,33 @@ fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
     }
 }
 
+fn paint_button_markers(
+    scope: Scope,
+    buttons: Query<(&ActionButton, &Interaction, &Children)>,
+    mut markers: Query<&mut Text, With<ButtonStateMarker>>,
+) {
+    for (button, interaction, children) in &buttons {
+        let available = visible(
+            button.0,
+            &scope.client,
+            &scope.session,
+            &scope.ui,
+            *scope.view,
+        ) && enabled(button.0, &scope.client, &scope.session);
+        let marker = match (available, *interaction == Interaction::Hovered) {
+            (true, true) => " · HOVER",
+            (false, true) => " · HOVER · UNAVAILABLE",
+            (false, false) => " · UNAVAILABLE",
+            (true, false) => "",
+        };
+        for child in children.iter() {
+            if let Ok(mut text) = markers.get_mut(child) {
+                text.set_if_neq(Text::new(marker));
+            }
+        }
+    }
+}
+
 fn normalize_history_inspector(
     session: Res<ObserverSession>,
     mut client: ResMut<OrganizerClient>,
@@ -1938,7 +2050,10 @@ pub(super) fn install(app: &mut App) {
                 .chain()
                 .in_set(ObserverSet::Input),
         )
-        .add_systems(Update, (paint, render_scene).in_set(ObserverSet::Paint))
+        .add_systems(
+            Update,
+            (paint, render_scene, paint_button_markers).in_set(ObserverSet::Paint),
+        )
         .add_systems(
             PostUpdate,
             (paint_scroll_hints, position_relations).after(UiSystems::Layout),
@@ -2227,9 +2342,7 @@ pub(crate) mod tests {
         }
         app.update();
         assert_eq!(relationship_targets(&mut app), before);
-        app.world_mut()
-            .resource_mut::<ObserverSession>()
-            .inspect_tick(2);
+        inspect_period(&mut app, 2);
         app.update();
         app.update();
         assert_eq!(
@@ -2451,6 +2564,267 @@ pub(crate) mod tests {
                 }
             }
         }
+    }
+
+    fn scene_text(app: &mut App) -> String {
+        let world = app.world_mut();
+        let mut texts = world.query::<(Entity, &Text)>();
+        texts
+            .iter(world)
+            .filter(|(entity, _)| in_scene_content(world, *entity))
+            .map(|(_, text)| text.0.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn scene_repaints_pending_refusal_history_and_authenticated_bodies() {
+        let (mut client, mut session, request, _snapshot) = super::super::tests::status_fixture();
+        client.scene_mode = OrganizerSceneMode::Relationships;
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+            panic!("status fixture")
+        };
+        let (mut app, _, _) = organizer_navigation();
+        app.insert_resource(client).insert_resource(session);
+        app.update();
+        assert!(scene_text(&mut app).contains("Loading organizer scene"));
+        app.world_mut()
+            .resource_scope(|world, mut client: Mut<OrganizerClient>| {
+                let mut session = world.resource_mut::<ObserverSession>();
+                assert!(client.refused(Some(request_id), "Status refused".into(), &mut session));
+            });
+        app.update();
+        assert!(scene_text(&mut app).contains("Status refused"));
+        let (new_client, new_session, request, snapshot) = super::super::tests::status_fixture();
+        client = new_client;
+        client.scene_mode = OrganizerSceneMode::Relationships;
+        session = new_session;
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+            panic!("status fixture")
+        };
+        assert!(client.status(request_id, snapshot, &mut session).is_ok());
+        app.insert_resource(client).insert_resource(session);
+        app.update();
+        assert!(scene_text(&mut app).contains("Body incidence unavailable"));
+        inspect_period(&mut app, 2);
+        app.update();
+        assert!(scene_text(&mut app).contains("Historical organizer scene is unavailable"));
+        {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.durable_tick = 4;
+            session.viewed_tick = 4;
+        }
+        app.world_mut().resource_mut::<OrganizerClient>().status_due = true;
+        app.update();
+        assert!(scene_text(&mut app).contains("Loading organizer scene"));
+        let mut partial = partial_scene_fixture();
+        partial
+            .world_mut()
+            .write_message(OrganizerAction::SetSceneMode(
+                OrganizerSceneMode::Relationships,
+            ));
+        partial.update();
+        let client = partial
+            .world_mut()
+            .remove_resource::<OrganizerClient>()
+            .expect("partial client");
+        let session = partial
+            .world_mut()
+            .remove_resource::<ObserverSession>()
+            .expect("partial session");
+        app.insert_resource(client).insert_resource(session);
+        app.update();
+        assert!(scene_text(&mut app).contains("Partial controlled body"));
+    }
+
+    #[test]
+    fn refresh_marks_the_retained_scene_without_replacing_focused_subject() {
+        let mut app = partial_scene_fixture();
+        let subject = {
+            let world = app.world_mut();
+            let mut buttons = world.query::<(Entity, &ActionButton)>();
+            buttons
+                .iter(world)
+                .find_map(|(entity, action)| {
+                    matches!(action.0, OrganizerAction::SelectSubject(_)).then_some(entity)
+                })
+                .expect("scene subject")
+        };
+        app.world_mut()
+            .resource_mut::<InputFocus>()
+            .set(subject, FocusCause::Navigated);
+        app.world_mut().resource_mut::<OrganizerClient>().status_due = true;
+        app.update();
+        let detail = |app: &mut App| {
+            let world = app.world_mut();
+            let mut details = world.query_filtered::<&Text, With<SceneDetail>>();
+            details.single(world).expect("scene detail").0.clone()
+        };
+        assert!(detail(&mut app).contains("Refreshing organizer scene"));
+        assert!(app.world().get_entity(subject).is_ok());
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(subject));
+        app.world_mut().resource_mut::<OrganizerClient>().status_due = false;
+        app.update();
+        assert!(!detail(&mut app).contains("Refreshing organizer scene"));
+        assert!(app.world().get_entity(subject).is_ok());
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(subject));
+    }
+
+    #[test]
+    fn historical_inspectors_hide_current_totals_pending_and_later_reports() {
+        use babylon_persistence::runtime_session::{
+            OrganizerAidKind, OrganizerAidPending, OrganizerOutcome, OrganizerPartnerResponse,
+            OrganizerReceipt,
+        };
+        let (mut app, _) = reference_fixture();
+        press_named(&mut app, "Keep report in draft");
+        press_named(&mut app, "Return to decision [Esc]");
+        {
+            let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+            client.pending_aid.push(OrganizerAidPending {
+                kind: OrganizerAidKind::Remote,
+                original_commitment_id: [11; 32],
+                material_commitment_id: [12; 32],
+                mandate_id: [13; 32],
+                admitted_period: 1,
+                dispatch_period: 3,
+                good_id: [14; 32],
+                unit_id: [15; 32],
+            });
+            let view = client.view.as_mut().expect("view");
+            view.total_observation_count = 901;
+            view.total_receipt_count = 902;
+            view.receipts.push(OrganizerReceipt {
+                receipt_id: [1; 32],
+                commitment_id: None,
+                actor_id: view.actor_id,
+                period: 3,
+                choice: OrganizerChoice::Hold,
+                standing_work: true,
+                outcome: OrganizerOutcome::EvidenceWithheld,
+                hours_spent: 99,
+                partner_actor_id: None,
+                partner_response: OrganizerPartnerResponse::NotRequested,
+                observation_ids: vec![],
+                contact_product_id: None,
+                time_use: vec![],
+            });
+        }
+        inspect_period(&mut app, 1);
+        app.update();
+        press_named(&mut app, "Historical evidence");
+        let reports = painted_text(&mut app, true);
+        assert!(!reports.contains("901"));
+        assert!(!reports.contains("777 kg"));
+        assert!(reports.contains("as-of total is unavailable"));
+        press_named(&mut app, "Return to decision [Esc]");
+        press_named(&mut app, "Personal notes");
+        press_named(&mut app, "Open saved references");
+        let saved = painted_text(&mut app, true);
+        assert!(saved.contains("CURRENT PERSONAL DRAFT"));
+        assert!(!saved.contains("777 kg"));
+        press_named(&mut app, "Return to decision [Esc]");
+        press_named(&mut app, "Practice history");
+        let receipts = painted_text(&mut app, true);
+        assert!(!receipts.contains("902"));
+        assert!(!receipts.contains("99 organizer-hours"));
+        assert!(!receipts.contains("Pending remote solidarity"));
+        assert!(!receipts.contains("No practice has completed"));
+        assert!(receipts.contains("as-of total is unavailable"));
+        assert!(receipts.contains("Our practice Archive"));
+        press_named(&mut app, "Return to decision [Esc]");
+        inspect_period(&mut app, 2);
+        app.update();
+        press_named(&mut app, "Historical evidence");
+        let earlier_report = painted_text(&mut app, true);
+        assert!(earlier_report.contains("777 kg"));
+        assert!(earlier_report.contains("NOT IN CURRENT PERSONAL DRAFT"));
+    }
+
+    #[test]
+    fn ordinary_and_relationship_controls_show_non_color_state_without_activation() {
+        let mut app = partial_scene_fixture();
+        app.world_mut().write_message(OrganizerAction::SetSceneMode(
+            OrganizerSceneMode::Relationships,
+        ));
+        app.update();
+        app.update();
+        let (relation, disabled, choice) = {
+            let world = app.world_mut();
+            let mut query = world.query::<(Entity, &ActionButton, Option<&RelationSubject>)>();
+            let relation = query
+                .iter(world)
+                .find_map(|(entity, _, relation)| relation.map(|_| entity))
+                .expect("relation");
+            let disabled = query
+                .iter(world)
+                .find_map(|(entity, button, _)| {
+                    matches!(button.0, OrganizerAction::Confirm).then_some(entity)
+                })
+                .expect("confirm");
+            let choice = query
+                .iter(world)
+                .find_map(|(entity, button, _)| {
+                    matches!(
+                        button.0,
+                        OrganizerAction::Choose(OrganizerChoice::Reinforce)
+                    )
+                    .then_some(entity)
+                })
+                .expect("choice");
+            (relation, disabled, choice)
+        };
+        let caption = |app: &App, entity| {
+            app.world()
+                .get::<Children>(entity)
+                .expect("caption")
+                .iter()
+                .filter_map(|child| app.world().get::<Text>(child).map(|text| text.0.as_str()))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        assert!(caption(&app, disabled).contains("UNAVAILABLE"));
+        let before = app.world().resource::<OrganizerClient>().selected_subject;
+        *app.world_mut()
+            .get_mut::<Interaction>(relation)
+            .expect("interaction") = Interaction::Hovered;
+        app.update();
+        assert!(caption(&app, relation).contains("HOVER"));
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().selected_subject,
+            before
+        );
+        let chosen = app.world().resource::<OrganizerClient>().choice();
+        *app.world_mut()
+            .get_mut::<Interaction>(choice)
+            .expect("choice interaction") = Interaction::Hovered;
+        app.update();
+        assert!(caption(&app, choice).contains("HOVER"));
+        assert_eq!(app.world().resource::<OrganizerClient>().choice(), chosen);
+        app.world_mut()
+            .resource_mut::<InputFocus>()
+            .set(relation, FocusCause::Navigated);
+        app.update();
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().selected_subject,
+            before
+        );
+        *app.world_mut()
+            .get_mut::<Interaction>(disabled)
+            .expect("interaction") = Interaction::Pressed;
+        app.update();
+        let context = app.world().resource::<ObserverSession>().context();
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity: disabled,
+            context: Some(context),
+        });
+        app.update();
+        assert!(app.world().resource::<OrganizerClient>().outbox.is_none());
+        assert!(app
+            .world()
+            .resource::<OrganizerClient>()
+            .commitment
+            .is_none());
     }
 
     #[test]

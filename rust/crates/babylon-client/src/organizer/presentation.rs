@@ -1,10 +1,10 @@
 //! Text projections over granted organizer records, never material ledger truth.
 
 use babylon_persistence::runtime_session::{
-    OrganizerChoice, OrganizerCollectionOutcome, OrganizerCollectionResolution,
-    OrganizerCommitment, OrganizerGiftConsent, OrganizerInquiry, OrganizerObservation,
-    OrganizerOutcome, OrganizerPartnerResponse, OrganizerPauseReason, OrganizerPreview,
-    OrganizerRefusal, OrganizerReport, OrganizerView,
+    OrganizerAidOption, OrganizerChoice, OrganizerCollectionOutcome, OrganizerCollectionResolution,
+    OrganizerCommitment, OrganizerGiftConsent, OrganizerInquiry, OrganizerMaterialAidPreview,
+    OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse, OrganizerPauseReason,
+    OrganizerPreview, OrganizerRefusal, OrganizerReport, OrganizerView,
 };
 use std::fmt::Write as _;
 
@@ -284,16 +284,7 @@ pub(super) fn client_approach(
         };
         return format!("PENDING SUPPORT · {kind}\nOriginal admission: period {}; dispatch: period {}.\n{progress}\nOpen Practice history to follow this commitment's dispatch, arrival or terminal failure.\nAnother {kind} ruling remains unavailable while this support is pending. Later coordination still needs independent authorization.", pending.admitted_period, pending.dispatch_period);
     }
-    let mut options = view
-        .aid_options
-        .iter()
-        .filter(|option| option.kind == preview.kind);
-    let recipient = options.next().filter(|option| {
-        options.next().is_none()
-            && view.period == preview.period
-            && option.receiving_consent == preview.receiving_consent
-            && !option.partner_label.trim().is_empty()
-    });
+    let recipient = aid_recipient(view, preview);
     let mut text = recipient.map_or_else(
         || "UNAVAILABLE · Recipient attribution unavailable. Refresh before choosing aid.\n".into(),
         |option| format!("Recipient: {}\n", option.partner_label),
@@ -314,12 +305,69 @@ pub(super) fn client_approach(
         let _ = writeln!(text, "Current receiving consent is unverified; preview recorded {consent}. Refresh before choosing aid.");
     }
     text.push_str(&aid_terms(preview));
+    text.push_str(if view.standing.authorized {
+        " Replaces neighborhood work once when admitted."
+    } else {
+        " The neighborhood routine remains paused."
+    });
     text
 }
 
-fn aid_terms(
-    preview: &babylon_persistence::runtime_session::OrganizerMaterialAidPreview,
-) -> String {
+fn aid_recipient<'a>(
+    view: &'a OrganizerView,
+    preview: &OrganizerMaterialAidPreview,
+) -> Option<&'a OrganizerAidOption> {
+    let mut options = view
+        .aid_options
+        .iter()
+        .filter(|option| option.kind == preview.kind);
+    options.next().filter(|option| {
+        options.next().is_none()
+            && view.period == preview.period
+            && option.receiving_consent == preview.receiving_consent
+            && !option.partner_label.trim().is_empty()
+    })
+}
+
+pub(super) fn aid_terms_attributed(client: &OrganizerClient, choice: OrganizerChoice) -> bool {
+    client
+        .view
+        .as_ref()
+        .zip(client.aid_preview(choice))
+        .is_some_and(|(view, terms)| aid_recipient(view, terms).is_some())
+}
+
+fn aid_review_terms(client: &OrganizerClient, choice: OrganizerChoice) -> String {
+    let Some(view) = &client.view else {
+        return "UNAVAILABLE · Current material terms are unavailable. Refresh before choosing aid.".into();
+    };
+    let Some(terms) = client.aid_preview(choice) else {
+        return "UNAVAILABLE · Current material terms are unavailable. Refresh before choosing aid.".into();
+    };
+    let Some(recipient) = aid_recipient(view, terms) else {
+        return "UNAVAILABLE · Recipient attribution unavailable. Refresh before choosing aid."
+            .into();
+    };
+    let consent = match terms.receiving_consent {
+        OrganizerGiftConsent::Accept => "accepted",
+        OrganizerGiftConsent::Refuse => "refused; gift unavailable",
+    };
+    let surplus = terms.donor_stock.saturating_sub(terms.own_need);
+    format!("Recipient: {}\nGift request: up to {} food units ({} grams each); protected surplus: {} units. Actual fulfillment may be lower.\nGift transfer: {} currency per unit (not a sale); organization cash: {} currency. Fulfillment: {} household hours per dispatched unit.\nReceiving consent: {consent}.", recipient.partner_label, terms.maximum_quantity, terms.grams_per_unit, surplus, currency(terms.gift_cash_per_unit), currency(terms.payer_cash), terms.fulfillment_hours_per_unit)
+}
+
+fn collection_review_terms(client: &OrganizerClient) -> String {
+    let Some(terms) = client.collection_preview() else {
+        return "UNAVAILABLE · Current collection terms are unavailable. Refresh before choosing collection.".into();
+    };
+    let consent = match terms.cash_consent {
+        OrganizerGiftConsent::Accept => "accepted independently",
+        OrganizerGiftConsent::Refuse => "refused independently",
+    };
+    format!("Contributor: {}\nVoluntary gift: up to {} currency; {} shared material hours. Cash consent: {consent}.\nProtected cash floor: {} currency. Protected consumption, services, closing stock and due payments are checked at close. No cash or time is reserved. See the collection choice below for full terms.", terms.contributor_label, currency(terms.maximum_cash_micros), terms.collection_hours, currency(terms.protected_cash_floor_micros))
+}
+
+fn aid_terms(preview: &OrganizerMaterialAidPreview) -> String {
     use babylon_persistence::runtime_session::OrganizerAidTransportPreview;
     let surplus = preview.donor_stock.saturating_sub(preview.own_need);
     let mut text = format!(
@@ -357,7 +405,7 @@ fn aid_terms(
             }
         }
     }
-    text.push_str("Preview only: no cash, food, freight or time is reserved. Replaces standing work once when admitted; later ordinary work has first call on time. Delivery and same-period consumption may permit a separate independently authorized practice; no agreement is guaranteed.");
+    text.push_str("Preview only: no cash, food, freight or time is reserved. Later ordinary work has first call on time. Delivery and same-period consumption may permit a separate independently authorized practice; no agreement is guaranteed.");
     text
 }
 
@@ -598,14 +646,17 @@ fn accepted_aid_review(client: &OrganizerClient, commitment: &OrganizerCommitmen
         commitment.resolves_period,
         choice(commitment.command.choice)
     );
+    let _ = write!(
+        text,
+        "\n{}",
+        aid_review_terms(client, commitment.command.choice)
+    );
     if let Some(preview) = client.aid_preview(commitment.command.choice) {
         let _ = write!(
             text,
-            " · later coordination: {} hours",
+            "\nLater coordination: {} hours, if authorized.",
             preview.coordination_hours
         );
-    } else {
-        text.push_str(" · later coordination requirement unavailable; refresh");
     }
     text.push_str("\nRuling fixed. Advance for material resolution. Later coordination depends on delivery, consumption, finite contributions and independent authorization; no coordination time is reserved.");
     text
@@ -626,7 +677,17 @@ fn accepted_collection_review(
             )
         },
     );
-    format!("ACCEPTED · collection resolution period {}\n{terms}. Protected needs and fixed shared time are checked at close.\nReplaces saved routine once; no standing fallback. Actual full, partial or refused payment appears after Advance. Later aid needs its own ruling.", commitment.resolves_period)
+    let routine = client
+        .view
+        .as_ref()
+        .map_or("Neighborhood routine status unavailable.", |view| {
+            if view.standing.authorized {
+                "Replaces neighborhood work once; no standing fallback."
+            } else {
+                "The neighborhood routine remains paused; no standing fallback."
+            }
+        });
+    format!("ACCEPTED · collection resolution period {}\n{terms}. Protected needs and fixed shared time are checked at close.\n{routine} Actual full, partial or refused payment appears after Advance. Later aid needs its own ruling.", commitment.resolves_period)
 }
 
 pub(super) fn review(
@@ -675,30 +736,64 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
             view.workplace_label, view.workplace_partner_label
         );
     }
-    let _ = write!(
-        text,
-        "\nCost: {} of {} organizer-hours",
-        preview.required_hours, preview.available_hours
-    );
+    match preview.choice {
+        OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
+            let _ = write!(text, "\n{}", aid_review_terms(client, preview.choice));
+        }
+        OrganizerChoice::Collect => {
+            let _ = write!(text, "\n{}", collection_review_terms(client));
+            let _ = write!(
+                text,
+                "\nCost: {} of {} organizer-hours",
+                preview.required_hours, preview.available_hours
+            );
+        }
+        _ => {
+            let _ = write!(
+                text,
+                "\nCost: {} of {} organizer-hours",
+                preview.required_hours, preview.available_hours
+            );
+        }
+    }
     let _ = write!(
         text,
         "\n{}",
         match preview.choice {
-            OrganizerChoice::Collect => "Replaces standing work once. Protected consumption, services, closing stock, due payments, independent cash consent and shared material time are checked at close. A gift can fund later aid; no instant membership, agreement or time gain.",
+            OrganizerChoice::Collect | OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+                if matches!(
+                    preview.refusal,
+                    Some(OrganizerRefusal::WrongCampaign | OrganizerRefusal::WrongAuthority)
+                ) =>
+                "Routine effect is unavailable for this preview.",
+            OrganizerChoice::Collect
+            | OrganizerChoice::LocalAid
+            | OrganizerChoice::RemoteAid
+            | OrganizerChoice::Inquiry(_)
+            | OrganizerChoice::Reinforce
+                if preview.replaces_standing_work =>
+                "Replaces neighborhood work once; later work remains subject to eligibility.",
+            OrganizerChoice::Collect
+            | OrganizerChoice::LocalAid
+            | OrganizerChoice::RemoteAid
+            | OrganizerChoice::Inquiry(_)
+            | OrganizerChoice::Reinforce => "The neighborhood routine remains paused.",
             OrganizerChoice::PauseStanding =>
                 "Pauses the saved routine until you explicitly resume it.",
             OrganizerChoice::ResumeStanding =>
                 "Authorizes and performs the saved routine; continues afterward while eligible.",
             OrganizerChoice::Hold => "Keeps the saved routine; does not resume a paused routine.",
-            OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid =>
-                "Gift receiving consent does not guarantee later partner participation.",
-            OrganizerChoice::Inquiry(_) | OrganizerChoice::Reinforce
-                if preview.replaces_standing_work =>
-                "Replaces neighborhood work once; later work remains subject to eligibility.",
-            OrganizerChoice::Inquiry(_) | OrganizerChoice::Reinforce =>
-                "The neighborhood routine remains paused.",
         }
     );
+    if matches!(
+        preview.choice,
+        OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+    ) {
+        if let Some(terms) = client.aid_preview(preview.choice) {
+            let _ = write!(text, "\nLater coordination: {} hours, conditional on delivery, consumption, finite contributions and separate independent authorization.", terms.coordination_hours);
+        }
+        text.push_str("\nPreview only: no cash, food, freight or time is reserved. See the selected aid choice below for route and capacity details.");
+    }
     if preview.choice == OrganizerChoice::Reinforce
         && client
             .view
@@ -707,12 +802,11 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
     {
         text.push_str("\nA completed contact is recorded at the public workplace desk; Confirm alone creates no record.");
     }
-    if matches!(
-        preview.choice,
-        OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
-    ) {
-        text.push_str("\nAid terms are in the card above. Review reserves nothing; dispatch and independent practice are checked separately.");
-    }
+    append_preview_result(&mut text, client, preview);
+    text
+}
+
+fn append_preview_result(text: &mut String, client: &OrganizerClient, preview: &OrganizerPreview) {
     if let Some(reason) = preview.refusal {
         let _ = write!(text, "\nUNAVAILABLE · {}", refusal(reason));
     } else {
@@ -735,20 +829,34 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
             text.push_str("\nPartner participation is independent.");
         }
     }
-    if preview.refusal.is_some() {
+    let terms_unavailable = match preview.choice {
+        OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
+            !aid_terms_attributed(client, preview.choice)
+        }
+        OrganizerChoice::Collect => client.collection_preview().is_none(),
+        _ => false,
+    };
+    if preview.refusal.is_some() || terms_unavailable {
         let _ = write!(
             text,
             "\nProposed resolution: period {}. This choice cannot be confirmed as shown.",
             preview.resolves_period
         );
     } else {
+        let resolution = if matches!(
+            preview.choice,
+            OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+        ) {
+            "Scheduled material resolution"
+        } else {
+            "Resolves"
+        };
         let _ = write!(
             text,
-            "\nResolves period {} · Confirm sets the ruling; Advance shows the actual result.",
+            "\n{resolution} period {} · Confirm sets the ruling; Advance shows the actual result.",
             preview.resolves_period
         );
     }
-    text
 }
 
 fn accepted_review(client: &OrganizerClient, commitment: &OrganizerCommitment) -> String {
@@ -1769,7 +1877,7 @@ mod tests {
                 text.contains("ACCEPTED · material resolution period 6"),
                 "{text}"
             );
-            assert!(text.contains("later coordination: 3 hours"), "{text}");
+            assert!(text.contains("Later coordination: 3 hours"), "{text}");
             assert!(
                 text.contains(
                     "delivery, consumption, finite contributions and independent authorization"
@@ -1781,7 +1889,7 @@ mod tests {
             client.aid.clear();
             let missing = review(&client, false, false, false);
             assert!(
-                missing.contains("later coordination requirement unavailable"),
+                missing.contains("Current material terms are unavailable"),
                 "{missing}"
             );
             assert!(

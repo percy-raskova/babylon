@@ -115,6 +115,7 @@ enum TextPart {
     ChoiceHeading,
     Approach(OrganizerChoice),
     ChoiceMarker(OrganizerChoice),
+    SceneModeMarker(scene::OrganizerSceneMode),
     Review,
     Message,
     Notes,
@@ -180,7 +181,15 @@ pub(crate) fn button(parent: &mut ChildSpawnerCommands, label: &str, action: Org
             BorderColor::all(theme::GRAY),
             DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
         ))
-        .with_child(text(label, 15.0, theme::PAPER));
+        .with_children(|children| {
+            children.spawn(text(label, 15.0, theme::PAPER));
+            if let OrganizerAction::SetSceneMode(mode) = action {
+                children.spawn((
+                    text("", 15.0, theme::PAPER),
+                    TextPart::SceneModeMarker(mode),
+                ));
+            }
+        });
 }
 
 fn relation_subject(parent: &mut ChildSpawnerCommands, node: &scene::SceneNode) {
@@ -1774,6 +1783,7 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
                 else if scope.client.choice() == *choice { "SELECTED DRAFT".into() }
                 else { "SELECT".into() }
             },
+            TextPart::SceneModeMarker(mode) => if *mode == scope.client.scene_mode { " · SELECTED".into() } else { String::new() },
             TextPart::Review => presentation::review(&scope.client, historical, complete, scope.session.phase == SessionPhase::Advancing),
             TextPart::ReferenceSummary => format!("{} report reference(s) in this personal draft. References help you review evidence; they never execute a practice.", scope.client.draft.as_ref().map_or(0, |draft| draft.references.len())),
             TextPart::DraftStatus => if !scope.client.draft_writable { "Draft saving unavailable · original file retained".into() } else if scope.client.draft_dirty { "Draft changes awaiting save".into() } else { "Personal draft saved".into() },
@@ -1862,10 +1872,32 @@ fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
     }
 }
 
+fn normalize_history_inspector(
+    session: Res<ObserverSession>,
+    mut client: ResMut<OrganizerClient>,
+    mut focus: ResMut<InputFocus>,
+) {
+    if session.viewed_tick != session.durable_tick
+        && matches!(
+            client.inspector,
+            OrganizerInspector::Relationships | OrganizerInspector::Direction
+        )
+    {
+        client.inspector = OrganizerInspector::Closed;
+        if let Some(entity) = client.return_focus.take() {
+            focus.set(entity, FocusCause::Navigated);
+        }
+    }
+}
+
 pub(super) fn install(app: &mut App) {
     app.init_resource::<RenderedScene>()
         .add_message::<OrganizerAction>()
         .add_systems(Startup, spawn)
+        .add_systems(
+            PreUpdate,
+            normalize_history_inspector.before(ObserverFocusSystems::Eligibility),
+        )
         .add_systems(
             PreUpdate,
             sync_targets.in_set(ObserverFocusSystems::Eligibility),
@@ -2055,6 +2087,19 @@ pub(crate) mod tests {
             app.world().get::<Node>(edge).expect("line geometry").width,
             px(300)
         );
+        let before = relationship_targets(&mut app);
+        // Synthetic bypass of producer admission: the actual projector removes hidden
+        // incidence. This tests that even a perturbed disclosure cannot move targets.
+        if let Some(OrganizerBodyDisclosure::Partial(part)) =
+            &mut app.world_mut().resource_mut::<OrganizerClient>().body
+        {
+            part.runtime_hyperedge_id = 999;
+            part.contributors.push(999);
+        } else {
+            panic!("partial body fixture");
+        }
+        app.update();
+        assert_eq!(relationship_targets(&mut app), before);
         app.world_mut()
             .resource_mut::<ObserverSession>()
             .inspect_tick(2);
@@ -2088,6 +2133,198 @@ pub(crate) mod tests {
         assert!(text
             .iter(world)
             .any(|value| value.0 == "Historical evidence"));
+    }
+
+    fn relationship_targets(app: &mut App) -> Vec<(scene::OrganizerSubject, Node, [f32; 6])> {
+        let world = app.world_mut();
+        let mut targets = world.query::<(&RelationSubject, &Node, &UiGlobalTransform)>();
+        let mut result = targets
+            .iter(world)
+            .map(|(subject, node, transform)| {
+                (subject.0, node.clone(), transform.affine().to_cols_array())
+            })
+            .collect::<Vec<_>>();
+        result.sort_by_key(|(subject, _, _)| *subject);
+        result
+    }
+
+    fn in_scene_content(world: &World, entity: Entity) -> bool {
+        let mut current = entity;
+        while let Some(parent) = world.get::<ChildOf>(current) {
+            current = parent.parent();
+            if world.get::<SceneContent>(current).is_some() {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn scene_review_history_fallback_activates_by_pointer_and_keyboard() {
+        for initial in [
+            OrganizerInspector::Relationships,
+            OrganizerInspector::Direction,
+        ] {
+            for (label, target) in [
+                ("Historical evidence", OrganizerInspector::Evidence),
+                ("Practice history", OrganizerInspector::Receipts),
+                ("Personal notes", OrganizerInspector::Notes),
+            ] {
+                for keyboard in [false, true] {
+                    let (mut app, original_focus, draft) = organizer_navigation();
+                    {
+                        let mut session = app.world_mut().resource_mut::<ObserverSession>();
+                        session.connected_fixture();
+                        session.ready(3, None);
+                        let context = session.context();
+                        assert!(session.installed(&context));
+                    }
+                    {
+                        let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+                        client.view.as_mut().expect("view").period = 3;
+                        client.inspector = initial;
+                        client.return_focus = Some(original_focus);
+                        client.selected_subject = Some(scene::OrganizerSubject::Collective(90));
+                        client.scene_mode = scene::OrganizerSceneMode::Relationships;
+                    }
+                    app.init_resource::<crate::observer_focus::ObserverFocusPolicy>();
+                    crate::observer_ui::install_shell_focus_policy(&mut app);
+                    app.update();
+                    assert!(app
+                        .world()
+                        .resource::<crate::observer_focus::ObserverFocusPolicy>()
+                        .modal
+                        .is_some());
+                    inspect_period(&mut app, 2);
+                    app.update();
+                    app.update();
+                    assert_eq!(
+                        app.world().resource::<OrganizerClient>().inspector,
+                        OrganizerInspector::Closed
+                    );
+                    assert!(app
+                        .world()
+                        .resource::<crate::observer_focus::ObserverFocusPolicy>()
+                        .modal
+                        .is_none());
+                    assert_eq!(
+                        app.world().resource::<InputFocus>().get(),
+                        Some(original_focus)
+                    );
+                    let entity = {
+                        let world = app.world_mut();
+                        let mut buttons = world.query::<(Entity, &ActionButton, &Children)>();
+                        buttons
+                            .iter(world)
+                            .find_map(|(entity, _, children)| {
+                                (in_scene_content(world, entity)
+                                    && children.iter().any(|child| {
+                                        world.get::<Text>(child).is_some_and(|text| text.0 == label)
+                                    }))
+                                .then_some(entity)
+                            })
+                            .expect("visible historical control")
+                    };
+                    assert!(
+                        app.world()
+                            .get::<ObserverFocusTarget>(entity)
+                            .expect("focus target")
+                            .available,
+                        "{initial:?}, {target:?}, keyboard={keyboard}"
+                    );
+                    app.world_mut()
+                        .resource_mut::<InputFocus>()
+                        .set(entity, FocusCause::Navigated);
+                    if keyboard {
+                        let context = app.world().resource::<ObserverSession>().context();
+                        app.world_mut().trigger(ObserverKeyboardActivate {
+                            entity,
+                            context: Some(context),
+                        });
+                    } else {
+                        *app.world_mut()
+                            .get_mut::<Interaction>(entity)
+                            .expect("pointer target") = Interaction::Pressed;
+                    }
+                    app.update();
+                    let client = app.world().resource::<OrganizerClient>();
+                    assert_eq!(client.inspector, target);
+                    assert_eq!(client.draft.as_ref(), Some(&draft));
+                    assert_eq!(
+                        client.selected_subject,
+                        Some(scene::OrganizerSubject::Collective(90))
+                    );
+                    assert_eq!(client.scene_mode, scene::OrganizerSceneMode::Relationships);
+                    assert_eq!(client.return_focus, Some(entity));
+                    assert!(client.outbox.is_none());
+                    assert!(!confirmation_enabled(&app));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn scene_review_mode_selection_has_persistent_text_cue() {
+        let (mut client, mut session, request, snapshot) = super::super::tests::status_fixture();
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+            panic!("status fixture")
+        };
+        assert!(client.status(request_id, snapshot, &mut session).is_ok());
+        let (mut app, _, _) = organizer_navigation();
+        app.insert_resource(client).insert_resource(session);
+        app.update();
+        app.update();
+        let (places, relationships) = {
+            let world = app.world_mut();
+            let mut buttons = world.query::<(Entity, &ActionButton)>();
+            let ids = buttons
+                .iter(world)
+                .filter_map(|(entity, button)| match button.0 {
+                    OrganizerAction::SetSceneMode(mode) => Some((mode, entity)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            (
+                ids.iter()
+                    .find(|(mode, _)| *mode == scene::OrganizerSceneMode::Places)
+                    .expect("places")
+                    .1,
+                ids.iter()
+                    .find(|(mode, _)| *mode == scene::OrganizerSceneMode::Relationships)
+                    .expect("relationships")
+                    .1,
+            )
+        };
+        let caption = |app: &App, entity| {
+            let world = app.world();
+            world
+                .get::<Children>(entity)
+                .expect("mode caption")
+                .iter()
+                .filter_map(|child| world.get::<Text>(child).map(|text| text.0.as_str()))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        assert!(caption(&app, places).contains("SELECTED"));
+        assert!(!caption(&app, relationships).contains("SELECTED"));
+        *app.world_mut()
+            .get_mut::<Interaction>(relationships)
+            .expect("hover") = Interaction::Hovered;
+        app.update();
+        assert!(caption(&app, places).contains("SELECTED"));
+        assert!(!caption(&app, relationships).contains("SELECTED"));
+        let context = app.world().resource::<ObserverSession>().context();
+        app.world_mut().trigger(ObserverKeyboardActivate {
+            entity: relationships,
+            context: Some(context),
+        });
+        app.update();
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().scene_mode,
+            scene::OrganizerSceneMode::Relationships
+        );
+        assert!(!caption(&app, places).contains("SELECTED"));
+        assert!(caption(&app, relationships).contains("SELECTED"));
     }
 
     #[test]

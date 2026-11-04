@@ -574,9 +574,9 @@ def test_current_receipt_cap_boundary(field, maximum):
         PackageClaim.model_validate(claim)
 
 
-def test_collector_current_receipt_requires_complete_36_family_framing():
+def test_collector_current_receipt_requires_complete_37_family_framing():
     state, receipt, lookup = current_headers()
-    # Current V18 has36 mandatory59B storage family frames, including empty rows.
+    # Current V19 has 37 mandatory 59-byte storage family frames, including empty rows.
     minimum = len(b"BabylonReceiptStorageV3\0") + 88 + 37 * 59
     claim = package_claim_from_headers(1, state, receipt, lookup, 200, minimum, len(lookup) + 7)
     assert claim.receipt_storage_bytes == minimum

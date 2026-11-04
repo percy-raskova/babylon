@@ -20,9 +20,9 @@ The remaining sections retain the October 29 findings at their stated revision.
 
 | Area | Delivered behavior | Current acceptance |
 | --- | --- | --- |
-| First City PD | Committed funding, finite paid visits, private cases and actor-scoped public encounters | Matched PD/no-PD PostgreSQL, post-hidden-change selection and source-input order controls passed. Scoped review passed; integrated multi-case, actor-order and topology variants remain unqualified. |
-| Wayne map and action | Places/Relationships selection, evidence, captured targets, committed P7 and restart | Review text and cramped reading areas were repaired. Real-font layout and keyboard consumer regressions passed; the later client library run passed 581 tests on the reviewed source. The revised wording has independently reviewed native captures below; Director reassessment remains pending. Complete choice comparison, physical input, comprehension and enjoyment remain unaccepted. |
-| Performance | Retained native traces and four new disposable PostgreSQL advance timings | No demonstrated causal defect justified a repair. Slow reopen attribution, Archive attribution, complete storage charge, combined-game memory and sustained national qualification remain open. |
+| First City PD | Committed funding, finite paid visits, private cases and actor-scoped public encounters | Matched PD/no-PD, post-hidden-change selection and source-input order controls passed. Current atomic, historical-reader and nonwitness PostgreSQL cases passed below; integrated multi-case, actor-order and topology variants remain unqualified. |
+| Wayne map and action | Places/Relationships selection, evidence, captured targets, committed P7 and restart | Review text and cramped reading areas were repaired; real-font layout and keyboard consumer regressions passed. The Director accepted the current UI for this bounded slice. Complete choice comparison, physical input, precise cost comprehension and enjoyment remain unassessed. |
+| Performance | Retained native traces and timed disposable advance/Archive fixtures | Fixture phases were measured, but no demonstrated causal defect justified a repair. The causes of the retained P7 reopen and Archive delays, complete storage charge, combined-game memory and sustained national qualification remain open. |
 | Wider opponent | First PD foundations are reusable | Full PER-355 agency delivery remains open; observation alone does not establish interesting opposition. |
 
 Current development qualification retains ADR280 and the selected v6 policy:
@@ -31,6 +31,14 @@ and a 120-second advance p95 requiring 52 samples. The North Star retains its
 10,000,000-byte ambition. Neither the retained single-period net growth nor the
 short disposable fixture qualifies those sustained limits. PostgreSQL remains
 authoritative; older SQLite instructions are historical.
+
+In the current historical-reader fixture, P1 advance took 74.067472 seconds:
+simulation was 42.797301, preparation 10.912543 and combined write/publication
+18.947933 seconds. Archive P1 production was 57.599489 seconds and publication
+2.826093; P2 production was 36.955401 and publication 2.018299. These
+boundaries overlap or contain overhead and should not be summed. They do not
+isolate advance SQL commit, encoding, client refresh or the full storage charge,
+establish p95, explain the retained P7 delay or demonstrate a causal defect.
 
 The closeout also reran the current controller component contracts: nine passed,
 including case order, owner/provenance, reconstructed graph identities and honest
@@ -52,28 +60,43 @@ additional family at a workplace and noticed that the review showed resource
 costs and a predicted effect. The Director did not state the exact costs,
 displaced work or uncertainty. The displayed proposal was actually to
 reinforce contact with a captured workplace partner; the household need was a
-contributor concern, not the selected action's purpose. Enjoyment was not
-assessed.
+contributor concern, not the selected action's purpose. After the repair and
+an explanation of the mismatch, the Director again could not see the larger
+preview, then confirmed the new 1366 image was visible and said: "I think this
+is good UI work for now lets wrap this up". This accepts the current UI for
+this bounded slice; it does not establish unfamiliar-player comprehension,
+physical input or enjoyment.
 
 The independently reviewed [context repair](https://github.com/percy-raskova/babylon/commit/3ed6f64e3dfba585aaf09944686524550892f63c)
 identifies the workplace contact and its captured target, labels the contributor
 concern as background, and distinguishes the proposal from household aid. A
 completed, participating contact can support a later report-sharing agreement;
 it does not itself supply a report or guarantee sharing. Accepted copy remains
-consistent and requires an advance for resolution. The Director received an
-explanation of the earlier mismatch, so a subsequent reassessment would not be
-evidence from an unfamiliar player. The reviewed source passed the 581-test
-client library run and the eight existing decision-surface integration cases;
-these are scoped precommit checks bound to the reviewed source, not a completed
-full-gate run or human acceptance.
-
-The earlier full gate at `d132b71a` was interrupted after 2,467 passes and two
-integration failures caused by a missing required focus policy; one in-flight
-test received SIGINT and 1,129 tests did not run. The separate
+consistent and requires an advance for resolution. The scoped client library
+run passed 581 tests on the reviewed source. Two integration failures in the
+earlier interrupted gate exposed a missing required focus policy; the
 [DossierCardPlugin repair](https://github.com/percy-raskova/babylon/commit/06bf61e56962a8b6e0de7ee7ae99fdac27c66048)
 initializes that policy idempotently, preserving an existing policy. All eight
-integration cases passed after the repair. The interrupted gate does not
-establish a pass; exact-head publishing qualification is recorded with the PR.
+decision-surface integration cases passed after the repair.
+
+At clean source [`a3e9b157`](https://github.com/percy-raskova/babylon/commit/a3e9b157d9f017f9260b2b7db590d9671a2a71e5),
+the ordinary no-docs publishing gate passed: 3,600 Rust tests passed and 71
+were skipped, plus format, all-target Clippy, doctests, BSL, security and range
+ceremony checks. That development selection does not run the ignored live
+PostgreSQL cases. The following separate disposable fixtures also use source
+`a3e9b157`; their checks and conclusions are limited to the named cases.
+
+| PostgreSQL case | Result and exercised boundary |
+| --- | --- |
+| [Atomic paid visit](../rust/crates/babylon-persistence/src/runtime/live_tests/city_pd_atomic.rs) | 1 passed: marker-failure rollback, ambiguous-commit reconciliation, exact retry and cold reopen. |
+| [Historical encounter and restricted reader](../rust/crates/babylon-persistence/tests/observer_material_live/state_opponent_history.rs) | 1 passed: tamper refusal, cold reopen and P3 continuation, with the P2 signal visible and absent at P1 through a confined reader. |
+| [Paid nonwitness and restricted reader](../rust/crates/babylon-persistence/tests/observer_material_live/state_opponent_nonwitness.rs) | 1 passed: a paid public visit without an authorized player witness, City PD knowledge grant or actor-safe encounter; cold reopen and confined P2 and P1 pages without the check-in. |
+
+All three fixtures reported zero remaining clones and checked removal of
+their exact owned containers and volumes. They do not qualify every fault mode,
+historical period, SQL privilege, integrated case/actor/topology variation,
+14-cell multiagency game or 52/325-period national run. The matched PD/no-PD
+and component controls above remain separate evidence.
 
 A bounded P7 native capture at [`3ed6f64e`](https://github.com/percy-raskova/babylon/commit/3ed6f64e3dfba585aaf09944686524550892f63c)
 completed without a Confirm or Advance. Independent pixel review found the
@@ -83,10 +106,10 @@ agreement and absence of an immediate report visible. Further text needs
 scrolling at both sizes; in the [1366x768 review](gameplay-delivery-audit-2026-10-29-assets/wayne-review-context-1366.png)
 the conditional result is below the viewport. The retained 1920 original has
 SHA-256 `0163fa9ad8f499cbae496d39766e419826a012bb15a45c9b3013943e6d9b3fb1`.
-The Director's response to the new image remains pending. The run's before and
-after markers were byte-identical, and the original 164-byte personal draft was
-restored with its mode and hash verified. This capture does not establish
-complete choice comparison, physical input or a fresh visible PD signal.
+The run's before and after markers were byte-identical, and the original
+164-byte personal draft was restored with its mode and hash verified. This
+capture does not establish complete choice comparison, physical input or a
+fresh visible PD signal.
 
 The retained P7 capture at source
 [`956119a8`](https://github.com/percy-raskova/babylon/commit/956119a8ee011bb1bf34e8562e6ad9028adb7ba0)

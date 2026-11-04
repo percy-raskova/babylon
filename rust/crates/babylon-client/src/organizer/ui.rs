@@ -2349,6 +2349,108 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn reinforce_review_distinguishes_contact_purpose_from_contributor_concern() {
+        use babylon_persistence::runtime_session::OrganizerPosition;
+        let (mut app, _) = admitted_scene_fixture();
+        {
+            let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+            let view = client.view.as_mut().expect("view");
+            view.public_workplace_contact = true;
+            view.positions.push(OrganizerPosition {
+                contributor_id: 90,
+                label: "Fixture contributor".into(),
+                promised_hours: 2,
+                concern: "Households need food".into(),
+                objection: String::new(),
+                review_condition: String::new(),
+            });
+        }
+        app.update();
+        let context = {
+            let world = app.world_mut();
+            world
+                .query::<(&TextPart, &Text)>()
+                .iter(world)
+                .find_map(|(part, text)| matches!(part, TextPart::Context).then(|| text.0.clone()))
+                .expect("context")
+        };
+        assert!(
+            context.contains("Contributor concerns (background)"),
+            "{context}"
+        );
+        assert!(context.contains("Households need food"), "{context}");
+        press_named(&mut app, "Reinforce workplace contact");
+        review_selected(&mut app);
+        app.update();
+        let review = painted_text(&mut app, false);
+        let reviewed_draft = app.world().resource::<OrganizerClient>().draft.clone();
+        assert!(
+            review.contains("Target: Fixture workplace · Partner: Fixture workplace contacts"),
+            "{review}"
+        );
+        assert!(
+            review.contains("contact the workplace partner") && review.contains("report sharing"),
+            "{review}"
+        );
+        assert!(review.contains("not household aid"), "{review}");
+        assert!(
+            review.contains("If contact is completed")
+                && review.contains("can renew")
+                && review.contains("does not itself provide a report"),
+            "{review}"
+        );
+        assert!(
+            review.contains("Cost: 8 of 16 organizer-hours")
+                && review.contains("Replaces neighborhood work once"),
+            "{review}"
+        );
+        assert!(
+            review.contains("Partner participation is independent")
+                && review.contains("Confirm alone"),
+            "{review}"
+        );
+        app.world_mut()
+            .write_message(OrganizerAction::SelectSubject(
+                OrganizerSubject::NeighborhoodGroup(93),
+            ));
+        app.update();
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().selected_subject,
+            Some(OrganizerSubject::NeighborhoodGroup(93))
+        );
+        assert_eq!(painted_text(&mut app, false), review);
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().draft,
+            reviewed_draft
+        );
+        assert!(app.world().resource::<OrganizerClient>().outbox.is_none());
+        {
+            let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+            client.commitment = Some(super::super::OrganizerCommitment {
+                command: client.reviewed_command.clone().expect("reviewed command"),
+                resolves_period: 4,
+                commitment_id: [4; 32],
+            });
+        }
+        app.update();
+        let accepted = painted_text(&mut app, false);
+        assert!(
+            accepted.contains("ACCEPTED") && accepted.contains("Fixture workplace contacts"),
+            "{accepted}"
+        );
+        assert!(
+            accepted.contains("contact the workplace partner")
+                && accepted.contains("not household aid"),
+            "{accepted}"
+        );
+        assert!(
+            accepted.contains("If contact is completed") && accepted.contains("can renew"),
+            "{accepted}"
+        );
+        assert!(accepted.contains("Advance to resolve"), "{accepted}");
+    }
+
+    #[test]
     fn accepted_workplace_ruling_keeps_its_target_after_selection_changes() {
         let (mut app, _) = admitted_scene_fixture();
         press_named(&mut app, "Reinforce workplace contact");
@@ -3376,8 +3478,8 @@ pub(crate) mod tests {
                 let label = match part {
                     TextPart::Title => "Wayne Organizing Collective",
                     TextPart::Means => "PERIOD 7 · 4 weeks\n2 organizer-hours available",
-                    TextPart::Review => "REVIEW · Reinforce workplace contact\nTarget: Wayne County: extraction (5) · Partner: Wayne Workplace Committee\nCost: 2 of 2 organizer-hours\nReplaces neighborhood work once; later work remains subject to eligibility.\nA completed contact is recorded at the public workplace desk; Confirm alone creates no record.\nPartner participation is independent.\nResolves period 8 · Confirm sets the ruling; Advance shows the actual result.",
-                    TextPart::Context => "Our concern: Preserve household needs while deciding what work to do.\nCurrent neighborhood routine: authorized.\nPartners choose whether to participate.",
+                    TextPart::Review => "REVIEW · Reinforce workplace contact\nTarget: Wayne County: extraction (5) · Partner: Wayne Workplace Committee\nPurpose: Try to contact the workplace partner for future report sharing. This is not household aid.\nCost: 2 of 2 organizer-hours\nReplaces neighborhood work once; later work remains subject to eligibility.\nIf contact is completed, it can renew a report-sharing agreement later; it does not itself provide a report.\nIf contact is completed, the workplace desk records it; Confirm alone creates no record.\nPartner participation is independent.\nResolves period 8 · Confirm sets the ruling; Advance shows the actual result.",
+                    TextPart::Context => "Contributor concerns (background): Preserve household needs while deciding what work to do.\nCurrent neighborhood routine: authorized.\nPartners choose whether to participate.",
                     TextPart::Situation => "The latest workplace report is available to inspect.",
                     TextPart::Aftermath => "Period 7: previous work completed.",
                     TextPart::ChoiceHeading => "CHOOSE OUR WORK FOR THE NEXT PERIOD",

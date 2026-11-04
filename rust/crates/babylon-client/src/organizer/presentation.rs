@@ -11,6 +11,9 @@ use std::fmt::Write as _;
 use super::evidence::EvidenceMode;
 use super::{OrganizerClient, OrganizerInspector};
 
+const REINFORCE_PURPOSE: &str = "Purpose: Try to contact the workplace partner for future report sharing. This is not household aid.";
+const REINFORCE_CONSEQUENCE: &str = "If contact is completed, it can renew a report-sharing agreement later; it does not itself provide a report.";
+
 pub(super) fn choice(value: OrganizerChoice) -> &'static str {
     match value {
         OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost) => "Ask about work and output",
@@ -213,7 +216,7 @@ pub(super) fn context(view: &OrganizerView) -> String {
             None => "awaiting authorization".into(),
         }
     };
-    format!("Our concern: {concern}\nCurrent neighborhood routine: {routine}\nPartners choose whether to participate.")
+    format!("Contributor concerns (background): {concern}\nCurrent neighborhood routine: {routine}\nPartners choose whether to participate.")
 }
 
 fn practice_hours(view: &OrganizerView, choice: OrganizerChoice) -> u64 {
@@ -502,7 +505,7 @@ pub(super) fn approach(view: &OrganizerView, choice: OrganizerChoice) -> String 
         }
         OrganizerChoice::Reinforce => {
             let disclosure = if view.public_workplace_contact { "\nA completed contact is publicly recorded at the workplace desk" } else { "" };
-            format!("{hours} organizer-hours\nTarget: {} · Partner: {}\nSeek contact to renew report sharing{disclosure}\n{displacement}\nResolves period {resolves} · partner decides", view.workplace_label, view.workplace_partner_label)
+            format!("{hours} organizer-hours\nTarget: {} · Partner: {}\n{REINFORCE_PURPOSE}\n{REINFORCE_CONSEQUENCE}{disclosure}\n{displacement}\nResolves period {resolves} · partner decides", view.workplace_label, view.workplace_partner_label)
         },
         OrganizerChoice::Hold => {
             let routine = if view.standing.authorized {
@@ -736,6 +739,9 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
             view.workplace_label, view.workplace_partner_label
         );
     }
+    if preview.choice == OrganizerChoice::Reinforce {
+        let _ = write!(text, "\n{REINFORCE_PURPOSE}");
+    }
     match preview.choice {
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
             let _ = write!(text, "\n{}", aid_review_terms(client, preview.choice));
@@ -794,13 +800,15 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
         }
         text.push_str("\nPreview only: no cash, food, freight or time is reserved. See the selected aid choice below for route and capacity details.");
     }
-    if preview.choice == OrganizerChoice::Reinforce
-        && client
+    if preview.choice == OrganizerChoice::Reinforce {
+        let _ = write!(text, "\n{REINFORCE_CONSEQUENCE}");
+        if client
             .view
             .as_ref()
             .is_some_and(|view| view.public_workplace_contact)
-    {
-        text.push_str("\nA completed contact is recorded at the public workplace desk; Confirm alone creates no record.");
+        {
+            text.push_str("\nIf contact is completed, the workplace desk records it; Confirm alone creates no record.");
+        }
     }
     append_preview_result(&mut text, client, preview);
     text
@@ -891,6 +899,9 @@ fn accepted_review(client: &OrganizerClient, commitment: &OrganizerCommitment) -
             " · {hours} of {} organizer-hours committed",
             view.available_hours
         );
+    }
+    if commitment.command.choice == OrganizerChoice::Reinforce {
+        let _ = write!(text, "\n{REINFORCE_PURPOSE}\n{REINFORCE_CONSEQUENCE}");
     }
     text.push_str("\nRuling fixed. Advance to resolve; partners decide their participation.");
     text

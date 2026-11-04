@@ -352,7 +352,10 @@ fn matches_source(source: &OrganizerSnapshot, snapshot: &OrganizerSnapshot) -> R
     // This auditor has the material register, not the graph. The ordinary
     // client status admission separately validates the attributed body.
     committed.body = source.body.clone();
-    committed.body_scope.source = source.body_scope.source.clone();
+    committed
+        .body_scope
+        .source
+        .clone_from(&source.body_scope.source);
     if committed != *source {
         return Err("native aid status differs from authenticated material disclosure".into());
     }

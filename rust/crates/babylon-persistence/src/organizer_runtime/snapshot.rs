@@ -290,9 +290,8 @@ fn project_body(
     let Some(attribution) = attribution else {
         return Ok(OrganizerBodyDisclosure::Unavailable);
     };
-    let actor = match resolver.node_handle_by_local_name("wayne-organizing-collective") {
-        Ok(actor) => actor,
-        Err(_) => return Ok(OrganizerBodyDisclosure::Unavailable),
+    let Ok(actor) = resolver.node_handle_by_local_name("wayne-organizing-collective") else {
+        return Ok(OrganizerBodyDisclosure::Unavailable);
     };
     let bodies = graph
         .hyperedges_of(actor, "ORGANIZATION_BODY")

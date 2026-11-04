@@ -56,6 +56,7 @@ struct MapLegend;
 #[derive(Resource, Default)]
 struct MapGeometry {
     extent: Vec2,
+    origin: Vec2,
 }
 
 /// Camera motion is direct, without inertia or automatic drift. This also
@@ -216,7 +217,11 @@ fn hover_county(
     ui: Res<ObserverUiState>,
     mut hovered: ResMut<HoveredCounty>,
 ) {
-    if *view != PrimaryView::Map || ui.menu_open || ui.splash_visible || ui.comparison_open {
+    if !matches!(*view, PrimaryView::Map | PrimaryView::Organizer)
+        || ui.menu_open
+        || ui.splash_visible
+        || ui.comparison_open
+    {
         return;
     }
     if let Ok(county) = counties.get(over.entity) {
@@ -289,11 +294,17 @@ fn update_observation(
     let maximum = projection.maximum();
     for (county, mut transform, material) in &mut counties {
         let value = projection.county(&county.fips).value();
-        let target_height = height(value, maximum);
-        if data_changed && transform.scale.y.ne(&target_height) {
+        let target_height = if *input.view == PrimaryView::Organizer {
+            BASE_HEIGHT
+        } else {
+            height(value, maximum)
+        };
+        if (data_changed || input.view.is_changed()) && transform.scale.y.ne(&target_height) {
             transform.scale.y = target_height;
         }
-        let color = if matches!(input.ui.lens, MapLens::Relationships) {
+        let color = if *input.view == PrimaryView::Organizer
+            || matches!(input.ui.lens, MapLens::Relationships)
+        {
             theme::LAND
         } else {
             value.map_or(theme::GRAY, |value| {
@@ -305,7 +316,7 @@ fn update_observation(
                 theme::BLUE.mix(&theme::YELLOW, weight)
             })
         };
-        if data_changed {
+        if data_changed || input.view.is_changed() {
             if let Some(mut material) = materials.get_mut(&material.0) {
                 material.base_color = color;
             }
@@ -398,6 +409,8 @@ struct NavigationInput<'w, 's> {
     mouse: Res<'w, ButtonInput<MouseButton>>,
     keys: Res<'w, ButtonInput<KeyCode>>,
     keyboard_claim: Option<Res<'w, ObserverKeyboardClaim>>,
+    atlas: Option<Res<'w, CountyAtlas>>,
+    scope: Option<Res<'w, crate::map::CountyMapScope>>,
     motion: Res<'w, AccumulatedMouseMotion>,
     scroll: Res<'w, AccumulatedMouseScroll>,
     time: Res<'w, Time>,
@@ -405,7 +418,7 @@ struct NavigationInput<'w, 's> {
 }
 
 fn navigate(input: NavigationInput, geometry: Res<MapGeometry>, mut orbit: ResMut<MapOrbit>) {
-    if *input.view != PrimaryView::Map
+    if !matches!(*input.view, PrimaryView::Map | PrimaryView::Organizer)
         || input.ui.menu_open
         || input.ui.splash_visible
         || input.ui.comparison_open
@@ -441,7 +454,16 @@ fn navigate(input: NavigationInput, geometry: Res<MapGeometry>, mut orbit: ResMu
             .iter()
             .any(|key| input.keys.pressed(*key)))
     {
-        keyboard_orbit(&input.keys, dt, &geometry, &mut orbit);
+        if *input.view == PrimaryView::Organizer && input.keys.just_pressed(KeyCode::Home) {
+            if let (Some(atlas), Some(scope)) = (input.atlas.as_ref(), input.scope.as_ref()) {
+                if let Some((target, extent, _)) = wayne_focus(atlas, scope, &geometry) {
+                    *orbit = MapOrbit::new(extent.max_element());
+                    orbit.target = target;
+                }
+            }
+        } else {
+            keyboard_orbit(&input.keys, dt, &geometry, &mut orbit);
+        }
     }
     if over_map {
         if input.mouse.pressed(MouseButton::Right) && input.motion.delta != Vec2::ZERO {
@@ -520,6 +542,30 @@ fn keyboard_orbit(
     }
 }
 
+fn wayne_focus(
+    atlas: &CountyAtlas,
+    scope: &crate::map::CountyMapScope,
+    geometry: &MapGeometry,
+) -> Option<(Vec3, Vec2, usize)> {
+    let index = atlas
+        .index_of_fips("26163")
+        .filter(|index| scope.counties().contains(index))?;
+    let county = atlas.county(index)?;
+    let extent = (county.bbox.max - county.bbox.min) * METRES_TO_SCENE * 4.0;
+    let center = (county.bbox.min + county.bbox.max) * 0.5;
+    Some((scene_point(center, geometry.origin, 0.0), extent, index))
+}
+
+#[derive(SystemParam)]
+struct CameraView<'w> {
+    geometry: Res<'w, MapGeometry>,
+    view: Res<'w, PrimaryView>,
+    viewport: Res<'w, ObserverViewport>,
+    atlas: Option<Res<'w, CountyAtlas>>,
+    scope: Option<Res<'w, crate::map::CountyMapScope>>,
+    selected: Option<ResMut<'w, SelectedCounty>>,
+}
+
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -527,22 +573,53 @@ fn keyboard_orbit(
 )]
 fn sync_camera(
     mut orbit: ResMut<MapOrbit>,
-    geometry: Res<MapGeometry>,
-    view: Res<PrimaryView>,
-    viewport: Res<ObserverViewport>,
+    input: CameraView,
     windows: Query<&Window, With<PrimaryWindow>>,
+    mut saved: Local<Option<MapOrbit>>,
+    mut organizer_extent: Local<Option<Vec2>>,
     mut cameras: Query<(&mut Camera, &mut Transform, &mut Projection), With<ObserverMapCamera>>,
 ) {
+    let CameraView {
+        geometry,
+        view,
+        viewport,
+        atlas,
+        scope,
+        mut selected,
+    } = input;
+    if *view == PrimaryView::Organizer && saved.is_none() {
+        if let (Some(atlas), Some(scope)) = (atlas.as_ref(), scope.as_ref()) {
+            if let Some((target, extent, index)) = wayne_focus(atlas, scope, &geometry) {
+                *saved = Some(orbit.clone());
+                *organizer_extent = Some(extent);
+                orbit.target = target;
+                orbit.distance = extent.max_element() * 1.7;
+                orbit.fitted_distance = orbit.distance;
+                if let Some(selected) = selected.as_deref_mut() {
+                    selected.0 = Some(index);
+                }
+            }
+        }
+    } else if *view != PrimaryView::Organizer {
+        if let Some(old) = saved.take() {
+            *orbit = old;
+        }
+        *organizer_extent = None;
+    }
     let Ok((mut camera, mut transform, mut projection)) = cameras.single_mut() else {
         return;
     };
-    let active = *view == PrimaryView::Map;
+    let active = matches!(*view, PrimaryView::Map | PrimaryView::Organizer);
     if camera.is_active != active {
         camera.is_active = active;
     }
     if let (Some(rect), Ok(window)) = (viewport.0, windows.single()) {
         let mut fitted = orbit.clone();
-        scene::fit_orbit(&mut fitted, geometry.extent, rect.width() / rect.height());
+        scene::fit_orbit(
+            &mut fitted,
+            organizer_extent.unwrap_or(geometry.extent),
+            rect.width() / rect.height(),
+        );
         orbit.set_if_neq(fitted);
         let value = Viewport {
             physical_position: (rect.min * window.scale_factor()).as_uvec2(),
@@ -638,6 +715,7 @@ mod tests {
         ))))
         .insert_resource(MapGeometry {
             extent: Vec2::splat(200.0),
+            ..default()
         })
         .insert_resource(MapOrbit::new(200.0))
         .add_systems(Update, navigate);
@@ -978,6 +1056,7 @@ mod tests {
         ))))
         .insert_resource(MapGeometry {
             extent: Vec2::splat(200.0),
+            ..default()
         })
         .insert_resource(MapOrbit::new(200.0))
         .init_resource::<ButtonInput<MouseButton>>()

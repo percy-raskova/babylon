@@ -1,6 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{draft, evidence, presentation, ui};
+use super::{draft, evidence, presentation, scene, ui};
 
 use babylon_persistence::runtime_session::{
     CityPdEncounter, OrganizerAidPending, OrganizerAidResolution, OrganizerBodyDisclosure,
@@ -100,6 +100,19 @@ fn encounters_match(snapshot: &OrganizerSnapshot, campaign: [u8; 16]) -> bool {
     })
 }
 
+fn pending_matches(snapshot: &OrganizerSnapshot, session: &ObserverSession) -> bool {
+    !snapshot.pending.as_ref().is_some_and(|pending| {
+        pending.command.campaign_id != *session.campaign.as_uuid().as_bytes()
+            || pending.command.actor_id != snapshot.view.actor_id
+            || pending.command.authority_id != snapshot.view.authority_id
+            || pending.command.content_digest != snapshot.view.content_digest
+            || pending.command.resource_digest != snapshot.view.resource_digest
+            || pending.command.expected_period != snapshot.view.period
+            || snapshot.view.period.checked_add(1) != Some(pending.resolves_period)
+            || !snapshot.duration.contains(pending.resolves_period)
+    })
+}
+
 fn body_matches(snapshot: &OrganizerSnapshot, session: &ObserverSession) -> bool {
     let scope = &snapshot.body_scope;
     if scope.campaign_id != *session.campaign.canonical_bytes()
@@ -172,6 +185,8 @@ pub(crate) struct OrganizerClient {
     pub collection_resolutions: Vec<OrganizerCollectionResolution>,
     pub city_pd_encounters: Vec<CityPdEncounter>,
     pub inspector: OrganizerInspector,
+    pub scene_mode: scene::OrganizerSceneMode,
+    pub selected_subject: Option<scene::OrganizerSubject>,
     pub message: String,
     pub(super) draft: Option<OrganizerDraft>,
     pub(super) campaign: Option<Uuid>,
@@ -189,6 +204,16 @@ pub(crate) struct OrganizerClient {
 }
 
 impl OrganizerClient {
+    /// Derive a scene only from the authenticated view for this period.
+    pub(crate) fn scene_for(&self, session: &ObserverSession) -> Option<scene::OrganizerScene> {
+        let view = self.view.as_ref()?;
+        let (body, scope) = self.body_for(session)?;
+        if view.period != session.viewed_tick || scope.period != view.period {
+            return None;
+        }
+        Some(scene::OrganizerScene::from_disclosure(view, body))
+    }
+
     /// Return only disclosure admitted for the currently viewed context.
     pub(crate) fn body_for(
         &self,
@@ -499,16 +524,7 @@ impl OrganizerClient {
                 "Organizer situation changed its identity within the committed period.".into(),
             );
         }
-        if snapshot.pending.as_ref().is_some_and(|pending| {
-            pending.command.campaign_id != *session.campaign.as_uuid().as_bytes()
-                || pending.command.actor_id != snapshot.view.actor_id
-                || pending.command.authority_id != snapshot.view.authority_id
-                || pending.command.content_digest != snapshot.view.content_digest
-                || pending.command.resource_digest != snapshot.view.resource_digest
-                || pending.command.expected_period != snapshot.view.period
-                || snapshot.view.period.checked_add(1) != Some(pending.resolves_period)
-                || !snapshot.duration.contains(pending.resolves_period)
-        }) {
+        if !pending_matches(&snapshot, session) {
             return Err("Pending organizer ruling does not match the opened campaign's authority and period.".into());
         }
         if !encounters_match(&snapshot, *session.campaign.as_uuid().as_bytes()) {

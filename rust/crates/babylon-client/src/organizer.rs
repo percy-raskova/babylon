@@ -8,6 +8,8 @@ mod evidence;
 
 mod presentation;
 
+mod scene;
+
 pub(crate) mod qualification_input;
 
 pub(crate) mod ui;

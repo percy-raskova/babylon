@@ -2052,12 +2052,9 @@ pub(crate) fn clear_ui_camera(
     view: Res<PrimaryView>,
     mut cameras: Query<&mut Camera, With<ObserverUiCamera>>,
 ) {
+    let _ = view;
     for mut camera in &mut cameras {
-        if *view == PrimaryView::Organizer {
-            if !matches!(camera.clear_color, ClearColorConfig::Default) {
-                camera.clear_color = ClearColorConfig::Default;
-            }
-        } else if !matches!(camera.clear_color, ClearColorConfig::None) {
+        if !matches!(camera.clear_color, ClearColorConfig::None) {
             camera.clear_color = ClearColorConfig::None;
         }
     }

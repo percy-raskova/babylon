@@ -43,10 +43,21 @@ pub(crate) mod tests {
     use babylon_persistence::runtime_session::OrganizerAidTransportPreview;
     use babylon_persistence::runtime_session::OrganizerGiftConsent;
     use babylon_persistence::runtime_session::{
-        CityPdEncounter, OrganizerAgreement, OrganizerObservation, OrganizerReport,
-        OrganizerStandingWork, CITY_PD_ENCOUNTER_SCHEMA_VERSION,
+        CityPdEncounter, OrganizerAgreement, OrganizerBodyDisclosure, OrganizerBodyPart,
+        OrganizerBodyScope, OrganizerBodySource, OrganizerObservation, OrganizerPosition,
+        OrganizerReport, OrganizerStandingWork, CITY_PD_ENCOUNTER_SCHEMA_VERSION,
     };
     use uuid::Uuid;
+
+    pub(crate) fn body_scope() -> OrganizerBodyScope {
+        OrganizerBodyScope {
+            campaign_id: *Uuid::from_u128(927).as_bytes(),
+            actor_id: 90,
+            period: 3,
+            content_digest: [2; 32],
+            source: None,
+        }
+    }
 
     pub(crate) fn ready() -> (OrganizerClient, ObserverSession) {
         let campaign = Uuid::from_u128(927);
@@ -108,6 +119,8 @@ pub(crate) mod tests {
         let mut view = client.view.clone().expect("fixture view");
         view.organization_label = "Updated collective".into();
         let snapshot = OrganizerSnapshot {
+            body: OrganizerBodyDisclosure::Unavailable,
+            body_scope: body_scope(),
             collection: None,
             collection_resolutions: Vec::new(),
             aid: Vec::new(),
@@ -136,6 +149,205 @@ pub(crate) mod tests {
             venue_source_id: [5; 32],
             visit_core_id: [6; 32],
             access_evidence_id: [7; 32],
+        }
+    }
+
+    #[test]
+    fn organizer_body_scope_refuses_stale_and_foreign() {
+        let (mut client, mut session, request, snapshot) = status_fixture();
+        session.inspect_tick(2);
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+            panic!("fixture queues organizer status");
+        };
+        let previous = client.view.clone();
+        assert_eq!(
+            client.status(request_id, snapshot, &mut session),
+            Ok(StatusDisposition::Superseded),
+            "a response captured before history navigation is superseded"
+        );
+        assert_eq!(
+            client.view, previous,
+            "superseded status preserves the view"
+        );
+
+        client.queue(&mut session, RequestKind::Status, None);
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } =
+            client.outbox.take().expect("history status queued")
+        else {
+            panic!("fixture queues organizer status");
+        };
+        let (_, _, _, snapshot) = status_fixture();
+        assert_eq!(
+            client.status(request_id, snapshot, &mut session),
+            Ok(StatusDisposition::Installed),
+            "the existing period-filtered view remains available"
+        );
+        let (body, scope) = client.body_for(&session).expect("historical availability");
+        assert_eq!(*body, OrganizerBodyDisclosure::Unavailable);
+        assert_eq!(scope.period, 2);
+        assert_eq!(scope.source, None);
+        for field in ["campaign", "actor", "period", "content", "missing_source"] {
+            let (mut client, mut session, request, mut snapshot) = status_fixture();
+            let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+                panic!("initial status request")
+            };
+            assert_eq!(
+                client.status(request_id, snapshot.clone(), &mut session),
+                Ok(StatusDisposition::Installed)
+            );
+            let previous_body = client
+                .body_for(&session)
+                .map(|(body, scope)| (body.clone(), scope.clone()));
+            client.queue(&mut session, RequestKind::Status, None);
+            let request = client.outbox.take().expect("second status request");
+            match field {
+                "campaign" => snapshot.body_scope.campaign_id = [8; 16],
+                "actor" => snapshot.body_scope.actor_id += 1,
+                "period" => snapshot.body_scope.period += 1,
+                "content" => snapshot.body_scope.content_digest = [9; 32],
+                "missing_source" => snapshot.body = OrganizerBodyDisclosure::KnownAbsent,
+                _ => unreachable!(),
+            }
+            let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+                panic!("status request")
+            };
+            let previous = client.view.clone();
+            assert!(
+                client.status(request_id, snapshot, &mut session).is_err(),
+                "refuse {field}"
+            );
+            assert_eq!(
+                client.view, previous,
+                "refusal preserves prior view for {field}"
+            );
+            assert_eq!(
+                client
+                    .body_for(&session)
+                    .map(|(body, scope)| (body.clone(), scope.clone())),
+                previous_body,
+                "refusal preserves admitted body for {field}"
+            );
+        }
+        for field in [
+            "perspective",
+            "generation",
+            "viewed",
+            "freshness",
+            "tail_hash",
+            "foundation",
+        ] {
+            let (mut client, mut session, request, snapshot) = status_fixture();
+            let previous = client.view.clone();
+            match field {
+                "perspective" => {
+                    session.set_perspective(crate::observer::Perspective::PlayerKnowledge)
+                }
+                "generation" => session.generation += 1,
+                "viewed" => session.inspect_tick(2),
+                "freshness" => session.durable_tick += 1,
+                "tail_hash" => session.content_hash = Some("04".repeat(32)),
+                "foundation" => session.foundation_digest = Some("05".repeat(32)),
+                _ => unreachable!(),
+            }
+            let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+                panic!("status request")
+            };
+            assert_ne!(
+                client.status(request_id, snapshot, &mut session),
+                Ok(StatusDisposition::Installed),
+                "stale {field} cannot install"
+            );
+            assert_eq!(client.view, previous, "stale {field} preserves prior view");
+        }
+        for field in [
+            "valid",
+            "known_absent",
+            "foreign_hash",
+            "hidden_contributor",
+            "unordered",
+            "unattributed",
+        ] {
+            let (mut client, mut session, _, mut snapshot) = status_fixture();
+            client.pending = None;
+            client.outbox = None;
+            session.content_hash = Some("04".repeat(32));
+            client.queue(&mut session, RequestKind::Status, None);
+            let request = client.outbox.take().expect("status request");
+            snapshot.body_scope.source = Some(OrganizerBodySource::Committed {
+                tick_content_hash: [4; 32],
+                world_hash: [5; 32],
+            });
+            snapshot.view.positions = [101, 102]
+                .into_iter()
+                .map(|contributor_id| OrganizerPosition {
+                    contributor_id,
+                    label: "Known".into(),
+                    promised_hours: 1,
+                    concern: String::new(),
+                    objection: String::new(),
+                    review_condition: String::new(),
+                })
+                .collect();
+            snapshot.body = OrganizerBodyDisclosure::Partial(OrganizerBodyPart {
+                runtime_hyperedge_id: 7,
+                scenario: "economy/national-world".into(),
+                local_name: "organizer-participant-body-90".into(),
+                contributors: vec![101, 102],
+                evidence_class: babylon_persistence::ArchiveEvidenceClass::Designed,
+            });
+            match field {
+                "foreign_hash" => {
+                    snapshot.body_scope.source = Some(OrganizerBodySource::Committed {
+                        tick_content_hash: [6; 32],
+                        world_hash: [5; 32],
+                    })
+                }
+                "hidden_contributor" => {
+                    if let OrganizerBodyDisclosure::Partial(part) = &mut snapshot.body {
+                        part.contributors.push(103);
+                    }
+                }
+                "unordered" => {
+                    if let OrganizerBodyDisclosure::Partial(part) = &mut snapshot.body {
+                        part.contributors.reverse();
+                    }
+                }
+                "unattributed" => {
+                    if let OrganizerBodyDisclosure::Partial(part) = &mut snapshot.body {
+                        part.evidence_class = babylon_persistence::ArchiveEvidenceClass::Observed;
+                    }
+                }
+                "known_absent" => snapshot.body = OrganizerBodyDisclosure::KnownAbsent,
+                "valid" => {}
+                _ => unreachable!(),
+            }
+            let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+                panic!("status request")
+            };
+            let prior = client.view.clone();
+            let result = client.status(request_id, snapshot, &mut session);
+            if field == "valid" || field == "known_absent" {
+                assert_eq!(result, Ok(StatusDisposition::Installed));
+                if field == "valid" {
+                    assert!(matches!(
+                        client.body_for(&session),
+                        Some((OrganizerBodyDisclosure::Partial(_), _))
+                    ));
+                } else {
+                    assert!(matches!(
+                        client.body_for(&session),
+                        Some((OrganizerBodyDisclosure::KnownAbsent, _))
+                    ));
+                }
+                session.durable_tick += 1;
+                assert!(
+                    client.body_for(&session).is_none(),
+                    "advance invalidates admitted body"
+                );
+            } else {
+                assert!(result.is_err(), "refuse {field}");
+                assert_eq!(client.view, prior, "refusal preserves prior view");
+            }
         }
     }
 
@@ -316,6 +528,8 @@ pub(crate) mod tests {
             .status(
                 request_id,
                 OrganizerSnapshot {
+                    body: OrganizerBodyDisclosure::Unavailable,
+                    body_scope: body_scope(),
                     collection: None,
                     collection_resolutions: Vec::new(),
                     aid: Vec::new(),
@@ -438,6 +652,8 @@ pub(crate) mod tests {
                 .status(
                     request_id,
                     OrganizerSnapshot {
+                        body: OrganizerBodyDisclosure::Unavailable,
+                        body_scope: body_scope(),
                         collection: None,
                         collection_resolutions: Vec::new(),
                         aid: Vec::new(),

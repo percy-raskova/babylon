@@ -89,11 +89,11 @@ fn hello_and_initial_stop_need_no_campaign_or_database_admission() {
 }
 
 #[test]
-fn stale_version_eleven_refuses_before_organizer_status() {
+fn stale_version_twelve_refuses_before_organizer_status() {
     let rows = lifecycle(
         &[
             RuntimeSessionRequest::OrganizerStatus {
-                protocol_version: 11,
+                protocol_version: 12,
                 request_id: 1,
                 scope: RuntimeSessionScope::default(),
             },
@@ -105,7 +105,7 @@ fn stale_version_eleven_refuses_before_organizer_status() {
         rows.as_slice(),
         [
             RuntimeSessionResponse::Hello {
-                protocol_version: 12,
+                protocol_version: 13,
                 ..
             },
             RuntimeSessionResponse::Error {

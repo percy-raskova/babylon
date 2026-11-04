@@ -3,10 +3,11 @@
 use super::{draft, evidence, presentation, ui};
 
 use babylon_persistence::runtime_session::{
-    CityPdEncounter, OrganizerAidPending, OrganizerAidResolution, OrganizerChoice,
-    OrganizerCollectionPreview, OrganizerCollectionResolution, OrganizerCommand,
-    OrganizerCommitment, OrganizerMaterialAidPreview, OrganizerPreview, OrganizerSnapshot,
-    OrganizerView, RuntimeSessionRequest, RuntimeSessionScope, CITY_PD_ENCOUNTER_SCHEMA_VERSION,
+    CityPdEncounter, OrganizerAidPending, OrganizerAidResolution, OrganizerBodyDisclosure,
+    OrganizerBodyScope, OrganizerBodySource, OrganizerChoice, OrganizerCollectionPreview,
+    OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment,
+    OrganizerMaterialAidPreview, OrganizerPreview, OrganizerSnapshot, OrganizerView,
+    RuntimeSessionRequest, RuntimeSessionScope, CITY_PD_ENCOUNTER_SCHEMA_VERSION,
     RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 
@@ -60,6 +61,8 @@ struct StatusContext {
     observation: ObservationContext,
     durable_tick: u64,
     scope: RuntimeSessionScope,
+    content_hash: Option<String>,
+    foundation_digest: Option<String>,
 }
 
 // The local runtime authenticates the register. This checks only the received
@@ -96,10 +99,66 @@ fn encounters_match(snapshot: &OrganizerSnapshot, campaign: [u8; 16]) -> bool {
     })
 }
 
+fn body_matches(snapshot: &OrganizerSnapshot, session: &ObserverSession) -> bool {
+    let scope = &snapshot.body_scope;
+    if scope.campaign_id != *session.campaign.canonical_bytes()
+        || scope.actor_id != snapshot.view.actor_id
+        || scope.period != snapshot.view.period
+        || scope.content_digest != snapshot.view.content_digest
+    {
+        return false;
+    }
+    let source_valid = match &scope.source {
+        None => matches!(snapshot.body, OrganizerBodyDisclosure::Unavailable),
+        Some(OrganizerBodySource::Foundation { foundation_digest }) => {
+            scope.period == 0
+                && *foundation_digest != [0; 32]
+                && session.foundation_digest.as_deref()
+                    == Some(crate::dossier::hex_bytes(*foundation_digest).as_str())
+        }
+        Some(OrganizerBodySource::Committed {
+            tick_content_hash,
+            world_hash,
+        }) => {
+            scope.period > 0
+                && *tick_content_hash != [0; 32]
+                && *world_hash != [0; 32]
+                && session.content_hash.as_deref()
+                    == Some(crate::dossier::hex_bytes(*tick_content_hash).as_str())
+        }
+    };
+    if !source_valid {
+        return false;
+    }
+    match &snapshot.body {
+        OrganizerBodyDisclosure::Unavailable | OrganizerBodyDisclosure::KnownAbsent => true,
+        OrganizerBodyDisclosure::Partial(part) => {
+            part.scenario == "economy/national-world"
+                && part.evidence_class == babylon_persistence::ArchiveEvidenceClass::Designed
+                && part.local_name == format!("organizer-participant-body-{}", scope.actor_id)
+                && part.contributors.windows(2).all(|pair| pair[0] < pair[1])
+                && part.contributors.iter().all(|id| {
+                    snapshot
+                        .view
+                        .positions
+                        .iter()
+                        .any(|position| position.contributor_id == *id)
+                })
+        }
+    }
+}
+
 /// Cached lawful projection and local presentation. No authoritative state is owned here.
 #[derive(Resource, Default)]
 pub(crate) struct OrganizerClient {
     pub view: Option<OrganizerView>,
+    pub(super) body: Option<OrganizerBodyDisclosure>,
+    pub(super) body_scope: Option<OrganizerBodyScope>,
+    pub(super) body_context: Option<ObservationContext>,
+    pub(super) body_durable_tick: Option<u64>,
+    pub(super) body_runtime_scope: Option<RuntimeSessionScope>,
+    pub(super) body_content_hash: Option<String>,
+    pub(super) body_foundation_digest: Option<String>,
     pub commitment: Option<OrganizerCommitment>,
     pub preview: Option<OrganizerPreview>,
     pub aid: Vec<OrganizerMaterialAidPreview>,
@@ -126,6 +185,22 @@ pub(crate) struct OrganizerClient {
 }
 
 impl OrganizerClient {
+    /// Return only disclosure admitted for the currently viewed context.
+    pub(crate) fn body_for(
+        &self,
+        session: &ObserverSession,
+    ) -> Option<(&OrganizerBodyDisclosure, &OrganizerBodyScope)> {
+        if self.body_context.as_ref() != Some(&session.context())
+            || self.body_durable_tick != Some(session.durable_tick)
+            || self.body_runtime_scope.as_ref() != session.runtime_scope()
+            || self.body_content_hash != session.content_hash
+            || self.body_foundation_digest != session.foundation_digest
+        {
+            return None;
+        }
+        Some((self.body.as_ref()?, self.body_scope.as_ref()?))
+    }
+
     pub(crate) fn reset(&mut self) {
         self.save_draft();
         *self = Self::default();
@@ -307,6 +382,8 @@ impl OrganizerClient {
             observation: session.context(),
             durable_tick: session.durable_tick,
             scope: scope.clone(),
+            content_hash: session.content_hash.clone(),
+            foundation_digest: session.foundation_digest.clone(),
         });
         if kind == RequestKind::Preview {
             self.clear_review();
@@ -393,6 +470,8 @@ impl OrganizerClient {
         if context.observation.campaign != session.campaign
             || context.durable_tick != session.durable_tick
             || session.runtime_scope() != Some(&context.scope)
+            || context.content_hash != session.content_hash
+            || context.foundation_digest != session.foundation_digest
             || snapshot.view.period != context.durable_tick
             || !snapshot.duration.contains(snapshot.view.period)
             || self.campaign != Some(*session.campaign.as_uuid())
@@ -430,6 +509,9 @@ impl OrganizerClient {
                 "Organizer encounter disclosure does not match the opened situation.".into(),
             );
         }
+        if !body_matches(&snapshot, session) {
+            return Err("Organizer body disclosure does not match the committed situation.".into());
+        }
         // History and perspective can change while a valid status is in flight.
         // Reconcile from the new context instead of treating that local change
         // as a transport failure. Invalid child data was rejected above.
@@ -464,6 +546,22 @@ impl OrganizerClient {
         self.aid = snapshot.aid;
         self.pending_aid = snapshot.pending_aid;
         self.aid_resolutions = snapshot.aid_resolutions;
+        if context.observation.tick == context.durable_tick {
+            self.body = Some(snapshot.body);
+            self.body_scope = Some(snapshot.body_scope);
+        } else {
+            self.body = Some(OrganizerBodyDisclosure::Unavailable);
+            self.body_scope = Some(OrganizerBodyScope {
+                period: context.observation.tick,
+                source: None,
+                ..snapshot.body_scope
+            });
+        }
+        self.body_context = Some(context.observation);
+        self.body_durable_tick = Some(context.durable_tick);
+        self.body_runtime_scope = Some(context.scope);
+        self.body_content_hash = context.content_hash;
+        self.body_foundation_digest = context.foundation_digest;
         self.view = Some(snapshot.view);
         self.commitment = snapshot.pending;
         self.status_due = false;

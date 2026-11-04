@@ -641,6 +641,87 @@ fn organizer_durable_ruling_failure_retry_earned_history_and_contact_recovery() 
     qualify_resume_and_continuation(&mut runtime, &inquiry);
 }
 
+#[test]
+#[ignore = "requires the task-owned disposable PostgreSQL runtime and national source"]
+fn organizer_body_projection_limits_disclosure() {
+    use babylon_graph::stable_element::StableElementKey;
+    use babylon_graph::substrate::GraphSubstrate;
+    use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+    use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
+    use babylon_persistence::runtime_session::{OrganizerBodyDisclosure, OrganizerBodySource};
+
+    let target = DisposableTarget::create();
+    let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7033));
+    let foundation = CapturedEconomicCatalog::capture_national_campaign(
+        babylon_persistence::economic_catalog::national_catalog_input(),
+        campaign,
+    )
+    .expect("national capture")
+    .create_foundation(
+        ReplaySessionId::try_from("national-body-projection").expect("session"),
+        ReplaySeed::new(319),
+    )
+    .expect("national foundation");
+    let digest = foundation.digest();
+    let runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation)
+        .expect("create campaign");
+    let opening = runtime.organizer_snapshot().expect("opening status");
+    assert_eq!(
+        opening.body_scope.source,
+        Some(OrganizerBodySource::Foundation {
+            foundation_digest: digest
+        })
+    );
+    let OrganizerBodyDisclosure::Partial(part) = &opening.body else {
+        panic!("controlled body is disclosed")
+    };
+    let graph = runtime.session().graph_session();
+    let resolver = graph.stable_resolver();
+    let edge = resolver
+        .hyperedge_handle_by_local_name(&part.local_name)
+        .expect("actual body handle");
+    assert_eq!(part.runtime_hyperedge_id, edge.0);
+    assert_eq!(
+        resolver.hyperedge_key(edge).expect("sealed body"),
+        &StableElementKey::Hyperedge {
+            scenario: part.scenario.clone(),
+            local_name: part.local_name.clone()
+        }
+    );
+    let members = graph.graph().members_of(edge).expect("body incidence");
+    let mut expected = opening
+        .view
+        .positions
+        .iter()
+        .filter_map(|position| {
+            let name = format!("organizer-contributor-{}", position.contributor_id);
+            let node = resolver.node_handle_by_local_name(&name).ok()?;
+            members.contains(&node).then_some(position.contributor_id)
+        })
+        .collect::<Vec<_>>();
+    expected.sort_unstable();
+    expected.dedup();
+    assert_eq!(part.contributors, expected);
+    assert_eq!(
+        part.contributors.len(),
+        1,
+        "the collective and its contributor form the disclosed pair"
+    );
+    let stable_key = (part.scenario.clone(), part.local_name.clone());
+    drop(runtime);
+    let reopened = DurableMaterialRuntime::open(&target.writer, campaign, digest).expect("reopen");
+    let snapshot = reopened.organizer_snapshot().expect("reopened status");
+    let OrganizerBodyDisclosure::Partial(part) = snapshot.body else {
+        panic!("reopened body")
+    };
+    assert_eq!(
+        (part.scenario, part.local_name),
+        stable_key,
+        "stable identity survives reopening"
+    );
+    assert_eq!(part.contributors, expected);
+}
+
 pub(crate) mod state_opponent {
     use super::{
         support, CampaignId, DisposableTarget, DurableMaterialRuntime, OrganizerChoice, Uuid,

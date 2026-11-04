@@ -2061,6 +2061,8 @@ mod tests {
             .expect("the fixture set the optional field before this read")
             .id;
         let fresh = babylon_persistence::runtime_session::OrganizerSnapshot {
+            body: babylon_persistence::runtime_session::OrganizerBodyDisclosure::Unavailable,
+            body_scope: super::super::tests::body_scope(),
             view: client.view.clone().expect("the fixture value clones"),
             pending: client.commitment.clone(),
             duration: session

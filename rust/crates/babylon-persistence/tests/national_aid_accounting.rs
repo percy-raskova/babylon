@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 
 fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
     let mut before: OrganizerSnapshot =
-        serde_json::from_str(include_str!("fixtures/national_organizer_opening_v12.json"))
+        serde_json::from_str(include_str!("fixtures/national_organizer_opening_v13.json"))
             .expect("the authored JSON matches the declared schema");
     before.view.actor_id = 42;
     before.view.authority_id = [17; 16];

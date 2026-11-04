@@ -6,7 +6,7 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::{
     AccountId, AgencyAttendanceOutcome, CircuitAccounting, OrganizationAccountId,
 };
-use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
+use babylon_persistence::economic_catalog::{CapturedEconomicCatalog, NationalOpponent};
 use babylon_persistence::identity::CampaignId;
 use babylon_practice_contract::{
     CityPdCaseSource, CityPdDecision, CityPdOutcome, OrganizerChoice, OrganizerCommand,
@@ -20,31 +20,26 @@ use uuid::Uuid;
 #[path = "fixtures/national_capture.rs"]
 mod national_capture;
 
+#[path = "fixtures/city_pd_acceptance.rs"]
+mod city_pd_acceptance;
+
 #[test]
 fn actual_national_opening_and_two_periods_use_committed_pd_cash() {
     let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7031));
-    let foundation =
-        CapturedEconomicCatalog::capture_national_campaign(national_capture::input(), campaign)
-            .expect("national capture")
-            .create_foundation(
-                ReplaySessionId::try_from("national-city-pd-live").expect("session"),
-                ReplaySeed::new(319),
-            )
-            .expect("national foundation");
+    let input = national_capture::input();
+    let foundation = CapturedEconomicCatalog::capture_national_campaign_with_opponent(
+        input.clone(),
+        campaign,
+        NationalOpponent::CityPd,
+    )
+    .expect("national capture")
+    .create_foundation(
+        ReplaySessionId::try_from("national-city-pd-live").expect("session"),
+        ReplaySeed::new(319),
+    )
+    .expect("national foundation");
     let mut session = foundation.into_session().expect("scheduled native host");
-    let opening = session.material().city_pd().expect("captured PD");
-    assert!(matches!(
-        opening
-            .state
-            .last_decision
-            .as_ref()
-            .expect("period-zero decision")
-            .decision,
-        CityPdDecision::NoFunds {
-            available_micros: 0,
-            ..
-        }
-    ));
+    let (public, public_opening) = assert_opening(&session);
     let config = session
         .material()
         .organizer_config()
@@ -78,6 +73,18 @@ fn actual_national_opening_and_two_periods_use_committed_pd_cash() {
         .prepare_advance_with_organizer(&actions, Some(&commitment))
         .expect("detached P1");
     let contact_source = assert_first_period(candidate.material().register());
+    let pd_config = candidate
+        .material()
+        .register()
+        .city_pd()
+        .expect("PD")
+        .config
+        .clone();
+    let receipts = babylon_tick::material_world::decode_material_receipts(
+        candidate.material().receipt_bytes(),
+    )
+    .expect("P1 receipts");
+    city_pd_acceptance::assert_receipts(&pd_config, &receipts, true);
     let before = session.material().digest();
     let world = session.current_world_hash().expect("opening hash");
     let mut sink = CollectingSink::default();
@@ -110,6 +117,143 @@ fn actual_national_opening_and_two_periods_use_committed_pd_cash() {
     .expect("P2 actions");
     let second = session.prepare_advance(&actions).expect("detached P2");
     assert_paid_source(second.material().register(), contact_source);
+    let receipts =
+        babylon_tick::material_world::decode_material_receipts(second.material().receipt_bytes())
+            .expect("P2 receipts");
+    city_pd_acceptance::assert_receipts(&pd_config, &receipts, true);
+    drop(receipts);
+    drop(second);
+    drop(session);
+
+    assert_no_pd_control(input, campaign, &pd_config, public, public_opening);
+}
+
+fn assert_opening(
+    session: &babylon_tick::material_replay::MaterialReplaySession<
+        babylon_graph::hypergraph_store::HypergraphStore,
+    >,
+) -> (AccountId, babylon_kernel::currency::Currency) {
+    let opening = session.material().city_pd().expect("captured PD");
+    assert!(matches!(
+        opening
+            .state
+            .last_decision
+            .as_ref()
+            .expect("period-zero decision")
+            .decision,
+        CityPdDecision::NoFunds {
+            available_micros: 0,
+            ..
+        }
+    ));
+    let opening_config = &opening.config;
+    let CircuitAccounting::Monetary(opening_money) = &session.material().state().accounting else {
+        panic!("monetary opening")
+    };
+    let public = AccountId::Public(babylon_material_circuit::PublicAccountId::from_bytes(
+        opening_config.public_account_id,
+    ));
+    let public_opening = opening_money.book.cash(public).expect("public opening");
+    let agency = AccountId::Organization(OrganizationAccountId::from_bytes(
+        opening_config.agency_account_id,
+    ));
+    assert_eq!(
+        opening_money
+            .book
+            .cash(agency)
+            .expect("agency opening")
+            .micro_units(),
+        0
+    );
+    (public, public_opening)
+}
+
+fn assert_no_pd_control(
+    input: babylon_persistence::economic_catalog::EconomicCatalogInput,
+    campaign: CampaignId,
+    pd_config: &babylon_practice_contract::CityPdConfig,
+    public: AccountId,
+    public_opening: babylon_kernel::currency::Currency,
+) {
+    let foundation = CapturedEconomicCatalog::capture_national_campaign_with_opponent(
+        input,
+        campaign,
+        NationalOpponent::None,
+    )
+    .expect("matched no-opponent capture")
+    .create_foundation(
+        ReplaySessionId::try_from("national-city-pd-live").expect("session"),
+        ReplaySeed::new(319),
+    )
+    .expect("matched foundation");
+    let mut control = foundation.into_session().expect("no-opponent host");
+    assert!(control.material().city_pd().is_none());
+    let CircuitAccounting::Monetary(money) = &control.material().state().accounting else {
+        panic!("monetary control")
+    };
+    assert_eq!(
+        money.book.cash(public).expect("control public opening"),
+        public_opening
+    );
+    let config = control.material().organizer_config().expect("organizer");
+    let state = control
+        .material()
+        .organizer_state()
+        .expect("organizer state");
+    let command = OrganizerCommand {
+        campaign_id: config.campaign_id,
+        actor_id: config.controlled_actor_id,
+        authority_id: config.input_authority_id,
+        expected_period: 0,
+        content_digest: config.content_digest,
+        resource_digest: babylon_practice_contract::organizer_resource_digest().expect("resources"),
+        nonce: [1; 16],
+        choice: OrganizerChoice::Reinforce,
+    };
+    let commitment = babylon_practice_contract::admit_organizer(config, state, &command)
+        .expect("control command");
+    let actions = babylon_practice_contract::organizer_action_batch(
+        config,
+        state,
+        Some(&commitment),
+        control.graph_session().session_identity().clone(),
+    )
+    .expect("control actions");
+    let first = control
+        .prepare_advance_with_organizer(&actions, Some(&commitment))
+        .expect("control P1");
+    let receipts =
+        babylon_tick::material_world::decode_material_receipts(first.material().receipt_bytes())
+            .expect("control P1 receipts");
+    city_pd_acceptance::assert_receipts(pd_config, &receipts, false);
+    assert!(
+        first
+            .material()
+            .register()
+            .public_venue()
+            .expect("venue")
+            .records
+            .iter()
+            .any(|r| r.period == 1
+                && matches!(r.kind, PublicVenueRecordKind::ContactCompleted { .. }))
+    );
+    control
+        .commit_prepared_and_publish(&mut CollectingSink::default(), first, |_, _| {
+            Ok::<_, ()>(ReplayCommitDisposition::Committed)
+        })
+        .expect("commit control P1");
+    let actions = babylon_practice_contract::organizer_action_batch(
+        control.material().organizer_config().expect("config"),
+        control.material().organizer_state().expect("state"),
+        None,
+        control.graph_session().session_identity().clone(),
+    )
+    .expect("control P2 actions");
+    let second = control.prepare_advance(&actions).expect("control P2");
+    let receipts =
+        babylon_tick::material_world::decode_material_receipts(second.material().receipt_bytes())
+            .expect("control P2 receipts");
+    city_pd_acceptance::assert_receipts(pd_config, &receipts, false);
 }
 
 fn assert_first_period(after: &MaterialWorldRegister) -> [u8; 32] {

@@ -30,6 +30,9 @@ mod statewide_qualified;
 #[path = "support/material_config.rs"]
 mod test_support;
 
+#[path = "fixtures/city_pd_acceptance.rs"]
+mod city_pd_acceptance;
+
 #[path = "observer_material_live/organizer.rs"]
 mod organizer;
 

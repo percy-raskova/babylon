@@ -365,3 +365,274 @@ fn genuine_household_time_shortfall_does_not_complete_the_visit() {
             .any(|record| matches!(record.kind, PublicVenueRecordKind::PaidVisit { .. })));
     }
 }
+
+fn commit_hold_first_period(session: &mut Session) {
+    let config = session.material().organizer_config().expect("organizer");
+    let state = session.material().organizer_state().expect("state");
+    let command = OrganizerCommand {
+        campaign_id: config.campaign_id,
+        actor_id: config.controlled_actor_id,
+        authority_id: config.input_authority_id,
+        expected_period: 0,
+        content_digest: config.content_digest,
+        resource_digest: babylon_practice_contract::organizer_resource_digest().expect("resources"),
+        nonce: [1; 16],
+        choice: OrganizerChoice::Hold,
+    };
+    let commitment =
+        babylon_practice_contract::admit_organizer(config, state, &command).expect("hold");
+    let first = session
+        .prepare_advance_with_organizer(&actions(session, Some(&commitment)), Some(&commitment))
+        .expect("P1");
+    session
+        .commit_prepared_and_publish(&mut CollectingSink::default(), first, |_, _| {
+            Ok::<_, ()>(ReplayCommitDisposition::Committed)
+        })
+        .expect("commit P1");
+}
+
+fn assert_hidden_restore(
+    session: &Session,
+    p1_register: &MaterialWorldRegister,
+    manifest: &[u8],
+    before_world: [u8; 32],
+    from: babylon_graph::substrate::NodeId,
+    to: babylon_graph::substrate::NodeId,
+    changed_strength: f64,
+) {
+    use babylon_graph::substrate::GraphSubstrate;
+    assert_eq!(
+        session
+            .graph_session()
+            .stable_resolver()
+            .manifest()
+            .canonical_bytes(),
+        manifest
+    );
+    assert_eq!(session.material().city_pd(), p1_register.city_pd());
+    assert_eq!(
+        session.material().public_venue(),
+        p1_register.public_venue()
+    );
+    assert_ne!(
+        session.current_world_hash().expect("changed P1 world"),
+        before_world
+    );
+    assert_eq!(
+        session
+            .graph_session()
+            .graph()
+            .edge_attribute("CONTACT", from, to, "contact/strength")
+            .expect("restored contact"),
+        changed_strength
+    );
+}
+
+#[test]
+fn unknown_contact_strength_does_not_change_paid_visit_or_disclosure() {
+    use babylon_graph::stable_state::encode_stable_graph_state;
+    use babylon_graph::substrate::GraphSubstrate;
+    use babylon_practice_contract::CityPdDecision;
+
+    let foundation = national_foundation("national-city-pd-hidden-contact");
+    let mut session = foundation.into_session().expect("national host");
+    commit_hold_first_period(&mut session);
+
+    let p1_register = session.material().clone();
+    let pd = p1_register.city_pd().expect("PD");
+    let decision = &pd
+        .state
+        .last_decision
+        .as_ref()
+        .expect("P1 decision")
+        .decision;
+    assert!(matches!(decision, CityPdDecision::Selected(_)));
+    let resolver = session.graph_session().stable_resolver().clone();
+    let from = resolver
+        .node_handle_by_local_name("wayne-organizing-collective")
+        .expect("organizer node");
+    let to = resolver
+        .node_handle_by_local_name("wayne-neighborhood-contact-group")
+        .expect("contact node");
+    assert!(!pd.state.dossier.knows_edge("CONTACT", from, to));
+    let manifest = resolver.manifest().canonical_bytes().to_vec();
+    let rows = session
+        .graph_session()
+        .current_material_state_rows()
+        .expect("P1 material rows");
+    let registers = session
+        .graph_session()
+        .world_registers()
+        .expect("P1 registers")
+        .canonical_bytes()
+        .to_vec();
+    let before_world = session.current_world_hash().expect("P1 world");
+    let baseline = session
+        .prepare_advance(&actions(&session, None))
+        .expect("baseline P2");
+    let baseline_register = baseline.material().register();
+    let baseline_pd = baseline_register.city_pd().expect("baseline PD").clone();
+    assert_eq!(baseline_pd.attempts.len(), 1);
+    let baseline_projection = crate::organizer_runtime::encounter::projections(baseline_register)
+        .expect("baseline disclosure");
+    assert_eq!(baseline_projection.len(), 1);
+    let baseline_receipts = content_digest::sha256_of(baseline.material().receipt_bytes());
+    let baseline_world = baseline.identity().result_world_hash();
+    drop(baseline);
+
+    let mut altered_graph = session.graph_session().graph().clone();
+    let original_strength = altered_graph
+        .edge_attribute("CONTACT", from, to, "contact/strength")
+        .expect("seeded contact");
+    let changed_strength = if original_strength.to_bits() == 0.5_f64.to_bits() {
+        0.75
+    } else {
+        0.5
+    };
+    altered_graph
+        .update_edge("CONTACT", from, to, "contact/strength", changed_strength)
+        .expect("change hidden contact");
+    assert_ne!(
+        altered_graph
+            .edge_attribute("CONTACT", from, to, "contact/strength")
+            .expect("changed contact"),
+        original_strength
+    );
+    let altered = encode_stable_graph_state(&altered_graph, &resolver).expect("altered graph");
+    drop(altered_graph);
+    session
+        .restore_full_checkpoint(&altered, &rows, &registers, p1_register.clone())
+        .expect("restore same topology");
+    assert_hidden_restore(
+        &session,
+        &p1_register,
+        &manifest,
+        before_world,
+        from,
+        to,
+        changed_strength,
+    );
+    let changed = session
+        .prepare_advance(&actions(&session, None))
+        .expect("changed P2");
+    assert_eq!(
+        changed.material().register().city_pd().expect("changed PD"),
+        &baseline_pd
+    );
+    assert_eq!(
+        content_digest::sha256_of(changed.material().receipt_bytes()),
+        baseline_receipts
+    );
+    assert_eq!(
+        crate::organizer_runtime::encounter::projections(changed.material().register())
+            .expect("changed disclosure"),
+        baseline_projection
+    );
+    assert_ne!(changed.identity().result_world_hash(), baseline_world);
+}
+
+#[test]
+fn national_input_order_preserves_paid_visit_and_world_identity() {
+    use crate::economic_catalog::{EconomicCatalogInput, NationalOpponent};
+    use crate::organizer_runtime::encounter::CityPdEncounter;
+    use babylon_practice_contract::{CityPdDecision, CityPdDecisionReceipt};
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct Output {
+        catalog: [u8; 32],
+        p1_world: [u8; 32],
+        p1_receipts: [u8; 32],
+        decision: CityPdDecisionReceipt,
+        p2_world: [u8; 32],
+        p2_receipts: [u8; 32],
+        pd: CityPdRegister,
+        encounters: Vec<CityPdEncounter>,
+    }
+    fn run(input: EconomicCatalogInput) -> Output {
+        let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7031));
+        let catalog = CapturedEconomicCatalog::capture_national_campaign_with_opponent(
+            input,
+            campaign,
+            NationalOpponent::CityPd,
+        )
+        .expect("capture");
+        let digest = catalog.digest();
+        let foundation = catalog
+            .create_foundation(
+                ReplaySessionId::try_from("national-city-pd-input-order").expect("session"),
+                ReplaySeed::new(319),
+            )
+            .expect("foundation");
+        let mut session = foundation.into_session().expect("host");
+        let config = session.material().organizer_config().expect("organizer");
+        let state = session.material().organizer_state().expect("state");
+        let command = OrganizerCommand {
+            campaign_id: config.campaign_id,
+            actor_id: config.controlled_actor_id,
+            authority_id: config.input_authority_id,
+            expected_period: 0,
+            content_digest: config.content_digest,
+            resource_digest: babylon_practice_contract::organizer_resource_digest()
+                .expect("resources"),
+            nonce: [1; 16],
+            choice: OrganizerChoice::Hold,
+        };
+        let commitment =
+            babylon_practice_contract::admit_organizer(config, state, &command).expect("hold");
+        let first = session
+            .prepare_advance_with_organizer(
+                &actions(&session, Some(&commitment)),
+                Some(&commitment),
+            )
+            .expect("P1");
+        let p1_world = first.identity().result_world_hash();
+        let p1_receipts = content_digest::sha256_of(first.material().receipt_bytes());
+        let decision = first
+            .material()
+            .register()
+            .city_pd()
+            .expect("PD")
+            .state
+            .last_decision
+            .clone()
+            .expect("P1 decision");
+        assert!(matches!(decision.decision, CityPdDecision::Selected(_)));
+        session
+            .commit_prepared_and_publish(&mut CollectingSink::default(), first, |_, _| {
+                Ok::<_, ()>(ReplayCommitDisposition::Committed)
+            })
+            .expect("commit P1");
+        let second = session
+            .prepare_advance(&actions(&session, None))
+            .expect("P2");
+        let pd = second.material().register().city_pd().expect("PD").clone();
+        assert_eq!(pd.attempts.len(), 1);
+        assert_eq!(
+            pd.attempts[0].funding.outcome,
+            AgencyAttendanceOutcome::Paid
+        );
+        let encounters =
+            crate::organizer_runtime::encounter::projections(second.material().register())
+                .expect("disclosure");
+        assert_eq!(encounters.len(), 1);
+        Output {
+            catalog: digest,
+            p1_world,
+            p1_receipts,
+            decision,
+            p2_world: second.identity().result_world_hash(),
+            p2_receipts: content_digest::sha256_of(second.material().receipt_bytes()),
+            pd,
+            encounters,
+        }
+    }
+
+    let input = economic_catalog::national_catalog_input();
+    let mut permuted = input.clone();
+    permuted.sources.reverse();
+    assert_ne!(
+        input.sources.first().expect("first").kind(),
+        permuted.sources.first().expect("reordered first").kind()
+    );
+    assert_eq!(run(input), run(permuted));
+}

@@ -1,6 +1,6 @@
 # Game delivery audit — 2026-10-29
 
-**Decision:** Repair the national launcher check and finish a bounded player
+**Historical decision, October 29:** Repair the national launcher check and finish a bounded player
 session before starting the next scene. The repository has a material circuit,
 Archive and an organizer loop. The late-empire plan and an autonomous opponent
 remain undelivered. The current source does not show whether players understand
@@ -9,6 +9,33 @@ or enjoy the loop. This audit adds no mechanics.
 This review uses [`9e49ff5dd88cbcfe7664baa5d1c1092c7cbf2e65`](https://github.com/percy-raskova/babylon/commit/9e49ff5dd88cbcfe7664baa5d1c1092c7cbf2e65),
 the remote `dev` head inspected on October 29. Source links below use that
 revision. Linear status is a snapshot, not a substitute for acceptance evidence.
+
+## November 4 follow-up
+
+The initial findings below describe the October 29 revision. Subsequent work
+connected the first City PD opponent and the native Wayne map, evidence,
+action and restart path. The [approved closeout plan](../docs/superpowers/plans/2026-11-04-first-opponent-wayne-closeout.md)
+addresses acceptance gaps; the earlier Goal-complete wording was too broad.
+
+| Area | Delivered behavior | Current acceptance |
+| --- | --- | --- |
+| First City PD | Committed funding, finite paid visits, private cases and actor-scoped public encounters | Matched PD/no-PD PostgreSQL, post-hidden-change selection and source-input order controls passed. Scoped review passed; integrated multi-case, actor-order and topology variants remain unqualified. |
+| Wayne map and action | Places/Relationships selection, evidence, captured targets, committed P7 and restart | The Director's unclear, log-like decision screen was repaired. Both decision-clarity reviews passed after fixes; 576 client tests passed. Revised native rendering, physical input, comprehension and enjoyment remain unaccepted. |
+| Performance | Retained native traces and four new disposable PostgreSQL advance timings | No demonstrated causal defect justified a repair. Archive attribution, complete storage charge, combined-game memory and sustained national qualification remain open. |
+| Wider opponent | First PD foundations are reusable | Full PER-355 agency delivery remains open; observation alone does not establish interesting opposition. |
+
+Current development qualification retains ADR280 and the selected v6 policy:
+40,000,000 bytes per period, a separate 23,000,000-byte optimization target,
+and a 120-second advance p95 requiring 52 samples. The North Star retains its
+10,000,000-byte ambition. Neither the retained single-period net growth nor the
+short disposable fixture qualifies those sustained limits. PostgreSQL remains
+authoritative; older SQLite instructions are historical.
+
+The closeout also reran the current controller component contracts: nine passed,
+including case order, owner/provenance, reconstructed graph identities and honest
+no-case/no-funds outcomes. These component checks complement the bounded
+integrated witness; they do not establish a multi-agency playtest or every
+integrated hidden-topology variation. No new mechanic or public API was added.
 
 ## Scope and status
 

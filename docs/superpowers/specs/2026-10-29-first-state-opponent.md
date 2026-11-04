@@ -1,6 +1,7 @@
 # First state opponent: City PD observation contract
 
-**Status: Director-approved contract, 2026-10-29; implementation pending.** The
+**Status: Director-approved contract, 2026-10-29; first PD integration delivered,
+acceptance closeout in progress on 2026-11-04.** The
 Director approved this first opponent contract on 2026-10-29. ADR291 records the
 approved political content and its bounded footprint; schema and conformance
 changes must accompany implementation. This first witness does not complete the

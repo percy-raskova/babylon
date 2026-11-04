@@ -1,6 +1,8 @@
 //! Native Bevy controls and evidence inspectors for the lawful organizer projection.
 
-use super::scene::{BodyShape, OrganizerScene, OrganizerSceneMode, OrganizerSubject, SceneNode};
+use super::scene::{
+    BodyShape, OrganizerScene, OrganizerSceneMode, OrganizerSubject, RelationKind, SceneNode,
+};
 #[cfg(test)]
 use crate::observer_focus::ObserverFocusPolicy;
 use babylon_persistence::runtime_session::{OrganizerChoice, OrganizerInquiry};
@@ -605,6 +607,7 @@ fn spawn_relation_edges(space: &mut ChildSpawnerCommands, scene: &OrganizerScene
     let mut pairs = scene
         .relations
         .iter()
+        .filter(|relation| relation.kind != RelationKind::BodyIncidence)
         .map(|relation| (relation.from, relation.to))
         .collect::<Vec<_>>();
     pairs.sort_unstable();
@@ -616,11 +619,20 @@ fn spawn_relation_edges(space: &mut ChildSpawnerCommands, scene: &OrganizerScene
                 height: px(2),
                 ..default()
             },
-            BackgroundColor(theme::YELLOW),
+            BackgroundColor(theme::GRAY),
             UiTransform::IDENTITY,
             Pickable::IGNORE,
             RelationEdge { from, to },
         ));
+    }
+}
+
+fn relation_color(kind: RelationKind) -> Color {
+    match kind {
+        RelationKind::Agreement => theme::YELLOW,
+        RelationKind::RoutineContact => theme::BLUE,
+        RelationKind::EarnedContact => theme::COPPER,
+        RelationKind::BodyIncidence => theme::GRAY,
     }
 }
 
@@ -629,18 +641,61 @@ fn relation_labels(
     scene: &OrganizerScene,
     subject: OrganizerSubject,
 ) {
-    let labels = scene
+    let mut kinds = scene
         .relations
         .iter()
         .filter(|relation| relation.to == subject)
-        .map(|relation| relation.label.as_str())
+        .map(|relation| relation.kind)
         .collect::<Vec<_>>();
-    if !labels.is_empty() {
-        parent.spawn((
-            text(labels.join("\n"), 12.0, theme::PAPER),
-            Pickable::IGNORE,
-        ));
+    kinds.sort_unstable();
+    kinds.dedup();
+    if kinds.is_empty() {
+        return;
     }
+    parent
+        .spawn(Node {
+            row_gap: px(3),
+            ..column()
+        })
+        .with_children(|group| {
+            for kind in kinds {
+                let labels = scene
+                    .relations
+                    .iter()
+                    .filter(|relation| relation.to == subject && relation.kind == kind)
+                    .map(|relation| relation.label.as_str())
+                    .collect::<Vec<_>>();
+                group
+                    .spawn(Node {
+                        column_gap: px(6),
+                        ..row()
+                    })
+                    .with_children(|line| {
+                        line.spawn((
+                            text(kind.marker(), 12.0, theme::INK),
+                            BackgroundColor(relation_color(kind)),
+                            Pickable::IGNORE,
+                        ))
+                        .insert(Node {
+                            min_width: px(20),
+                            height: px(20),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        });
+                        line.spawn((
+                            text(labels.join("\n"), 12.0, theme::PAPER),
+                            Pickable::IGNORE,
+                        ))
+                        .insert(Node {
+                            flex_grow: 1.0,
+                            flex_shrink: 1.0,
+                            min_width: px(0),
+                            ..default()
+                        });
+                    });
+            }
+        });
 }
 
 fn spawn_relation_subjects(space: &mut ChildSpawnerCommands, scene: &OrganizerScene) {

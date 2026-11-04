@@ -39,10 +39,30 @@ impl SceneNode {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum RelationKind {
+    Agreement,
+    RoutineContact,
+    EarnedContact,
+    BodyIncidence,
+}
+
+impl RelationKind {
+    pub fn marker(self) -> &'static str {
+        match self {
+            Self::Agreement => "A",
+            Self::RoutineContact => "R",
+            Self::EarnedContact => "E",
+            Self::BodyIncidence => "B",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct SceneRelation {
     pub from: OrganizerSubject,
     pub to: OrganizerSubject,
+    pub kind: RelationKind,
     pub label: String,
 }
 
@@ -130,6 +150,7 @@ impl OrganizerScene {
                     relations.push(SceneRelation {
                         from: collective,
                         to,
+                        kind: RelationKind::Agreement,
                         label: format!(
                             "Agreement · periods {}–{}",
                             agreement.valid_from_period, agreement.valid_through_period
@@ -143,6 +164,7 @@ impl OrganizerScene {
                 relations.push(SceneRelation {
                     from: collective,
                     to,
+                    kind: RelationKind::RoutineContact,
                     label: "Authorized routine contact".into(),
                 });
             }
@@ -157,6 +179,7 @@ impl OrganizerScene {
                     relations.push(SceneRelation {
                         from: collective,
                         to,
+                        kind: RelationKind::EarnedContact,
                         label: format!("Earned contact · period {}", receipt.period),
                     });
                 }
@@ -178,6 +201,7 @@ impl OrganizerScene {
                         relations.push(SceneRelation {
                             from: collective,
                             to: contributor,
+                            kind: RelationKind::BodyIncidence,
                             label: "Disclosed body incidence".into(),
                         });
                     }
@@ -195,12 +219,11 @@ impl OrganizerScene {
             }
         };
         relations.sort_by(|a, b| (a.from, a.to, &a.label).cmp(&(b.from, b.to, &b.label)));
-        let body_key = body_key(body);
         Self {
             nodes,
             relations,
             body_shape,
-            body_key,
+            body_key: body_key(body),
             body_members,
             body_status,
         }
@@ -358,6 +381,20 @@ mod tests {
         assert!(labels.iter().any(|label| label.starts_with("Agreement")));
         assert!(labels.contains(&"Authorized routine contact"));
         assert!(labels.contains(&"Earned contact · period 1"));
+        for (label, kind) in [
+            ("Authorized routine contact", RelationKind::RoutineContact),
+            ("Earned contact · period 1", RelationKind::EarnedContact),
+        ] {
+            assert!(scene
+                .relations
+                .iter()
+                .any(|relation| relation.label == label && relation.kind == kind));
+        }
+        assert!(scene
+            .relations
+            .iter()
+            .any(|relation| relation.label.starts_with("Agreement")
+                && relation.kind == RelationKind::Agreement));
         view.period = 0;
         assert!(
             !OrganizerScene::from_disclosure(&view, &OrganizerBodyDisclosure::Unavailable)

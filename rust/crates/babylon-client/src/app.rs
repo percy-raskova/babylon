@@ -4,6 +4,9 @@
 //! both modes share one construction site, keeps `main` a pure dispatch
 //! shim, and gives tests one function to exercise.
 
+use bevy::app::MainScheduleOrder;
+use bevy::camera::{NormalizedRenderTarget, RenderTarget};
+use bevy::ecs::schedule::ScheduleLabel;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::window::{PrimaryWindow, WindowCloseRequested};
@@ -88,6 +91,7 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
                         ..default()
                     }),
             );
+            install_window_camera_coherence(&mut app);
             // Nothing listens before LogPlugin::build installs the
             // subscriber, so the startup line stays after add_plugins. The
             // line stays static: no parse-channel value is logged.
@@ -139,6 +143,65 @@ pub fn build_app(mode: AppMode) -> Result<App, String> {
         }
     }
     Ok(app)
+}
+
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+struct WindowCameraCoherence;
+
+fn camera_target_mismatch(
+    camera: &Camera,
+    target: &RenderTarget,
+    window: Entity,
+    extent: UVec2,
+) -> bool {
+    matches!(target.normalize(Some(window)), Some(NormalizedRenderTarget::Window(target)) if target.entity() == window)
+        && camera.physical_target_size() != Some(extent)
+}
+
+fn window_camera_mismatch(
+    windows: Query<(Entity, &Window), With<PrimaryWindow>>,
+    cameras: Query<(&Camera, &RenderTarget)>,
+) -> bool {
+    let Ok((entity, window)) = windows.single() else {
+        return false;
+    };
+    let extent = UVec2::new(window.physical_width(), window.physical_height());
+    cameras
+        .iter()
+        .any(|(camera, target)| camera_target_mismatch(camera, target, entity, extent))
+}
+
+fn invalidate_window_cameras(
+    windows: Query<(Entity, &Window), With<PrimaryWindow>>,
+    mut cameras: Query<(&Camera, &RenderTarget, &mut Projection)>,
+) {
+    let Ok((entity, window)) = windows.single() else {
+        return;
+    };
+    let extent = UVec2::new(window.physical_width(), window.physical_height());
+    for (camera, target, mut projection) in &mut cameras {
+        if camera_target_mismatch(camera, target, entity, extent) {
+            projection.set_changed();
+        }
+    }
+}
+
+fn install_window_camera_coherence(app: &mut App) {
+    // Winit can change the window again in Last, after Bevy's camera update.
+    // Reuse Bevy's camera system before render extraction without fabricating
+    // a WindowResized message, which is also an OS observation for controls.
+    app.world_mut()
+        .resource_mut::<MainScheduleOrder>()
+        .insert_after(Last, WindowCameraCoherence);
+    app.add_systems(
+        WindowCameraCoherence,
+        (
+            invalidate_window_cameras,
+            bevy::render::camera::camera_system,
+        )
+            .chain()
+            .run_if(window_camera_mismatch),
+    );
 }
 
 // Closing the desktop window follows the same draft flush and acknowledged
@@ -236,5 +299,181 @@ mod tests {
             matches!(exit, AppExit::Error(code) if code.get() == 2),
             "a refused command exits non-zero, got {exit:?}"
         );
+    }
+    fn resize_camera_app() -> (App, Entity, [Entity; 2]) {
+        use bevy::asset::{AssetEvent, Assets};
+        use bevy::camera::Viewport;
+        use bevy::render::camera;
+        use bevy::render::texture::ManualTextureViews;
+        use bevy::window::{WindowCreated, WindowResized, WindowScaleFactorChanged};
+
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<Assets<Image>>()
+            .init_resource::<ManualTextureViews>()
+            .add_message::<AssetEvent<Image>>()
+            .add_message::<WindowCreated>()
+            .add_message::<WindowResized>()
+            .add_message::<WindowScaleFactorChanged>()
+            .add_systems(PostUpdate, camera::camera_system);
+        install_window_camera_coherence(&mut app);
+        let window = app
+            .world_mut()
+            .spawn((
+                Window {
+                    resolution: (1920, 1080).into(),
+                    ..default()
+                },
+                PrimaryWindow,
+            ))
+            .id();
+        let ui = app.world_mut().spawn(Camera2d).id();
+        let map = app
+            .world_mut()
+            .spawn((
+                Camera3d::default(),
+                Camera {
+                    viewport: Some(Viewport {
+                        physical_position: UVec2::new(20, 20),
+                        physical_size: UVec2::new(800, 500),
+                        ..default()
+                    }),
+                    ..default()
+                },
+            ))
+            .id();
+        app.update();
+        app.update();
+        (app, window, [ui, map])
+    }
+
+    fn assert_camera_extents(app: &App, cameras: [Entity; 2], extent: UVec2) {
+        for entity in cameras {
+            let camera = app.world().get::<Camera>(entity).expect("camera exists");
+            assert_eq!(camera.physical_target_size(), Some(extent));
+            if let Some(viewport) = &camera.viewport {
+                assert!((viewport.physical_position + viewport.physical_size)
+                    .cmple(extent)
+                    .all());
+            }
+        }
+    }
+
+    #[test]
+    fn window_resize_keeps_camera_targets_coherent_before_extraction() {
+        let (mut app, window, cameras) = resize_camera_app();
+        assert_camera_extents(&app, cameras, UVec2::new(1920, 1080));
+        app.world_mut()
+            .get_mut::<Window>(window)
+            .expect("window exists")
+            .resolution
+            .set_physical_resolution(1366, 768);
+        app.update();
+        assert_camera_extents(&app, cameras, UVec2::new(1366, 768));
+    }
+
+    #[derive(Resource, Default)]
+    struct LateWindowExtent(Option<UVec2>);
+
+    fn apply_late_window_extent(
+        mut pending: ResMut<LateWindowExtent>,
+        mut windows: Query<&mut Window, With<PrimaryWindow>>,
+    ) {
+        if let Some(extent) = pending.0.take() {
+            windows
+                .single_mut()
+                .expect("one window")
+                .resolution
+                .set_physical_resolution(extent.x, extent.y);
+        }
+    }
+
+    #[test]
+    fn late_backend_resize_keeps_camera_targets_coherent() {
+        let (mut app, _window, cameras) = resize_camera_app();
+        app.insert_resource(LateWindowExtent(Some(UVec2::new(1280, 720))))
+            .add_systems(Last, apply_late_window_extent);
+        app.update();
+        assert_camera_extents(&app, cameras, UVec2::new(1280, 720));
+    }
+
+    #[test]
+    fn os_resize_event_updates_both_camera_targets() {
+        use bevy::window::WindowResized;
+        let (mut app, window, cameras) = resize_camera_app();
+        app.world_mut()
+            .get_mut::<Window>(window)
+            .expect("window exists")
+            .resolution
+            .set_physical_resolution(1366, 768);
+        app.world_mut().write_message(WindowResized {
+            window,
+            width: 1366.0,
+            height: 768.0,
+        });
+        app.update();
+        assert_camera_extents(&app, cameras, UVec2::new(1366, 768));
+    }
+
+    #[test]
+    fn late_resize_does_not_repeat_scale_factor_viewport_adjustment() {
+        use bevy::window::WindowScaleFactorChanged;
+        let (mut app, window, cameras) = resize_camera_app();
+        app.world_mut()
+            .get_mut::<Camera>(cameras[1])
+            .expect("map camera exists")
+            .viewport
+            .as_mut()
+            .expect("map viewport exists")
+            .physical_size = UVec2::splat(100);
+        app.update();
+        app.world_mut()
+            .get_mut::<Window>(window)
+            .expect("window exists")
+            .resolution
+            .set_scale_factor(2.0);
+        app.world_mut().write_message(WindowScaleFactorChanged {
+            window,
+            scale_factor: 2.0,
+        });
+        app.insert_resource(LateWindowExtent(Some(UVec2::new(1366, 768))))
+            .add_systems(Last, apply_late_window_extent);
+        app.update();
+        assert_camera_extents(&app, cameras, UVec2::new(1366, 768));
+        let camera = app
+            .world()
+            .get::<Camera>(cameras[1])
+            .expect("map camera exists");
+        let viewport = camera.viewport.as_ref().expect("map viewport exists");
+        assert_eq!(viewport.physical_position, UVec2::splat(40));
+        assert_eq!(viewport.physical_size, UVec2::splat(200));
+    }
+
+    #[test]
+    fn unchanged_window_does_not_mutate_camera_projection() {
+        use bevy::ecs::change_detection::DetectChanges;
+        let (mut app, _window, cameras) = resize_camera_app();
+        let before: Vec<_> = cameras
+            .iter()
+            .map(|entity| {
+                app.world()
+                    .entity(*entity)
+                    .get_ref::<Projection>()
+                    .expect("projection exists")
+                    .last_changed()
+            })
+            .collect();
+        app.update();
+        let after: Vec<_> = cameras
+            .iter()
+            .map(|entity| {
+                app.world()
+                    .entity(*entity)
+                    .get_ref::<Projection>()
+                    .expect("projection exists")
+                    .last_changed()
+            })
+            .collect();
+        assert_eq!(before, after);
     }
 }

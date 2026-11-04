@@ -11,12 +11,12 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use bevy::ecs::message::MessageId;
+use bevy::ecs::message::{MessageCursor, MessageId, Messages};
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
-use bevy::window::{PrimaryWindow, WindowResized};
+use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode, WindowResized};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -37,6 +37,8 @@ use babylon_persistence::runtime_session::{
     OrganizerChoice, OrganizerCommand, OrganizerInquiry, RuntimeSessionScope,
 };
 use mpsc::Receiver;
+#[cfg(test)]
+use mpsc::Sender;
 use mpsc::SyncSender;
 use mpsc::TryRecvError;
 use thread::Builder;
@@ -46,6 +48,7 @@ use uuid::Uuid;
 // Designed bounds for instrumentation, independent of the captured game policy.
 const INPUT_BYTES: u64 = 4096;
 const OUTPUT_BYTES: usize = 32_768;
+const RESIZE_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -339,12 +342,14 @@ struct Pending {
     capture_state: Option<Value>,
     expected_evidence: Option<[u8; 32]>,
     resize_armed: bool,
+    resize_started: Instant,
 }
 
 impl Pending {
     fn new(input: Input, situation: &Situation, tracked: Option<Tracked>) -> Self {
         Self {
             resize_armed: false,
+            resize_started: Instant::now(),
             expected_evidence: match input.action {
                 Action::NextEvidence => situation
                     .client
@@ -458,6 +463,7 @@ struct Controls {
     disabled: bool,
     capture_result: Option<Result<(), &'static str>>,
     observed_extent: Option<(Entity, UVec2)>,
+    resize_cursor: MessageCursor<WindowResized>,
 }
 
 impl Default for Controls {
@@ -469,6 +475,7 @@ impl Default for Controls {
             disabled: false,
             capture_result: None,
             observed_extent: None,
+            resize_cursor: MessageCursor::default(),
         }
     }
 }
@@ -758,11 +765,25 @@ fn request_resize(
         .single_mut()
         .map_err(|_| "primary_window_unavailable")?;
     let extent = action.extent().expect("bounded resize action");
-    if controls.observed_extent != Some((entity, extent)) {
-        if UVec2::new(window.physical_width(), window.physical_height()) == extent {
-            return Err("primary_window_extent_unobserved");
-        }
-        controls.observed_extent = None;
+    let mode = match action {
+        Action::Resize1366x768 => WindowMode::Windowed,
+        Action::Resize1920x1080 => WindowMode::BorderlessFullscreen(MonitorSelection::Current),
+        _ => unreachable!("bounded resize action"),
+    };
+    let previously_observed = controls.observed_extent == Some((entity, extent));
+    if window.mode == mode && previously_observed && action == Action::Resize1920x1080 {
+        return Ok(());
+    }
+    if window.mode == mode
+        && !previously_observed
+        && UVec2::new(window.physical_width(), window.physical_height()) == extent
+    {
+        return Err("primary_window_extent_unobserved");
+    }
+    controls.observed_extent = None;
+    window.mode = mode;
+    if action == Action::Resize1366x768 {
+        window.set_maximized(false);
         window
             .resolution
             .set_physical_resolution(extent.x, extent.y);
@@ -785,6 +806,7 @@ fn dispatch(
     mut evidence: MessageWriter<OpenArchiveEvidence>,
     mut commands: Commands,
     mut windows: Query<(Entity, &mut Window), With<PrimaryWindow>>,
+    resized: Res<Messages<WindowResized>>,
 ) {
     match flush_reply(&transport, &mut controls) {
         OutputReady::Ready if controls.disabled => return,
@@ -865,6 +887,8 @@ fn dispatch(
                 }
             }
             action @ (Action::Resize1366x768 | Action::Resize1920x1080) => {
+                // Skip only this adapter's pre-request events, not the shared messages.
+                controls.resize_cursor.clear(&resized);
                 if let Err(reason) = request_resize(&mut controls, &mut windows, action) {
                     controls.respond(Some(sequence), "refused", Some(reason), &situation);
                     return;
@@ -1123,27 +1147,78 @@ fn reopen_outcome(
     Some(Ok("reopened_and_installed"))
 }
 
+fn resize_outcome(
+    pending: &Pending,
+    situation: &Situation,
+    observed_extent: Option<(Entity, UVec2)>,
+    observed_resize: Option<Entity>,
+    windows: &mut Query<(Entity, &mut Window), With<PrimaryWindow>>,
+) -> Option<Result<&'static str, &'static str>> {
+    if situation.session.runtime_scope() != pending.scope.as_ref()
+        || situation.session.context() != pending.context
+        || !situation.allows(&pending.input)
+    {
+        return Some(Err("control_context_changed"));
+    }
+    if !pending.resize_armed {
+        return None;
+    }
+    let target = pending.input.action.extent().expect("resize action");
+    let applied = windows.single_mut().is_ok_and(|(entity, mut window)| {
+        let physical = UVec2::new(window.physical_width(), window.physical_height());
+        let mode_matches = match pending.input.action {
+            Action::Resize1366x768 => window.mode == WindowMode::Windowed,
+            Action::Resize1920x1080 => {
+                window.mode == WindowMode::BorderlessFullscreen(MonitorSelection::Current)
+            }
+            _ => false,
+        };
+        if mode_matches && observed_extent == Some((entity, target)) && physical == target {
+            return true;
+        }
+        // The OS can report an intermediate size while restoring the window.
+        if observed_resize == Some(entity) && pending.input.action == Action::Resize1366x768 {
+            window
+                .resolution
+                .set_physical_resolution(target.x, target.y);
+        }
+        false
+    });
+    if applied {
+        Some(Ok("applied"))
+    } else if pending.resize_started.elapsed() >= RESIZE_TIMEOUT {
+        Some(Err("primary_window_resize_timeout"))
+    } else {
+        None
+    }
+}
+
 fn complete(
     mut controls: ResMut<Controls>,
     mut receipt: ResMut<HandlerReceipt>,
     situation: Situation,
     evidence: Res<ArchiveEvidenceReceipt>,
-    windows: Query<(Entity, &Window), With<PrimaryWindow>>,
-    mut resized: MessageReader<WindowResized>,
+    mut windows: Query<(Entity, &mut Window), With<PrimaryWindow>>,
+    resized: Res<Messages<WindowResized>>,
 ) {
-    for event in resized.read() {
-        if let Ok((entity, window)) = windows.single() {
+    let mut observation = None;
+    for event in controls.resize_cursor.read(&resized) {
+        if let Ok((entity, window)) = windows.single_mut() {
             if event.window == entity
                 && (event.width - window.width()).abs() < 0.5
                 && (event.height - window.height()).abs() < 0.5
             {
-                controls.observed_extent = Some((
+                observation = Some((
                     entity,
                     UVec2::new(window.physical_width(), window.physical_height()),
                 ));
             }
         }
     }
+    if observation.is_some() {
+        controls.observed_extent = observation;
+    }
+    let observed_resize = observation.map(|(entity, _)| entity);
     if controls.reply.is_some() || controls.disabled {
         return;
     }
@@ -1153,10 +1228,6 @@ fn complete(
         return;
     };
     let extent = pending.input.action.extent();
-    let resize_armed = pending.resize_armed;
-    if extent.is_some() {
-        pending.resize_armed = true;
-    }
     let captured = if pending.handled {
         Ok(())
     } else {
@@ -1168,21 +1239,15 @@ fn complete(
     };
     let result = match captured {
         Ok(()) if extent.is_some() => {
-            if situation.session.runtime_scope() != pending.scope.as_ref()
-                || situation.session.context() != pending.context
-                || !situation.allows(&pending.input)
-            {
-                Some(Err("control_context_changed"))
-            } else if !resize_armed {
-                None
-            } else {
-                windows.single().ok().and_then(|(entity, window)| {
-                    let target = extent.expect("resize action");
-                    (observed_extent == Some((entity, target))
-                        && UVec2::new(window.physical_width(), window.physical_height()) == target)
-                        .then_some(Ok("applied"))
-                })
-            }
+            let result = resize_outcome(
+                pending,
+                &situation,
+                observed_extent,
+                observed_resize,
+                &mut windows,
+            );
+            pending.resize_armed = true;
+            result
         }
         Ok(()) if pending.input.action == Action::CaptureFrame => {
             if pending.capture_state.as_ref() == Some(&situation.capture_state()) {
@@ -1296,100 +1361,9 @@ mod tests {
         assert!(serde_json::from_value::<Action>(json!("capture_desktop")).is_err());
     }
 
-    #[test]
-    fn resize_waits_for_observed_primary_extent() {
-        for action in [Action::Resize1366x768, Action::Resize1920x1080] {
-            let (client, session) = super::super::tests::ready();
-            let mut app = App::new();
-            app.add_plugins(MinimalPlugins)
-                .configure_sets(
-                    Update,
-                    (
-                        ObserverSet::Input,
-                        ObserverSet::Receive,
-                        ObserverSet::Install,
-                        ObserverSet::Paint,
-                    )
-                        .chain(),
-                )
-                .insert_resource(session)
-                .insert_resource(client)
-                .insert_resource(PrimaryView::Organizer)
-                .insert_resource(ObserverUiState {
-                    menu_open: false,
-                    splash_visible: false,
-                    ..default()
-                })
-                .init_resource::<OpeningPresentation>()
-                .add_message::<OrganizerAction>()
-                .add_message::<ObserverCommand>()
-                .add_message::<ContinueWarning>();
-            let entity = app
-                .world_mut()
-                .spawn((Window::default(), PrimaryWindow))
-                .id();
-            let (socket, _peer) = UnixStream::pair().expect("fixture sockets");
-            let (incoming, receiver) = mpsc::channel();
-            let (outgoing, _output) = mpsc::sync_channel(1);
-            install(
-                &mut app,
-                Transport {
-                    incoming: Mutex::new(receiver),
-                    outgoing,
-                    socket,
-                    capture_dir: None,
-                },
-            );
-            let input = pending(
-                app.world().resource::<ObserverSession>(),
-                app.world().resource::<OrganizerClient>(),
-                action,
-            )
-            .input;
-            incoming.send(Incoming::Input(input)).expect("receiver");
-            app.update();
-            app.update();
-            assert!(
-                app.world().resource::<Controls>().reply.is_none(),
-                "requested size is not an observed extent"
-            );
-            let target = action.extent().expect("resize action");
-            app.world_mut().write_message(WindowResized {
-                window: entity,
-                width: 1.0,
-                height: 1.0,
-            });
-            app.update();
-            assert!(
-                app.world().resource::<Controls>().reply.is_none(),
-                "wrong extent cannot complete"
-            );
-            let window = app.world().get::<Window>(entity).expect("primary window");
-            let (width, height) = (window.width(), window.height());
-            assert_eq!(
-                (window.physical_width(), window.physical_height()),
-                (target.x, target.y)
-            );
-            app.world_mut().write_message(WindowResized {
-                window: entity,
-                width,
-                height,
-            });
-            app.update();
-            let reply: Value = serde_json::from_slice(
-                app.world()
-                    .resource::<Controls>()
-                    .reply
-                    .as_ref()
-                    .expect("observed completion"),
-            )
-            .expect("JSON");
-            assert_eq!(reply["event"], "applied");
-        }
-    }
-
-    #[test]
-    fn resize_same_size_without_observation_refuses() {
+    fn resize_fixture(
+        window: Window,
+    ) -> (App, Sender<Incoming>, Entity, UnixStream, Receiver<Vec<u8>>) {
         let (client, session) = super::super::tests::ready();
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
@@ -1415,12 +1389,10 @@ mod tests {
             .add_message::<OrganizerAction>()
             .add_message::<ObserverCommand>()
             .add_message::<ContinueWarning>();
-        let mut window = Window::default();
-        window.resolution.set_physical_resolution(1366, 768);
-        app.world_mut().spawn((window, PrimaryWindow));
-        let (socket, _peer) = UnixStream::pair().expect("fixture sockets");
+        let entity = app.world_mut().spawn((window, PrimaryWindow)).id();
+        let (socket, peer) = UnixStream::pair().expect("fixture sockets");
         let (incoming, receiver) = mpsc::channel();
-        let (outgoing, _output) = mpsc::sync_channel(1);
+        let (outgoing, output) = mpsc::sync_channel(1);
         install(
             &mut app,
             Transport {
@@ -1430,6 +1402,152 @@ mod tests {
                 capture_dir: None,
             },
         );
+        (app, incoming, entity, peer, output)
+    }
+
+    #[test]
+    fn resize_waits_for_observed_primary_extent() {
+        for action in [Action::Resize1366x768, Action::Resize1920x1080] {
+            let mut window = Window::default();
+            if action == Action::Resize1366x768 {
+                window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
+                window.resolution.set_physical_resolution(1920, 1080);
+            }
+            let (mut app, incoming, entity, _peer, _output) = resize_fixture(window);
+            let input = pending(
+                app.world().resource::<ObserverSession>(),
+                app.world().resource::<OrganizerClient>(),
+                action,
+            )
+            .input;
+            incoming.send(Incoming::Input(input)).expect("receiver");
+            app.update();
+            app.update();
+            assert!(
+                app.world().resource::<Controls>().reply.is_none(),
+                "requested size is not an observed extent"
+            );
+            let target = action.extent().expect("resize action");
+            app.world_mut().write_message(WindowResized {
+                window: entity,
+                width: 1.0,
+                height: 1.0,
+            });
+            app.update();
+            assert!(
+                app.world().resource::<Controls>().reply.is_none(),
+                "wrong extent cannot complete"
+            );
+            if action == Action::Resize1366x768 {
+                assert_intermediate_restore(&mut app, entity);
+            }
+            let mut window = app
+                .world_mut()
+                .get_mut::<Window>(entity)
+                .expect("primary window");
+            let expected_mode = match action {
+                Action::Resize1366x768 => WindowMode::Windowed,
+                Action::Resize1920x1080 => {
+                    WindowMode::BorderlessFullscreen(MonitorSelection::Current)
+                }
+                _ => unreachable!(),
+            };
+            assert_eq!(window.mode, expected_mode);
+            // Bevy's backend installs the physical extent before emitting WindowResized.
+            window
+                .resolution
+                .set_physical_resolution(target.x, target.y);
+            let (width, height) = (window.width(), window.height());
+            app.world_mut().write_message(WindowResized {
+                window: entity,
+                width,
+                height,
+            });
+            app.update();
+            let reply: Value = serde_json::from_slice(
+                app.world()
+                    .resource::<Controls>()
+                    .reply
+                    .as_ref()
+                    .expect("observed completion"),
+            )
+            .expect("JSON");
+            assert_eq!(reply["event"], "applied");
+        }
+    }
+
+    fn assert_intermediate_restore(app: &mut App, entity: Entity) {
+        app.world_mut()
+            .get_mut::<Window>(entity)
+            .expect("window")
+            .resolution
+            .set_physical_resolution(1920, 1004);
+        app.world_mut().write_message(WindowResized {
+            window: entity,
+            width: 1920.0,
+            height: 1004.0,
+        });
+        app.update();
+        let window = app.world().get::<Window>(entity).expect("window");
+        assert_eq!(
+            (window.physical_width(), window.physical_height()),
+            (1366, 768)
+        );
+        assert!(app.world().resource::<Controls>().reply.is_none());
+    }
+
+    #[test]
+    fn resize_clamped_or_unobserved_extent_refuses_after_deadline() {
+        for observed in [true, false] {
+            let (mut app, incoming, entity, _peer, _output) = resize_fixture(Window::default());
+            let input = pending(
+                app.world().resource::<ObserverSession>(),
+                app.world().resource::<OrganizerClient>(),
+                Action::Resize1920x1080,
+            )
+            .input;
+            incoming.send(Incoming::Input(input)).expect("receiver");
+            app.update();
+            if observed {
+                {
+                    let mut window = app.world_mut().get_mut::<Window>(entity).expect("window");
+                    window.resolution.set_physical_resolution(1920, 1004);
+                }
+                app.world_mut().write_message(WindowResized {
+                    window: entity,
+                    width: 1920.0,
+                    height: 1004.0,
+                });
+                app.update();
+                assert!(
+                    app.world().resource::<Controls>().reply.is_none(),
+                    "intermediate sizes must be allowed"
+                );
+            } else {
+                app.update();
+                assert!(app.world().resource::<Controls>().reply.is_none());
+            }
+            let mut controls = app.world_mut().resource_mut::<Controls>();
+            let pending = controls.pending.as_mut().expect("resize remains pending");
+            pending.resize_started = Instant::now()
+                .checked_sub(RESIZE_TIMEOUT)
+                .expect("monotonic clock");
+            app.update();
+            let controls = app.world().resource::<Controls>();
+            let reply: Value =
+                serde_json::from_slice(controls.reply.as_ref().expect("bounded refusal"))
+                    .expect("JSON");
+            assert_eq!(reply["event"], "refused");
+            assert_eq!(reply["reason"], "primary_window_resize_timeout");
+            assert!(controls.pending.is_none());
+        }
+    }
+
+    #[test]
+    fn resize_same_size_without_observation_refuses() {
+        let mut window = Window::default();
+        window.resolution.set_physical_resolution(1366, 768);
+        let (mut app, incoming, _entity, _peer, _output) = resize_fixture(window);
         let input = pending(
             app.world().resource::<ObserverSession>(),
             app.world().resource::<OrganizerClient>(),
@@ -1445,6 +1563,99 @@ mod tests {
         assert_eq!(reply["event"], "refused");
         assert_eq!(reply["reason"], "primary_window_extent_unobserved");
         assert!(controls.pending.is_none());
+    }
+
+    #[test]
+    fn resize_same_size_requires_fresh_observation_after_unmaximize() {
+        let mut window = Window::default();
+        window.resolution.set_physical_resolution(1366, 768);
+        let (mut app, incoming, entity, _peer, _output) = resize_fixture(window);
+        app.world_mut().write_message(WindowResized {
+            window: entity,
+            width: 1366.0,
+            height: 768.0,
+        });
+        app.update();
+        let input = pending(
+            app.world().resource::<ObserverSession>(),
+            app.world().resource::<OrganizerClient>(),
+            Action::Resize1366x768,
+        )
+        .input;
+        incoming.send(Incoming::Input(input)).expect("receiver");
+        app.update();
+        app.update();
+        assert!(
+            app.world().resource::<Controls>().reply.is_none(),
+            "prior observation cannot acknowledge unmaximize"
+        );
+        let mut controls = app.world_mut().resource_mut::<Controls>();
+        controls
+            .pending
+            .as_mut()
+            .expect("pending resize")
+            .resize_started = Instant::now()
+            .checked_sub(RESIZE_TIMEOUT)
+            .expect("monotonic clock");
+        app.update();
+        let controls = app.world().resource::<Controls>();
+        let reply: Value =
+            serde_json::from_slice(controls.reply.as_ref().expect("bounded refusal"))
+                .expect("JSON");
+        assert_eq!(reply["reason"], "primary_window_resize_timeout");
+    }
+
+    #[test]
+    fn queued_resize_before_request_cannot_acknowledge_unmaximize() {
+        for later_event in [false, true] {
+            let mut window = Window::default();
+            window.resolution.set_physical_resolution(1366, 768);
+            let (mut app, incoming, entity, _peer, _output) = resize_fixture(window);
+            let event = WindowResized {
+                window: entity,
+                width: 1366.0,
+                height: 768.0,
+            };
+            app.world_mut().write_message(event.clone());
+            app.update();
+            let input = pending(
+                app.world().resource::<ObserverSession>(),
+                app.world().resource::<OrganizerClient>(),
+                Action::Resize1366x768,
+            )
+            .input;
+            app.world_mut().write_message(event.clone());
+            incoming.send(Incoming::Input(input)).expect("receiver");
+            app.update();
+            app.update();
+            assert!(
+                app.world().resource::<Controls>().reply.is_none(),
+                "pre-request event cannot acknowledge resize"
+            );
+            if later_event {
+                app.world_mut().write_message(event);
+            } else {
+                let mut controls = app.world_mut().resource_mut::<Controls>();
+                controls
+                    .pending
+                    .as_mut()
+                    .expect("pending resize")
+                    .resize_started = Instant::now()
+                    .checked_sub(RESIZE_TIMEOUT)
+                    .expect("monotonic clock");
+            }
+            app.update();
+            let controls = app.world().resource::<Controls>();
+            let reply: Value =
+                serde_json::from_slice(controls.reply.as_ref().expect("completed response"))
+                    .expect("JSON");
+            if later_event {
+                assert_eq!(reply["event"], "applied");
+            } else {
+                assert_eq!(reply["event"], "refused");
+                assert_eq!(reply["reason"], "primary_window_resize_timeout");
+            }
+        }
     }
 
     fn assert_frame_scenario(app: &mut App, path: &Path, scenario: &str) {
@@ -1766,6 +1977,7 @@ mod tests {
             capture_state: None,
             expected_evidence: None,
             resize_armed: false,
+            resize_started: Instant::now(),
         }
     }
 

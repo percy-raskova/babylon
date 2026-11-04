@@ -21,7 +21,7 @@ The remaining sections retain the October 29 findings at their stated revision.
 | Area | Delivered behavior | Current acceptance |
 | --- | --- | --- |
 | First City PD | Committed funding, finite paid visits, private cases and actor-scoped public encounters | Matched PD/no-PD PostgreSQL, post-hidden-change selection and source-input order controls passed. Scoped review passed; integrated multi-case, actor-order and topology variants remain unqualified. |
-| Wayne map and action | Places/Relationships selection, evidence, captured targets, committed P7 and restart | Review text and cramped reading areas were repaired. Real-font layout and keyboard consumer regressions passed; the final client run passed 580 tests. Static native evidence is linked below. Complete choice comparison, physical input, Director comprehension and enjoyment remain unaccepted. |
+| Wayne map and action | Places/Relationships selection, evidence, captured targets, committed P7 and restart | Review text and cramped reading areas were repaired. Real-font layout and keyboard consumer regressions passed; the later client library run passed 581 tests on the reviewed source. The revised wording has independently reviewed native captures below; Director reassessment remains pending. Complete choice comparison, physical input, comprehension and enjoyment remain unaccepted. |
 | Performance | Retained native traces and four new disposable PostgreSQL advance timings | No demonstrated causal defect justified a repair. Slow reopen attribution, Archive attribution, complete storage charge, combined-game memory and sustained national qualification remain open. |
 | Wider opponent | First PD foundations are reusable | Full PER-355 agency delivery remains open; observation alone does not establish interesting opposition. |
 
@@ -44,6 +44,49 @@ produced one disclosed encounter with PD enabled and none without it. Other
 Wayne claims were fully funded in both arms; the control does not demonstrate a
 shortage. The [controller contracts](../rust/crates/babylon-tick/tests/state_opponent.rs)
 remain distinct from the wider integrated matrix.
+
+The Director initially could not see the delivered preview; those responses
+were visibility failures, not evidence of comprehension or enjoyment. Once the
+frame was visible, the Director understood it as a decision about helping an
+additional family at a workplace and noticed that the review showed resource
+costs and a predicted effect. The Director did not state the exact costs,
+displaced work or uncertainty. The displayed proposal was actually to
+reinforce contact with a captured workplace partner; the household need was a
+contributor concern, not the selected action's purpose. Enjoyment was not
+assessed.
+
+The independently reviewed [context repair](https://github.com/percy-raskova/babylon/commit/3ed6f64e3dfba585aaf09944686524550892f63c)
+identifies the workplace contact and its captured target, labels the contributor
+concern as background, and distinguishes the proposal from household aid. A
+completed, participating contact can support a later report-sharing agreement;
+it does not itself supply a report or guarantee sharing. Accepted copy remains
+consistent and requires an advance for resolution. The Director received an
+explanation of the earlier mismatch, so a subsequent reassessment would not be
+evidence from an unfamiliar player. The reviewed source passed the 581-test
+client library run and the eight existing decision-surface integration cases;
+these are scoped precommit checks bound to the reviewed source, not a completed
+full-gate run or human acceptance.
+
+The earlier full gate at `d132b71a` was interrupted after 2,467 passes and two
+integration failures caused by a missing required focus policy; one in-flight
+test received SIGINT and 1,129 tests did not run. The separate
+[DossierCardPlugin repair](https://github.com/percy-raskova/babylon/commit/06bf61e56962a8b6e0de7ee7ae99fdac27c66048)
+initializes that policy idempotently, preserving an existing policy. All eight
+integration cases passed after the repair. The interrupted gate does not
+establish a pass; exact-head publishing qualification is recorded with the PR.
+
+A bounded P7 native capture at [`3ed6f64e`](https://github.com/percy-raskova/babylon/commit/3ed6f64e3dfba585aaf09944686524550892f63c)
+completed without a Confirm or Advance. Independent pixel review found the
+purpose, target, two of two hours and one replacement of neighborhood work
+visible at both sizes. At 1920x1080, it also found the conditional future
+agreement and absence of an immediate report visible. Further text needs
+scrolling at both sizes; in the [1366x768 review](gameplay-delivery-audit-2026-10-29-assets/wayne-review-context-1366.png)
+the conditional result is below the viewport. The retained 1920 original has
+SHA-256 `0163fa9ad8f499cbae496d39766e419826a012bb15a45c9b3013943e6d9b3fb1`.
+The Director's response to the new image remains pending. The run's before and
+after markers were byte-identical, and the original 164-byte personal draft was
+restored with its mode and hash verified. This capture does not establish
+complete choice comparison, physical input or a fresh visible PD signal.
 
 The retained P7 capture at source
 [`956119a8`](https://github.com/percy-raskova/babylon/commit/956119a8ee011bb1bf34e8562e6ad9028adb7ba0)
@@ -68,9 +111,9 @@ changes only the focus router and its tests. It lets paging continue to an
 outer panel when the inner panel cannot move and permits paging from focused
 choice buttons. Actual keyboard-consumer regressions cover those paths;
 injected geometry also checks that Tab starts nested focus reveal without
-activation. The organizer layout file is unchanged, so the static captures
-above remain rendering evidence, not native verification of the new key path.
-Wheel code is unchanged and physical keyboard/wheel acceptance remains open.
+activation. Those static captures precede both the key repair and the later
+context wording; they do not verify either change in the native client. Wheel
+code is unchanged and physical keyboard/wheel acceptance remains open.
 
 ## Scope and status
 

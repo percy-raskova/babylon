@@ -348,10 +348,10 @@ fn scene_availability(scope: &Scope, scene: Option<&OrganizerScene>) -> SceneAva
         )
     } else if scene_refresh_pending(scope) {
         SceneAvailability::Loading
+    } else if let Some(message) = scope.client.status_refusal(&scope.session) {
+        SceneAvailability::Refused(message.into())
     } else if scope.session.viewed_tick != scope.session.durable_tick {
         SceneAvailability::HistoricalUnavailable
-    } else if !scope.client.message.is_empty() {
-        SceneAvailability::Refused(scope.client.message.clone())
     } else {
         SceneAvailability::Unavailable
     }
@@ -487,6 +487,8 @@ fn retained_scene_detail(scope: &Scope, scene: &OrganizerScene) -> String {
         format!("Organizer scene error: {error}\n{detail}")
     } else if scene_refresh_pending(scope) {
         format!("Refreshing organizer scene · showing the last committed view.\n{detail}")
+    } else if let Some(message) = scope.client.status_refusal(&scope.session) {
+        format!("Organizer scene refresh refused: {message}\n{detail}")
     } else {
         detail
     }
@@ -2638,6 +2640,72 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn historical_status_refusal_is_scoped_and_cleared_on_recovery() {
+        let (mut client, mut session, request, snapshot) = super::super::tests::status_fixture();
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+            panic!("status fixture")
+        };
+        client
+            .status(request_id, snapshot.clone(), &mut session)
+            .expect("live status");
+        let (mut app, _, _) = organizer_navigation();
+        app.insert_resource(client).insert_resource(session);
+        inspect_period(&mut app, 2);
+        app.world_mut().resource_mut::<OrganizerClient>().message = "Draft saved".into();
+        app.update();
+        assert!(scene_text(&mut app).contains("Historical organizer scene is unavailable"));
+        assert!(!scene_text(&mut app).contains("Draft saved"));
+        let queue_status = |app: &mut App| {
+            app.world_mut()
+                .resource_scope(|world, mut client: Mut<OrganizerClient>| {
+                    let mut session = world.resource_mut::<ObserverSession>();
+                    client.queue(&mut session, RequestKind::Status, None);
+                    client.pending.as_ref().expect("status pending").id
+                })
+        };
+        let pending = queue_status(&mut app);
+        app.update();
+        assert!(scene_text(&mut app).contains("Loading organizer scene"));
+        app.world_mut()
+            .resource_scope(|world, mut client: Mut<OrganizerClient>| {
+                let mut session = world.resource_mut::<ObserverSession>();
+                assert!(client.refused(
+                    Some(pending),
+                    "Historical status refused".into(),
+                    &mut session
+                ));
+            });
+        app.update();
+        assert!(scene_text(&mut app).contains("Historical status refused"));
+        assert!(!scene_text(&mut app).contains("Historical organizer scene is unavailable"));
+        assert!(!app.world().resource::<OrganizerClient>().status_due);
+        assert!(app.world().resource::<OrganizerClient>().pending.is_none());
+        inspect_period(&mut app, 1);
+        app.update();
+        assert!(scene_text(&mut app).contains("Historical organizer scene is unavailable"));
+        assert!(!scene_text(&mut app).contains("Historical status refused"));
+        inspect_period(&mut app, 2);
+        let pending = queue_status(&mut app);
+        app.update();
+        assert!(scene_text(&mut app).contains("Loading organizer scene"));
+        app.world_mut()
+            .resource_scope(|world, mut client: Mut<OrganizerClient>| {
+                let mut session = world.resource_mut::<ObserverSession>();
+                client
+                    .status(pending, snapshot, &mut session)
+                    .expect("recovered status");
+            });
+        app.update();
+        assert!(scene_text(&mut app).contains("Historical organizer scene is unavailable"));
+        assert!(!scene_text(&mut app).contains("Historical status refused"));
+        inspect_period(&mut app, 3);
+        app.world_mut().resource_mut::<OrganizerClient>().message = "Draft saved".into();
+        app.update();
+        assert!(scene_text(&mut app).contains("Organizer scene is unavailable"));
+        assert!(!scene_text(&mut app).contains("Draft saved"));
+    }
+
+    #[test]
     fn refresh_marks_the_retained_scene_without_replacing_focused_subject() {
         let mut app = partial_scene_fixture();
         let subject = {
@@ -2665,6 +2733,70 @@ pub(crate) mod tests {
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(subject));
         app.world_mut().resource_mut::<OrganizerClient>().status_due = false;
         app.update();
+        assert!(!detail(&mut app).contains("Refreshing organizer scene"));
+        assert!(app.world().get_entity(subject).is_ok());
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(subject));
+    }
+
+    #[test]
+    fn retained_scene_shows_refused_refresh_and_recovers_without_losing_focus() {
+        let mut app = partial_scene_fixture();
+        let (subject, snapshot) = {
+            let world = app.world_mut();
+            let mut buttons = world.query::<(Entity, &ActionButton)>();
+            let subject = buttons
+                .iter(world)
+                .find_map(|(entity, action)| {
+                    matches!(action.0, OrganizerAction::SelectSubject(_)).then_some(entity)
+                })
+                .expect("scene subject");
+            let client = world.resource::<OrganizerClient>();
+            let (_, _, _, mut snapshot) = super::super::tests::status_fixture();
+            snapshot.view = client.view.clone().expect("admitted view");
+            snapshot.body = client.body.clone().expect("admitted body");
+            snapshot.body_scope = client.body_scope.clone().expect("admitted scope");
+            (subject, snapshot)
+        };
+        app.world_mut()
+            .resource_mut::<InputFocus>()
+            .set(subject, FocusCause::Navigated);
+        let queue_status = |app: &mut App| {
+            app.world_mut()
+                .resource_scope(|world, mut client: Mut<OrganizerClient>| {
+                    let mut session = world.resource_mut::<ObserverSession>();
+                    client.queue(&mut session, RequestKind::Status, None);
+                    client.pending.as_ref().expect("status pending").id
+                })
+        };
+        let detail = |app: &mut App| {
+            let world = app.world_mut();
+            let mut details = world.query_filtered::<&Text, With<SceneDetail>>();
+            details.single(world).expect("scene detail").0.clone()
+        };
+        let pending = queue_status(&mut app);
+        app.update();
+        assert!(detail(&mut app).contains("Refreshing organizer scene"));
+        app.world_mut()
+            .resource_scope(|world, mut client: Mut<OrganizerClient>| {
+                let mut session = world.resource_mut::<ObserverSession>();
+                assert!(client.refused(Some(pending), "Refresh refused".into(), &mut session));
+            });
+        app.update();
+        assert!(detail(&mut app).contains("Refresh refused"));
+        assert!(app.world().get_entity(subject).is_ok());
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(subject));
+        let pending = queue_status(&mut app);
+        app.update();
+        assert!(detail(&mut app).contains("Refreshing organizer scene"));
+        app.world_mut()
+            .resource_scope(|world, mut client: Mut<OrganizerClient>| {
+                let mut session = world.resource_mut::<ObserverSession>();
+                client
+                    .status(pending, snapshot, &mut session)
+                    .expect("recovered status");
+            });
+        app.update();
+        assert!(!detail(&mut app).contains("Refresh refused"));
         assert!(!detail(&mut app).contains("Refreshing organizer scene"));
         assert!(app.world().get_entity(subject).is_ok());
         assert_eq!(app.world().resource::<InputFocus>().get(), Some(subject));
@@ -4282,6 +4414,64 @@ pub(crate) mod tests {
             .world()
             .resource::<ObserverSession>()
             .runtime_disconnected());
+    }
+
+    #[test]
+    fn stale_status_refusal_requeues_the_returned_live_context() {
+        use babylon_persistence::runtime_session::RuntimeSessionErrorCode;
+        let (client, session, request, snapshot) = super::super::tests::status_fixture();
+        let RuntimeSessionRequest::OrganizerStatus {
+            scope, request_id, ..
+        } = request
+        else {
+            panic!("status request")
+        };
+        let (mut app, _, _) = organizer_navigation();
+        app.insert_resource(client).insert_resource(session);
+        let (requests, replies) = crate::observer_io::tests::install_status_pipe(&mut app);
+        app.add_systems(
+            Update,
+            super::super::transport
+                .after(ObserverSet::Receive)
+                .before(ObserverSet::Paint),
+        );
+        inspect_period(&mut app, 2);
+        inspect_period(&mut app, 3);
+        replies
+            .send(Ok(RuntimeSessionResponse::Error {
+                scope: scope.clone(),
+                request_id: Some(request_id),
+                code: RuntimeSessionErrorCode::StorageRefused,
+                tail: None,
+            }))
+            .expect("refusal delivered");
+        app.update();
+        let RuntimeSessionRequest::OrganizerStatus {
+            request_id: retry_id,
+            scope: retry_scope,
+            ..
+        } = requests.try_recv().expect("fresh status requested")
+        else {
+            panic!("replacement status")
+        };
+        assert_ne!(retry_id, request_id);
+        assert_eq!(retry_scope, scope);
+        assert!(scene_text(&mut app).contains("Loading organizer scene"));
+        assert!(!scene_text(&mut app).contains("StorageRefused"));
+        replies
+            .send(Ok(RuntimeSessionResponse::OrganizerStatus {
+                scope: retry_scope,
+                request_id: retry_id,
+                snapshot: Box::new(snapshot),
+            }))
+            .expect("replacement delivered");
+        app.update();
+        let client = app.world().resource::<OrganizerClient>();
+        let session = app.world().resource::<ObserverSession>();
+        assert!(!client.status_due);
+        assert!(client.pending.is_none());
+        assert!(client.scene_for(session).is_some());
+        assert!(!session.runtime_disconnected());
     }
 
     #[test]

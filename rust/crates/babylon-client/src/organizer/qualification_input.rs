@@ -661,6 +661,7 @@ impl Situation<'_> {
             "history_open": self.ui.history_open,
             "comparison_open": self.ui.comparison_open,
             "organizer_view": self.client.view,
+            "organizer_status_refusal": self.client.status_refusal(&self.session),
             "city_pd_encounters": self.client.city_pd_encounters,
             "scene_mode": format!("{:?}", self.client.scene_mode),
             "selected_subject": format!("{:?}", self.client.selected_subject),
@@ -1488,6 +1489,19 @@ mod tests {
                     .resource_mut::<ObserverUiState>()
                     .archive_open = true;
             }
+            if scenario == "status_refusal_changed" {
+                app.world_mut()
+                    .resource_scope(|world, mut client: Mut<OrganizerClient>| {
+                        let mut session = world.resource_mut::<ObserverSession>();
+                        client.queue(&mut session, RequestKind::Status, None);
+                        let request_id = client.pending.as_ref().expect("status pending").id;
+                        assert!(client.refused(
+                            Some(request_id),
+                            "Status refused".into(),
+                            &mut session
+                        ));
+                    });
+            }
             if scenario == "selection_changed" {
                 app.world_mut()
                     .resource_mut::<OrganizerClient>()
@@ -1528,6 +1542,7 @@ mod tests {
             "playback_changed",
             "presentation_changed",
             "selection_changed",
+            "status_refusal_changed",
         ] {
             let fixture = SocketFixture(
                 std::env::temp_dir().join(format!("babylon-frame-{}", Uuid::new_v4())),

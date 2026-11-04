@@ -68,6 +68,22 @@ struct StatusContext {
     foundation_digest: Option<String>,
 }
 
+impl StatusContext {
+    fn matches_session(&self, session: &ObserverSession) -> bool {
+        self.observation == session.context()
+            && self.durable_tick == session.durable_tick
+            && session.runtime_scope() == Some(&self.scope)
+            && self.content_hash == session.content_hash
+            && self.world_hash == session.world_hash
+            && self.foundation_digest == session.foundation_digest
+    }
+}
+
+pub(super) struct StatusRefusal {
+    context: StatusContext,
+    message: String,
+}
+
 // The local runtime authenticates the register. This checks only the received
 // disclosure's internal joins and bounds against the requested view.
 fn encounters_match(snapshot: &OrganizerSnapshot, campaign: [u8; 16]) -> bool {
@@ -197,6 +213,7 @@ pub(crate) struct OrganizerClient {
     pub(super) pending: Option<PendingRequest>,
     pub(super) outbox: Option<RuntimeSessionRequest>,
     pub(super) status_due: bool,
+    pub(super) status_refusal: Option<StatusRefusal>,
     pub(super) draft_dirty: bool,
     pub(super) draft_changed_at: f64,
     pub(super) draft_writable: bool,
@@ -231,6 +248,14 @@ impl OrganizerClient {
             return None;
         }
         Some((self.body.as_ref()?, self.body_scope.as_ref()?))
+    }
+
+    pub(super) fn status_refusal(&self, session: &ObserverSession) -> Option<&str> {
+        let refusal = self.status_refusal.as_ref()?;
+        refusal
+            .context
+            .matches_session(session)
+            .then_some(refusal.message.as_str())
     }
 
     pub(crate) fn reset(&mut self) {
@@ -410,6 +435,9 @@ impl OrganizerClient {
         let Some(request_id) = session.next_control_request() else {
             return;
         };
+        if kind == RequestKind::Status {
+            self.status_refusal = None;
+        }
         let status_context = (kind == RequestKind::Status).then(|| StatusContext {
             observation: session.context(),
             durable_tick: session.durable_tick,
@@ -662,11 +690,26 @@ impl OrganizerClient {
         {
             return false;
         }
-        self.pending = None;
-        self.status_due = false;
+        let status_context = self
+            .pending
+            .take()
+            .and_then(|pending| pending.status_context);
+        self.status_due = status_context
+            .as_ref()
+            .is_some_and(|context| !context.matches_session(session));
+        if self.status_due {
+            self.status_refusal = None;
+        } else {
+            if let Some(context) = status_context {
+                self.status_refusal = Some(StatusRefusal {
+                    context,
+                    message: message.clone(),
+                });
+            }
+            self.message = message;
+        }
         self.outbox = None;
         self.clear_review();
-        self.message = message;
         session.set_organizer_control_pending(false);
         true
     }

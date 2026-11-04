@@ -78,7 +78,6 @@ pub(crate) struct OrganizerScene {
     pub nodes: Vec<SceneNode>,
     pub relations: Vec<SceneRelation>,
     pub body_shape: Option<BodyShape>,
-    pub body_key: Option<(String, String)>,
     pub body_members: Vec<OrganizerSubject>,
     pub body_status: String,
 }
@@ -114,15 +113,6 @@ fn subjects(view: &OrganizerView) -> Vec<SceneNode> {
         label: position.label.clone(),
     }));
     nodes
-}
-
-fn body_key(body: &OrganizerBodyDisclosure) -> Option<(String, String)> {
-    match body {
-        OrganizerBodyDisclosure::Partial(part) => {
-            Some((part.scenario.clone(), part.local_name.clone()))
-        }
-        OrganizerBodyDisclosure::Unavailable | OrganizerBodyDisclosure::KnownAbsent => None,
-    }
 }
 
 impl OrganizerScene {
@@ -223,7 +213,6 @@ impl OrganizerScene {
             nodes,
             relations,
             body_shape,
-            body_key: body_key(body),
             body_members,
             body_status,
         }

@@ -971,7 +971,7 @@ fn inspector_scroll_resets_for_subject_or_capability_but_survives_tick_refresh()
 }
 
 #[test]
-fn deferred_organizer_evidence_updates_clear_before_render() {
+fn deferred_organizer_evidence_preserves_world_before_render() {
     use crate::observer_ui::{self, ObserverUiCamera};
     use bevy::input_focus::InputFocus;
     let (client, session) = crate::organizer::tests::ready();
@@ -1001,7 +1001,7 @@ fn deferred_organizer_evidence_updates_clear_before_render() {
         .world_mut()
         .spawn((
             Camera {
-                clear_color: ClearColorConfig::None,
+                clear_color: ClearColorConfig::Default,
                 ..default()
             },
             ObserverUiCamera,
@@ -1024,7 +1024,7 @@ fn deferred_organizer_evidence_updates_clear_before_render() {
             .get::<Camera>(camera)
             .expect("UI camera")
             .clear_color,
-        ClearColorConfig::Default
+        ClearColorConfig::None
     ));
 }
 

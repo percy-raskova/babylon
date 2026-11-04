@@ -2047,7 +2047,7 @@ fn paint_circuit_navigation(
     }
 }
 
-/// Clear the target only when no world camera is active beneath the UI.
+/// Preserve the world beneath the UI camera across views.
 pub(crate) fn clear_ui_camera(
     view: Res<PrimaryView>,
     mut cameras: Query<&mut Camera, With<ObserverUiCamera>>,
@@ -2870,7 +2870,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn ui_camera_clears_organizer_and_preserves_world_overlays() {
+    fn ui_camera_preserves_world_under_organizer_and_overlays() {
         let mut app = App::new();
         app.insert_resource(PrimaryView::Organizer)
             .add_systems(Update, clear_ui_camera);
@@ -2878,7 +2878,7 @@ pub(crate) mod tests {
             .world_mut()
             .spawn((
                 Camera {
-                    clear_color: ClearColorConfig::None,
+                    clear_color: ClearColorConfig::Default,
                     ..default()
                 },
                 ObserverUiCamera,
@@ -2890,7 +2890,7 @@ pub(crate) mod tests {
                 .get::<Camera>(camera)
                 .expect("camera")
                 .clear_color,
-            ClearColorConfig::Default
+            ClearColorConfig::None
         ));
         for view in [PrimaryView::Map, PrimaryView::Production] {
             *app.world_mut().resource_mut::<PrimaryView>() = view;
@@ -2910,7 +2910,7 @@ pub(crate) mod tests {
                 .get::<Camera>(camera)
                 .expect("camera")
                 .clear_color,
-            ClearColorConfig::Default
+            ClearColorConfig::None
         ));
     }
 

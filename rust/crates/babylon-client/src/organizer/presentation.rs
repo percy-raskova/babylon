@@ -3,8 +3,8 @@
 use babylon_persistence::runtime_session::{
     OrganizerChoice, OrganizerCollectionOutcome, OrganizerCollectionResolution,
     OrganizerCommitment, OrganizerGiftConsent, OrganizerInquiry, OrganizerObservation,
-    OrganizerOutcome, OrganizerPartnerResponse, OrganizerPauseReason, OrganizerRefusal,
-    OrganizerReport, OrganizerView,
+    OrganizerOutcome, OrganizerPartnerResponse, OrganizerPauseReason, OrganizerPreview,
+    OrganizerRefusal, OrganizerReport, OrganizerView,
 };
 use std::fmt::Write as _;
 
@@ -535,21 +535,11 @@ pub(super) fn encounter_history(
         .iter()
         .filter(|row| row.resolve_period <= period)
     {
-        let receipt = row
-            .receipt_id
-            .iter()
-            .fold(String::new(), |mut value, byte| {
-                let _ = write!(value, "{byte:02x}");
-                value
-            });
-        let source = row
-            .venue_source_id
-            .iter()
-            .fold(String::new(), |mut value, byte| {
-                let _ = write!(value, "{byte:02x}");
-                value
-            });
-        let _ = write!(text, "\n\nPUBLIC VISITOR LOG · PERIOD {}\nCity PD (actor {}) visited {}. This log records a visit; it does not establish who was present.\nSource {source}\nReceipt {receipt}\nOpen Cited workplace Archive for the cited record.", row.resolve_period, row.visitor_actor_id, view.workplace_label);
+        let _ = write!(
+            text,
+            "\n\nCITY PD VISIT · PERIOD {}\nA public venue check-in records City PD visiting {}. It does not establish whether our organizers were present or what City PD learned. Other activity remains unknown.\nOpen Cited workplace Archive for the source.",
+            row.resolve_period, view.workplace_label
+        );
     }
     text
 }
@@ -671,13 +661,11 @@ pub(super) fn review(
             choice(client.choice())
         );
     };
-    let mut text = format!(
-        "REVIEW · {} · Resolves period {} · {} of {} organizer-hours",
-        choice(preview.choice),
-        preview.resolves_period,
-        preview.required_hours,
-        preview.available_hours,
-    );
+    preview_review(client, preview)
+}
+
+fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> String {
+    let mut text = format!("REVIEW · {}", choice(preview.choice));
     if let (OrganizerChoice::Inquiry(_) | OrganizerChoice::Reinforce, Some(view)) =
         (preview.choice, &client.view)
     {
@@ -687,6 +675,11 @@ pub(super) fn review(
             view.workplace_label, view.workplace_partner_label
         );
     }
+    let _ = write!(
+        text,
+        "\nCost: {} of {} organizer-hours",
+        preview.required_hours, preview.available_hours
+    );
     let _ = write!(
         text,
         "\n{}",
@@ -703,7 +696,7 @@ pub(super) fn review(
                 if preview.replaces_standing_work =>
                 "Replaces neighborhood work once; later work remains subject to eligibility.",
             OrganizerChoice::Inquiry(_) | OrganizerChoice::Reinforce =>
-                "One specific practice; the neighborhood routine remains paused.",
+                "The neighborhood routine remains paused.",
         }
     );
     if preview.choice == OrganizerChoice::Reinforce
@@ -712,27 +705,47 @@ pub(super) fn review(
             .as_ref()
             .is_some_and(|view| view.public_workplace_contact)
     {
-        text.push_str("\nThe public workplace desk records a completed contact. Confirming alone does not create a record.");
+        text.push_str("\nA completed contact is recorded at the public workplace desk; Confirm alone creates no record.");
     }
     if matches!(
         preview.choice,
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
     ) {
-        text.push_str("\nMaterial terms are shown in the aid card above. This review reserves nothing; the host checks dispatch and independent practice separately.");
+        text.push_str("\nAid terms are in the card above. Review reserves nothing; dispatch and independent practice are checked separately.");
     }
     if let Some(reason) = preview.refusal {
         let _ = write!(text, "\nUNAVAILABLE · {}", refusal(reason));
-    } else if matches!(preview.choice, OrganizerChoice::Inquiry(_)) {
-        if preview.current_period == 0 {
-            let _ = write!(text, "\nNo completed-period report exists. An admitted inquiry still spends {} organizer-hours.", preview.required_hours);
-        } else {
-            let _ = write!(text, "\nReport requested: period {}. Partner participation is independent; no report is guaranteed.", preview.current_period);
+    } else {
+        if matches!(preview.choice, OrganizerChoice::Inquiry(_)) {
+            if preview.current_period == 0 {
+                let _ = write!(text, "\nNo completed-period report exists. An admitted inquiry still spends {} organizer-hours.", preview.required_hours);
+            } else {
+                let _ = write!(
+                    text,
+                    "\nReport requested: period {}. No report is guaranteed.",
+                    preview.current_period
+                );
+            }
         }
-    } else if preview.choice == OrganizerChoice::Collect {
-        text.push_str("\nThis review reserves nothing. Confirm records the original ruling; Advance reports its actual collection or refusal.");
-    } else if preview.choice != OrganizerChoice::PauseStanding {
-        text.push_str(
-            "\nPartner participation is independent. Confirm sets our ruling; Advance resolves it.",
+        if preview.choice == OrganizerChoice::Collect {
+            text.push_str(
+                "\nReview reserves nothing; the actual collection or refusal follows Advance.",
+            );
+        } else if preview.choice != OrganizerChoice::PauseStanding {
+            text.push_str("\nPartner participation is independent.");
+        }
+    }
+    if preview.refusal.is_some() {
+        let _ = write!(
+            text,
+            "\nProposed resolution: period {}. This choice cannot be confirmed as shown.",
+            preview.resolves_period
+        );
+    } else {
+        let _ = write!(
+            text,
+            "\nResolves period {} · Confirm sets the ruling; Advance shows the actual result.",
+            preview.resolves_period
         );
     }
     text
@@ -754,6 +767,16 @@ fn accepted_review(client: &OrganizerClient, commitment: &OrganizerCommitment) -
         choice(commitment.command.choice)
     );
     if let Some(view) = &client.view {
+        if matches!(
+            commitment.command.choice,
+            OrganizerChoice::Inquiry(_) | OrganizerChoice::Reinforce
+        ) {
+            let _ = write!(
+                text,
+                "\nTarget: {} · Partner: {}",
+                view.workplace_label, view.workplace_partner_label
+            );
+        }
         let hours = practice_hours(view, commitment.command.choice);
         let _ = write!(
             text,
@@ -1875,7 +1898,6 @@ mod tests {
             review.contains("Replaces neighborhood work once"),
             "{review}"
         );
-        assert!(review.lines().count() <= 4, "{review}");
         let card = approach(
             client
                 .view
@@ -2118,7 +2140,8 @@ mod tests {
             };
             let text = review(&client, false, false, false);
             assert!(text.contains(explanation), "{text}");
-            assert!(text.contains(&format!("Resolves period 6 · {hours} of 16")));
+            assert!(text.contains(&format!("Cost: {hours} of 16 organizer-hours")));
+            assert!(text.contains("Resolves period 6"));
             assert!(!text.contains("preserves the explicit standing-work authorization"));
         }
     }

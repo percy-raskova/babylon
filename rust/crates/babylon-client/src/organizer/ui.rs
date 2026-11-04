@@ -503,17 +503,31 @@ fn scene_detail(scene: Option<&OrganizerScene>, selected: Option<OrganizerSubjec
     else {
         return "Select a subject to inspect its disclosed relations".into();
     };
-    let relationships = scene
-        .relations
-        .iter()
-        .filter(|relation| relation.from == node.subject || relation.to == node.subject)
-        .map(|relation| relation.label.as_str())
-        .collect::<Vec<_>>()
-        .join(" · ");
+    let relationships = [
+        RelationKind::Agreement,
+        RelationKind::RoutineContact,
+        RelationKind::EarnedContact,
+        RelationKind::BodyIncidence,
+    ]
+    .into_iter()
+    .filter_map(|kind| {
+        let labels = scene
+            .relations
+            .iter()
+            .filter(|relation| {
+                (relation.from == node.subject || relation.to == node.subject)
+                    && relation.kind == kind
+            })
+            .map(|relation| relation.label.as_str())
+            .collect::<Vec<_>>();
+        (!labels.is_empty()).then(|| relation_summary(kind, &labels))
+    })
+    .collect::<Vec<_>>()
+    .join(" · ");
     if relationships.is_empty() {
         format!("SELECTED · {}\nSelection inspects this subject; the ruling keeps its captured workplace and committee.", node.caption())
     } else {
-        format!("SELECTED · {}\n{}\nSelection inspects this subject; the ruling keeps its captured workplace and committee.", node.caption(), relationships)
+        format!("SELECTED · {}\n{}\nSee practice history for receipt details. The ruling keeps its captured workplace and committee.", node.caption(), relationships)
     }
 }
 
@@ -567,13 +581,6 @@ fn spawn_relationships(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene
         ))
         .with_children(|stage| {
             stage.spawn(text(&scene.body_status, 14.0, theme::YELLOW));
-            if let Some((scenario, local_name)) = &scene.body_key {
-                stage.spawn(text(
-                    format!("Body key · {scenario} / {local_name}"),
-                    12.0,
-                    theme::GRAY,
-                ));
-            }
             let region = stage
                 .spawn((
                     Node {
@@ -636,6 +643,18 @@ fn relation_color(kind: RelationKind) -> Color {
     }
 }
 
+fn relation_summary(kind: RelationKind, labels: &[&str]) -> String {
+    if kind == RelationKind::EarnedContact {
+        let count = labels.len();
+        format!(
+            "{count} earned contact{} in recent receipts",
+            if count == 1 { "" } else { "s" }
+        )
+    } else {
+        labels.join(" · ")
+    }
+}
+
 fn relation_labels(
     parent: &mut ChildSpawnerCommands,
     scene: &OrganizerScene,
@@ -684,7 +703,7 @@ fn relation_labels(
                             ..default()
                         });
                         line.spawn((
-                            text(labels.join("\n"), 12.0, theme::PAPER),
+                            text(relation_summary(kind, &labels), 12.0, theme::PAPER),
                             Pickable::IGNORE,
                         ))
                         .insert(Node {
@@ -835,6 +854,7 @@ fn spawn_workspace(commands: &mut Commands) {
         ))
         .with_children(|root| {
             spawn_identity(root);
+            spawn_decision_footer(root);
             root.spawn(Node {
                 flex_grow: 1.0,
                 min_height: px(0),
@@ -847,7 +867,6 @@ fn spawn_workspace(commands: &mut Commands) {
                 spawn_briefing(body);
                 spawn_approaches(body);
             });
-            spawn_decision_footer(root);
         });
 }
 
@@ -1939,8 +1958,20 @@ fn paint_layout(scope: &Scope, primary: bool, paint: &mut Paint) {
 fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
     let historical = scope.session.viewed_tick != scope.session.durable_tick;
     let complete = scope.session.phase == SessionPhase::Complete;
-    let (inspector_title, inspector_body) =
+    let (inspector_title, mut inspector_body) =
         presentation::inspector(&scope.client, scope.session.viewed_tick);
+    if scope.client.inspector == OrganizerInspector::Relationships {
+        if let Some((
+            babylon_persistence::runtime_session::OrganizerBodyDisclosure::Partial(part),
+            body_scope,
+        )) = scope.client.body_for(&scope.session)
+        {
+            if body_scope.period == scope.session.viewed_tick {
+                use std::fmt::Write as _;
+                let _ = write!(inspector_body, "\nDISCLOSED PART OF CONTROLLED BODY\nBody ID: {} · key: {} / {}\nOnly disclosed collective and contributor incidence is shown; other incidence is unknown.", part.runtime_hyperedge_id, part.scenario, part.local_name);
+            }
+        }
+    }
     let note_focused = focus
         .get()
         .is_some_and(|entity| paint.notes.contains(entity));
@@ -2264,8 +2295,21 @@ pub(crate) mod tests {
             review_selected(&mut app);
             app.update();
             let review = painted_text(&mut app, false);
+            let target = review
+                .find("Target: Fixture workplace · Partner: Fixture workplace contacts")
+                .expect("captured target visible");
+            let cost = review.find("Cost:").expect("finite cost visible");
+            let displaced = review
+                .find("Replaces neighborhood work once")
+                .expect("displaced work visible");
+            let partner = review
+                .find("Partner participation is independent")
+                .expect("independent response visible");
+            let resolves = review
+                .find("Resolves period 4")
+                .expect("resolution period visible");
             assert!(
-                review.contains("Target: Fixture workplace · Partner: Fixture workplace contacts"),
+                target < cost && cost < displaced && displaced < partner && partner < resolves,
                 "{review}"
             );
             assert_eq!(
@@ -2273,6 +2317,32 @@ pub(crate) mod tests {
                 Some(neighborhood)
             );
         }
+    }
+
+    #[test]
+    fn accepted_workplace_ruling_keeps_its_target_after_selection_changes() {
+        let (mut app, _) = admitted_scene_fixture();
+        press_named(&mut app, "Reinforce workplace contact");
+        review_selected(&mut app);
+        {
+            let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+            client.commitment = Some(super::super::OrganizerCommitment {
+                command: client.reviewed_command.clone().expect("reviewed command"),
+                resolves_period: 4,
+                commitment_id: [4; 32],
+            });
+        }
+        app.world_mut()
+            .write_message(OrganizerAction::SelectSubject(
+                OrganizerSubject::NeighborhoodGroup(93),
+            ));
+        app.update();
+        let accepted = painted_text(&mut app, false);
+        assert!(
+            accepted.contains("Target: Fixture workplace · Partner: Fixture workplace contacts"),
+            "{accepted}"
+        );
+        assert!(accepted.contains("Advance to resolve"), "{accepted}");
     }
 
     #[test]
@@ -2773,7 +2843,74 @@ pub(crate) mod tests {
             .expect("partial session");
         app.insert_resource(client).insert_resource(session);
         app.update();
-        assert!(scene_text(&mut app).contains("Partial controlled body"));
+        let visible = scene_text(&mut app);
+        assert!(visible.contains("Partial controlled body"));
+        assert!(!visible.contains("Body key"), "{visible}");
+        assert!(
+            !visible.contains("organizer-participant-body-90"),
+            "{visible}"
+        );
+        app.world_mut()
+            .write_message(OrganizerAction::Inspect(OrganizerInspector::Relationships));
+        app.update();
+        let details = painted_text(&mut app, true);
+        assert!(
+            details.contains("organizer-participant-body-90"),
+            "{details}"
+        );
+    }
+
+    #[test]
+    fn relationship_map_summarizes_recent_contacts_without_losing_receipts() {
+        use babylon_persistence::runtime_session::{
+            OrganizerOutcome, OrganizerPartnerResponse, OrganizerReceipt,
+        };
+        let mut app = partial_scene_fixture();
+        {
+            let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+            let view = client.view.as_mut().expect("view");
+            view.period = 3;
+            for period in 1..=3 {
+                view.receipts.push(OrganizerReceipt {
+                    receipt_id: [u8::try_from(period).expect("fixture period fits"); 32],
+                    commitment_id: Some([4; 32]),
+                    actor_id: 90,
+                    period,
+                    choice: OrganizerChoice::Reinforce,
+                    standing_work: false,
+                    outcome: OrganizerOutcome::ContactCompleted,
+                    hours_spent: 2,
+                    partner_actor_id: Some(92),
+                    partner_response: OrganizerPartnerResponse::Participated,
+                    observation_ids: vec![],
+                    contact_product_id: Some([5; 32]),
+                    time_use: vec![],
+                });
+            }
+            view.total_receipt_count = 3;
+        }
+        {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.durable_tick = 3;
+            session.viewed_tick = 3;
+        }
+        app.world_mut().write_message(OrganizerAction::SetSceneMode(
+            OrganizerSceneMode::Relationships,
+        ));
+        app.update();
+        let visible = scene_text(&mut app);
+        assert!(
+            visible.contains("3 earned contacts in recent receipts"),
+            "{visible}"
+        );
+        assert!(!visible.contains("Earned contact · period 1"), "{visible}");
+        app.world_mut()
+            .write_message(OrganizerAction::Inspect(OrganizerInspector::Receipts));
+        app.update();
+        let history = painted_text(&mut app, true);
+        for period in 1..=3 {
+            assert!(history.contains(&format!("PERIOD {period}")), "{history}");
+        }
     }
 
     #[test]
@@ -4438,7 +4575,7 @@ pub(crate) mod tests {
                 })
                 .expect("aftermath exists")
         };
-        assert!(!aftermath(&mut app).contains("PUBLIC VISITOR LOG"));
+        assert!(!aftermath(&mut app).contains("CITY PD VISIT"));
         {
             let mut session = app.world_mut().resource_mut::<ObserverSession>();
             session.return_live();
@@ -4447,12 +4584,25 @@ pub(crate) mod tests {
         }
         app.update();
         let text = aftermath(&mut app);
-        assert!(text.contains("City PD (actor 94) visited Fixture workplace"));
-        assert!(text.contains("does not establish who was present"));
-        assert!(text.contains(&"05".repeat(32)));
-        assert!(text.contains(&"04".repeat(32)));
+        assert!(text.contains("CITY PD VISIT · PERIOD 2"), "{text}");
+        assert!(
+            text.contains("public venue check-in records City PD visiting Fixture workplace"),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "does not establish whether our organizers were present or what City PD learned"
+            ),
+            "{text}"
+        );
+        assert!(text.contains("Other activity remains unknown"), "{text}");
+        assert!(!text.contains("actor 94"), "{text}");
+        assert!(!text.contains(&"05".repeat(32)), "{text}");
+        assert!(!text.contains(&"04".repeat(32)), "{text}");
         press_named(&mut app, "Practice history");
-        assert!(painted_text(&mut app, true).contains("PUBLIC VISITOR LOG"));
+        let history = painted_text(&mut app, true);
+        assert!(history.contains("CITY PD VISIT · PERIOD 2"), "{history}");
+        assert!(history.contains("Cited workplace Archive"), "{history}");
         press_named(&mut app, "Cited workplace Archive");
         assert_eq!(app.world().resource::<ArchiveRequests>().0, [false]);
         return_to_organizer(&mut app, focus, &draft);

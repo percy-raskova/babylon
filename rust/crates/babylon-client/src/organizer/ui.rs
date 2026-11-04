@@ -855,18 +855,27 @@ fn spawn_workspace(commands: &mut Commands) {
         .with_children(|root| {
             spawn_identity(root);
             spawn_decision_footer(root);
-            root.spawn(Node {
-                flex_grow: 1.0,
-                min_height: px(0),
-                column_gap: px(18),
-                flex_direction: FlexDirection::Column,
-                overflow: Overflow::scroll_y(),
-                ..default()
-            })
-            .with_children(|body| {
-                spawn_briefing(body);
-                spawn_approaches(body);
-            });
+            let reading = root
+                .spawn(Node {
+                    flex_grow: 1.0,
+                    min_height: px(0),
+                    column_gap: px(18),
+                    flex_direction: FlexDirection::Column,
+                    overflow: Overflow::scroll_y(),
+                    ..default()
+                })
+                .with_children(|body| {
+                    spawn_briefing(body);
+                    spawn_approaches(body);
+                })
+                .id();
+            root.spawn((text("", 12.0, theme::GRAY), ScrollHint(reading)))
+                .insert(Node {
+                    height: px(16),
+                    min_height: px(16),
+                    flex_shrink: 0.0,
+                    ..default()
+                });
         });
 }
 
@@ -906,7 +915,7 @@ fn spawn_briefing(body: &mut ChildSpawnerCommands) {
         Node {
             flex_grow: 1.0,
             flex_basis: px(0),
-            min_height: px(0),
+            min_height: px(112),
             padding: UiRect::all(px(16)),
             row_gap: px(4),
             ..column()
@@ -968,7 +977,7 @@ fn spawn_approaches(body: &mut ChildSpawnerCommands) {
     body.spawn(Node {
         flex_grow: 2.0,
         flex_basis: px(0),
-        min_height: px(0),
+        min_height: px(210),
         row_gap: px(4),
         ..column()
     })
@@ -1086,7 +1095,7 @@ fn spawn_decision_footer(root: &mut ChildSpawnerCommands) {
             flex_direction: FlexDirection::Column,
             row_gap: px(8),
             flex_shrink: 0.0,
-            max_height: percent(65),
+            max_height: percent(45),
             border: UiRect::top(px(2)),
             ..default()
         },
@@ -3332,6 +3341,176 @@ pub(crate) mod tests {
 
     #[derive(Resource, Default)]
     struct ArchiveRequests(Vec<bool>);
+
+    fn reviewed_workspace_layout(viewport: UVec2, scale: f32) -> App {
+        let (mut app, font) = crate::test_support::ui_text_app();
+        {
+            let world = app.world_mut();
+            let mut cameras = world.query::<&mut Camera>();
+            let mut camera = cameras.single_mut(world).expect("UI camera");
+            camera
+                .computed
+                .target_info
+                .as_mut()
+                .expect("target")
+                .physical_size = viewport;
+            camera.viewport.as_mut().expect("viewport").physical_size = viewport;
+        }
+        app.insert_resource(UiScale(scale))
+            .add_systems(Startup, |mut commands: Commands| {
+                spawn_workspace(&mut commands);
+            });
+        app.finish();
+        app.cleanup();
+        app.update();
+        {
+            let world = app.world_mut();
+            let mut roots = world.query_filtered::<&mut Node, With<OrganizerRoot>>();
+            roots.single_mut(world).expect("workspace").display = Display::Flex;
+            let mut fonts = world.query::<&mut TextFont>();
+            for mut value in fonts.iter_mut(world) {
+                value.font = font.clone().into();
+            }
+            let mut texts = world.query::<(&TextPart, &mut Text)>();
+            for (part, mut value) in texts.iter_mut(world) {
+                let label = match part {
+                    TextPart::Title => "Wayne Organizing Collective",
+                    TextPart::Means => "PERIOD 7 · 4 weeks\n2 organizer-hours available",
+                    TextPart::Review => "REVIEW · Reinforce workplace contact\nTarget: Wayne County: extraction (5) · Partner: Wayne Workplace Committee\nCost: 2 of 2 organizer-hours\nReplaces neighborhood work once; later work remains subject to eligibility.\nA completed contact is recorded at the public workplace desk; Confirm alone creates no record.\nPartner participation is independent.\nResolves period 8 · Confirm sets the ruling; Advance shows the actual result.",
+                    TextPart::Context => "Our concern: Preserve household needs while deciding what work to do.\nCurrent neighborhood routine: authorized.\nPartners choose whether to participate.",
+                    TextPart::Situation => "The latest workplace report is available to inspect.",
+                    TextPart::Aftermath => "Period 7: previous work completed.",
+                    TextPart::ChoiceHeading => "CHOOSE OUR WORK FOR THE NEXT PERIOD",
+                    TextPart::Approach(_) => "2 organizer-hours\nTarget: Wayne County: extraction (5)\nPartner decides whether to participate.",
+                    _ => continue,
+                };
+                value.0 = label.into();
+            }
+        }
+        for _ in 0..4 {
+            app.update();
+        }
+        app
+    }
+
+    fn workspace_text_entity(app: &mut App, wanted: fn(&TextPart) -> bool) -> Entity {
+        let world = app.world_mut();
+        world
+            .query::<(Entity, &TextPart)>()
+            .iter(world)
+            .find_map(|(entity, part)| wanted(part).then_some(entity))
+            .expect("workspace text")
+    }
+
+    fn workspace_rect(app: &App, entity: Entity) -> Rect {
+        let world = app.world();
+        Rect::from_center_size(
+            world
+                .get::<UiGlobalTransform>(entity)
+                .expect("transform")
+                .translation,
+            world.get::<ComputedNode>(entity).expect("layout").size(),
+        )
+    }
+
+    #[test]
+    fn reviewed_workspace_keeps_choice_and_situation_readable_at_supported_sizes() {
+        for (viewport, scale) in [(UVec2::new(1366, 768), 1.0), (UVec2::new(1920, 1080), 1.25)] {
+            let mut app = reviewed_workspace_layout(viewport, scale);
+            let heading =
+                workspace_text_entity(&mut app, |part| matches!(part, TextPart::ChoiceHeading));
+            let context = workspace_text_entity(&mut app, |part| matches!(part, TextPart::Context));
+            let world = app.world();
+            let choice_reading = world
+                .get::<ChildOf>(heading)
+                .expect("heading parent")
+                .parent();
+            let situation_reading = world
+                .get::<ChildOf>(context)
+                .expect("context parent")
+                .parent();
+            let choices = world
+                .get::<ChildOf>(choice_reading)
+                .expect("choices parent")
+                .parent();
+            let body = world.get::<ChildOf>(choices).expect("body parent").parent();
+            let heading_height = workspace_rect(&app, heading).height();
+            let situation_height = workspace_rect(&app, situation_reading).height();
+            let choice_height = workspace_rect(&app, choice_reading).height();
+            assert!(heading_height > 0.0);
+            assert!(
+                situation_height >= heading_height * 2.0,
+                "{viewport:?}: situation viewport {situation_height} for line {heading_height}"
+            );
+            assert!(
+                choice_height >= heading_height * 6.0,
+                "{viewport:?}: choice viewport {choice_height} for line {heading_height}"
+            );
+            let body_rect = workspace_rect(&app, body);
+            let visible_situation = workspace_rect(&app, situation_reading).intersect(body_rect);
+            assert!(
+                visible_situation.height() >= heading_height * 2.0,
+                "{viewport:?}: situation is clipped"
+            );
+            let controls = {
+                let world = app.world_mut();
+                world
+                    .query::<(Entity, &ActionButton)>()
+                    .iter(world)
+                    .filter_map(|(entity, button)| {
+                        matches!(
+                            button.0,
+                            OrganizerAction::Review
+                                | OrganizerAction::Confirm
+                                | OrganizerAction::Advance
+                        )
+                        .then_some(entity)
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(controls.len(), 3);
+            let workspace = {
+                let world = app.world_mut();
+                let mut roots = world.query_filtered::<Entity, With<OrganizerRoot>>();
+                roots.single(world).expect("workspace")
+            };
+            let workspace_bounds = workspace_rect(&app, workspace);
+            let fixed = controls
+                .iter()
+                .map(|entity| (*entity, workspace_rect(&app, *entity)))
+                .collect::<Vec<_>>();
+            for (_, rect) in &fixed {
+                assert!(rect.width() > 0.0 && rect.height() > 0.0);
+                assert!(
+                    rect.intersect(workspace_bounds).height() >= rect.height() - 1.0,
+                    "{viewport:?}: a decision control is clipped"
+                );
+            }
+            let outer_max = crate::observer_focus::scroll_max(
+                app.world().get::<ComputedNode>(body).expect("body layout"),
+            )
+            .expect("finite body");
+            app.world_mut()
+                .get_mut::<ScrollPosition>(body)
+                .expect("body scroll")
+                .y = outer_max.y;
+            app.update();
+            let visible =
+                workspace_rect(&app, choice_reading).intersect(workspace_rect(&app, body));
+            assert!(
+                visible.height() >= heading_height * 6.0,
+                "{viewport:?}: only {} of choices can be exposed",
+                visible.height()
+            );
+            for (entity, rect) in fixed {
+                assert_eq!(
+                    workspace_rect(&app, entity),
+                    rect,
+                    "decision controls must remain fixed while choices scroll"
+                );
+            }
+        }
+    }
 
     #[test]
     fn scroll_cues_follow_resolved_geometry_without_layout_change_notifications() {

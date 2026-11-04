@@ -39,7 +39,7 @@ integrated witness; they do not establish a multi-agency playtest or every
 integrated hidden-topology variation. The November 4 acceptance repairs add no
 mechanic or public API.
 
-The matched [PostgreSQL funding control](../rust/crates/babylon-persistence/tests/national_city_pd_live.rs)
+The matched [PostgreSQL funding control](../rust/crates/babylon-persistence/tests/observer_material_live/organizer.rs)
 produced one disclosed encounter with PD enabled and none without it. Other
 Wayne claims were fully funded in both arms; the control does not demonstrate a
 shortage. The [controller contracts](../rust/crates/babylon-tick/tests/state_opponent.rs)

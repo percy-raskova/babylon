@@ -20,6 +20,7 @@ use crate::SemanticArchiveReader;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_persistence::archive_revision::ArchiveReadScope;
 use babylon_persistence::michigan_material::MichiganMaterialCatalog;
+use babylon_persistence::runtime_session::OrganizerSnapshot;
 use babylon_persistence::runtime_session::{
     OrganizerChoice, OrganizerCommand, OrganizerCommitment, OrganizerInquiry, OrganizerPauseReason,
     OrganizerReport, RuntimeSessionErrorCode,
@@ -28,6 +29,7 @@ use babylon_persistence::{
     ArchiveDossierProducer, ArchiveKnowledge, OrganizerDossierProducer, PendingArchiveReceipt,
     SemanticArchiveError,
 };
+use babylon_practice_contract::OrganizerPartnerPolicy;
 use babylon_practice_contract::OrganizerPeriodJournalEntries;
 use postgres::{Config, NoTls};
 use std::path::Path;
@@ -647,9 +649,7 @@ fn organizer_body_projection_limits_disclosure() {
     use babylon_graph::stable_element::StableElementKey;
     use babylon_graph::substrate::GraphSubstrate;
     use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
-    use babylon_persistence::economic_catalog::{
-        self, CapturedEconomicCatalog, SourceArtifact, SourceArtifactKind,
-    };
+    use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
     use babylon_persistence::runtime_session::{OrganizerBodyDisclosure, OrganizerBodySource};
 
     let target = DisposableTarget::create();
@@ -723,6 +723,23 @@ fn organizer_body_projection_limits_disclosure() {
     );
     assert_eq!(part.contributors, expected);
 
+    let (original_policy, original_hidden_contributor, original_body) =
+        inspect_hidden_partner(&reopened, &snapshot);
+    drop(reopened);
+    assert_changed_partner_is_private(
+        &target,
+        original_policy,
+        original_hidden_contributor,
+        &original_body,
+    );
+    assert_michigan_body_unavailable(&target);
+}
+
+fn inspect_hidden_partner(
+    reopened: &DurableMaterialRuntime,
+    snapshot: &OrganizerSnapshot,
+) -> (OrganizerPartnerPolicy, u64, Vec<u8>) {
+    use babylon_graph::substrate::GraphSubstrate;
     let config = reopened
         .session()
         .material()
@@ -771,8 +788,19 @@ fn organizer_body_projection_limits_disclosure() {
     let original_policy = partner.policy;
     let original_hidden_contributor = hidden.contributor_id;
     let original_body = serde_json::to_vec(&snapshot.body).expect("body disclosure serializes");
-    drop(reopened);
+    (original_policy, original_hidden_contributor, original_body)
+}
 
+fn assert_changed_partner_is_private(
+    target: &DisposableTarget,
+    original_policy: OrganizerPartnerPolicy,
+    original_hidden_contributor: u64,
+    original_body: &[u8],
+) {
+    use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
+    use babylon_persistence::economic_catalog::{
+        self, CapturedEconomicCatalog, SourceArtifact, SourceArtifactKind,
+    };
     // Capture a second complete foundation with a changed private partner policy.
     // Its graph and organizer register are produced and admitted together.
     let changed_campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7034));
@@ -826,7 +854,10 @@ fn organizer_body_projection_limits_disclosure() {
         original_body,
         "private source change cannot change disclosed body bytes"
     );
+}
 
+fn assert_michigan_body_unavailable(target: &DisposableTarget) {
+    use babylon_persistence::runtime_session::OrganizerBodyDisclosure;
     // The supported Michigan organizer has no attributed national body source.
     let michigan_campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7035));
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -847,10 +878,10 @@ fn organizer_body_projection_limits_disclosure() {
 }
 
 pub(crate) mod state_opponent {
+    use super::OrganizerSnapshot;
     use super::{
         support, CampaignId, DisposableTarget, DurableMaterialRuntime, OrganizerChoice, Uuid,
     };
-    use babylon_persistence::runtime_session::OrganizerSnapshot;
     use postgres::Client;
     use serde_json::Value;
 

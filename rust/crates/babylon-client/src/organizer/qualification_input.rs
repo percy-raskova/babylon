@@ -1,6 +1,8 @@
 //! Opt-in bounded inputs to the real windowed controls. This adapter owns no
 //! runtime requests, material effects, authoritative time, or qualification result.
 
+#[cfg(test)]
+use babylon_persistence::runtime_session::OrganizerBodyDisclosure;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::Shutdown;
@@ -14,9 +16,11 @@ use std::time::Duration;
 use bevy::ecs::message::MessageId;
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
+use bevy::window::{PrimaryWindow, WindowResized};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use super::scene::{OrganizerSceneMode, OrganizerSubject};
 use super::{ui, OrganizerClient, OrganizerInspector, RequestKind};
 use crate::observer::{ObservationContext, ObserverSession, SessionPhase};
 use crate::observer_controls::ControlAvailability;
@@ -87,11 +91,21 @@ enum Action {
     OpenDirection,
     InspectReceipts,
     OpenRelationships,
+    ScenePlaces,
+    SceneRelationships,
+    SelectWorkplaceCommittee,
+    SelectNeighborhoodGroup,
+    InspectEvidence,
+    NextEvidence,
+    PreviousEvidence,
     ArchiveWorkplace,
+    ArchiveOrganization,
     OpenArchiveEvidence,
     PreviousPeriod,
     ReturnLive,
     CaptureFrame,
+    Resize1366x768,
+    Resize1920x1080,
     CloseInspector,
     ChooseRemoteAid,
     ChooseLocalAid,
@@ -110,14 +124,34 @@ enum Action {
 }
 
 impl Action {
-    fn organizer(self) -> Option<OrganizerAction> {
+    fn extent(self) -> Option<UVec2> {
+        match self {
+            Self::Resize1366x768 => Some(UVec2::new(1366, 768)),
+            Self::Resize1920x1080 => Some(UVec2::new(1920, 1080)),
+            _ => None,
+        }
+    }
+
+    fn organizer(self, client: &OrganizerClient) -> Option<OrganizerAction> {
         use ui::OrganizerAction as O;
         Some(match self {
             Self::OpenOrganizer => O::Open,
             Self::OpenDirection => O::Inspect(OrganizerInspector::Direction),
             Self::InspectReceipts => O::Inspect(OrganizerInspector::Receipts),
             Self::OpenRelationships => O::Inspect(OrganizerInspector::Relationships),
+            Self::ScenePlaces => O::SetSceneMode(OrganizerSceneMode::Places),
+            Self::SceneRelationships => O::SetSceneMode(OrganizerSceneMode::Relationships),
+            Self::SelectWorkplaceCommittee => O::SelectSubject(
+                OrganizerSubject::WorkplaceCommittee(client.view.as_ref()?.workplace_partner_id),
+            ),
+            Self::SelectNeighborhoodGroup => O::SelectSubject(OrganizerSubject::NeighborhoodGroup(
+                client.view.as_ref()?.neighborhood_partner_id,
+            )),
+            Self::InspectEvidence => O::Inspect(OrganizerInspector::Evidence),
+            Self::NextEvidence => O::NextEvidence,
+            Self::PreviousEvidence => O::PreviousEvidence,
             Self::ArchiveWorkplace => O::ArchiveWorkplace,
+            Self::ArchiveOrganization => O::ArchiveOrganization,
             Self::CloseInspector => O::CloseInspector,
             Self::ChooseRemoteAid => O::Choose(OrganizerChoice::RemoteAid),
             Self::ChooseLocalAid => O::Choose(OrganizerChoice::LocalAid),
@@ -303,11 +337,23 @@ struct Pending {
     foundation: Option<String>,
     content_hash: Option<String>,
     capture_state: Option<Value>,
+    expected_evidence: Option<[u8; 32]>,
+    resize_armed: bool,
 }
 
 impl Pending {
     fn new(input: Input, situation: &Situation, tracked: Option<Tracked>) -> Self {
         Self {
+            resize_armed: false,
+            expected_evidence: match input.action {
+                Action::NextEvidence => situation
+                    .client
+                    .evidence_neighbor(true, situation.session.viewed_tick),
+                Action::PreviousEvidence => situation
+                    .client
+                    .evidence_neighbor(false, situation.session.viewed_tick),
+                _ => None,
+            },
             capture_state: (input.action == Action::CaptureFrame)
                 .then(|| situation.capture_state()),
             input,
@@ -411,6 +457,7 @@ struct Controls {
     reply: Option<Vec<u8>>,
     disabled: bool,
     capture_result: Option<Result<(), &'static str>>,
+    observed_extent: Option<(Entity, UVec2)>,
 }
 
 impl Default for Controls {
@@ -421,6 +468,7 @@ impl Default for Controls {
             reply: None,
             disabled: false,
             capture_result: None,
+            observed_extent: None,
         }
     }
 }
@@ -476,24 +524,30 @@ fn available(
     view: PrimaryView,
     pipe: bool,
 ) -> bool {
-    if action == Action::OpenRelationships
-        && (session.phase != SessionPhase::Ready
-            || session.playing
-            || session.advance_pending()
-            || session.lifecycle_pending()
-            || session.organizer_control_pending()
-            || session.quit_requested
-            || session.viewed_tick != session.durable_tick
-            || client.status_due
-            || client.pending.is_some()
-            || client
-                .view
-                .as_ref()
-                .is_none_or(|view| view.period != session.durable_tick))
+    if matches!(
+        action,
+        Action::OpenRelationships
+            | Action::ScenePlaces
+            | Action::SceneRelationships
+            | Action::SelectWorkplaceCommittee
+            | Action::SelectNeighborhoodGroup
+    ) && (session.phase != SessionPhase::Ready
+        || session.playing
+        || session.advance_pending()
+        || session.lifecycle_pending()
+        || session.organizer_control_pending()
+        || session.quit_requested
+        || session.viewed_tick != session.durable_tick
+        || client.status_due
+        || client.pending.is_some()
+        || client
+            .view
+            .as_ref()
+            .is_none_or(|view| view.period != session.durable_tick))
     {
         return false;
     }
-    if let Some(action) = action.organizer() {
+    if let Some(action) = action.organizer(client) {
         return ui::visible(action, client, session, ui, view)
             && ui::enabled(action, client, session);
     }
@@ -510,7 +564,7 @@ fn available(
                 && !session.lifecycle_pending()
                 && !session.organizer_control_pending()
         }
-        Action::CaptureFrame => {
+        Action::CaptureFrame | Action::Resize1366x768 | Action::Resize1920x1080 => {
             matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
                 && !session.playing
                 && !session.advance_pending()
@@ -608,6 +662,8 @@ impl Situation<'_> {
             "comparison_open": self.ui.comparison_open,
             "organizer_view": self.client.view,
             "city_pd_encounters": self.client.city_pd_encounters,
+            "scene_mode": format!("{:?}", self.client.scene_mode),
+            "selected_subject": format!("{:?}", self.client.selected_subject),
         })
     }
 }
@@ -692,6 +748,27 @@ fn request_frame(
     Ok(())
 }
 
+fn request_resize(
+    controls: &mut Controls,
+    windows: &mut Query<(Entity, &mut Window), With<PrimaryWindow>>,
+    action: Action,
+) -> Result<(), &'static str> {
+    let (entity, mut window) = windows
+        .single_mut()
+        .map_err(|_| "primary_window_unavailable")?;
+    let extent = action.extent().expect("bounded resize action");
+    if controls.observed_extent != Some((entity, extent)) {
+        if UVec2::new(window.physical_width(), window.physical_height()) == extent {
+            return Err("primary_window_extent_unobserved");
+        }
+        controls.observed_extent = None;
+        window
+            .resolution
+            .set_physical_resolution(extent.x, extent.y);
+    }
+    Ok(())
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "`dispatch` declares each Bevy parameter explicitly"
@@ -706,6 +783,7 @@ fn dispatch(
     mut warning: MessageWriter<ContinueWarning>,
     mut evidence: MessageWriter<OpenArchiveEvidence>,
     mut commands: Commands,
+    mut windows: Query<(Entity, &mut Window), With<PrimaryWindow>>,
 ) {
     match flush_reply(&transport, &mut controls) {
         OutputReady::Ready if controls.disabled => return,
@@ -764,7 +842,7 @@ fn dispatch(
     }
     receipt.tracked = None;
     receipt.handled = None;
-    if let Some(action) = input.action.organizer() {
+    if let Some(action) = input.action.organizer(&situation.client) {
         receipt.tracked = Some(Tracked::Organizer(organizer.write(action).id, input.action));
     } else {
         match input.action {
@@ -781,6 +859,12 @@ fn dispatch(
                 if let Err(reason) =
                     request_frame(&transport, &mut controls, &mut commands, sequence)
                 {
+                    controls.respond(Some(sequence), "refused", Some(reason), &situation);
+                    return;
+                }
+            }
+            action @ (Action::Resize1366x768 | Action::Resize1920x1080) => {
+                if let Err(reason) = request_resize(&mut controls, &mut windows, action) {
                     controls.respond(Some(sequence), "refused", Some(reason), &situation);
                     return;
                 }
@@ -896,12 +980,21 @@ fn outcome(pending: &Pending, s: &Situation) -> Option<Result<&'static str, &'st
     if matches!(action, Action::Review | Action::Confirm) {
         return organizer_outcome(pending, s);
     }
-    let applied = match action.organizer() {
+    let applied = match action.organizer(&s.client) {
         Some(OrganizerAction::Choose(choice)) => s.client.choice() == choice,
         Some(OrganizerAction::Open) => *s.view == PrimaryView::Organizer,
         Some(OrganizerAction::Inspect(inspector)) => s.client.inspector == inspector,
+        Some(OrganizerAction::SetSceneMode(mode)) => s.client.scene_mode == mode,
+        Some(OrganizerAction::SelectSubject(subject)) => s.client.selected_subject == Some(subject),
+        Some(OrganizerAction::NextEvidence | OrganizerAction::PreviousEvidence) => {
+            pending.expected_evidence.is_some()
+                && s.client.selected_evidence_id(s.session.viewed_tick) == pending.expected_evidence
+        }
         Some(OrganizerAction::CloseInspector) => s.client.inspector == OrganizerInspector::Closed,
         Some(OrganizerAction::ArchiveWorkplace) => *s.view == PrimaryView::Map && s.ui.archive_open,
+        Some(OrganizerAction::ArchiveOrganization) => {
+            *s.view == PrimaryView::Map && s.ui.archive_open
+        }
         _ => match action {
             Action::ContinueWarning => s.opening.stage == OpeningStage::Production,
             Action::ContinueTitle => !s.ui.menu_open,
@@ -1034,14 +1127,35 @@ fn complete(
     mut receipt: ResMut<HandlerReceipt>,
     situation: Situation,
     evidence: Res<ArchiveEvidenceReceipt>,
+    windows: Query<(Entity, &Window), With<PrimaryWindow>>,
+    mut resized: MessageReader<WindowResized>,
 ) {
+    for event in resized.read() {
+        if let Ok((entity, window)) = windows.single() {
+            if event.window == entity
+                && (event.width - window.width()).abs() < 0.5
+                && (event.height - window.height()).abs() < 0.5
+            {
+                controls.observed_extent = Some((
+                    entity,
+                    UVec2::new(window.physical_width(), window.physical_height()),
+                ));
+            }
+        }
+    }
     if controls.reply.is_some() || controls.disabled {
         return;
     }
     let capture_result = controls.capture_result.take();
+    let observed_extent = controls.observed_extent;
     let Some(pending) = controls.pending.as_mut() else {
         return;
     };
+    let extent = pending.input.action.extent();
+    let resize_armed = pending.resize_armed;
+    if extent.is_some() {
+        pending.resize_armed = true;
+    }
     let captured = if pending.handled {
         Ok(())
     } else {
@@ -1052,6 +1166,23 @@ fn complete(
             .and_then(|w| capture_handler(pending, w))
     };
     let result = match captured {
+        Ok(()) if extent.is_some() => {
+            if situation.session.runtime_scope() != pending.scope.as_ref()
+                || situation.session.context() != pending.context
+                || !situation.allows(&pending.input)
+            {
+                Some(Err("control_context_changed"))
+            } else if !resize_armed {
+                None
+            } else {
+                windows.single().ok().and_then(|(entity, window)| {
+                    let target = extent.expect("resize action");
+                    (observed_extent == Some((entity, target))
+                        && UVec2::new(window.physical_width(), window.physical_height()) == target)
+                        .then_some(Ok("applied"))
+                })
+            }
+        }
         Ok(()) if pending.input.action == Action::CaptureFrame => {
             if pending.capture_state.as_ref() == Some(&situation.capture_state()) {
                 capture_result.map(|result| result.map(|()| "frame_captured"))
@@ -1088,6 +1219,7 @@ fn complete(
 pub(crate) fn install(app: &mut App, transport: Transport) {
     app.insert_resource(transport)
         .add_message::<OpenArchiveEvidence>()
+        .add_message::<WindowResized>()
         .init_resource::<ArchiveEvidenceReceipt>()
         .init_resource::<Controls>()
         .init_resource::<HandlerReceipt>()
@@ -1144,6 +1276,16 @@ mod tests {
             "previous_period",
             "return_live",
             "capture_frame",
+            "scene_places",
+            "scene_relationships",
+            "select_workplace_committee",
+            "select_neighborhood_group",
+            "inspect_evidence",
+            "next_evidence",
+            "previous_evidence",
+            "archive_organization",
+            "resize1366x768",
+            "resize1920x1080",
         ] {
             assert!(
                 serde_json::from_value::<Action>(json!(name)).is_ok(),
@@ -1151,6 +1293,157 @@ mod tests {
             );
         }
         assert!(serde_json::from_value::<Action>(json!("capture_desktop")).is_err());
+    }
+
+    #[test]
+    fn resize_waits_for_observed_primary_extent() {
+        for action in [Action::Resize1366x768, Action::Resize1920x1080] {
+            let (client, session) = super::super::tests::ready();
+            let mut app = App::new();
+            app.add_plugins(MinimalPlugins)
+                .configure_sets(
+                    Update,
+                    (
+                        ObserverSet::Input,
+                        ObserverSet::Receive,
+                        ObserverSet::Install,
+                        ObserverSet::Paint,
+                    )
+                        .chain(),
+                )
+                .insert_resource(session)
+                .insert_resource(client)
+                .insert_resource(PrimaryView::Organizer)
+                .insert_resource(ObserverUiState {
+                    menu_open: false,
+                    splash_visible: false,
+                    ..default()
+                })
+                .init_resource::<OpeningPresentation>()
+                .add_message::<OrganizerAction>()
+                .add_message::<ObserverCommand>()
+                .add_message::<ContinueWarning>();
+            let entity = app
+                .world_mut()
+                .spawn((Window::default(), PrimaryWindow))
+                .id();
+            let (socket, _peer) = UnixStream::pair().expect("fixture sockets");
+            let (incoming, receiver) = mpsc::channel();
+            let (outgoing, _output) = mpsc::sync_channel(1);
+            install(
+                &mut app,
+                Transport {
+                    incoming: Mutex::new(receiver),
+                    outgoing,
+                    socket,
+                    capture_dir: None,
+                },
+            );
+            let input = pending(
+                app.world().resource::<ObserverSession>(),
+                app.world().resource::<OrganizerClient>(),
+                action,
+            )
+            .input;
+            incoming.send(Incoming::Input(input)).expect("receiver");
+            app.update();
+            app.update();
+            assert!(
+                app.world().resource::<Controls>().reply.is_none(),
+                "requested size is not an observed extent"
+            );
+            let target = action.extent().expect("resize action");
+            app.world_mut().write_message(WindowResized {
+                window: entity,
+                width: 1.0,
+                height: 1.0,
+            });
+            app.update();
+            assert!(
+                app.world().resource::<Controls>().reply.is_none(),
+                "wrong extent cannot complete"
+            );
+            let window = app.world().get::<Window>(entity).expect("primary window");
+            let (width, height) = (window.width(), window.height());
+            assert_eq!(
+                (window.physical_width(), window.physical_height()),
+                (target.x, target.y)
+            );
+            app.world_mut().write_message(WindowResized {
+                window: entity,
+                width,
+                height,
+            });
+            app.update();
+            let reply: Value = serde_json::from_slice(
+                app.world()
+                    .resource::<Controls>()
+                    .reply
+                    .as_ref()
+                    .expect("observed completion"),
+            )
+            .expect("JSON");
+            assert_eq!(reply["event"], "applied");
+        }
+    }
+
+    #[test]
+    fn resize_same_size_without_observation_refuses() {
+        let (client, session) = super::super::tests::ready();
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .configure_sets(
+                Update,
+                (
+                    ObserverSet::Input,
+                    ObserverSet::Receive,
+                    ObserverSet::Install,
+                    ObserverSet::Paint,
+                )
+                    .chain(),
+            )
+            .insert_resource(session)
+            .insert_resource(client)
+            .insert_resource(PrimaryView::Organizer)
+            .insert_resource(ObserverUiState {
+                menu_open: false,
+                splash_visible: false,
+                ..default()
+            })
+            .init_resource::<OpeningPresentation>()
+            .add_message::<OrganizerAction>()
+            .add_message::<ObserverCommand>()
+            .add_message::<ContinueWarning>();
+        let mut window = Window::default();
+        window.resolution.set_physical_resolution(1366, 768);
+        app.world_mut().spawn((window, PrimaryWindow));
+        let (socket, _peer) = UnixStream::pair().expect("fixture sockets");
+        let (incoming, receiver) = mpsc::channel();
+        let (outgoing, _output) = mpsc::sync_channel(1);
+        install(
+            &mut app,
+            Transport {
+                incoming: Mutex::new(receiver),
+                outgoing,
+                socket,
+                capture_dir: None,
+            },
+        );
+        let input = pending(
+            app.world().resource::<ObserverSession>(),
+            app.world().resource::<OrganizerClient>(),
+            Action::Resize1366x768,
+        )
+        .input;
+        incoming.send(Incoming::Input(input)).expect("receiver");
+        app.update();
+        let controls = app.world().resource::<Controls>();
+        let reply: Value =
+            serde_json::from_slice(controls.reply.as_ref().expect("bounded refusal"))
+                .expect("JSON");
+        assert_eq!(reply["event"], "refused");
+        assert_eq!(reply["reason"], "primary_window_extent_unobserved");
+        assert!(controls.pending.is_none());
     }
 
     fn assert_frame_scenario(app: &mut App, path: &Path, scenario: &str) {
@@ -1195,6 +1488,11 @@ mod tests {
                     .resource_mut::<ObserverUiState>()
                     .archive_open = true;
             }
+            if scenario == "selection_changed" {
+                app.world_mut()
+                    .resource_mut::<OrganizerClient>()
+                    .selected_subject = Some(OrganizerSubject::WorkplaceCommittee(92));
+            }
             app.world_mut()
                 .trigger(ScreenshotCaptured { entity, image });
             app.update();
@@ -1229,6 +1527,7 @@ mod tests {
             "loading",
             "playback_changed",
             "presentation_changed",
+            "selection_changed",
         ] {
             let fixture = SocketFixture(
                 std::env::temp_dir().join(format!("babylon-frame-{}", Uuid::new_v4())),
@@ -1450,6 +1749,8 @@ mod tests {
             foundation: session.foundation_digest.clone(),
             content_hash: session.content_hash.clone(),
             capture_state: None,
+            expected_evidence: None,
+            resize_armed: false,
         }
     }
 
@@ -2061,7 +2362,7 @@ mod tests {
             .expect("the fixture set the optional field before this read")
             .id;
         let fresh = babylon_persistence::runtime_session::OrganizerSnapshot {
-            body: babylon_persistence::runtime_session::OrganizerBodyDisclosure::Unavailable,
+            body: OrganizerBodyDisclosure::Unavailable,
             body_scope: super::super::tests::body_scope(),
             view: client.view.clone().expect("the fixture value clones"),
             pending: client.commitment.clone(),

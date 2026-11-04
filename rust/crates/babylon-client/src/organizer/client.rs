@@ -1,6 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{draft, evidence, presentation, scene, ui};
+use super::scene::{OrganizerScene, OrganizerSceneMode, OrganizerSubject};
+use super::{draft, evidence, presentation, ui};
+use babylon_persistence::ArchiveEvidenceClass;
 
 use babylon_persistence::runtime_session::{
     CityPdEncounter, OrganizerAidPending, OrganizerAidResolution, OrganizerBodyDisclosure,
@@ -150,7 +152,7 @@ fn body_matches(snapshot: &OrganizerSnapshot, session: &ObserverSession) -> bool
         OrganizerBodyDisclosure::Unavailable | OrganizerBodyDisclosure::KnownAbsent => true,
         OrganizerBodyDisclosure::Partial(part) => {
             part.scenario == "economy/national-world"
-                && part.evidence_class == babylon_persistence::ArchiveEvidenceClass::Designed
+                && part.evidence_class == ArchiveEvidenceClass::Designed
                 && part.local_name == format!("organizer-participant-body-{}", scope.actor_id)
                 && part.contributors.windows(2).all(|pair| pair[0] < pair[1])
                 && part.contributors.iter().all(|id| {
@@ -185,8 +187,8 @@ pub(crate) struct OrganizerClient {
     pub collection_resolutions: Vec<OrganizerCollectionResolution>,
     pub city_pd_encounters: Vec<CityPdEncounter>,
     pub inspector: OrganizerInspector,
-    pub scene_mode: scene::OrganizerSceneMode,
-    pub selected_subject: Option<scene::OrganizerSubject>,
+    pub scene_mode: OrganizerSceneMode,
+    pub selected_subject: Option<OrganizerSubject>,
     pub message: String,
     pub(super) draft: Option<OrganizerDraft>,
     pub(super) campaign: Option<Uuid>,
@@ -205,13 +207,13 @@ pub(crate) struct OrganizerClient {
 
 impl OrganizerClient {
     /// Derive a scene only from the authenticated view for this period.
-    pub(crate) fn scene_for(&self, session: &ObserverSession) -> Option<scene::OrganizerScene> {
+    pub(crate) fn scene_for(&self, session: &ObserverSession) -> Option<OrganizerScene> {
         let view = self.view.as_ref()?;
         let (body, scope) = self.body_for(session)?;
         if view.period != session.viewed_tick || scope.period != view.period {
             return None;
         }
-        Some(scene::OrganizerScene::from_disclosure(view, body))
+        Some(OrganizerScene::from_disclosure(view, body))
     }
 
     /// Return only disclosure admitted for the currently viewed context.

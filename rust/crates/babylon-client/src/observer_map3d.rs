@@ -2,6 +2,7 @@
 //! a visual encoding of the selected observation. Heights are not terrain or
 //! simulated buildings. All economic bytes come from the installed frame.
 
+use crate::map::CountyMapScope;
 use bevy::asset::RenderAssetUsages;
 use bevy::camera::Viewport;
 use bevy::ecs::system::SystemParam;
@@ -410,7 +411,7 @@ struct NavigationInput<'w, 's> {
     keys: Res<'w, ButtonInput<KeyCode>>,
     keyboard_claim: Option<Res<'w, ObserverKeyboardClaim>>,
     atlas: Option<Res<'w, CountyAtlas>>,
-    scope: Option<Res<'w, crate::map::CountyMapScope>>,
+    scope: Option<Res<'w, CountyMapScope>>,
     motion: Res<'w, AccumulatedMouseMotion>,
     scroll: Res<'w, AccumulatedMouseScroll>,
     time: Res<'w, Time>,
@@ -544,7 +545,7 @@ fn keyboard_orbit(
 
 fn wayne_focus(
     atlas: &CountyAtlas,
-    scope: &crate::map::CountyMapScope,
+    scope: &CountyMapScope,
     geometry: &MapGeometry,
 ) -> Option<(Vec3, Vec2, usize)> {
     let index = atlas
@@ -562,7 +563,7 @@ struct CameraView<'w> {
     view: Res<'w, PrimaryView>,
     viewport: Res<'w, ObserverViewport>,
     atlas: Option<Res<'w, CountyAtlas>>,
-    scope: Option<Res<'w, crate::map::CountyMapScope>>,
+    scope: Option<Res<'w, CountyMapScope>>,
     selected: Option<ResMut<'w, SelectedCounty>>,
 }
 

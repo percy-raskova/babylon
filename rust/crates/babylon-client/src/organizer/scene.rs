@@ -1,6 +1,8 @@
 //! Presentation derived solely from the admitted organizer projection.
 
 use babylon_persistence::runtime_session::{OrganizerBodyDisclosure, OrganizerView};
+#[cfg(test)]
+use babylon_persistence::ArchiveEvidenceClass;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum OrganizerSubject {
@@ -269,7 +271,7 @@ mod tests {
             scenario: "national".into(),
             local_name: "body".into(),
             contributors: vec![],
-            evidence_class: babylon_persistence::ArchiveEvidenceClass::Designed,
+            evidence_class: ArchiveEvidenceClass::Designed,
         };
         let scene =
             OrganizerScene::from_disclosure(&view, &OrganizerBodyDisclosure::Partial(part.clone()));

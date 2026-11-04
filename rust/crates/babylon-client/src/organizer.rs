@@ -1,5 +1,9 @@
 //! Native organizational decisions over the one authoritative runtime connection.
 
+#[cfg(test)]
+use crate::observer::Perspective;
+#[cfg(test)]
+use babylon_persistence::ArchiveEvidenceClass;
 mod draft;
 
 mod editor;
@@ -188,6 +192,10 @@ pub(crate) mod tests {
         assert_eq!(*body, OrganizerBodyDisclosure::Unavailable);
         assert_eq!(scope.period, 2);
         assert_eq!(scope.source, None);
+    }
+
+    #[test]
+    fn organizer_body_scope_refuses_foreign_metadata() {
         for field in ["campaign", "actor", "period", "content", "missing_source"] {
             let (mut client, mut session, request, mut snapshot) = status_fixture();
             let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
@@ -230,6 +238,10 @@ pub(crate) mod tests {
                 "refusal preserves admitted body for {field}"
             );
         }
+    }
+
+    #[test]
+    fn organizer_body_scope_refuses_stale_context() {
         for field in [
             "perspective",
             "generation",
@@ -243,7 +255,7 @@ pub(crate) mod tests {
             let previous = client.view.clone();
             match field {
                 "perspective" => {
-                    session.set_perspective(crate::observer::Perspective::PlayerKnowledge)
+                    session.set_perspective(Perspective::PlayerKnowledge);
                 }
                 "generation" => session.generation += 1,
                 "viewed" => session.inspect_tick(2),
@@ -263,6 +275,31 @@ pub(crate) mod tests {
             );
             assert_eq!(client.view, previous, "stale {field} preserves prior view");
         }
+    }
+
+    fn populate_partial_body(snapshot: &mut OrganizerSnapshot) {
+        snapshot.view.positions = [101, 102]
+            .into_iter()
+            .map(|contributor_id| OrganizerPosition {
+                contributor_id,
+                label: "Known".into(),
+                promised_hours: 1,
+                concern: String::new(),
+                objection: String::new(),
+                review_condition: String::new(),
+            })
+            .collect();
+        snapshot.body = OrganizerBodyDisclosure::Partial(OrganizerBodyPart {
+            runtime_hyperedge_id: 7,
+            scenario: "economy/national-world".into(),
+            local_name: "organizer-participant-body-90".into(),
+            contributors: vec![101, 102],
+            evidence_class: ArchiveEvidenceClass::Designed,
+        });
+    }
+
+    #[test]
+    fn organizer_body_scope_validates_committed_disclosure() {
         for field in [
             "valid",
             "known_absent",
@@ -283,30 +320,13 @@ pub(crate) mod tests {
                 tick_content_hash: [4; 32],
                 world_hash: [5; 32],
             });
-            snapshot.view.positions = [101, 102]
-                .into_iter()
-                .map(|contributor_id| OrganizerPosition {
-                    contributor_id,
-                    label: "Known".into(),
-                    promised_hours: 1,
-                    concern: String::new(),
-                    objection: String::new(),
-                    review_condition: String::new(),
-                })
-                .collect();
-            snapshot.body = OrganizerBodyDisclosure::Partial(OrganizerBodyPart {
-                runtime_hyperedge_id: 7,
-                scenario: "economy/national-world".into(),
-                local_name: "organizer-participant-body-90".into(),
-                contributors: vec![101, 102],
-                evidence_class: babylon_persistence::ArchiveEvidenceClass::Designed,
-            });
+            populate_partial_body(&mut snapshot);
             match field {
                 "foreign_hash" => {
                     snapshot.body_scope.source = Some(OrganizerBodySource::Committed {
                         tick_content_hash: [6; 32],
                         world_hash: [5; 32],
-                    })
+                    });
                 }
                 "foreign_world_hash" => {
                     snapshot.body_scope.source = Some(OrganizerBodySource::Committed {
@@ -326,7 +346,7 @@ pub(crate) mod tests {
                 }
                 "unattributed" => {
                     if let OrganizerBodyDisclosure::Partial(part) = &mut snapshot.body {
-                        part.evidence_class = babylon_persistence::ArchiveEvidenceClass::Observed;
+                        part.evidence_class = ArchiveEvidenceClass::Observed;
                     }
                 }
                 "known_absent" => snapshot.body = OrganizerBodyDisclosure::KnownAbsent,

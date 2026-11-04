@@ -3,6 +3,7 @@
 use super::{
     CityPdEncounter, OrganizerAidPending, OrganizerAidResolution, OrganizerMaterialAidPreview,
 };
+use crate::national_economy::NationalGamePolicy;
 
 use super::{collection_preview, material_preview, OrganizerCollectionPreview};
 
@@ -267,7 +268,7 @@ pub(crate) fn opening_body_attribution(
     if foundation.register.organizer_config() != Some(config) {
         return None;
     }
-    let policy = crate::national_economy::NationalGamePolicy::from_captured_bytes(
+    let policy = NationalGamePolicy::from_captured_bytes(
         catalog.source(SourceArtifactKind::NationalGamePolicy)?,
     )
     .ok()?;
@@ -699,6 +700,7 @@ mod collection_history_tests {
     use super::*;
     use crate::organizer_aid_fixture as fixture;
     use babylon_bsl::structural_verbs::CollectingSink;
+    use babylon_graph::memory::MemoryGraph;
     use babylon_material_circuit::{
         AccountId, CashTransferPurpose, CircuitAccounting, HistoricalCostBook,
     };
@@ -847,11 +849,167 @@ mod collection_history_tests {
         );
     }
 
+    fn body_projection_graph(
+        actor_id: u64,
+        hidden: u64,
+        partner_first: bool,
+        with_body: bool,
+    ) -> (MemoryGraph, StableElementResolver) {
+        use std::collections::HashMap;
+        let mut graph = MemoryGraph::new();
+        let mut names = HashMap::new();
+        let mut node = |name: String, kind: &str| {
+            let id = graph.add_node(kind).expect("fixture node");
+            names.insert(id, name);
+            id
+        };
+        let actor = node("wayne-organizing-collective".into(), "ORGANIZATION");
+        let partner = node("partner-private".into(), "ORGANIZATION");
+        let first = node("organizer-contributor-101".into(), "PARTICIPANT_BODY");
+        let second = node("organizer-contributor-102".into(), "PARTICIPANT_BODY");
+        let hidden_node = node(
+            format!("organizer-contributor-{hidden}"),
+            "PARTICIPANT_BODY",
+        );
+        graph
+            .update_node(
+                partner,
+                "private/balance",
+                if hidden == 103 { 1.0 } else { 2.0 },
+            )
+            .expect("private partner data");
+        let mut edges = HashMap::new();
+        if partner_first {
+            let id = graph
+                .add_hyperedge("ORGANIZATION_BODY", &[partner, hidden_node])
+                .expect("partner body");
+            edges.insert(id, "partner-body".into());
+        }
+        if with_body {
+            let id = graph
+                .add_hyperedge("ORGANIZATION_BODY", &[actor, first, second, hidden_node])
+                .expect("controlled body");
+            edges.insert(id, format!("organizer-participant-body-{actor_id}"));
+        }
+        if !partner_first {
+            let id = graph
+                .add_hyperedge("ORGANIZATION_BODY", &[partner, hidden_node])
+                .expect("partner body");
+            edges.insert(id, "partner-body".into());
+        }
+        let resolver = StableElementResolver::seal(
+            &graph,
+            crate::national_economy::NATIONAL_SCENARIO_ID,
+            &names,
+            &edges,
+        )
+        .expect("sealed graph");
+        (graph, resolver)
+    }
+
+    fn assert_body_projection_variants(
+        snapshot: &mut OrganizerSnapshot,
+        disclosed: &OrganizerBodyDisclosure,
+        attribution: &OrganizerBodyAttribution,
+    ) {
+        use std::collections::HashMap;
+        let OrganizerBodyDisclosure::Partial(part) = disclosed else {
+            panic!("controlled body is partial")
+        };
+        let (other_graph, other_resolver) =
+            body_projection_graph(snapshot.view.actor_id, 104, false, true);
+        let other = project_body(
+            &other_graph,
+            &other_resolver,
+            &snapshot.view,
+            Some(attribution),
+        )
+        .expect("projection");
+        assert_eq!(
+            serde_json::to_vec(disclosed).expect("serialize"),
+            serde_json::to_vec(&other).expect("serialize"),
+            "hidden inputs do not affect disclosure"
+        );
+        let (reopened, reopened_resolver) =
+            body_projection_graph(snapshot.view.actor_id, 104, true, true);
+        let OrganizerBodyDisclosure::Partial(reopened_part) = project_body(
+            &reopened,
+            &reopened_resolver,
+            &snapshot.view,
+            Some(attribution),
+        )
+        .expect("reopened projection") else {
+            panic!("body survives reopen")
+        };
+        assert_ne!(
+            part.runtime_hyperedge_id,
+            reopened_part.runtime_hyperedge_id
+        );
+        assert_eq!(
+            (&part.scenario, &part.local_name, &part.contributors),
+            (
+                &reopened_part.scenario,
+                &reopened_part.local_name,
+                &reopened_part.contributors
+            )
+        );
+        let (absent, absent_resolver) =
+            body_projection_graph(snapshot.view.actor_id, 104, false, false);
+        let absent_attribution =
+            body_attribution_from_graph(&absent, &absent_resolver, snapshot.view.actor_id)
+                .expect("attributed absence");
+        assert_eq!(
+            project_body(
+                &absent,
+                &absent_resolver,
+                &snapshot.view,
+                Some(&absent_attribution)
+            ),
+            Ok(OrganizerBodyDisclosure::KnownAbsent)
+        );
+        let mut unproven_view = snapshot.view.clone();
+        let mut unproven = unproven_view.positions[0].clone();
+        unproven.contributor_id = 104;
+        unproven_view.positions.push(unproven);
+        assert_eq!(
+            project_body(
+                &other_graph,
+                &other_resolver,
+                &unproven_view,
+                Some(attribution)
+            ),
+            Ok(OrganizerBodyDisclosure::Unavailable),
+            "a newly disclosed incidence needs its own attribution"
+        );
+        let unknown_graph = MemoryGraph::new();
+        let unknown_resolver = StableElementResolver::seal(
+            &unknown_graph,
+            "unattributed",
+            &HashMap::new(),
+            &HashMap::new(),
+        )
+        .expect("other scenario can be sealed");
+        assert_eq!(
+            project_body(&unknown_graph, &unknown_resolver, &snapshot.view, None),
+            Ok(OrganizerBodyDisclosure::Unavailable),
+            "an unattributed source is not affirmative absence"
+        );
+        snapshot.body = disclosed.clone();
+        let wire = serde_json::to_value(&snapshot).expect("projected snapshot serializes");
+        assert_eq!(
+            wire["body"]["Partial"]["runtime_hyperedge_id"],
+            part.runtime_hyperedge_id
+        );
+        assert_eq!(wire["body"]["Partial"]["local_name"], part.local_name);
+        assert_eq!(
+            wire["body"]["Partial"]["contributors"],
+            serde_json::json!([101, 102])
+        );
+    }
+
     #[test]
     fn organizer_body_projection_limits_disclosure() {
-        use babylon_graph::memory::MemoryGraph;
         use babylon_practice_contract::OrganizerPosition;
-        use std::collections::HashMap;
 
         let session = partial_collection_session();
         let mut snapshot = captured_organizer_snapshot(
@@ -882,61 +1040,7 @@ mod collection_history_tests {
                 review_condition: String::new(),
             })
             .collect();
-        let build = |hidden: u64, partner_first: bool, with_body: bool| {
-            let mut graph = MemoryGraph::new();
-            let mut names = HashMap::new();
-            let mut node = |name: String, kind: &str| {
-                let id = graph.add_node(kind).expect("fixture node");
-                names.insert(id, name);
-                id
-            };
-            let actor = node("wayne-organizing-collective".into(), "ORGANIZATION");
-            let partner = node("partner-private".into(), "ORGANIZATION");
-            let first = node("organizer-contributor-101".into(), "PARTICIPANT_BODY");
-            let second = node("organizer-contributor-102".into(), "PARTICIPANT_BODY");
-            let hidden_node = node(
-                format!("organizer-contributor-{hidden}"),
-                "PARTICIPANT_BODY",
-            );
-            graph
-                .update_node(
-                    partner,
-                    "private/balance",
-                    if hidden == 103 { 1.0 } else { 2.0 },
-                )
-                .expect("private partner data");
-            let mut edges = HashMap::new();
-            if partner_first {
-                let id = graph
-                    .add_hyperedge("ORGANIZATION_BODY", &[partner, hidden_node])
-                    .expect("partner body");
-                edges.insert(id, "partner-body".into());
-            }
-            if with_body {
-                let id = graph
-                    .add_hyperedge("ORGANIZATION_BODY", &[actor, first, second, hidden_node])
-                    .expect("controlled body");
-                edges.insert(
-                    id,
-                    format!("organizer-participant-body-{}", snapshot.view.actor_id),
-                );
-            }
-            if !partner_first {
-                let id = graph
-                    .add_hyperedge("ORGANIZATION_BODY", &[partner, hidden_node])
-                    .expect("partner body");
-                edges.insert(id, "partner-body".into());
-            }
-            let resolver = StableElementResolver::seal(
-                &graph,
-                crate::national_economy::NATIONAL_SCENARIO_ID,
-                &names,
-                &edges,
-            )
-            .expect("sealed graph");
-            (graph, resolver)
-        };
-        let (graph, resolver) = build(103, false, true);
+        let (graph, resolver) = body_projection_graph(snapshot.view.actor_id, 103, false, true);
         let attribution = body_attribution_from_graph(&graph, &resolver, snapshot.view.actor_id)
             .expect("attributed opening");
         let disclosed = project_body(&graph, &resolver, &snapshot.view, Some(&attribution))
@@ -957,92 +1061,7 @@ mod collection_history_tests {
                 .expect("actual body")
                 .0
         );
-        let (other_graph, other_resolver) = build(104, false, true);
-        let other = project_body(
-            &other_graph,
-            &other_resolver,
-            &snapshot.view,
-            Some(&attribution),
-        )
-        .expect("projection");
-        assert_eq!(
-            serde_json::to_vec(&disclosed).expect("serialize"),
-            serde_json::to_vec(&other).expect("serialize"),
-            "hidden inputs do not affect disclosure"
-        );
-        let (reopened, reopened_resolver) = build(104, true, true);
-        let OrganizerBodyDisclosure::Partial(reopened_part) = project_body(
-            &reopened,
-            &reopened_resolver,
-            &snapshot.view,
-            Some(&attribution),
-        )
-        .expect("reopened projection") else {
-            panic!("body survives reopen")
-        };
-        assert_ne!(
-            part.runtime_hyperedge_id,
-            reopened_part.runtime_hyperedge_id
-        );
-        assert_eq!(
-            (&part.scenario, &part.local_name, &part.contributors),
-            (
-                &reopened_part.scenario,
-                &reopened_part.local_name,
-                &reopened_part.contributors
-            )
-        );
-        let (absent, absent_resolver) = build(104, false, false);
-        let absent_attribution =
-            body_attribution_from_graph(&absent, &absent_resolver, snapshot.view.actor_id)
-                .expect("attributed absence");
-        assert_eq!(
-            project_body(
-                &absent,
-                &absent_resolver,
-                &snapshot.view,
-                Some(&absent_attribution)
-            ),
-            Ok(OrganizerBodyDisclosure::KnownAbsent)
-        );
-        let mut unproven_view = snapshot.view.clone();
-        let mut unproven = unproven_view.positions[0].clone();
-        unproven.contributor_id = 104;
-        unproven_view.positions.push(unproven);
-        assert_eq!(
-            project_body(
-                &other_graph,
-                &other_resolver,
-                &unproven_view,
-                Some(&attribution)
-            ),
-            Ok(OrganizerBodyDisclosure::Unavailable),
-            "a newly disclosed incidence needs its own attribution"
-        );
-        let unknown_graph = MemoryGraph::new();
-        let unknown_resolver = StableElementResolver::seal(
-            &unknown_graph,
-            "unattributed",
-            &HashMap::new(),
-            &HashMap::new(),
-        )
-        .expect("other scenario can be sealed");
-        assert_eq!(
-            project_body(&unknown_graph, &unknown_resolver, &snapshot.view, None),
-            Ok(OrganizerBodyDisclosure::Unavailable),
-            "an unattributed source is not affirmative absence"
-        );
-        snapshot.body = disclosed.clone();
-        let wire = serde_json::to_value(&snapshot).expect("projected snapshot serializes");
-        assert_eq!(
-            wire["body"]["Partial"]["runtime_hyperedge_id"],
-            part.runtime_hyperedge_id
-        );
-        assert_eq!(wire["body"]["Partial"]["local_name"], part.local_name);
-        assert_eq!(
-            wire["body"]["Partial"]["contributors"],
-            serde_json::json!([101, 102])
-        );
+        assert_body_projection_variants(&mut snapshot, &disclosed, &attribution);
     }
 
     #[test]

@@ -70,13 +70,39 @@ def test_operator_controls_have_a_distinct_completed_frame_event() -> None:
         "previous_period",
         "return_live",
         "capture_frame",
+        "scene_places",
+        "scene_relationships",
+        "select_workplace_committee",
+        "select_neighborhood_group",
+        "inspect_evidence",
+        "next_evidence",
+        "previous_evidence",
+        "archive_organization",
+        "resize1366x768",
+        "resize1920x1080",
     } <= actions
     assert "capture_desktop" not in actions
     assert windowed.EXPECTED["capture_frame"] == "frame_captured"
     assert "frame_captured" in get_args(windowed.Event)
 
 
-@pytest.mark.parametrize("action", ["open_relationships", "open_archive_evidence"])
+@pytest.mark.parametrize(
+    "action",
+    [
+        "open_relationships",
+        "open_archive_evidence",
+        "scene_places",
+        "scene_relationships",
+        "select_workplace_committee",
+        "select_neighborhood_group",
+        "inspect_evidence",
+        "next_evidence",
+        "previous_evidence",
+        "archive_organization",
+        "resize1366x768",
+        "resize1920x1080",
+    ],
+)
 def test_private_control_sends_the_bounded_action(action: windowed.Action) -> None:
     parent, peer = socket.socketpair()
     channel = windowed.ControlChannel(parent, CAMPAIGN, 0)

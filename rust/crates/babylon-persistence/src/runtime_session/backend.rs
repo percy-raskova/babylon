@@ -1,6 +1,7 @@
 //! Explicit New/Open admission reuses the single durable material runtime.
 
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_tick::material_replay::IdentifiedMaterialTick;
 use postgres::{Config, NoTls};
 
 use super::OrganizerCommand;
@@ -160,7 +161,7 @@ fn committed_tail(
     if tick <= 0 || hash.len() != 32 {
         return Err(RuntimeSessionErrorCode::StorageRefused);
     }
-    let identity = babylon_tick::material_replay::IdentifiedMaterialTick::decode(
+    let identity = IdentifiedMaterialTick::decode(
         identity_bytes.ok_or(RuntimeSessionErrorCode::StorageRefused)?,
     )
     .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;

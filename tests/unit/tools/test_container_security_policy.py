@@ -193,11 +193,13 @@ elif name == "cargo":
     assert os.environ["BABYLON_POSTGRES_TEST_DSN"] == "postgresql://test:test@127.0.0.1:54321/postgres"
     if any("material_runtime::writer_bounds_tests::" in arg for arg in args):
         assert os.environ["BABYLON_RUNTIME_DSN"] == "postgresql://test:test@127.0.0.1:54321/babylon_test"
-    if fault == "city_pd_witness_failure" and any("national_city_pd_committed_contact" in arg for arg in args):
+    if fault == "city_pd_witness_failure" and "--list" not in args and any("national_city_pd_committed_contact" in arg for arg in args):
         sys.exit(47)
     if "--list" in args and fault != "empty_selection":
-        selected = next(arg for arg in args if "paid_visit_marker_failure_and_ambiguous_retry" in arg)
+        selected = next(arg for arg in args if "paid_visit_marker_failure_and_ambiguous_retry" in arg or "national_city_pd_committed_contact" in arg)
         print(selected + ": test")
+        if fault == "extra_selection":
+            print("unexpected::test: test")
 else:
     sys.exit(99)
 """
@@ -348,6 +350,34 @@ def test_city_pd_atomic_shard_preserves_selection_and_failure_propagation(
             for args in cargo
         )
         == atomic_calls
+    )
+    assert "Rust PostgreSQL cleanup verified:" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("fault", "expected_status", "witness_calls"),
+    [
+        ("", 0, 2),
+        ("empty_selection", 1, 1),
+        ("extra_selection", 1, 1),
+        ("city_pd_witness_failure", 47, 2),
+    ],
+)
+def test_city_pd_witness_focus_is_exact_and_fails_closed(
+    tmp_path: Path, fault: str, expected_status: int, witness_calls: int
+) -> None:
+    result, calls = _run_mock_runtime(tmp_path, "city_pd_witness", fault)
+    assert result.returncode == expected_status, result.stderr
+    cargo = [call["args"] for call in calls if call["name"] == "cargo"]
+    witness = [
+        args for args in cargo if any("national_city_pd_committed_contact" in arg for arg in args)
+    ]
+    assert len(witness) == witness_calls
+    assert all("--ignored" in args and "--exact" in args for args in witness)
+    assert "--list" in witness[0]
+    assert all(
+        not any("paid_visit_marker_failure_and_ambiguous_retry" in arg for arg in args)
+        for args in cargo
     )
     assert "Rust PostgreSQL cleanup verified:" in result.stdout
 

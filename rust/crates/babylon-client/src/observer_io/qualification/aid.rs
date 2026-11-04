@@ -12,6 +12,8 @@ use babylon_persistence::runtime_session::{
     OrganizerChoice, OrganizerCommand, OrganizerCommitment, OrganizerPreview, OrganizerSnapshot,
     RuntimeSessionRequest, RuntimeSessionScope,
 };
+#[cfg(test)]
+use babylon_persistence::ArchiveEvidenceClass;
 
 use aid::Summary;
 use serde::Serialize;
@@ -434,7 +436,7 @@ mod tests {
             scenario: "economy/national-world".into(),
             local_name: format!("organizer-participant-body-{}", source.view.actor_id),
             contributors: vec![101],
-            evidence_class: babylon_persistence::ArchiveEvidenceClass::Designed,
+            evidence_class: ArchiveEvidenceClass::Designed,
         });
         status.body_scope.source = Some(OrganizerBodySource::Foundation {
             foundation_digest: [4; 32],

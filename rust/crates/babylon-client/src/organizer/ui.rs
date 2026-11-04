@@ -1,9 +1,15 @@
 //! Native Bevy controls and evidence inspectors for the lawful organizer projection.
 
+use super::scene::{BodyShape, OrganizerScene, OrganizerSceneMode, OrganizerSubject, SceneNode};
+#[cfg(test)]
+use crate::observer_focus::ObserverFocusPolicy;
 use babylon_persistence::runtime_session::{OrganizerChoice, OrganizerInquiry};
+#[cfg(test)]
+use babylon_persistence::ArchiveEvidenceClass;
 use bevy::ecs::system::SystemParam;
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::ButtonState;
+use std::collections::BTreeMap;
 
 use bevy::input_focus::tab_navigation::TabGroup;
 use bevy::input_focus::{FocusedInput, InputFocus};
@@ -21,7 +27,7 @@ use crate::production::PrimaryView;
 
 use super::editor::FocusState;
 use super::qualification_input::HandlerReceipt;
-use super::{presentation, scene, OrganizerClient, OrganizerInspector, RequestKind};
+use super::{presentation, OrganizerClient, OrganizerInspector, RequestKind};
 use crate::observer::SessionPhase;
 use crate::observer_controls::ControlAvailability;
 use crate::ui;
@@ -35,8 +41,8 @@ use bevy::ui::UiSystems;
 #[derive(Message, Clone, Copy, Debug)]
 pub(crate) enum OrganizerAction {
     Open,
-    SetSceneMode(scene::OrganizerSceneMode),
-    SelectSubject(scene::OrganizerSubject),
+    SetSceneMode(OrganizerSceneMode),
+    SelectSubject(OrganizerSubject),
     Choose(OrganizerChoice),
     Review,
     Confirm,
@@ -75,23 +81,26 @@ struct SceneRoot;
 struct SceneContent;
 #[derive(Component)]
 struct SceneDetail;
+
+#[derive(Component)]
+struct SceneEvidence;
 #[derive(Component)]
 struct RelationStage;
 #[derive(Component)]
 struct RelationBody;
 #[derive(Component)]
-struct RelationSubject(scene::OrganizerSubject);
+struct RelationSubject(OrganizerSubject);
 #[derive(Component, Clone, Copy)]
 struct RelationEdge {
-    from: scene::OrganizerSubject,
-    to: scene::OrganizerSubject,
+    from: OrganizerSubject,
+    to: OrganizerSubject,
     label: bool,
 }
 
 #[derive(Resource, Default)]
 struct RenderedScene {
-    scene: Option<scene::OrganizerScene>,
-    mode: Option<scene::OrganizerSceneMode>,
+    scene: Option<OrganizerScene>,
+    mode: Option<OrganizerSceneMode>,
     historical: Option<bool>,
 }
 #[derive(Component)]
@@ -115,7 +124,7 @@ enum TextPart {
     ChoiceHeading,
     Approach(OrganizerChoice),
     ChoiceMarker(OrganizerChoice),
-    SceneModeMarker(scene::OrganizerSceneMode),
+    SceneModeMarker(OrganizerSceneMode),
     Review,
     Message,
     Notes,
@@ -192,7 +201,7 @@ pub(crate) fn button(parent: &mut ChildSpawnerCommands, label: &str, action: Org
         });
 }
 
-fn relation_subject(parent: &mut ChildSpawnerCommands, node: &scene::SceneNode) {
+fn relation_subject(parent: &mut ChildSpawnerCommands, node: &SceneNode) {
     parent
         .spawn((
             ui::pressable(),
@@ -256,12 +265,12 @@ fn spawn_scene(commands: &mut Commands) {
                 button(
                     modes,
                     "Places · Wayne County",
-                    OrganizerAction::SetSceneMode(scene::OrganizerSceneMode::Places),
+                    OrganizerAction::SetSceneMode(OrganizerSceneMode::Places),
                 );
                 button(
                     modes,
                     "Relationships · Wayne County",
-                    OrganizerAction::SetSceneMode(scene::OrganizerSceneMode::Relationships),
+                    OrganizerAction::SetSceneMode(OrganizerSceneMode::Relationships),
                 );
             });
             root.spawn((
@@ -278,6 +287,13 @@ fn spawn_scene(commands: &mut Commands) {
                 SceneDetail,
                 BackgroundColor(theme::INK),
             ));
+            root.spawn((row(), SceneEvidence)).with_children(|links| {
+                button(
+                    links,
+                    "Inspect selected evidence",
+                    OrganizerAction::Inspect(OrganizerInspector::Evidence),
+                );
+            });
         });
 }
 
@@ -295,6 +311,7 @@ fn render_scene(
     mut roots: Query<&mut Node, (With<SceneRoot>, Without<SceneContent>)>,
     contents: Query<Entity, With<SceneContent>>,
     mut details: Query<&mut Text, With<SceneDetail>>,
+    mut evidence: Query<&mut Node, (With<SceneEvidence>, Without<SceneRoot>)>,
 ) {
     let primary = *scope.view == PrimaryView::Organizer
         && scope.session.organizer_enabled
@@ -319,6 +336,22 @@ fn render_scene(
         root.set_if_neq(next);
     }
     let next = scope.client.scene_for(&scope.session);
+    let workplace_selected = next.as_ref().is_some_and(|scene| {
+        scene.nodes.iter().any(|node| {
+            Some(node.subject) == scope.client.selected_subject
+                && matches!(
+                    node.subject,
+                    OrganizerSubject::Workplace(_) | OrganizerSubject::WorkplaceCommittee(_)
+                )
+        })
+    });
+    for mut node in &mut evidence {
+        node.display = if workplace_selected {
+            Display::Flex
+        } else {
+            Display::None
+        };
+    }
     for mut detail in &mut details {
         let value = scene_detail(next.as_ref(), scope.client.selected_subject);
         detail.set_if_neq(Text::new(value));
@@ -366,7 +399,7 @@ fn render_scene(
                 }
                 return;
             };
-            if scope.client.scene_mode == scene::OrganizerSceneMode::Places {
+            if scope.client.scene_mode == OrganizerSceneMode::Places {
                 spawn_places(parent, scene);
             } else {
                 spawn_relationships(parent, scene);
@@ -375,10 +408,7 @@ fn render_scene(
     }
 }
 
-fn scene_detail(
-    scene: Option<&scene::OrganizerScene>,
-    selected: Option<scene::OrganizerSubject>,
-) -> String {
+fn scene_detail(scene: Option<&OrganizerScene>, selected: Option<OrganizerSubject>) -> String {
     let Some(scene) = scene else {
         return "Organizer scene unavailable for this period".into();
     };
@@ -395,13 +425,13 @@ fn scene_detail(
         .collect::<Vec<_>>()
         .join(" · ");
     if relationships.is_empty() {
-        format!("SELECTED · {}", node.caption())
+        format!("SELECTED · {}\nSelection inspects this subject; the ruling keeps its captured workplace and committee.", node.caption())
     } else {
-        format!("SELECTED · {}\n{}", node.caption(), relationships)
+        format!("SELECTED · {}\n{}\nSelection inspects this subject; the ruling keeps its captured workplace and committee.", node.caption(), relationships)
     }
 }
 
-fn spawn_places(parent: &mut ChildSpawnerCommands, scene: &scene::OrganizerScene) {
+fn spawn_places(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene) {
     parent.spawn(Node {
         flex_grow: 1.0,
         ..default()
@@ -438,7 +468,7 @@ fn spawn_places(parent: &mut ChildSpawnerCommands, scene: &scene::OrganizerScene
         });
 }
 
-fn spawn_relationships(parent: &mut ChildSpawnerCommands, scene: &scene::OrganizerScene) {
+fn spawn_relationships(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene) {
     parent
         .spawn((
             Node {
@@ -476,8 +506,8 @@ fn spawn_relationships(parent: &mut ChildSpawnerCommands, scene: &scene::Organiz
         });
 }
 
-fn spawn_relation_edges(space: &mut ChildSpawnerCommands, scene: &scene::OrganizerScene) {
-    let mut grouped = std::collections::BTreeMap::<_, Vec<&str>>::new();
+fn spawn_relation_edges(space: &mut ChildSpawnerCommands, scene: &OrganizerScene) {
+    let mut grouped = BTreeMap::<_, Vec<&str>>::new();
     for relation in &scene.relations {
         grouped
             .entry((relation.from, relation.to))
@@ -521,21 +551,21 @@ fn spawn_relation_edges(space: &mut ChildSpawnerCommands, scene: &scene::Organiz
     }
 }
 
-fn spawn_relation_subjects(space: &mut ChildSpawnerCommands, scene: &scene::OrganizerScene) {
+fn spawn_relation_subjects(space: &mut ChildSpawnerCommands, scene: &OrganizerScene) {
     let mut members = scene.body_members.clone();
     if members.is_empty() {
         if let Some(node) = scene
             .nodes
             .iter()
-            .find(|node| matches!(node.subject, scene::OrganizerSubject::Collective(_)))
+            .find(|node| matches!(node.subject, OrganizerSubject::Collective(_)))
         {
             members.push(node.subject);
         }
     }
     let radius = match scene.body_shape {
-        Some(scene::BodyShape::Halo) => percent(50),
-        Some(scene::BodyShape::Capsule) => px(45),
-        Some(scene::BodyShape::Membrane) => px(20),
+        Some(BodyShape::Halo) => percent(50),
+        Some(BodyShape::Capsule) => px(45),
+        Some(BodyShape::Membrane) => px(20),
         None => px(0),
     };
     space
@@ -1378,7 +1408,7 @@ fn open_organizer(
 }
 
 fn select_subject(
-    subject: scene::OrganizerSubject,
+    subject: OrganizerSubject,
     client: &mut OrganizerClient,
     atlas: &crate::atlas::CountyAtlas,
     selected: &mut crate::map::SelectedCounty,
@@ -1949,8 +1979,157 @@ pub(crate) mod tests {
     use std::sync::mpsc::Sender;
     use uuid::Uuid;
 
+    #[derive(Resource, Default)]
+    struct ObservedCommands(Vec<ObserverCommand>);
+
+    fn observe_commands(
+        mut events: MessageReader<ObserverCommand>,
+        mut seen: ResMut<ObservedCommands>,
+    ) {
+        seen.0.extend(events.read().copied());
+    }
+
+    fn admitted_scene_fixture() -> (App, Option<OrganizerDraft>) {
+        use babylon_persistence::runtime_session::{
+            OrganizerBodySource, OrganizerObservation, OrganizerReport,
+        };
+        let (_, _, _, mut snapshot) = super::super::tests::status_fixture();
+        let (mut client, mut session) = super::super::tests::ready();
+        session.content_hash = Some(crate::dossier::hex_bytes([4; 32]));
+        session.world_hash = Some(crate::dossier::hex_bytes([5; 32]));
+        snapshot.body_scope.source = Some(OrganizerBodySource::Committed {
+            tick_content_hash: [4; 32],
+            world_hash: [5; 32],
+        });
+        for period in [2, 3] {
+            snapshot.view.observations.push(OrganizerObservation {
+                observation_id: [u8::try_from(period).expect("fixture period fits"); 32],
+                actor_id: 90,
+                subject_id: 91,
+                source_actor_id: 92,
+                observed_period: period - 1,
+                acquired_period: period,
+                receipt_id: Some([7; 32]),
+                report: OrganizerReport::Work {
+                    performed_labor_hours: 2,
+                    output_kg: 777,
+                    previous_labor_hours: None,
+                    previous_output_kg: None,
+                },
+            });
+        }
+        client.queue(&mut session, RequestKind::Status, None);
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } =
+            client.outbox.take().expect("status request")
+        else {
+            panic!("status request")
+        };
+        client
+            .status(request_id, snapshot, &mut session)
+            .expect("admitted status");
+        let draft = client.draft.clone();
+        let (mut app, _, _) = organizer_navigation();
+        app.insert_resource(client).insert_resource(session);
+        app.init_resource::<ObservedCommands>()
+            .add_systems(Update, observe_commands.after(ObserverSet::Input));
+        app.update();
+        app.update();
+        (app, draft)
+    }
+
     #[test]
-    fn scene_selection_and_privacy() {
+    fn scene_navigation_preserves_draft_and_action_target() {
+        let (mut app, draft) = admitted_scene_fixture();
+        let committee = OrganizerSubject::WorkplaceCommittee(92);
+        let entity = {
+            let world = app.world_mut();
+            let mut query = world.query::<(Entity, &ActionButton)>();
+            query.iter(world).find_map(|(entity, action)|
+                matches!(action.0, OrganizerAction::SelectSubject(subject) if subject == committee).then_some(entity)
+            ).expect("committee target")
+        };
+        *app.world_mut()
+            .get_mut::<Interaction>(entity)
+            .expect("interaction") = Interaction::Hovered;
+        app.update();
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().selected_subject,
+            None
+        );
+        app.world_mut()
+            .write_message(OrganizerAction::SelectSubject(committee));
+        app.world_mut().write_message(OrganizerAction::SetSceneMode(
+            OrganizerSceneMode::Relationships,
+        ));
+        app.update();
+        press_named(&mut app, "Inspect selected evidence");
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().inspector,
+            OrganizerInspector::Evidence
+        );
+        assert_eq!(
+            app.world()
+                .resource::<OrganizerClient>()
+                .selected_evidence_id(3),
+            Some([3; 32])
+        );
+        press_named(&mut app, "Next report");
+        assert_eq!(
+            app.world()
+                .resource::<OrganizerClient>()
+                .selected_evidence_id(3),
+            Some([2; 32])
+        );
+        press_named(&mut app, "Cited workplace Archive");
+        assert_eq!(app.world().resource::<ArchiveRequests>().0, vec![false]);
+        assert_eq!(*app.world().resource::<PrimaryView>(), PrimaryView::Map);
+        app.world_mut().write_message(OrganizerAction::Open);
+        app.update();
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().selected_subject,
+            Some(committee)
+        );
+        press_named(&mut app, "Inspect selected evidence");
+        press_named(&mut app, "Return to decision [Esc]");
+        app.world_mut()
+            .write_message(OrganizerAction::SelectSubject(
+                OrganizerSubject::NeighborhoodGroup(93),
+            ));
+        app.update();
+        let client = app.world().resource::<OrganizerClient>();
+        assert_eq!(
+            client.selected_subject,
+            Some(OrganizerSubject::NeighborhoodGroup(93))
+        );
+        assert_eq!(client.draft, draft);
+        let view = client.view.as_ref().expect("view");
+        assert_eq!(
+            (view.actor_id, view.workplace_id, view.workplace_partner_id),
+            (90, 91, 92)
+        );
+        assert!(client.outbox.is_none());
+        assert!(!app.world().resource::<ObserverSession>().advance_pending());
+        press_named(&mut app, "Review choice");
+        assert!(matches!(
+            app.world().resource::<OrganizerClient>().outbox,
+            Some(RuntimeSessionRequest::PreviewOrganizer { .. })
+        ));
+        assert!(!app.world().resource::<ObserverSession>().advance_pending());
+        assert!(!app
+            .world()
+            .resource::<ObservedCommands>()
+            .0
+            .contains(&ObserverCommand::Step));
+        inspect_period(&mut app, 0);
+        app.update();
+        let client = app.world().resource::<OrganizerClient>();
+        let session = app.world().resource::<ObserverSession>();
+        assert!(!enabled(OrganizerAction::Confirm, client, session));
+        assert!(client.lawful_evidence([2; 32], 0).is_none());
+        assert_eq!(client.draft, draft);
+    }
+
+    fn partial_scene_fixture() -> App {
         use babylon_persistence::runtime_session::{
             OrganizerBodyDisclosure, OrganizerBodyPart, OrganizerBodySource, OrganizerPosition,
         };
@@ -1975,7 +2154,7 @@ pub(crate) mod tests {
             scenario: "economy/national-world".into(),
             local_name: "organizer-participant-body-90".into(),
             contributors: vec![90],
-            evidence_class: babylon_persistence::ArchiveEvidenceClass::Designed,
+            evidence_class: ArchiveEvidenceClass::Designed,
         });
         client.queue(&mut session, RequestKind::Status, None);
         let RuntimeSessionRequest::OrganizerStatus { request_id, .. } =
@@ -1988,7 +2167,14 @@ pub(crate) mod tests {
         app.insert_resource(client).insert_resource(session);
         app.update();
         app.update();
-        let subject = scene::OrganizerSubject::WorkplaceCommittee(92);
+        app
+    }
+
+    #[test]
+    fn scene_selection_and_privacy() {
+        use babylon_persistence::runtime_session::OrganizerBodyDisclosure;
+        let mut app = partial_scene_fixture();
+        let subject = OrganizerSubject::WorkplaceCommittee(92);
         let entity = {
             let world = app.world_mut();
             let mut query = world.query::<(Entity, &ActionButton)>();
@@ -2023,70 +2209,11 @@ pub(crate) mod tests {
             app.world().resource::<CountyAtlas>().index_of_fips("26163")
         );
         app.world_mut().write_message(OrganizerAction::SetSceneMode(
-            scene::OrganizerSceneMode::Relationships,
+            OrganizerSceneMode::Relationships,
         ));
         app.update();
         app.update();
-        {
-            let world = app.world_mut();
-            let mut bodies = world.query_filtered::<(Entity, &Node), With<RelationBody>>();
-            let (body, outline) = bodies.single(world).expect("partial body boundary");
-            assert_eq!(outline.border_radius, BorderRadius::all(px(45)));
-            let mut nodes = world.query::<(&RelationSubject, &ChildOf)>();
-            let inside = nodes
-                .iter(world)
-                .filter(|(_, parent)| parent.parent() == body)
-                .map(|(subject, _)| subject.0)
-                .collect::<Vec<_>>();
-            assert_eq!(
-                inside,
-                vec![
-                    scene::OrganizerSubject::Collective(90),
-                    scene::OrganizerSubject::Contributor(90)
-                ]
-            );
-        }
-        let (stage, endpoints, edge) = {
-            let world = app.world_mut();
-            let mut stages = world.query_filtered::<Entity, With<RelationStage>>();
-            let stage = stages.single(world).expect("relationship stage");
-            let mut nodes = world.query::<(Entity, &RelationSubject)>();
-            let endpoints = nodes
-                .iter(world)
-                .map(|(entity, subject)| (entity, subject.0))
-                .collect::<Vec<_>>();
-            let mut edges = world.query::<(Entity, &RelationEdge)>();
-            let (edge, relation) = edges
-                .iter(world)
-                .find(|(_, edge)| !edge.label)
-                .expect("disclosed relationship line");
-            (stage, (endpoints, relation.from, relation.to), edge)
-        };
-        app.world_mut().entity_mut(stage).insert((
-            ComputedNode {
-                size: Vec2::new(600.0, 400.0),
-                inverse_scale_factor: 1.0,
-                ..default()
-            },
-            UiGlobalTransform::default(),
-        ));
-        for (entity, subject) in endpoints.0 {
-            let position = if subject == endpoints.1 {
-                Vec2::new(-150.0, 0.0)
-            } else if subject == endpoints.2 {
-                Vec2::new(150.0, 0.0)
-            } else {
-                Vec2::ZERO
-            };
-            app.world_mut()
-                .entity_mut(entity)
-                .insert(UiGlobalTransform::from_translation(position));
-        }
-        app.update();
-        assert_eq!(
-            app.world().get::<Node>(edge).expect("line geometry").width,
-            px(300)
-        );
+        assert_relationship_geometry(&mut app);
         let before = relationship_targets(&mut app);
         // Synthetic bypass of producer admission: the actual projector removes hidden
         // incidence. This tests that even a perturbed disclosure cannot move targets.
@@ -2135,7 +2262,70 @@ pub(crate) mod tests {
             .any(|value| value.0 == "Historical evidence"));
     }
 
-    fn relationship_targets(app: &mut App) -> Vec<(scene::OrganizerSubject, Node, [f32; 6])> {
+    fn assert_relationship_geometry(app: &mut App) {
+        {
+            let world = app.world_mut();
+            let mut bodies = world.query_filtered::<(Entity, &Node), With<RelationBody>>();
+            let (body, outline) = bodies.single(world).expect("partial body boundary");
+            assert_eq!(outline.border_radius, BorderRadius::all(px(45)));
+            let mut nodes = world.query::<(&RelationSubject, &ChildOf)>();
+            let inside = nodes
+                .iter(world)
+                .filter(|(_, parent)| parent.parent() == body)
+                .map(|(subject, _)| subject.0)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                inside,
+                vec![
+                    OrganizerSubject::Collective(90),
+                    OrganizerSubject::Contributor(90)
+                ]
+            );
+        }
+        let (stage, endpoints, edge) = {
+            let world = app.world_mut();
+            let mut stages = world.query_filtered::<Entity, With<RelationStage>>();
+            let stage = stages.single(world).expect("relationship stage");
+            let mut nodes = world.query::<(Entity, &RelationSubject)>();
+            let endpoints = nodes
+                .iter(world)
+                .map(|(entity, subject)| (entity, subject.0))
+                .collect::<Vec<_>>();
+            let mut edges = world.query::<(Entity, &RelationEdge)>();
+            let (edge, relation) = edges
+                .iter(world)
+                .find(|(_, edge)| !edge.label)
+                .expect("disclosed relationship line");
+            (stage, (endpoints, relation.from, relation.to), edge)
+        };
+        app.world_mut().entity_mut(stage).insert((
+            ComputedNode {
+                size: Vec2::new(600.0, 400.0),
+                inverse_scale_factor: 1.0,
+                ..default()
+            },
+            UiGlobalTransform::default(),
+        ));
+        for (entity, subject) in endpoints.0 {
+            let position = if subject == endpoints.1 {
+                Vec2::new(-150.0, 0.0)
+            } else if subject == endpoints.2 {
+                Vec2::new(150.0, 0.0)
+            } else {
+                Vec2::ZERO
+            };
+            app.world_mut()
+                .entity_mut(entity)
+                .insert(UiGlobalTransform::from_translation(position));
+        }
+        app.update();
+        assert_eq!(
+            app.world().get::<Node>(edge).expect("line geometry").width,
+            px(300)
+        );
+    }
+
+    fn relationship_targets(app: &mut App) -> Vec<(OrganizerSubject, Node, [f32; 6])> {
         let world = app.world_mut();
         let mut targets = world.query::<(&RelationSubject, &Node, &UiGlobalTransform)>();
         let mut result = targets
@@ -2184,15 +2374,15 @@ pub(crate) mod tests {
                         client.view.as_mut().expect("view").period = 3;
                         client.inspector = initial;
                         client.return_focus = Some(original_focus);
-                        client.selected_subject = Some(scene::OrganizerSubject::Collective(90));
-                        client.scene_mode = scene::OrganizerSceneMode::Relationships;
+                        client.selected_subject = Some(OrganizerSubject::Collective(90));
+                        client.scene_mode = OrganizerSceneMode::Relationships;
                     }
-                    app.init_resource::<crate::observer_focus::ObserverFocusPolicy>();
+                    app.init_resource::<ObserverFocusPolicy>();
                     crate::observer_ui::install_shell_focus_policy(&mut app);
                     app.update();
                     assert!(app
                         .world()
-                        .resource::<crate::observer_focus::ObserverFocusPolicy>()
+                        .resource::<ObserverFocusPolicy>()
                         .modal
                         .is_some());
                     inspect_period(&mut app, 2);
@@ -2204,7 +2394,7 @@ pub(crate) mod tests {
                     );
                     assert!(app
                         .world()
-                        .resource::<crate::observer_focus::ObserverFocusPolicy>()
+                        .resource::<ObserverFocusPolicy>()
                         .modal
                         .is_none());
                     assert_eq!(
@@ -2252,9 +2442,9 @@ pub(crate) mod tests {
                     assert_eq!(client.draft.as_ref(), Some(&draft));
                     assert_eq!(
                         client.selected_subject,
-                        Some(scene::OrganizerSubject::Collective(90))
+                        Some(OrganizerSubject::Collective(90))
                     );
-                    assert_eq!(client.scene_mode, scene::OrganizerSceneMode::Relationships);
+                    assert_eq!(client.scene_mode, OrganizerSceneMode::Relationships);
                     assert_eq!(client.return_focus, Some(entity));
                     assert!(client.outbox.is_none());
                     assert!(!confirmation_enabled(&app));
@@ -2286,11 +2476,11 @@ pub(crate) mod tests {
                 .collect::<Vec<_>>();
             (
                 ids.iter()
-                    .find(|(mode, _)| *mode == scene::OrganizerSceneMode::Places)
+                    .find(|(mode, _)| *mode == OrganizerSceneMode::Places)
                     .expect("places")
                     .1,
                 ids.iter()
-                    .find(|(mode, _)| *mode == scene::OrganizerSceneMode::Relationships)
+                    .find(|(mode, _)| *mode == OrganizerSceneMode::Relationships)
                     .expect("relationships")
                     .1,
             )
@@ -2321,7 +2511,7 @@ pub(crate) mod tests {
         app.update();
         assert_eq!(
             app.world().resource::<OrganizerClient>().scene_mode,
-            scene::OrganizerSceneMode::Relationships
+            OrganizerSceneMode::Relationships
         );
         assert!(!caption(&app, places).contains("SELECTED"));
         assert!(caption(&app, relationships).contains("SELECTED"));

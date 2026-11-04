@@ -1,6 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::{envelope, observer_actions, open, runtime_checkpoint, MaterialComponentIdentity};
+use crate::organizer_runtime::OrganizerBodyAttribution;
 use babylon_graph::stable_element::StableElementResolver;
 use babylon_practice_contract::OrganizerPeriodJournalEntries;
 use babylon_tick::material_world::DecodedCityPdAttemptEvidence;
@@ -510,7 +511,7 @@ pub struct DurableMaterialRuntime {
     pub(super) tail_envelope_digest: Option<[u8; 32]>,
     pub(super) last_receipt: Option<crate::CommittedTickReceipt>,
     pub(super) last_choice_receipts: Vec<babylon_tick::choice_receipt::ChoiceReceipt>,
-    pub(crate) body_attribution: Option<crate::organizer_runtime::OrganizerBodyAttribution>,
+    pub(crate) body_attribution: Option<OrganizerBodyAttribution>,
 }
 
 impl DurableMaterialRuntime {

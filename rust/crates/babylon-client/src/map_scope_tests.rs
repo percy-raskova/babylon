@@ -1,7 +1,9 @@
 //! Scope is exercised through the scene system with real committed atlas geometry.
 use super::scene;
 use super::CountySlab;
+use super::{MapGeometry, MapOrbit, ObserverMapCamera};
 use crate::atlas::CountyAtlas;
+use crate::map::CountyMapScope;
 use crate::map::{HoveredCounty, SelectedCounty};
 use crate::observer::ObserverSession;
 use crate::observer::Perspective;
@@ -218,7 +220,7 @@ fn organizer_camera_frames_admitted_wayne_and_restores_map_orbit() {
         .add_systems(Update, super::sync_camera);
     app.world_mut().spawn((Window::default(), PrimaryWindow));
     app.update();
-    let previous = app.world().resource::<super::MapOrbit>().clone();
+    let previous = app.world().resource::<MapOrbit>().clone();
     let other = app
         .world()
         .resource::<CountyAtlas>()
@@ -233,18 +235,18 @@ fn organizer_camera_frames_admitted_wayne_and_restores_map_orbit() {
     assert_eq!(world.resource::<SelectedCounty>().0, Some(wayne));
     let (target, _, _) = super::wayne_focus(
         atlas,
-        world.resource::<crate::map::CountyMapScope>(),
-        world.resource::<super::MapGeometry>(),
+        world.resource::<CountyMapScope>(),
+        world.resource::<MapGeometry>(),
     )
     .expect("Wayne is admitted");
-    assert_eq!(world.resource::<super::MapOrbit>().target, target);
+    assert_eq!(world.resource::<MapOrbit>().target, target);
     let camera_active = {
         let world = app.world_mut();
-        let mut cameras = world.query_filtered::<&Camera, With<super::ObserverMapCamera>>();
+        let mut cameras = world.query_filtered::<&Camera, With<ObserverMapCamera>>();
         cameras.single(world).expect("map camera entity").is_active
     };
     assert!(camera_active);
     *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Map;
     app.update();
-    assert!(*app.world().resource::<super::MapOrbit>() == previous);
+    assert!(*app.world().resource::<MapOrbit>() == previous);
 }

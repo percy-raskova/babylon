@@ -2,6 +2,8 @@
 use super::{Configuration, NativeAudit, Record, Scope};
 use crate::observer::{ObserverSession, SessionPhase};
 use babylon_kernel::clock::CampaignDuration;
+#[cfg(test)]
+use babylon_persistence::ArchiveEvidenceClass;
 
 use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
 use babylon_persistence::runtime_session::{
@@ -508,7 +510,7 @@ pub(super) mod tests {
             scenario: "economy/national-world".into(),
             local_name: "organizer-participant-body-42".into(),
             contributors: vec![101],
-            evidence_class: babylon_persistence::ArchiveEvidenceClass::Designed,
+            evidence_class: ArchiveEvidenceClass::Designed,
         });
         let mut actual = recovery.original_status.clone();
         let OrganizerBodyDisclosure::Partial(part) = &mut actual.body else {

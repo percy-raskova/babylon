@@ -58,7 +58,7 @@ if [ "${BABYLON_POSTGRES_IMAGE_ID+x}" = x ] &&
 fi
 
 case "$LIVE_FOCUS" in
-  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | city_pd | city_pd_atomic | city_pd_history | city_pd_nonwitness | client | national_storage) ;;
+  runtime_smoke | session_progress | reference_integrity | runtime | runtime_open | territory | archive | archive_publication | reader | reader_recovery | production_history | statewide_synthetic | statewide_qualified | organizer | city_pd | city_pd_witness | city_pd_atomic | city_pd_history | city_pd_nonwitness | client | national_storage) ;;
   *) die "unsupported live focus: $LIVE_FOCUS" ;;
 esac
 
@@ -591,6 +591,22 @@ if [ "$status" -eq 0 ]; then
     organizer)
       run_phase organizer 900 cargo test -p babylon-persistence --test observer_material_live \
         organizer:: --locked -- --nocapture --ignored --test-threads=1 || status=$?
+      ;;
+    city_pd_witness)
+      witness_test=organizer::state_opponent::national_city_pd_committed_contact_and_paid_visit_survive_restart
+      if selected="$(run_phase city_pd_witness_list 900 cargo test -p babylon-persistence --test observer_material_live "$witness_test" --locked -- --ignored --exact --list)"; then
+        printf '%s\n' "$selected"
+        selected_tests="$(printf '%s\n' "$selected" | grep -E ': test$' || true)"
+        if [ "$selected_tests" != "$witness_test: test" ]; then
+          printf 'Expected City PD witness test was not selected exactly once: %s\n' "$witness_test" >&2
+          status=1
+        fi
+      else
+        status=$?
+      fi
+      if [ "$status" -eq 0 ]; then
+        run_phase city_pd_witness 1800 cargo test -p babylon-persistence --test observer_material_live "$witness_test" --locked -- --nocapture --ignored --exact --test-threads=1 || status=$?
+      fi
       ;;
     city_pd)
       run_phase city_pd 1800 cargo test -p babylon-persistence --test observer_material_live \

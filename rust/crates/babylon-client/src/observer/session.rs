@@ -58,6 +58,7 @@ pub struct ObserverSession {
     pub archive_verified_tick: u64,
     pub duration: Option<CampaignDuration>,
     pub content_hash: Option<String>,
+    pub world_hash: Option<String>,
     pub foundation_digest: Option<String>,
     pub phase: SessionPhase,
     pub playing: bool,
@@ -82,6 +83,7 @@ impl ObserverSession {
             archive_verified_tick: 0,
             duration: None,
             content_hash: None,
+            world_hash: None,
             foundation_digest: None,
             phase: SessionPhase::Connecting,
             playing: false,
@@ -163,6 +165,7 @@ impl ObserverSession {
         self.durable_tick = tick;
         self.viewed_tick = tick;
         self.content_hash = hash;
+        self.world_hash = None;
         self.pending_request = None;
         self.error = None;
         self.pause_playback();
@@ -257,6 +260,7 @@ impl ObserverSession {
         self.durable_tick = tick;
         self.viewed_tick = tick;
         self.content_hash = hash;
+        self.world_hash = None;
         self.invalidate();
         true
     }

@@ -211,6 +211,7 @@ impl ObserverSession {
         self.archive_verified_tick = 0;
         self.duration = None;
         self.content_hash = None;
+        self.world_hash = None;
         self.foundation_digest = None;
         self.error = None;
         self.lifecycle.last_error = None;
@@ -239,6 +240,7 @@ impl ObserverSession {
         self.lifecycle.switching = None;
         self.foundation_digest = Some(foundation_digest);
         self.ready(tail.resolve_tick, tail.tick_content_hash);
+        self.world_hash = tail.world_hash;
         Ok(())
     }
 

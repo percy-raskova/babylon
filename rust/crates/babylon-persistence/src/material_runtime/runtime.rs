@@ -510,6 +510,7 @@ pub struct DurableMaterialRuntime {
     pub(super) tail_envelope_digest: Option<[u8; 32]>,
     pub(super) last_receipt: Option<crate::CommittedTickReceipt>,
     pub(super) last_choice_receipts: Vec<babylon_tick::choice_receipt::ChoiceReceipt>,
+    pub(crate) body_attribution: Option<crate::organizer_runtime::OrganizerBodyAttribution>,
 }
 
 impl DurableMaterialRuntime {
@@ -599,6 +600,7 @@ impl DurableMaterialRuntime {
         // Staffed rule ownership is fallible: refuse before any founding rows
         // become durable, so dropping this transaction also removes enrollment.
         crate::organizer_archive::insert_projection(&mut tx, campaign, &foundation.register)?;
+        let body_attribution = crate::organizer_runtime::opening_body_attribution(&foundation);
         let session = foundation.into_session()?;
         tx.commit()?;
         Ok(Self {
@@ -611,6 +613,7 @@ impl DurableMaterialRuntime {
             tail_envelope_digest: None,
             last_receipt: None,
             last_choice_receipts: Vec::new(),
+            body_attribution,
         })
     }
     /// Reconstruct the stored foundation and hydrate the latest complete V3 checkpoint.

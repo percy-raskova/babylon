@@ -323,6 +323,7 @@ pub(crate) fn send_advance(
         expected_tail: RuntimeSessionTail {
             resolve_tick: state.durable_tick,
             tick_content_hash: state.content_hash.clone(),
+            world_hash: state.world_hash.clone(),
         },
     };
     let timing = match qualification
@@ -639,7 +640,9 @@ pub(crate) fn refuse_runtime_request(
             .duration
             .is_some_and(|duration| duration.complete(state.durable_tick))
         && tail.is_some_and(|tail| {
-            tail.resolve_tick == state.durable_tick && tail.tick_content_hash == state.content_hash
+            tail.resolve_tick == state.durable_tick
+                && tail.tick_content_hash == state.content_hash
+                && tail.world_hash == state.world_hash
         });
     log::warn!("Runtime campaign request was refused: {code}");
     let organizer_refused = reset.organizer.as_mut().is_some_and(|organizer| {
@@ -802,6 +805,7 @@ pub(crate) fn apply_committed_response(
     if !state.acknowledge(request_id, tail.resolve_tick, tail.tick_content_hash) {
         return Err("Unexpected committed acknowledgement; reopen the campaign.".into());
     }
+    state.world_hash = tail.world_hash;
     if let Some(audit) = reset.qualification.as_deref_mut() {
         audit.advance_committed(state, request_id)?;
     }

@@ -647,7 +647,9 @@ fn organizer_body_projection_limits_disclosure() {
     use babylon_graph::stable_element::StableElementKey;
     use babylon_graph::substrate::GraphSubstrate;
     use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
-    use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
+    use babylon_persistence::economic_catalog::{
+        self, CapturedEconomicCatalog, SourceArtifact, SourceArtifactKind,
+    };
     use babylon_persistence::runtime_session::{OrganizerBodyDisclosure, OrganizerBodySource};
 
     let target = DisposableTarget::create();
@@ -711,15 +713,137 @@ fn organizer_body_projection_limits_disclosure() {
     drop(runtime);
     let reopened = DurableMaterialRuntime::open(&target.writer, campaign, digest).expect("reopen");
     let snapshot = reopened.organizer_snapshot().expect("reopened status");
-    let OrganizerBodyDisclosure::Partial(part) = snapshot.body else {
+    let OrganizerBodyDisclosure::Partial(part) = &snapshot.body else {
         panic!("reopened body")
     };
     assert_eq!(
-        (part.scenario, part.local_name),
-        stable_key,
+        (&part.scenario, &part.local_name),
+        (&stable_key.0, &stable_key.1),
         "stable identity survives reopening"
     );
     assert_eq!(part.contributors, expected);
+
+    let config = reopened
+        .session()
+        .material()
+        .organizer_config()
+        .expect("national organizer");
+    let partner = &config.aid_bindings[0].partner;
+    let hidden = config
+        .participants
+        .iter()
+        .find(|participant| {
+            participant
+                .commitments
+                .iter()
+                .any(|commitment| commitment.actor_id == partner.actor_id)
+        })
+        .expect("partner-only contributor");
+    assert!(!snapshot
+        .view
+        .positions
+        .iter()
+        .any(|position| position.contributor_id == hidden.contributor_id));
+    let graph = reopened.session().graph_session();
+    let resolver = graph.stable_resolver();
+    let partner_edge = resolver
+        .hyperedge_handle_by_local_name(&format!("organizer-participant-body-{}", partner.actor_id))
+        .expect("partner body");
+    let partner_members = graph
+        .graph()
+        .members_of(partner_edge)
+        .expect("partner incidence");
+    let hidden_node = resolver
+        .node_handle_by_local_name(&format!("organizer-contributor-{}", hidden.contributor_id))
+        .expect("hidden contributor node");
+    assert!(
+        partner_members.contains(&hidden_node),
+        "partner-only contributor exists in actual graph"
+    );
+    assert!(
+        !partner_members.contains(
+            &resolver
+                .node_handle_by_local_name("wayne-organizing-collective")
+                .expect("controlled node")
+        ),
+        "partner body is not the controlled body"
+    );
+    let original_policy = partner.policy;
+    let original_hidden_contributor = hidden.contributor_id;
+    let original_body = serde_json::to_vec(&snapshot.body).expect("body disclosure serializes");
+    drop(reopened);
+
+    // Capture a second complete foundation with a changed private partner policy.
+    // Its graph and organizer register are produced and admitted together.
+    let changed_campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7034));
+    let mut input = economic_catalog::national_catalog_input();
+    let policy = input
+        .sources
+        .iter_mut()
+        .find(|source| source.kind() == SourceArtifactKind::NationalGamePolicy)
+        .expect("captured policy");
+    let original = std::str::from_utf8(policy.bytes()).expect("policy text");
+    let changed = original
+        .replace(
+            "local_policy = \"participate\"",
+            "local_policy = \"refuse\"",
+        )
+        .replace(
+            "local_recipient_contributor_id = 2616302",
+            "local_recipient_contributor_id = 2616399",
+        );
+    assert_ne!(original, changed, "private partner policy changed");
+    *policy = SourceArtifact::capture(SourceArtifactKind::NationalGamePolicy, changed.into_bytes());
+    let changed_foundation =
+        CapturedEconomicCatalog::capture_national_campaign(input, changed_campaign)
+            .expect("capture changed source")
+            .create_foundation(
+                ReplaySessionId::try_from("national-body-projection").expect("session"),
+                ReplaySeed::new(319),
+            )
+            .expect("changed foundation");
+    let changed_runtime =
+        DurableMaterialRuntime::create(&target.writer, changed_campaign, changed_foundation)
+            .expect("admit changed foundation");
+    let changed_config = changed_runtime
+        .session()
+        .material()
+        .organizer_config()
+        .expect("changed organizer");
+    assert_ne!(
+        changed_config.aid_bindings[0].partner.policy, original_policy,
+        "private state actually differs"
+    );
+    assert_ne!(
+        changed_config.aid_bindings[0].recipient_contributor_id, original_hidden_contributor,
+        "hidden partner contributor actually differs"
+    );
+    let changed_snapshot = changed_runtime
+        .organizer_snapshot()
+        .expect("changed status");
+    assert_eq!(
+        serde_json::to_vec(&changed_snapshot.body).expect("changed body serializes"),
+        original_body,
+        "private source change cannot change disclosed body bytes"
+    );
+
+    // The supported Michigan organizer has no attributed national body source.
+    let michigan_campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7035));
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../content/scenarios/michigan/defines.toml");
+    let catalog =
+        MichiganMaterialCatalog::load_for_preset(&path, MichiganDeliveryPreset::OrganizeInWayne)
+            .expect("Michigan preset");
+    let foundation = MichiganContentPreset::OrganizeInWayne
+        .create_foundation_for_campaign(&catalog, michigan_campaign)
+        .expect("Michigan foundation");
+    let other = DurableMaterialRuntime::create(&target.writer, michigan_campaign, foundation)
+        .expect("admit Michigan opening");
+    assert_eq!(
+        other.organizer_snapshot().expect("Michigan status").body,
+        OrganizerBodyDisclosure::Unavailable,
+        "an unattributed scenario is not known absent"
+    );
 }
 
 pub(crate) mod state_opponent {

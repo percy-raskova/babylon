@@ -366,7 +366,8 @@ pub(crate) mod tests {
                 replies.send(Ok(RuntimeSessionResponse::Error { scope,
                 request_id:Some(request_id),
                 code:babylon_persistence::runtime_session::RuntimeSessionErrorCode::StorageRefused,
-                tail:Some(RuntimeSessionTail { resolve_tick:3,tick_content_hash:None })
+                tail:Some(RuntimeSessionTail { resolve_tick:3,tick_content_hash:None, world_hash: None,
+})
             })).expect("the receiver stays alive for the send");
             }
             app.update();
@@ -537,12 +538,14 @@ pub(crate) mod tests {
                 tail: RuntimeSessionTail {
                     resolve_tick: 4,
                     tick_content_hash: Some("4".repeat(64)),
+                    world_hash: Some("5".repeat(64)),
                 },
             }))
             .expect("the receiver stays alive for the send");
         app.update();
         let state = app.world().resource::<ObserverSession>();
         assert_eq!(state.durable_tick, 4);
+        assert_eq!(state.world_hash.as_deref(), Some("5".repeat(64).as_str()));
         assert_eq!(state.phase, SessionPhase::Loading);
         assert!(!state.advance_pending());
         replies
@@ -1312,6 +1315,7 @@ pub(crate) mod tests {
                 tail: RuntimeSessionTail {
                     resolve_tick: 4,
                     tick_content_hash: Some("4".repeat(64)),
+                    world_hash: None,
                 },
             }))
             .expect("the receiver stays alive for the send");
@@ -1629,6 +1633,7 @@ pub(crate) mod tests {
                 tail: RuntimeSessionTail {
                     resolve_tick: 4,
                     tick_content_hash: Some("committed".into()),
+                    world_hash: None,
                 },
             }))
             .expect("the receiver stays alive for the send");

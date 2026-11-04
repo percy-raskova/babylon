@@ -30,7 +30,7 @@ OBSERVER_CAPTURE_FILTER = "session=debug,babylon_client=debug"
 # The runtime's database statement timeout is 120 seconds. EOF/Stop gets time
 # to finish a transaction before any exact-child termination is attempted.
 RUNTIME_SHUTDOWN_GRACE_SECONDS = 150
-RUNTIME_SESSION_PROTOCOL_VERSION: int = 12
+RUNTIME_SESSION_PROTOCOL_VERSION: int = 13
 ADVANCE_STAGES = (
     "preparing_commitments",
     "resolving_economy",
@@ -639,7 +639,7 @@ def run_lifecycle(
             if (
                 not isinstance(tail, dict)
                 or type(tail.get("resolve_tick")) is not int
-                or tail != {"resolve_tick": 0, "tick_content_hash": None}
+                or tail != {"resolve_tick": 0, "tick_content_hash": None, "world_hash": None}
             ):
                 raise ObserverLaunchError(
                     "installation check New did not return an empty durable tail"
@@ -661,6 +661,8 @@ def run_lifecycle(
             or tail.get("resolve_tick") != 1
             or type(tail.get("tick_content_hash")) is not str
             or re.fullmatch(r"[0-9a-f]{64}", tail["tick_content_hash"]) is None
+            or type(tail.get("world_hash")) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", tail["world_hash"]) is None
         ):
             raise ObserverLaunchError(
                 "installation check did not observe one hashed committed period"
@@ -741,6 +743,10 @@ def _national_economy_status(
         for key in ("nominal_world_hash", "envelope_digest")
     ):
         raise ObserverLaunchError("national economic snapshot lacks authenticated hash evidence")
+    if status["nominal_world_hash"] != expected[1]["world_hash"]:
+        raise ObserverLaunchError(
+            "national economic snapshot has incomplete scope or mismatched identity"
+        )
     if type(status.get("read_elapsed_us")) is not int or status["read_elapsed_us"] < 0:
         raise ObserverLaunchError("national economic snapshot has invalid read timing")
     return status

@@ -867,7 +867,7 @@ def _smoke_transcript_children(
     *,
     refused: bool = False,
     economic_report: dict[str, object] | None = None,
-    protocol_version: int | float = 12,
+    protocol_version: int | float = 13,
     progress_rows: list[dict[str, Any]] | None = None,
     progress_before_ready: bool = False,
     ready_changes: dict[str, object] | None = None,
@@ -876,7 +876,7 @@ def _smoke_transcript_children(
 ) -> list[list[str]]:
     """Keep the real launcher/session code; replace only native process boundaries."""
     calls: list[list[str]] = []
-    tail = {"resolve_tick": 1, "tick_content_hash": "a" * 64}
+    tail = {"resolve_tick": 1, "tick_content_hash": "a" * 64, "world_hash": "c" * 64}
     hello_scope = {"epoch": 0, "campaign_id": None}
     scope = {"epoch": 1, "campaign_id": str(CAMPAIGN)}
 
@@ -918,7 +918,9 @@ def _smoke_transcript_children(
                         "request_id": 1,
                         "scope": scope,
                         "foundation_digest": "b" * 64,
-                        "tail": {"resolve_tick": 0, "tick_content_hash": None} if new else tail,
+                        "tail": {"resolve_tick": 0, "tick_content_hash": None, "world_hash": None}
+                        if new
+                        else tail,
                         **(ready_changes or {}),
                     }
                 )
@@ -1152,6 +1154,7 @@ def test_national_smoke_requires_the_authenticated_economic_snapshot(
         ("resolve_tick", 0),
         ("foundation_digest", "e" * 64),
         ("tick_content_hash", "e" * 64),
+        ("nominal_world_hash", "e" * 64),
         ("duration", {"kind": "finite", "final_period": 16}),
         ("completed_material_balance", False),
         ("completed_household_goods_accounts", 0),
@@ -1197,7 +1200,7 @@ def test_national_smoke_refuses_numeric_hash_evidence(
 def test_installation_check_admits_current_protocol_and_exact_progress_stream(
     monkeypatch, tmp_path, capsys
 ):
-    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=12)
+    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=13)
     assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 0
     for index in (1, 2):
         requests = [
@@ -1205,7 +1208,7 @@ def test_installation_check_admits_current_protocol_and_exact_progress_stream(
             for line in (tmp_path / f"requests-{index}.jsonl").read_text().splitlines()
         ]
         assert all(
-            type(row["protocol_version"]) is int and row["protocol_version"] == 12
+            type(row["protocol_version"]) is int and row["protocol_version"] == 13
             for row in requests
         )
         assert requests[0]["scope"] == {"epoch": 0, "campaign_id": None}
@@ -1292,13 +1295,33 @@ def test_lifecycle_refuses_numeric_committed_hash(monkeypatch, tmp_path):
         )
 
 
-@pytest.mark.parametrize("version", [5, 6, 7, 8, 9, 10, 11, 11.0, 12.0, 13])
+@pytest.mark.parametrize("world_hash", [None, "x" * 64, 7])
+def test_lifecycle_requires_committed_world_hash(monkeypatch, tmp_path, world_hash):
+    _smoke_transcript_children(
+        monkeypatch,
+        tmp_path,
+        row_changes=(
+            "committed",
+            {"tail": {"resolve_tick": 1, "tick_content_hash": "a" * 64, "world_hash": world_hash}},
+        ),
+    )
+    with pytest.raises(launcher.ObserverLaunchError, match="one hashed committed period"):
+        launcher.run_lifecycle(
+            tmp_path / "runtime",
+            tmp_path,
+            {},
+            tmp_path / "defines.toml",
+            launcher.NewCampaignTarget(CAMPAIGN, "standard"),
+        )
+
+
+@pytest.mark.parametrize("version", [5, 6, 7, 8, 9, 10, 11, 12, 12.0, 13.0, 14])
 def test_installation_check_refuses_unsupported_or_untyped_version(
     monkeypatch, tmp_path, capsys, version
 ):
     _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=version)
     assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 1
-    assert "requires runtime session protocol 12" in capsys.readouterr().err
+    assert "requires runtime session protocol 13" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

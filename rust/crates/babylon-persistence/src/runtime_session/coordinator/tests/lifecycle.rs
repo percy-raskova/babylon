@@ -512,6 +512,7 @@ fn reused_or_lower_ids_cannot_advance_refresh_or_stop_a_current_scope() {
     let advanced_tail = RuntimeSessionTail {
         resolve_tick: 1,
         tick_content_hash: Some(format!("{:064x}", 1)),
+        world_hash: None,
     };
     let rows = lifecycle(
         &[
@@ -523,6 +524,7 @@ fn reused_or_lower_ids_cannot_advance_refresh_or_stop_a_current_scope() {
                 expected_tail: RuntimeSessionTail {
                     resolve_tick: 0,
                     tick_content_hash: None,
+                    world_hash: None,
                 },
             },
             RuntimeSessionRequest::Advance {

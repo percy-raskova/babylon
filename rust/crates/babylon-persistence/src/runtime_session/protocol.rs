@@ -43,6 +43,15 @@ pub struct RuntimeSessionScope {
 pub struct RuntimeSessionTail {
     pub resolve_tick: u64,
     pub tick_content_hash: Option<String>,
+    /// The committed nominal world identity; the foundation has no tick hash.
+    #[serde(deserialize_with = "required_nullable_world_hash")]
+    pub world_hash: Option<String>,
+}
+
+fn required_nullable_world_hash<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    Option::<String>::deserialize(deserializer)
 }
 
 /// Closed wire selection of captured campaigns and explicit Michigan controls.
@@ -326,6 +335,13 @@ mod selection_tests {
 #[test]
 fn advance_progress_current_wire_is_closed_and_versioned() {
     assert_eq!(RUNTIME_SESSION_PROTOCOL_VERSION, 13);
+    assert!(
+        serde_json::from_value::<RuntimeSessionTail>(serde_json::json!({
+            "resolve_tick": 0, "tick_content_hash": null
+        }))
+        .is_err(),
+        "the current tail requires its explicit nullable world identity"
+    );
     let valid = r#"{"type":"advance_progress","request_id":2,"scope":{"epoch":1,"campaign_id":"00000000-0000-0000-0000-000000000001"},"resolve_tick":1,"stage":"preparing_commitments"}"#;
     let response: RuntimeSessionResponse =
         serde_json::from_str(valid).expect("current actual progress wire");

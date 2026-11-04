@@ -127,6 +127,7 @@ pub(super) fn restore<C>(
         })
         .transpose()?;
     let tail_envelope_digest = stored.as_ref().map(|tick| tick.envelope.digest());
+    let body_attribution = crate::organizer_runtime::opening_body_attribution(&foundation);
     let mut session = foundation.into_session()?;
     let (tail, lookup_chain) =
         restore_checkpoint(&mut session, stored, initial_lookup_chain, sources)?;
@@ -148,6 +149,7 @@ pub(super) fn restore<C>(
         tail_envelope_digest,
         last_receipt: None,
         last_choice_receipts: Vec::new(),
+        body_attribution,
     })
 }
 

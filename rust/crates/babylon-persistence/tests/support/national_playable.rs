@@ -95,6 +95,7 @@ impl Session {
             tail: RuntimeSessionTail {
                 resolve_tick: 0,
                 tick_content_hash: None,
+                world_hash: None,
             },
             foundation: String::new(),
             next_id: 1,

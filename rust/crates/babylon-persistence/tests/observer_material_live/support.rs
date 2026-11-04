@@ -1623,6 +1623,7 @@ pub(crate) fn assert_session_admits_stored_revision(
             expected_tail: RuntimeSessionTail {
                 resolve_tick: 3,
                 tick_content_hash: current.tick_content_hash,
+                world_hash: current.nominal_world_hash,
             },
         },
         RuntimeSessionRequest::Stop {

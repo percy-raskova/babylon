@@ -44,6 +44,7 @@ fn runtime() -> DurableMaterialRuntime {
         tail_envelope_digest: None,
         last_receipt: None,
         last_choice_receipts: Vec::new(),
+        body_attribution: None,
     }
 }
 

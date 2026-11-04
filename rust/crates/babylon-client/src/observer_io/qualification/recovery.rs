@@ -439,6 +439,7 @@ pub(super) mod tests {
                 RuntimeSessionTail {
                     resolve_tick: 0,
                     tick_content_hash: None,
+                    world_hash: None,
                 },
             )
             .expect("the fixture admits the authored value");
@@ -693,6 +694,7 @@ pub(super) mod tests {
                 RuntimeSessionTail {
                     resolve_tick: 1,
                     tick_content_hash: Some("a".repeat(64)),
+                    world_hash: None,
                 },
             )
             .expect("the fixture admits the authored value");

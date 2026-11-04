@@ -93,6 +93,7 @@ fn admitted(app: &mut App, responses: &Replies, switch: &Switch, period: u64) {
             tail: RuntimeSessionTail {
                 resolve_tick: period,
                 tick_content_hash: None,
+                world_hash: None,
             },
         }))
         .expect("the receiver stays alive for the send");
@@ -283,6 +284,7 @@ fn lifecycle_switch_waits_for_commit_ack_then_clears_scoped_observations() {
             tail: RuntimeSessionTail {
                 resolve_tick: 4,
                 tick_content_hash: None,
+                world_hash: None,
             },
         }))
         .expect("the receiver stays alive for the send");
@@ -359,6 +361,7 @@ fn return_to_a_rejects_stale_results(failed_b: bool) {
             tail: RuntimeSessionTail {
                 resolve_tick: 99,
                 tick_content_hash: None,
+                world_hash: None,
             },
         },
         RuntimeSessionResponse::Error {
@@ -482,6 +485,7 @@ fn lifecycle_request_ids_remain_unique_across_switch_advance_and_stop() {
             tail: RuntimeSessionTail {
                 resolve_tick: 1,
                 tick_content_hash: Some("1".repeat(64)),
+                world_hash: None,
             },
         }))
         .expect("the receiver stays alive for the send");

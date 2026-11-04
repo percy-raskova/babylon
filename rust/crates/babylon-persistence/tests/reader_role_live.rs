@@ -1743,6 +1743,7 @@ fn assert_material_stdio_advance(
             tick_content_hash: Some(babylon_tick::hex(
                 uninterrupted.tick_content_hash().as_bytes(),
             )),
+            world_hash: Some(babylon_tick::hex(&uninterrupted.result_world_hash())),
         },
     };
     let stop = RuntimeSessionRequest::Stop {

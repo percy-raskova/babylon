@@ -234,6 +234,7 @@ pub(crate) mod tests {
             "viewed",
             "freshness",
             "tail_hash",
+            "world_hash",
             "foundation",
         ] {
             let (mut client, mut session, request, snapshot) = status_fixture();
@@ -246,6 +247,7 @@ pub(crate) mod tests {
                 "viewed" => session.inspect_tick(2),
                 "freshness" => session.durable_tick += 1,
                 "tail_hash" => session.content_hash = Some("04".repeat(32)),
+                "world_hash" => session.world_hash = Some("05".repeat(32)),
                 "foundation" => session.foundation_digest = Some("05".repeat(32)),
                 _ => unreachable!(),
             }
@@ -263,6 +265,7 @@ pub(crate) mod tests {
             "valid",
             "known_absent",
             "foreign_hash",
+            "foreign_world_hash",
             "hidden_contributor",
             "unordered",
             "unattributed",
@@ -271,6 +274,7 @@ pub(crate) mod tests {
             client.pending = None;
             client.outbox = None;
             session.content_hash = Some("04".repeat(32));
+            session.world_hash = Some("05".repeat(32));
             client.queue(&mut session, RequestKind::Status, None);
             let request = client.outbox.take().expect("status request");
             snapshot.body_scope.source = Some(OrganizerBodySource::Committed {
@@ -301,6 +305,12 @@ pub(crate) mod tests {
                         tick_content_hash: [6; 32],
                         world_hash: [5; 32],
                     })
+                }
+                "foreign_world_hash" => {
+                    snapshot.body_scope.source = Some(OrganizerBodySource::Committed {
+                        tick_content_hash: [4; 32],
+                        world_hash: [6; 32],
+                    });
                 }
                 "hidden_contributor" => {
                     if let OrganizerBodyDisclosure::Partial(part) = &mut snapshot.body {
@@ -333,6 +343,12 @@ pub(crate) mod tests {
                         client.body_for(&session),
                         Some((OrganizerBodyDisclosure::Partial(_), _))
                     ));
+                    session.world_hash = Some("06".repeat(32));
+                    assert!(
+                        client.body_for(&session).is_none(),
+                        "changed admitted world invalidates body"
+                    );
+                    session.world_hash = Some("05".repeat(32));
                 } else {
                     assert!(matches!(
                         client.body_for(&session),
@@ -349,6 +365,48 @@ pub(crate) mod tests {
                 assert_eq!(client.view, prior, "refusal preserves prior view");
             }
         }
+    }
+
+    #[test]
+    fn organizer_body_foundation_source_requires_admitted_digest() {
+        let (mut client, mut session, _, mut snapshot) = status_fixture();
+        client.pending = None;
+        client.outbox = None;
+        session.ready(0, None);
+        assert!(session.installed(&session.context()));
+        session.foundation_digest = Some("04".repeat(32));
+        snapshot.view.period = 0;
+        snapshot.city_pd_encounters.clear();
+        snapshot.body = OrganizerBodyDisclosure::KnownAbsent;
+        snapshot.body_scope.period = 0;
+        snapshot.body_scope.source = Some(OrganizerBodySource::Foundation {
+            foundation_digest: [4; 32],
+        });
+        client.queue(&mut session, RequestKind::Status, None);
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } =
+            client.outbox.take().expect("status request")
+        else {
+            panic!("status request")
+        };
+        assert_eq!(
+            client.status(request_id, snapshot.clone(), &mut session),
+            Ok(StatusDisposition::Installed)
+        );
+        let prior = client.view.clone();
+        client.queue(&mut session, RequestKind::Status, None);
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } =
+            client.outbox.take().expect("second request")
+        else {
+            panic!("status request")
+        };
+        snapshot.body_scope.source = Some(OrganizerBodySource::Foundation {
+            foundation_digest: [5; 32],
+        });
+        assert!(client.status(request_id, snapshot, &mut session).is_err());
+        assert_eq!(
+            client.view, prior,
+            "foreign foundation cannot replace admitted view"
+        );
     }
 
     fn aid_fixture() -> OrganizerMaterialAidPreview {

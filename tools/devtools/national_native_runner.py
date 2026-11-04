@@ -748,11 +748,11 @@ class NativeRun:
                 "continuations": [
                     {
                         "period": record.tick,
-                        "tail": recovery.source.model_dump(
-                            include={"tick_content_hash"},
-                            mode="json",
-                        )
-                        | {"resolve_tick": record.tick},
+                        "tail": {
+                            "resolve_tick": record.tick,
+                            "tick_content_hash": recovery.source.tick_content_hash,
+                            "world_hash": recovery.source.nominal_world_hash,
+                        },
                         "organizer_snapshot_sha256": recovery.original_organizer_sha256,
                         "latest_marker": list(snapshot.marker_and_encoded_package_hashes[-1][:3]),
                         "nominal_world_hash": facts.nominal_world_hash,

@@ -15,7 +15,9 @@ use postgres::{GenericClient, IsolationLevel};
 use serde::{Deserialize, Serialize};
 
 use crate::identity::CampaignId;
-use crate::material_runtime::{DurableMaterialRuntime, MaterialRuntimeError};
+use crate::material_runtime::{
+    DurableMaterialRuntime, MaterialRuntimeError, MaterialRuntimeFoundation,
+};
 use crate::runtime_session::RuntimeSessionErrorCode;
 use crate::ArchiveEvidenceClass;
 use babylon_graph::stable_element::{StableElementKey, StableElementResolver};
@@ -26,6 +28,7 @@ use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_practice_contract::OrganizerCollectionResolution;
 use babylon_practice_contract::OrganizerPeriodJournal;
 use postgres::Row;
+use std::collections::BTreeSet;
 
 /// The portion of the controlled body's incidence authorized for this view.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -208,16 +211,85 @@ pub(crate) fn captured_organizer_snapshot(
     })
 }
 
+/// Opening-only attribution retained privately across runtime reconstruction.
+pub(crate) struct OrganizerBodyAttribution {
+    actor: StableElementKey,
+    body: Option<StableElementKey>,
+    members: BTreeSet<StableElementKey>,
+}
+
+fn body_attribution_from_graph(
+    graph: &impl GraphSubstrate,
+    resolver: &StableElementResolver,
+    actor_id: u64,
+) -> Option<OrganizerBodyAttribution> {
+    if resolver.scenario_scope() != crate::national_economy::NATIONAL_SCENARIO_ID {
+        return None;
+    }
+    let actor = resolver
+        .node_handle_by_local_name("wayne-organizing-collective")
+        .ok()?;
+    let actor_key = resolver.node_key(actor).ok()?.clone();
+    let bodies = graph.hyperedges_of(actor, "ORGANIZATION_BODY").ok()?;
+    let (body, members) = match bodies.as_slice() {
+        [] => (None, BTreeSet::new()),
+        [body] => {
+            let key = resolver.hyperedge_key(*body).ok()?.clone();
+            if !matches!(&key, StableElementKey::Hyperedge { local_name, .. } if *local_name == format!("organizer-participant-body-{actor_id}"))
+            {
+                return None;
+            }
+            let mut members = BTreeSet::new();
+            for member in graph.members_of(*body).ok()? {
+                members.insert(resolver.node_key(member).ok()?.clone());
+            }
+            (Some(key), members)
+        }
+        _ => return None,
+    };
+    Some(OrganizerBodyAttribution {
+        actor: actor_key,
+        body,
+        members,
+    })
+}
+
+/// Capture only the authenticated Designed national opening's body provenance.
+pub(crate) fn opening_body_attribution(
+    foundation: &MaterialRuntimeFoundation,
+) -> Option<OrganizerBodyAttribution> {
+    use crate::economic_catalog::SourceArtifactKind;
+    let catalog = foundation
+        .graph_foundation
+        .content_bundle()
+        .economic_catalog()?;
+    let config = catalog.organizer_config()?;
+    if foundation.register.organizer_config() != Some(config) {
+        return None;
+    }
+    let policy = crate::national_economy::NationalGamePolicy::from_captured_bytes(
+        catalog.source(SourceArtifactKind::NationalGamePolicy)?,
+    )
+    .ok()?;
+    if policy.organizer.evidence_class != "Designed" {
+        return None;
+    }
+    body_attribution_from_graph(
+        foundation.graph.graph(),
+        foundation.graph.stable_resolver(),
+        config.controlled_actor_id,
+    )
+}
+
 fn project_body(
     graph: &impl GraphSubstrate,
     resolver: &StableElementResolver,
     view: &OrganizerView,
+    attribution: Option<&OrganizerBodyAttribution>,
 ) -> Result<OrganizerBodyDisclosure, RuntimeSessionErrorCode> {
-    // The captured national seed is the source that attributes these bodies
-    // to design. An unrelated scenario has no such attribution here.
-    if resolver.scenario_scope() != crate::national_economy::NATIONAL_SCENARIO_ID {
+    let Some(attribution) = attribution else {
         return Ok(OrganizerBodyDisclosure::Unavailable);
-    }
+    };
     let actor = match resolver.node_handle_by_local_name("wayne-organizing-collective") {
         Ok(actor) => actor,
         Err(_) => return Ok(OrganizerBodyDisclosure::Unavailable),
@@ -225,8 +297,15 @@ fn project_body(
     let bodies = graph
         .hyperedges_of(actor, "ORGANIZATION_BODY")
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
+    if resolver.node_key(actor).ok() != Some(&attribution.actor) {
+        return Ok(OrganizerBodyDisclosure::Unavailable);
+    }
     if bodies.is_empty() {
-        return Ok(OrganizerBodyDisclosure::KnownAbsent);
+        return Ok(if attribution.body.is_none() {
+            OrganizerBodyDisclosure::KnownAbsent
+        } else {
+            OrganizerBodyDisclosure::Unavailable
+        });
     }
     let [body] = bodies.as_slice() else {
         return Err(RuntimeSessionErrorCode::StorageRefused);
@@ -240,6 +319,9 @@ fn project_body(
     else {
         return Err(RuntimeSessionErrorCode::StorageRefused);
     };
+    if resolver.hyperedge_key(*body).ok() != attribution.body.as_ref() {
+        return Ok(OrganizerBodyDisclosure::Unavailable);
+    }
     if *local_name != format!("organizer-participant-body-{}", view.actor_id) {
         return Err(RuntimeSessionErrorCode::StorageRefused);
     }
@@ -249,12 +331,20 @@ fn project_body(
     let mut contributors = Vec::new();
     for position in &view.positions {
         let name = format!("organizer-contributor-{}", position.contributor_id);
-        if resolver
-            .node_handle_by_local_name(&name)
-            .is_ok_and(|node| members.contains(&node))
-        {
-            contributors.push(position.contributor_id);
+        let Ok(node) = resolver.node_handle_by_local_name(&name) else {
+            continue;
+        };
+        if !members.contains(&node) {
+            continue;
         }
+        if resolver
+            .node_key(node)
+            .ok()
+            .is_none_or(|key| !attribution.members.contains(key))
+        {
+            return Ok(OrganizerBodyDisclosure::Unavailable);
+        }
+        contributors.push(position.contributor_id);
     }
     contributors.sort_unstable();
     contributors.dedup();
@@ -479,6 +569,7 @@ impl DurableMaterialRuntime {
             graph_session.graph(),
             graph_session.stable_resolver(),
             &snapshot.view,
+            self.body_attribution.as_ref(),
         )?;
         snapshot.body_scope.source = Some(source);
         Ok(snapshot)
@@ -723,6 +814,41 @@ mod collection_history_tests {
     }
 
     #[test]
+    fn organizer_body_refuses_matching_namespace_without_attribution() {
+        use babylon_graph::memory::MemoryGraph;
+        use std::collections::HashMap;
+
+        let session = partial_collection_session();
+        let view = current_view(session.material());
+        let mut graph = MemoryGraph::new();
+        let actor = graph.add_node("ORGANIZATION").expect("actor");
+        let contributor = graph.add_node("PARTICIPANT_BODY").expect("contributor");
+        let body = graph
+            .add_hyperedge("ORGANIZATION_BODY", &[actor, contributor])
+            .expect("body");
+        let names = HashMap::from([
+            (actor, "wayne-organizing-collective".to_owned()),
+            (contributor, "organizer-contributor-101".to_owned()),
+        ]);
+        let edges = HashMap::from([(
+            body,
+            format!("organizer-participant-body-{}", view.actor_id),
+        )]);
+        let resolver = StableElementResolver::seal(
+            &graph,
+            crate::national_economy::NATIONAL_SCENARIO_ID,
+            &names,
+            &edges,
+        )
+        .expect("sealed graph");
+        assert_eq!(
+            project_body(&graph, &resolver, &view, None),
+            Ok(OrganizerBodyDisclosure::Unavailable),
+            "a matching namespace is not source attribution"
+        );
+    }
+
+    #[test]
     fn organizer_body_projection_limits_disclosure() {
         use babylon_graph::memory::MemoryGraph;
         use babylon_practice_contract::OrganizerPosition;
@@ -812,7 +938,10 @@ mod collection_history_tests {
             (graph, resolver)
         };
         let (graph, resolver) = build(103, false, true);
-        let disclosed = project_body(&graph, &resolver, &snapshot.view).expect("projection");
+        let attribution = body_attribution_from_graph(&graph, &resolver, snapshot.view.actor_id)
+            .expect("attributed opening");
+        let disclosed = project_body(&graph, &resolver, &snapshot.view, Some(&attribution))
+            .expect("projection");
         let OrganizerBodyDisclosure::Partial(part) = &disclosed else {
             panic!("controlled body is partial")
         };
@@ -830,18 +959,26 @@ mod collection_history_tests {
                 .0
         );
         let (other_graph, other_resolver) = build(104, false, true);
-        let other =
-            project_body(&other_graph, &other_resolver, &snapshot.view).expect("projection");
+        let other = project_body(
+            &other_graph,
+            &other_resolver,
+            &snapshot.view,
+            Some(&attribution),
+        )
+        .expect("projection");
         assert_eq!(
             serde_json::to_vec(&disclosed).expect("serialize"),
             serde_json::to_vec(&other).expect("serialize"),
             "hidden inputs do not affect disclosure"
         );
         let (reopened, reopened_resolver) = build(104, true, true);
-        let OrganizerBodyDisclosure::Partial(reopened_part) =
-            project_body(&reopened, &reopened_resolver, &snapshot.view)
-                .expect("reopened projection")
-        else {
+        let OrganizerBodyDisclosure::Partial(reopened_part) = project_body(
+            &reopened,
+            &reopened_resolver,
+            &snapshot.view,
+            Some(&attribution),
+        )
+        .expect("reopened projection") else {
             panic!("body survives reopen")
         };
         assert_ne!(
@@ -857,9 +994,31 @@ mod collection_history_tests {
             )
         );
         let (absent, absent_resolver) = build(104, false, false);
+        let absent_attribution =
+            body_attribution_from_graph(&absent, &absent_resolver, snapshot.view.actor_id)
+                .expect("attributed absence");
         assert_eq!(
-            project_body(&absent, &absent_resolver, &snapshot.view),
+            project_body(
+                &absent,
+                &absent_resolver,
+                &snapshot.view,
+                Some(&absent_attribution)
+            ),
             Ok(OrganizerBodyDisclosure::KnownAbsent)
+        );
+        let mut unproven_view = snapshot.view.clone();
+        let mut unproven = unproven_view.positions[0].clone();
+        unproven.contributor_id = 104;
+        unproven_view.positions.push(unproven);
+        assert_eq!(
+            project_body(
+                &other_graph,
+                &other_resolver,
+                &unproven_view,
+                Some(&attribution)
+            ),
+            Ok(OrganizerBodyDisclosure::Unavailable),
+            "a newly disclosed incidence needs its own attribution"
         );
         let unknown_graph = MemoryGraph::new();
         let unknown_resolver = StableElementResolver::seal(
@@ -870,7 +1029,7 @@ mod collection_history_tests {
         )
         .expect("other scenario can be sealed");
         assert_eq!(
-            project_body(&unknown_graph, &unknown_resolver, &snapshot.view),
+            project_body(&unknown_graph, &unknown_resolver, &snapshot.view, None),
             Ok(OrganizerBodyDisclosure::Unavailable),
             "an unattributed source is not affirmative absence"
         );

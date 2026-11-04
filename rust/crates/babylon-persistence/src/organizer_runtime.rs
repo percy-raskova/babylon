@@ -14,8 +14,8 @@ pub use material_preview::*;
 mod snapshot;
 
 pub(crate) use snapshot::{
-    aid_snapshot_matches, capture_pending, captured_organizer_snapshot, pending,
-    CapturedOrganizerCommand,
+    aid_snapshot_matches, capture_pending, captured_organizer_snapshot, opening_body_attribution,
+    pending, CapturedOrganizerCommand, OrganizerBodyAttribution,
 };
 pub use snapshot::{
     OrganizerBodyDisclosure, OrganizerBodyPart, OrganizerBodyScope, OrganizerBodySource,

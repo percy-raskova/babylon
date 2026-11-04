@@ -1548,6 +1548,7 @@ def evaluate_playable(
             not isinstance(tail, dict)
             or type(tail.get("resolve_tick")) is not int
             or (tail.get("resolve_tick"), tail.get("tick_content_hash")) != marker[:2]
+            or tail.get("world_hash") != boundary.nominal_world_hash
         ):
             raise ValueError("playable recovered tail differs from committed marker")
         organizer_digest = continuation.get("organizer_snapshot_sha256")

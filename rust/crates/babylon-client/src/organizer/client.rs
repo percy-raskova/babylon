@@ -62,6 +62,7 @@ struct StatusContext {
     durable_tick: u64,
     scope: RuntimeSessionScope,
     content_hash: Option<String>,
+    world_hash: Option<String>,
     foundation_digest: Option<String>,
 }
 
@@ -125,6 +126,8 @@ fn body_matches(snapshot: &OrganizerSnapshot, session: &ObserverSession) -> bool
                 && *world_hash != [0; 32]
                 && session.content_hash.as_deref()
                     == Some(crate::dossier::hex_bytes(*tick_content_hash).as_str())
+                && session.world_hash.as_deref()
+                    == Some(crate::dossier::hex_bytes(*world_hash).as_str())
         }
     };
     if !source_valid {
@@ -158,6 +161,7 @@ pub(crate) struct OrganizerClient {
     pub(super) body_durable_tick: Option<u64>,
     pub(super) body_runtime_scope: Option<RuntimeSessionScope>,
     pub(super) body_content_hash: Option<String>,
+    pub(super) body_world_hash: Option<String>,
     pub(super) body_foundation_digest: Option<String>,
     pub commitment: Option<OrganizerCommitment>,
     pub preview: Option<OrganizerPreview>,
@@ -194,6 +198,7 @@ impl OrganizerClient {
             || self.body_durable_tick != Some(session.durable_tick)
             || self.body_runtime_scope.as_ref() != session.runtime_scope()
             || self.body_content_hash != session.content_hash
+            || self.body_world_hash != session.world_hash
             || self.body_foundation_digest != session.foundation_digest
         {
             return None;
@@ -383,6 +388,7 @@ impl OrganizerClient {
             durable_tick: session.durable_tick,
             scope: scope.clone(),
             content_hash: session.content_hash.clone(),
+            world_hash: session.world_hash.clone(),
             foundation_digest: session.foundation_digest.clone(),
         });
         if kind == RequestKind::Preview {
@@ -471,6 +477,7 @@ impl OrganizerClient {
             || context.durable_tick != session.durable_tick
             || session.runtime_scope() != Some(&context.scope)
             || context.content_hash != session.content_hash
+            || context.world_hash != session.world_hash
             || context.foundation_digest != session.foundation_digest
             || snapshot.view.period != context.durable_tick
             || !snapshot.duration.contains(snapshot.view.period)
@@ -561,6 +568,7 @@ impl OrganizerClient {
         self.body_durable_tick = Some(context.durable_tick);
         self.body_runtime_scope = Some(context.scope);
         self.body_content_hash = context.content_hash;
+        self.body_world_hash = context.world_hash;
         self.body_foundation_digest = context.foundation_digest;
         self.view = Some(snapshot.view);
         self.commitment = snapshot.pending;

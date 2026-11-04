@@ -1886,7 +1886,8 @@ pub struct DossierCardPlugin;
 
 impl Plugin for DossierCardPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<OpenArchiveEvidence>()
+        app.init_resource::<ObserverFocusPolicy>()
+            .add_message::<OpenArchiveEvidence>()
             .init_resource::<ArchiveEvidenceReceipt>()
             .add_message::<SubjectPageRequest>()
             .add_message::<DossierControl>()

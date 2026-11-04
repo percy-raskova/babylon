@@ -88,13 +88,15 @@ impl IncomeStatement {
             distribution_income: zero(),
             gift_income: zero(),
             gift_expense: zero(),
+            agency_observation_labor_expense: zero(),
         }
     }
 
-    fn expenses(&self) -> [Currency; 9] {
+    fn expenses(&self) -> [Currency; 10] {
         [
             self.cost_of_goods_sold,
             self.idle_labor_expense,
+            self.agency_observation_labor_expense,
             self.handling_expense,
             self.maintenance_labor_expense,
             self.maintenance_material_expense,

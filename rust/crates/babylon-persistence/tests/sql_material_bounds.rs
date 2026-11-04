@@ -61,12 +61,12 @@ fn collection_adds_only_one_bounded_receipt_row_and_its_storage_frame() {
     use babylon_tick::material_world::{
         receipt_row_limit, RECEIPT_FAMILY_COUNT, RECEIPT_ROW_BYTES,
     };
-    assert_eq!(RECEIPT_FAMILY_COUNT, 36);
-    assert_eq!(RECEIPT_ROW_BYTES.last(), Some(&317));
+    assert_eq!(RECEIPT_FAMILY_COUNT, 37);
+    assert_eq!(RECEIPT_ROW_BYTES.last(), Some(&192));
     assert_eq!(receipt_row_limit(RECEIPT_FAMILY_COUNT - 1), 1);
     // Previous complete storage bound +9B family envelope +317B row +59B frame.
     assert_eq!(
         babylon_persistence::MAX_STORED_MATERIAL_RECEIPT_BYTES,
-        872_614_379 + 9 + 317 + 59
+        872_614_379 + 9 + 317 + 59 + 16 * 131_072 + 9 + 192 + 59
     );
 }

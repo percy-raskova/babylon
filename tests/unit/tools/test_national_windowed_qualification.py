@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import pytest
+from pydantic import ValidationError
 from tools.devtools import national_game_memory as memory
 from tools.devtools import national_windowed_qualification as windowed
 
@@ -54,6 +55,251 @@ def response(sequence: int, event: str = "observed", **changes: Any) -> bytes:
             {"version": 2, "sequence": sequence, "event": event, "reason": None, "state": fields}
         ).encode()
         + b"\n"
+    )
+
+
+def test_operator_controls_have_a_distinct_completed_frame_event() -> None:
+    from typing import get_args
+
+    actions = set(get_args(windowed.Action))
+    assert {
+        "inspect_receipts",
+        "open_relationships",
+        "archive_workplace",
+        "open_archive_evidence",
+        "previous_period",
+        "return_live",
+        "capture_frame",
+        "scene_places",
+        "scene_relationships",
+        "select_workplace_committee",
+        "select_neighborhood_group",
+        "inspect_evidence",
+        "next_evidence",
+        "previous_evidence",
+        "archive_organization",
+        "resize1366x768",
+        "resize1920x1080",
+    } <= actions
+    assert "capture_desktop" not in actions
+    assert windowed.EXPECTED["capture_frame"] == "frame_captured"
+    assert "frame_captured" in get_args(windowed.Event)
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "open_relationships",
+        "open_archive_evidence",
+        "scene_places",
+        "scene_relationships",
+        "select_workplace_committee",
+        "select_neighborhood_group",
+        "inspect_evidence",
+        "next_evidence",
+        "previous_evidence",
+        "archive_organization",
+        "resize1366x768",
+        "resize1920x1080",
+    ],
+)
+def test_private_control_sends_the_bounded_action(action: windowed.Action) -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+    requests: list[dict[str, Any]] = []
+
+    def reply() -> None:
+        with peer, peer.makefile("rb") as source:
+            line = source.readline()
+            if line:
+                requests.append(json.loads(line))
+                peer.sendall(
+                    response(requests[0]["sequence"], "applied", inspector="Relationships")
+                )
+
+    worker = threading.Thread(target=reply)
+    worker.start()
+    try:
+        assert channel.perform(action, 5).inspector == "Relationships"
+    finally:
+        channel.close()
+        worker.join(timeout=5)
+    assert not worker.is_alive()
+    assert requests[0]["action"] == action
+    assert requests[0]["campaign_id"] == CAMPAIGN
+
+
+@pytest.mark.parametrize("event", ["applied", "frame_captured"])
+def test_capture_frame_requires_completed_event(event: str) -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+
+    def reply() -> None:
+        with peer, peer.makefile("rb") as source:
+            request = json.loads(source.readline())
+            assert request["action"] == "capture_frame"
+            peer.sendall(response(request["sequence"], event))
+
+    worker = threading.Thread(target=reply)
+    worker.start()
+    try:
+        if event == "frame_captured":
+            assert channel.perform("capture_frame", 5).campaign_id == CAMPAIGN
+        else:
+            with pytest.raises(windowed.ControlRefusal):
+                channel.perform("capture_frame", 5)
+    finally:
+        channel.close()
+        worker.join(timeout=5)
+    assert not worker.is_alive()
+
+
+def test_capture_refusal_preserves_specific_reason_and_trace() -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+
+    def reply() -> None:
+        with peer, peer.makefile("rb") as source:
+            request = json.loads(source.readline())
+            fields = state()
+            peer.sendall(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "sequence": request["sequence"],
+                        "event": "refused",
+                        "reason": "capture_image_invalid",
+                        "state": fields,
+                    }
+                ).encode()
+                + b"\n"
+            )
+
+    worker = threading.Thread(target=reply)
+    worker.start()
+    try:
+        with pytest.raises(windowed.ControlRefusal, match="capture_image_invalid"):
+            channel.perform("capture_frame", 5)
+        assert channel.records[-1].reason == "capture_image_invalid"
+    finally:
+        channel.close()
+        worker.join(timeout=5)
+
+
+@pytest.mark.parametrize("inquiry", ["work_lost", "maintenance_received"])
+def test_native_inquiry_choice_wire_is_accepted(inquiry: str) -> None:
+    fields = state()
+    fields["choice"] = {"inquiry": inquiry}
+    parsed = windowed.ControlState.model_validate(fields)
+    assert parsed.model_dump()["choice"] == {"inquiry": inquiry}
+
+
+@pytest.mark.parametrize(
+    "choice",
+    [
+        "collect",
+        "local_aid",
+        "remote_aid",
+        "reinforce",
+        "hold",
+        "pause_standing",
+        "resume_standing",
+    ],
+)
+def test_native_unit_choice_wire_is_accepted(choice: str) -> None:
+    fields = state()
+    fields["choice"] = choice
+    assert windowed.ControlState.model_validate(fields).choice == choice
+
+
+@pytest.mark.parametrize(
+    "choice",
+    [
+        "inquiry_work_lost",
+        "unknown",
+        True,
+        None,
+        {},
+        {"inquiry": True},
+        {"inquiry": "unknown"},
+        {"inquiry": "work_lost", "extra": 1},
+        {"other": "work_lost"},
+        ["work_lost"],
+    ],
+)
+def test_native_choice_wire_rejects_unknown_shapes(choice: Any) -> None:
+    fields = state()
+    fields["choice"] = choice
+    with pytest.raises(ValidationError):
+        windowed.ControlState.model_validate(fields)
+
+
+@pytest.mark.parametrize(
+    ("choice", "wire"),
+    [
+        ("inquiry_work_lost", {"inquiry": "work_lost"}),
+        ("inquiry_maintenance_received", {"inquiry": "maintenance_received"}),
+        ("reinforce", "reinforce"),
+        ("hold", "hold"),
+    ],
+)
+@pytest.mark.parametrize("mismatched", [False, True])
+def test_new_choice_reviews_confirms_and_checks_exact_readback(
+    choice: str, wire: Any, mismatched: bool
+) -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+    fields = state()
+    command = {"choice": wire, "nonce": 42}
+    requested: list[str] = []
+
+    def reply() -> None:
+        with peer, peer.makefile("rb") as source:
+            for line in source:
+                action = json.loads(line)["action"]
+                requested.append(action)
+                event = "applied"
+                if action == "status":
+                    event = "observed"
+                elif action == "choose_" + choice:
+                    fields["choice"] = "collect" if mismatched else wire
+                elif action == "review":
+                    fields["reviewed_command"] = command
+                    fields["preview"] = {"refusal": None}
+                    event = "preview_admitted"
+                elif action == "confirm":
+                    fields["commitment"] = {"command": command}
+                    event = "acceptance_admitted"
+                peer.sendall(
+                    json.dumps(
+                        {
+                            "version": 2,
+                            "sequence": len(requested),
+                            "event": event,
+                            "reason": None,
+                            "state": fields,
+                        }
+                    ).encode()
+                    + b"\n"
+                )
+
+    worker = threading.Thread(target=reply)
+    worker.start()
+    try:
+        channel.observe(1)
+        planned = windowed.PlannedChoice.model_validate({"period": 1, "choice": choice})
+        if mismatched:
+            with pytest.raises(windowed.ControlRefusal, match="different choice"):
+                windowed.submit_choice(channel, planned, 1)
+        else:
+            windowed.submit_choice(channel, planned, 1)
+            assert channel.state is not None and channel.state.commitment == {"command": command}
+    finally:
+        channel.close()
+        worker.join(2)
+    assert not worker.is_alive()
+    assert requested == ["status", "choose_" + choice] + (
+        [] if mismatched else ["review", "confirm", "status"]
     )
 
 

@@ -1408,6 +1408,8 @@ mod marker_integrity_controls {
                 i64::from(matches!(
                     case,
                     "missing_key"
+                        | "orphan_field"
+                        | "present_field"
                         | "future_key"
                         | "missing_node_name"
                         | "missing_node_scenario"
@@ -1416,7 +1418,11 @@ mod marker_integrity_controls {
                         | "key_wrong_kind"
                 ))
             };
-            let events = i64::from(case != "empty");
+            let events = if case == "duplicate_parent" {
+                2_i64
+            } else {
+                i64::from(case != "empty")
+            };
             let parent_chunks = i64::from(!matches!(case, "empty" | "parent_count"));
             let declared_fields = if case == "field_count" { 1 } else { fields };
             let field_chunks = i64::from(fields > 0);
@@ -1440,7 +1446,11 @@ mod marker_integrity_controls {
                 } else {
                     None
                 };
-                tx.execute("INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,0,ARRAY[0::bigint],ARRAY[$2::bigint],ARRAY[0::bigint],ARRAY[$3::bigint])",&[campaign.as_uuid(),&type_id,&choice]).expect("the test database applies the setup statement");
+                if case == "duplicate_parent" {
+                    tx.execute("INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,0,ARRAY[0,0]::bigint[],ARRAY[0,0]::bigint[],ARRAY[0,0]::bigint[],ARRAY[NULL,NULL]::bigint[])", &[campaign.as_uuid()]).expect("insert duplicate parent control");
+                } else {
+                    tx.execute("INSERT INTO babylon_state.event_parent_chunk_v1 VALUES($1,1,0,ARRAY[0::bigint],ARRAY[$2::bigint],ARRAY[0::bigint],ARRAY[$3::bigint])",&[campaign.as_uuid(),&type_id,&choice]).expect("the test database applies the setup statement");
+                }
                 if matches!(case, "duplicate_text" | "text_gap") {
                     let id = if case == "text_gap" { 4_i64 } else { 3 };
                     let value = if case == "duplicate_text" {
@@ -1451,6 +1461,10 @@ mod marker_integrity_controls {
                     tx.execute("INSERT INTO babylon_state.event_text_lookup_v1(campaign_id,text_id,first_tick,value) VALUES($1,$2,1,$3)",&[campaign.as_uuid(),&id,&value]).expect("the test database applies the setup statement");
                 }
                 insert_key_case(tx, campaign, case);
+                if matches!(case, "orphan_field" | "present_field") {
+                    let ordinal = i64::from(case == "orphan_field");
+                    tx.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values) VALUES($1,1,0,1,ARRAY[$2::bigint],ARRAY[0::bigint],ARRAY[1::bigint],ARRAY[7::bigint])", &[campaign.as_uuid(), &ordinal]).expect("insert field reference control");
+                }
                 if fields == 2 {
                     let second = if case == "duplicate_name" { 1_i64 } else { 2 };
                     tx.execute("INSERT INTO babylon_state.event_field_chunk_v1(campaign_id,resolve_tick,chunk,value_tag,event_ordinals,positions,name_ids,int_values) VALUES($1,1,0,1,ARRAY[0,0]::bigint[],ARRAY[0,1]::bigint[],ARRAY[1::bigint,$2::bigint],ARRAY[7,8]::bigint[])",&[campaign.as_uuid(),&second]).expect("the test database applies the setup statement");
@@ -1463,7 +1477,7 @@ mod marker_integrity_controls {
         }
     }
 
-    const CASES: [(&str, Option<&str>); 21] = [
+    const CASES: [(&str, Option<&str>); 24] = [
         ("manifest", Some("event_storage_manifest_missing")),
         (
             "parent_count",
@@ -1509,6 +1523,15 @@ mod marker_integrity_controls {
             Some("event_storage_parent_field_choice_or_order"),
         ),
         ("current_choice", None),
+        ("present_field", None),
+        (
+            "orphan_field",
+            Some("event_storage_parent_field_choice_or_order"),
+        ),
+        (
+            "duplicate_parent",
+            Some("event_storage_parent_field_choice_or_order"),
+        ),
         ("empty", None),
         (
             "missing_node_name",
@@ -1536,6 +1559,23 @@ mod marker_integrity_controls {
             std::env::var("BABYLON_EVENT_COPY_DATABASE").expect("the fixture variable is bound");
         assert!(database.starts_with("per337_event_continuity_"));
         config.dbname(&database);
+        let mut guard = config
+            .connect(NoTls)
+            .expect("owned event integrity database");
+        let row = guard.query_one("SELECT current_setting('babylon.disposable_runtime',true),current_user,current_database(),pg_get_userbyid(datdba) FROM pg_database WHERE datname=current_database()", &[]).expect("owned event database identity");
+        let expected_canary = std::env::var("BABYLON_POSTGRES_DISPOSABLE_CANARY")
+            .expect("runner supplies the disposable canary");
+        assert_ne!(expected_canary, "");
+        assert_eq!(
+            row.get::<_, Option<String>>(0).as_deref(),
+            Some(expected_canary.as_str())
+        );
+        assert_eq!(row.get::<_, String>(1), "test");
+        assert_eq!(row.get::<_, String>(2), database);
+        assert_eq!(row.get::<_, String>(3), "test");
+        drop(guard);
+        crate::bootstrap_current_runtime(&config)
+            .expect("bootstrap owned event integrity database");
         let foundation = MichiganContentPreset::new_campaign(MichiganDeliveryPreset::Standard)
             .create_foundation(&crate::test_support::catalog())
             .expect("the authored catalog builds the foundation");

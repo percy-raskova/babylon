@@ -1,7 +1,7 @@
 use super::{RuntimeSessionResponse, RuntimeSessionScope};
 use crate::organizer_runtime::{
-    OrganizerAidOrdinaryOffer, OrganizerAidTransportPreview, OrganizerCollectionPreview,
-    OrganizerMaterialAidPreview, OrganizerSnapshot,
+    OrganizerAidOrdinaryOffer, OrganizerAidTransportPreview, OrganizerBodyDisclosure,
+    OrganizerBodyScope, OrganizerCollectionPreview, OrganizerMaterialAidPreview, OrganizerSnapshot,
 };
 use babylon_kernel::clock::CampaignDuration;
 use babylon_practice_contract::{
@@ -18,6 +18,15 @@ fn reply(payer: i128, gift: i128, price: i128) -> RuntimeSessionResponse {
             campaign_id: Some(Uuid::from_u128(1).to_string()),
         },
         snapshot: Box::new(OrganizerSnapshot {
+            body: OrganizerBodyDisclosure::Unavailable,
+            body_scope: OrganizerBodyScope {
+                campaign_id: *Uuid::from_u128(1).as_bytes(),
+                actor_id: 1,
+                period: 0,
+                content_digest: [2; 32],
+                source: None,
+            },
+            city_pd_encounters: Vec::new(),
             view: OrganizerView {
                 period: 0,
                 actor_id: 1,
@@ -32,6 +41,7 @@ fn reply(payer: i128, gift: i128, price: i128) -> RuntimeSessionResponse {
                 available_hours: 16,
                 inquiry_hours: 1,
                 contact_hours: 2,
+                public_workplace_contact: false,
                 content_digest: [2; 32],
                 resource_digest: [3; 32],
                 standing: OrganizerStandingWork {
@@ -102,6 +112,36 @@ fn tagged_organizer_money_roundtrips_exact_full_i128() {
         assert_eq!(aid["payer_cash"], payer.to_string());
         assert_eq!(aid["gift_cash_per_unit"], gift.to_string());
         assert_eq!(aid["ordinary_offer"]["unit_price"], price.to_string());
+    }
+}
+
+#[test]
+fn organizer_body_fields_are_required_in_current_wire_and_fixtures() {
+    let valid = serde_json::to_value(reply(42, 3, 7)).expect("wire value");
+    for field in ["body", "body_scope"] {
+        let mut missing = valid.clone();
+        missing["snapshot"]
+            .as_object_mut()
+            .expect("snapshot object")
+            .remove(field);
+        assert!(
+            serde_json::from_value::<RuntimeSessionResponse>(missing).is_err(),
+            "missing {field} is refused"
+        );
+    }
+    for bytes in [
+        include_str!("../../tests/fixtures/national_organizer_opening_v13.json"),
+        include_str!("../../tests/fixtures/national_organizer_pending_v13.json"),
+    ] {
+        let snapshot: OrganizerSnapshot =
+            serde_json::from_str(bytes).expect("current fixture is complete");
+        assert_eq!(snapshot.body, OrganizerBodyDisclosure::Unavailable);
+        assert_eq!(snapshot.body_scope.period, snapshot.view.period);
+        assert_eq!(snapshot.body_scope.actor_id, snapshot.view.actor_id);
+        assert_eq!(
+            snapshot.body_scope.content_digest,
+            snapshot.view.content_digest
+        );
     }
 }
 

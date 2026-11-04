@@ -175,4 +175,19 @@ mod tests {
         assert_eq!(county.total_annual_wages, None);
         assert_eq!(county.annual_avg_wkly_wage, None);
     }
+
+    #[test]
+    fn granted_zero_remains_distinct_from_absent_value() {
+        let county = project(
+            CountyGeoid::try_from("26163").expect("the fixture value fits the target range"),
+            ObserverVisibility::KnownPreview,
+            [Some(0), None, Some(0), None],
+            [true, true, false, false],
+        )
+        .expect("the fixture projection accepts the authored state");
+        assert_eq!(county.annual_avg_estabs_count, Some(0));
+        assert_eq!(county.annual_avg_emplvl, None);
+        assert_eq!(county.total_annual_wages, None);
+        assert_eq!(county.annual_avg_wkly_wage, None);
+    }
 }

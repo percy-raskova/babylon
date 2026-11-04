@@ -1,7 +1,11 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::{envelope, observer_actions, open, runtime_checkpoint, MaterialComponentIdentity};
+use crate::organizer_runtime::OrganizerBodyAttribution;
+use babylon_graph::stable_element::StableElementResolver;
 use babylon_practice_contract::OrganizerPeriodJournalEntries;
+use babylon_tick::material_world::DecodedCityPdAttemptEvidence;
+use babylon_tick::material_world::DecodedMaterialOrganizerEvidence;
 
 use super::observer_endpoints::AuthenticatedPreviousMaterialTick;
 
@@ -335,16 +339,36 @@ impl MaterialRuntimeFoundation {
         graph
             .validate_material_cycle()
             .map_err(|error| MaterialRuntimeError::Replay(MaterialReplayError::Graph(error)))?;
+        register.validate_city_pd_resolver(&admitted.catalog, graph.stable_resolver())?;
         let AdmittedMaterial {
             catalog,
             state,
             staffing: labor,
             organizer,
         } = admitted;
+        let captured_city_pd = graph_foundation
+            .content_bundle()
+            .economic_catalog()
+            .and_then(|catalog| catalog.city_pd_config());
+        let (expected_venue, expected_city_pd) =
+            match graph_foundation.content_bundle().economic_catalog() {
+                Some(source) => (
+                    source
+                        .initial_public_venue()
+                        .map_err(|_| MaterialRuntimeError::FoundationMismatch)?,
+                    source
+                        .initial_city_pd(&catalog, &state, graph.stable_resolver())
+                        .map_err(|_| MaterialRuntimeError::FoundationMismatch)?,
+                ),
+                None => (None, None),
+            };
         if register.state() != &state
             || register.catalog_digest() != catalog.catalog_digest()
             || register.organizer_config() != organizer.as_ref().map(|(config, _)| config)
             || register.organizer_state() != organizer.as_ref().map(|(_, state)| state)
+            || register.city_pd().map(|pd| &pd.config) != captured_city_pd
+            || register.public_venue() != expected_venue.as_ref()
+            || register.city_pd() != expected_city_pd.as_ref()
         {
             return Err(MaterialRuntimeError::FoundationMismatch);
         }
@@ -484,8 +508,10 @@ pub struct DurableMaterialRuntime {
     pub(super) lookup: OpeningRegister,
     pub(super) lookup_chain: [u8; 32],
     pub(super) tail: Option<IdentifiedMaterialTick>,
+    pub(super) tail_envelope_digest: Option<[u8; 32]>,
     pub(super) last_receipt: Option<crate::CommittedTickReceipt>,
     pub(super) last_choice_receipts: Vec<babylon_tick::choice_receipt::ChoiceReceipt>,
+    pub(crate) body_attribution: Option<OrganizerBodyAttribution>,
 }
 
 impl DurableMaterialRuntime {
@@ -575,6 +601,7 @@ impl DurableMaterialRuntime {
         // Staffed rule ownership is fallible: refuse before any founding rows
         // become durable, so dropping this transaction also removes enrollment.
         crate::organizer_archive::insert_projection(&mut tx, campaign, &foundation.register)?;
+        let body_attribution = crate::organizer_runtime::opening_body_attribution(&foundation);
         let session = foundation.into_session()?;
         tx.commit()?;
         Ok(Self {
@@ -584,8 +611,10 @@ impl DurableMaterialRuntime {
             lookup,
             lookup_chain: initial_lookup_chain,
             tail: None,
+            tail_envelope_digest: None,
             last_receipt: None,
             last_choice_receipts: Vec::new(),
+            body_attribution,
         })
     }
     /// Reconstruct the stored foundation and hydrate the latest complete V3 checkpoint.
@@ -646,6 +675,9 @@ impl DurableMaterialRuntime {
     #[must_use]
     pub const fn tail(&self) -> Option<&IdentifiedMaterialTick> {
         self.tail.as_ref()
+    }
+    pub(crate) const fn tail_envelope_digest(&self) -> Option<[u8; 32]> {
+        self.tail_envelope_digest
     }
     /// Process-local diagnostics for the last acknowledged tick.
     #[must_use]
@@ -847,6 +879,7 @@ impl DurableMaterialRuntime {
                 .map_err(commit_error)?;
             self.lookup_chain = encoded.lookup_chain;
             self.tail = Some(ack);
+            self.tail_envelope_digest = Some(envelope.digest());
             diagnostic.acknowledge(ReplayCommitDisposition::ReconciledAfterAmbiguousCommit);
             self.last_receipt = Some(diagnostic);
             self.last_choice_receipts = choices;
@@ -895,6 +928,7 @@ impl DurableMaterialRuntime {
             .scenario_scope()
             .to_owned();
         let components = MaterialComponentIdentity::from_session(self.session.graph_session());
+        let resolver = self.session.graph_session().stable_resolver().clone();
         let (ack, disposition) = self
             .session
             .commit_prepared_and_publish(sink, candidate, |_, catalog| {
@@ -910,6 +944,7 @@ impl DurableMaterialRuntime {
                         components: &components,
                         opening: &self.lookup,
                         catalog,
+                        resolver: &resolver,
                         lookup_chain: None,
                         witnesses: [None, None],
                         receipt_witness: None,
@@ -921,6 +956,7 @@ impl DurableMaterialRuntime {
             .map_err(commit_error)?;
         self.lookup_chain = encoded.lookup_chain;
         self.tail = Some(ack);
+        self.tail_envelope_digest = Some(envelope.digest());
         diagnostic.acknowledge(disposition);
         self.last_receipt = Some(diagnostic);
         self.last_choice_receipts = choices;
@@ -946,6 +982,7 @@ pub(crate) fn commit_material_envelope(
         components,
         opening,
         catalog,
+        resolver,
         ..
     } = authority;
     let tick = i64::try_from(identity.resolve_tick()).map_err(|_| MaterialRuntimeError::Bounds)?;
@@ -988,6 +1025,7 @@ pub(crate) fn commit_material_envelope(
                     components,
                     opening,
                     catalog,
+                    resolver,
                     lookup_chain: None,
                     witnesses: [None, None],
                     receipt_witness: None,
@@ -1401,16 +1439,21 @@ pub(crate) fn reconstruct_material_foundation(
     let catalog_timing = Timing::start(Stage::FoundationAdmission, 0);
     let admitted = admitted_material(&graph_foundation, &stored.spec)?;
     drop(catalog_timing);
+    // The private register's dossier resolves into handles owned by this graph,
+    // so prepare and verify the destination graph before decoding its bytes.
+    let graph_timing = Timing::start(Stage::FoundationGraphSession, 0);
+    let graph = runtime::reconstruct_graph_foundation_session(&graph_foundation)?;
+    drop(graph_timing);
     let register_timing = Timing::start(Stage::FoundationRegisterDecode, 0);
-    let register =
-        MaterialWorldRegister::decode_external(&admitted.catalog, stored.initial_register_bytes)?;
+    let register = MaterialWorldRegister::decode_external_with_resolver(
+        &admitted.catalog,
+        stored.initial_register_bytes,
+        graph.stable_resolver(),
+    )?;
     if register.completed_tick() != 0 {
         return Err(MaterialRuntimeError::FoundationMismatch);
     }
     drop(register_timing);
-    let graph_timing = Timing::start(Stage::FoundationGraphSession, 0);
-    let graph = runtime::reconstruct_graph_foundation_session(&graph_foundation)?;
-    drop(graph_timing);
     let _admission_timing = Timing::start(Stage::FoundationAdmission, 0);
     let reconstructed = MaterialRuntimeFoundation::from_parts(
         graph,
@@ -1525,7 +1568,7 @@ impl MaterialEnvelopeRead {
 }
 
 impl StoredMaterialEnvelope {
-    fn digest(&self) -> [u8; 32] {
+    pub(super) fn digest(&self) -> [u8; 32] {
         match self {
             Self::Complete(envelope) => envelope.digest(),
             Self::Attested(envelope) => envelope.digest(),
@@ -1568,6 +1611,7 @@ pub(crate) fn read_observer_material_tick<'w>(
         foundation_digest,
         components,
         catalog,
+        resolver,
     } = read;
     let (opening, chain, witnesses) = lookup_authority;
     read_authenticated_material_tick(
@@ -1581,6 +1625,7 @@ pub(crate) fn read_observer_material_tick<'w>(
             components,
             opening,
             catalog,
+            resolver,
             lookup_chain: Some(chain),
             witnesses,
             receipt_witness: None,
@@ -1614,6 +1659,7 @@ pub(crate) fn read_stored_material_tick(
             components: &components,
             opening,
             catalog: session.catalog(),
+            resolver: session.graph_session().stable_resolver(),
             lookup_chain: None,
             witnesses: [None, None],
             receipt_witness: None,
@@ -1684,6 +1730,7 @@ impl CapturedArchiveOrganizerRegister {
                 &admitted.component_identity,
                 opening,
                 admitted.material_catalog(),
+                admitted.stable_resolver(),
             ),
             MaterialEnvelopeRead::AuthenticatedRead,
         )?;
@@ -1729,6 +1776,7 @@ pub(crate) struct ObserverReadAuthority<'a> {
     pub(crate) foundation_digest: [u8; 32],
     pub(crate) components: &'a MaterialComponentIdentity,
     pub(crate) catalog: &'a MaterialCatalog,
+    pub(crate) resolver: &'a StableElementResolver,
 }
 
 #[derive(Clone, Copy)]
@@ -1739,6 +1787,7 @@ pub(crate) struct MaterialReadAuthority<'a, 'w> {
     pub(crate) opening: &'a OpeningRegister,
     /// The captured definitions that authenticate every stored state frame.
     pub(crate) catalog: &'a MaterialCatalog,
+    pub(crate) resolver: &'a StableElementResolver,
     pub(super) lookup_chain: Option<[u8; 32]>,
     pub(super) witnesses: RegisterWitnesses<'w>,
     pub(super) receipt_witness: Option<&'w AdmittedReceiptWitness>,
@@ -1752,6 +1801,7 @@ impl<'a, 'w> MaterialReadAuthority<'a, 'w> {
         components: &'a MaterialComponentIdentity,
         opening: &'a OpeningRegister,
         catalog: &'a MaterialCatalog,
+        resolver: &'a StableElementResolver,
     ) -> Self {
         Self {
             scope,
@@ -1759,6 +1809,7 @@ impl<'a, 'w> MaterialReadAuthority<'a, 'w> {
             components,
             opening,
             catalog,
+            resolver,
             lookup_chain: None,
             witnesses: [None, None],
             receipt_witness: None,
@@ -1925,6 +1976,14 @@ pub(crate) struct CapturedMaterialTick {
     marker: Option<Row>,
 }
 
+/// Purpose-limited evidence from an authenticated original committed period.
+/// No historical private graph handles are decoded or adopted.
+pub(crate) struct CommittedVenuePeriod {
+    pub(crate) material_organizer: DecodedMaterialOrganizerEvidence,
+    pub(crate) city_pd: Option<DecodedCityPdAttemptEvidence>,
+    pub(crate) receipt_bytes: Vec<u8>,
+}
+
 impl CapturedMaterialTick {
     pub(super) fn capture(
         client: &mut impl GenericClient,
@@ -1959,6 +2018,7 @@ impl CapturedMaterialTick {
             opening,
             components,
             catalog,
+            resolver,
             ..
         } = authority;
         let storage_timing = Timing::start(Stage::TickStorageAdmission, tick);
@@ -1970,7 +2030,11 @@ impl CapturedMaterialTick {
         drop(row);
         let lookup_chain = decoded.chain;
         let admitted = material_storage::decode_typed_with_witness(
-            material_storage::MaterialProvenance { catalog, opening },
+            material_storage::MaterialProvenance {
+                catalog,
+                opening,
+                resolver: Some(resolver),
+            },
             tick,
             &register_storage,
             &receipt_storage,
@@ -2043,6 +2107,98 @@ impl CapturedMaterialTick {
             events: events.decoded,
         })
     }
+
+    pub(crate) fn admit_venue_period(
+        self,
+        campaign: CampaignId,
+        tick: u64,
+        authority: MaterialReadAuthority<'_, '_>,
+        decoded: &DecodedPeriodLookup,
+    ) -> Result<CommittedVenuePeriod, MaterialRuntimeError> {
+        let identity = IdentifiedMaterialTick::decode(&self.row.try_get::<_, Vec<u8>>(0)?)?;
+        if identity.resolve_tick() != tick
+            || identity.foundation_digest() != authority.foundation_digest
+        {
+            return Err(MaterialRuntimeError::InvalidCheckpoint);
+        }
+        let register_storage: Vec<u8> = self.row.try_get(1)?;
+        let receipt_storage: Vec<u8> = self.row.try_get(2)?;
+        let register_bytes = crate::state_storage::restore_register(
+            authority.opening,
+            &register_storage,
+            &decoded.lookup,
+            decoded.chain,
+        )
+        .map_err(material_storage::Error::State)?;
+        let (receipt_bytes, receipts) =
+            crate::receipt_storage::decode_admitted(&receipt_storage, &decoded.lookup)
+                .map_err(material_storage::Error::from)?;
+        if receipts.resolve_tick != tick
+            || babylon_tick::material_world::nominal_material_world_hash_from_register_digest(
+                identity.graph_world_after(),
+                content_digest::sha256_of(&register_bytes),
+            ) != identity.result_world_hash()
+        {
+            return Err(MaterialRuntimeError::InvalidCheckpoint);
+        }
+        let graph = self.graph.admit(authority.scope)?;
+        let material = self.material.admit()?;
+        let (checkpoint, sections) = self.checkpoint.admit(
+            tick,
+            stored_tick::CheckpointSectionSources {
+                graph: &graph,
+                material: &material,
+                foundation_sections: authority.components.checkpoint_sources(),
+            },
+        )?;
+        authority.components.validate_sections(&sections)?;
+        let (graph_rows, _) = semantic_batches::compose_graph_rows_with_encoder(
+            graph.rows(),
+            &mut |row: StableGraphRowRef<'_>| row.encode(),
+        )?;
+        let events = self.events.admit()?;
+        let families = CommittedTickRowFamilies {
+            graph: graph_rows,
+            state: semantic_batches::compose_material_state_rows(&material)?,
+            event: events.encoded,
+            choice_receipt: self.choices.admit()?,
+            checkpoint,
+            archive_dirty_receipt: self.archive.admit()?,
+        };
+        let envelope = MaterialEnvelopeRead::AuthenticatedRead.admit(
+            campaign,
+            &identity,
+            families,
+            &register_bytes,
+            &receipt_bytes,
+        )?;
+        if !admitted_marker_matches(self.marker.as_ref(), &identity, envelope.digest())? {
+            return Err(MaterialRuntimeError::InvalidCheckpoint);
+        }
+        let material_organizer = babylon_tick::material_world::decode_material_organizer_evidence(
+            authority.catalog,
+            &register_bytes,
+        )?;
+        let city_pd =
+            babylon_tick::material_world::decode_city_pd_attempt_evidence(&register_bytes)?;
+        if material_organizer.completed_tick != tick
+            || !authority.opening.accepts_historical_authority(
+                material_organizer.organizer.as_ref().map(|row| &row.0),
+                material_organizer
+                    .public_venue
+                    .as_ref()
+                    .map(|venue| &venue.policy),
+                city_pd.as_ref().map(|pd| &pd.config),
+            )
+        {
+            return Err(MaterialRuntimeError::InvalidCheckpoint);
+        }
+        Ok(CommittedVenuePeriod {
+            material_organizer,
+            city_pd,
+            receipt_bytes,
+        })
+    }
 }
 
 // Only runtime authority can authenticate organizer inputs. The player uses
@@ -2059,6 +2215,7 @@ pub(crate) fn authenticated_organizer_actions(
         components,
         opening: foundation_opening,
         catalog,
+        resolver,
         ..
     } = authority;
     let register = &stored.register;
@@ -2086,6 +2243,7 @@ pub(crate) fn authenticated_organizer_actions(
                 components,
                 opening: foundation_opening,
                 catalog,
+                resolver,
                 lookup_chain: None,
                 witnesses: [None, None],
                 receipt_witness: None,
@@ -2148,6 +2306,7 @@ pub(crate) fn observer_organizer_actions(
         components,
         opening,
         catalog,
+        resolver,
         witnesses,
         previous,
         ..
@@ -2182,6 +2341,7 @@ pub(crate) fn observer_organizer_actions(
                 components,
                 opening,
                 catalog,
+                resolver,
                 lookup_chain: None,
                 witnesses,
                 receipt_witness: None,

@@ -46,6 +46,7 @@ mod phase_order;
 pub mod replay_identity;
 
 pub mod replay_session;
+pub mod state_opponent;
 
 mod world_hash;
 
@@ -72,3 +73,5 @@ pub(crate) use tick_runner::{
 };
 #[cfg(test)]
 pub(crate) use tick_runner::{HashBoundary, PreparedEventBatchSink};
+
+pub mod public_venue;

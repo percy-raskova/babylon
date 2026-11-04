@@ -26,23 +26,23 @@ SELECT foundation.campaign_id, 0::bigint AS resolve_tick, mapping.county_geoid,
 FROM babylon_state.campaign_foundation AS foundation
 JOIN babylon_meta.territory_county_map_v1 AS mapping USING (campaign_id)
 UNION ALL
-SELECT fields.campaign_id, fields.resolve_tick,
+SELECT membership.campaign_id, membership.resolve_tick,
        pg_catalog.lpad(identity.int_value::text, 5, '0') AS county_geoid,
        max(fields.int_value) FILTER (WHERE fields.field_name = 'qcew-establishments'),
        max(fields.int_value) FILTER (WHERE fields.field_name = 'qcew-employment'),
        max(fields.int_value) FILTER (WHERE fields.field_name = 'qcew-total-annual-wages'),
        max(fields.int_value) FILTER (WHERE fields.field_name = 'qcew-average-weekly-wage'),
        true, true, true, true
-FROM babylon_state.territory_state_field_v1 AS fields
-JOIN babylon_state.territory_state_field_v1 AS identity
-  ON identity.campaign_id = fields.campaign_id AND identity.resolve_tick = fields.resolve_tick
- AND identity.territory_id = fields.territory_id
- AND identity.field_name = 'county-fips' AND identity.value_tag = 1
+FROM babylon_state.territory_tick_membership_v1 AS membership
+JOIN babylon_state.territory_definition_v1 AS definition USING (campaign_id, definition_id)
+JOIN babylon_state.territory_definition_field_v1 AS fields USING (campaign_id, definition_id)
+JOIN babylon_state.territory_definition_field_v1 AS identity USING (campaign_id, definition_id)
 JOIN babylon_state.tick_commit AS marker
-  ON marker.campaign_id = fields.campaign_id AND marker.resolve_tick = fields.resolve_tick
-WHERE fields.value_tag = 1 AND fields.field_name IN
+  ON marker.campaign_id = membership.campaign_id AND marker.resolve_tick = membership.resolve_tick
+WHERE identity.field_name = 'county-fips' AND identity.value_tag = 1
+  AND fields.value_tag = 1 AND fields.field_name IN
   ('qcew-establishments', 'qcew-employment', 'qcew-total-annual-wages', 'qcew-average-weekly-wage')
-GROUP BY fields.campaign_id, fields.resolve_tick, identity.int_value
+GROUP BY membership.campaign_id, membership.resolve_tick, identity.int_value
 UNION ALL
 -- National counties carry identity in the graph. Their published QCEW values
 -- remain immutable captured observations, never synthetic dynamic state fields.

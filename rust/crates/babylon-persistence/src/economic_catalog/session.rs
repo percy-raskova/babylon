@@ -46,6 +46,7 @@ impl CapturedEconomicCatalog {
                     &sources.counties,
                     &sources.aid,
                     self.input.organizer.as_ref(),
+                    self.input.city_pd.as_ref(),
                 )?;
                 babylon_bsl::scenario_seed::load_scenario_with_seed(
                     self.scenario_source()?,
@@ -85,6 +86,7 @@ impl CapturedEconomicCatalog {
                     &sources.counties,
                     &sources.aid,
                     self.input.organizer.as_ref(),
+                    self.input.city_pd.as_ref(),
                 )?;
                 ReplayTickSession::new_with_graph_seed(
                     self.scenario_source()?,

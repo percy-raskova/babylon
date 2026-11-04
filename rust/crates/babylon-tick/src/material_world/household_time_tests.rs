@@ -3,10 +3,10 @@ use crate::material_world;
 use crate::material_world::MaterialWorldError;
 
 fn time_receipts(rows: usize) -> Vec<u8> {
-    let mut bytes = b"babylon.material-tick-receipts.v18\0".to_vec();
-    bytes.extend_from_slice(&18_u32.to_be_bytes());
+    let mut bytes = b"babylon.material-tick-receipts.v19\0".to_vec();
+    bytes.extend_from_slice(&19_u32.to_be_bytes());
     bytes.extend_from_slice(&1_u64.to_be_bytes());
-    for tag in 1..=36_u8 {
+    for tag in 1..=37_u8 {
         bytes.push(tag);
         bytes.extend_from_slice(&(if tag == 34 { rows as u64 } else { 0 }).to_be_bytes());
         if tag != 34 {
@@ -56,7 +56,7 @@ fn current_household_time_wire_refuses_duplicates_and_false_partitions() {
         Err(MaterialWorldError::Wire)
     );
     let mut bytes = time_receipts(1);
-    let row = b"babylon.material-tick-receipts.v18\0".len() + 12 + 34 * 9;
+    let row = b"babylon.material-tick-receipts.v19\0".len() + 12 + 34 * 9;
     bytes[row + 72..row + 80].copy_from_slice(&33_u64.to_be_bytes());
     assert_eq!(
         material_world::decode_material_receipts(&bytes),
@@ -67,7 +67,7 @@ fn current_household_time_wire_refuses_duplicates_and_false_partitions() {
 #[test]
 fn current_household_time_wire_refuses_unaccounted_attendance() {
     let mut bytes = time_receipts(1);
-    let row = b"babylon.material-tick-receipts.v18\0".len() + 12 + 34 * 9;
+    let row = b"babylon.material-tick-receipts.v19\0".len() + 12 + 34 * 9;
     // The time equation still balances, but no member receipt attended this hour.
     bytes[row + 80..row + 88].copy_from_slice(&1_u64.to_be_bytes());
     bytes[row + 128..row + 136].copy_from_slice(&21_u64.to_be_bytes());
@@ -79,7 +79,7 @@ fn current_household_time_wire_refuses_unaccounted_attendance() {
 
 #[test]
 fn current_household_time_wire_refuses_free_time_beside_unresolved_priority_claims() {
-    let row = b"babylon.material-tick-receipts.v18\0".len() + 12 + 34 * 9;
+    let row = b"babylon.material-tick-receipts.v19\0".len() + 12 + 34 * 9;
     let mut protected = time_receipts(1);
     protected[row + 96..row + 104].copy_from_slice(&1_u64.to_be_bytes());
     assert_eq!(

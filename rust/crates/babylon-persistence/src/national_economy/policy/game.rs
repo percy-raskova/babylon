@@ -301,11 +301,20 @@ pub struct GameAidPolicy {
     pub maximum_quantity: u64,
 }
 
+/// Authored reader of the public workplace visitor log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VenueLogReader {
+    ControlledOrganizer,
+    WorkplaceCommittee,
+}
+
 /// Designed political consent and time promises; actual supply remains household time.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GameOrganizerPolicy {
     pub evidence_class: String,
+    pub venue_log_reader: VenueLogReader,
     pub organization_label: String,
     pub workplace_partner_label: String,
     pub neighborhood_partner_label: String,

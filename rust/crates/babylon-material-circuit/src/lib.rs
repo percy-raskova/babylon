@@ -5,6 +5,11 @@
 //! Inventories, people, order principals and per-batch recipes retain their units.
 
 mod accounts;
+mod agency_attendance;
+pub use agency_attendance::{
+    agency_shift_id, AgencyAttendanceInput, AgencyAttendanceOutcome,
+    AgencyObservationFundingReceipt, CityPdAttendance, MAX_AGENCY_ATTENDANCE_PER_PERIOD,
+};
 mod aid;
 pub use aid::*;
 mod collection;

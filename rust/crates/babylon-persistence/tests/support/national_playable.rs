@@ -4,10 +4,11 @@ use crate::elapsed_ns;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::runtime_session::{
     OrganizerAidKind, OrganizerAidSupportStatus, OrganizerAidTransportPreview, OrganizerChoice,
-    OrganizerCommand, OrganizerCommitment, OrganizerGiftConsent, OrganizerPreview,
-    OrganizerSnapshot, RuntimeAdvanceStage, RuntimeSessionErrorCode, RuntimeSessionPreset,
-    RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope, RuntimeSessionTail,
-    RuntimeSessionTarget, RUNTIME_SESSION_MAX_LINE_BYTES, RUNTIME_SESSION_PROTOCOL_VERSION,
+    OrganizerCommand, OrganizerCommitment, OrganizerGiftConsent, OrganizerInquiry,
+    OrganizerPreview, OrganizerSnapshot, RuntimeAdvanceStage, RuntimeSessionErrorCode,
+    RuntimeSessionPreset, RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope,
+    RuntimeSessionTail, RuntimeSessionTarget, RUNTIME_SESSION_MAX_LINE_BYTES,
+    RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 
 use postgres::{Config, NoTls};
@@ -94,6 +95,7 @@ impl Session {
             tail: RuntimeSessionTail {
                 resolve_tick: 0,
                 tick_content_hash: None,
+                world_hash: None,
             },
             foundation: String::new(),
             next_id: 1,
@@ -281,6 +283,19 @@ impl Session {
         choice: OrganizerChoice,
         nonce: u8,
     ) -> (Option<OrganizerCommitment>, OrganizerPreview) {
+        let outcome = self.accept_nonce(campaign, snapshot, choice, [nonce; 16]);
+        if let Some(accepted) = &outcome.0 {
+            self.reject_nonce_conflict(accepted.command.clone(), accepted);
+        }
+        outcome
+    }
+    fn accept_nonce(
+        &mut self,
+        campaign: CampaignId,
+        snapshot: &OrganizerSnapshot,
+        choice: OrganizerChoice,
+        nonce: [u8; 16],
+    ) -> (Option<OrganizerCommitment>, OrganizerPreview) {
         let command = OrganizerCommand {
             campaign_id: *campaign.canonical_bytes(),
             actor_id: snapshot.view.actor_id,
@@ -288,7 +303,7 @@ impl Session {
             expected_period: snapshot.view.period,
             content_digest: snapshot.view.content_digest,
             resource_digest: snapshot.view.resource_digest,
-            nonce: [nonce; 16],
+            nonce,
             choice,
         };
         let id = self.id();
@@ -337,7 +352,6 @@ impl Session {
             accepted = Some(commitment);
         }
         let accepted = accepted.expect("the fixture audit returns the accepted value");
-        self.reject_nonce_conflict(command, &accepted);
         (Some(accepted), preview)
     }
     fn reject_nonce_conflict(
@@ -443,6 +457,130 @@ impl Session {
         drop(self.output);
         assert_eq!(self.worker.join().expect("runtime worker joins"), Ok(()));
     }
+}
+
+const WAYNE_RECORDED_COMMANDS: [(OrganizerChoice, [u8; 16], &str, &str); 4] = [
+    (
+        OrganizerChoice::Hold,
+        [
+            198, 193, 162, 0, 246, 117, 79, 226, 186, 217, 93, 124, 33, 222, 128, 237,
+        ],
+        "6fe24b8ab412cf7ca9f482963b2be42c9620e86cd584581c69690f97f18436f4",
+        "5b9b67825faff6cdcef4bfbfff9cd861b180db96eca9c878a08ff8a6de53b1cc",
+    ),
+    (
+        OrganizerChoice::Reinforce,
+        [
+            152, 199, 93, 76, 170, 29, 65, 222, 133, 10, 26, 10, 144, 60, 112, 237,
+        ],
+        "849567b7921d96d012b7b7d0ac1eb36e1aa38480d361893fefb5d775238ca0e4",
+        "c09d90e436052f87323979765ec5d878db72a98ac5d3fe47e3213079a1e1295b",
+    ),
+    (
+        OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
+        [
+            200, 70, 212, 135, 3, 128, 79, 135, 185, 198, 52, 11, 83, 220, 124, 225,
+        ],
+        "f9cb9ea0dec7c2f5409a075cd55bd47fdffcf897542f20ce9b4d32f0bfcd3f42",
+        "4918c4ee0f87bb0a5f3c51321ce035490bd6db6c123b77d982b8d024763dce3f",
+    ),
+    (
+        OrganizerChoice::Hold,
+        [
+            4, 66, 35, 94, 6, 254, 76, 183, 166, 132, 8, 48, 38, 178, 32, 187,
+        ],
+        "2741c113f4eeef9e4cfe7c29a6da5afd72978e6759921cc557cf92c68b5c1e48",
+        "25bc1f6708fd670009f80add3d2960d3f67f9f17403688637e04da9bb7f8fc00",
+    ),
+];
+
+#[test]
+#[ignore = "requires task-owned PostgreSQL and native-release settings"]
+fn replay_wayne_p4_for_commit_diagnostic() {
+    let mut config: Config = std::env::var("BABYLON_POSTGRES_TEST_DSN")
+        .expect("owned harness DSN")
+        .parse()
+        .expect("owned harness DSN parses");
+    config.dbname("babylon_test");
+    let mut connection = config.connect(NoTls).expect("owned harness connection");
+    let canary = std::env::var("BABYLON_POSTGRES_DISPOSABLE_CANARY").expect("owned canary");
+    let row = connection.query_one("SELECT current_setting('babylon.disposable_runtime',true), current_user, current_setting('work_mem'), current_setting('shared_buffers'), current_setting('effective_cache_size'), current_setting('synchronous_commit')", &[]).expect("fixture settings");
+    let actual: Option<String> = row.get(0);
+    assert_eq!(actual.as_deref(), Some(canary.as_str()));
+    assert_eq!(row.get::<_, String>(1), "test");
+    eprintln!("fixture settings user={} work_mem={} shared_buffers={} effective_cache_size={} synchronous_commit={}", row.get::<_, String>(1), row.get::<_, String>(2), row.get::<_, String>(3), row.get::<_, String>(4), row.get::<_, String>(5));
+    drop(connection);
+    let bootstrap = babylon_persistence::bootstrap_current_runtime(&config)
+        .expect("fixture current runtime bootstrap");
+    assert_eq!(
+        national_boundary_evidence::hex(bootstrap.schema.identity.schema_sha256()),
+        "be8bb5a067cfc39601ac52993dbc3769b0d2ea66224e30d547e0dcc78b947494"
+    );
+    let campaign = CampaignId::from_uuid(
+        Uuid::parse_str("99eb03a3-ae54-4578-9297-10531e13979f").expect("campaign UUID"),
+    );
+    let mut session = Session::start(&config, campaign, true);
+    assert_eq!(
+        session.foundation,
+        "b3fd68bd82091f90837a83e6a28bec6baacb557674270ae669c5626c4d5256b4"
+    );
+    for (choice, nonce, commitment_hex, tick_hash) in WAYNE_RECORDED_COMMANDS {
+        let before = session.status();
+        let (commitment, _) = session.accept_nonce(campaign, &before, choice, nonce);
+        let commitment = commitment.expect("recorded commitment accepted");
+        assert_eq!(
+            national_boundary_evidence::hex(&commitment.commitment_id),
+            commitment_hex
+        );
+        let acknowledged = session.advance();
+        assert_eq!(session.tail.tick_content_hash.as_deref(), Some(tick_hash));
+        eprintln!(
+            "replayed matching period {} hash {tick_hash}",
+            session.tail.resolve_tick
+        );
+        session.await_archive(acknowledged, Duration::from_mins(15));
+    }
+    let before = session.status();
+    let (commitment, _) = session.accept_nonce(
+        campaign,
+        &before,
+        OrganizerChoice::Reinforce,
+        [
+            123, 152, 80, 232, 233, 80, 76, 204, 170, 135, 7, 244, 192, 113, 83, 54,
+        ],
+    );
+    assert_eq!(
+        national_boundary_evidence::hex(
+            &commitment
+                .expect("recorded P5 commitment accepted")
+                .commitment_id
+        ),
+        "0b0e72dd842e61d7363d578a1e58f39874ba679feb4cbce0d8dc9623738f687f"
+    );
+    let started = Instant::now();
+    let acknowledged = session.advance();
+    assert!(
+        started.elapsed() <= Duration::from_mins(15),
+        "P5 acknowledged within native budget"
+    );
+    assert_eq!(
+        session.tail.tick_content_hash.as_deref(),
+        Some("a6fc221ad95e95c82224355922b4fcd1d0947997b3f1827e49ffdcb1db6cf907")
+    );
+    eprintln!(
+        "task7g P5 ordinary durable commit elapsed_ms={}",
+        started.elapsed().as_millis()
+    );
+    session.await_archive(acknowledged, Duration::from_mins(15));
+    session.stop();
+    let reopened = Session::start(&config, campaign, false);
+    assert_eq!(reopened.tail.resolve_tick, 5);
+    assert_eq!(
+        reopened.tail.tick_content_hash.as_deref(),
+        Some("a6fc221ad95e95c82224355922b4fcd1d0947997b3f1827e49ffdcb1db6cf907")
+    );
+    eprintln!("task7g P5 restart authenticated");
+    reopened.stop();
 }
 
 fn nonce_probe_choice(choice: OrganizerChoice) -> OrganizerChoice {

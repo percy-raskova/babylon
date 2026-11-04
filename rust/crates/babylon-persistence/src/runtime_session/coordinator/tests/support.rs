@@ -128,6 +128,7 @@ impl SessionBackend for Backend {
         RuntimeSessionTail {
             resolve_tick: self.tick,
             tick_content_hash: (self.tick > 0).then(|| format!("{:064x}", self.tick)),
+            world_hash: None,
         }
     }
     fn advance(
@@ -212,6 +213,7 @@ pub(in crate::runtime_session::coordinator) fn advance_numbered(
         expected_tail: RuntimeSessionTail {
             resolve_tick: 0,
             tick_content_hash: None,
+            world_hash: None,
         },
     }
 }
@@ -522,7 +524,9 @@ pub(in crate::runtime_session::coordinator) fn malformed_actions_versions_campai
         (8, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (9, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (10, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (11, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (12, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
+        (14, "campaign", RuntimeSessionErrorCode::UnsupportedVersion),
         (
             RUNTIME_SESSION_PROTOCOL_VERSION,
             "other",

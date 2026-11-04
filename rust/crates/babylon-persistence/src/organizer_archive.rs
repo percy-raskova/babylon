@@ -3,6 +3,7 @@
 use crate::economic_content::{EconomicAdmissionOwner, EconomicContentHandle};
 use crate::identity::CampaignId;
 use crate::material_runtime::MaterialRuntimeError;
+use crate::organizer_runtime::CityPdEncounter;
 use crate::{
     ArchiveCitation, ArchiveDirtyBatch, ArchiveDossierProducer, ArchiveKnowledge, ArchivePageInput,
     ArchiveProducerOutcome, ArchiveSignal, ArchiveSubject, ArchiveSubjectKind,
@@ -221,7 +222,94 @@ pub(crate) fn insert_projection(
         )
         .map_err(archive_error)?;
     }
+    insert_encounters(client, campaign, register)?;
     validate_projection(client, campaign, register)
+}
+
+fn encounter_key(value: &CityPdEncounter) -> String {
+    format!("city-pd-{}", hex(&value.receipt_id))
+}
+
+fn encounter_citation(value: &CityPdEncounter) -> Result<ArchiveCitation, SemanticArchiveError> {
+    ArchiveCitation::try_new(
+        "committed-public-venue-check-in-v1".into(),
+        format!(
+            "actor/{}/workplace/{}/period/{}/source/{}/receipt/{}",
+            value.controlled_actor_id,
+            value.subject_id,
+            value.resolve_period,
+            hex(&value.venue_source_id),
+            hex(&value.receipt_id)
+        ),
+    )
+}
+
+fn insert_encounters(
+    client: &mut impl GenericClient,
+    campaign: CampaignId,
+    register: &MaterialWorldRegister,
+) -> Result<(), MaterialRuntimeError> {
+    for value in crate::organizer_runtime::encounter::projections(register)? {
+        let bytes = crate::organizer_runtime::encounter::canonical_bytes(&value)?;
+        let actor = value.controlled_actor_id.to_string();
+        let subject = value.subject_id.to_string();
+        let tick = i64::try_from(value.resolve_period).map_err(|_| MaterialRuntimeError::Bounds)?;
+        let count = client.execute("INSERT INTO babylon_state.organizer_encounter_v1 (campaign_id,receipt_id,actor_id,subject_id,resolve_tick,encounter_bytes) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING", &[campaign.as_uuid(), &&value.receipt_id[..], &actor, &subject, &tick, &bytes])?;
+        if count == 0 {
+            let row = client.query_one("SELECT receipt_id,actor_id,subject_id,resolve_tick,encounter_bytes FROM babylon_state.organizer_encounter_v1 WHERE campaign_id=$1 AND receipt_id=$2", &[campaign.as_uuid(), &&value.receipt_id[..]])?;
+            validate_encounter_row(&row, &value)?;
+        }
+        archive::insert_grant_row(
+            client,
+            campaign,
+            "workplace",
+            &subject,
+            &encounter_key(&value),
+            value.resolve_period,
+            &encounter_citation(&value).map_err(archive_error)?,
+        )
+        .map_err(archive_error)?;
+    }
+    Ok(())
+}
+
+fn validate_encounter_row(row: &Row, value: &CityPdEncounter) -> Result<(), MaterialRuntimeError> {
+    if row.get::<_, Vec<u8>>("receipt_id") != value.receipt_id
+        || row.get::<_, String>("actor_id") != value.controlled_actor_id.to_string()
+        || row.get::<_, String>("subject_id") != value.subject_id.to_string()
+        || u64::try_from(row.get::<_, i64>("resolve_tick")).ok() != Some(value.resolve_period)
+        || row.get::<_, Vec<u8>>("encounter_bytes")
+            != crate::organizer_runtime::encounter::canonical_bytes(value)?
+    {
+        return Err(MaterialRuntimeError::OrganizerStorage);
+    }
+    Ok(())
+}
+
+fn validate_encounter_grant(
+    row: &Row,
+    value: &CityPdEncounter,
+) -> Result<(), MaterialRuntimeError> {
+    let citation = encounter_citation(value).map_err(archive_error)?;
+    if row.get::<_, String>("subject_kind") != "workplace"
+        || row.get::<_, String>("subject_id") != value.subject_id.to_string()
+        || row.get::<_, String>("grant_key") != encounter_key(value)
+        || u64::try_from(row.get::<_, i64>("granted_tick")).ok() != Some(value.resolve_period)
+        || row.get::<_, String>("provenance_source_id") != citation.source_id()
+        || row.get::<_, String>("provenance_locator") != citation.locator()
+    {
+        return Err(MaterialRuntimeError::OrganizerStorage);
+    }
+    Ok(())
+}
+
+fn encounter_signal(value: &CityPdEncounter) -> Result<ArchiveSignal, SemanticArchiveError> {
+    ArchiveSignal::try_new(
+        encounter_key(value),
+        format!("Public venue check-in in period {}", value.resolve_period),
+        format!("The venue's published check-in records a City PD visit by organization {} at this workplace. This log does not establish personal attendance by the organizer.", value.visitor_actor_id),
+        encounter_citation(value)?,
+    )
 }
 
 fn subject_definitions(config: &OrganizerConfig) -> [(ArchiveSubjectKind, u64, &str); 4] {
@@ -623,6 +711,8 @@ impl CapturedOrganizerPages {
             .flat_map(|entries| entries.collection_receipts.iter())
             .map(|row| (row.practice.receipt_id, row))
             .collect();
+        let encounters = crate::organizer_runtime::encounter::projections(&register)
+            .map_err(archive_register_error)?;
         for row in subjects.into_iter().take(page_budget) {
             let actor: String = row.get(0);
             let kind: String = row.get(1);
@@ -635,6 +725,13 @@ impl CapturedOrganizerPages {
                         && observation.subject_id.to_string() == id
                 }) {
                     signals.push(observation_signal(observation)?);
+                }
+                for encounter in encounters.iter().filter(|value| {
+                    value.controlled_actor_id.to_string() == actor
+                        && value.subject_id.to_string() == id
+                        && value.resolve_period <= self.tick
+                }) {
+                    signals.push(encounter_signal(encounter)?);
                 }
             } else {
                 let matching_receipts = receipts
@@ -796,6 +893,8 @@ pub(crate) struct CapturedOrganizerProjection {
     subjects: Vec<Row>,
     observations: Vec<Row>,
     receipts: Vec<Row>,
+    encounters: Vec<Row>,
+    encounter_grants: Vec<Row>,
 }
 
 pub(crate) fn capture_projection(
@@ -807,10 +906,16 @@ pub(crate) fn capture_projection(
     let subjects = capture_subjects(client, campaign)?;
     let observations = client.query("SELECT observation_id,actor_id,subject_id,observed_period,acquired_period,observation_bytes FROM babylon_state.organizer_observation_v1 WHERE campaign_id=$1 AND acquired_period<=$2 ORDER BY observation_id", &[campaign.as_uuid(),&tick])?;
     let receipts = client.query("SELECT receipt_id,actor_id,resolve_tick,receipt_bytes FROM babylon_state.organizer_receipt_v1 WHERE campaign_id=$1 AND resolve_tick<=$2 ORDER BY receipt_id", &[campaign.as_uuid(),&tick])?;
+    let bound = i64::try_from(babylon_practice_contract::CITY_PD_MAX_ROWS + 1)
+        .map_err(|_| MaterialRuntimeError::Bounds)?;
+    let encounters = client.query("SELECT receipt_id,actor_id,subject_id,resolve_tick,encounter_bytes FROM babylon_state.organizer_encounter_v1 WHERE campaign_id=$1 AND resolve_tick<=$2 ORDER BY receipt_id LIMIT $3", &[campaign.as_uuid(), &tick, &bound])?;
+    let encounter_grants = client.query("SELECT subject_kind,subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator FROM babylon_meta.archive_knowledge_grant_witness_v1 WHERE campaign_id=$1 AND grant_key LIKE 'city-pd-%' AND granted_tick<=$2 ORDER BY grant_key LIMIT $3", &[campaign.as_uuid(), &tick, &bound])?;
     Ok(CapturedOrganizerProjection {
         subjects,
         observations,
         receipts,
+        encounters,
+        encounter_grants,
     })
 }
 
@@ -853,6 +958,18 @@ impl CapturedOrganizerProjection {
         }
         for (row, expected) in receipts.iter().zip(expected) {
             validate_receipt_row(row, expected)?;
+        }
+        let mut expected = crate::organizer_runtime::encounter::projections(register)?;
+        expected.sort_by_key(|value| value.receipt_id);
+        if self.encounters.len() != expected.len() || self.encounter_grants.len() != expected.len()
+        {
+            return Err(MaterialRuntimeError::OrganizerStorage);
+        }
+        for (row, value) in self.encounters.iter().zip(&expected) {
+            validate_encounter_row(row, value)?;
+        }
+        for (row, value) in self.encounter_grants.iter().zip(&expected) {
+            validate_encounter_grant(row, value)?;
         }
         Ok(())
     }

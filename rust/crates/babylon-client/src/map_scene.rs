@@ -63,6 +63,7 @@ pub(super) fn setup_map(
     spawn_map_scene(
         &mut commands,
         extent,
+        origin,
         &mut assets.meshes,
         &mut assets.materials,
     );
@@ -128,6 +129,7 @@ fn spawn_county(
 fn spawn_map_scene(
     commands: &mut Commands,
     extent: Vec2,
+    origin: Vec2,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
 ) {
@@ -198,7 +200,7 @@ fn spawn_map_scene(
         MapScene,
     ));
     commands.insert_resource(orbit);
-    commands.insert_resource(MapGeometry { extent });
+    commands.insert_resource(MapGeometry { extent, origin });
     commands.spawn((
         Text::new("Campaign county geography"),
         TextFont {

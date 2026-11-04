@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       focus:
-        description: Run every database contract or focus on readers, statewide or organizer campaigns
+        description: Run every database contract or select a focused database or session check
         type: choice
         default: all
         options:
@@ -19,6 +19,7 @@ on:
           - reader
           - statewide_qualified
           - organizer
+          - session_progress
 
 permissions:
   contents: read
@@ -40,8 +41,10 @@ jobs:
           '{"focus":["statewide_qualified"]}' ||
           inputs.focus == 'reader' && '{"focus":["reader"]}' ||
           inputs.focus == 'organizer' && '{"focus":["organizer"]}' ||
+          inputs.focus == 'session_progress' && '{"focus":["session_progress"]}' ||
           '{"focus":["runtime_smoke","reference_integrity","runtime","archive",
-          "reader","client","statewide_qualified","organizer"]}') }}
+          "reader","client","statewide_qualified","organizer","session_progress",
+          "city_pd_atomic","city_pd_history","city_pd_nonwitness"]}') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

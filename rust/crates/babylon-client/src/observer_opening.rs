@@ -93,7 +93,7 @@ struct SignatureMaterial {
 
 impl UiMaterial for SignatureMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://opening/production.wgsl".into()
+        "embedded://opening/production.wesl".into()
     }
 }
 
@@ -452,10 +452,10 @@ impl Plugin for OpeningPlugin {
         let registry = app.world().resource::<EmbeddedAssetRegistry>();
         for (name, bytes) in [
             (
-                "production.wgsl",
+                "production.wesl",
                 include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../../../assets/opening/production.wgsl"
+                    "/../../../assets/opening/production.wesl"
                 )) as &[u8],
             ),
             (
@@ -506,6 +506,46 @@ mod tests {
     use babylon_persistence::identity::CampaignId;
     use bevy::ecs::system::RunSystemOnce;
     use uuid::Uuid;
+
+    #[test]
+    fn production_shader_resolves_ui_import_through_bevy_shader_cache() {
+        use bevy::asset::AssetId;
+        use bevy::shader::{Shader, ShaderCache, ShaderCacheSource};
+
+        let ShaderRef::Path(path) = SignatureMaterial::fragment_shader() else {
+            panic!("signature material must load its embedded shader");
+        };
+        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../assets")
+            .join(path.path());
+        let source = std::fs::read_to_string(file).expect("the material's authored shader exists");
+        let mut cache = ShaderCache::<String, ()>::new((), |(), source, _| match source {
+            ShaderCacheSource::Wgsl(wgsl) => Ok(wgsl),
+            ShaderCacheSource::SpirV(_) => panic!("WESL resolution must produce WGSL"),
+        });
+        let id = |number| AssetId::Uuid {
+            uuid: Uuid::from_u128(number),
+        };
+        cache.set_shader(
+            id(1),
+            Shader::from_wesl(
+                "struct UiVertexOutput { @location(0) uv: vec2<f32>, };",
+                "embedded://bevy_ui_render/ui_vertex_output.wesl",
+            ),
+        );
+        let shader = Shader::from_wesl(source, path.to_string());
+        if path.path().extension().and_then(|value| value.to_str()) != Some("wesl") {
+            assert!(
+                shader.imports.is_empty(),
+                "the selected loader cannot resolve imports"
+            );
+        }
+        cache.set_shader(id(2), shader);
+        let compiled = cache
+            .get(0, id(2), &[])
+            .expect("Bevy resolves and compiles the authored import and shader body");
+        assert!(compiled.contains("fn fragment"));
+    }
 
     #[test]
     fn recovery_launch_waits_for_the_new_campaign_after_a_previous_failure() {

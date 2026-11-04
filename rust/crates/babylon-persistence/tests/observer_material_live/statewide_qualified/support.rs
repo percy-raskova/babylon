@@ -373,6 +373,7 @@ pub(crate) fn advance_pair(
             sql,
             campaign,
             runtime.session().catalog(),
+            runtime.session().graph_session().stable_resolver(),
             receipts.resolve_tick,
         );
     assert_eq!(

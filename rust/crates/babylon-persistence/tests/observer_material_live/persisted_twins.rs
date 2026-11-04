@@ -1,5 +1,7 @@
 //! PER-325: independently committed delivery twins and restart controls.
 
+use babylon_graph::stable_element::StableElementResolver;
+use babylon_persistence::material_storage::MaterialProvenance;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
@@ -162,10 +164,11 @@ pub(super) fn stored_canonical_material(
     connection: &mut Client,
     campaign: CampaignId,
     catalog: &MaterialCatalog,
+    resolver: &StableElementResolver,
     tick: u64,
 ) -> (Vec<u8>, Vec<u8>) {
     let base:Vec<u8>=connection.query_one("SELECT initial_register_bytes FROM public.v_observer_material_foundation_v1 WHERE campaign_id=$1::uuid",&[campaign.as_uuid()]).expect("the seeded row is present exactly once").get(0);
-    let opening = babylon_persistence::material_storage::seed(catalog, &base)
+    let opening = babylon_persistence::material_storage::seed(catalog, &base, Some(resolver))
         .expect("the fixture seeds the authored rows");
     let mut chain = babylon_persistence::material_storage::initial_lookup_chain(&opening)
         .expect("the opening register builds its first lookup chain");
@@ -201,8 +204,11 @@ pub(super) fn stored_canonical_material(
     let register: &[u8] = row.get(0);
     let receipts: &[u8] = row.get(1);
     babylon_persistence::material_storage::decode(
-        catalog,
-        &opening,
+        MaterialProvenance {
+            catalog,
+            opening: &opening,
+            resolver: Some(resolver),
+        },
         tick,
         register,
         receipts,
@@ -225,6 +231,7 @@ fn authenticated_receipts(
         connection,
         runtime.campaign_id(),
         runtime.session().catalog(),
+        runtime.session().graph_session().stable_resolver(),
         u64::try_from(tick).expect("the fixture value fits the target range"),
     );
     assert_eq!(register, runtime.session().material().canonical_bytes());

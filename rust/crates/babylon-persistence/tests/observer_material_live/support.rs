@@ -1,7 +1,12 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_graph::stable_element::StableElementResolver;
+use babylon_persistence::material_storage::DecodedPeriodLookup;
+use babylon_persistence::material_storage::MaterialProvenance;
+use babylon_persistence::material_storage::OpeningRegister;
 use babylon_persistence::michigan_economy;
+use postgres::Row;
 
 use babylon_persistence::archive_revision::{
     ArchiveDossierBounds, ArchiveDossierPage, ArchiveDossierPending, ArchiveDossierRead,
@@ -905,7 +910,12 @@ pub(crate) fn live_material_observer_preserves_history_and_denies_preview_blob_a
             .expect("the authored catalog builds the foundation"),
     )
     .expect("the test database creates the fixture campaign");
-    assert_single_foundation_storage(&target.writer, campaign, runtime.session().catalog());
+    assert_single_foundation_storage(
+        &target.writer,
+        campaign,
+        runtime.session().catalog(),
+        runtime.session().graph_session().stable_resolver(),
+    );
     babylon_persistence::install_reader_role(&target.writer)
         .expect("the test database installs the reader role");
     observer_reader::provision_observer_role(&target.writer)
@@ -1021,6 +1031,7 @@ pub(crate) fn live_material_observer_preserves_history_and_denies_preview_blob_a
         &observer,
         campaign,
         runtime.session().catalog(),
+        runtime.session().graph_session().stable_resolver(),
         &mut cursor,
     );
 
@@ -1238,6 +1249,7 @@ pub(crate) fn assert_corrupted_register_is_rejected(
     observer: &ObserverEconomyReader,
     campaign: CampaignId,
     catalog: &MaterialCatalog,
+    resolver: &StableElementResolver,
     cursor: &mut Option<ObserverMaterialCursor>,
 ) {
     // A syntactically valid stored register mutation cannot retain its committed identity.
@@ -1245,7 +1257,7 @@ pub(crate) fn assert_corrupted_register_is_rejected(
         "SELECT initial_register_bytes FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1",
         &[campaign.as_uuid()],
     ).expect("the seeded row is present exactly once").get(0);
-    let opening = babylon_persistence::material_storage::seed(catalog, &base)
+    let opening = babylon_persistence::material_storage::seed(catalog, &base, Some(resolver))
         .expect("the fixture seeds the authored rows");
     let rows = connection.query(
         "SELECT resolve_tick, register_storage_bytes, receipt_storage_bytes, lookup_delta_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1 AND resolve_tick<=18 ORDER BY resolve_tick",
@@ -1269,48 +1281,9 @@ pub(crate) fn assert_corrupted_register_is_rejected(
         .expect("the committed lookup table reads");
         chain = lookup.chain;
         if index == 17 {
-            let package: Vec<u8> = row.get(1);
-            let receipt_package: Vec<u8> = row.get(2);
-            let (canonical, receipts) = babylon_persistence::material_storage::decode(
-                catalog,
-                &opening,
-                18,
-                &package,
-                &receipt_package,
-                &lookup.lookup,
-                lookup.chain,
-            )
-            .expect("the committed canonical bytes decode");
-            let register = MaterialWorldRegister::decode_external(catalog, canonical.clone())
-                .expect("the committed canonical bytes decode");
-            let mut state = register.state().clone();
-            state.inventory[0].quantity += 1;
-            let corrupt = MaterialWorldRegister::try_new(catalog, 18, state)
-                .expect("the authored fixture satisfies the constructor invariants");
-            let encoded = babylon_persistence::material_storage::encode(
-                &corrupt,
-                &receipts,
-                &opening,
-                lookup.previous_chain,
-            )
-            .expect("the fixture value encodes canonically");
-            // Changing a quantity adds no identities. Existing receipt and delta stay valid.
-            assert_eq!(encoded.lookup.entries(), lookup.lookup.entries());
-            let (reconstructed, preserved_receipts) =
-                babylon_persistence::material_storage::decode(
-                    catalog,
-                    &opening,
-                    18,
-                    &encoded.register_storage_bytes,
-                    &receipt_package,
-                    &lookup.lookup,
-                    lookup.chain,
-                )
-                .expect("the committed canonical bytes decode");
-            assert_eq!(reconstructed, corrupt.canonical_bytes());
-            assert_eq!(preserved_receipts, receipts);
-            connection.execute("UPDATE babylon_state.material_tick_v3 SET register_storage_bytes=$2 WHERE campaign_id=$1 AND resolve_tick=18", &[campaign.as_uuid(), &encoded.register_storage_bytes]).expect("the test database applies the setup statement");
-            original = Some(package);
+            original = Some(corrupt_stored_register(
+                connection, campaign, catalog, &opening, resolver, &row, &lookup,
+            ));
         }
     }
     let original = original.expect("the fixture captures the original value");
@@ -1341,6 +1314,65 @@ pub(crate) fn assert_corrupted_register_is_rejected(
             .snapshot_with_cursor(campaign, 18, cursor)
             .expect("the fixture snapshot carries its cursor"),
     );
+}
+
+fn corrupt_stored_register(
+    connection: &mut Client,
+    campaign: CampaignId,
+    catalog: &MaterialCatalog,
+    opening: &OpeningRegister,
+    resolver: &StableElementResolver,
+    row: &Row,
+    lookup: &DecodedPeriodLookup,
+) -> Vec<u8> {
+    let package: Vec<u8> = row.get(1);
+    let receipt_package: Vec<u8> = row.get(2);
+    let (canonical, receipts) = babylon_persistence::material_storage::decode(
+        MaterialProvenance {
+            catalog,
+            opening,
+            resolver: Some(resolver),
+        },
+        18,
+        &package,
+        &receipt_package,
+        &lookup.lookup,
+        lookup.chain,
+    )
+    .expect("the committed canonical bytes decode");
+    let register =
+        MaterialWorldRegister::decode_external_with_resolver(catalog, canonical.clone(), resolver)
+            .expect("the committed canonical bytes decode");
+    let mut state = register.state().clone();
+    state.inventory[0].quantity += 1;
+    let corrupt = MaterialWorldRegister::try_new(catalog, 18, state)
+        .expect("the authored fixture satisfies the constructor invariants");
+    let encoded = babylon_persistence::material_storage::encode(
+        &corrupt,
+        &receipts,
+        opening,
+        lookup.previous_chain,
+    )
+    .expect("the fixture value encodes canonically");
+    // Changing a quantity adds no identities. Existing receipt and delta stay valid.
+    assert_eq!(encoded.lookup.entries(), lookup.lookup.entries());
+    let (reconstructed, preserved_receipts) = babylon_persistence::material_storage::decode(
+        MaterialProvenance {
+            catalog,
+            opening,
+            resolver: Some(resolver),
+        },
+        18,
+        &encoded.register_storage_bytes,
+        &receipt_package,
+        &lookup.lookup,
+        lookup.chain,
+    )
+    .expect("the committed canonical bytes decode");
+    assert_eq!(reconstructed, corrupt.canonical_bytes());
+    assert_eq!(preserved_receipts, receipts);
+    connection.execute("UPDATE babylon_state.material_tick_v3 SET register_storage_bytes=$2 WHERE campaign_id=$1 AND resolve_tick=18", &[campaign.as_uuid(), &encoded.register_storage_bytes]).expect("the test database applies the setup statement");
+    package
 }
 
 #[test]
@@ -1591,6 +1623,7 @@ pub(crate) fn assert_session_admits_stored_revision(
             expected_tail: RuntimeSessionTail {
                 resolve_tick: 3,
                 tick_content_hash: current.tick_content_hash,
+                world_hash: current.nominal_world_hash,
             },
         },
         RuntimeSessionRequest::Stop {
@@ -2016,6 +2049,7 @@ pub(crate) fn assert_single_foundation_storage(
     writer: &Config,
     campaign: CampaignId,
     catalog: &MaterialCatalog,
+    resolver: &StableElementResolver,
 ) {
     let mut storage = writer
         .connect(NoTls)
@@ -2031,7 +2065,7 @@ pub(crate) fn assert_single_foundation_storage(
         "SELECT initial_register_bytes FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1", &[campaign.as_uuid()]
     ).expect("the seeded row is present exactly once").get(0);
     assert_eq!(
-        MaterialWorldRegister::decode_external(catalog, captured.clone())
+        MaterialWorldRegister::decode_external_with_resolver(catalog, captured.clone(), resolver)
             .expect("the committed canonical bytes decode")
             .completed_tick(),
         0
@@ -2054,8 +2088,9 @@ pub(crate) fn self_consistent_changed_period_lookup(
     catalog: &MaterialCatalog,
     base: &[u8],
     delta: &[u8],
+    resolver: &StableElementResolver,
 ) -> Vec<u8> {
-    let opening = babylon_persistence::material_storage::seed(catalog, base)
+    let opening = babylon_persistence::material_storage::seed(catalog, base, Some(resolver))
         .expect("the fixture seeds the authored rows");
     let c0 = babylon_persistence::material_storage::initial_lookup_chain(&opening)
         .expect("the opening register builds its first lookup chain");
@@ -2171,8 +2206,12 @@ pub(crate) fn cold_restart_and_history_refuse_corrupt_or_missing_earlier_period_
         "SELECT initial_register_bytes FROM babylon_state.material_campaign_foundation_v3 WHERE campaign_id=$1::uuid",
         &[campaign.as_uuid()],
     ).expect("the seeded row is present exactly once").get(0);
-    let self_consistent =
-        self_consistent_changed_period_lookup(runtime.session().catalog(), &base, &delta);
+    let self_consistent = self_consistent_changed_period_lookup(
+        runtime.session().catalog(),
+        &base,
+        &delta,
+        runtime.session().graph_session().stable_resolver(),
+    );
     assert_eq!(writer.execute(
         "UPDATE babylon_state.material_tick_v3 SET lookup_delta_bytes=$2 WHERE campaign_id=$1::uuid AND resolve_tick=1",
         &[campaign.as_uuid(), &self_consistent],

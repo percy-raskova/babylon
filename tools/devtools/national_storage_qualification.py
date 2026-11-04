@@ -199,11 +199,11 @@ class PackageClaim(FrozenRecord):
             raise ValueError("lookup packed bytes exceed current Rust bound")
         limits = (
             (self.canonical_register_bytes, 1_000_000_000),
-            (self.canonical_receipt_bytes, 872_612_528),
+            (self.canonical_receipt_bytes, 874_709_881),
             (self.register_storage_bytes, 1_000_000_000 + 1_000_000_000 // 256 + 16_384),
             (
                 self.receipt_storage_bytes,
-                872_612_528 + len(b"BabylonReceiptStorageV3\0") + 88 + 36 * 59,
+                874_709_881 + len(b"BabylonReceiptStorageV3\0") + 88 + 37 * 59,
             ),
             (self.lookup_delta_bytes, 1_000_000_000 + 1_000_000_000 // 256 + 1024),
         )
@@ -211,7 +211,7 @@ class PackageClaim(FrozenRecord):
             raise ValueError("package or canonical length exceeds current Rust bound")
         if (
             self.register_storage_bytes < len(b"babylon.state-storage.v4\0") + 142
-            or self.receipt_storage_bytes < len(b"BabylonReceiptStorageV3\0") + 88 + 36 * 59
+            or self.receipt_storage_bytes < len(b"BabylonReceiptStorageV3\0") + 88 + 37 * 59
             or self.lookup_delta_bytes < len(b"BabylonPeriodLookupV3\0") + 162
         ):
             raise ValueError("storage package shorter than current header framing")
@@ -1548,6 +1548,7 @@ def evaluate_playable(
             not isinstance(tail, dict)
             or type(tail.get("resolve_tick")) is not int
             or (tail.get("resolve_tick"), tail.get("tick_content_hash")) != marker[:2]
+            or tail.get("world_hash") != boundary.nominal_world_hash
         ):
             raise ValueError("playable recovered tail differs from committed marker")
         organizer_digest = continuation.get("organizer_snapshot_sha256")

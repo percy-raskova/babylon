@@ -84,6 +84,7 @@ impl Pending {
             || session.durable_tick != record.tick
             || session.archive_verified_tick != record.tick
             || session.content_hash != record.tick_content_hash
+            || session.world_hash != committed.tail.world_hash
             || !matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
         {
             return Err(
@@ -162,6 +163,7 @@ impl NativeAudit {
             || session.archive_verified_tick != source.tick
             || expected_tail.resolve_tick != source.tick
             || expected_tail.tick_content_hash != session.content_hash
+            || expected_tail.world_hash != session.world_hash
             || source
                 .tick
                 .checked_add(1)
@@ -213,6 +215,7 @@ impl NativeAudit {
             tail: RuntimeSessionTail {
                 resolve_tick: session.durable_tick,
                 tick_content_hash: session.content_hash.clone(),
+                world_hash: session.world_hash.clone(),
             },
             started: completed,
             advance_elapsed_ns,
@@ -237,6 +240,7 @@ impl NativeAudit {
         };
         if session.durable_tick != committed.tail.resolve_tick
             || session.content_hash != committed.tail.tick_content_hash
+            || session.world_hash != committed.tail.world_hash
         {
             return Err("native Archive clock differs from accepted Commit".into());
         }
@@ -327,6 +331,7 @@ mod tests {
                     tail: RuntimeSessionTail {
                         resolve_tick: 1,
                         tick_content_hash: Some("ab".repeat(32)),
+                        world_hash: None,
                     },
                 }))
                 .expect("the receiver stays alive for the send");
@@ -414,6 +419,7 @@ mod tests {
             expected_tail: RuntimeSessionTail {
                 resolve_tick: 0,
                 tick_content_hash: None,
+                world_hash: None,
             },
         };
         let pending = audit
@@ -493,6 +499,7 @@ mod tests {
             expected_tail: RuntimeSessionTail {
                 resolve_tick: 0,
                 tick_content_hash: Some("ab".repeat(32)),
+                world_hash: None,
             },
         };
         assert!(audit.prepare_advance(&session, &request).is_err());

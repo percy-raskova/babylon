@@ -520,6 +520,8 @@ pub struct OrganizerView {
     pub available_hours: u64,
     pub inquiry_hours: u64,
     pub contact_hours: u64,
+    /// The captured venue publishes an actually completed workplace contact.
+    pub public_workplace_contact: bool,
     pub content_digest: [u8; 32],
     pub resource_digest: [u8; 32],
     pub standing: OrganizerStandingWork,

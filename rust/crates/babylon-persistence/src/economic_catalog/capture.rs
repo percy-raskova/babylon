@@ -1,9 +1,12 @@
 //! Source-only durable capture and deterministic importer selection.
+
 use super::national::NationalSources;
 use super::{
     codec, CatalogGeography, EconomicCatalogError, EconomicCatalogInput, EconomicOpening,
     EconomicProjectionView, SourceArtifact, SourceArtifactKind,
 };
+use babylon_practice_contract::CityPdConfig;
+use babylon_practice_contract::OrganizerConfig;
 
 use babylon_kernel::clock::CampaignDuration;
 
@@ -19,6 +22,13 @@ use std::collections::BTreeSet;
 use std::fmt::Formatter;
 
 type Result<T> = std::result::Result<T, EconomicCatalogError>;
+
+/// Explicit campaign choice; the control preserves the organizer's public route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NationalOpponent {
+    CityPd,
+    None,
+}
 
 pub(super) enum CapturedSources {
     National(Box<NationalSources>),
@@ -74,7 +84,7 @@ impl CapturedEconomicCatalog {
         drop(codec::encode(&input, compiler)?);
         let local_detail = local_detail(&input)?;
         let spatial_detail = spatial_detail(&input, local_detail.as_ref())?;
-        let (sources, opening) = match input.geography {
+        let (sources, mut opening) = match input.geography {
             CatalogGeography::NationalCounties
             | CatalogGeography::NationalCountiesWithMichiganDetail => {
                 let (sources, opening) = NationalSources::admit(&input)?;
@@ -88,6 +98,16 @@ impl CapturedEconomicCatalog {
         if let (CapturedSources::National(national), Some(config)) = (&sources, &input.organizer) {
             let mut source_only = input.clone();
             source_only.organizer = None;
+            source_only.city_pd = None;
+            let rules = source_only
+                .sources
+                .iter_mut()
+                .find(|row| row.kind() == SourceArtifactKind::Rules)
+                .ok_or(EconomicCatalogError::Source(SourceArtifactKind::Rules))?;
+            *rules = SourceArtifact::capture(
+                SourceArtifactKind::Rules,
+                super::preset::national_organizer_rules(),
+            );
             let source_basis = content_digest::sha256_of(&codec::encode(&source_only, compiler)?);
             let expected_config = crate::national_economy::organizer::assemble(
                 config.campaign_id,
@@ -99,6 +119,23 @@ impl CapturedEconomicCatalog {
             if *config != expected_config {
                 return Err(EconomicCatalogError::Identity);
             }
+        }
+        if let Some(config) = &input.city_pd {
+            let CapturedSources::National(national) = &sources else {
+                return Err(EconomicCatalogError::Identity);
+            };
+            if input.organizer.is_none()
+                || *config
+                    != crate::national_economy::city_pd::assemble(
+                        config.campaign_id,
+                        &input,
+                        &opening,
+                        &national.aid,
+                    )?
+            {
+                return Err(EconomicCatalogError::Identity);
+            }
+            crate::national_economy::city_pd::add_opening(&mut opening, config)?;
         }
         if expected.is_some_and(|expected| *expected != opening) {
             return Err(EconomicCatalogError::Opening("supplied opening mismatch"));
@@ -123,7 +160,18 @@ impl CapturedEconomicCatalog {
         input: EconomicCatalogInput,
         campaign: CampaignId,
     ) -> Result<Self> {
-        if input.organizer.is_some() {
+        Self::capture_national_campaign_with_opponent(input, campaign, NationalOpponent::CityPd)
+    }
+
+    /// Capture the same public organizer route with an explicit opponent choice.
+    /// # Errors
+    /// Refuses a nonnational source or inconsistent authored terms.
+    pub fn capture_national_campaign_with_opponent(
+        input: EconomicCatalogInput,
+        campaign: CampaignId,
+        opponent: NationalOpponent,
+    ) -> Result<Self> {
+        if input.organizer.is_some() || input.city_pd.is_some() {
             return Err(EconomicCatalogError::Identity);
         }
         let mut catalog = Self::capture(input, None)?;
@@ -152,6 +200,20 @@ impl CapturedEconomicCatalog {
             &catalog.input,
         )?;
         catalog.input.organizer = Some(config);
+        if opponent == NationalOpponent::CityPd {
+            let city_pd = crate::national_economy::city_pd::assemble(
+                *campaign.canonical_bytes(),
+                &catalog.input,
+                &catalog.opening,
+                &national.aid,
+            )?;
+            crate::national_economy::city_pd::add_opening(&mut catalog.opening, &city_pd)?;
+            catalog.input.city_pd = Some(city_pd);
+            catalog.input.sources[index] = SourceArtifact::capture(
+                SourceArtifactKind::Rules,
+                super::preset::national_city_pd_rules(),
+            );
+        }
         catalog.bytes = codec::encode(&catalog.input, compiler_for(&catalog.input)?)?;
         catalog.digest = content_digest::sha256_of(&catalog.bytes);
         Ok(catalog)
@@ -163,6 +225,16 @@ impl CapturedEconomicCatalog {
             CapturedSources::National(sources) => Some(&sources.aid),
             CapturedSources::Michigan(_) => None,
         }
+    }
+    /// Captured national agency terms, when this campaign includes the opponent.
+    #[must_use]
+    pub fn city_pd_config(&self) -> Option<&CityPdConfig> {
+        self.input.city_pd.as_ref()
+    }
+    /// Captured organizer terms shared by the national control and opponent.
+    #[must_use]
+    pub fn organizer_config(&self) -> Option<&OrganizerConfig> {
+        self.input.organizer.as_ref()
     }
     /// Authored national detail partition held by the same admitted source owner.
     /// The foundation content bundle stores this catalog, so the partition survives
@@ -206,7 +278,7 @@ impl CapturedEconomicCatalog {
     pub fn compiler_version(&self) -> &'static str {
         match self.input.geography {
             CatalogGeography::MichiganControl => "michigan-control-v2",
-            _ => "national-world-v5",
+            _ => "national-world-v6",
         }
     }
     #[must_use]
@@ -254,7 +326,7 @@ fn compiler_for(input: &EconomicCatalogInput) -> Result<&'static str> {
                 && input.preset_id == "national-world"
                 && input.duration == CampaignDuration::Continuous =>
         {
-            Ok("national-world-v5")
+            Ok("national-world-v6")
         }
         CatalogGeography::MichiganControl
             if input.scenario_id == crate::michigan_cohorts::MICHIGAN_COHORT_SCENARIO =>
@@ -381,6 +453,7 @@ impl CapturedEconomicCatalog {
             sources,
             geography: CatalogGeography::MichiganControl,
             organizer: catalog.organizer_config().cloned(),
+            city_pd: None,
         };
         Self::capture(
             input,
@@ -443,7 +516,7 @@ mod tests {
         let catalog =
             CapturedEconomicCatalog::capture(super::super::preset::national_catalog_input(), None)
                 .expect("the fixture captures the authored state");
-        previous_compiler_refuses(&catalog, "national-world-v4");
+        previous_compiler_refuses(&catalog, "national-world-v5");
     }
     #[test]
     fn national_catalog_retains_the_authored_detail_partition() {

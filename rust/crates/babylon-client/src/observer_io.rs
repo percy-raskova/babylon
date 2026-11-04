@@ -53,6 +53,7 @@ pub(crate) mod tests {
     use crate::observer_progress::OperationProgress;
     use crate::observer_ui::ObserverDisclosure;
     use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::runtime_session::OrganizerSnapshot;
     use babylon_persistence::runtime_session::RuntimeSessionErrorCode;
     use babylon_persistence::ProductionEvidenceError;
     use mpsc::Receiver;
@@ -60,6 +61,213 @@ pub(crate) mod tests {
     use std::collections::BTreeSet;
     use std::time::Duration;
     use uuid::Uuid;
+
+    pub(crate) fn install_status_receiver(
+        app: &mut App,
+    ) -> Sender<Result<RuntimeSessionResponse, String>> {
+        let (_, replies) = install_status_pipe(app);
+        replies
+    }
+
+    pub(crate) fn install_status_pipe(
+        app: &mut App,
+    ) -> (
+        Receiver<RuntimeSessionRequest>,
+        Sender<Result<RuntimeSessionResponse, String>>,
+    ) {
+        let (requests, request_rx) = mpsc::sync_channel(1);
+        let (replies, responses) = mpsc::channel();
+        app.insert_resource(RuntimePipe {
+            requests,
+            responses: Mutex::new(responses),
+        })
+        .init_resource::<DossierRefresh>()
+        .add_systems(Update, runtime::receive.in_set(ObserverSet::Receive));
+        (request_rx, replies)
+    }
+
+    fn alter_status_case(
+        case: &str,
+        session: &mut ObserverSession,
+        scope: &mut RuntimeSessionScope,
+        request_id: &mut u64,
+        snapshot: &mut OrganizerSnapshot,
+    ) {
+        match case {
+            "campaign" => scope.campaign_id = Some(Uuid::from_u128(999).to_string()),
+            "session_campaign" => session.campaign = CampaignId::from_uuid(Uuid::from_u128(999)),
+            "old_epoch" => scope.epoch = 0,
+            "future_epoch" => scope.epoch += 1,
+            "request" => *request_id += 1,
+            "perspective" => session.set_perspective(Perspective::PlayerKnowledge),
+            "viewed" => session.viewed_tick = 2,
+            "generation" => session.generation += 1,
+            "durable" => {
+                session.durable_tick = 4;
+                snapshot.view.period = 4;
+            }
+            "period" => snapshot.view.period = 2,
+            "actor" => snapshot.view.actor_id += 1,
+            "authority" => snapshot.view.authority_id = [8; 16],
+            "content" => snapshot.view.content_digest = [8; 32],
+            "resource" => snapshot.view.resource_digest = [8; 32],
+            "no_disclosure" => snapshot.city_pd_encounters.clear(),
+            "encounter_schema" => snapshot.city_pd_encounters[0].schema_version += 1,
+            "encounter_campaign" => snapshot.city_pd_encounters[0].campaign_id = [9; 16],
+            "encounter_actor" => snapshot.city_pd_encounters[0].controlled_actor_id += 1,
+            "encounter_authority" => snapshot.city_pd_encounters[0].authority_id = [9; 16],
+            "encounter_content" => snapshot.city_pd_encounters[0].content_digest = [9; 32],
+            "encounter_resource" => snapshot.city_pd_encounters[0].resource_digest = [9; 32],
+            "encounter_subject" => snapshot.city_pd_encounters[0].subject_id += 1,
+            "encounter_future" => snapshot.city_pd_encounters[0].resolve_period = 4,
+            "encounter_zero_period" => snapshot.city_pd_encounters[0].resolve_period = 0,
+            "encounter_zero_visitor" => snapshot.city_pd_encounters[0].visitor_actor_id = 0,
+            "encounter_zero_source" => snapshot.city_pd_encounters[0].venue_source_id = [0; 32],
+            "encounter_duplicate" => {
+                let mut duplicate = snapshot.city_pd_encounters[0].clone();
+                duplicate.resolve_period += 1;
+                snapshot.city_pd_encounters.push(duplicate);
+            }
+            "stale_malformed" => {
+                session.inspect_tick(2);
+                snapshot.city_pd_encounters[0].content_digest = [9; 32];
+            }
+            "pending_content" => {
+                use babylon_persistence::runtime_session::{
+                    OrganizerChoice, OrganizerCommand, OrganizerCommitment,
+                };
+                snapshot.pending = Some(OrganizerCommitment {
+                    command: OrganizerCommand {
+                        campaign_id: *session.campaign.as_uuid().as_bytes(),
+                        actor_id: snapshot.view.actor_id,
+                        authority_id: snapshot.view.authority_id,
+                        expected_period: snapshot.view.period,
+                        content_digest: [9; 32],
+                        resource_digest: snapshot.view.resource_digest,
+                        nonce: [1; 16],
+                        choice: OrganizerChoice::Hold,
+                    },
+                    resolves_period: 4,
+                    commitment_id: [1; 32],
+                });
+            }
+            "matching" => {}
+            _ => unreachable!(),
+        }
+    }
+
+    fn assert_status_disposition(app: &App, case: &str) {
+        use crate::organizer::OrganizerClient;
+        let client = app.world().resource::<OrganizerClient>();
+        let view = client.view.as_ref().expect("original view retained");
+        assert_eq!(
+            view.organization_label,
+            if matches!(case, "matching" | "no_disclosure") {
+                "Updated collective"
+            } else {
+                "Fixture collective"
+            },
+            "{case}"
+        );
+        assert_eq!(
+            client.city_pd_encounters.len(),
+            usize::from(case == "matching"),
+            "{case}"
+        );
+        let disconnected = app
+            .world()
+            .resource::<ObserverSession>()
+            .runtime_disconnected();
+        assert_eq!(
+            disconnected,
+            !matches!(
+                case,
+                "matching"
+                    | "no_disclosure"
+                    | "old_epoch"
+                    | "perspective"
+                    | "viewed"
+                    | "generation"
+            ),
+            "{case}"
+        );
+    }
+
+    #[test]
+    fn organizer_status_dispatch_installs_only_the_requested_context_and_identity() {
+        use crate::organizer::tests;
+
+        for case in [
+            "matching",
+            "campaign",
+            "session_campaign",
+            "old_epoch",
+            "future_epoch",
+            "request",
+            "perspective",
+            "viewed",
+            "generation",
+            "durable",
+            "period",
+            "actor",
+            "authority",
+            "content",
+            "resource",
+            "no_disclosure",
+            "encounter_schema",
+            "encounter_campaign",
+            "encounter_actor",
+            "encounter_authority",
+            "encounter_content",
+            "encounter_resource",
+            "encounter_subject",
+            "encounter_future",
+            "encounter_zero_period",
+            "encounter_zero_visitor",
+            "encounter_zero_source",
+            "encounter_duplicate",
+            "pending_content",
+            "stale_malformed",
+        ] {
+            let (client, mut session, request, mut snapshot) = tests::status_fixture();
+            let RuntimeSessionRequest::OrganizerStatus {
+                mut scope,
+                mut request_id,
+                ..
+            } = request
+            else {
+                panic!("expected organizer status request");
+            };
+            alter_status_case(
+                case,
+                &mut session,
+                &mut scope,
+                &mut request_id,
+                &mut snapshot,
+            );
+            let (requests, _request_rx) = mpsc::sync_channel(1);
+            let (replies, responses) = mpsc::channel();
+            let mut app = App::new();
+            app.insert_resource(session)
+                .insert_resource(client)
+                .insert_resource(RuntimePipe {
+                    requests,
+                    responses: Mutex::new(responses),
+                })
+                .init_resource::<DossierRefresh>()
+                .init_resource::<Time<Real>>()
+                .add_systems(Update, runtime::receive);
+            replies
+                .send(Ok(RuntimeSessionResponse::OrganizerStatus {
+                    scope,
+                    request_id,
+                    snapshot: Box::new(snapshot),
+                }))
+                .expect("response receiver remains open");
+            app.update();
+            assert_status_disposition(&app, case);
+        }
+    }
 
     pub(crate) fn install_pending_command_fixture(
         app: &mut App,
@@ -158,7 +366,8 @@ pub(crate) mod tests {
                 replies.send(Ok(RuntimeSessionResponse::Error { scope,
                 request_id:Some(request_id),
                 code:babylon_persistence::runtime_session::RuntimeSessionErrorCode::StorageRefused,
-                tail:Some(RuntimeSessionTail { resolve_tick:3,tick_content_hash:None })
+                tail:Some(RuntimeSessionTail { resolve_tick:3,tick_content_hash:None, world_hash: None,
+})
             })).expect("the receiver stays alive for the send");
             }
             app.update();
@@ -329,12 +538,14 @@ pub(crate) mod tests {
                 tail: RuntimeSessionTail {
                     resolve_tick: 4,
                     tick_content_hash: Some("4".repeat(64)),
+                    world_hash: Some("5".repeat(64)),
                 },
             }))
             .expect("the receiver stays alive for the send");
         app.update();
         let state = app.world().resource::<ObserverSession>();
         assert_eq!(state.durable_tick, 4);
+        assert_eq!(state.world_hash.as_deref(), Some("5".repeat(64).as_str()));
         assert_eq!(state.phase, SessionPhase::Loading);
         assert!(!state.advance_pending());
         replies
@@ -1104,6 +1315,7 @@ pub(crate) mod tests {
                 tail: RuntimeSessionTail {
                     resolve_tick: 4,
                     tick_content_hash: Some("4".repeat(64)),
+                    world_hash: None,
                 },
             }))
             .expect("the receiver stays alive for the send");
@@ -1421,6 +1633,7 @@ pub(crate) mod tests {
                 tail: RuntimeSessionTail {
                     resolve_tick: 4,
                     tick_content_hash: Some("committed".into()),
+                    world_hash: None,
                 },
             }))
             .expect("the receiver stays alive for the send");

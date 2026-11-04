@@ -37,7 +37,7 @@ use crate::observer_progress::OperationProgress;
 use crate::observer_ui::ProductionEvidenceOutcome;
 use crate::observer_ui::RoadLayer;
 use crate::organizer::qualification_input::HandlerReceipt;
-use crate::organizer::OrganizerClient;
+use crate::organizer::{OrganizerClient, StatusDisposition};
 use crate::production::PrimaryView;
 use crate::ui::dossier_card::{
     ActiveCountyDossier, DossierCampaignId, DossierFetchState, DossierPageView, DossierRefresh,
@@ -323,6 +323,7 @@ pub(crate) fn send_advance(
         expected_tail: RuntimeSessionTail {
             resolve_tick: state.durable_tick,
             tick_content_hash: state.content_hash.clone(),
+            world_hash: state.world_hash.clone(),
         },
     };
     let timing = match qualification
@@ -415,7 +416,9 @@ impl CampaignReset<'_> {
         snapshot: OrganizerSnapshot,
     ) -> Result<(), String> {
         let original = self.qualification.is_some().then(|| snapshot.clone());
-        self.organizer()?.status(request_id, snapshot, state)?;
+        if self.organizer()?.status(request_id, snapshot, state)? == StatusDisposition::Superseded {
+            return Ok(());
+        }
         if let (Some(audit), Some(original)) = (&mut self.qualification, original) {
             audit.status(state, original)?;
         }
@@ -637,7 +640,9 @@ pub(crate) fn refuse_runtime_request(
             .duration
             .is_some_and(|duration| duration.complete(state.durable_tick))
         && tail.is_some_and(|tail| {
-            tail.resolve_tick == state.durable_tick && tail.tick_content_hash == state.content_hash
+            tail.resolve_tick == state.durable_tick
+                && tail.tick_content_hash == state.content_hash
+                && tail.world_hash == state.world_hash
         });
     log::warn!("Runtime campaign request was refused: {code}");
     let organizer_refused = reset.organizer.as_mut().is_some_and(|organizer| {
@@ -800,6 +805,7 @@ pub(crate) fn apply_committed_response(
     if !state.acknowledge(request_id, tail.resolve_tick, tail.tick_content_hash) {
         return Err("Unexpected committed acknowledgement; reopen the campaign.".into());
     }
+    state.world_hash = tail.world_hash;
     if let Some(audit) = reset.qualification.as_deref_mut() {
         audit.advance_committed(state, request_id)?;
     }
@@ -1153,7 +1159,12 @@ pub(crate) fn start_observation(
             pending.0 = None;
         }
     }
-    if state.phase != SessionPhase::Loading || pending.0.is_some() {
+    if state.phase != SessionPhase::Loading
+        || pending.0.is_some()
+        || state.lifecycle_pending()
+        || state.foundation_digest.is_none()
+        || state.runtime_scope().is_none()
+    {
         return;
     }
     if qualification::awaiting_archive(&state, qualification.is_some()) {

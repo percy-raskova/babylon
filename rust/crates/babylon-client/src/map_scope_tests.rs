@@ -1,7 +1,9 @@
 //! Scope is exercised through the scene system with real committed atlas geometry.
 use super::scene;
 use super::CountySlab;
+use super::{MapGeometry, MapOrbit, ObserverMapCamera};
 use crate::atlas::CountyAtlas;
+use crate::map::CountyMapScope;
 use crate::map::{HoveredCounty, SelectedCounty};
 use crate::observer::ObserverSession;
 use crate::observer::Perspective;
@@ -202,4 +204,49 @@ fn changed_geography_in_one_foundation_refuses_and_removes_the_old_scene() {
         .contains("ChangedGeography"));
     app.update();
     assert!(slabs(&mut app).is_empty());
+}
+
+#[test]
+fn organizer_camera_frames_admitted_wayne_and_restores_map_orbit() {
+    use crate::observer_ui::ObserverViewport;
+    use crate::production::PrimaryView;
+    use bevy::window::PrimaryWindow;
+    let mut app = scene(vec!["26163".into(), "26165".into()]);
+    app.insert_resource(PrimaryView::Map)
+        .insert_resource(ObserverViewport(Some(Rect::from_corners(
+            Vec2::ZERO,
+            Vec2::new(900.0, 600.0),
+        ))))
+        .add_systems(Update, super::sync_camera);
+    app.world_mut().spawn((Window::default(), PrimaryWindow));
+    app.update();
+    let previous = app.world().resource::<MapOrbit>().clone();
+    let other = app
+        .world()
+        .resource::<CountyAtlas>()
+        .index_of_fips("26165")
+        .expect("other admitted county");
+    app.world_mut().resource_mut::<SelectedCounty>().0 = Some(other);
+    *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Organizer;
+    app.update();
+    let world = app.world();
+    let atlas = world.resource::<CountyAtlas>();
+    let wayne = atlas.index_of_fips("26163").expect("Wayne atlas county");
+    assert_eq!(world.resource::<SelectedCounty>().0, Some(wayne));
+    let (target, _, _) = super::wayne_focus(
+        atlas,
+        world.resource::<CountyMapScope>(),
+        world.resource::<MapGeometry>(),
+    )
+    .expect("Wayne is admitted");
+    assert_eq!(world.resource::<MapOrbit>().target, target);
+    let camera_active = {
+        let world = app.world_mut();
+        let mut cameras = world.query_filtered::<&Camera, With<ObserverMapCamera>>();
+        cameras.single(world).expect("map camera entity").is_active
+    };
+    assert!(camera_active);
+    *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Map;
+    app.update();
+    assert!(*app.world().resource::<MapOrbit>() == previous);
 }

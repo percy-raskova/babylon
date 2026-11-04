@@ -5,6 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::CityPdAttendance;
 use crate::MaterialCatalog;
 use crate::MonetaryCircuit;
 use crate::{
@@ -355,10 +356,11 @@ pub(crate) fn close(
     catalog: &MaterialCatalog,
     state: &mut MaterialCircuitState,
     attendance: &[MemberLaborUseReceipt],
+    paid: &[CityPdAttendance],
     consumption: &[HouseholdConsumptionReceipt],
     services: &[HouseholdServiceReceipt],
 ) -> Result<Vec<HouseholdTimeReceipt>> {
-    let result = preview(catalog, state, attendance, consumption, services)?;
+    let result = preview_with_paid(catalog, state, attendance, paid, consumption, services)?;
     if let CircuitAccounting::Monetary(economy) = &mut state.accounting {
         if let HouseholdTimeAccounting::Modeled(book) = &mut economy.household_time {
             book.receipts.clone_from(&result);
@@ -372,6 +374,17 @@ pub(crate) fn preview(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     attendance: &[MemberLaborUseReceipt],
+    consumption: &[HouseholdConsumptionReceipt],
+    services: &[HouseholdServiceReceipt],
+) -> Result<Vec<HouseholdTimeReceipt>> {
+    preview_with_paid(catalog, state, attendance, &[], consumption, services)
+}
+
+fn preview_with_paid(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+    attendance: &[MemberLaborUseReceipt],
+    paid: &[CityPdAttendance],
     consumption: &[HouseholdConsumptionReceipt],
     services: &[HouseholdServiceReceipt],
 ) -> Result<Vec<HouseholdTimeReceipt>> {
@@ -402,6 +415,23 @@ pub(crate) fn preview(
             return Err(MaterialCircuitError::HouseholdTimeInvariant);
         }
         entry.1 = sum(&[entry.1, row.attended_hours])?;
+    }
+    let mut paid_shifts = BTreeSet::new();
+    for row in paid {
+        if row.period != state.period
+            || row.hours == 0
+            || row.intent_id == [0; 32]
+            || !paid_shifts.insert(row.shift_id)
+        {
+            return Err(MaterialCircuitError::HouseholdTimeInvariant);
+        }
+        let entry = attended
+            .entry(row.principal_id)
+            .or_insert((row.labor_unit_id, 0));
+        if entry.0 != row.labor_unit_id {
+            return Err(MaterialCircuitError::HouseholdTimeInvariant);
+        }
+        entry.1 = sum(&[entry.1, row.hours])?;
     }
     let mut unmet = BTreeMap::new();
     for (period, principal, good, unit, quantity) in consumption

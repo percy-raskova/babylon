@@ -1,4 +1,4 @@
-//! Lossless storage of the one current complete V18 receipt format.
+//! Lossless storage of the one current complete V19 receipt format.
 //! Canonical identities/hashes remain the authoritative evidence; this is a storage codec.
 mod amount;
 
@@ -16,3 +16,6 @@ use storage::{buffer, Result};
 pub(crate) use storage::{
     decode_admitted, encode, restore_canonical, AdmittedReceipts, MAX_RECEIPT_STORAGE_BYTES,
 };
+
+#[cfg(test)]
+mod agency_paid_tests;

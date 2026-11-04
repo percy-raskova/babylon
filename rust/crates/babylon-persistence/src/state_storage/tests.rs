@@ -6,6 +6,7 @@ use super::register::{
 };
 use super::schema::{Cursor, Section};
 use super::{offers, register, schema};
+use crate::material_storage::MaterialProvenance;
 use crate::michigan_content::MichiganContentPreset;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_practice_contract::OrganizerPeriodJournal;
@@ -28,7 +29,7 @@ fn current_tick_reconstructs_exact_canonical_register_without_current_input() {
     let foundation = opening(MichiganContentPreset::FourWeekStandard);
     let base = foundation.initial_register().canonical_bytes().to_vec();
     let catalog = foundation.material_catalog().clone();
-    let authority = OpeningRegister::from_canonical(&catalog, &base)
+    let authority = OpeningRegister::from_canonical(&catalog, &base, None)
         .expect("the canonical bytes admit the value");
     let lookup = authority.lookup().clone();
     let session = foundation
@@ -98,7 +99,7 @@ fn current_organizer_bytes_are_retained_instead_of_assuming_empty_trailer() {
         .expect("the fixture builder accepts the authored options");
     let base = register.canonical_bytes();
     assert!(register.organizer_config().is_some());
-    let authority = OpeningRegister::from_canonical(foundation.material_catalog(), base)
+    let authority = OpeningRegister::from_canonical(foundation.material_catalog(), base, None)
         .expect("the canonical bytes admit the value");
     let lookup = authority.lookup().clone();
     let admitted_current =
@@ -128,7 +129,7 @@ fn current_organizer_bytes_are_retained_instead_of_assuming_empty_trailer() {
 fn wrong_base_damaged_package_and_trailing_bytes_refuse() {
     let foundation = opening(MichiganContentPreset::FourWeekStandard);
     let base = foundation.initial_register().canonical_bytes();
-    let authority = OpeningRegister::from_canonical(foundation.material_catalog(), base)
+    let authority = OpeningRegister::from_canonical(foundation.material_catalog(), base, None)
         .expect("the canonical bytes admit the value");
     let lookup = authority.lookup().clone();
     let admitted_current =
@@ -423,7 +424,8 @@ fn raw_byte_admission_refuses_malformed_opening_and_current_before_typed_encodin
     let bytes = foundation.initial_register().canonical_bytes();
     assert!(OpeningRegister::from_canonical(
         foundation.material_catalog(),
-        &bytes[..bytes.len() - 1]
+        &bytes[..bytes.len() - 1],
+        None,
     )
     .is_err());
     assert!(MaterialWorldRegister::decode_external(
@@ -431,7 +433,7 @@ fn raw_byte_admission_refuses_malformed_opening_and_current_before_typed_encodin
         bytes[..bytes.len() - 1].to_vec()
     )
     .is_err());
-    let raw_opening = OpeningRegister::from_canonical(foundation.material_catalog(), bytes)
+    let raw_opening = OpeningRegister::from_canonical(foundation.material_catalog(), bytes, None)
         .expect("the canonical bytes admit the value");
     let typed_opening = OpeningRegister::from_opening(foundation.initial_register())
         .expect("the opening register admits its sections");
@@ -476,12 +478,12 @@ fn assert_aid_period_package(
     use crate::material_storage::{self, LookupAnchor};
     let current = candidate.material().register();
     let receipts = candidate.material().receipt_bytes();
-    let authority = OpeningRegister::from_canonical(catalog, opening)
+    let authority = OpeningRegister::from_canonical(catalog, opening, None)
         .expect("the canonical bytes admit the value");
     let encoded = material_storage::encode(current, receipts, &authority, previous_chain)
         .expect("the fixture value encodes canonically");
     // Independent inverse owns only the canonical immutable opening and stored packets.
-    let inverse = OpeningRegister::from_canonical(catalog, opening)
+    let inverse = OpeningRegister::from_canonical(catalog, opening, None)
         .expect("the canonical bytes admit the value");
     let tick = current.completed_tick();
     let lookup = material_storage::read_period_lookup(
@@ -494,8 +496,11 @@ fn assert_aid_period_package(
     assert_eq!(lookup.chain, encoded.lookup_chain);
     assert_eq!(lookup.previous_chain, previous_chain);
     let restored = material_storage::decode(
-        catalog,
-        &inverse,
+        MaterialProvenance {
+            catalog,
+            opening: &inverse,
+            resolver: None,
+        },
         tick,
         &encoded.register_storage_bytes,
         &encoded.receipt_storage_bytes,
@@ -540,13 +545,16 @@ fn assert_aid_period_package(
     let mut damaged = encoded.register_storage_bytes.clone();
     damaged.push(0);
     assert!(material_storage::decode(
-        catalog,
-        &inverse,
+        MaterialProvenance {
+            catalog,
+            opening: &inverse,
+            resolver: None
+        },
         tick,
         &damaged,
         &encoded.receipt_storage_bytes,
         &lookup.lookup,
-        lookup.chain
+        lookup.chain,
     )
     .is_err());
     let mut damaged_lookup = encoded.lookup_delta_bytes.clone();
@@ -579,8 +587,12 @@ fn local_grant_canonical_state_and_complete_receipt_package_inverse() {
         false,
     );
     let opening = session.material().canonical_bytes().to_vec();
-    let authority = OpeningRegister::from_canonical(session.catalog(), &opening)
-        .expect("the canonical bytes admit the value");
+    let authority = OpeningRegister::from_canonical(
+        session.catalog(),
+        &opening,
+        Some(session.graph_session().stable_resolver()),
+    )
+    .expect("the canonical bytes admit the value");
     let chain = crate::material_storage::initial_lookup_chain(&authority)
         .expect("the opening register builds its first lookup chain");
     let accepted = f::commitment(&session, OrganizerChoice::LocalAid);
@@ -842,8 +854,12 @@ fn routed_aid_package_sequence(loss_ppm: u32, arrived: u64, refunded: i128) {
     );
     let opening = session.material().canonical_bytes().to_vec();
     let immutable = opening.clone();
-    let authority = OpeningRegister::from_canonical(session.catalog(), &opening)
-        .expect("the canonical bytes admit the value");
+    let authority = OpeningRegister::from_canonical(
+        session.catalog(),
+        &opening,
+        Some(session.graph_session().stable_resolver()),
+    )
+    .expect("the canonical bytes admit the value");
     let chain = crate::material_storage::initial_lookup_chain(&authority)
         .expect("the opening register builds its first lookup chain");
     let accepted = f::commitment(&session, OrganizerChoice::RemoteAid);

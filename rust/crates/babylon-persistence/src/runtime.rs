@@ -33,13 +33,15 @@ use postgres::GenericClient;
 
 #[cfg(test)]
 mod live_tests {
+    #[path = "city_pd_atomic.rs"]
+    mod city_pd_atomic;
     #[path = "material_open.rs"]
     mod material_open;
     #[path = "territory_controls/controls.rs"]
     mod territory_controls;
     use super::super::postgres_catalog;
     use super::*;
-    use crate::material_storage::LookupAnchor;
+    use crate::material_storage::{LookupAnchor, MaterialProvenance};
     use crate::michigan_content::MichiganContentPreset;
     use crate::michigan_material::MichiganDeliveryPreset;
     use crate::michigan_material::MichiganMaterialCatalog;
@@ -61,7 +63,7 @@ mod live_tests {
         catalog: &MaterialCatalog,
         base: &[u8],
     ) -> Vec<u8> {
-        let opening = crate::material_storage::seed(catalog, base)
+        let opening = crate::material_storage::seed(catalog, base, None)
             .expect("the fixture seeds the authored rows");
         let mut chain = crate::material_storage::initial_lookup_chain(&opening)
             .expect("the opening register builds its first lookup chain");
@@ -90,8 +92,11 @@ mod live_tests {
         let lookup = loaded.expect("the fixture carries the loaded value");
         let row=owner.query_one("SELECT register_storage_bytes,receipt_storage_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1::uuid AND resolve_tick=2",&[campaign.as_uuid()]).expect("the seeded row is present exactly once");
         let (register, mut receipts) = crate::material_storage::decode(
-            catalog,
-            &opening,
+            MaterialProvenance {
+                catalog,
+                opening: &opening,
+                resolver: None,
+            },
             2,
             row.get::<_, &[u8]>(0),
             row.get::<_, &[u8]>(1),
@@ -124,8 +129,11 @@ mod live_tests {
         assert_eq!(encoded.lookup.entries(), lookup.lookup.entries());
         assert_eq!(
             crate::material_storage::decode(
-                catalog,
-                &opening,
+                MaterialProvenance {
+                    catalog,
+                    opening: &opening,
+                    resolver: None
+                },
                 2,
                 &encoded.register_storage_bytes,
                 &encoded.receipt_storage_bytes,

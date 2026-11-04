@@ -48,7 +48,6 @@ fn text(value: &str, size: f32, color: Color) -> impl Bundle {
         TextLayout::linebreak(LineBreak::WordOrCharacter),
         Node {
             max_width: percent(100),
-            min_width: px(0),
             flex_shrink: 0.0,
             ..default()
         },
@@ -378,6 +377,15 @@ mod tests {
     use bevy::time::TimeUpdateStrategy;
     use std::time::Duration;
     use uuid::Uuid;
+
+    #[test]
+    fn warning_text_is_measured_at_readable_width_with_the_real_font() {
+        let size = crate::test_support::measure_ui_text(text(FICTION, 18.0, Color::WHITE));
+        assert!(
+            size.x > 100.0 && size.y < 150.0,
+            "actual text layout: {size:?}"
+        );
+    }
 
     #[derive(Resource, Default)]
     struct InstallTrace(Vec<bool>);

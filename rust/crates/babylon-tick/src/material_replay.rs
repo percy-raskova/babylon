@@ -8,10 +8,15 @@ use crate::material_staffing::{
 };
 use crate::material_state::MaterialStateRows;
 use crate::material_world::{MaterialWorldError, MaterialWorldRegister, PreparedMaterialWorld};
+use crate::public_venue::AdmittedPublicVenueSource;
 use crate::replay_session::{
     IdentifiedTickReport, PreparedReplayCommitError, PreparedReplayTick, ReplayCommitDisposition,
     ReplayTickError, ReplayTickSession,
 };
+use babylon_graph::stable_element::StableElementResolver;
+use babylon_kernel::currency::Currency;
+use babylon_practice_contract::PublicVenueHistory;
+use std::collections::BTreeSet;
 
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::allocator_state::AllocatorState;
@@ -29,7 +34,8 @@ use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_kernel::clock::CampaignDuration;
 use babylon_kernel::content_digest;
 use babylon_material_circuit::{
-    AidResolveInput, AidTransport, CircuitAccounting, MaterialCatalog, MaterialCircuitError,
+    AgencyAttendanceInput, AidResolveInput, AidTransport, CircuitAccounting,
+    FinalDemandPrincipalId, MaterialCatalog, MaterialCircuitError, OrganizationAccountId, UnitId,
 };
 use babylon_practice_contract::{OrderedPracticeActionBatch, OrganizerCommitment};
 use std::fmt::Formatter;
@@ -91,8 +97,61 @@ pub(crate) struct MaterialBaseInputs<'a> {
     pub(crate) opening: &'a MaterialWorldRegister,
     pub(crate) labor: &'a StaffingComposition,
     pub(crate) commitment: Option<&'a OrganizerCommitment>,
+    pub(crate) venue_sources: &'a [AdmittedPublicVenueSource],
 }
 impl MaterialBaseInputs<'_> {
+    fn agency_inputs(
+        &self,
+        resolver: &StableElementResolver,
+    ) -> Result<Vec<AgencyAttendanceInput>, MaterialBaseError> {
+        let Some(pd) = self.opening.city_pd() else {
+            return Ok(Vec::new());
+        };
+        pd.validate(
+            self.catalog,
+            self.opening.state(),
+            self.opening.completed_tick(),
+            resolver,
+        )
+        .map_err(|error| MaterialBaseError::World(MaterialWorldError::CityPd(error)))?;
+        let decision = pd
+            .state
+            .last_decision
+            .as_ref()
+            .ok_or(MaterialWorldError::Wire)?;
+        let babylon_practice_contract::CityPdDecision::Selected(intent) = &decision.decision else {
+            return Ok(Vec::new());
+        };
+        if intent.source_period != self.opening.completed_tick()
+            || intent.resolve_period != self.opening.state().period
+        {
+            return Err(MaterialWorldError::PeriodMismatch.into());
+        }
+        let principal =
+            FinalDemandPrincipalId::from_bytes(pd.config.investigator_household_account_id);
+        let residence = self
+            .opening
+            .state()
+            .final_demand_principals
+            .iter()
+            .find(|row| row.id == principal)
+            .ok_or(MaterialWorldError::Wire)?
+            .location;
+        Ok(vec![AgencyAttendanceInput {
+            intent_id: intent.intent_id,
+            shift_id: babylon_material_circuit::agency_shift_id(
+                intent.resolve_period,
+                intent.intent_id,
+            ),
+            agency: OrganizationAccountId::from_bytes(pd.config.agency_account_id),
+            principal_id: principal,
+            residence,
+            labor_unit_id: UnitId::from_bytes(pd.config.labor_unit_id),
+            due_period: intent.resolve_period,
+            hours: pd.config.visit_hours,
+            hourly_rate: Currency::from_micro_units(pd.config.hourly_wage_micros),
+        }])
+    }
     pub(crate) fn validate_actions(
         &self,
         actions: &OrderedPracticeActionBatch,
@@ -195,6 +254,7 @@ impl MaterialBaseInputs<'_> {
                 self.opening.state(),
             )?;
             let aid_inputs = self.aid_inputs()?;
+            let agency_inputs = self.agency_inputs(context.resolver)?;
             let collection_inputs = match (
                 self.opening.organizer_config(),
                 self.opening.organizer_state(),
@@ -216,6 +276,7 @@ impl MaterialBaseInputs<'_> {
                 self.opening.state(),
                 &aid_inputs,
                 &collection_inputs,
+                &agency_inputs,
             )?;
             let bindings = composition
                 .bindings()
@@ -237,8 +298,12 @@ impl MaterialBaseInputs<'_> {
             )?;
             transition.staffing_members = effects.member_receipts().to_vec();
             Ok((
-                self.opening
-                    .prepare_transition(self.catalog, transition, self.commitment)?,
+                self.opening.prepare_transition(
+                    self.catalog,
+                    transition,
+                    self.commitment,
+                    self.venue_sources,
+                )?,
                 Some(effects),
             ))
         }
@@ -429,6 +494,7 @@ pub struct MaterialReplaySession<G> {
     foundation_digest: [u8; 32],
     duration: CampaignDuration,
     labor: StaffingComposition,
+    venue_sources: Vec<AdmittedPublicVenueSource>,
 }
 /// Fully prepared candidate; dropping it publishes nothing.
 pub struct PreparedMaterialTick<G> {
@@ -479,9 +545,20 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         if material.catalog_digest() != catalog.catalog_digest() {
             return Err(MaterialReplayError::Material(MaterialWorldError::Wire));
         }
+        material.validate_city_pd_resolver(&catalog, graph.stable_resolver())?;
         graph.validate_material_cycle()?;
         graph.validate_organizer_cycle(material.organizer_state().is_some())?;
+        graph.validate_city_pd_cycle(material.city_pd().is_some())?;
         graph.validate_staffing_ownership()?;
+        let venue_sources = match material.public_venue() {
+            Some(history) => vec![crate::public_venue::admit_public_venue_source(
+                history,
+                crate::public_venue::PublicVenueSourceProof::InitialNotice,
+            )
+            .map_err(|_| MaterialReplayError::Material(MaterialWorldError::Wire))?],
+            None => Vec::new(),
+        };
+        validate_venue_sources(material.public_venue(), &venue_sources)?;
         Ok(Self {
             graph,
             material,
@@ -489,6 +566,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
             foundation_digest,
             duration,
             labor,
+            venue_sources,
         })
     }
     #[must_use]
@@ -561,6 +639,7 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
         if !self.duration.can_advance(self.completed_tick()) {
             return Err(MaterialReplayError::ClockExhausted);
         }
+        validate_venue_sources(self.material.public_venue(), &self.venue_sources)?;
         let (graph, material) = self.graph.prepare_material_advance(
             actions,
             MaterialBaseInputs {
@@ -568,8 +647,20 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
                 opening: &self.material,
                 labor: &self.labor,
                 commitment,
+                venue_sources: &self.venue_sources,
             },
         )?;
+        if self.material.city_pd().map(|pd| &pd.config)
+            != material.register().city_pd().map(|pd| &pd.config)
+            || self.material.public_venue().map(|venue| &venue.policy)
+                != material
+                    .register()
+                    .public_venue()
+                    .map(|venue| &venue.policy)
+        {
+            return Err(MaterialReplayError::Material(MaterialWorldError::Wire));
+        }
+        validate_venue_sources(material.register().public_venue(), material.venue_sources())?;
         let identity = IdentifiedMaterialTick::compose(
             self.foundation_digest,
             graph.report(),
@@ -616,7 +707,9 @@ impl<G: GraphSubstrate + CanonicalState + AllocatorState + DetachedCopy> Materia
                 }
                 PreparedReplayCommitError::Commit(error) => MaterialCommitError::Commit(error),
             })?;
-        self.material = prepared.material.into_register();
+        let (material, venue_sources) = prepared.material.into_parts();
+        self.material = material;
+        self.venue_sources = venue_sources;
         Ok((prepared.identity, disposition))
     }
 }
@@ -632,12 +725,47 @@ impl MaterialReplaySession<HypergraphStore> {
         graph_registers: &[u8],
         material: MaterialWorldRegister,
     ) -> Result<(), MaterialReplayError> {
+        self.restore_full_checkpoint_with_sources(
+            graph_state,
+            graph_material,
+            graph_registers,
+            material,
+            self.venue_sources.clone(),
+        )
+    }
+
+    /// Restore using source tokens authenticated against their original committed periods.
+    /// # Errors
+    /// Refuses missing, duplicate, foreign or unauthenticated source tokens before publication.
+    pub fn restore_full_checkpoint_with_sources(
+        &mut self,
+        graph_state: &StableGraphState,
+        graph_material: &MaterialStateRows,
+        graph_registers: &[u8],
+        material: MaterialWorldRegister,
+        venue_sources: Vec<AdmittedPublicVenueSource>,
+    ) -> Result<(), MaterialReplayError> {
         let tick = material.completed_tick();
         // A foreign catalog is a provenance refusal of the stored frame, not a
         // horizon refusal; `new` refuses the same discrepancy with `Wire`.
         if material.catalog_digest() != self.catalog.catalog_digest() {
             return Err(MaterialReplayError::Material(MaterialWorldError::Wire));
         }
+        if material.city_pd().map(|pd| &pd.config) != self.material.city_pd().map(|pd| &pd.config) {
+            return Err(MaterialReplayError::Material(MaterialWorldError::Wire));
+        }
+        // Never adopt another graph session's resolved dossier handles, even
+        // when its resolver manifest happens to match this one.
+        let material = if material.city_pd().is_some() {
+            MaterialWorldRegister::decode_external_with_resolver(
+                &self.catalog,
+                material.canonical_bytes().to_vec(),
+                self.graph.stable_resolver(),
+            )?
+        } else {
+            material
+        };
+        validate_venue_sources(material.public_venue(), &venue_sources)?;
         if tick == 0 || !self.duration.contains(tick) {
             return Err(MaterialReplayError::Horizon);
         }
@@ -645,6 +773,46 @@ impl MaterialReplaySession<HypergraphStore> {
         self.graph
             .restore_full_checkpoint(tick, graph_state, graph_material, graph_registers)?;
         self.material = material;
+        self.venue_sources = venue_sources;
         Ok(())
     }
+}
+
+fn validate_venue_sources(
+    history: Option<&PublicVenueHistory>,
+    sources: &[AdmittedPublicVenueSource],
+) -> Result<(), MaterialReplayError> {
+    use babylon_practice_contract::PublicVenueRecordKind;
+    let Some(history) = history else {
+        return if sources.is_empty() {
+            Ok(())
+        } else {
+            Err(MaterialReplayError::Material(MaterialWorldError::Wire))
+        };
+    };
+    let expected: BTreeSet<_> = history
+        .records
+        .iter()
+        .filter(|record| {
+            matches!(
+                &record.kind,
+                PublicVenueRecordKind::AuthoredInitialNotice
+                    | PublicVenueRecordKind::ContactCompleted { .. }
+            )
+        })
+        .map(|record| record.source_id)
+        .collect();
+    let actual: BTreeSet<_> = sources
+        .iter()
+        .map(|source| source.record().source_id)
+        .collect();
+    if expected != actual
+        || actual.len() != sources.len()
+        || sources
+            .iter()
+            .any(|source| !history.records.contains(source.record()))
+    {
+        return Err(MaterialReplayError::Material(MaterialWorldError::Wire));
+    }
+    Ok(())
 }

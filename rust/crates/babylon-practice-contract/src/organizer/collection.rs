@@ -257,14 +257,11 @@ pub(super) fn validate_collection_history(
         if acknowledge_collection(config, &row.commitment, &row.fact, &mut expected)?.practice
             != row.practice
             || row.practice.receipt_id
-                != super::contract::identity(
-                    b"babylon.organizer-receipt.v1",
-                    &(
-                        config.campaign_id,
-                        config.controlled_actor_id,
-                        row.fact.period,
-                        row.commitment.commitment_id,
-                    ),
+                != super::contract::organizer_receipt_id(
+                    config.campaign_id,
+                    config.controlled_actor_id,
+                    row.fact.period,
+                    row.commitment.commitment_id,
                 )?
             || row.practice.choice != OrganizerChoice::Collect
             || row.practice.commitment_id != Some(row.commitment.commitment_id)

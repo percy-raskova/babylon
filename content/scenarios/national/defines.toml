@@ -366,6 +366,7 @@ maximum_quantity = 4
 # Designed consent and organization commitments; real time remains finite.
 [organizer]
 evidence_class = "Designed"
+venue_log_reader = "controlled_organizer"
 organization_label = "Wayne Organizing Collective"
 workplace_partner_label = "Wayne Workplace Committee"
 neighborhood_partner_label = "Wayne Neighborhood Contact Group"

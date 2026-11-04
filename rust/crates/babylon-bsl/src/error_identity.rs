@@ -308,7 +308,8 @@ fn causal_identity(err: &ContractError) -> Option<ErrorIdentity> {
             EffectSignature::Shape(_)
             | EffectSignature::MaterialCycle
             | EffectSignature::OrganizerProducts
-            | EffectSignature::OrganizerPractice => Some(ErrorIdentity::RuleId(rule_id.clone())),
+            | EffectSignature::OrganizerPractice
+            | EffectSignature::CityPdObserve => Some(ErrorIdentity::RuleId(rule_id.clone())),
         },
         ContractError::MismatchedWriteAttribution { actual, .. } => {
             Some(ErrorIdentity::RuleId(actual.clone()))

@@ -1,3 +1,5 @@
+; Designed public route: a completed Reinforce contact at the existing workplace
+; committee's public desk is published. Admission alone is not a contact.
 (rule organizer/organizer-products
   :role mechanic
   :evidence designed

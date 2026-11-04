@@ -49,6 +49,13 @@ pub(super) fn encode(input: &EconomicCatalogInput, compiler: &str) -> Result<Vec
     if organizer_size > MAX_ORGANIZER_CONFIG_BYTES {
         return Err(EconomicCatalogError::Bound);
     }
+    let city_pd = input
+        .city_pd
+        .as_ref()
+        .map(babylon_practice_contract::encode_city_pd_config)
+        .transpose()
+        .map_err(|_| EconomicCatalogError::Identity)?;
+    let city_pd_size = city_pd.as_ref().map_or(0, Vec::len);
     let size = source_size
         .checked_add(
             DOMAIN.len()
@@ -62,7 +69,9 @@ pub(super) fn encode(input: &EconomicCatalogInput, compiler: &str) -> Result<Vec
                 + 1
                 + 2
                 + 5
-                + organizer_size,
+                + organizer_size
+                + 5
+                + city_pd_size,
         )
         .ok_or(EconomicCatalogError::Bound)?;
     if size > MAX_CATALOG_BYTES {
@@ -72,7 +81,7 @@ pub(super) fn encode(input: &EconomicCatalogInput, compiler: &str) -> Result<Vec
     out.try_reserve_exact(size)
         .map_err(|_| EconomicCatalogError::Bound)?;
     out.extend_from_slice(DOMAIN);
-    out.extend_from_slice(&2_u16.to_be_bytes());
+    out.extend_from_slice(&3_u16.to_be_bytes());
     out.extend_from_slice(&DAYS_PER_TICK.to_be_bytes());
     text(&mut out, compiler)?;
     text(&mut out, &input.scenario_id)?;
@@ -108,7 +117,15 @@ pub(super) fn encode(input: &EconomicCatalogInput, compiler: &str) -> Result<Vec
         );
         out.extend_from_slice(source.bytes());
     }
-    match organizer {
+    append_optional(&mut out, organizer)?;
+    append_optional(&mut out, city_pd)?;
+    if out.len() != size {
+        return Err(EconomicCatalogError::Bound);
+    }
+    Ok(out)
+}
+fn append_optional(out: &mut Vec<u8>, value: Option<Vec<u8>>) -> Result<()> {
+    match value {
         None => {
             out.push(0);
             out.extend_from_slice(&0_u32.to_be_bytes());
@@ -123,10 +140,7 @@ pub(super) fn encode(input: &EconomicCatalogInput, compiler: &str) -> Result<Vec
             out.extend_from_slice(&encoded);
         }
     }
-    if out.len() != size {
-        return Err(EconomicCatalogError::Bound);
-    }
-    Ok(out)
+    Ok(())
 }
 pub(super) fn decode(bytes: &[u8]) -> Result<(EconomicCatalogInput, String)> {
     if bytes.len() > MAX_CATALOG_BYTES {
@@ -136,7 +150,7 @@ pub(super) fn decode(bytes: &[u8]) -> Result<(EconomicCatalogInput, String)> {
     if c.take(DOMAIN.len())? != DOMAIN {
         return Err(EconomicCatalogError::WireDomain);
     }
-    if u16::from_be_bytes(c.array()?) != 2 {
+    if u16::from_be_bytes(c.array()?) != 3 {
         return Err(EconomicCatalogError::WireVersion);
     }
     if u64::from_be_bytes(c.array()?) != DAYS_PER_TICK {
@@ -191,6 +205,20 @@ pub(super) fn decode(bytes: &[u8]) -> Result<(EconomicCatalogInput, String)> {
         ),
         _ => return Err(EconomicCatalogError::WireNoncanonical),
     };
+    let city_pd_tag = c.byte()?;
+    let city_pd_length =
+        usize::try_from(u32::from_be_bytes(c.array()?)).map_err(|_| EconomicCatalogError::Bound)?;
+    if city_pd_length > MAX_ORGANIZER_CONFIG_BYTES {
+        return Err(EconomicCatalogError::Bound);
+    }
+    let city_pd = match (city_pd_tag, city_pd_length) {
+        (0, 0) => None,
+        (1, n) if n > 0 => Some(
+            babylon_practice_contract::decode_city_pd_config(c.take(n)?)
+                .map_err(|_| EconomicCatalogError::Identity)?,
+        ),
+        _ => return Err(EconomicCatalogError::WireNoncanonical),
+    };
     if c.at != bytes.len() {
         return Err(EconomicCatalogError::WireTrailing);
     }
@@ -202,6 +230,7 @@ pub(super) fn decode(bytes: &[u8]) -> Result<(EconomicCatalogInput, String)> {
             sources,
             geography,
             organizer,
+            city_pd,
         },
         compiler,
     ))
@@ -255,14 +284,14 @@ mod tests {
     // Independent wire fixture: three one-byte identities, continuous clock,
     // national geography, and one GraphDeclarations source containing "abc".
     fn vector() -> Vec<u8> {
-        let mut bytes = b"babylon.economic-catalog.v1\0\0\x02\0\0\0\0\0\0\0\x1c\0\x01c\0\x01s\0\x01p\0\0\0\0\0\0\0\0\0\x01\0\x01\x01".to_vec();
+        let mut bytes = b"babylon.economic-catalog.v1\0\0\x03\0\0\0\0\0\0\0\x1c\0\x01c\0\x01s\0\x01p\0\0\0\0\0\0\0\0\0\x01\0\x01\x01".to_vec();
         bytes.extend_from_slice(&[
             0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40, 0xde, 0x5d, 0xae,
             0x22, 0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61,
             0xf2, 0x00, 0x15, 0xad,
         ]);
         bytes.extend_from_slice(b"\0\0\0\x03abc");
-        bytes.extend_from_slice(&[0; 5]); // Explicit absent organizer tag and length.
+        bytes.extend_from_slice(&[0; 10]); // Explicit absent organizer and agency frames.
         bytes
     }
     #[test]
@@ -322,9 +351,9 @@ mod tests {
         let row = DOMAIN.len() + 31;
         let mut duplicate = raw.clone();
         duplicate[count + 1] = 2;
-        duplicate.truncate(raw.len() - 5);
-        duplicate.extend_from_slice(&raw[row..raw.len() - 5]);
-        duplicate.extend_from_slice(&raw[raw.len() - 5..]);
+        duplicate.truncate(raw.len() - 10);
+        duplicate.extend_from_slice(&raw[row..raw.len() - 10]);
+        duplicate.extend_from_slice(&raw[raw.len() - 10..]);
         assert_eq!(
             decode(&duplicate).err(),
             Some(EconomicCatalogError::WireNoncanonical)
@@ -354,6 +383,7 @@ mod tests {
                 b"x".to_vec(),
             )],
             organizer: None,
+            city_pd: None,
         };
         let d = MichiganDefines::parse(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -373,7 +403,7 @@ mod tests {
             bytes
         );
         let mut old = bytes.clone();
-        old[DOMAIN.len() + 1] = 1;
+        old[DOMAIN.len() + 1] = 2;
         assert_eq!(
             decode(&old).expect_err("the malformed bytes are refused"),
             EconomicCatalogError::WireVersion
@@ -395,7 +425,7 @@ mod tests {
             )
             .expect("the fixture value encodes to its canonical bytes")
             .len()
-            - 5;
+            - 10;
         absent[marker] = 0;
         assert_eq!(
             decode(&absent).expect_err("the malformed bytes are refused"),

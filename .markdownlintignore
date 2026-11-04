@@ -17,7 +17,7 @@ AGENTS.md
 CHANGELOG.md
 CLAUDE.md
 # CONSTITUTION.md — governance prose, one principle per line (long lines by
-# design); its former home .specify/ was already excluded for the same reason.
+# design).
 CONSTITUTION.md
 CONTRIBUTORS.md
 CONTRIBUTING.md
@@ -30,9 +30,6 @@ TODO.md
 
 # Claude Code configuration (agent prompts, not documentation)
 .claude/
-
-# Speckit templates and governance (constitution, specs - prose-heavy)
-.specify/
 
 # Opencode command definitions (agent prompts, not documentation)
 .opencode/

@@ -2,11 +2,13 @@
 use super::{Configuration, NativeAudit, Record, Scope};
 use crate::observer::{ObserverSession, SessionPhase};
 use babylon_kernel::clock::CampaignDuration;
+#[cfg(test)]
+use babylon_persistence::ArchiveEvidenceClass;
 
 use babylon_persistence::observer_reader::{ObserverEconomySnapshot, ObserverVisibility};
 use babylon_persistence::runtime_session::{
-    OrganizerSnapshot, RuntimeSessionRequest, RuntimeSessionScope, RuntimeSessionTarget,
-    RUNTIME_SESSION_PROTOCOL_VERSION,
+    OrganizerBodyDisclosure, OrganizerSnapshot, RuntimeSessionRequest, RuntimeSessionScope,
+    RuntimeSessionTarget, RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 use babylon_persistence::ProductionEvidenceDigest;
 
@@ -117,10 +119,19 @@ impl Pending {
         session: &ObserverSession,
         actual: &OrganizerSnapshot,
     ) -> Result<(), String> {
+        let mut comparable = actual.clone();
+        if let (
+            OrganizerBodyDisclosure::Partial(actual),
+            OrganizerBodyDisclosure::Partial(original),
+        ) = (&mut comparable.body, &self.original_status.body)
+        {
+            // Handles belong to reconstructed graphs, not cross-restart identity.
+            actual.runtime_hyperedge_id = original.runtime_hyperedge_id;
+        }
         if self.ready_elapsed_ns.is_none()
             || session.runtime_scope() != Some(&self.next)
             || !self.source.agrees(session)
-            || actual != &self.original_status
+            || comparable != self.original_status
         {
             return Err("native restored organizer differs from its original status".into());
         }
@@ -334,7 +345,7 @@ pub(super) mod tests {
         let directory = Directory::new();
         let (mut audit, mut session) = tests::fixture(&directory);
         let status: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v11.json"
+            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v13.json"
         ))
         .expect("the authored JSON matches the declared schema");
         session.ready(0, None);
@@ -430,6 +441,7 @@ pub(super) mod tests {
                 RuntimeSessionTail {
                     resolve_tick: 0,
                     tick_content_hash: None,
+                    world_hash: None,
                 },
             )
             .expect("the fixture admits the authored value");
@@ -484,6 +496,39 @@ pub(super) mod tests {
                     .trade_summary(),
             },
         }
+    }
+
+    #[test]
+    fn organizer_body_consumer_recovery_compares_stable_key_not_runtime_handle() {
+        use babylon_persistence::runtime_session::{OrganizerBodyDisclosure, OrganizerBodyPart};
+        let (_directory, mut audit, mut session, status) = source();
+        let (id, previous, next) = send(&mut audit, &mut session);
+        ready(&mut audit, &mut session, id, &previous, next, &status);
+        let recovery = audit.recovery.as_mut().expect("recovery staged");
+        recovery.original_status.body = OrganizerBodyDisclosure::Partial(OrganizerBodyPart {
+            runtime_hyperedge_id: 7,
+            scenario: "economy/national-world".into(),
+            local_name: "organizer-participant-body-42".into(),
+            contributors: vec![101],
+            evidence_class: ArchiveEvidenceClass::Designed,
+        });
+        let mut actual = recovery.original_status.clone();
+        let OrganizerBodyDisclosure::Partial(part) = &mut actual.body else {
+            panic!("partial body")
+        };
+        part.runtime_hyperedge_id = 99;
+        assert!(
+            recovery.verify_status(&session, &actual).is_ok(),
+            "a graph handle can change on reopen"
+        );
+        let OrganizerBodyDisclosure::Partial(part) = &mut actual.body else {
+            panic!("partial body")
+        };
+        part.local_name.push_str("-foreign");
+        assert!(
+            recovery.verify_status(&session, &actual).is_err(),
+            "a changed stable key is refused"
+        );
     }
 
     #[test]
@@ -651,6 +696,7 @@ pub(super) mod tests {
                 RuntimeSessionTail {
                     resolve_tick: 1,
                     tick_content_hash: Some("a".repeat(64)),
+                    world_hash: None,
                 },
             )
             .expect("the fixture admits the authored value");

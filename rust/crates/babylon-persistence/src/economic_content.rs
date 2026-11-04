@@ -1,6 +1,8 @@
 //! Immutable current campaign admission shared by material readers and projections.
+
 use crate::economic_catalog::EconomicProjectionView;
 use crate::identity::CampaignId;
+use babylon_graph::stable_element::StableElementResolver;
 
 use crate::material_runtime::{
     MaterialComponentIdentity, MaterialRuntimeError, MaterialRuntimeFoundation,
@@ -112,6 +114,9 @@ impl EconomicContentAdmission {
     #[must_use]
     pub fn material_catalog(&self) -> &MaterialCatalog {
         self.foundation.material_catalog()
+    }
+    pub(crate) fn stable_resolver(&self) -> &StableElementResolver {
+        self.foundation.graph.stable_resolver()
     }
     #[must_use]
     pub fn staffing(&self) -> &StaffingComposition {

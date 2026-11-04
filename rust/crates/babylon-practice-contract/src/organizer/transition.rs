@@ -806,14 +806,11 @@ pub fn resolve_organizer_practice_with_time(
     }
     super::aid::require_support_rows(opening, fresh_aid, facts.period, aid_support)?;
     let choice = commitment.command.choice;
-    let receipt_id = super::contract::identity(
-        b"babylon.organizer-receipt.v1",
-        &(
-            config.campaign_id,
-            config.controlled_actor_id,
-            facts.period,
-            commitment.commitment_id,
-        ),
+    let receipt_id = super::contract::organizer_receipt_id(
+        config.campaign_id,
+        config.controlled_actor_id,
+        facts.period,
+        commitment.commitment_id,
     )?;
     let mut next = reduced.clone();
     let mut entries = OrganizerPeriodJournalEntries::new(facts.period);
@@ -1003,14 +1000,11 @@ fn execute_practice(
         }
         OrganizerChoice::Reinforce | OrganizerChoice::Hold | OrganizerChoice::ResumeStanding => {
             if receipt.partner_response == OrganizerPartnerResponse::Participated {
-                let product_id = super::contract::identity(
-                    b"babylon.organizer-contact-product.v1",
-                    &(
-                        receipt_id,
-                        config.controlled_actor_id,
-                        partner.actor_id,
-                        period,
-                    ),
+                let product_id = super::contract::organizer_contact_product_id(
+                    receipt_id,
+                    config.controlled_actor_id,
+                    partner.actor_id,
+                    period,
                 )?;
                 receipt.contact_product_id = Some(product_id);
                 receipt.outcome = OrganizerOutcome::ContactCompleted;

@@ -794,6 +794,7 @@ fn run_tick_with_observer(
         RuleExecution::MaterialCycle => Some("material-cycle"),
         RuleExecution::OrganizerProducts => Some("organizer-products"),
         RuleExecution::OrganizerPractice => Some("organizer-practice"),
+        RuleExecution::CityPdObserve => Some("city-pd-observe"),
     };
     if let Some(operation) = native_operation {
         return Err(err(format!(

@@ -37,6 +37,12 @@ pub(crate) fn classify(rule: &SExpr) -> Result<RuleExecution, SurfaceError> {
             "after",
             "ooda",
         ),
+        "city-pd-observe" => (
+            RuleExecution::CityPdObserve,
+            Some("intent"),
+            "after",
+            "ooda",
+        ),
         _ => unreachable!("only closed operation names enter classification"),
     };
     let SExpr::List(items) = rule else {
@@ -102,7 +108,8 @@ fn find_operation(rule: &SExpr) -> Option<&str> {
     while let Some(expr) = stack.pop() {
         if let SExpr::List(items) = expr {
             if let Some(
-                operation @ ("material-cycle" | "organizer-products" | "organizer-practice"),
+                operation @ ("material-cycle" | "organizer-products" | "organizer-practice"
+                | "city-pd-observe"),
             ) = head(items)
             {
                 return Some(operation);

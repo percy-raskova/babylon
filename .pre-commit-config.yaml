@@ -295,7 +295,6 @@ repos:
         exclude: |
           (?x)^(
             \.serena/.*|
-            \.specify/.*|
             specs/.*|
             openwiki/.*|
             design/mockups/SKILL\.md|
@@ -317,10 +316,8 @@ repos:
         files: '\.sh$'
         # Policy v11 is an immutable cross-repository byte contract. Its exact
         # inventory and hashes, POSIX syntax, and executable behavior are
-        # enforced by test_rust_host_policy_contract.py. The Spec Kit shell
-        # bundle is integration-managed and recorded in its manifest; audit it
-        # when its provider is updated, not as Babylon-owned shell.
-        exclude: '^(\.codex/host/|\.specify/scripts/bash/)'
+        # enforced by test_rust_host_policy_contract.py.
+        exclude: '^\.codex/host/'
 
   - repo: https://github.com/hadolint/hadolint
     rev: v2.15.1

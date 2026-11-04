@@ -3,6 +3,10 @@
 //! An active register contains the complete current opening state, never an economic
 //! summary or a second inventory ledger. The graph-only digest stays unchanged.
 
+mod agency_paid_receipt;
+mod city_pd;
+pub(crate) mod city_pd_execution;
+
 mod aid_receipt;
 
 mod collection_receipt;
@@ -42,13 +46,19 @@ mod tests;
 #[path = "material_world/register.rs"]
 mod register;
 
+pub use agency_paid_receipt::{validate_committed_nonpaid, AgencyPaidReceipt};
+pub use city_pd::{
+    CityPdAttempt, CityPdRegister, CityPdRegisterError, DecodedCityPdAttemptEvidence,
+};
 use register::ReceiptCursor;
 #[cfg(test)]
-use register::{bounded_bytes, encode_material_receipts, RECEIPT_DOMAIN};
+use register::{bounded_bytes, RECEIPT_DOMAIN};
 pub use register::{
-    decode_material_receipts, nominal_material_world_hash, receipt_row_limit,
-    validate_retained_collection, MaterialReceiptHandle, MaterialTickReceipts, MaterialWorldError,
-    MaterialWorldRegister, PreparedMaterialWorld, SharedCanonicalBytes,
-    MAX_MATERIAL_TICK_RECEIPT_BYTES, MAX_MATERIAL_WORLD_REGISTER_BYTES, RECEIPT_FAMILY_COUNT,
-    RECEIPT_ROW_BYTES,
+    decode_city_pd_attempt_evidence, decode_material_organizer_evidence, decode_material_receipts,
+    encode_material_receipts, nominal_material_world_hash,
+    nominal_material_world_hash_from_register_digest, receipt_row_limit,
+    validate_retained_collection, DecodedMaterialOrganizerEvidence, MaterialReceiptHandle,
+    MaterialTickReceipts, MaterialWorldError, MaterialWorldRegister, PreparedMaterialWorld,
+    SharedCanonicalBytes, MAX_MATERIAL_TICK_RECEIPT_BYTES, MAX_MATERIAL_WORLD_REGISTER_BYTES,
+    RECEIPT_FAMILY_COUNT, RECEIPT_ROW_BYTES,
 };

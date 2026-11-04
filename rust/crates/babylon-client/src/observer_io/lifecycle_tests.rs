@@ -3,13 +3,16 @@
 use super::runtime;
 use super::runtime::{ContinuationPreference, PendingObservation, PreparedObservation};
 use super::tests;
+use super::ObserverSet;
 use crate::observer::{ObserverSession, Perspective, SessionPhase};
 use crate::observer_ui::{ObserverCommand, ObserverFrame, ObserverUiState};
+use crate::organizer::OrganizerClient;
 use crate::production::PrimaryView;
 use crate::ui::dossier_card::{
     ActiveCountyDossier, DossierCampaignId, DossierFetchState, DossierPageView, DossierRefresh,
 };
 use babylon_persistence::identity::CampaignId;
+use babylon_persistence::observer_reader::ObserverVisibility;
 use babylon_persistence::runtime_session::RuntimeSessionErrorCode;
 use babylon_persistence::runtime_session::{
     RuntimeSessionPreset, RuntimeSessionRequest, RuntimeSessionResponse, RuntimeSessionScope,
@@ -93,9 +96,28 @@ fn admitted(app: &mut App, responses: &Replies, switch: &Switch, period: u64) {
             tail: RuntimeSessionTail {
                 resolve_tick: period,
                 tick_content_hash: None,
+                world_hash: None,
             },
         }))
         .expect("the receiver stays alive for the send");
+    app.update();
+}
+
+fn admitted_organizer(app: &mut App, responses: &Replies, switch: &Switch, period: u64) {
+    responses
+        .send(Ok(RuntimeSessionResponse::Ready {
+            duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
+            organizer: true,
+            request_id: switch.request_id,
+            scope: switch.scope.clone(),
+            foundation_digest: "foundation".into(),
+            tail: RuntimeSessionTail {
+                resolve_tick: period,
+                tick_content_hash: None,
+                world_hash: None,
+            },
+        }))
+        .expect("ready response");
     app.update();
 }
 
@@ -140,6 +162,103 @@ fn hello(app: &mut App, responses: &Replies) {
         }))
         .expect("the receiver stays alive for the send");
     app.update();
+}
+
+#[test]
+fn reopen_waits_for_identity_before_scheduling_and_installing_observation() {
+    use super::runtime::ObservationCache;
+    use bevy::tasks::{AsyncComputeTaskPool, TaskPool};
+    AsyncComputeTaskPool::get_or_init(TaskPool::new);
+    for should_refuse in [false, true] {
+        let (mut app, requests, responses) = tests::quit_app();
+        app.init_resource::<PendingObservation>()
+            .init_resource::<OrganizerClient>()
+            .init_resource::<ObservationCache>()
+            .add_systems(
+                Update,
+                runtime::start_observation.after(ObserverSet::Receive),
+            );
+        {
+            let mut state = app.world_mut().resource_mut::<ObserverSession>();
+            state.organizer_enabled = true;
+            state.perspective = Perspective::PlayerKnowledge;
+        }
+        let old_context = app.world().resource::<ObserverSession>().context();
+        let old_snapshot =
+            tests::snapshot_with_event(app.world().resource::<ObserverSession>(), "old", 3);
+        command(&mut app, ObserverCommand::ReopenCampaign);
+        let switch = take_switch(&requests);
+        switching(&mut app, &responses, &switch);
+        let state = app.world().resource::<ObserverSession>();
+        assert_eq!(state.phase, SessionPhase::Loading);
+        assert!(state.lifecycle_pending());
+        assert_eq!(state.viewed_tick, 0);
+        assert!(state.foundation_digest.is_none());
+        assert!(
+            app.world().resource::<PendingObservation>().0.is_none(),
+            "provisional period zero must not be observed"
+        );
+        for _ in 0..3 {
+            app.update();
+        }
+        assert!(app.world().resource::<PendingObservation>().0.is_none());
+        assert!(app.world().resource::<ObserverFrame>().0.is_none());
+        if should_refuse {
+            refused(&mut app, &responses, &switch);
+            assert_eq!(
+                app.world().resource::<ObserverSession>().phase,
+                SessionPhase::Failed
+            );
+            assert!(app.world().resource::<PendingObservation>().0.is_none());
+            continue;
+        }
+        admitted_organizer(&mut app, &responses, &switch, 7);
+        let state = app.world().resource::<ObserverSession>();
+        assert_eq!(state.viewed_tick, 7);
+        assert!(!state.lifecycle_pending());
+        let context = state.context();
+        assert_eq!(
+            app.world()
+                .resource::<PendingObservation>()
+                .0
+                .as_ref()
+                .expect("admitted read scheduled")
+                .0,
+            context
+        );
+        app.world_mut()
+            .resource_mut::<PendingObservation>()
+            .0
+            .take();
+        let mut frame = ObserverFrame::default();
+        let mut snapshot =
+            tests::snapshot_with_event(app.world().resource::<ObserverSession>(), "new", 7);
+        snapshot.visibility = ObserverVisibility::KnownPreview;
+        snapshot.production = None;
+        assert!(!runtime::install_observation(
+            &mut app.world_mut().resource_mut::<ObserverSession>(),
+            &old_context,
+            PreparedObservation::new(old_snapshot),
+            &mut frame,
+            false
+        ));
+        assert!(frame.0.is_none());
+        assert!(runtime::install_observation(
+            &mut app.world_mut().resource_mut::<ObserverSession>(),
+            &context,
+            PreparedObservation::new(snapshot),
+            &mut frame,
+            false
+        ));
+        assert_eq!(frame.0.as_ref().expect("new observation").resolve_tick, 7);
+        assert_eq!(
+            app.world().resource::<ObserverSession>().phase,
+            SessionPhase::Ready
+        );
+        let state = app.world().resource::<ObserverSession>();
+        assert!(state.organizer_control_pending());
+        assert!(state.archive_verified_tick < 7);
+    }
 }
 
 #[test]
@@ -283,6 +402,7 @@ fn lifecycle_switch_waits_for_commit_ack_then_clears_scoped_observations() {
             tail: RuntimeSessionTail {
                 resolve_tick: 4,
                 tick_content_hash: None,
+                world_hash: None,
             },
         }))
         .expect("the receiver stays alive for the send");
@@ -359,6 +479,7 @@ fn return_to_a_rejects_stale_results(failed_b: bool) {
             tail: RuntimeSessionTail {
                 resolve_tick: 99,
                 tick_content_hash: None,
+                world_hash: None,
             },
         },
         RuntimeSessionResponse::Error {
@@ -482,6 +603,7 @@ fn lifecycle_request_ids_remain_unique_across_switch_advance_and_stop() {
             tail: RuntimeSessionTail {
                 resolve_tick: 1,
                 tick_content_hash: Some("1".repeat(64)),
+                world_hash: None,
             },
         }))
         .expect("the receiver stays alive for the send");

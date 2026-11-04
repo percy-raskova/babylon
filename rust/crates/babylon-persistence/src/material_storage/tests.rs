@@ -4,6 +4,7 @@ use super::register::{
     admitted_count, decode, DecodedMaterial, DecodedPeriodLookup, EncodedMaterial, Error,
     LookupAnchor, LOOKUP_DOMAIN, MAX_LOOKUP_BYTES,
 };
+use crate::material_storage::MaterialProvenance;
 use crate::michigan_content::MichiganContentPreset;
 use crate::state_storage;
 use crate::state_storage::IdentityKind;
@@ -74,7 +75,7 @@ fn actual_two_periods_reload_independently_without_retaining_historic_lookup() {
         .expect("the committed lookup table reads");
         assert_eq!(loaded.lookup.entries(), encoded.lookup.entries());
         // Raw-byte tooling admission follows the same final typed encoder.
-        let raw_opening = OpeningRegister::from_canonical(&catalog, base.canonical_bytes())
+        let raw_opening = OpeningRegister::from_canonical(&catalog, base.canonical_bytes(), None)
             .expect("the canonical bytes admit the value");
         let raw_current =
             MaterialWorldRegister::decode_external(&catalog, current.canonical_bytes().to_vec())
@@ -107,8 +108,11 @@ fn actual_two_periods_reload_independently_without_retaining_historic_lookup() {
 
         assert_eq!(
             decode(
-                &catalog,
-                &opening,
+                MaterialProvenance {
+                    catalog: &catalog,
+                    opening: &opening,
+                    resolver: Some(session.graph_session().stable_resolver())
+                },
                 period,
                 &encoded.register_storage_bytes,
                 &encoded.receipt_storage_bytes,
@@ -413,26 +417,32 @@ fn original_canonical_state_does_not_admit_a_changed_storage_chain() {
     wrong[0] ^= 1;
     assert_eq!(
         decode(
-            &catalog,
-            &opening,
+            MaterialProvenance {
+                catalog: &catalog,
+                opening: &opening,
+                resolver: Some(session.graph_session().stable_resolver())
+            },
             1,
             &encoded.register_storage_bytes,
             &encoded.receipt_storage_bytes,
             &encoded.lookup,
-            wrong
+            wrong,
         )
         .expect_err("the malformed bytes are refused"),
         Error::State(StorageError::DigestMismatch)
     );
     assert_eq!(
         decode(
-            &catalog,
-            &opening,
+            MaterialProvenance {
+                catalog: &catalog,
+                opening: &opening,
+                resolver: Some(session.graph_session().stable_resolver())
+            },
             1,
             &encoded.register_storage_bytes,
             &encoded.receipt_storage_bytes,
             &encoded.lookup,
-            encoded.lookup_chain
+            encoded.lookup_chain,
         )
         .expect("the committed canonical bytes decode")
         .0,
@@ -534,8 +544,11 @@ fn admitted_current_receipt_is_not_typed_decoded_again_for_endpoint_framing() {
     .expect("the committed lookup table reads");
     let before = crate::receipt_storage::typed_admission_count();
     let history = register::decode_typed(
-        &catalog,
-        &opening,
+        MaterialProvenance {
+            catalog: &catalog,
+            opening: &opening,
+            resolver: Some(session.graph_session().stable_resolver()),
+        },
         1,
         &encoded.register_storage_bytes,
         &encoded.receipt_storage_bytes,
@@ -547,6 +560,7 @@ fn admitted_current_receipt_is_not_typed_decoded_again_for_endpoint_framing() {
         register::MaterialProvenance {
             catalog: &catalog,
             opening: &opening,
+            resolver: None,
         },
         1,
         &encoded.register_storage_bytes,
@@ -569,8 +583,11 @@ fn admitted_current_receipt_is_not_typed_decoded_again_for_endpoint_framing() {
     );
     assert_receipt_witness_refusals(&catalog, &opening, &encoded, &loaded, &history);
     let cold = register::decode_typed(
-        &catalog,
-        &opening,
+        MaterialProvenance {
+            catalog: &catalog,
+            opening: &opening,
+            resolver: Some(session.graph_session().stable_resolver()),
+        },
         1,
         &encoded.register_storage_bytes,
         &encoded.receipt_storage_bytes,
@@ -598,7 +615,11 @@ fn assert_receipt_witness_refusals(
     };
     let restored = |tick, package: &[u8], chain| {
         register::decode_typed_with_witness(
-            register::MaterialProvenance { catalog, opening },
+            register::MaterialProvenance {
+                catalog,
+                opening,
+                resolver: None,
+            },
             tick,
             &encoded.register_storage_bytes,
             package,

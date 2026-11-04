@@ -33,8 +33,6 @@ Content-oriented catalog of all agent-facing documentation. Updated after every 
 
 ## Specifications
 
-- Plans: `.specify/plans/`
-- Specs: `.specify/specs/`
 - Constitution: `CONSTITUTION.md`
 - Data Catalog: `data-catalog.yaml`
 
@@ -43,16 +41,6 @@ Content-oriented catalog of all agent-facing documentation. Updated after every 
 - Decisions: `ai/decisions.yaml`
 - Roadmap: `ai/roadmap.md`
 - State: `ai/state.yaml`
-
-## Agent Skills
-
-- `.opencode/skills/specification-discover/` — Problem decomposition and scope control
-- `.opencode/skills/specification-plan/` — Design artifacts and implementation planning
-- `.opencode/skills/specification-specify/` — API contracts and interface definitions
-- `.opencode/skills/specification-build/` — TDD implementation and code generation
-- `.opencode/skills/specification-validate/` — Tests, checklists, and acceptance criteria
-- `.opencode/skills/specification-govern/` — Constitutional compliance and amendment review
-- `.opencode/skills/wiki-maintain/` — Wiki ingest, query, and lint operations
 
 ## Changelog
 

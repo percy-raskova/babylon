@@ -44,9 +44,9 @@ runs:
         CHANNEL="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust/rust-toolchain.toml)"
         rustup toolchain install "$CHANNEL" --profile minimal --no-self-update
 
-    # This matrix leg compiles the Bevy client as a real child-process consumer.
+    # These matrix legs compile the Bevy client as a real child-process consumer.
     - name: Install Bevy client system dependencies
-      if: ${{ inputs.cache-key == 'client' }}
+      if: ${{ inputs.cache-key == 'client' || inputs.cache-key == 'session_progress' }}
       shell: bash
       run: >-
         tools/install_ci_apt_packages.sh

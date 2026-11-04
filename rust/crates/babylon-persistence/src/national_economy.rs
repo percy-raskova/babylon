@@ -1,6 +1,7 @@
 //! Designed opening content for the shared national and world economic circuit.
 //! Source observations establish coverage and allocation, not physical recipes.
 
+pub(crate) mod city_pd;
 mod identity;
 mod opening;
 pub(crate) mod organizer;
@@ -20,5 +21,5 @@ pub use policy::{
     GameAidPolicy, GameCommodity, GameDependencyProfile, GameEquipmentPolicy, GameFinancialPolicy,
     GameHouseholdPolicy, GameHouseholdTimePolicy, GameJourneyTiming, GameMarketPolicy, GameNeed,
     GamePrice, GameProfile, GameRecipe, GameServiceReach, NationalGamePolicy,
-    NationalGamePolicyError, ResidentOpeningCounts,
+    NationalGamePolicyError, ResidentOpeningCounts, VenueLogReader,
 };

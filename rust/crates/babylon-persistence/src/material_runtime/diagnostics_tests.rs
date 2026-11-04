@@ -24,8 +24,12 @@ fn foundation() -> MaterialRuntimeFoundation {
 fn runtime() -> DurableMaterialRuntime {
     let foundation = foundation();
     let opening_bytes = foundation.initial_register().shared_canonical_bytes();
-    let lookup = material_storage::seed(foundation.material_catalog(), opening_bytes.as_slice())
-        .expect("the fixture seeds the authored rows");
+    let lookup = material_storage::seed(
+        foundation.material_catalog(),
+        opening_bytes.as_slice(),
+        Some(foundation.graph.stable_resolver()),
+    )
+    .expect("the fixture seeds the authored rows");
     let lookup_chain = material_storage::initial_lookup_chain(&lookup)
         .expect("the opening register builds its first lookup chain");
     DurableMaterialRuntime {
@@ -37,8 +41,10 @@ fn runtime() -> DurableMaterialRuntime {
         lookup,
         lookup_chain,
         tail: None,
+        tail_envelope_digest: None,
         last_receipt: None,
         last_choice_receipts: Vec::new(),
+        body_attribution: None,
     }
 }
 

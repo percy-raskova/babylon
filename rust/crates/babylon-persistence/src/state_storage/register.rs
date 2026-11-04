@@ -2,6 +2,10 @@
 
 use super::layout;
 use super::{IdentityEntry, IdentityKind, TypedLookup};
+use babylon_graph::stable_element::StableElementResolver;
+use babylon_practice_contract::CityPdConfig;
+use babylon_practice_contract::OrganizerConfig;
+use babylon_practice_contract::PublicVenuePolicy;
 
 use super::offers;
 
@@ -68,6 +72,9 @@ pub(crate) fn digest(bytes: &[u8]) -> [u8; 32] {
 pub struct OpeningRegister {
     bytes: SharedCanonicalBytes,
     digest: [u8; 32],
+    city_pd_config: Option<CityPdConfig>,
+    organizer_config: Option<OrganizerConfig>,
+    public_venue_policy: Option<PublicVenuePolicy>,
     // STYLE-EXCEPTION(EXC-04): cloned opening readers share one parsed section table.
     pub(super) sections: Arc<[Section]>,
     // STYLE-EXCEPTION(EXC-04): cloned opening readers share one interned lookup.
@@ -92,6 +99,9 @@ impl OpeningRegister {
         }
         Ok(Self {
             digest: register.digest(),
+            city_pd_config: register.city_pd().map(|pd| pd.config.clone()),
+            organizer_config: register.organizer_config().cloned(),
+            public_venue_policy: register.public_venue().map(|venue| venue.policy.clone()),
             bytes,
             sections: parsed.into(),
             // STYLE-EXCEPTION(EXC-04): the opening register owns one lookup for every clone.
@@ -101,9 +111,20 @@ impl OpeningRegister {
     /// Admit canonical opening bytes once against their admitting catalog.
     /// # Errors
     /// Refuses invalid canonical input or a non-opening register.
-    pub fn from_canonical(catalog: &MaterialCatalog, bytes: &[u8]) -> Result<Self, StorageError> {
-        let register = MaterialWorldRegister::decode_external(catalog, bytes.to_vec())
-            .map_err(|_| StorageError::Canonical)?;
+    pub fn from_canonical(
+        catalog: &MaterialCatalog,
+        bytes: &[u8],
+        resolver: Option<&StableElementResolver>,
+    ) -> Result<Self, StorageError> {
+        let register = match resolver {
+            Some(resolver) => MaterialWorldRegister::decode_external_with_resolver(
+                catalog,
+                bytes.to_vec(),
+                resolver,
+            ),
+            None => MaterialWorldRegister::decode_external(catalog, bytes.to_vec()),
+        }
+        .map_err(|_| StorageError::Canonical)?;
         Self::from_opening(&register)
     }
     #[must_use]
@@ -113,6 +134,21 @@ impl OpeningRegister {
     #[must_use]
     pub const fn digest(&self) -> [u8; 32] {
         self.digest
+    }
+    pub(crate) fn accepts_city_pd(&self, register: &MaterialWorldRegister) -> bool {
+        register.city_pd().map(|pd| &pd.config) == self.city_pd_config.as_ref()
+            && register.public_venue().map(|venue| &venue.policy)
+                == self.public_venue_policy.as_ref()
+    }
+    pub(crate) fn accepts_historical_authority(
+        &self,
+        organizer: Option<&OrganizerConfig>,
+        venue: Option<&PublicVenuePolicy>,
+        city_pd: Option<&CityPdConfig>,
+    ) -> bool {
+        organizer == self.organizer_config.as_ref()
+            && venue == self.public_venue_policy.as_ref()
+            && city_pd == self.city_pd_config.as_ref()
     }
     #[must_use]
     pub fn lookup(&self) -> &TypedLookup {
@@ -565,6 +601,9 @@ pub fn encode_register_with_opening(
     current: &MaterialWorldRegister,
     lookup: &TypedLookup,
 ) -> Result<EncodedState, StorageError> {
+    if !opening.accepts_city_pd(current) {
+        return Err(StorageError::ParentMismatch);
+    }
     let current_bytes = current.canonical_bytes();
     let base = opening.canonical_bytes();
     let old = &opening.sections;
@@ -625,7 +664,7 @@ pub(crate) fn array32(c: &mut Cursor<'_>) -> Result<[u8; 32], StorageError> {
 
 pub(crate) fn stored_section(c: &mut Cursor<'_>) -> Result<StoredSection, StorageError> {
     let id = u16::try_from(c.number(2)?).map_err(|_| StorageError::Bounds)?;
-    if id > 72 {
+    if id > 73 {
         return Err(StorageError::Layout);
     }
     let mode = c.tag(&[0, 1, 2, 3, 4, 5])?;
@@ -789,6 +828,7 @@ pub(crate) fn restore_section(
 
 // Retain the typed register produced by complete canonical admission.
 // Callers cannot replace it with an unchecked framing/header read.
+#[cfg(test)]
 pub(crate) fn decode_admitted(
     catalog: &MaterialCatalog,
     opening: &OpeningRegister,
@@ -796,8 +836,36 @@ pub(crate) fn decode_admitted(
     lookup: &TypedLookup,
     expected_lookup_chain: [u8; 32],
 ) -> Result<MaterialWorldRegister, StorageError> {
+    decode_admitted_with_resolver(
+        catalog,
+        opening,
+        package,
+        lookup,
+        expected_lookup_chain,
+        None,
+    )
+}
+
+pub(crate) fn decode_admitted_with_resolver(
+    catalog: &MaterialCatalog,
+    opening: &OpeningRegister,
+    package: &[u8],
+    lookup: &TypedLookup,
+    expected_lookup_chain: [u8; 32],
+    resolver: Option<&StableElementResolver>,
+) -> Result<MaterialWorldRegister, StorageError> {
     let result = restore_register(opening, package, lookup, expected_lookup_chain)?;
-    MaterialWorldRegister::decode_external(catalog, result).map_err(|_| StorageError::Canonical)
+    let register = match resolver {
+        Some(resolver) => {
+            MaterialWorldRegister::decode_external_with_resolver(catalog, result, resolver)
+        }
+        None => MaterialWorldRegister::decode_external(catalog, result),
+    }
+    .map_err(|_| StorageError::Canonical)?;
+    if !opening.accepts_city_pd(&register) {
+        return Err(StorageError::ParentMismatch);
+    }
+    Ok(register)
 }
 
 pub(crate) fn decode_against_admitted(
@@ -807,6 +875,9 @@ pub(crate) fn decode_against_admitted(
     expected_lookup_chain: [u8; 32],
     witness: &MaterialWorldRegister,
 ) -> Result<(), StorageError> {
+    if !opening.accepts_city_pd(witness) {
+        return Err(StorageError::ParentMismatch);
+    }
     let bytes = witness.canonical_bytes();
     let mut offset = 0_usize;
     let mut equal = true;
@@ -891,7 +962,7 @@ pub(crate) fn restore_sections(
         return Err(StorageError::DigestMismatch);
     }
     let count = cursor.number(2)?;
-    if count > 73 {
+    if count > 74 {
         return Err(StorageError::Count);
     }
     let mut restored_length = 0_usize;

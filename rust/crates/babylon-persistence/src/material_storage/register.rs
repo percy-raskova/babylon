@@ -1,6 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::{AdmittedReceiptWitness, MaterialStorageWitnesses, OpeningRegister, TypedLookup};
+use babylon_graph::stable_element::StableElementResolver;
 
 use super::{descriptors, DescriptorError};
 
@@ -94,8 +95,12 @@ pub struct EncodedMaterial {
 /// Production callers use `OpeningRegister::from_opening` on their admitted register.
 /// # Errors
 /// Refuses invalid or non-opening canonical state and typed identity bounds.
-pub fn seed(catalog: &MaterialCatalog, base: &[u8]) -> Result<OpeningRegister> {
-    Ok(OpeningRegister::from_canonical(catalog, base)?)
+pub fn seed(
+    catalog: &MaterialCatalog,
+    base: &[u8],
+    resolver: Option<&StableElementResolver>,
+) -> Result<OpeningRegister> {
+    Ok(OpeningRegister::from_canonical(catalog, base, resolver)?)
 }
 
 /// Exact identity of the period-local table, independent of historical table ownership.
@@ -381,8 +386,7 @@ pub fn read_period_lookup(
 /// # Errors
 /// Refuses invalid base state, package framing, lengths, kinds, references or hashes.
 pub fn decode(
-    catalog: &MaterialCatalog,
-    opening: &OpeningRegister,
+    provenance: MaterialProvenance<'_>,
     tick: u64,
     state_package: &[u8],
     receipt_package: &[u8],
@@ -390,8 +394,7 @@ pub fn decode(
     lookup_chain: [u8; 32],
 ) -> Result<(Vec<u8>, Vec<u8>)> {
     let admitted = decode_typed(
-        catalog,
-        opening,
+        provenance,
         tick,
         state_package,
         receipt_package,
@@ -413,19 +416,29 @@ pub(crate) struct DecodedMaterial<R = MaterialWorldRegister> {
 }
 
 pub(crate) fn decode_typed(
-    catalog: &MaterialCatalog,
-    opening: &OpeningRegister,
+    provenance: MaterialProvenance<'_>,
     tick: u64,
     state_package: &[u8],
     receipt_package: &[u8],
     lookup: &TypedLookup,
     lookup_chain: [u8; 32],
 ) -> Result<DecodedMaterial> {
+    let MaterialProvenance {
+        catalog,
+        opening,
+        resolver,
+    } = provenance;
     if tick == 0 {
         return Err(Error::Tick);
     }
-    let register =
-        state_storage::decode_admitted(catalog, opening, state_package, lookup, lookup_chain)?;
+    let register = state_storage::decode_admitted_with_resolver(
+        catalog,
+        opening,
+        state_package,
+        lookup,
+        lookup_chain,
+        resolver,
+    )?;
     let (receipt_bytes, receipts) = receipt_storage::decode_admitted(receipt_package, lookup)?;
     if register.completed_tick() != tick || receipts.resolve_tick != tick {
         return Err(Error::Tick);
@@ -449,9 +462,13 @@ pub(crate) fn decode_typed(
 /// storage read; bundling them keeps the definition set beside the opening it
 /// admits instead of trailing two unrelated parameters.
 #[derive(Clone, Copy)]
-pub(crate) struct MaterialProvenance<'a> {
-    pub(crate) catalog: &'a MaterialCatalog,
-    pub(crate) opening: &'a OpeningRegister,
+pub struct MaterialProvenance<'a> {
+    /// Captured definitions admitting the material state.
+    pub catalog: &'a MaterialCatalog,
+    /// Authenticated initial register and lookup.
+    pub opening: &'a OpeningRegister,
+    /// Resolver of the destination graph, required for a bound opponent.
+    pub resolver: Option<&'a StableElementResolver>,
 }
 
 // Each borrowed owner is usable only after exact storage/component equality.
@@ -464,11 +481,18 @@ pub(crate) fn decode_typed_with_witness<'w>(
     lookup_chain: [u8; 32],
     witnesses: MaterialStorageWitnesses<'w>,
 ) -> Result<DecodedMaterial<Cow<'w, MaterialWorldRegister>>> {
-    let MaterialProvenance { catalog, opening } = provenance;
+    let MaterialProvenance {
+        catalog,
+        opening,
+        resolver,
+    } = provenance;
     if tick == 0 {
         return Err(Error::Tick);
     }
     let register = if let Some(witness) = witnesses.register {
+        if !opening.accepts_city_pd(witness) {
+            return Err(Error::State(state_storage::StorageError::ParentMismatch));
+        }
         state_storage::decode_against_admitted(
             opening,
             state_package,
@@ -476,14 +500,27 @@ pub(crate) fn decode_typed_with_witness<'w>(
             lookup_chain,
             witness,
         )?;
-        Cow::Borrowed(witness)
+        if witness.city_pd().is_some() {
+            let resolver = resolver.ok_or(Error::State(state_storage::StorageError::Canonical))?;
+            Cow::Owned(
+                MaterialWorldRegister::decode_external_with_resolver(
+                    catalog,
+                    witness.canonical_bytes().to_vec(),
+                    resolver,
+                )
+                .map_err(|_| Error::State(state_storage::StorageError::Canonical))?,
+            )
+        } else {
+            Cow::Borrowed(witness)
+        }
     } else {
-        Cow::Owned(state_storage::decode_admitted(
+        Cow::Owned(state_storage::decode_admitted_with_resolver(
             catalog,
             opening,
             state_package,
             lookup,
             lookup_chain,
+            resolver,
         )?)
     };
     let (receipt_bytes, receipts) = if let Some(witness) = witnesses.receipt {
@@ -592,6 +629,7 @@ mod typed_decode_controls {
                 MaterialProvenance {
                     catalog: session.catalog(),
                     opening: &opening,
+                    resolver: Some(session.graph_session().stable_resolver()),
                 },
                 1,
                 &encoded.register_storage_bytes,
@@ -653,6 +691,7 @@ mod typed_decode_controls {
                 MaterialProvenance {
                     catalog: session.catalog(),
                     opening: &opening,
+                    resolver: Some(session.graph_session().stable_resolver()),
                 },
                 1,
                 package,
@@ -739,8 +778,11 @@ mod typed_decode_controls {
         )
         .expect("the committed lookup table reads");
         let admitted = decode_typed(
-            session.catalog(),
-            &opening,
+            MaterialProvenance {
+                catalog: session.catalog(),
+                opening: &opening,
+                resolver: Some(session.graph_session().stable_resolver()),
+            },
             1,
             &encoded.register_storage_bytes,
             &encoded.receipt_storage_bytes,
@@ -762,13 +804,16 @@ mod typed_decode_controls {
         assert_ne!(admitted.receipts.aid.len(), 0);
         assert_eq!(
             decode(
-                session.catalog(),
-                &opening,
+                MaterialProvenance {
+                    catalog: session.catalog(),
+                    opening: &opening,
+                    resolver: Some(session.graph_session().stable_resolver())
+                },
                 1,
                 &encoded.register_storage_bytes,
                 &encoded.receipt_storage_bytes,
                 &loaded.lookup,
-                loaded.chain
+                loaded.chain,
             )
             .expect("the committed canonical bytes decode"),
             (
@@ -777,43 +822,55 @@ mod typed_decode_controls {
             )
         );
         assert!(decode_typed(
-            session.catalog(),
-            &opening,
+            MaterialProvenance {
+                catalog: session.catalog(),
+                opening: &opening,
+                resolver: Some(session.graph_session().stable_resolver())
+            },
             2,
             &encoded.register_storage_bytes,
             &encoded.receipt_storage_bytes,
             &loaded.lookup,
-            loaded.chain
+            loaded.chain,
         )
         .is_err());
         assert!(decode_typed(
-            session.catalog(),
-            &opening,
+            MaterialProvenance {
+                catalog: session.catalog(),
+                opening: &opening,
+                resolver: Some(session.graph_session().stable_resolver())
+            },
             1,
             &encoded.register_storage_bytes[..encoded.register_storage_bytes.len() - 1],
             &encoded.receipt_storage_bytes,
             &loaded.lookup,
-            loaded.chain
+            loaded.chain,
         )
         .is_err());
         assert!(decode_typed(
-            session.catalog(),
-            &opening,
+            MaterialProvenance {
+                catalog: session.catalog(),
+                opening: &opening,
+                resolver: Some(session.graph_session().stable_resolver())
+            },
             1,
             &encoded.register_storage_bytes,
             &encoded.receipt_storage_bytes[..encoded.receipt_storage_bytes.len() - 1],
             &loaded.lookup,
-            loaded.chain
+            loaded.chain,
         )
         .is_err());
         assert!(decode_typed(
-            session.catalog(),
-            &opening,
+            MaterialProvenance {
+                catalog: session.catalog(),
+                opening: &opening,
+                resolver: Some(session.graph_session().stable_resolver())
+            },
             1,
             &encoded.register_storage_bytes,
             &encoded.receipt_storage_bytes,
             &loaded.lookup,
-            [0; 32]
+            [0; 32],
         )
         .is_err());
     }

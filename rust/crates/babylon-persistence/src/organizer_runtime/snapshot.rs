@@ -1,6 +1,9 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
-use super::{OrganizerAidPending, OrganizerAidResolution, OrganizerMaterialAidPreview};
+use super::{
+    CityPdEncounter, OrganizerAidPending, OrganizerAidResolution, OrganizerMaterialAidPreview,
+};
+use crate::national_economy::NationalGamePolicy;
 
 use super::{collection_preview, material_preview, OrganizerCollectionPreview};
 
@@ -8,24 +11,93 @@ use babylon_practice_contract::{
     OrganizerCommand, OrganizerCommitment, OrganizerPreview, OrganizerView,
 };
 
-use postgres::GenericClient;
+use postgres::{GenericClient, IsolationLevel};
 
 use serde::{Deserialize, Serialize};
 
 use crate::identity::CampaignId;
-use crate::material_runtime::{DurableMaterialRuntime, MaterialRuntimeError};
+use crate::material_runtime::{
+    DurableMaterialRuntime, MaterialRuntimeError, MaterialRuntimeFoundation,
+};
 use crate::runtime_session::RuntimeSessionErrorCode;
+use crate::ArchiveEvidenceClass;
+use babylon_graph::stable_element::{StableElementKey, StableElementResolver};
+use babylon_graph::substrate::GraphSubstrate;
 use babylon_kernel::clock::CampaignDuration;
 use babylon_material_circuit::MaterialCatalog;
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_practice_contract::OrganizerCollectionResolution;
 use babylon_practice_contract::OrganizerPeriodJournal;
 use postgres::Row;
+use std::collections::BTreeSet;
+
+/// The portion of the controlled body's incidence authorized for this view.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrganizerBodyPart {
+    /// Handle valid only within this reconstructed graph session.
+    pub runtime_hyperedge_id: u64,
+    /// Stable structural key's scenario component.
+    pub scenario: String,
+    /// Stable structural key's local-name component.
+    pub local_name: String,
+    /// Sorted intersection of actual incidence with the actor's disclosed positions.
+    pub contributors: Vec<u64>,
+    /// Attribution of the authored incidence.
+    pub evidence_class: ArchiveEvidenceClass,
+}
+
+/// A missing authenticated read is distinct from an affirmative absence.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OrganizerBodyDisclosure {
+    /// No authenticated, attributed projection is available.
+    Unavailable,
+    /// An authenticated graph establishes absence for this actor.
+    KnownAbsent,
+    /// Only the allowed incidence is disclosed.
+    Partial(OrganizerBodyPart),
+}
+
+/// The authenticated material source behind a body disclosure.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OrganizerBodySource {
+    /// The attributed graph belongs to the admitted opening foundation.
+    Foundation {
+        /// Exact authenticated material foundation digest.
+        foundation_digest: [u8; 32],
+    },
+    /// The attributed graph belongs to an authenticated committed tail.
+    Committed {
+        /// Exact durable tick identity.
+        tick_content_hash: [u8; 32],
+        /// Nominal material world identity recorded by that tick.
+        world_hash: [u8; 32],
+    },
+}
+
+/// Campaign, actor and period to which this disclosure belongs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrganizerBodyScope {
+    /// Campaign owning the source.
+    pub campaign_id: [u8; 16],
+    /// Controlled actor for this disclosure.
+    pub actor_id: u64,
+    /// Committed period represented by this disclosure.
+    pub period: u64,
+    /// Captured organizer content identity.
+    pub content_digest: [u8; 32],
+    /// Authenticated source, absent when no source is available.
+    pub source: Option<OrganizerBodySource>,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OrganizerSnapshot {
     pub view: OrganizerView,
+    pub body: OrganizerBodyDisclosure,
+    pub body_scope: OrganizerBodyScope,
+    pub city_pd_encounters: Vec<CityPdEncounter>,
     pub pending: Option<OrganizerCommitment>,
     pub duration: CampaignDuration,
     pub aid: Vec<OrganizerMaterialAidPreview>,
@@ -51,14 +123,17 @@ pub(crate) fn aid_snapshot_matches(
     let journal = register
         .organizer_journal()
         .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
-    Ok(babylon_practice_contract::organizer_view(
+    let mut expected_view = babylon_practice_contract::organizer_view(
         config,
         state,
         journal,
         config.controlled_actor_id,
     )
-    .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?
-        == snapshot.view
+    .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
+    expected_view.public_workplace_contact = register.public_venue().is_some();
+    let encounters_match = encounter_snapshot_matches(register, snapshot)?;
+    Ok(encounters_match
+        && expected_view == snapshot.view
         && material_preview::projections(catalog, register.state(), config, state.period)?
             == snapshot.aid
         && state
@@ -72,6 +147,17 @@ pub(crate) fn aid_snapshot_matches(
             .map(material_preview::resolutions)
             .unwrap_or_default()
             == snapshot.aid_resolutions)
+}
+
+/// Audit a response against an already authenticated register. Live admission
+/// separately validates the captured PostgreSQL projection before serialization.
+pub(crate) fn encounter_snapshot_matches(
+    register: &babylon_tick::material_world::MaterialWorldRegister,
+    snapshot: &OrganizerSnapshot,
+) -> Result<bool, RuntimeSessionErrorCode> {
+    Ok(super::encounter::projections(register)
+        .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?
+        == snapshot.city_pd_encounters)
 }
 
 pub(crate) fn captured_organizer_snapshot(
@@ -89,14 +175,25 @@ pub(crate) fn captured_organizer_snapshot(
     let journal = register
         .organizer_journal()
         .ok_or(RuntimeSessionErrorCode::OrganizerUnavailable)?;
-    let view = babylon_practice_contract::organizer_view(
+    let mut view = babylon_practice_contract::organizer_view(
         config,
         state,
         journal,
         config.controlled_actor_id,
     )
     .map_err(|_| RuntimeSessionErrorCode::OrganizerRefused)?;
+    view.public_workplace_contact = register.public_venue().is_some();
     Ok(OrganizerSnapshot {
+        body: OrganizerBodyDisclosure::Unavailable,
+        body_scope: OrganizerBodyScope {
+            campaign_id: config.campaign_id,
+            actor_id: view.actor_id,
+            period: view.period,
+            content_digest: view.content_digest,
+            source: None,
+        },
+        city_pd_encounters: super::encounter::projections(register)
+            .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?,
         aid: material_preview::projections(catalog, register.state(), config, state.period)?,
         pending_aid: state
             .pending_aid
@@ -113,6 +210,151 @@ pub(crate) fn captured_organizer_snapshot(
         pending,
         duration,
     })
+}
+
+/// Opening-only attribution retained privately across runtime reconstruction.
+pub(crate) struct OrganizerBodyAttribution {
+    actor: StableElementKey,
+    body: Option<StableElementKey>,
+    members: BTreeSet<StableElementKey>,
+}
+
+fn body_attribution_from_graph(
+    graph: &impl GraphSubstrate,
+    resolver: &StableElementResolver,
+    actor_id: u64,
+) -> Option<OrganizerBodyAttribution> {
+    if resolver.scenario_scope() != crate::national_economy::NATIONAL_SCENARIO_ID {
+        return None;
+    }
+    let actor = resolver
+        .node_handle_by_local_name("wayne-organizing-collective")
+        .ok()?;
+    let actor_key = resolver.node_key(actor).ok()?.clone();
+    let bodies = graph.hyperedges_of(actor, "ORGANIZATION_BODY").ok()?;
+    let (body, members) = match bodies.as_slice() {
+        [] => (None, BTreeSet::new()),
+        [body] => {
+            let key = resolver.hyperedge_key(*body).ok()?.clone();
+            if !matches!(&key, StableElementKey::Hyperedge { local_name, .. } if *local_name == format!("organizer-participant-body-{actor_id}"))
+            {
+                return None;
+            }
+            let mut members = BTreeSet::new();
+            for member in graph.members_of(*body).ok()? {
+                members.insert(resolver.node_key(member).ok()?.clone());
+            }
+            (Some(key), members)
+        }
+        _ => return None,
+    };
+    Some(OrganizerBodyAttribution {
+        actor: actor_key,
+        body,
+        members,
+    })
+}
+
+/// Capture only the authenticated Designed national opening's body provenance.
+pub(crate) fn opening_body_attribution(
+    foundation: &MaterialRuntimeFoundation,
+) -> Option<OrganizerBodyAttribution> {
+    use crate::economic_catalog::SourceArtifactKind;
+    let catalog = foundation
+        .graph_foundation
+        .content_bundle()
+        .economic_catalog()?;
+    let config = catalog.organizer_config()?;
+    if foundation.register.organizer_config() != Some(config) {
+        return None;
+    }
+    let policy = NationalGamePolicy::from_captured_bytes(
+        catalog.source(SourceArtifactKind::NationalGamePolicy)?,
+    )
+    .ok()?;
+    if policy.organizer.evidence_class != "Designed" {
+        return None;
+    }
+    body_attribution_from_graph(
+        foundation.graph.graph(),
+        foundation.graph.stable_resolver(),
+        config.controlled_actor_id,
+    )
+}
+
+fn project_body(
+    graph: &impl GraphSubstrate,
+    resolver: &StableElementResolver,
+    view: &OrganizerView,
+    attribution: Option<&OrganizerBodyAttribution>,
+) -> Result<OrganizerBodyDisclosure, RuntimeSessionErrorCode> {
+    let Some(attribution) = attribution else {
+        return Ok(OrganizerBodyDisclosure::Unavailable);
+    };
+    let Ok(actor) = resolver.node_handle_by_local_name("wayne-organizing-collective") else {
+        return Ok(OrganizerBodyDisclosure::Unavailable);
+    };
+    let bodies = graph
+        .hyperedges_of(actor, "ORGANIZATION_BODY")
+        .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
+    if resolver.node_key(actor).ok() != Some(&attribution.actor) {
+        return Ok(OrganizerBodyDisclosure::Unavailable);
+    }
+    if bodies.is_empty() {
+        return Ok(if attribution.body.is_none() {
+            OrganizerBodyDisclosure::KnownAbsent
+        } else {
+            OrganizerBodyDisclosure::Unavailable
+        });
+    }
+    let [body] = bodies.as_slice() else {
+        return Err(RuntimeSessionErrorCode::StorageRefused);
+    };
+    let StableElementKey::Hyperedge {
+        scenario,
+        local_name,
+    } = resolver
+        .hyperedge_key(*body)
+        .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?
+    else {
+        return Err(RuntimeSessionErrorCode::StorageRefused);
+    };
+    if resolver.hyperedge_key(*body).ok() != attribution.body.as_ref() {
+        return Ok(OrganizerBodyDisclosure::Unavailable);
+    }
+    if *local_name != format!("organizer-participant-body-{}", view.actor_id) {
+        return Err(RuntimeSessionErrorCode::StorageRefused);
+    }
+    let members = graph
+        .members_of(*body)
+        .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
+    let mut contributors = Vec::new();
+    for position in &view.positions {
+        let name = format!("organizer-contributor-{}", position.contributor_id);
+        let Ok(node) = resolver.node_handle_by_local_name(&name) else {
+            continue;
+        };
+        if !members.contains(&node) {
+            continue;
+        }
+        if resolver
+            .node_key(node)
+            .ok()
+            .is_none_or(|key| !attribution.members.contains(key))
+        {
+            return Ok(OrganizerBodyDisclosure::Unavailable);
+        }
+        contributors.push(position.contributor_id);
+    }
+    contributors.sort_unstable();
+    contributors.dedup();
+    Ok(OrganizerBodyDisclosure::Partial(OrganizerBodyPart {
+        runtime_hyperedge_id: body.0,
+        scenario: scenario.clone(),
+        local_name: local_name.clone(),
+        contributors,
+        evidence_class: ArchiveEvidenceClass::Designed,
+    }))
 }
 
 // Collection amounts and outcomes follow the actor's retained practice
@@ -268,10 +510,17 @@ impl DurableMaterialRuntime {
         let mut client = self
             .organizer_connection()
             .map_err(|error| classify(&error))?;
-        self.require_organizer_tail(&mut client)
+        let mut tx = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .map_err(MaterialRuntimeError::from)
+            .map_err(|error| classify(&error))?;
+        self.require_organizer_tail(&mut tx)
             .map_err(|error| classify(&error))?;
         let pending = pending(
-            &mut client,
+            &mut tx,
             self.campaign_id(),
             state
                 .period
@@ -279,12 +528,51 @@ impl DurableMaterialRuntime {
                 .ok_or(RuntimeSessionErrorCode::CommitRefused)?,
         )
         .map_err(|error| classify(&error))?;
-        captured_organizer_snapshot(
+        let tick =
+            i64::try_from(state.period).map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
+        let future: bool = tx.query_one("SELECT EXISTS (SELECT 1 FROM babylon_state.organizer_encounter_v1 WHERE campaign_id=$1 AND resolve_tick>$2) OR EXISTS (SELECT 1 FROM babylon_meta.archive_knowledge_grant_v1 WHERE campaign_id=$1 AND grant_key LIKE 'city-pd-%' AND granted_tick>$2)", &[self.campaign_id().as_uuid(), &tick])
+            .map_err(MaterialRuntimeError::from).map_err(|error| classify(&error))?.get(0);
+        if future {
+            return Err(RuntimeSessionErrorCode::StorageRefused);
+        }
+        crate::organizer_archive::capture_projection(&mut tx, self.campaign_id(), state.period)
+            .and_then(|projection| projection.validate(register))
+            .map_err(|error| classify(&error))?;
+        tx.commit()
+            .map_err(MaterialRuntimeError::from)
+            .map_err(|error| classify(&error))?;
+        let mut snapshot = captured_organizer_snapshot(
             self.session().catalog(),
             register,
             pending,
             self.session().duration(),
-        )
+        )?;
+        if snapshot.body_scope.campaign_id != *self.campaign_id().canonical_bytes()
+            || snapshot.view.period != self.session().completed_tick()
+        {
+            return Err(RuntimeSessionErrorCode::StorageRefused);
+        }
+        let source = match self.tail() {
+            None if snapshot.view.period == 0 => OrganizerBodySource::Foundation {
+                foundation_digest: self.session().foundation_digest(),
+            },
+            Some(tail) if tail.resolve_tick() == snapshot.view.period => {
+                OrganizerBodySource::Committed {
+                    tick_content_hash: *tail.tick_content_hash().as_bytes(),
+                    world_hash: tail.result_world_hash(),
+                }
+            }
+            _ => return Err(RuntimeSessionErrorCode::StorageRefused),
+        };
+        let graph_session = self.session().graph_session();
+        snapshot.body = project_body(
+            graph_session.graph(),
+            graph_session.stable_resolver(),
+            &snapshot.view,
+            self.body_attribution.as_ref(),
+        )?;
+        snapshot.body_scope.source = Some(source);
+        Ok(snapshot)
     }
     /// Preview a ruling from the current actor-safe knowledge and commitments.
     /// # Errors
@@ -378,11 +666,32 @@ impl DurableMaterialRuntime {
         &self,
         client: &mut impl GenericClient,
     ) -> Result<(), MaterialRuntimeError> {
-        let row = client.query_one("SELECT COALESCE(MAX(resolve_tick),0) FROM babylon_state.tick_commit WHERE campaign_id=$1", &[self.campaign_id().as_uuid()])?;
-        if u64::try_from(row.get::<_, i64>(0)).ok() != Some(self.session().completed_tick()) {
+        let row = client.query_one("SELECT count(*),coalesce(max(resolve_tick),0),coalesce(bool_and(envelope_layout_version=3),true) FROM babylon_state.tick_commit WHERE campaign_id=$1", &[self.campaign_id().as_uuid()])?;
+        let count: i64 = row.try_get(0)?;
+        let tick: i64 = row.try_get(1)?;
+        let versions: bool = row.try_get(2)?;
+        if count != tick
+            || !versions
+            || u64::try_from(tick).ok() != Some(self.session().completed_tick())
+        {
             return Err(MaterialRuntimeError::TailConflict);
         }
-        Ok(())
+        let marker = if tick == 0 {
+            None
+        } else {
+            client.query_opt("SELECT tick_content_hash,envelope_digest FROM babylon_state.tick_commit WHERE campaign_id=$1 AND resolve_tick=$2", &[self.campaign_id().as_uuid(), &tick])?
+        };
+        match (self.tail(), self.tail_envelope_digest(), marker) {
+            (None, None, None) if tick == 0 => Ok(()),
+            (Some(expected), Some(digest), Some(row))
+                if u64::try_from(tick).ok() == Some(expected.resolve_tick())
+                    && row.try_get::<_, Vec<u8>>(0)? == expected.tick_content_hash().as_bytes()
+                    && row.try_get::<_, Vec<u8>>(1)? == digest =>
+            {
+                Ok(())
+            }
+            _ => Err(MaterialRuntimeError::TailConflict),
+        }
     }
 }
 
@@ -391,6 +700,7 @@ mod collection_history_tests {
     use super::*;
     use crate::organizer_aid_fixture as fixture;
     use babylon_bsl::structural_verbs::CollectingSink;
+    use babylon_graph::memory::MemoryGraph;
     use babylon_material_circuit::{
         AccountId, CashTransferPurpose, CircuitAccounting, HistoricalCostBook,
     };
@@ -502,6 +812,256 @@ mod collection_history_tests {
             config.controlled_actor_id,
         )
         .expect("the fixture call `organizer_view` succeeds for the authored inputs")
+    }
+
+    #[test]
+    fn organizer_body_refuses_matching_namespace_without_attribution() {
+        use babylon_graph::memory::MemoryGraph;
+        use std::collections::HashMap;
+
+        let session = partial_collection_session();
+        let view = current_view(session.material());
+        let mut graph = MemoryGraph::new();
+        let actor = graph.add_node("ORGANIZATION").expect("actor");
+        let contributor = graph.add_node("PARTICIPANT_BODY").expect("contributor");
+        let body = graph
+            .add_hyperedge("ORGANIZATION_BODY", &[actor, contributor])
+            .expect("body");
+        let names = HashMap::from([
+            (actor, "wayne-organizing-collective".to_owned()),
+            (contributor, "organizer-contributor-101".to_owned()),
+        ]);
+        let edges = HashMap::from([(
+            body,
+            format!("organizer-participant-body-{}", view.actor_id),
+        )]);
+        let resolver = StableElementResolver::seal(
+            &graph,
+            crate::national_economy::NATIONAL_SCENARIO_ID,
+            &names,
+            &edges,
+        )
+        .expect("sealed graph");
+        assert_eq!(
+            project_body(&graph, &resolver, &view, None),
+            Ok(OrganizerBodyDisclosure::Unavailable),
+            "a matching namespace is not source attribution"
+        );
+    }
+
+    fn body_projection_graph(
+        actor_id: u64,
+        hidden: u64,
+        partner_first: bool,
+        with_body: bool,
+    ) -> (MemoryGraph, StableElementResolver) {
+        use std::collections::HashMap;
+        let mut graph = MemoryGraph::new();
+        let mut names = HashMap::new();
+        let mut node = |name: String, kind: &str| {
+            let id = graph.add_node(kind).expect("fixture node");
+            names.insert(id, name);
+            id
+        };
+        let actor = node("wayne-organizing-collective".into(), "ORGANIZATION");
+        let partner = node("partner-private".into(), "ORGANIZATION");
+        let first = node("organizer-contributor-101".into(), "PARTICIPANT_BODY");
+        let second = node("organizer-contributor-102".into(), "PARTICIPANT_BODY");
+        let hidden_node = node(
+            format!("organizer-contributor-{hidden}"),
+            "PARTICIPANT_BODY",
+        );
+        graph
+            .update_node(
+                partner,
+                "private/balance",
+                if hidden == 103 { 1.0 } else { 2.0 },
+            )
+            .expect("private partner data");
+        let mut edges = HashMap::new();
+        if partner_first {
+            let id = graph
+                .add_hyperedge("ORGANIZATION_BODY", &[partner, hidden_node])
+                .expect("partner body");
+            edges.insert(id, "partner-body".into());
+        }
+        if with_body {
+            let id = graph
+                .add_hyperedge("ORGANIZATION_BODY", &[actor, first, second, hidden_node])
+                .expect("controlled body");
+            edges.insert(id, format!("organizer-participant-body-{actor_id}"));
+        }
+        if !partner_first {
+            let id = graph
+                .add_hyperedge("ORGANIZATION_BODY", &[partner, hidden_node])
+                .expect("partner body");
+            edges.insert(id, "partner-body".into());
+        }
+        let resolver = StableElementResolver::seal(
+            &graph,
+            crate::national_economy::NATIONAL_SCENARIO_ID,
+            &names,
+            &edges,
+        )
+        .expect("sealed graph");
+        (graph, resolver)
+    }
+
+    fn assert_body_projection_variants(
+        snapshot: &mut OrganizerSnapshot,
+        disclosed: &OrganizerBodyDisclosure,
+        attribution: &OrganizerBodyAttribution,
+    ) {
+        use std::collections::HashMap;
+        let OrganizerBodyDisclosure::Partial(part) = disclosed else {
+            panic!("controlled body is partial")
+        };
+        let (other_graph, other_resolver) =
+            body_projection_graph(snapshot.view.actor_id, 104, false, true);
+        let other = project_body(
+            &other_graph,
+            &other_resolver,
+            &snapshot.view,
+            Some(attribution),
+        )
+        .expect("projection");
+        assert_eq!(
+            serde_json::to_vec(disclosed).expect("serialize"),
+            serde_json::to_vec(&other).expect("serialize"),
+            "hidden inputs do not affect disclosure"
+        );
+        let (reopened, reopened_resolver) =
+            body_projection_graph(snapshot.view.actor_id, 104, true, true);
+        let OrganizerBodyDisclosure::Partial(reopened_part) = project_body(
+            &reopened,
+            &reopened_resolver,
+            &snapshot.view,
+            Some(attribution),
+        )
+        .expect("reopened projection") else {
+            panic!("body survives reopen")
+        };
+        assert_ne!(
+            part.runtime_hyperedge_id,
+            reopened_part.runtime_hyperedge_id
+        );
+        assert_eq!(
+            (&part.scenario, &part.local_name, &part.contributors),
+            (
+                &reopened_part.scenario,
+                &reopened_part.local_name,
+                &reopened_part.contributors
+            )
+        );
+        let (absent, absent_resolver) =
+            body_projection_graph(snapshot.view.actor_id, 104, false, false);
+        let absent_attribution =
+            body_attribution_from_graph(&absent, &absent_resolver, snapshot.view.actor_id)
+                .expect("attributed absence");
+        assert_eq!(
+            project_body(
+                &absent,
+                &absent_resolver,
+                &snapshot.view,
+                Some(&absent_attribution)
+            ),
+            Ok(OrganizerBodyDisclosure::KnownAbsent)
+        );
+        let mut unproven_view = snapshot.view.clone();
+        let mut unproven = unproven_view.positions[0].clone();
+        unproven.contributor_id = 104;
+        unproven_view.positions.push(unproven);
+        assert_eq!(
+            project_body(
+                &other_graph,
+                &other_resolver,
+                &unproven_view,
+                Some(attribution)
+            ),
+            Ok(OrganizerBodyDisclosure::Unavailable),
+            "a newly disclosed incidence needs its own attribution"
+        );
+        let unknown_graph = MemoryGraph::new();
+        let unknown_resolver = StableElementResolver::seal(
+            &unknown_graph,
+            "unattributed",
+            &HashMap::new(),
+            &HashMap::new(),
+        )
+        .expect("other scenario can be sealed");
+        assert_eq!(
+            project_body(&unknown_graph, &unknown_resolver, &snapshot.view, None),
+            Ok(OrganizerBodyDisclosure::Unavailable),
+            "an unattributed source is not affirmative absence"
+        );
+        snapshot.body = disclosed.clone();
+        let wire = serde_json::to_value(&snapshot).expect("projected snapshot serializes");
+        assert_eq!(
+            wire["body"]["Partial"]["runtime_hyperedge_id"],
+            part.runtime_hyperedge_id
+        );
+        assert_eq!(wire["body"]["Partial"]["local_name"], part.local_name);
+        assert_eq!(
+            wire["body"]["Partial"]["contributors"],
+            serde_json::json!([101, 102])
+        );
+    }
+
+    #[test]
+    fn organizer_body_projection_limits_disclosure() {
+        use babylon_practice_contract::OrganizerPosition;
+
+        let session = partial_collection_session();
+        let mut snapshot = captured_organizer_snapshot(
+            session.catalog(),
+            session.material(),
+            None,
+            session.duration(),
+        )
+        .expect("the captured organizer situation is available");
+        let wire = serde_json::to_value(&snapshot).expect("snapshot serializes");
+        assert!(
+            wire.get("body").is_some(),
+            "body disclosure must be explicit"
+        );
+        assert!(
+            wire.get("body_scope").is_some(),
+            "body scope must be explicit"
+        );
+
+        snapshot.view.positions = [101, 102]
+            .into_iter()
+            .map(|contributor_id| OrganizerPosition {
+                contributor_id,
+                label: "Disclosed".into(),
+                promised_hours: 1,
+                concern: String::new(),
+                objection: String::new(),
+                review_condition: String::new(),
+            })
+            .collect();
+        let (graph, resolver) = body_projection_graph(snapshot.view.actor_id, 103, false, true);
+        let attribution = body_attribution_from_graph(&graph, &resolver, snapshot.view.actor_id)
+            .expect("attributed opening");
+        let disclosed = project_body(&graph, &resolver, &snapshot.view, Some(&attribution))
+            .expect("projection");
+        let OrganizerBodyDisclosure::Partial(part) = &disclosed else {
+            panic!("controlled body is partial")
+        };
+        assert_eq!(part.contributors, [101, 102]);
+        assert_eq!(
+            part.local_name,
+            format!("organizer-participant-body-{}", snapshot.view.actor_id)
+        );
+        assert_eq!(part.scenario, crate::national_economy::NATIONAL_SCENARIO_ID);
+        assert_eq!(
+            part.runtime_hyperedge_id,
+            resolver
+                .hyperedge_handle_by_local_name(&part.local_name)
+                .expect("actual body")
+                .0
+        );
+        assert_body_projection_variants(&mut snapshot, &disclosed, &attribution);
     }
 
     #[test]

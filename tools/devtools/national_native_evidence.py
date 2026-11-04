@@ -233,6 +233,7 @@ class RuntimeScope(NativeRecord):
 class Tail(NativeRecord):
     resolve_tick: Nonnegative
     tick_content_hash: Sha256 | None
+    world_hash: Sha256 | None
 
 
 class AdvanceRecord(NativeRecord):
@@ -629,6 +630,7 @@ def evaluate_native(
     final_summary = initial
     economic_prefix: list[EconomicBoundary] = []
     previous_hash = None
+    previous_world_hash: str | None = None
     requests = set()
     for (
         artifact,
@@ -670,9 +672,17 @@ def evaluate_native(
             or advance.foundation_sha256 != evidence.foundation_sha256
             or advance.policy_sha256 != policy_sha256
             or advance.expected_tail
-            != Tail(resolve_tick=tick.tick - 1, tick_content_hash=previous_hash)
+            != Tail(
+                resolve_tick=tick.tick - 1,
+                tick_content_hash=previous_hash,
+                world_hash=previous_world_hash,
+            )
             or advance.committed_tail
-            != Tail(resolve_tick=tick.tick, tick_content_hash=facts.tick_content_hash)
+            != Tail(
+                resolve_tick=tick.tick,
+                tick_content_hash=facts.tick_content_hash,
+                world_hash=facts.nominal_world_hash,
+            )
             or advance.material_record_sha256 != artifact.sha256
             or advance_times.get(tick.tick) != advance.advance_elapsed_ns
             or archive_times.get(tick.tick) != advance.archive_elapsed_ns
@@ -723,6 +733,7 @@ def evaluate_native(
                 "native Archive artifact differs from its authenticated committed dossier"
             )
         previous_hash = facts.tick_content_hash
+        previous_world_hash = facts.nominal_world_hash
         claim = tick.actual_rust_storage_package_claims[-1]
         if (
             record.tick != tick.tick

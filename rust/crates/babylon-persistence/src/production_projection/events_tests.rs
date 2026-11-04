@@ -44,6 +44,7 @@ use history::OrderHistory;
 
 fn delivery_receipts(order_id: OrderId) -> MaterialTickReceipts {
     MaterialTickReceipts {
+        agency_paid: vec![],
         collections: vec![],
         aid: vec![],
         household_time: vec![],

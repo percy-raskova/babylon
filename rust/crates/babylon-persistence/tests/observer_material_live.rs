@@ -30,6 +30,9 @@ mod statewide_qualified;
 #[path = "support/material_config.rs"]
 mod test_support;
 
+#[path = "fixtures/city_pd_acceptance.rs"]
+mod city_pd_acceptance;
+
 #[path = "observer_material_live/organizer.rs"]
 mod organizer;
 
@@ -59,3 +62,9 @@ use babylon_persistence::{
 use babylon_practice_contract::OrderedPracticeActionBatch;
 use postgres::{Config, NoTls};
 use uuid::Uuid;
+
+#[path = "observer_material_live/state_opponent_nonwitness.rs"]
+mod state_opponent_nonwitness;
+
+#[path = "observer_material_live/state_opponent_history.rs"]
+mod state_opponent_history;

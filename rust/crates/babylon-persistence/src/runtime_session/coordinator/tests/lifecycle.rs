@@ -89,6 +89,36 @@ fn hello_and_initial_stop_need_no_campaign_or_database_admission() {
 }
 
 #[test]
+fn stale_version_twelve_refuses_before_organizer_status() {
+    let rows = lifecycle(
+        &[
+            RuntimeSessionRequest::OrganizerStatus {
+                protocol_version: 12,
+                request_id: 1,
+                scope: RuntimeSessionScope::default(),
+            },
+            stop_at(RuntimeSessionScope::default()),
+        ],
+        vec![],
+    );
+    assert!(matches!(
+        rows.as_slice(),
+        [
+            RuntimeSessionResponse::Hello {
+                protocol_version: 13,
+                ..
+            },
+            RuntimeSessionResponse::Error {
+                request_id: Some(1),
+                code: RuntimeSessionErrorCode::UnsupportedVersion,
+                ..
+            },
+            RuntimeSessionResponse::Stopped { request_id: 99, .. },
+        ]
+    ));
+}
+
+#[test]
 fn hello_and_switching_are_written_before_fallible_target_admission() {
     let mut output = Vec::new();
     coordinator::serve(
@@ -482,6 +512,7 @@ fn reused_or_lower_ids_cannot_advance_refresh_or_stop_a_current_scope() {
     let advanced_tail = RuntimeSessionTail {
         resolve_tick: 1,
         tick_content_hash: Some(format!("{:064x}", 1)),
+        world_hash: None,
     };
     let rows = lifecycle(
         &[
@@ -493,6 +524,7 @@ fn reused_or_lower_ids_cannot_advance_refresh_or_stop_a_current_scope() {
                 expected_tail: RuntimeSessionTail {
                     resolve_tick: 0,
                     tick_content_hash: None,
+                    world_hash: None,
                 },
             },
             RuntimeSessionRequest::Advance {

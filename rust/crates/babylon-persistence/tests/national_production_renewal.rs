@@ -44,6 +44,7 @@ fn money(n: i128) -> Currency {
 }
 fn receipts(period: u64) -> MaterialTickReceipts {
     MaterialTickReceipts {
+        agency_paid: vec![],
         household_time: vec![],
         aid: vec![],
         collections: vec![],

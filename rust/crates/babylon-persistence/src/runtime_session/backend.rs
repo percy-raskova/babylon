@@ -1,6 +1,7 @@
 //! Explicit New/Open admission reuses the single durable material runtime.
 
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_tick::material_replay::IdentifiedMaterialTick;
 use postgres::{Config, NoTls};
 
 use super::OrganizerCommand;
@@ -81,6 +82,7 @@ impl SessionBackend for DurableBackend {
             tick_content_hash: Some(michigan_economy::digest_hex(
                 receipt.tick_content_hash().as_bytes(),
             )),
+            world_hash: Some(michigan_economy::digest_hex(&receipt.result_world_hash())),
         };
         Ok(self.tail.clone())
     }
@@ -129,11 +131,12 @@ fn durable_tail(
     let mut client = bounded
         .connect(NoTls)
         .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
-    let row = client.query_opt("SELECT resolve_tick, tick_content_hash FROM babylon_state.tick_commit WHERE campaign_id = $1 ORDER BY resolve_tick DESC LIMIT 1", &[campaign.as_uuid()]).map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
+    let row = client.query_opt("SELECT c.resolve_tick, c.tick_content_hash, m.identity_bytes FROM babylon_state.tick_commit c LEFT JOIN babylon_state.material_tick_v3 m ON m.campaign_id=c.campaign_id AND m.resolve_tick=c.resolve_tick WHERE c.campaign_id = $1 ORDER BY c.resolve_tick DESC LIMIT 1", &[campaign.as_uuid()]).map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
     match row {
         None => Ok(RuntimeSessionTail {
             resolve_tick: 0,
             tick_content_hash: None,
+            world_hash: None,
         }),
         Some(row) => {
             let tick: i64 = row
@@ -142,16 +145,70 @@ fn durable_tail(
             let hash: Vec<u8> = row
                 .try_get(1)
                 .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
-            if tick <= 0 || hash.len() != 32 {
-                return Err(RuntimeSessionErrorCode::StorageRefused);
-            }
-            Ok(RuntimeSessionTail {
-                resolve_tick: u64::try_from(tick)
-                    .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?,
-                tick_content_hash: Some(michigan_economy::digest_hex(&hash)),
-            })
+            let identity_bytes: Option<Vec<u8>> = row
+                .try_get(2)
+                .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
+            committed_tail(tick, &hash, identity_bytes.as_deref())
         }
     }
+}
+
+fn committed_tail(
+    tick: i64,
+    hash: &[u8],
+    identity_bytes: Option<&[u8]>,
+) -> Result<RuntimeSessionTail, RuntimeSessionErrorCode> {
+    if tick <= 0 || hash.len() != 32 {
+        return Err(RuntimeSessionErrorCode::StorageRefused);
+    }
+    let identity = IdentifiedMaterialTick::decode(
+        identity_bytes.ok_or(RuntimeSessionErrorCode::StorageRefused)?,
+    )
+    .map_err(|_| RuntimeSessionErrorCode::StorageRefused)?;
+    if u64::try_from(tick).ok() != Some(identity.resolve_tick())
+        || hash != identity.tick_content_hash().as_bytes()
+    {
+        return Err(RuntimeSessionErrorCode::StorageRefused);
+    }
+    Ok(RuntimeSessionTail {
+        resolve_tick: identity.resolve_tick(),
+        tick_content_hash: Some(michigan_economy::digest_hex(hash)),
+        world_hash: Some(michigan_economy::digest_hex(&identity.result_world_hash())),
+    })
+}
+
+#[cfg(test)]
+#[test]
+fn committed_tail_requires_the_marker_identity_pair() {
+    let mut bytes = b"babylon.material-tick-content.v3\0".to_vec();
+    bytes.extend_from_slice(&3_u32.to_be_bytes());
+    bytes.extend_from_slice(&1_u64.to_be_bytes());
+    for index in 1..=7_u8 {
+        bytes.extend_from_slice(&[index; 32]);
+    }
+    let hash = babylon_kernel::content_digest::sha256_of(&bytes);
+    let tail = committed_tail(1, &hash, Some(&bytes)).expect("canonical identity and marker agree");
+    assert_eq!(
+        tail.world_hash,
+        Some(michigan_economy::digest_hex(&[6; 32]))
+    );
+    assert!(
+        committed_tail(2, &hash, Some(&bytes)).is_err(),
+        "foreign tick refuses"
+    );
+    assert!(
+        committed_tail(1, &[9; 32], Some(&bytes)).is_err(),
+        "foreign marker refuses"
+    );
+    assert!(
+        committed_tail(1, &hash, None).is_err(),
+        "missing identity refuses"
+    );
+    bytes[50] ^= 1;
+    assert!(
+        committed_tail(1, &hash, Some(&bytes)).is_err(),
+        "changed identity refuses"
+    );
 }
 
 pub(super) fn open(
@@ -196,6 +253,9 @@ pub(super) fn open(
         tick_content_hash: runtime
             .tail()
             .map(|identity| michigan_economy::digest_hex(identity.tick_content_hash().as_bytes())),
+        world_hash: runtime
+            .tail()
+            .map(|identity| michigan_economy::digest_hex(&identity.result_world_hash())),
     };
     if tail != admitted_tail {
         return Err(RuntimeSessionErrorCode::StorageRefused);

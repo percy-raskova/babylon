@@ -38,6 +38,25 @@ use babylon_tick::replay_session::ReplayCommitDisposition;
 use serde_json::Value;
 use std::collections::BTreeSet;
 
+fn collection_receipt_row(bytes: &[u8]) -> usize {
+    let mut position = b"babylon.material-tick-receipts.v19\0".len() + 12;
+    for (index, width) in material_world::RECEIPT_ROW_BYTES.iter().enumerate() {
+        assert_eq!(usize::from(bytes[position]), index + 1);
+        let count = u64::from_be_bytes(
+            bytes[position + 1..position + 9]
+                .try_into()
+                .expect("family count"),
+        );
+        position += 9;
+        if index == 35 {
+            assert_eq!(count, 1, "one collection receipt");
+            return position;
+        }
+        position += usize::try_from(count).expect("count fits") * width;
+    }
+    unreachable!("collection family exists")
+}
+
 trait OrganizerHistory {
     fn history(&self) -> &OrganizerPeriodJournalEntries;
 }
@@ -868,7 +887,7 @@ fn actual_collection_wire_refuses_changed_posting_hours_use_and_previous_schema(
     let decoded = babylon_tick::material_world::decode_material_receipts(bytes)
         .expect("the canonical bytes decode into the declared type");
     assert!(decoded.money_transfers.len() > 1);
-    let row = bytes.len() - 317;
+    let row = collection_receipt_row(bytes);
     for offset in [240_usize, 256, 272, 280, 281, 285] {
         let mut changed = bytes.to_vec();
         changed[row + offset] ^= 1;
@@ -878,7 +897,7 @@ fn actual_collection_wire_refuses_changed_posting_hours_use_and_previous_schema(
         );
     }
     let mut old = bytes.to_vec();
-    let domain = b"babylon.material-tick-receipts.v18\0".len();
+    let domain = b"babylon.material-tick-receipts.v19\0".len();
     old[domain - 2] = b'6';
     old[domain..domain + 4].copy_from_slice(&16_u32.to_be_bytes());
     assert!(babylon_tick::material_world::decode_material_receipts(&old).is_err());
@@ -1550,7 +1569,12 @@ fn external_register_reopen_adopts_authenticated_bytes_and_rejects_wire_changes(
         std::ptr::eq(owned.canonical_bytes().as_ptr(), allocation),
         "owned admission must retain the exact authenticated input allocation"
     );
-    let domain = b"babylon.material-world-register.v5\0".len();
+    let domain = b"babylon.material-world-register.v6\0".len();
+    let mut old_v5 = canonical.to_vec();
+    old_v5[domain - 2] = b'5';
+    old_v5[domain..domain + 4].copy_from_slice(&5_u32.to_be_bytes());
+    MaterialWorldRegister::decode_external(&catalog, old_v5)
+        .expect_err("old v5 register must be refused before admission");
     for offset in [0, domain, domain + 11, domain + 19, canonical.len() - 1] {
         let mut invalid = canonical.to_vec();
         invalid[offset] ^= 1;
@@ -1672,7 +1696,7 @@ fn partial_collection_canonical_row_rejects_fabricated_amount_tag_time_and_join(
         .expect("the canonical bytes decode into the declared type");
     assert_eq!(decoded.collections.len(), 1);
     assert_eq!(decoded.collections[0].outcome as u8, 9);
-    let row = bytes.len() - 317;
+    let row = collection_receipt_row(bytes);
     assert_eq!(bytes[row + 280], 9);
     let original_fact = &candidate
         .material()
@@ -1804,7 +1828,11 @@ fn close_collection_control(
     collection: &[CollectionResolveInput],
 ) -> Result<MaterialCircuitTransition, babylon_material_circuit::MaterialCircuitError> {
     let closed = babylon_material_circuit::close_material_period_with_support(
-        catalog, opening, aid, collection,
+        catalog,
+        opening,
+        aid,
+        collection,
+        &[],
     )?;
     let next_labor = opening
         .labor

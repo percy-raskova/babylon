@@ -272,7 +272,7 @@ fn attendance(period: u64) -> Vec<AttendancePlan> {
         })
         .collect()
 }
-fn labor(period: u64) -> Vec<LaborCapacityRow> {
+pub fn labor(period: u64) -> Vec<LaborCapacityRow> {
     attendance(period)
         .into_iter()
         .map(|r| LaborCapacityRow {
@@ -283,7 +283,7 @@ fn labor(period: u64) -> Vec<LaborCapacityRow> {
         })
         .collect()
 }
-fn members(period: u64) -> Vec<MemberLaborCapacityRow> {
+pub fn members(period: u64) -> Vec<MemberLaborCapacityRow> {
     labor(period)
         .into_iter()
         .map(|r| MemberLaborCapacityRow {
@@ -332,11 +332,22 @@ fn time_policies() -> Vec<HouseholdTimePolicy> {
         .collect()
 }
 
+pub fn opening() -> (MaterialCatalog, MaterialCircuitState) {
+    opening_with_agency(0)
+}
+
+pub fn opening_with_agency(agency_cash: i128) -> (MaterialCatalog, MaterialCircuitState) {
+    opening_with_cash(agency_cash, 0)
+}
+
 #[allow(
     clippy::too_many_lines,
-    reason = "a conformance scenario builds its whole fixture and asserts the full trajectory in one test"
+    reason = "the conformance fixture declares the complete material scenario together"
 )]
-pub fn opening() -> (MaterialCatalog, MaterialCircuitState) {
+pub fn opening_with_cash(
+    agency_cash: i128,
+    public_cash: i128,
+) -> (MaterialCatalog, MaterialCircuitState) {
     let location = "county:26163"
         .parse()
         .expect("the authored literal parses as the declared type");
@@ -356,11 +367,14 @@ pub fn opening() -> (MaterialCatalog, MaterialCircuitState) {
             })
             .chain(
                 [
-                    (AccountId::Household(donor()), 27_856_000_000),
+                    (
+                        AccountId::Household(donor()),
+                        27_856_000_000 - agency_cash - public_cash,
+                    ),
                     (AccountId::Household(recipient()), 0),
                     (AccountId::Household(suppliers()), 0),
-                    (organization(), 0),
-                    (public(), 0),
+                    (organization(), agency_cash),
+                    (public(), public_cash),
                 ]
                 .map(|(id, m)| CashAccount { id, cash: money(m) }),
             )
@@ -639,8 +653,14 @@ pub fn close(
     collection: &[CollectionResolveInput],
 ) -> Result<MaterialCircuitTransition, MaterialCircuitError> {
     let period = state.period + 1;
-    babylon_material_circuit::close_material_period_with_support(catalog, state, aid, collection)?
-        .finish_with_workforce(catalog, labor(period), members(period))
+    babylon_material_circuit::close_material_period_with_support(
+        catalog,
+        state,
+        aid,
+        collection,
+        &[],
+    )?
+    .finish_with_workforce(catalog, labor(period), members(period))
 }
 pub fn coordinate(catalog: &MaterialCatalog, transition: &mut MaterialCircuitTransition) {
     assert_eq!(transition.state.period, 3);

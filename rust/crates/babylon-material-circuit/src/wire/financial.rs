@@ -147,6 +147,7 @@ fn decode_public_allocations(c: &mut Cursor<'_>) -> Result<Vec<PublicAllocation>
             treatment: match b.u8()? {
                 1 => PublicTransferTreatment::HouseholdIncomeSupport,
                 2 => PublicTransferTreatment::ProviderOperatingGrant,
+                3 => PublicTransferTreatment::AgencyAppropriation,
                 _ => return Err(MaterialCircuitError::WireEnum),
             },
             priority: b.u32()?,

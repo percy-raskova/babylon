@@ -8,8 +8,9 @@
 //!   A group root is not itself a focus target.
 //! - Register the actual interactive entity with `ObserverFocusTarget::action`.
 //!   This includes picking-only Archive chips: they need no `Button` component.
-//!   Register a text reading region with `ObserverFocusTarget::reading`; its
-//!   nearest scroll ancestor receives PageUp/PageDown/Home/End.
+//!   Register a text reading region with `ObserverFocusTarget::reading`.
+//!   Available reading and action targets send PageUp/PageDown/Home/End to the
+//!   nearest scroll ancestor that can move in the requested direction.
 //! - In `PreUpdate`, `ObserverFocusSystems::Eligibility`, owners update
 //!   `available` using their existing availability helpers, and update the
 //!   policy's exact context and active modal root. Use `set_if_neq`. A target's
@@ -301,7 +302,7 @@ fn focus_world(
 }
 
 #[derive(SystemParam)]
-struct FocusTree<'w, 's> {
+pub(crate) struct FocusTree<'w, 's> {
     targets: Query<'w, 's, &'static ObserverFocusTarget>,
     nodes: Query<'w, 's, &'static Node>,
     visibility: Query<'w, 's, &'static Visibility>,
@@ -312,7 +313,7 @@ struct FocusTree<'w, 's> {
 impl FocusTree<'_, '_> {
     /// Ignores disabled state so a focused, newly disabled control can explain
     /// its refusal. Hidden, stale and inactive-modal controls cannot retain it.
-    fn retainable(&self, entity: Entity, policy: &ObserverFocusPolicy) -> bool {
+    pub(crate) fn retainable(&self, entity: Entity, policy: &ObserverFocusPolicy) -> bool {
         let Ok(target) = self.targets.get(entity) else {
             return false;
         };
@@ -354,7 +355,7 @@ impl FocusTree<'_, '_> {
             }
     }
 
-    fn tabbable(&self, entity: Entity, policy: &ObserverFocusPolicy) -> bool {
+    pub(crate) fn tabbable(&self, entity: Entity, policy: &ObserverFocusPolicy) -> bool {
         self.retainable(entity, policy)
             && self
                 .targets
@@ -584,7 +585,7 @@ fn keyboard_input(
                 context: target.context.clone(),
             });
         }
-        ObserverFocusKind::Reading if target.available => {
+        ObserverFocusKind::Reading | ObserverFocusKind::Action if target.available => {
             if let Some(movement) = ReadingMovement::from_key(key) {
                 reading.0 = Some((entity, movement));
             }
@@ -663,8 +664,8 @@ fn move_reading(
             if let Some(next) = reading_position(node, computed, position.0, movement) {
                 if position.0 != next {
                     position.0 = next;
+                    return;
                 }
-                return;
             }
         }
         cursor = tree.parents.get(current).ok().map(ChildOf::parent);
@@ -1562,6 +1563,219 @@ mod tests {
         press(&mut app, window, KeyCode::Enter);
         assert_eq!(app.world().resource::<Actions>().accepted.len(), 0);
         assert_eq!(app.world().resource::<Actions>().world_steps, 0);
+    }
+
+    fn nested_paging_fixture(kind: ObserverFocusKind) -> (App, Entity, Entity, Entity, Entity) {
+        let (mut app, window) = app();
+        let root = group(&mut app, false);
+        let outer = app
+            .world_mut()
+            .spawn((
+                Node {
+                    overflow: Overflow::scroll_y(),
+                    ..default()
+                },
+                computed(Vec2::splat(100.0), Vec2::new(100.0, 400.0), 1.0),
+                ScrollPosition::default(),
+            ))
+            .id();
+        let inner = app
+            .world_mut()
+            .spawn((
+                Node {
+                    overflow: Overflow::scroll_y(),
+                    ..default()
+                },
+                computed(Vec2::splat(100.0), Vec2::new(100.0, 300.0), 1.0),
+                ScrollPosition::default(),
+            ))
+            .id();
+        let focused = app
+            .world_mut()
+            .spawn((
+                Node::default(),
+                ObserverFocusTarget {
+                    available: true,
+                    context: None,
+                    kind,
+                },
+            ))
+            .id();
+        app.world_mut().entity_mut(root).add_child(outer);
+        app.world_mut().entity_mut(outer).add_child(inner);
+        app.world_mut().entity_mut(inner).add_child(focused);
+        app.update();
+        press(&mut app, window, KeyCode::Tab);
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(focused));
+        (app, window, outer, inner, focused)
+    }
+
+    #[test]
+    fn nested_reading_keys_continue_to_outer_scroll_at_each_inner_boundary() {
+        for (code, inner_start, outer_start, expected_inner, expected_outer) in [
+            (KeyCode::PageDown, 200.0, 0.0, 200.0, 100.0),
+            (KeyCode::PageUp, 0.0, 200.0, 0.0, 100.0),
+            (KeyCode::Home, 0.0, 200.0, 0.0, 0.0),
+            (KeyCode::End, 200.0, 0.0, 200.0, 300.0),
+            (KeyCode::Home, 100.0, 200.0, 0.0, 200.0),
+            (KeyCode::End, 100.0, 0.0, 200.0, 0.0),
+            (KeyCode::PageDown, 200.0, 300.0, 200.0, 300.0),
+        ] {
+            let (mut app, window, outer, inner, focused) =
+                nested_paging_fixture(ObserverFocusKind::Reading);
+            app.world_mut()
+                .get_mut::<ScrollPosition>(inner)
+                .expect("inner")
+                .y = inner_start;
+            app.world_mut()
+                .get_mut::<ScrollPosition>(outer)
+                .expect("outer")
+                .y = outer_start;
+            key(&mut app, window, code, ButtonState::Pressed, false);
+            assert!(app
+                .world()
+                .resource::<ObserverKeyboardClaim>()
+                .claimed(code));
+            assert_eq!(app.world().resource::<InputFocus>().get(), Some(focused));
+            assert_eq!(
+                app.world().get::<ScrollPosition>(inner).expect("inner").y,
+                expected_inner,
+                "{code:?}"
+            );
+            assert_eq!(
+                app.world().get::<ScrollPosition>(outer).expect("outer").y,
+                expected_outer,
+                "{code:?}"
+            );
+            let actions = app.world().resource::<Actions>();
+            assert_eq!(actions.accepted.len(), 0);
+            assert_eq!(actions.world_steps, 0);
+            assert_eq!(actions.world_navigation, 0);
+        }
+    }
+
+    #[test]
+    fn focused_action_pages_its_scroll_ancestors_without_activating() {
+        let (mut app, window, outer, inner, focused) =
+            nested_paging_fixture(ObserverFocusKind::Action);
+        key(
+            &mut app,
+            window,
+            KeyCode::PageDown,
+            ButtonState::Pressed,
+            false,
+        );
+        assert!(app
+            .world()
+            .resource::<ObserverKeyboardClaim>()
+            .claimed(KeyCode::PageDown));
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(focused));
+        assert_eq!(
+            app.world().get::<ScrollPosition>(inner).expect("inner").y,
+            100.0
+        );
+        assert_eq!(
+            app.world().get::<ScrollPosition>(outer).expect("outer").y,
+            0.0
+        );
+        key(
+            &mut app,
+            window,
+            KeyCode::PageDown,
+            ButtonState::Released,
+            false,
+        );
+        app.world_mut()
+            .get_mut::<ScrollPosition>(inner)
+            .expect("inner")
+            .y = 200.0;
+        app.world_mut()
+            .get_mut::<ScrollPosition>(outer)
+            .expect("outer")
+            .y = 50.0;
+        key(
+            &mut app,
+            window,
+            KeyCode::PageDown,
+            ButtonState::Pressed,
+            false,
+        );
+        assert!(app
+            .world()
+            .resource::<ObserverKeyboardClaim>()
+            .claimed(KeyCode::PageDown));
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(focused));
+        assert_eq!(
+            app.world().get::<ScrollPosition>(inner).expect("inner").y,
+            200.0
+        );
+        assert_eq!(
+            app.world().get::<ScrollPosition>(outer).expect("outer").y,
+            150.0
+        );
+        let actions = app.world().resource::<Actions>();
+        assert_eq!(actions.accepted.len(), 0);
+        assert_eq!(actions.world_steps, 0);
+        assert_eq!(actions.world_navigation, 0);
+    }
+
+    #[test]
+    fn tab_to_nested_action_starts_reveal_without_activating_it() {
+        let (mut app, window) = app();
+        let outer = group(&mut app, false);
+        app.world_mut().entity_mut(outer).insert((
+            Node {
+                overflow: Overflow::scroll_y(),
+                ..default()
+            },
+            computed(Vec2::splat(100.0), Vec2::new(100.0, 400.0), 1.0),
+            ScrollPosition::default(),
+            UiGlobalTransform::default(),
+        ));
+        let inner = app
+            .world_mut()
+            .spawn((
+                Node {
+                    overflow: Overflow::scroll_y(),
+                    ..default()
+                },
+                computed(Vec2::splat(100.0), Vec2::new(100.0, 300.0), 1.0),
+                ScrollPosition::default(),
+                UiGlobalTransform::from_xy(0.0, 60.0),
+            ))
+            .id();
+        app.world_mut().entity_mut(outer).add_child(inner);
+        let choice = target(&mut app, inner, None);
+        app.world_mut().entity_mut(choice).insert((
+            computed(Vec2::splat(20.0), Vec2::splat(20.0), 1.0),
+            UiGlobalTransform::from_xy(0.0, 140.0),
+        ));
+        app.update();
+        key(&mut app, window, KeyCode::Tab, ButtonState::Pressed, false);
+        assert_eq!(app.world().resource::<InputFocus>().get(), Some(choice));
+        assert!(app
+            .world()
+            .resource::<ObserverKeyboardClaim>()
+            .claimed(KeyCode::Tab));
+        assert_eq!(
+            app.world()
+                .get::<ScrollPosition>(inner)
+                .expect("inner")
+                .y
+                .to_bits(),
+            40.0_f32.to_bits()
+        );
+        assert_eq!(
+            app.world()
+                .get::<ScrollPosition>(outer)
+                .expect("outer")
+                .y
+                .to_bits(),
+            0.0_f32.to_bits()
+        );
+        let actions = app.world().resource::<Actions>();
+        assert_eq!(actions.accepted.len(), 0);
+        assert_eq!(actions.world_steps, 0);
     }
 
     #[test]

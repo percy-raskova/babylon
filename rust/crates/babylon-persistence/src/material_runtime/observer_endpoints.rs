@@ -62,6 +62,7 @@ pub(crate) fn read_observer_material_endpoints<'w>(
         foundation_digest,
         components,
         catalog,
+        resolver,
     } = read;
     let authority = MaterialReadAuthority {
         scope,
@@ -69,6 +70,7 @@ pub(crate) fn read_observer_material_endpoints<'w>(
         components,
         opening: lookup.opening,
         catalog,
+        resolver,
         lookup_chain: Some(lookup.current_chain),
         witnesses: lookup.registers,
         receipt_witness: lookup.receipt,

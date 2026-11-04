@@ -16,8 +16,13 @@ pub use lookup::{IdentityEntry, IdentityKind, TypedLookup};
 #[path = "state_storage/register.rs"]
 mod register;
 
+#[cfg(test)]
+pub(crate) use register::decode_admitted;
+pub(crate) use register::restore_register;
 use register::{columns, rows, MAX_BYTES};
-pub(crate) use register::{decode_admitted, decode_against_admitted, MAX_STATE_PACKAGE_BYTES};
+pub(crate) use register::{
+    decode_admitted_with_resolver, decode_against_admitted, MAX_STATE_PACKAGE_BYTES,
+};
 // Task 5 condition (b): `EncodedState` stays reachable at its old state_storage
 // path even though this module is private and no in-tree caller names it yet.
 #[allow(

@@ -5,7 +5,7 @@
 use super::{StorageError, MAX_BYTES};
 use crate::state_storage::layout;
 
-pub(super) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v5\0";
+pub(super) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v6\0";
 const STATE_DOMAIN: &[u8] = babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES;
 const STATE_VERSION: u16 = babylon_material_circuit::MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION;
 #[derive(Clone, Debug)]
@@ -213,7 +213,7 @@ pub(super) fn sections(bytes: &[u8]) -> Result<Vec<Section>, StorageError> {
     }
     let mut register = Cursor::new(bytes);
     register.expect(REGISTER_DOMAIN)?;
-    if register.number(4)? != 5 {
+    if register.number(4)? != 6 {
         return Err(StorageError::Version);
     }
     let tick = register.number(8)?;
@@ -236,16 +236,43 @@ pub(super) fn sections(bytes: &[u8]) -> Result<Vec<Section>, StorageError> {
     };
     parser.state(tick)?;
     let start = register.pos;
-    if register.tag(&[0, 1])? == 1 {
-        // Config, compact state and the retained evidence window.
-        for _ in 0..3 {
-            let size = register.number(8)?;
-            register.take(size)?;
+    let organizer_size = register.number(8)?;
+    let organizer_end = register
+        .pos
+        .checked_add(organizer_size)
+        .ok_or(StorageError::Bounds)?;
+    if organizer_end > register.end {
+        return Err(StorageError::Framing);
+    }
+    let mut organizer = Cursor {
+        bytes,
+        pos: register.pos,
+        end: organizer_end,
+    };
+    if organizer.tag(&[0, 1])? == 1 {
+        // Config, compact state, organizer journal and independent public venue.
+        for _ in 0..4 {
+            let size = organizer.number(8)?;
+            organizer.take(size)?;
         }
+    }
+    organizer.done()?;
+    register.pos = organizer_end;
+    parser.sections.push(Section {
+        id: 69,
+        start,
+        end: register.pos,
+        count: None,
+    });
+    let start = register.pos;
+    let size = register.number(8)?;
+    let frame = register.take(size)?;
+    if !matches!(frame.first(), Some(0 | 1)) || (frame[0] == 0 && frame.len() != 1) {
+        return Err(StorageError::Framing);
     }
     register.done()?;
     parser.sections.push(Section {
-        id: 69,
+        id: 73,
         start,
         end: register.pos,
         count: None,

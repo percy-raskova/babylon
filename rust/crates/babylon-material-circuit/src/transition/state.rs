@@ -12,7 +12,10 @@ pub(crate) struct MaterialContext<'a> {
 use super::merchant_admission;
 use super::outbound;
 
+use crate::agency_attendance::PendingAgency;
 use crate::valuation::CostClose;
+use crate::AgencyAttendanceInput;
+use crate::AgencyObservationFundingReceipt;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -939,6 +942,7 @@ pub(crate) struct AidResolve<'a> {
     inputs: &'a [AidResolveInput],
     services: &'a [HouseholdServiceReceipt],
     receipts: &'a mut Vec<AidReceipt>,
+    agency: Option<&'a PendingAgency>,
 }
 
 pub(crate) fn dispatch_and_replenish(
@@ -954,6 +958,7 @@ pub(crate) fn dispatch_and_replenish(
         inputs: aid_inputs,
         services,
         receipts: aid_receipts,
+        agency,
     } = aid;
     let mut inventory = inventory::take_inventory(state);
     let mut outbound = outbound::dispatch_orders(
@@ -975,7 +980,7 @@ pub(crate) fn dispatch_and_replenish(
     crate::payments::settle_deliveries(state, money_transfers)?;
     let (new_orders, procurement) =
         crate::recurring::firms::replenish(state, &outbound.local_transfers, money_transfers)?;
-    let aid = crate::aid::prepare(
+    let mut aid = crate::aid::prepare(
         catalog,
         state,
         aid_inputs,
@@ -984,6 +989,19 @@ pub(crate) fn dispatch_and_replenish(
         money_transfers,
         aid_receipts,
     )?;
+    // Hold a preliminarily available agency hour ahead of voluntary aid work.
+    // Local aid may later improve a recipient's time; final eligibility is
+    // determined from actual consumption after dispatch.
+    if let Some(pending) = agency.filter(|row| row.reserved) {
+        if let Some(hours) = aid
+            .hours
+            .get_mut(&(pending.input.principal_id, pending.input.labor_unit_id))
+        {
+            if *hours >= pending.input.hours {
+                *hours -= pending.input.hours;
+            }
+        }
+    }
     let mut inventory = inventory::take_inventory(state);
     if !new_orders.is_empty() || !aid.orders.is_empty() {
         let replenishment = outbound::dispatch_orders_with_aid(
@@ -1108,33 +1126,90 @@ pub(crate) struct HouseholdCloseReceipts {
     labor_use: Vec<LaborUseReceipt>,
     member_labor_use: Vec<MemberLaborUseReceipt>,
     time: Vec<HouseholdTimeReceipt>,
+    agency: Option<AgencyObservationFundingReceipt>,
 }
 
 pub(crate) fn close_household_reproduction(
-    catalog: &MaterialCatalog,
-    state: &mut MaterialCircuitState,
+    context: MaterialContext<'_>,
     costs: &mut CostClose,
     services: &ServiceClose,
-    wage_accruals: &[WageAccrualReceipt],
+    wage_accruals: &mut Vec<WageAccrualReceipt>,
+    money_transfers: &mut Vec<MoneyTransferReceipt>,
+    pending: Option<PendingAgency>,
+    aid: &[AidReceipt],
 ) -> Result<HouseholdCloseReceipts, MaterialCircuitError> {
+    let MaterialContext { catalog, state } = context;
     let consumption = crate::recurring::consume_household_needs(catalog, state)?;
     for receipt in &consumption {
         costs.consume(receipt)?;
     }
     let (labor_use, member_labor_use) = costs.finish_attendance(state)?;
+    let agency = if let Some(pending) = pending {
+        let preview = crate::household_time::preview(
+            catalog,
+            state,
+            &member_labor_use,
+            &consumption,
+            &services.household,
+        )?;
+        let row = preview
+            .iter()
+            .find(|row| row.principal_id == pending.input.principal_id)
+            .ok_or(MaterialCircuitError::HouseholdTimeInvariant)?;
+        let eligible = row.protected_unresolved_hours == 0
+            && row.unpaid_unresolved_hours == 0
+            && row.contribution_available_hours >= pending.input.hours;
+        if pending.reserved && eligible {
+            let donor_hours = aid
+                .iter()
+                .filter(|r| r.donor == pending.input.principal_id)
+                .try_fold(0_u64, |sum, r| {
+                    sum.checked_add(r.contribution_hours)
+                        .ok_or(MaterialCircuitError::Arithmetic)
+                })?;
+            if donor_hours
+                .checked_add(pending.input.hours)
+                .ok_or(MaterialCircuitError::Arithmetic)?
+                > row.contribution_available_hours
+            {
+                return Err(MaterialCircuitError::HouseholdTimeInvariant);
+            }
+        }
+        Some(crate::agency_attendance::settle(
+            &pending,
+            eligible,
+            state,
+            money_transfers,
+            wage_accruals,
+        )?)
+    } else {
+        None
+    };
+    let paid: Vec<_> = agency
+        .iter()
+        .filter_map(|row| row.attendance.clone())
+        .collect();
     let time = crate::household_time::close(
         catalog,
         state,
         &member_labor_use,
+        &paid,
         &consumption,
         &services.household,
     )?;
-    costs.payroll(state, &member_labor_use, wage_accruals)?;
+    costs.payroll(
+        state,
+        &member_labor_use,
+        wage_accruals,
+        agency.as_ref(),
+        money_transfers,
+    )?;
     Ok(HouseholdCloseReceipts {
         consumption,
         labor_use,
         member_labor_use,
         time,
+        agency,
     })
 }
 
@@ -1208,7 +1283,7 @@ pub fn close_material_period_with_aid(
     opening: &MaterialCircuitState,
     aid_inputs: &[AidResolveInput],
 ) -> Result<ClosedMaterialPeriod, MaterialCircuitError> {
-    close_material_period_with_support(catalog, opening, aid_inputs, &[])
+    close_material_period_with_support(catalog, opening, aid_inputs, &[], &[])
 }
 
 pub(crate) struct FundedProductionReceipts {
@@ -1216,6 +1291,7 @@ pub(crate) struct FundedProductionReceipts {
     household_demand: Vec<HouseholdDemandReceipt>,
     services: ServiceClose,
     production: ProductionStageReceipts,
+    agency: Option<PendingAgency>,
 }
 
 pub(crate) fn close_funded_production(
@@ -1225,12 +1301,14 @@ pub(crate) fn close_funded_production(
     costs: &mut CostClose,
     money_transfers: &mut Vec<MoneyTransferReceipt>,
     wage_accruals: &mut Vec<WageAccrualReceipt>,
+    agency_inputs: &[AgencyAttendanceInput],
 ) -> Result<FundedProductionReceipts, MaterialCircuitError> {
     crate::payments::settle_deliveries(state, money_transfers)?;
     crate::recurring::firms::retire_resolved_purchases(state)?;
     let finance = FinancialClose::opening(state, costs, money_transfers)?;
     let attendance = crate::payments::fund_attendance(state, money_transfers, wage_accruals)?;
     costs.admit_attendance(attendance);
+    let agency = crate::agency_attendance::reserve(opening, state, agency_inputs, money_transfers)?;
     let household_demand =
         crate::recurring::admit_household_orders(catalog, state, money_transfers)?;
     let mut services = ServiceClose::new(catalog, state, money_transfers)?;
@@ -1247,26 +1325,35 @@ pub(crate) fn close_funded_production(
         household_demand,
         services,
         production: productive,
+        agency,
     })
 }
 
-#[derive(Clone, Copy)]
 pub(crate) struct HouseholdSupportInputs<'a> {
     collections: &'a [CollectionResolveInput],
     aid: &'a [AidReceipt],
+    agency: Option<PendingAgency>,
 }
 
 pub(crate) fn close_household_finance(
     context: MaterialContext<'_>,
     costs: &mut CostClose,
     services: &ServiceClose,
-    wage_accruals: &[WageAccrualReceipt],
+    wage_accruals: &mut Vec<WageAccrualReceipt>,
     finance: &mut FinancialClose,
     money_transfers: &mut Vec<MoneyTransferReceipt>,
     support: HouseholdSupportInputs<'_>,
 ) -> Result<(HouseholdCloseReceipts, Vec<CollectionReceipt>), MaterialCircuitError> {
     let MaterialContext { catalog, state } = context;
-    let households = close_household_reproduction(catalog, state, costs, services, wage_accruals)?;
+    let households = close_household_reproduction(
+        MaterialContext { catalog, state },
+        costs,
+        services,
+        wage_accruals,
+        money_transfers,
+        support.agency,
+        support.aid,
+    )?;
     finance.collect_taxes(state, costs, money_transfers)?;
     let collections = crate::collection::close(
         catalog,
@@ -1307,7 +1394,9 @@ fn close_support_parts(
     opening: &MaterialCircuitState,
     aid_inputs: &[AidResolveInput],
     collection_inputs: &[CollectionResolveInput],
+    agency_inputs: &[AgencyAttendanceInput],
 ) -> Result<SupportClose, MaterialCircuitError> {
+    crate::agency_attendance::validate_input(catalog, opening, agency_inputs)?;
     let close = begin_close(catalog, opening)?;
     let (mut state, mut costs) = (close.state, close.costs);
     let (mut aid_receipts, mut money_transfers) = (close.aid_receipts, close.money_transfers);
@@ -1319,6 +1408,7 @@ fn close_support_parts(
         &mut costs,
         &mut money_transfers,
         &mut wage_accruals,
+        agency_inputs,
     )?;
     let (outbound, procurement) = dispatch_and_replenish(
         catalog,
@@ -1331,6 +1421,7 @@ fn close_support_parts(
             inputs: aid_inputs,
             services: &funded.services.household,
             receipts: &mut aid_receipts,
+            agency: funded.agency.as_ref(),
         },
     )?;
     let (households, collections) = close_household_finance(
@@ -1340,12 +1431,13 @@ fn close_support_parts(
         },
         &mut costs,
         &funded.services,
-        &wage_accruals,
+        &mut wage_accruals,
         &mut funded.finance,
         &mut money_transfers,
         HouseholdSupportInputs {
             collections: collection_inputs,
             aid: &aid_receipts,
+            agency: funded.agency.take(),
         },
     )?;
     Ok(SupportClose {
@@ -1372,8 +1464,15 @@ pub fn close_material_period_with_support(
     opening: &MaterialCircuitState,
     aid_inputs: &[AidResolveInput],
     collection_inputs: &[CollectionResolveInput],
+    agency_inputs: &[AgencyAttendanceInput],
 ) -> Result<ClosedMaterialPeriod, MaterialCircuitError> {
-    let mut close = close_support_parts(catalog, opening, aid_inputs, collection_inputs)?;
+    let mut close = close_support_parts(
+        catalog,
+        opening,
+        aid_inputs,
+        collection_inputs,
+        agency_inputs,
+    )?;
     let next_period = following_period(&close.state)?;
     let investment = crate::equipment::invest(
         catalog,
@@ -1409,6 +1508,7 @@ pub fn close_material_period_with_support(
     Ok(ClosedMaterialPeriod {
         next_period,
         transition: MaterialCircuitTransition {
+            agency_attendance: close.households.agency.into_iter().collect(),
             collections: close.collections,
             aid: close.aid_receipts,
             aid_contributions: settled.aid_contributions,

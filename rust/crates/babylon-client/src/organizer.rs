@@ -1,5 +1,9 @@
 //! Native organizational decisions over the one authoritative runtime connection.
 
+#[cfg(test)]
+use crate::observer::Perspective;
+#[cfg(test)]
+use babylon_persistence::ArchiveEvidenceClass;
 mod draft;
 
 mod editor;
@@ -7,6 +11,8 @@ mod editor;
 mod evidence;
 
 mod presentation;
+
+mod scene;
 
 pub(crate) mod qualification_input;
 
@@ -19,7 +25,7 @@ mod client;
 use client::transport;
 pub use client::OrganizerPlugin;
 use client::RequestKind;
-pub(crate) use client::{report_reading, OrganizerClient, OrganizerInspector};
+pub(crate) use client::{report_reading, OrganizerClient, OrganizerInspector, StatusDisposition};
 
 #[cfg(test)]
 use crate::observer::{ObserverSession, SessionPhase};
@@ -36,16 +42,28 @@ use draft::OrganizerDraft;
 use bevy::prelude::*;
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use babylon_persistence::identity::CampaignId;
     use babylon_persistence::runtime_session::OrganizerAidKind;
     use babylon_persistence::runtime_session::OrganizerAidTransportPreview;
     use babylon_persistence::runtime_session::OrganizerGiftConsent;
     use babylon_persistence::runtime_session::{
-        OrganizerAgreement, OrganizerObservation, OrganizerReport, OrganizerStandingWork,
+        CityPdEncounter, OrganizerAgreement, OrganizerBodyDisclosure, OrganizerBodyPart,
+        OrganizerBodyScope, OrganizerBodySource, OrganizerObservation, OrganizerPosition,
+        OrganizerReport, OrganizerStandingWork, CITY_PD_ENCOUNTER_SCHEMA_VERSION,
     };
     use uuid::Uuid;
+
+    pub(crate) fn body_scope() -> OrganizerBodyScope {
+        OrganizerBodyScope {
+            campaign_id: *Uuid::from_u128(927).as_bytes(),
+            actor_id: 90,
+            period: 3,
+            content_digest: [2; 32],
+            source: None,
+        }
+    }
 
     pub(crate) fn ready() -> (OrganizerClient, ObserverSession) {
         let campaign = Uuid::from_u128(927);
@@ -68,6 +86,7 @@ mod tests {
             available_hours: 16,
             inquiry_hours: 12,
             contact_hours: 8,
+            public_workplace_contact: false,
             content_digest: [2; 32],
             resource_digest: [3; 32],
             standing: OrganizerStandingWork {
@@ -92,6 +111,324 @@ mod tests {
             },
             session,
         )
+    }
+
+    pub(crate) fn status_fixture() -> (
+        OrganizerClient,
+        ObserverSession,
+        RuntimeSessionRequest,
+        OrganizerSnapshot,
+    ) {
+        let (mut client, mut session) = ready();
+        client.queue(&mut session, RequestKind::Status, None);
+        let request = client.outbox.take().expect("status request queued");
+        let mut view = client.view.clone().expect("fixture view");
+        view.organization_label = "Updated collective".into();
+        let snapshot = OrganizerSnapshot {
+            body: OrganizerBodyDisclosure::Unavailable,
+            body_scope: body_scope(),
+            collection: None,
+            collection_resolutions: Vec::new(),
+            aid: Vec::new(),
+            pending_aid: Vec::new(),
+            aid_resolutions: Vec::new(),
+            city_pd_encounters: vec![encounter_fixture()],
+            view,
+            pending: None,
+            duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
+        };
+        (client, session, request, snapshot)
+    }
+
+    pub(crate) fn encounter_fixture() -> CityPdEncounter {
+        CityPdEncounter {
+            schema_version: CITY_PD_ENCOUNTER_SCHEMA_VERSION,
+            campaign_id: *Uuid::from_u128(927).as_bytes(),
+            controlled_actor_id: 90,
+            authority_id: [1; 16],
+            content_digest: [2; 32],
+            resource_digest: [3; 32],
+            subject_id: 91,
+            resolve_period: 2,
+            visitor_actor_id: 94,
+            receipt_id: [4; 32],
+            venue_source_id: [5; 32],
+            visit_core_id: [6; 32],
+            access_evidence_id: [7; 32],
+        }
+    }
+
+    #[test]
+    fn organizer_body_scope_refuses_stale_and_foreign() {
+        let (mut client, mut session, request, snapshot) = status_fixture();
+        session.inspect_tick(2);
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+            panic!("fixture queues organizer status");
+        };
+        let previous = client.view.clone();
+        assert_eq!(
+            client.status(request_id, snapshot, &mut session),
+            Ok(StatusDisposition::Superseded),
+            "a response captured before history navigation is superseded"
+        );
+        assert_eq!(
+            client.view, previous,
+            "superseded status preserves the view"
+        );
+
+        client.queue(&mut session, RequestKind::Status, None);
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } =
+            client.outbox.take().expect("history status queued")
+        else {
+            panic!("fixture queues organizer status");
+        };
+        let (_, _, _, snapshot) = status_fixture();
+        assert_eq!(
+            client.status(request_id, snapshot, &mut session),
+            Ok(StatusDisposition::Installed),
+            "the existing period-filtered view remains available"
+        );
+        let (body, scope) = client.body_for(&session).expect("historical availability");
+        assert_eq!(*body, OrganizerBodyDisclosure::Unavailable);
+        assert_eq!(scope.period, 2);
+        assert_eq!(scope.source, None);
+    }
+
+    #[test]
+    fn organizer_body_scope_refuses_foreign_metadata() {
+        for field in ["campaign", "actor", "period", "content", "missing_source"] {
+            let (mut client, mut session, request, mut snapshot) = status_fixture();
+            let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+                panic!("initial status request")
+            };
+            assert_eq!(
+                client.status(request_id, snapshot.clone(), &mut session),
+                Ok(StatusDisposition::Installed)
+            );
+            let previous_body = client
+                .body_for(&session)
+                .map(|(body, scope)| (body.clone(), scope.clone()));
+            client.queue(&mut session, RequestKind::Status, None);
+            let request = client.outbox.take().expect("second status request");
+            match field {
+                "campaign" => snapshot.body_scope.campaign_id = [8; 16],
+                "actor" => snapshot.body_scope.actor_id += 1,
+                "period" => snapshot.body_scope.period += 1,
+                "content" => snapshot.body_scope.content_digest = [9; 32],
+                "missing_source" => snapshot.body = OrganizerBodyDisclosure::KnownAbsent,
+                _ => unreachable!(),
+            }
+            let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+                panic!("status request")
+            };
+            let previous = client.view.clone();
+            assert!(
+                client.status(request_id, snapshot, &mut session).is_err(),
+                "refuse {field}"
+            );
+            assert_eq!(
+                client.view, previous,
+                "refusal preserves prior view for {field}"
+            );
+            assert_eq!(
+                client
+                    .body_for(&session)
+                    .map(|(body, scope)| (body.clone(), scope.clone())),
+                previous_body,
+                "refusal preserves admitted body for {field}"
+            );
+        }
+    }
+
+    #[test]
+    fn organizer_body_scope_refuses_stale_context() {
+        for field in [
+            "perspective",
+            "generation",
+            "viewed",
+            "freshness",
+            "tail_hash",
+            "world_hash",
+            "foundation",
+        ] {
+            let (mut client, mut session, request, snapshot) = status_fixture();
+            let previous = client.view.clone();
+            match field {
+                "perspective" => {
+                    session.set_perspective(Perspective::PlayerKnowledge);
+                }
+                "generation" => session.generation += 1,
+                "viewed" => session.inspect_tick(2),
+                "freshness" => session.durable_tick += 1,
+                "tail_hash" => session.content_hash = Some("04".repeat(32)),
+                "world_hash" => session.world_hash = Some("05".repeat(32)),
+                "foundation" => session.foundation_digest = Some("05".repeat(32)),
+                _ => unreachable!(),
+            }
+            let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+                panic!("status request")
+            };
+            assert_ne!(
+                client.status(request_id, snapshot, &mut session),
+                Ok(StatusDisposition::Installed),
+                "stale {field} cannot install"
+            );
+            assert_eq!(client.view, previous, "stale {field} preserves prior view");
+        }
+    }
+
+    fn populate_partial_body(snapshot: &mut OrganizerSnapshot) {
+        snapshot.view.positions = [101, 102]
+            .into_iter()
+            .map(|contributor_id| OrganizerPosition {
+                contributor_id,
+                label: "Known".into(),
+                promised_hours: 1,
+                concern: String::new(),
+                objection: String::new(),
+                review_condition: String::new(),
+            })
+            .collect();
+        snapshot.body = OrganizerBodyDisclosure::Partial(OrganizerBodyPart {
+            runtime_hyperedge_id: 7,
+            scenario: "economy/national-world".into(),
+            local_name: "organizer-participant-body-90".into(),
+            contributors: vec![101, 102],
+            evidence_class: ArchiveEvidenceClass::Designed,
+        });
+    }
+
+    #[test]
+    fn organizer_body_scope_validates_committed_disclosure() {
+        for field in [
+            "valid",
+            "known_absent",
+            "foreign_hash",
+            "foreign_world_hash",
+            "hidden_contributor",
+            "unordered",
+            "unattributed",
+        ] {
+            let (mut client, mut session, _, mut snapshot) = status_fixture();
+            client.pending = None;
+            client.outbox = None;
+            session.content_hash = Some("04".repeat(32));
+            session.world_hash = Some("05".repeat(32));
+            client.queue(&mut session, RequestKind::Status, None);
+            let request = client.outbox.take().expect("status request");
+            snapshot.body_scope.source = Some(OrganizerBodySource::Committed {
+                tick_content_hash: [4; 32],
+                world_hash: [5; 32],
+            });
+            populate_partial_body(&mut snapshot);
+            match field {
+                "foreign_hash" => {
+                    snapshot.body_scope.source = Some(OrganizerBodySource::Committed {
+                        tick_content_hash: [6; 32],
+                        world_hash: [5; 32],
+                    });
+                }
+                "foreign_world_hash" => {
+                    snapshot.body_scope.source = Some(OrganizerBodySource::Committed {
+                        tick_content_hash: [4; 32],
+                        world_hash: [6; 32],
+                    });
+                }
+                "hidden_contributor" => {
+                    if let OrganizerBodyDisclosure::Partial(part) = &mut snapshot.body {
+                        part.contributors.push(103);
+                    }
+                }
+                "unordered" => {
+                    if let OrganizerBodyDisclosure::Partial(part) = &mut snapshot.body {
+                        part.contributors.reverse();
+                    }
+                }
+                "unattributed" => {
+                    if let OrganizerBodyDisclosure::Partial(part) = &mut snapshot.body {
+                        part.evidence_class = ArchiveEvidenceClass::Observed;
+                    }
+                }
+                "known_absent" => snapshot.body = OrganizerBodyDisclosure::KnownAbsent,
+                "valid" => {}
+                _ => unreachable!(),
+            }
+            let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+                panic!("status request")
+            };
+            let prior = client.view.clone();
+            let result = client.status(request_id, snapshot, &mut session);
+            if field == "valid" || field == "known_absent" {
+                assert_eq!(result, Ok(StatusDisposition::Installed));
+                if field == "valid" {
+                    assert!(matches!(
+                        client.body_for(&session),
+                        Some((OrganizerBodyDisclosure::Partial(_), _))
+                    ));
+                    session.world_hash = Some("06".repeat(32));
+                    assert!(
+                        client.body_for(&session).is_none(),
+                        "changed admitted world invalidates body"
+                    );
+                    session.world_hash = Some("05".repeat(32));
+                } else {
+                    assert!(matches!(
+                        client.body_for(&session),
+                        Some((OrganizerBodyDisclosure::KnownAbsent, _))
+                    ));
+                }
+                session.durable_tick += 1;
+                assert!(
+                    client.body_for(&session).is_none(),
+                    "advance invalidates admitted body"
+                );
+            } else {
+                assert!(result.is_err(), "refuse {field}");
+                assert_eq!(client.view, prior, "refusal preserves prior view");
+            }
+        }
+    }
+
+    #[test]
+    fn organizer_body_foundation_source_requires_admitted_digest() {
+        let (mut client, mut session, _, mut snapshot) = status_fixture();
+        client.pending = None;
+        client.outbox = None;
+        session.ready(0, None);
+        assert!(session.installed(&session.context()));
+        session.foundation_digest = Some("04".repeat(32));
+        snapshot.view.period = 0;
+        snapshot.city_pd_encounters.clear();
+        snapshot.body = OrganizerBodyDisclosure::KnownAbsent;
+        snapshot.body_scope.period = 0;
+        snapshot.body_scope.source = Some(OrganizerBodySource::Foundation {
+            foundation_digest: [4; 32],
+        });
+        client.queue(&mut session, RequestKind::Status, None);
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } =
+            client.outbox.take().expect("status request")
+        else {
+            panic!("status request")
+        };
+        assert_eq!(
+            client.status(request_id, snapshot.clone(), &mut session),
+            Ok(StatusDisposition::Installed)
+        );
+        let prior = client.view.clone();
+        client.queue(&mut session, RequestKind::Status, None);
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } =
+            client.outbox.take().expect("second request")
+        else {
+            panic!("status request")
+        };
+        snapshot.body_scope.source = Some(OrganizerBodySource::Foundation {
+            foundation_digest: [5; 32],
+        });
+        assert!(client.status(request_id, snapshot, &mut session).is_err());
+        assert_eq!(
+            client.view, prior,
+            "foreign foundation cannot replace admitted view"
+        );
     }
 
     fn aid_fixture() -> OrganizerMaterialAidPreview {
@@ -271,11 +608,14 @@ mod tests {
             .status(
                 request_id,
                 OrganizerSnapshot {
+                    body: OrganizerBodyDisclosure::Unavailable,
+                    body_scope: body_scope(),
                     collection: None,
                     collection_resolutions: Vec::new(),
                     aid: Vec::new(),
                     pending_aid: Vec::new(),
                     aid_resolutions: Vec::new(),
+                    city_pd_encounters: Vec::new(),
                     view: client.view.clone().expect("the fixture value clones"),
                     pending: Some(accepted.clone()),
                     duration: babylon_kernel::clock::CampaignDuration::Finite { final_period: 16 },
@@ -297,6 +637,36 @@ mod tests {
         assert!(!client.available(&session));
         assert!(client.outbox.is_none());
         assert!(client.reviewed_command.is_none());
+    }
+
+    #[test]
+    fn status_with_new_disclosure_invalidates_review() {
+        let (mut client, mut session, request, mut snapshot) = status_fixture();
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+            panic!("expected status request");
+        };
+        snapshot.view = client.view.clone().expect("fixture view");
+        session.duration = Some(snapshot.duration);
+        let command = client
+            .make_command(&session, OrganizerChoice::Hold)
+            .expect("fixture command");
+        client.review_context = Some(session.context());
+        client.reviewed_command = Some(command.clone());
+        client.preview = Some(OrganizerPreview {
+            choice: command.choice,
+            current_period: command.expected_period,
+            resolves_period: command.expected_period + 1,
+            available_hours: 16,
+            required_hours: 8,
+            replaces_standing_work: true,
+            refusal: None,
+            observations: Vec::new(),
+        });
+        client
+            .status(request_id, snapshot, &mut session)
+            .expect("coherent status");
+        assert!(client.reviewed_command.is_none());
+        assert!(client.preview.is_none());
     }
 
     #[test]
@@ -362,11 +732,14 @@ mod tests {
                 .status(
                     request_id,
                     OrganizerSnapshot {
+                        body: OrganizerBodyDisclosure::Unavailable,
+                        body_scope: body_scope(),
                         collection: None,
                         collection_resolutions: Vec::new(),
                         aid: Vec::new(),
                         pending_aid: Vec::new(),
                         aid_resolutions: Vec::new(),
+                        city_pd_encounters: Vec::new(),
                         view: client.view.clone().expect("the fixture value clones"),
                         pending: None,
                         duration: babylon_kernel::clock::CampaignDuration::Finite {

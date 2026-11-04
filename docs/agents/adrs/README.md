@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Markdown ADRs for the Babylon refactoring sequence. Each ADR is one "phase" — a single conventional commit unit per CLAUDE.md, sized to be picked up by spec-kit (`/speckit.specify` → `/speckit.plan` → `/speckit.tasks` → `/speckit.implement`).
+Markdown ADRs for the Babylon refactoring sequence. Follow the Superpowers workflow and the repository rules in [AGENTS.md](../../../AGENTS.md) when assessing or implementing an ADR.
 
 ## Why ADRs here, not in `ai/decisions.yaml`?
 
@@ -51,7 +51,7 @@ Sequenced commit boundaries.
 How to verify each step preserves behavior.
 
 ## References
-Knowledge graph nodes, related ADRs, CLAUDE.md sections.
+Knowledge graph nodes, related ADRs, AGENTS.md sections.
 ```
 
 ## Provenance

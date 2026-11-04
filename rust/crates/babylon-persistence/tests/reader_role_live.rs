@@ -48,7 +48,7 @@ use babylon_practice_contract::OrderedPracticeActionBatch;
 use babylon_tick::material_replay::IdentifiedMaterialTick;
 use postgres::Client;
 use postgres::Error;
-use postgres::{Config, NoTls};
+use postgres::{Config, IsolationLevel, NoTls, Transaction};
 use std::io::Cursor;
 use std::path::Path;
 use std::time::Duration;
@@ -1283,6 +1283,107 @@ fn live_known_county_grants_read_at_national_scale_within_reader_deadline() {
 
 #[test]
 #[ignore = "requires task-owned disposable PostgreSQL runtime template"]
+fn live_known_counties_resolve_new_period_with_stale_membership_statistics() {
+    let base = validated_base_config();
+    let database =
+        TestDatabase::create_from_template(&base, &validated_template_name(), "knownnewperiod");
+    let config = database.config(&base);
+    let campaign =
+        CampaignId::from_uuid(Uuid::from_u128(0x3190_0000_0000_0000_0000_0000_0000_0025));
+    let runtime = DurableMaterialRuntime::create(&config, campaign, current_material::foundation())
+        .expect("real captured campaign foundation");
+    babylon_persistence::install_reader_role(&config).expect("exact restricted reader views");
+    let login = ConfinedLogin::create(&base);
+    let mut owner = config.connect(NoTls).expect("fixture owner connection");
+    let mut tx = owner.transaction().expect("fixture setup transaction");
+    // This is a view-only SQL fixture, not a replayable material campaign.
+    // The real marker and membership constraints still govern its committed rows.
+    tx.execute("UPDATE babylon_state.campaign SET geography_scope='national-counties' WHERE campaign_id=$1", &[campaign.as_uuid()]).expect("synthetic national scope");
+    tx.execute(
+        "DELETE FROM babylon_meta.territory_county_map_v1 WHERE campaign_id=$1",
+        &[campaign.as_uuid()],
+    )
+    .expect("replace fixture county mapping");
+    tx.execute("INSERT INTO babylon_meta.territory_county_map_v1 SELECT $1, 'county-' || n::text, pg_catalog.lpad(n::text,5,'0') FROM pg_catalog.generate_series(1,3144) n", &[campaign.as_uuid()]).expect("national-scale county mapping");
+    tx.execute("DELETE FROM babylon_meta.archive_knowledge_grant_v1 WHERE campaign_id=$1 AND subject_kind='county'", &[campaign.as_uuid()]).expect("clear fixture county grants");
+    tx.execute("INSERT INTO babylon_meta.archive_knowledge_grant_v1 SELECT $1,'county',mapping.county_geoid,grant_key,CASE WHEN (mapping.county_geoid,grant_key) IN (('00101','qcew-employment'),('00102','qcew-total-annual-wages')) THEN 0 ELSE 3 END,provenance.ref FROM babylon_meta.territory_county_map_v1 mapping CROSS JOIN (VALUES ('qcew-establishments'),('qcew-employment'),('qcew-total-annual-wages'),('qcew-average-weekly-wage')) keys(grant_key) CROSS JOIN (SELECT babylon_meta.archive_provenance_intern_v1($1,'reader-new-period','synthetic-county-scale') AS ref) provenance WHERE mapping.campaign_id=$1", &[campaign.as_uuid()]).expect("grant and future-grant controls");
+    let first: i64 = tx.query_one("SELECT count(*)::bigint FROM babylon_state.territory_definition_v1 WHERE campaign_id=$1", &[campaign.as_uuid()]).expect("definition head").get(0);
+    tx.execute("INSERT INTO babylon_state.territory_definition_v1(campaign_id,definition_id,first_tick,territory_id,field_count,canonical_sha256) SELECT $1,$2::bigint+n,1,pg_catalog.convert_to('reader-new-period-'||n::text,'UTF8'),1,pg_catalog.decode(pg_catalog.md5(n::text)||pg_catalog.md5(n::text),'hex') FROM pg_catalog.generate_series(0,3143) n", &[campaign.as_uuid(), &first]).expect("national-scale unique definitions");
+    tx.execute("INSERT INTO babylon_state.territory_definition_field_v1(campaign_id,definition_id,position,field_name,value_tag,int_value) SELECT $1,$2::bigint+n,0,'county-fips',1,n::bigint+1 FROM pg_catalog.generate_series(0,3143) n", &[campaign.as_uuid(), &first]).expect("one national county identity per definition");
+    seed_view_only_county_period(&mut tx, campaign, 1, first);
+    tx.commit()
+        .expect("first period satisfies marker constraints");
+    // Confined to this disposable database: model statistics gathered before
+    // the next period's membership exists, as in the captured post-commit case.
+    owner.batch_execute("ANALYZE babylon_state.territory_tick_membership_v1; ANALYZE babylon_state.territory_definition_v1; ANALYZE babylon_state.territory_definition_field_v1").expect("fixture period-one statistics");
+    let mut tx = owner.transaction().expect("next period setup transaction");
+    seed_view_only_county_period(&mut tx, campaign, 2, first);
+    tx.commit()
+        .expect("second period satisfies marker constraints");
+    let mut known = config.clone();
+    known.user(&login.name).password(ConfinedLogin::PASSWORD);
+    known.options("-c default_transaction_read_only=on -c statement_timeout=5000ms -c lock_timeout=5000ms -c idle_in_transaction_session_timeout=5000ms -c search_path=pg_catalog -c jit=off -c event_triggers=off");
+    let mut client = known.connect(NoTls).expect("restricted reader connection");
+    let mut read = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .expect("read-only snapshot");
+    let rows = read.query("SELECT campaign_id,resolve_tick,county_geoid,annual_avg_estabs_count,annual_avg_emplvl,total_annual_wages,annual_avg_wkly_wage,establishments_granted,employment_granted,annual_wages_granted,weekly_wage_granted FROM public.v_known_county_economy_v1 WHERE campaign_id=$1 AND resolve_tick=$2 ORDER BY county_geoid LIMIT 3145", &[campaign.as_uuid(), &2_i64]).expect("new period resolves within the existing five-second statement deadline");
+    assert_eq!(rows.len(), 3144);
+    for (index, row) in rows.iter().enumerate() {
+        assert_eq!(row.get::<_, Uuid>(0), *campaign.as_uuid());
+        assert_eq!(row.get::<_, i64>(1), 2);
+        assert_eq!(row.get::<_, String>(2), format!("{:05}", index + 1));
+        for column in 3..7 {
+            assert_eq!(row.get::<_, Option<i64>>(column), None);
+        }
+        assert!(!row.get::<_, bool>(7));
+        assert_eq!(row.get::<_, bool>(8), index == 100);
+        assert_eq!(row.get::<_, bool>(9), index == 101);
+        assert!(!row.get::<_, bool>(10));
+    }
+    read.commit().expect("restricted read commits");
+    drop(client);
+    drop(owner);
+    drop(runtime);
+    login.cleanup();
+    database.cleanup();
+}
+
+fn seed_view_only_county_period(
+    tx: &mut Transaction<'_>,
+    campaign: CampaignId,
+    tick: i64,
+    first: i64,
+) {
+    tx.execute("INSERT INTO babylon_state.material_tick_v3 VALUES($1,$2,''::bytea,''::bytea,''::bytea,''::bytea)", &[campaign.as_uuid(), &tick]).expect("view-only material marker prerequisite");
+    tx.execute(
+        "INSERT INTO babylon_state.graph_node_manifest_v1 VALUES($1,$2,0,0,0,0)",
+        &[campaign.as_uuid(), &tick],
+    )
+    .expect("empty graph marker prerequisite");
+    tx.execute(
+        "INSERT INTO babylon_state.event_manifest_v1 VALUES($1,$2,0,0,0,0)",
+        &[campaign.as_uuid(), &tick],
+    )
+    .expect("empty event marker prerequisite");
+    tx.execute(
+        "INSERT INTO babylon_state.territory_tick_manifest_v1 VALUES($1,$2,3144)",
+        &[campaign.as_uuid(), &tick],
+    )
+    .expect("territory marker prerequisite");
+    tx.execute("INSERT INTO babylon_state.territory_tick_membership_v1 SELECT $1,$2,$3::bigint+n FROM pg_catalog.generate_series(0,3143) n", &[campaign.as_uuid(), &tick, &first]).expect("unique period membership");
+    tx.execute(
+        "INSERT INTO babylon_state.tick_commit VALUES($1,$2,3,$3,$3)",
+        &[campaign.as_uuid(), &tick, &&[1_u8; 32][..]],
+    )
+    .expect("marker verifies unique territory identities");
+}
+
+#[test]
+#[ignore = "requires task-owned disposable PostgreSQL runtime template"]
 fn live_observer_economics_reads_exact_foundation_commit_and_granted_preview() {
     let base = validated_base_config();
     let database =
@@ -1642,6 +1743,7 @@ fn assert_material_stdio_advance(
             tick_content_hash: Some(babylon_tick::hex(
                 uninterrupted.tick_content_hash().as_bytes(),
             )),
+            world_hash: Some(babylon_tick::hex(&uninterrupted.result_world_hash())),
         },
     };
     let stop = RuntimeSessionRequest::Stop {

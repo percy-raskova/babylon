@@ -556,8 +556,8 @@ def test_collector_v3_refuses_old_wrapper_and_malformed_descriptor_claims(fault)
 @pytest.mark.parametrize(
     "field,maximum",
     [
-        ("canonical_receipt_bytes", 872_612_528),
-        ("receipt_storage_bytes", 872_614_764),
+        ("canonical_receipt_bytes", 874_709_881),
+        ("receipt_storage_bytes", 874_712_176),
     ],
 )
 def test_current_receipt_cap_boundary(field, maximum):
@@ -574,10 +574,10 @@ def test_current_receipt_cap_boundary(field, maximum):
         PackageClaim.model_validate(claim)
 
 
-def test_collector_current_receipt_requires_complete_36_family_framing():
+def test_collector_current_receipt_requires_complete_37_family_framing():
     state, receipt, lookup = current_headers()
-    # Current V18 has36 mandatory59B storage family frames, including empty rows.
-    minimum = len(b"BabylonReceiptStorageV3\0") + 88 + 36 * 59
+    # Current V19 has 37 mandatory 59-byte storage family frames, including empty rows.
+    minimum = len(b"BabylonReceiptStorageV3\0") + 88 + 37 * 59
     claim = package_claim_from_headers(1, state, receipt, lookup, 200, minimum, len(lookup) + 7)
     assert claim.receipt_storage_bytes == minimum
     with pytest.raises(ValueError, match="shorter than current header framing"):
@@ -1421,7 +1421,7 @@ def playable_evidence(count=2):
         "continuations": [
             {
                 "period": n,
-                "tail": {"resolve_tick": n, "tick_content_hash": h},
+                "tail": {"resolve_tick": n, "tick_content_hash": h, "world_hash": h},
                 "organizer_snapshot_sha256": h,
                 "latest_marker": [n, h, h],
                 "nominal_world_hash": h,
@@ -1793,6 +1793,7 @@ def test_trade_cash_preserves_integers_beyond_float_precision():
         lambda r: r.update(county_geoids=["00000"]),
         lambda r: r["boundaries"][0]["production"].update(nominal_world_hash="cd" * 32),
         lambda r: r["continuations"][0].update(nominal_world_hash="cd" * 32),
+        lambda r: r["continuations"][0]["tail"].update(world_hash="cd" * 32),
         lambda r: r["boundaries"].pop(),
         lambda r: r["independent_account_posting_audit"]["periods"].pop(),
         lambda r: r["independent_account_posting_audit"]["periods"][0].update(
@@ -1815,6 +1816,7 @@ def test_trade_cash_preserves_integers_beyond_float_precision():
         "truncated-roster",
         "production-world",
         "recovery-world",
+        "recovery-tail-world",
         "truncated-boundaries",
         "truncated-audit",
         "audit-hash",
@@ -2887,8 +2889,12 @@ def native_join_evidence(directory):
             "runtime_scope": {"epoch": epoch, "campaign_id": campaign},
             "foundation_sha256": h,
             "policy_sha256": h,
-            "expected_tail": {"resolve_tick": n - 1, "tick_content_hash": h if n > 1 else None},
-            "committed_tail": {"resolve_tick": n, "tick_content_hash": h},
+            "expected_tail": {
+                "resolve_tick": n - 1,
+                "tick_content_hash": h if n > 1 else None,
+                "world_hash": h if n > 1 else None,
+            },
+            "committed_tail": {"resolve_tick": n, "tick_content_hash": h, "world_hash": h},
             "advance_elapsed_ns": 1,
             "archive_elapsed_ns": 1,
             "material_record_sha256": hashlib.sha256(
@@ -3269,6 +3275,7 @@ def test_native_cli_requires_real_material_and_memory_evidence(monkeypatch, caps
         ("advance-1.json", lambda row: row.update(archive_elapsed_ns=2)),
         ("advance-1.json", lambda row: row["runtime_scope"].update(epoch=8)),
         ("advance-1.json", lambda row: row["expected_tail"].update(tick_content_hash="cd" * 32)),
+        ("advance-1.json", lambda row: row["committed_tail"].update(world_hash="cd" * 32)),
         ("advance-1.json", lambda row: row["committed_tail"].update(resolve_tick=2)),
         ("advance-1.json", lambda row: row.update(material_record_sha256="cd" * 32)),
         ("advance-1.json", lambda row: row.update(advance_measurement="engine_only")),
@@ -3308,6 +3315,7 @@ def test_native_cli_requires_real_material_and_memory_evidence(monkeypatch, caps
         "archive-time",
         "advance-epoch",
         "advance-source-hash",
+        "advance-world-hash",
         "advance-commit-tail",
         "advance-material-file",
         "advance-mislabel",

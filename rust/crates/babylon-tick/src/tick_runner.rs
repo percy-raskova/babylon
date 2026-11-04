@@ -10,6 +10,8 @@ use super::material_world;
 use super::phase_order;
 use super::replay_session;
 use super::world_hash;
+use babylon_practice_contract::OrganizerChoice;
+use babylon_practice_contract::OrganizerOutcome;
 
 use babylon_bsl::bindings::BindingVocabulary;
 
@@ -2111,6 +2113,7 @@ where
     let mut choice_by_sample_subject = HashMap::new();
     let mut material = None;
     let organizer_catalog = material_base.as_ref().map(|inputs| inputs.catalog);
+    let opening_venue_sources = material_base.as_ref().map(|inputs| inputs.venue_sources);
     let organizer_opening = material_base.as_ref().and_then(|inputs| {
         inputs
             .opening
@@ -2121,6 +2124,7 @@ where
     });
     let mut organizer_reduced = None;
     let mut organizer_completed = false;
+    let mut city_pd_completed = false;
     for (id, loaded) in &prepared.rules {
         if loaded.execution == RuleExecution::MaterialCycle {
             // The closed body spends its entire fixed invocation budget.
@@ -2296,13 +2300,124 @@ where
                             config.clone(),
                             next,
                             journal,
+                            identity.stable_resolver(),
                         )
                     } else {
-                        candidate.set_organizer(catalog, config.clone(), next, journal)
+                        candidate.set_organizer(
+                            catalog,
+                            config.clone(),
+                            next,
+                            journal,
+                            identity.stable_resolver(),
+                        )
                     };
                     sealed.map_err(|error| {
                         transaction_error(identity, format!("organizer register refused: {error}"))
                     })?;
+                    if let (Some(commitment), Some(history)) =
+                        (commitment, candidate.register().public_venue())
+                    {
+                        if commitment.command.choice == OrganizerChoice::Reinforce {
+                            let entries = candidate
+                                .register()
+                                .organizer_journal()
+                                .and_then(|journal| journal.latest())
+                                .ok_or_else(|| {
+                                    transaction_error(
+                                        identity,
+                                        "public venue lacks organizer period evidence".to_owned(),
+                                    )
+                                })?;
+                            let receipt = entries
+                                .receipts
+                                .iter()
+                                .find(|receipt| {
+                                    receipt.commitment_id == Some(commitment.commitment_id)
+                                })
+                                .ok_or_else(|| {
+                                    transaction_error(
+                                        identity,
+                                        "public venue lacks the resolved contact receipt"
+                                            .to_owned(),
+                                    )
+                                })?;
+                            if receipt.outcome == OrganizerOutcome::ContactCompleted {
+                                let record = crate::public_venue::publish_public_contact(
+                                    &history.policy,
+                                    config,
+                                    commitment,
+                                    candidate.register().organizer_state().ok_or_else(|| {
+                                        transaction_error(
+                                            identity,
+                                            "public venue lacks organizer state".to_owned(),
+                                        )
+                                    })?,
+                                    entries,
+                                    candidate.register().state(),
+                                )
+                                .map_err(|error| {
+                                    transaction_error(
+                                        identity,
+                                        format!("public contact refused: {error}"),
+                                    )
+                                })?;
+                                let mut next_history = history.clone();
+                                next_history.records.push(record);
+                                next_history
+                                    .records
+                                    .sort_by_key(|row| (row.period, row.source_id));
+                                candidate
+                                    .set_public_venue(
+                                        catalog,
+                                        next_history,
+                                        identity.stable_resolver(),
+                                    )
+                                    .map_err(|error| {
+                                        transaction_error(
+                                            identity,
+                                            format!("public venue refused: {error}"),
+                                        )
+                                    })?;
+                                let register = candidate.register();
+                                let token = crate::public_venue::admit_public_venue_source(
+                                    register.public_venue().ok_or_else(|| {
+                                        transaction_error(
+                                            identity,
+                                            "public venue vanished".to_owned(),
+                                        )
+                                    })?,
+                                    crate::public_venue::PublicVenueSourceProof::Contact {
+                                        config,
+                                        commitment,
+                                        organizer: register.organizer_state().ok_or_else(|| {
+                                            transaction_error(
+                                                identity,
+                                                "public venue lacks organizer state".to_owned(),
+                                            )
+                                        })?,
+                                        entries: register
+                                            .organizer_journal()
+                                            .and_then(|journal| journal.latest())
+                                            .ok_or_else(|| {
+                                                transaction_error(
+                                                    identity,
+                                                    "public venue lacks organizer evidence"
+                                                        .to_owned(),
+                                                )
+                                            })?,
+                                        closed: register.state(),
+                                    },
+                                )
+                                .map_err(|error| {
+                                    transaction_error(
+                                        identity,
+                                        format!("public source admission refused: {error}"),
+                                    )
+                                })?;
+                                candidate.add_venue_source(token);
+                            }
+                        }
+                    }
                     organizer_completed = true;
                     babylon_bsl::causal_contract::EffectSignature::OrganizerPractice
                 }
@@ -2315,6 +2430,59 @@ where
                 ordinal: 0,
                 effect,
             });
+            per_rule_considered.push((id.clone(), 1));
+            per_rule_fired.push((id.clone(), 1));
+            continue;
+        }
+        if loaded.execution == RuleExecution::CityPdObserve {
+            if city_pd_completed || !organizer_completed {
+                return Err(transaction_error(
+                    identity,
+                    "City PD observation must run once after organizer practice".to_owned(),
+                ));
+            }
+            loaded
+                .declared_fuel
+                .checked_sub(babylon_bsl::fuel::MATERIAL_CYCLE_INVOCATION_COST)
+                .ok_or_else(|| {
+                    transaction_error(
+                        identity,
+                        format!("City PD invocation {id} exhausted its fuel budget"),
+                    )
+                })?;
+            let candidate = material.as_mut().ok_or_else(|| {
+                transaction_error(
+                    identity,
+                    "City PD observation requires a material candidate".to_owned(),
+                )
+            })?;
+            crate::material_world::city_pd_execution::resolve(
+                candidate,
+                organizer_catalog.ok_or_else(|| {
+                    transaction_error(
+                        identity,
+                        "City PD observation requires a material catalog".to_owned(),
+                    )
+                })?,
+                identity.stable_resolver(),
+                opening_venue_sources.ok_or_else(|| {
+                    transaction_error(
+                        identity,
+                        "City PD observation requires admitted venue sources".to_owned(),
+                    )
+                })?,
+            )
+            .map_err(|error| {
+                transaction_error(identity, format!("City PD observation refused: {error}"))
+            })?;
+            audit_receipts.push(AuditReceipt {
+                rule_id: id.clone(),
+                role: loaded.contract.role,
+                evidence: loaded.contract.evidence,
+                ordinal: 0,
+                effect: babylon_bsl::causal_contract::EffectSignature::CityPdObserve,
+            });
+            city_pd_completed = true;
             per_rule_considered.push((id.clone(), 1));
             per_rule_fired.push((id.clone(), 1));
             continue;

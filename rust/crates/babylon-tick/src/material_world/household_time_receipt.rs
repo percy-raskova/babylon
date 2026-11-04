@@ -6,6 +6,7 @@ use babylon_material_circuit::{
     FinalDemandPrincipalId, HouseholdTimeReceipt, MemberLaborUseReceipt, UnitId,
 };
 
+use super::AgencyPaidReceipt;
 use super::MaterialWorldError;
 use super::ReceiptCursor;
 use babylon_material_circuit::MaterialCircuitState;
@@ -33,6 +34,7 @@ pub(super) fn validate_state(
 pub(super) fn validate(
     rows: &[HouseholdTimeReceipt],
     attendance: &[MemberLaborUseReceipt],
+    agency: &[AgencyPaidReceipt],
     period: u64,
 ) -> Result<(), MaterialWorldError> {
     if !rows
@@ -43,7 +45,11 @@ pub(super) fn validate(
     }
     // Explicit fixed-time controls omit this family while retaining attendance.
     if rows.is_empty() {
-        return Ok(());
+        return if agency.is_empty() {
+            Ok(())
+        } else {
+            Err(MaterialWorldError::Wire)
+        };
     }
     let mut members = BTreeSet::new();
     let mut hours = BTreeMap::<_, u64>::new();
@@ -57,9 +63,20 @@ pub(super) fn validate(
             .checked_add(row.attended_hours)
             .ok_or(MaterialWorldError::Arithmetic)?;
     }
+    for row in agency {
+        let used = hours
+            .entry((row.principal_id, row.labor_unit_id))
+            .or_default();
+        *used = used
+            .checked_add(row.hours)
+            .ok_or(MaterialWorldError::Arithmetic)?;
+    }
     for row in rows {
         row.validate().map_err(|_| MaterialWorldError::Wire)?;
         if row.period != period
+            || (agency.iter().any(|paid| {
+                paid.principal_id == row.principal_id && paid.labor_unit_id == row.labor_unit_id
+            }) && (row.protected_unresolved_hours != 0 || row.unpaid_unresolved_hours != 0))
             || hours
                 .remove(&(row.principal_id, row.labor_unit_id))
                 .unwrap_or(0)

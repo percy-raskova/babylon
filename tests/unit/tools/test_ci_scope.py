@@ -62,6 +62,9 @@ def test_release_events_emit_the_complete_database_matrix(tmp_path: Path, event_
         "reader",
         "client",
         "organizer",
+        "city_pd_atomic",
+        "city_pd_history",
+        "city_pd_nonwitness",
     ]
 
 
@@ -95,18 +98,25 @@ def test_dev_native_changes_keep_the_fast_database_smoke(
     assert json.loads(emitted["pg-matrix"])["focus"] == ["runtime_smoke"]
 
 
-def test_weekly_database_matrix_includes_organizer_and_admits_focused_dispatch() -> None:
+def test_weekly_database_matrix_admits_focused_dispatch_and_session_smoke() -> None:
     root = Path(__file__).resolve().parents[3]
     workflow = yaml.safe_load((root / ".github/workflows/weekly-pg-integration.yml").read_text())
     dispatch = workflow[True]["workflow_dispatch"]["inputs"]["focus"]
     assert dispatch["default"] == "all"
-    assert dispatch["options"] == ["all", "reader", "statewide_qualified", "organizer"]
+    assert dispatch["options"] == [
+        "all",
+        "reader",
+        "statewide_qualified",
+        "organizer",
+        "session_progress",
+    ]
     matrix = " ".join(workflow["jobs"]["runtime-contracts"]["strategy"]["matrix"].split())
     focused_branches = re.findall(r"inputs.focus == '([^']+)' && '([^']+)'", matrix)
     assert {focus: json.loads(value) for focus, value in focused_branches} == {
         "reader": {"focus": ["reader"]},
         "statewide_qualified": {"focus": ["statewide_qualified"]},
         "organizer": {"focus": ["organizer"]},
+        "session_progress": {"focus": ["session_progress"]},
     }
     fallback = re.search(r"\|\| '([^']+)'\) \}\}$", matrix)
     assert fallback is not None, "the scheduled workflow needs its complete default matrix"
@@ -119,7 +129,33 @@ def test_weekly_database_matrix_includes_organizer_and_admits_focused_dispatch()
         "client",
         "statewide_qualified",
         "organizer",
+        "session_progress",
+        "city_pd_atomic",
+        "city_pd_history",
+        "city_pd_nonwitness",
     ]
+    job = workflow["jobs"]["runtime-contracts"]
+    assert job["timeout-minutes"] == 95
+    assert job["strategy"]["max-parallel"] == 4
+    step = next(step for step in job["steps"] if step.get("run") == "tools/run_rust_postgres.sh")
+    assert step["timeout-minutes"] == 85
+    runner = (root / "tools/run_rust_postgres.sh").read_text()
+    phase_limits = {
+        name: int(seconds)
+        for name, seconds in re.findall(
+            r"run_phase (runtime_build|fresh_bootstrap|session_client_build|session_progress|session_progress_national) (\d+)",
+            runner,
+        )
+    }
+    assert phase_limits == {
+        "runtime_build": 600,
+        "fresh_bootstrap": 180,
+        "session_client_build": 600,
+        "session_progress": 600,
+        "session_progress_national": 600,
+    }
+    # Reserve 600 seconds for bounded container/SQL probes and cleanup.
+    assert sum(phase_limits.values()) + 600 <= step["timeout-minutes"] * 60
 
 
 @pytest.mark.parametrize("path", ["docs/guide.rst", "README.md", "reports/proof.md"])

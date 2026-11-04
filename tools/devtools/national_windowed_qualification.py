@@ -43,9 +43,30 @@ Action = Literal[
     "continue_title",
     "open_organizer",
     "open_direction",
+    "inspect_receipts",
+    "open_relationships",
+    "scene_places",
+    "scene_relationships",
+    "select_workplace_committee",
+    "select_neighborhood_group",
+    "inspect_evidence",
+    "next_evidence",
+    "previous_evidence",
+    "archive_workplace",
+    "archive_organization",
+    "open_archive_evidence",
+    "previous_period",
+    "return_live",
+    "capture_frame",
+    "resize1366x768",
+    "resize1920x1080",
     "close_inspector",
     "choose_remote_aid",
     "choose_local_aid",
+    "choose_inquiry_work_lost",
+    "choose_inquiry_maintenance_received",
+    "choose_reinforce",
+    "choose_hold",
     "choose_pause_standing",
     "choose_resume_standing",
     "review",
@@ -57,6 +78,7 @@ Action = Literal[
 ]
 Event = Literal[
     "observed",
+    "frame_captured",
     "applied",
     "preview_admitted",
     "acceptance_admitted",
@@ -68,6 +90,7 @@ Event = Literal[
 ]
 EXPECTED: dict[str, str] = {
     "status": "observed",
+    "capture_frame": "frame_captured",
     "review": "preview_admitted",
     "confirm": "acceptance_admitted",
     "step": "committed_and_installed",
@@ -96,6 +119,15 @@ class FrozenRecord(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
+class InquiryChoice(FrozenRecord):
+    inquiry: Literal["work_lost", "maintenance_received"]
+
+
+UnitChoice = Literal[
+    "collect", "local_aid", "remote_aid", "reinforce", "hold", "pause_standing", "resume_standing"
+]
+
+
 class ControlState(FrozenRecord):
     campaign_id: StrictStr
     scope_epoch: Nonnegative | None
@@ -111,7 +143,7 @@ class ControlState(FrozenRecord):
     organizer_pending: StrictBool
     organizer_status_due: StrictBool
     organizer_period: Nonnegative | None
-    choice: StrictStr
+    choice: UnitChoice | InquiryChoice
     reviewed_command: dict[str, JsonValue] | None
     preview: dict[str, JsonValue] | None
     commitment: dict[str, JsonValue] | None
@@ -167,7 +199,16 @@ class ControlsEvidence(FrozenRecord):
 
 class PlannedChoice(FrozenRecord):
     period: Positive
-    choice: Literal["remote_aid", "local_aid", "pause_standing", "resume_standing"]
+    choice: Literal[
+        "remote_aid",
+        "local_aid",
+        "inquiry_work_lost",
+        "inquiry_maintenance_received",
+        "reinforce",
+        "hold",
+        "pause_standing",
+        "resume_standing",
+    ]
 
 
 def _unique_object(pairs: list[tuple[str, JsonValue]]) -> dict[str, JsonValue]:
@@ -309,9 +350,29 @@ class ControlChannel:
             "continue_title",
             "open_organizer",
             "open_direction",
+            "inspect_receipts",
+            "open_relationships",
+            "scene_places",
+            "scene_relationships",
+            "select_workplace_committee",
+            "select_neighborhood_group",
+            "inspect_evidence",
+            "next_evidence",
+            "previous_evidence",
+            "archive_workplace",
+            "archive_organization",
+            "open_archive_evidence",
+            "previous_period",
+            "return_live",
+            "resize1366x768",
+            "resize1920x1080",
             "close_inspector",
             "choose_remote_aid",
             "choose_local_aid",
+            "choose_inquiry_work_lost",
+            "choose_inquiry_maintenance_received",
+            "choose_reinforce",
+            "choose_hold",
             "choose_pause_standing",
             "choose_resume_standing",
         }:
@@ -376,7 +437,8 @@ class ControlChannel:
         reply = self._exchange(action, timeout)
         if reply.event != EXPECTED.get(action, "applied") or reply.reason is not None:
             self.close()
-            raise ControlRefusal("ordinary native handler refused the requested action")
+            reason = f": {reply.reason}" if reply.reason is not None else ""
+            raise ControlRefusal("ordinary native handler refused the requested action" + reason)
         if action == "step" and (
             reply.state.phase not in {"Ready", "Complete"}
             or reply.state.viewed_tick != reply.state.durable_tick
@@ -387,6 +449,10 @@ class ControlChannel:
         choice = {
             "choose_remote_aid": "remote_aid",
             "choose_local_aid": "local_aid",
+            "choose_inquiry_work_lost": InquiryChoice(inquiry="work_lost"),
+            "choose_inquiry_maintenance_received": InquiryChoice(inquiry="maintenance_received"),
+            "choose_reinforce": "reinforce",
+            "choose_hold": "hold",
             "choose_pause_standing": "pause_standing",
             "choose_resume_standing": "resume_standing",
         }.get(action)
@@ -472,9 +538,15 @@ def submit_choice(channel: ControlChannel, choice: PlannedChoice, timeout: float
         if selected.inspector != "Closed":
             channel.perform("close_inspector", timeout)
     else:
-        channel.perform(
-            "choose_remote_aid" if choice.choice == "remote_aid" else "choose_local_aid", timeout
-        )
+        actions: dict[str, Action] = {
+            "remote_aid": "choose_remote_aid",
+            "local_aid": "choose_local_aid",
+            "inquiry_work_lost": "choose_inquiry_work_lost",
+            "inquiry_maintenance_received": "choose_inquiry_maintenance_received",
+            "reinforce": "choose_reinforce",
+            "hold": "choose_hold",
+        }
+        channel.perform(actions[choice.choice], timeout)
     channel.perform("review", timeout)
     channel.perform("confirm", timeout)
     wait_ready(channel, timeout, organizer=True)

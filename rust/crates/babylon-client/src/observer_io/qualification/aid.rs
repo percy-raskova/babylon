@@ -12,6 +12,8 @@ use babylon_persistence::runtime_session::{
     OrganizerChoice, OrganizerCommand, OrganizerCommitment, OrganizerPreview, OrganizerSnapshot,
     RuntimeSessionRequest, RuntimeSessionScope,
 };
+#[cfg(test)]
+use babylon_persistence::ArchiveEvidenceClass;
 
 use aid::Summary;
 use serde::Serialize;
@@ -349,6 +351,13 @@ fn matches_source(source: &OrganizerSnapshot, snapshot: &OrganizerSnapshot) -> R
     let mut committed = snapshot.clone();
     // Mutable pending protocol commands have separate original response custody.
     committed.pending = None;
+    // This auditor has the material register, not the graph. The ordinary
+    // client status admission separately validates the attributed body.
+    committed.body = source.body.clone();
+    committed
+        .body_scope
+        .source
+        .clone_from(&source.body_scope.source);
     if committed != *source {
         return Err("native aid status differs from authenticated material disclosure".into());
     }
@@ -370,7 +379,7 @@ mod tests {
         OrganizerPreview,
     ) {
         let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v11.json"
+            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v13.json"
         ))
         .expect("the authored JSON matches the declared schema");
         let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
@@ -413,6 +422,40 @@ mod tests {
             command,
         };
         (Custody::default(), session, snapshot, request, preview)
+    }
+
+    #[test]
+    fn organizer_body_consumer_material_custody_checks_only_its_own_source() {
+        use babylon_persistence::runtime_session::{
+            OrganizerBodyDisclosure, OrganizerBodyPart, OrganizerBodySource,
+        };
+        let (_, _, source, _, _) = fixture();
+        let mut status = source.clone();
+        status.body = OrganizerBodyDisclosure::Partial(OrganizerBodyPart {
+            runtime_hyperedge_id: 7,
+            scenario: "economy/national-world".into(),
+            local_name: format!("organizer-participant-body-{}", source.view.actor_id),
+            contributors: vec![101],
+            evidence_class: ArchiveEvidenceClass::Designed,
+        });
+        status.body_scope.source = Some(OrganizerBodySource::Foundation {
+            foundation_digest: [4; 32],
+        });
+        assert!(
+            matches_source(&source, &status).is_ok(),
+            "graph disclosure is outside material-only custody"
+        );
+        let mut foreign = status.clone();
+        foreign.body_scope.actor_id += 1;
+        assert!(
+            matches_source(&source, &foreign).is_err(),
+            "material scope remains checked"
+        );
+        status.aid[0].payer_cash += 1;
+        assert!(
+            matches_source(&source, &status).is_err(),
+            "changed material remains refused"
+        );
     }
 
     #[test]

@@ -2,16 +2,21 @@
 
 use babylon_bsl::evaluator::Value;
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_kernel::currency::Currency;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::{
-    AccountId, AgencyAttendanceOutcome, CircuitAccounting, OrganizationAccountId,
+    AccountId, AgencyAttendanceOutcome, CircuitAccounting, OrganizationAccountId, PublicAccountId,
 };
-use babylon_persistence::economic_catalog::{CapturedEconomicCatalog, NationalOpponent};
+use babylon_persistence::economic_catalog::{
+    CapturedEconomicCatalog, EconomicCatalogInput, NationalOpponent,
+};
 use babylon_persistence::identity::CampaignId;
 use babylon_practice_contract::{
-    CityPdCaseSource, CityPdDecision, CityPdOutcome, OrganizerChoice, OrganizerCommand,
-    PublicVenueRecordKind,
+    CityPdCaseSource, CityPdConfig, CityPdDecision, CityPdOutcome, OrganizerChoice,
+    OrganizerCommand, PublicVenueRecordKind,
 };
+use babylon_tick::material_replay::MaterialReplaySession;
 use babylon_tick::material_world::CityPdAttempt;
 use babylon_tick::material_world::MaterialWorldRegister;
 use babylon_tick::replay_session::ReplayCommitDisposition;
@@ -128,11 +133,7 @@ fn actual_national_opening_and_two_periods_use_committed_pd_cash() {
     assert_no_pd_control(input, campaign, &pd_config, public, public_opening);
 }
 
-fn assert_opening(
-    session: &babylon_tick::material_replay::MaterialReplaySession<
-        babylon_graph::hypergraph_store::HypergraphStore,
-    >,
-) -> (AccountId, babylon_kernel::currency::Currency) {
+fn assert_opening(session: &MaterialReplaySession<HypergraphStore>) -> (AccountId, Currency) {
     let opening = session.material().city_pd().expect("captured PD");
     assert!(matches!(
         opening
@@ -150,7 +151,7 @@ fn assert_opening(
     let CircuitAccounting::Monetary(opening_money) = &session.material().state().accounting else {
         panic!("monetary opening")
     };
-    let public = AccountId::Public(babylon_material_circuit::PublicAccountId::from_bytes(
+    let public = AccountId::Public(PublicAccountId::from_bytes(
         opening_config.public_account_id,
     ));
     let public_opening = opening_money.book.cash(public).expect("public opening");
@@ -169,11 +170,11 @@ fn assert_opening(
 }
 
 fn assert_no_pd_control(
-    input: babylon_persistence::economic_catalog::EconomicCatalogInput,
+    input: EconomicCatalogInput,
     campaign: CampaignId,
-    pd_config: &babylon_practice_contract::CityPdConfig,
+    pd_config: &CityPdConfig,
     public: AccountId,
-    public_opening: babylon_kernel::currency::Currency,
+    public_opening: Currency,
 ) {
     let foundation = CapturedEconomicCatalog::capture_national_campaign_with_opponent(
         input,

@@ -882,6 +882,12 @@ pub(crate) mod state_opponent {
     use super::{
         support, CampaignId, DisposableTarget, DurableMaterialRuntime, OrganizerChoice, Uuid,
     };
+    use babylon_kernel::currency::Currency;
+    use babylon_material_circuit::PublicBudgetReceipt;
+    use babylon_persistence::economic_catalog::{self, NationalOpponent};
+    use babylon_persistence::observer_reader;
+    use babylon_practice_contract::CityPdConfig;
+    use babylon_tick::material_world::MaterialTickReceipts;
     use postgres::Client;
     use serde_json::Value;
 
@@ -1161,19 +1167,12 @@ pub(crate) mod state_opponent {
     #[ignore = "requires the task-owned disposable PostgreSQL runtime and national source"]
     fn national_city_pd_matched_budget_controls_commit() {
         use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
-        use babylon_persistence::economic_catalog::{
-            national_catalog_input, CapturedEconomicCatalog, NationalOpponent,
-        };
-        use babylon_persistence::observer_reader::{
-            provision_observer_role, ObserverEconomyReader, ObserverVisibility,
-        };
+        use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
+        use babylon_persistence::observer_reader::{ObserverEconomyReader, ObserverVisibility};
 
-        let input = national_catalog_input();
+        let input = economic_catalog::national_catalog_input();
         let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7034));
-        let mut prior: Option<(
-            babylon_practice_contract::CityPdConfig,
-            babylon_kernel::currency::Currency,
-        )> = None;
+        let mut prior: Option<(CityPdConfig, Currency)> = None;
         let mut pd_allocations = Vec::new();
         for opponent in [NationalOpponent::CityPd, NationalOpponent::None] {
             let mut target = DisposableTarget::create();
@@ -1191,7 +1190,7 @@ pub(crate) mod state_opponent {
             let mut runtime = DurableMaterialRuntime::create(&target.writer, campaign, foundation)
                 .expect("persist opening");
             let config = assert_paired_opening(&runtime, opponent, &mut prior);
-            provision_observer_role(&target.writer).expect("observer role");
+            observer_reader::provision_observer_role(&target.writer).expect("observer role");
             let observer_config = target.login("babylon_observer", "pdpair");
             let observer =
                 ObserverEconomyReader::connect(&observer_config, ObserverVisibility::FullObserver)
@@ -1234,16 +1233,12 @@ pub(crate) mod state_opponent {
 
     fn assert_paired_opening(
         runtime: &DurableMaterialRuntime,
-        opponent: babylon_persistence::economic_catalog::NationalOpponent,
-        prior: &mut Option<(
-            babylon_practice_contract::CityPdConfig,
-            babylon_kernel::currency::Currency,
-        )>,
-    ) -> babylon_practice_contract::CityPdConfig {
+        opponent: NationalOpponent,
+        prior: &mut Option<(CityPdConfig, Currency)>,
+    ) -> CityPdConfig {
         use babylon_material_circuit::{
             AccountId, CircuitAccounting, OrganizationAccountId, PublicAccountId,
         };
-        use babylon_persistence::economic_catalog::NationalOpponent;
         use babylon_practice_contract::CityPdDecision;
         let config = if opponent == NationalOpponent::CityPd {
             let pd = runtime.session().material().city_pd().expect("captured PD");
@@ -1289,14 +1284,13 @@ pub(crate) mod state_opponent {
     }
 
     fn compare_paired_allocations(
-        receipts: &babylon_tick::material_world::MaterialTickReceipts,
-        config: &babylon_practice_contract::CityPdConfig,
-        pd_allocations: &mut Vec<Vec<babylon_material_circuit::PublicBudgetReceipt>>,
-        opponent: babylon_persistence::economic_catalog::NationalOpponent,
+        receipts: &MaterialTickReceipts,
+        config: &CityPdConfig,
+        pd_allocations: &mut Vec<Vec<PublicBudgetReceipt>>,
+        opponent: NationalOpponent,
         tick: u64,
     ) {
         use babylon_material_circuit::{AccountId, OrganizationAccountId, PublicAccountId};
-        use babylon_persistence::economic_catalog::NationalOpponent;
         let agency =
             AccountId::Organization(OrganizationAccountId::from_bytes(config.agency_account_id));
         let mut allocations: Vec<_> = receipts
@@ -1333,16 +1327,35 @@ pub(crate) mod state_opponent {
                         right.requested
                     )
                 );
+                assert_eq!((left.paid, left.unfunded), (right.paid, right.unfunded));
+                for row in [left, right] {
+                    assert_eq!(
+                        row.paid
+                            .micro_units()
+                            .checked_add(row.unfunded.micro_units()),
+                        Some(row.requested.micro_units()),
+                        "each allocation conserves its requested amount"
+                    );
+                }
             }
-            let totals = |rows: &[babylon_material_circuit::PublicBudgetReceipt]| {
-                (
-                    rows.iter().map(|row| row.paid.micro_units()).sum::<i128>(),
-                    rows.iter()
-                        .map(|row| row.unfunded.micro_units())
-                        .sum::<i128>(),
-                )
+            let totals = |rows: &[PublicBudgetReceipt]| {
+                rows.iter()
+                    .try_fold((0_i128, 0_i128), |(paid, unfunded), row| {
+                        Some((
+                            paid.checked_add(row.paid.micro_units())?,
+                            unfunded.checked_add(row.unfunded.micro_units())?,
+                        ))
+                    })
+                    .expect("paired allocation totals fit i128")
             };
-            eprintln!("paired P{tick} non-agency Wayne allocations paid/unfunded micros: PD={:?}, no-PD={:?}", totals(enabled), totals(&allocations));
+            let enabled_totals = totals(enabled);
+            let control_totals = totals(&allocations);
+            assert_eq!(enabled_totals, control_totals);
+            assert_eq!(
+                enabled_totals.1, 0,
+                "the captured public budget has no unfunded competing claims"
+            );
+            eprintln!("paired P{tick} non-agency Wayne allocations paid/unfunded micros: PD={enabled_totals:?}, no-PD={control_totals:?}");
         }
     }
 

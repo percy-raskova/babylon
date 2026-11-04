@@ -2,13 +2,14 @@
 
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
+use babylon_graph::substrate::NodeId;
 use babylon_kernel::content_digest;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::HistoricalCostBook;
 use babylon_material_circuit::{AgencyAttendanceOutcome, MaterialCatalog, MaterialCircuitState};
 use babylon_practice_contract::{
     CityPdOutcome, OrderedPracticeActionBatch, OrganizerChoice, OrganizerCommand,
-    OrganizerCommitment, PublicVenueHistory, PublicVenuePolicy,
+    OrganizerCommitment, PublicVenueHistory, PublicVenuePolicy, PublicVenueRecordKind,
 };
 use babylon_tick::material_replay::MaterialReplaySession;
 use babylon_tick::material_world::CityPdAttempt;
@@ -366,7 +367,7 @@ fn genuine_household_time_shortfall_does_not_complete_the_visit() {
     }
 }
 
-fn commit_hold_first_period(session: &mut Session) {
+fn commit_reinforce_first_period(session: &mut Session) {
     let config = session.material().organizer_config().expect("organizer");
     let state = session.material().organizer_state().expect("state");
     let command = OrganizerCommand {
@@ -377,10 +378,10 @@ fn commit_hold_first_period(session: &mut Session) {
         content_digest: config.content_digest,
         resource_digest: babylon_practice_contract::organizer_resource_digest().expect("resources"),
         nonce: [1; 16],
-        choice: OrganizerChoice::Hold,
+        choice: OrganizerChoice::Reinforce,
     };
     let commitment =
-        babylon_practice_contract::admit_organizer(config, state, &command).expect("hold");
+        babylon_practice_contract::admit_organizer(config, state, &command).expect("reinforce");
     let first = session
         .prepare_advance_with_organizer(&actions(session, Some(&commitment)), Some(&commitment))
         .expect("P1");
@@ -396,8 +397,8 @@ fn assert_hidden_restore(
     p1_register: &MaterialWorldRegister,
     manifest: &[u8],
     before_world: [u8; 32],
-    from: babylon_graph::substrate::NodeId,
-    to: babylon_graph::substrate::NodeId,
+    from: NodeId,
+    to: NodeId,
     changed_strength: f64,
 ) {
     use babylon_graph::substrate::GraphSubstrate;
@@ -428,17 +429,67 @@ fn assert_hidden_restore(
     );
 }
 
+fn p1_contact_source(register: &MaterialWorldRegister) -> [u8; 32] {
+    register
+        .public_venue()
+        .expect("public venue")
+        .records
+        .iter()
+        .find(|record| {
+            record.period == 1
+                && matches!(record.kind, PublicVenueRecordKind::ContactCompleted { .. })
+        })
+        .expect("actual P1 organizer contact")
+        .source_id
+}
+
+fn assert_next_contact_decision(pd: &CityPdRegister, contact: [u8; 32]) {
+    use babylon_practice_contract::{CityPdCaseSource, CityPdCaseStatus, CityPdDecision};
+
+    let [attempt] = pd.attempts.as_slice() else {
+        panic!("one actual P2 visit")
+    };
+    assert_eq!(attempt.funding.outcome, AgencyAttendanceOutcome::Paid);
+    assert_eq!(attempt.receipt.outcome, CityPdOutcome::Completed);
+    assert_eq!(attempt.receipt.acquired_public_fact_ids, [contact]);
+    let case = pd
+        .state
+        .cases
+        .iter()
+        .find(|case| {
+            case.source_id == contact
+                && case.source_kind == CityPdCaseSource::ObservedOrganizerReceipt
+                && case.status == CityPdCaseStatus::Open
+                && case.observed_period == 1
+                && case.acquired_period == 2
+                && case.case_source_witness_id.is_some()
+        })
+        .expect("the acquired public contact is an open evidenced case");
+    let CityPdDecision::Selected(intent) = &pd
+        .state
+        .last_decision
+        .as_ref()
+        .expect("P2 next decision")
+        .decision
+    else {
+        panic!("the acquired public contact must select a P3 visit")
+    };
+    assert_eq!(intent.case_id, case.case_id);
+    assert_eq!(intent.resolve_period, 3);
+}
+
 #[test]
 fn unknown_contact_strength_does_not_change_paid_visit_or_disclosure() {
-    use babylon_graph::stable_state::encode_stable_graph_state;
+    use babylon_graph::stable_state;
     use babylon_graph::substrate::GraphSubstrate;
     use babylon_practice_contract::CityPdDecision;
 
     let foundation = national_foundation("national-city-pd-hidden-contact");
     let mut session = foundation.into_session().expect("national host");
-    commit_hold_first_period(&mut session);
+    commit_reinforce_first_period(&mut session);
 
     let p1_register = session.material().clone();
+    let contact = p1_contact_source(&p1_register);
     let pd = p1_register.city_pd().expect("PD");
     let decision = &pd
         .state
@@ -472,7 +523,7 @@ fn unknown_contact_strength_does_not_change_paid_visit_or_disclosure() {
         .expect("baseline P2");
     let baseline_register = baseline.material().register();
     let baseline_pd = baseline_register.city_pd().expect("baseline PD").clone();
-    assert_eq!(baseline_pd.attempts.len(), 1);
+    assert_next_contact_decision(&baseline_pd, contact);
     let baseline_projection = crate::organizer_runtime::encounter::projections(baseline_register)
         .expect("baseline disclosure");
     assert_eq!(baseline_projection.len(), 1);
@@ -498,7 +549,8 @@ fn unknown_contact_strength_does_not_change_paid_visit_or_disclosure() {
             .expect("changed contact"),
         original_strength
     );
-    let altered = encode_stable_graph_state(&altered_graph, &resolver).expect("altered graph");
+    let altered =
+        stable_state::encode_stable_graph_state(&altered_graph, &resolver).expect("altered graph");
     drop(altered_graph);
     session
         .restore_full_checkpoint(&altered, &rows, &registers, p1_register.clone())
@@ -515,10 +567,9 @@ fn unknown_contact_strength_does_not_change_paid_visit_or_disclosure() {
     let changed = session
         .prepare_advance(&actions(&session, None))
         .expect("changed P2");
-    assert_eq!(
-        changed.material().register().city_pd().expect("changed PD"),
-        &baseline_pd
-    );
+    let changed_pd = changed.material().register().city_pd().expect("changed PD");
+    assert_next_contact_decision(changed_pd, contact);
+    assert_eq!(changed_pd, &baseline_pd);
     assert_eq!(
         content_digest::sha256_of(changed.material().receipt_bytes()),
         baseline_receipts

@@ -16,12 +16,13 @@ The initial findings below describe the October 29 revision. Subsequent work
 connected the first City PD opponent and the native Wayne map, evidence,
 action and restart path. The [approved closeout plan](../docs/superpowers/plans/2026-11-04-first-opponent-wayne-closeout.md)
 addresses acceptance gaps; the earlier Goal-complete wording was too broad.
+The remaining sections retain the October 29 findings at their stated revision.
 
 | Area | Delivered behavior | Current acceptance |
 | --- | --- | --- |
 | First City PD | Committed funding, finite paid visits, private cases and actor-scoped public encounters | Matched PD/no-PD PostgreSQL, post-hidden-change selection and source-input order controls passed. Scoped review passed; integrated multi-case, actor-order and topology variants remain unqualified. |
-| Wayne map and action | Places/Relationships selection, evidence, captured targets, committed P7 and restart | The Director's unclear, log-like decision screen was repaired. Both decision-clarity reviews passed after fixes; 576 client tests passed. Revised native rendering, physical input, comprehension and enjoyment remain unaccepted. |
-| Performance | Retained native traces and four new disposable PostgreSQL advance timings | No demonstrated causal defect justified a repair. Archive attribution, complete storage charge, combined-game memory and sustained national qualification remain open. |
+| Wayne map and action | Places/Relationships selection, evidence, captured targets, committed P7 and restart | Review text and cramped reading areas were repaired. Real-font layout and keyboard consumer regressions passed; the final client run passed 580 tests. Static native evidence is linked below. Complete choice comparison, physical input, Director comprehension and enjoyment remain unaccepted. |
+| Performance | Retained native traces and four new disposable PostgreSQL advance timings | No demonstrated causal defect justified a repair. Slow reopen attribution, Archive attribution, complete storage charge, combined-game memory and sustained national qualification remain open. |
 | Wider opponent | First PD foundations are reusable | Full PER-355 agency delivery remains open; observation alone does not establish interesting opposition. |
 
 Current development qualification retains ADR280 and the selected v6 policy:
@@ -35,7 +36,41 @@ The closeout also reran the current controller component contracts: nine passed,
 including case order, owner/provenance, reconstructed graph identities and honest
 no-case/no-funds outcomes. These component checks complement the bounded
 integrated witness; they do not establish a multi-agency playtest or every
-integrated hidden-topology variation. No new mechanic or public API was added.
+integrated hidden-topology variation. The November 4 acceptance repairs add no
+mechanic or public API.
+
+The matched [PostgreSQL funding control](../rust/crates/babylon-persistence/tests/national_city_pd_live.rs)
+produced one disclosed encounter with PD enabled and none without it. Other
+Wayne claims were fully funded in both arms; the control does not demonstrate a
+shortage. The [controller contracts](../rust/crates/babylon-tick/tests/state_opponent.rs)
+remain distinct from the wider integrated matrix.
+
+The retained P7 capture at source
+[`956119a8`](https://github.com/percy-raskova/babylon/commit/956119a8ee011bb1bf34e8562e6ad9028adb7ba0)
+shows the review and map at 1366x768 and 1920x1080. The
+[1366 capture](gameplay-delivery-audit-2026-10-29-assets/wayne-review-1366.png)
+is included here. The larger original remains in the retained run evidence
+with SHA-256 `477c62a2d23893aa7dc5f6111765bd2b47d829cd33e477b54303cdca04bf85d8`.
+The situation is readable; the initial choice area remains partly clipped by
+its outer viewport. Computed geometry shows that scrolling can expose a larger
+reading area, but the capture did not exercise that input. Review terms also
+require scrolling at the smaller size.
+
+The [loaded workplace Archive](gameplay-delivery-audit-2026-10-29-assets/wayne-pd-archive-1366.png)
+visibly reports a period-2 public City PD check-in and explicitly withholds an
+inference that the organizer attended. This is a disclosed signal; the capture
+did not open its underlying citation or expose the agency's private case.
+Full P7 marker metadata matched before and after, and the original personal
+draft was restored. No commitment or advance was submitted.
+
+The later [keyboard repair](https://github.com/percy-raskova/babylon/commit/6397a5f0602fd5b89a107be2008c5df33c0609ab)
+changes only the focus router and its tests. It lets paging continue to an
+outer panel when the inner panel cannot move and permits paging from focused
+choice buttons. Actual keyboard-consumer regressions cover those paths;
+injected geometry also checks that Tab starts nested focus reveal without
+activation. The organizer layout file is unchanged, so the static captures
+above remain rendering evidence, not native verification of the new key path.
+Wheel code is unchanged and physical keyboard/wheel acceptance remains open.
 
 ## Scope and status
 

@@ -2227,6 +2227,55 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn captured_workplace_targets_are_named_after_selecting_neighborhood() {
+        let (mut app, _) = admitted_scene_fixture();
+        let neighborhood = OrganizerSubject::NeighborhoodGroup(93);
+        app.world_mut()
+            .write_message(OrganizerAction::SelectSubject(neighborhood));
+        app.update();
+
+        for (choice, label) in [
+            (
+                OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
+                "Ask about work and output",
+            ),
+            (
+                OrganizerChoice::Inquiry(OrganizerInquiry::MaintenanceReceived),
+                "Ask about maintenance",
+            ),
+            (OrganizerChoice::Reinforce, "Reinforce workplace contact"),
+        ] {
+            let card = {
+                let world = app.world_mut();
+                world
+                    .query::<(&TextPart, &Text)>()
+                    .iter(world)
+                    .find_map(|(part, text)| {
+                        matches!(part, TextPart::Approach(value) if *value == choice)
+                            .then(|| text.0.clone())
+                    })
+                    .expect("approach card")
+            };
+            assert!(
+                card.contains("Target: Fixture workplace · Partner: Fixture workplace contacts"),
+                "{card}"
+            );
+            press_named(&mut app, label);
+            review_selected(&mut app);
+            app.update();
+            let review = painted_text(&mut app, false);
+            assert!(
+                review.contains("Target: Fixture workplace · Partner: Fixture workplace contacts"),
+                "{review}"
+            );
+            assert_eq!(
+                app.world().resource::<OrganizerClient>().selected_subject,
+                Some(neighborhood)
+            );
+        }
+    }
+
+    #[test]
     fn scene_navigation_preserves_draft_and_action_target() {
         let (mut app, draft) = admitted_scene_fixture();
         let committee = OrganizerSubject::WorkplaceCommittee(92);
@@ -4502,6 +4551,95 @@ pub(crate) mod tests {
             .world()
             .resource::<ObserverSession>()
             .runtime_disconnected());
+    }
+
+    #[test]
+    fn settled_scene_refreshes_after_history_and_return_live() {
+        use babylon_persistence::runtime_session::RuntimeSessionErrorCode;
+        let (mut client, mut session, request, snapshot) = super::super::tests::status_fixture();
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+            panic!("initial status request");
+        };
+        client
+            .status(request_id, snapshot.clone(), &mut session)
+            .expect("settled live status");
+        client.scene_mode = OrganizerSceneMode::Relationships;
+        let (mut app, _, draft) = organizer_navigation();
+        client.draft = Some(draft.clone());
+        app.insert_resource(client).insert_resource(session);
+        let (requests, replies) = crate::observer_io::tests::install_status_pipe(&mut app);
+        app.add_systems(
+            Update,
+            super::super::transport
+                .after(ObserverSet::Receive)
+                .before(ObserverSet::Paint),
+        );
+        app.update();
+        let neighborhood = OrganizerSubject::NeighborhoodGroup(93);
+        app.world_mut()
+            .write_message(OrganizerAction::SelectSubject(neighborhood));
+        app.update();
+        assert!(scene_text(&mut app).contains("Body incidence unavailable"));
+        assert!(requests.try_recv().is_err());
+        inspect_period(&mut app, 2);
+        app.update();
+        let RuntimeSessionRequest::OrganizerStatus {
+            scope, request_id, ..
+        } = requests.try_recv().expect("history status requested")
+        else {
+            panic!("history status request");
+        };
+        assert!(scene_text(&mut app).contains("Loading organizer scene"));
+        assert!(!scene_text(&mut app).contains("Fixture workplace"));
+        replies
+            .send(Ok(RuntimeSessionResponse::Error {
+                scope,
+                request_id: Some(request_id),
+                code: RuntimeSessionErrorCode::StorageRefused,
+                tail: None,
+            }))
+            .expect("history refusal");
+        app.update();
+        assert!(scene_text(&mut app).contains("StorageRefused"));
+        app.update();
+        assert!(
+            requests.try_recv().is_err(),
+            "a matching refusal must not retry"
+        );
+        {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.return_live();
+            let context = session.context();
+            assert!(session.installed(&context));
+        }
+        app.update();
+        let RuntimeSessionRequest::OrganizerStatus {
+            scope, request_id, ..
+        } = requests.try_recv().expect("returned live status requested")
+        else {
+            panic!("returned live status request");
+        };
+        assert!(scene_text(&mut app).contains("Loading organizer scene"));
+        replies
+            .send(Ok(RuntimeSessionResponse::OrganizerStatus {
+                scope,
+                request_id,
+                snapshot: Box::new(snapshot),
+            }))
+            .expect("validated live status");
+        app.update();
+        assert!(scene_text(&mut app).contains("Body incidence unavailable"));
+        let client = app.world().resource::<OrganizerClient>();
+        assert_eq!(client.selected_subject, Some(neighborhood));
+        assert_eq!(client.draft.as_ref(), Some(&draft));
+        assert!(client
+            .scene_for(app.world().resource::<ObserverSession>())
+            .is_some());
+        app.update();
+        assert!(
+            requests.try_recv().is_err(),
+            "settled context must not retry"
+        );
     }
 
     #[test]

@@ -738,6 +738,15 @@ pub(crate) fn transport(
     if !session.organizer_enabled || session.quit_requested || session.runtime_disconnected() {
         return;
     }
+    // A settled disclosure belongs to its exact observation context. Navigation
+    // must request a new status; an identical terminal refusal remains final.
+    if organizer.body_context.is_some()
+        && organizer.body_for(&session).is_none()
+        && organizer.status_refusal(&session).is_none()
+        && !matches!(session.phase, SessionPhase::Failed | SessionPhase::Closed)
+    {
+        organizer.status_due = true;
+    }
     if organizer.status_due
         && organizer.pending.is_none()
         && !session.advance_pending()

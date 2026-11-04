@@ -1159,7 +1159,12 @@ pub(crate) fn start_observation(
             pending.0 = None;
         }
     }
-    if state.phase != SessionPhase::Loading || pending.0.is_some() {
+    if state.phase != SessionPhase::Loading
+        || pending.0.is_some()
+        || state.lifecycle_pending()
+        || state.foundation_digest.is_none()
+        || state.runtime_scope().is_none()
+    {
         return;
     }
     if qualification::awaiting_archive(&state, qualification.is_some()) {

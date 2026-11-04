@@ -450,11 +450,11 @@ pub(super) fn approach(view: &OrganizerView, choice: OrganizerChoice) -> String 
             } else {
                 format!("Report requested: period {}", view.period)
             };
-            format!("{hours} organizer-hours · workplace committee\n{report}\n{displacement}\nResolves period {resolves} · partner decides")
+            format!("{hours} organizer-hours\nTarget: {} · Partner: {}\n{report}\n{displacement}\nResolves period {resolves} · partner decides", view.workplace_label, view.workplace_partner_label)
         }
         OrganizerChoice::Reinforce => {
             let disclosure = if view.public_workplace_contact { "\nA completed contact is publicly recorded at the workplace desk" } else { "" };
-            format!("{hours} organizer-hours · workplace committee\nSeek contact to renew report sharing{disclosure}\n{displacement}\nResolves period {resolves} · partner decides")
+            format!("{hours} organizer-hours\nTarget: {} · Partner: {}\nSeek contact to renew report sharing{disclosure}\n{displacement}\nResolves period {resolves} · partner decides", view.workplace_label, view.workplace_partner_label)
         },
         OrganizerChoice::Hold => {
             let routine = if view.standing.authorized {
@@ -672,11 +672,24 @@ pub(super) fn review(
         );
     };
     let mut text = format!(
-        "REVIEW · {}\nResolves period {} · {} of {} organizer-hours\n{}",
+        "REVIEW · {} · Resolves period {} · {} of {} organizer-hours",
         choice(preview.choice),
         preview.resolves_period,
         preview.required_hours,
         preview.available_hours,
+    );
+    if let (OrganizerChoice::Inquiry(_) | OrganizerChoice::Reinforce, Some(view)) =
+        (preview.choice, &client.view)
+    {
+        let _ = write!(
+            text,
+            "\nTarget: {} · Partner: {}",
+            view.workplace_label, view.workplace_partner_label
+        );
+    }
+    let _ = write!(
+        text,
+        "\n{}",
         match preview.choice {
             OrganizerChoice::Collect => "Replaces standing work once. Protected consumption, services, closing stock, due payments, independent cash consent and shared material time are checked at close. A gift can fund later aid; no instant membership, agreement or time gain.",
             OrganizerChoice::PauseStanding =>

@@ -73,9 +73,10 @@ The distinct cold process recovered readable Relationships captions and selectio
 
 ![Cold P2 Relationships at 1920×1080](wayne-game-workspace-2026-11-05-assets/cold-relationships-1920.png)
 
-The cold process also recovered the dated inquiry evidence:
+The cold process also recovered the current automatic P2 workplace report.
+This selected report shows reported P2 and acquired P2:
 
-![Cold P2 inquiry evidence at 1366×768](wayne-game-workspace-2026-11-05-assets/cold-inquiry-evidence-1366.png)
+![Cold P2 automatic workplace evidence at 1366×768](wayne-game-workspace-2026-11-05-assets/cold-inquiry-evidence-1366.png)
 
 The [October 29 accepted baseline](gameplay-delivery-audit-2026-10-29.md) is a
 visual comparison only. Its review shared a narrow right column with other

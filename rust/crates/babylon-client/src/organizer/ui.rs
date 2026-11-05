@@ -262,6 +262,8 @@ fn relation_subject(parent: &mut ChildSpawnerCommands, node: &SceneNode) {
             children
                 .spawn(text(node.caption(), 15.0, theme::PAPER))
                 .insert(Node {
+                    flex_grow: 1.0,
+                    flex_basis: px(0),
                     min_width: px(0),
                     flex_shrink: 1.0,
                     ..default()
@@ -2182,6 +2184,7 @@ pub(crate) mod tests {
         OrganizerAidKind, OrganizerStandingWork, OrganizerView,
     };
     use babylon_persistence::runtime_session::{RuntimeSessionRequest, RuntimeSessionResponse};
+    use bevy::text::TextLayoutInfo;
     use bevy::time::TimeUpdateStrategy;
     use board::ChoicePair;
     use std::sync::mpsc::Sender;
@@ -3515,6 +3518,255 @@ pub(crate) mod tests {
                 .translation,
             world.get::<ComputedNode>(entity).expect("layout").size(),
         )
+    }
+
+    fn install_relationship_art(app: &mut App) {
+        use bevy::asset::{AssetApp, RenderAssetUsages};
+        use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
+        use bevy::ui::widget;
+        app.init_asset::<Image>()
+            .init_asset::<TextureAtlasLayout>()
+            .add_systems(
+                PostUpdate,
+                (
+                    widget::update_image_content_size_system.before(bevy::ui::ui_layout_system),
+                    widget::text_system.after(bevy::ui::ui_layout_system),
+                ),
+            );
+        let illustrations: [&[u8]; 3] = [
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../assets/visual/group-wayne-collective.webp"
+            )),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../assets/visual/group-workplace-committee.webp"
+            )),
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../assets/visual/group-neighborhood-contact.webp"
+            )),
+        ];
+        let images = illustrations.map(|bytes| {
+            let image = Image::from_buffer(
+                bytes,
+                ImageType::Extension("webp"),
+                CompressedImageFormats::NONE,
+                true,
+                ImageSampler::linear(),
+                RenderAssetUsages::default(),
+            )
+            .expect("the shipped group illustration decodes");
+            app.world_mut().resource_mut::<Assets<Image>>().add(image)
+        });
+        let portraits = {
+            let world = app.world_mut();
+            world
+                .query::<(Entity, &ChildOf)>()
+                .iter(world)
+                .filter_map(|(entity, parent)| {
+                    world.get::<ImageNode>(entity)?;
+                    let subject = world.get::<RelationSubject>(parent.parent())?;
+                    let index = match subject.0 {
+                        OrganizerSubject::Collective(_) => 0,
+                        OrganizerSubject::WorkplaceCommittee(_) => 1,
+                        OrganizerSubject::NeighborhoodGroup(_) => 2,
+                        OrganizerSubject::Contributor(_) | OrganizerSubject::Workplace(_) => {
+                            return None
+                        }
+                    };
+                    Some((entity, images[index].clone()))
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            portraits.len(),
+            3,
+            "all admitted group illustrations participate in layout"
+        );
+        for (entity, image) in portraits {
+            app.world_mut()
+                .entity_mut(entity)
+                .insert(ImageNode::new(image));
+        }
+    }
+
+    fn measured_relationship_board(viewport: UVec2, scale: f32) -> App {
+        let mut app = measured_board(viewport, scale, false, false);
+        let body_font = {
+            let world = app.world_mut();
+            world
+                .query::<(&TextPart, &TextFont)>()
+                .iter(world)
+                .find_map(|(part, font)| {
+                    matches!(part, TextPart::Situation).then_some(font.font.clone())
+                })
+                .expect("the workspace has an embedded reading face")
+        };
+        app.world_mut().resource_mut::<OrganizerClient>().scene_mode =
+            OrganizerSceneMode::Relationships;
+        app.update();
+        app.update();
+        install_relationship_art(&mut app);
+        {
+            let world = app.world_mut();
+            for (role, mut font) in world
+                .query::<(&ObserverFontRole, &mut TextFont)>()
+                .iter_mut(world)
+            {
+                if matches!(role, ObserverFontRole::Body) {
+                    font.font = body_font.clone();
+                }
+            }
+        }
+        for _ in 0..6 {
+            app.update();
+        }
+        app
+    }
+
+    fn glyph_rects(app: &App, entity: Entity) -> Vec<Rect> {
+        let world = app.world();
+        let node = world
+            .get::<ComputedNode>(entity)
+            .expect("measured text node");
+        let transform = world
+            .get::<UiGlobalTransform>(entity)
+            .expect("text transform")
+            .affine();
+        let text = world
+            .get::<TextLayoutInfo>(entity)
+            .expect("resolved native glyphs");
+        text.glyphs
+            .iter()
+            .filter(|glyph| glyph.atlas_info.rect.size().min_element() > 0.0)
+            .map(|glyph| {
+                let local = node.content_box().min + glyph.position;
+                let half = glyph.atlas_info.rect.size() * 0.5;
+                Rect::from_corners(
+                    transform.transform_point2(local - half),
+                    transform.transform_point2(local + half),
+                )
+            })
+            .collect()
+    }
+
+    fn assert_glyphs_in(app: &App, entity: Entity, bounds: Rect) {
+        let glyphs = glyph_rects(app, entity);
+        assert!(
+            !glyphs.is_empty(),
+            "projected text has no rendered glyphs: {:?}",
+            app.world().get::<Text>(entity)
+        );
+        let outside = glyphs.iter().find(|glyph| {
+            (glyph.intersect(bounds).size() - glyph.size())
+                .abs()
+                .max_element()
+                > 1.1
+        });
+        assert!(outside.is_none(), "actual glyph must fit its clipping boundary: {:?}; node {:?}; bounds {bounds:?}; outside {outside:?}",
+            app.world().get::<Text>(entity), workspace_rect(app, entity));
+    }
+
+    fn relationship_readings(app: &mut App) -> (Entity, Vec<Entity>) {
+        let scene = app
+            .world()
+            .resource::<OrganizerClient>()
+            .scene_for(app.world().resource::<ObserverSession>())
+            .expect("actual admitted scene projection");
+        let (stage, texts, captions) = {
+            let world = app.world_mut();
+            let stage = world
+                .query_filtered::<Entity, With<RelationStage>>()
+                .single(world)
+                .expect("one relationship reading region");
+            let captions = world
+                .query::<(Entity, &RelationSubject, &Children)>()
+                .iter(world)
+                .map(|(entity, subject, children)| {
+                    (entity, subject.0, children.iter().collect::<Vec<_>>())
+                })
+                .collect::<Vec<_>>();
+            let texts = world
+                .query::<(Entity, &Text)>()
+                .iter(world)
+                .filter_map(|(entity, text)| {
+                    let mut ancestor = entity;
+                    while let Some(parent) = world.get::<ChildOf>(ancestor) {
+                        ancestor = parent.parent();
+                        if ancestor == stage {
+                            return (!text.0.is_empty()).then_some(entity);
+                        }
+                    }
+                    None
+                })
+                .collect::<Vec<_>>();
+            (stage, texts, captions)
+        };
+        assert!(
+            !texts.is_empty(),
+            "admitted relationship captions and typed facts exist"
+        );
+        assert_eq!(
+            captions.len(),
+            scene.nodes.len(),
+            "every admitted subject stays represented"
+        );
+        for (card, subject, children) in captions {
+            let expected = scene
+                .nodes
+                .iter()
+                .find(|node| node.subject == subject)
+                .expect("typed disclosed subject")
+                .caption();
+            let caption = children
+                .into_iter()
+                .find(|child| {
+                    app.world()
+                        .get::<Text>(*child)
+                        .is_some_and(|text| text.0 == expected)
+                })
+                .expect("later painting must preserve the actual admitted caption");
+            assert_glyphs_in(app, caption, workspace_rect(app, caption));
+            assert_glyphs_in(app, caption, workspace_rect(app, card));
+        }
+        (stage, texts)
+    }
+
+    fn assert_relationship_reading_scrolls(app: &mut App, stage: Entity, texts: Vec<Entity>) {
+        for entity in texts {
+            let rect = workspace_rect(app, entity);
+            let bounds = workspace_rect(app, stage);
+            let computed = app
+                .world()
+                .get::<ComputedNode>(stage)
+                .expect("reading layout");
+            let maximum =
+                crate::observer_focus::scroll_max(computed).expect("scrollable relationships");
+            let position = computed.scroll_position.y * computed.inverse_scale_factor;
+            let next = (position + (rect.min.y - bounds.min.y) * computed.inverse_scale_factor)
+                .clamp(0.0, maximum.y);
+            app.world_mut()
+                .get_mut::<ScrollPosition>(stage)
+                .expect("existing reading position")
+                .y = next;
+            app.update();
+            app.update();
+            assert_glyphs_in(app, entity, workspace_rect(app, stage));
+        }
+    }
+
+    #[test]
+    fn native_relationship_captions_and_disclosed_facts_have_visible_glyphs() {
+        for (viewport, scale) in [
+            (UVec2::new(1366, 768), 1.0),
+            (UVec2::new(1920, 1080), 1.0),
+            (UVec2::new(1920, 1080), 1.25),
+        ] {
+            let mut app = measured_relationship_board(viewport, scale);
+            let (stage, texts) = relationship_readings(&mut app);
+            assert_relationship_reading_scrolls(&mut app, stage, texts);
+        }
     }
 
     fn assert_in_view(app: &App, entity: Entity, limit: Rect) {

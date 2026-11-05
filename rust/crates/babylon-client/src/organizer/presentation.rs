@@ -524,12 +524,10 @@ pub(super) fn aftermath(client: &OrganizerClient, view: &OrganizerView, period: 
     let Some(receipt) = view
         .receipts
         .iter()
-        .filter(|receipt| receipt.actor_id == view.actor_id && receipt.period <= period)
+        .filter(|receipt| receipt.actor_id == view.actor_id && receipt.period == period)
         .max_by_key(|receipt| receipt.period)
     else {
-        return if period != view.period && period > 0 {
-            format!("Open Our practice Archive to review period {period}.")
-        } else if view.total_receipt_count > 0 && period > 0 {
+        return if period > 0 {
             format!("No receipt from this period is included in the recent window. Open Our practice Archive to review period {period}.")
         } else {
             format!("No practice completed at period {period}.")
@@ -2140,13 +2138,22 @@ mod tests {
         assert!(first.contains("No report obtained"), "{first}");
         assert!(!first.contains("withheld"), "{first}");
         assert!(!first.contains("Contact recorded"), "{first}");
-        let second = aftermath(&OrganizerClient::default(), &view, 5);
+        let second = aftermath(&OrganizerClient::default(), &view, 2);
         assert!(second.contains("Period 2 · saved routine"), "{second}");
         assert!(
             second.contains("Contact recorded; agreement can renew next period"),
             "{second}"
         );
         assert!(!second.contains("99 organizer-hours"), "{second}");
+        let missing_current = aftermath(&OrganizerClient::default(), &view, 5);
+        assert!(
+            missing_current.contains("Archive"),
+            "missing current receipts must route to Archive: {missing_current}"
+        );
+        assert!(
+            !missing_current.contains("Contact recorded"),
+            "a previous period's contact is not the current result: {missing_current}"
+        );
         assert!(aftermath(&OrganizerClient::default(), &view, 0).contains("No practice completed"));
 
         // An explicit Hold still performs standing work, but its origin is an accepted ruling.

@@ -1,18 +1,21 @@
 # Wayne map and relationships: design
 
-**Status:** Approved on 2026-11-03. The Director's exact decision was
+**Status:** Approved on 2026-11-03. Workspace redesign approved on 2026-11-05.
+The Director's exact November 3 decision was
 “Approve this design and limited disclosure”. This approves the design and
 the limited visibility ruling below. It does not prove native behavior or
-accept a game gate. The finite PER-336 closeout remains a prerequisite to
-implementation.
+accept a game gate.
+
+The November 3 approval required the finite PER-336
+closeout before implementation. The November 5
+[execution plan](../plans/2026-11-05-wayne-game-workspace.md) uses current `dev`.
 
 The earlier v3 interactive preview received “i feel like this
 is great!” from the Director. That preview was visual evidence.
 
-**Scope:** PER-292's bounded national Wayne organizer experience. This design uses
-`d2b8ea14d` plus Task 7e under repair as context. That work is not yet a
-qualified base. PER-336's finite Wayne closeout precedes this
-implementation. Neither this design nor that prerequisite claims the PER-355
+**Scope:** PER-292's bounded national Wayne organizer experience. The November 3
+design used `d2b8ea14d` plus Task 7e under repair as historical context.
+Neither this design nor its prerequisite claims the PER-355
 14-cell acceptance or full Director acceptance of the active goal.
 
 ## Player purpose and first slice
@@ -39,9 +42,10 @@ Inquiry and Reinforce do not target an arbitrary selected organization. When
 offered from another selected subject, name the captured workplace and committee
 as the action target and partner. Use the existing eligibility and review path.
 
-Keep the captured 2-hour practice and 2-hour cycle capacity. Show displaced
-standing neighborhood work when applicable, independent partner response, and
-report timing from the actual view. In period 0 no
+Use the captured campaign's actual practice hours and cycle capacity. The old
+2-hour examples describe their campaign. They set no universal cost. Show
+displaced standing neighborhood work when applicable, independent partner response,
+and report timing from the actual view. In period 0 no
 completed-period report exists. Do not promise a report or successful contact.
 
 Reviewing, navigating, or changing views does not advance time or submit a
@@ -86,6 +90,88 @@ own disclosed position. Selection persists across views and evidence navigation.
 Hover or keyboard focus gives transient feedback without changing selection.
 Keep the selected county and subject in sync where applicable. An existing draft
 survives view and evidence navigation, subject to the existing validity rules.
+
+## November 5 game workspace
+
+The Director approved a full geographic background with compact controls above
+it. A selected-group dossier sits at the right, with two directly comparable choices
+along the bottom. Keep Wayne in focus on the existing county atlas. Places and
+Relationships share stable selection and the same campaign, viewed period and
+draft. The top strip names the collective, period, actual committed means,
+standing neighborhood work and the separate advance control. Keep the ordinary
+map, production and Archive destinations.
+
+Give the collective, workplace committee and neighborhood group distinct,
+reusable illustrations. A portrait personifies a group, without a named person,
+faction seal, membership count, geographic location or disclosed relation. Use
+the existing industrial ink, paper, rust, bone and brass estate, especially
+[Red Apparatus](../../../design/bevy-assets/prompts/hero-red-apparatus.md),
+[Bunker Oracle](../../../design/bevy-assets/prompts/concept-bunker-oracle.md)
+and [Living Map](../../../design/bevy-assets/prompts/concept-living-map.md).
+Keep image provenance in the existing
+[asset catalog](../../../design/bevy-assets/manifest.toml).
+
+The narrow Victoria 3 lesson is a contextual choice with its actual cost and
+availability, plus deeper explanation on demand. Its shipped map-list decree
+controls separate hover information from the click action. The local
+[derivation design](2026-07-30-derivation-inspector-design.md) records related
+explanation and comparison goals.
+
+<!-- vale Vale.Spelling = NO -->
+The narrow Stellaris lesson is a dispatch that can lead to a known subject.
+Its shipped situation-log controls distinguish tracking a subject from moving
+the camera to it. These observations concern
+interface resources, not game-mechanics proof. Portraits follow Babylon's
+existing art direction and [North Star](../../../NORTH_STAR.md).
+
+The older [Victoria 3 study](../../../project/research/16-living-map/games/victoria-3.md)
+and [Stellaris study](../../../project/research/16-living-map/games/stellaris.md)
+are historical design inputs. Their broader prescriptions grant no live scope.
+<!-- vale Vale.Spelling = YES -->
+The [July map doctrine](../../gameplay/research/35-july-living-map-and-behemoth-threads.md)
+provides the repository's map-first context.
+
+The bottom deck names the captured target and partner, actual hours, displaced
+routine, possible benefit, resolving period and availability for both choices.
+When the personal draft is Hold, show Reinforce against Hold when available
+without selecting Reinforce. A non-Hold draft compares itself against Hold.
+All practices remains one reachable list, including both inquiries, collection,
+local aid, remote solidarity, pause and resume. Keep collection shared material
+time and later aid coordination distinct from fulfilled delivery or performed
+organizer time. Paused routines stay paused unless explicitly resumed.
+
+Use one inspector for deeper evidence, notes, relationships, practice history and
+review. Keep the essential comparison visible at ordinary sizes. Larger text and
+long names use stacked rows and one reading region that scrolls. Review shows the
+authenticated actual terms. Review, Confirm and Advance remain separate actions.
+Refused, unavailable, pending, historical, completed and failed states must
+explain what the player can do next.
+
+After a durable advance, show a period dispatch that leaves the workspace usable.
+Include only receipts for the exact viewed period and authorized actor.
+Show newly acquired reports with both observed and acquired dates, and actually
+disclosed public City PD encounters.
+
+Keep older receipts, reports and encounters in explicitly dated history. Period 0
+has no completed-period result. If the snapshot has no receipt for the inspected
+period, direct the player to the existing practice Archive. Do not invent a quiet
+result. A delayed report is new knowledge about its observed period, not a newly
+observed event. Participation, contact, report acquisition, gift dispatch and gift
+arrival remain separate outcomes.
+
+Dispatch links carry stable subject, report or existing inspector/Archive
+identities. Opening and returning from evidence preserves the viewed context,
+selected subject and captured draft. Historical and pending views cannot write or
+replace a missing historical fact with current information. Overlay bounds and
+camera geometry must agree: map click, drag and wheel input stop beneath the
+comparison, dossier, inspector and dispatch. Reuse existing audio and reduced
+motion settings for selection and committed-period feedback.
+
+Qualify the real native composition at 1366×768 at scale 1, 1920×1080 at scales
+1 and 1.25, and the existing larger text settings. Test both views, long names,
+different captured costs, unknown and pending states, every practice, keyboard
+access and evidence return. Screenshots and injected input do not prove human
+comprehension or enjoyment.
 
 ## Knowledge and relation contract
 

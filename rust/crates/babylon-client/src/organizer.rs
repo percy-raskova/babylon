@@ -14,6 +14,8 @@ mod presentation;
 
 mod scene;
 
+mod workspace;
+
 pub(crate) mod qualification_input;
 
 pub(crate) mod ui;

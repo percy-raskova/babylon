@@ -1,0 +1,260 @@
+//! Short card copy and dated navigation derived from the admitted view.
+use super::presentation;
+use super::scene::OrganizerSubject;
+use super::ui::Scope;
+use super::workspace;
+use super::OrganizerInspector;
+use crate::observer::{ObservationContext, ObserverSession, Perspective};
+use crate::organizer::workspace::{
+    ChoiceAvailability, DispatchCoverage, DispatchDestination, DispatchRows, HourUse,
+    PossibleBenefit, PracticeChoice, RoutineEffect,
+};
+use babylon_persistence::identity::CampaignId;
+
+pub(super) fn availability(term: ChoiceAvailability) -> String {
+    match term {
+        ChoiceAvailability::Reviewable => "Available to review".into(),
+        ChoiceAvailability::Historical => "History · return live to decide".into(),
+        ChoiceAvailability::Complete => "Campaign complete".into(),
+        ChoiceAvailability::Busy => "Awaiting committed state".into(),
+        ChoiceAvailability::Accepted { resolves_period } => {
+            format!("Ruling accepted for P{resolves_period}")
+        }
+        ChoiceAvailability::Refused(reason) => presentation::refusal(reason).into(),
+        ChoiceAvailability::MissingTerms => "Terms unavailable · refresh the situation".into(),
+        ChoiceAvailability::PendingAid {
+            admitted_period,
+            dispatch_period,
+        } => format!("Pending · admitted P{admitted_period}, dispatch P{dispatch_period}"),
+        ChoiceAvailability::PeriodOverflow => "Resolution period unavailable".into(),
+    }
+}
+
+pub(super) fn terms(choice: &PracticeChoice) -> String {
+    let parties = match (choice.target, choice.partner) {
+        (Some(target), Some(partner)) if partner.subject != Some(target.subject) => {
+            format!("At {} · with {}", target.label, partner.label)
+        }
+        (Some(target), Some(_)) => format!("With {}", target.label),
+        (Some(target), None) => format!("From {}", target.label),
+        (None, Some(partner)) => format!("With {}", partner.label),
+        _ => "Party attribution unavailable".into(),
+    };
+    let cost = choice.hours.map_or_else(
+        || "Hours unknown".into(),
+        |hours| match choice.hour_use {
+            HourUse::Organizer => format!("{hours} of {} organizer-hours", choice.available_hours),
+            HourUse::SharedMaterial => format!("{hours} shared material hours"),
+            HourUse::LaterCoordination => format!("{hours} later coordination hours"),
+        },
+    );
+    let routine = match choice.routine {
+        RoutineEffect::ReplacesOnce => "Replaces neighborhood work once",
+        RoutineEffect::RemainsPaused => "Neighborhood work stays paused",
+        RoutineEffect::Continues => "Continues neighborhood work",
+        RoutineEffect::Pauses => "Pauses neighborhood work",
+        RoutineEffect::Resumes => "Resumes neighborhood work",
+    };
+    let benefit = match choice.benefit {
+        PossibleBenefit::Report {
+            observed_period: Some(period),
+        } => format!("Request the P{period} report if the partner participates."),
+        PossibleBenefit::Report {
+            observed_period: None,
+        } => "No completed-period report exists yet.".into(),
+        PossibleBenefit::WorkplaceContact => {
+            "If the committee participates, contact can renew report sharing.".into()
+        }
+        PossibleBenefit::NeighborhoodContact => {
+            "Attempt contact if the neighborhood group participates.".into()
+        }
+        PossibleBenefit::Collection => choice.collection.map_or_else(
+            || "Collection terms unknown.".into(),
+            |row| {
+                format!(
+                    "Voluntary gift up to {} currency after protected needs.",
+                    presentation::currency(row.maximum_cash_micros)
+                )
+            },
+        ),
+        PossibleBenefit::LocalGift | PossibleBenefit::RemoteGift => choice.aid.map_or_else(
+            || "Gift terms unknown.".into(),
+            |row| {
+                format!(
+                    "Offer up to {} units; delivery and later cooperation are separate.",
+                    row.maximum_quantity
+                )
+            },
+        ),
+        PossibleBenefit::PauseRoutine => "Suspend the routine until explicitly resumed.".into(),
+        PossibleBenefit::NoPractice => "No neighborhood practice will run.".into(),
+    };
+    let resolution = choice.resolves_period.map_or_else(
+        || "Resolution unknown".into(),
+        |period| format!("Resolves P{period}"),
+    );
+    format!("{parties}\n{cost}   ·   {resolution}\n{routine}. {benefit}")
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Destination {
+    Detail(DispatchDestination),
+    Subject(OrganizerSubject),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DatedLink {
+    campaign: CampaignId,
+    epoch: Option<u64>,
+    durable_tick: u64,
+    perspective: Perspective,
+    period: u64,
+    generation: u64,
+    pub(super) destination: Destination,
+}
+
+impl DatedLink {
+    pub(super) fn new(session: &ObserverSession, period: u64, destination: Destination) -> Self {
+        let scope = session.context();
+        Self {
+            campaign: scope.campaign,
+            epoch: session.lifecycle_epoch(),
+            durable_tick: session.durable_tick,
+            perspective: scope.perspective,
+            period,
+            generation: scope.generation,
+            destination,
+        }
+    }
+    pub(super) fn current(self, session: &ObserverSession) -> bool {
+        session.accepts(&ObservationContext {
+            campaign: self.campaign,
+            perspective: self.perspective,
+            tick: self.period,
+            generation: self.generation,
+        }) && self.epoch == session.lifecycle_epoch()
+            && self.durable_tick == session.durable_tick
+    }
+}
+
+#[derive(Default, Debug, PartialEq, Eq)]
+pub(super) struct Bulletin {
+    pub heading: String,
+    pub copy: String,
+    pub links: Vec<(String, DatedLink)>,
+}
+
+impl Bulletin {
+    fn link(&mut self, session: &ObserverSession, period: u64, caption: String, dest: Destination) {
+        let link = (caption, DatedLink::new(session, period, dest));
+        if !self.links.contains(&link) {
+            self.links.push(link);
+        }
+    }
+
+    fn rows(&mut self, session: &ObserverSession, period: u64, rows: &DispatchRows) {
+        use std::fmt::Write as _;
+        for row in &rows.practices {
+            let receipt = row.receipt;
+            if let Some(partner) = row
+                .partner
+                .filter(|partner| receipt.partner_actor_id == Some(partner.actor_id))
+            {
+                if let Some(subject) = partner.subject {
+                    self.link(
+                        session,
+                        period,
+                        partner.label.into(),
+                        Destination::Subject(subject),
+                    );
+                }
+            }
+            if let Some(row) = row.aid {
+                use babylon_persistence::runtime_session::OrganizerAidSupportStatus;
+                let moved = row.support.material_postings.dispatched_quantity;
+                let status = match row.support.status {
+                    OrganizerAidSupportStatus::AwaitingDelivery => "awaiting delivery".into(),
+                    OrganizerAidSupportStatus::TerminalFailure => "support failed".into(),
+                    OrganizerAidSupportStatus::Granted { granted_quantity, consumed_quantity } => format!("{granted_quantity} granted · recipient consumed {consumed_quantity} of the same good in total"),
+                };
+                let _ = writeln!(self.copy, "{moved} units dispatched · {status}");
+            }
+            self.link(
+                session,
+                period,
+                "Practice receipt".into(),
+                Destination::Detail(row.destination),
+            );
+        }
+        for row in &rows.reports {
+            let observation = row.observation;
+            let _ = writeln!(
+                self.copy,
+                "{} · report observed P{}, acquired P{}",
+                row.source.label, observation.observed_period, observation.acquired_period
+            );
+            self.link(
+                session,
+                period,
+                format!(
+                    "Read P{} report · {}",
+                    observation.observed_period, row.source.label
+                ),
+                Destination::Detail(row.destination),
+            );
+        }
+        for row in &rows.encounters {
+            let _ = writeln!(self.copy, "CITY PD VISIT · PERIOD {}\nA public venue check-in records City PD visiting {}. Organizer presence and police knowledge remain unknown.", row.encounter.resolve_period, row.subject.label);
+            self.link(
+                session,
+                period,
+                "Public venue record".into(),
+                Destination::Detail(row.destination),
+            );
+            self.link(
+                session,
+                period,
+                row.subject.label.into(),
+                Destination::Subject(row.subject.subject),
+            );
+        }
+    }
+}
+
+pub(super) fn bulletin(scope: &Scope) -> Bulletin {
+    let Some(dispatch) = workspace::dispatch(&scope.client, scope.session.viewed_tick) else {
+        return Bulletin {
+            heading: "Period dispatch".into(),
+            copy: "Awaiting the period record.".into(),
+            ..Bulletin::default()
+        };
+    };
+    let mut bulletin = Bulletin {
+        heading: format!("Period {} dispatch", dispatch.period),
+        ..Bulletin::default()
+    };
+    bulletin.copy = presentation::dispatch_practices(&dispatch);
+    bulletin.copy.push('\n');
+    if dispatch.coverage == DispatchCoverage::ArchiveRequired {
+        bulletin.link(
+            &scope.session,
+            dispatch.period,
+            "Open practice Archive".into(),
+            Destination::Detail(dispatch.missing_receipts),
+        );
+    }
+    bulletin.rows(&scope.session, dispatch.period, &dispatch.current);
+    bulletin.copy.truncate(bulletin.copy.trim_end().len());
+    if !dispatch.history.practices.is_empty()
+        || !dispatch.history.reports.is_empty()
+        || !dispatch.history.encounters.is_empty()
+    {
+        bulletin.link(
+            &scope.session,
+            dispatch.period,
+            "Dated history".into(),
+            Destination::Detail(DispatchDestination::Inspector(OrganizerInspector::Receipts)),
+        );
+    }
+    bulletin
+}

@@ -92,6 +92,7 @@ enum Action {
     ContinueTitle,
     OpenOrganizer,
     OpenDirection,
+    InspectPractices,
     InspectReceipts,
     OpenRelationships,
     ScenePlaces,
@@ -139,6 +140,7 @@ impl Action {
         use ui::OrganizerAction as O;
         Some(match self {
             Self::OpenOrganizer => O::Open,
+            Self::InspectPractices => O::Inspect(OrganizerInspector::Practices),
             Self::OpenDirection => O::Inspect(OrganizerInspector::Direction),
             Self::InspectReceipts => O::Inspect(OrganizerInspector::Receipts),
             Self::OpenRelationships => O::Inspect(OrganizerInspector::Relationships),
@@ -1335,6 +1337,7 @@ mod tests {
     #[test]
     fn operator_actions_decode_only_the_bounded_native_controls() {
         for name in [
+            "inspect_practices",
             "inspect_receipts",
             "open_relationships",
             "archive_workplace",
@@ -2277,6 +2280,13 @@ mod tests {
                 },
             );
             app.update();
+            app.world_mut()
+                .write_message(OrganizerAction::Inspect(OrganizerInspector::Practices));
+            app.update();
+            assert_eq!(
+                app.world().resource::<OrganizerClient>().inspector,
+                OrganizerInspector::Practices
+            );
             let mut input = pending(
                 app.world().resource::<ObserverSession>(),
                 app.world().resource::<OrganizerClient>(),

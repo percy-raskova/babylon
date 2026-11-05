@@ -63,6 +63,7 @@ def test_operator_controls_have_a_distinct_completed_frame_event() -> None:
 
     actions = set(get_args(windowed.Action))
     assert {
+        "inspect_practices",
         "inspect_receipts",
         "open_relationships",
         "archive_workplace",
@@ -261,7 +262,11 @@ def test_new_choice_reviews_confirms_and_checks_exact_readback(
                 event = "applied"
                 if action == "status":
                     event = "observed"
+                elif action == "inspect_practices":
+                    fields["inspector"] = "Practices"
                 elif action == "choose_" + choice:
+                    assert fields["inspector"] == "Practices"
+                    fields["inspector"] = "Closed"
                     fields["choice"] = "collect" if mismatched else wire
                 elif action == "review":
                     fields["reviewed_command"] = command
@@ -298,7 +303,7 @@ def test_new_choice_reviews_confirms_and_checks_exact_readback(
         channel.close()
         worker.join(2)
     assert not worker.is_alive()
-    assert requested == ["status", "choose_" + choice] + (
+    assert requested == ["status", "inspect_practices", "choose_" + choice] + (
         [] if mismatched else ["review", "confirm", "status"]
     )
 
@@ -758,7 +763,9 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
         "        request=json.loads(line); action=request['action']; event='applied'\n"
         "        if action=='status': event='observed'\n"
         "        elif action=='open_direction': state['inspector']='Direction'\n"
+        "        elif action=='inspect_practices': state['inspector']='Practices'\n"
         "        elif action.startswith('choose_'):\n"
+        "            assert state['inspector'] in ('Direction', 'Practices')\n"
         "            state['choice']=action.removeprefix('choose_'); state['inspector']='Closed'\n"
         "        elif action=='review':\n"
         "            state['reviewed_command']={'nonce':request['sequence'],'choice':state['choice']}\n"
@@ -809,6 +816,7 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
     saved = json.loads((tmp_path / "native-controls.json").read_bytes())
     applied = [entry["action"] for entry in saved["actions"] if entry["action"] != "status"]
     assert applied == [
+        "inspect_practices",
         "choose_remote_aid",
         "review",
         "confirm",
@@ -820,6 +828,7 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
         "confirm",
         "step",
         "reopen",
+        "inspect_practices",
         "choose_local_aid",
         "review",
         "confirm",

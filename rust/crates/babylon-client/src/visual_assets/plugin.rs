@@ -169,6 +169,13 @@ pub(crate) const EMBEDDED_VISUALS: [(&str, &[u8]); 20] = [
 #[derive(Default)]
 pub struct VisualAssetsPlugin;
 
+fn load_linear_image(server: &AssetServer, path: &'static str) -> Handle<Image> {
+    server
+        .load_builder()
+        .with_settings(linear_image_settings)
+        .load(path)
+}
+
 impl Plugin for VisualAssetsPlugin {
     fn build(&self, app: &mut App) {
         app.init_asset::<TextureAtlasLayout>();
@@ -177,10 +184,7 @@ impl Plugin for VisualAssetsPlugin {
         register_visuals(app.world().resource::<EmbeddedAssetRegistry>());
         let server = app.world().resource::<AssetServer>();
 
-        let hero_liberty = server
-            .load_builder()
-            .with_settings(linear_image_settings)
-            .load("embedded://visual/hero-liberty.webp");
+        let hero_liberty = load_linear_image(server, "embedded://visual/hero-liberty.webp");
         let title_mark = server
             .load_builder()
             .with_settings(nearest_image_settings)
@@ -205,59 +209,29 @@ impl Plugin for VisualAssetsPlugin {
             .load_builder()
             .with_settings(nearest_image_settings)
             .load("embedded://visual/surface-atlas.png");
-        let hero_red_apparatus = server
-            .load_builder()
-            .with_settings(linear_image_settings)
-            .load("embedded://visual/hero-red-apparatus.webp");
-        let hero_empire_anatomized = server
-            .load_builder()
-            .with_settings(linear_image_settings)
-            .load("embedded://visual/hero-empire-anatomized.webp");
-        let concept_bunker_oracle = server
-            .load_builder()
-            .with_settings(linear_image_settings)
-            .load("embedded://visual/concept-bunker-oracle.webp");
-        let concept_living_map = server
-            .load_builder()
-            .with_settings(linear_image_settings)
-            .load("embedded://visual/concept-living-map.webp");
-        let concept_carceral_circuit = server
-            .load_builder()
-            .with_settings(linear_image_settings)
-            .load("embedded://visual/concept-carceral-circuit.webp");
-        let concept_metabolic_rift = server
-            .load_builder()
-            .with_settings(linear_image_settings)
-            .load("embedded://visual/concept-metabolic-rift.webp");
-        let banner_counties = server
-            .load_builder()
-            .with_settings(linear_image_settings)
-            .load("embedded://visual/banner-counties.webp");
-        let banner_carceral = server
-            .load_builder()
-            .with_settings(linear_image_settings)
-            .load("embedded://visual/banner-carceral.webp");
-        let banner_topology = server
-            .load_builder()
-            .with_settings(linear_image_settings)
-            .load("embedded://visual/banner-topology.webp");
-        let banner_collapse = server
-            .load_builder()
-            .with_settings(linear_image_settings)
-            .load("embedded://visual/banner-collapse.webp");
+        let hero_red_apparatus =
+            load_linear_image(server, "embedded://visual/hero-red-apparatus.webp");
+        let hero_empire_anatomized =
+            load_linear_image(server, "embedded://visual/hero-empire-anatomized.webp");
+        let concept_bunker_oracle =
+            load_linear_image(server, "embedded://visual/concept-bunker-oracle.webp");
+        let concept_living_map =
+            load_linear_image(server, "embedded://visual/concept-living-map.webp");
+        let concept_carceral_circuit =
+            load_linear_image(server, "embedded://visual/concept-carceral-circuit.webp");
+        let concept_metabolic_rift =
+            load_linear_image(server, "embedded://visual/concept-metabolic-rift.webp");
+        let banner_counties = load_linear_image(server, "embedded://visual/banner-counties.webp");
+        let banner_carceral = load_linear_image(server, "embedded://visual/banner-carceral.webp");
+        let banner_topology = load_linear_image(server, "embedded://visual/banner-topology.webp");
+        let banner_collapse = load_linear_image(server, "embedded://visual/banner-collapse.webp");
 
-        let group_wayne_collective = server
-            .load_builder()
-            .with_settings(linear_image_settings)
-            .load("embedded://visual/group-wayne-collective.webp");
-        let group_workplace_committee = server
-            .load_builder()
-            .with_settings(linear_image_settings)
-            .load("embedded://visual/group-workplace-committee.webp");
-        let group_neighborhood_contact = server
-            .load_builder()
-            .with_settings(linear_image_settings)
-            .load("embedded://visual/group-neighborhood-contact.webp");
+        let group_wayne_collective =
+            load_linear_image(server, "embedded://visual/group-wayne-collective.webp");
+        let group_workplace_committee =
+            load_linear_image(server, "embedded://visual/group-workplace-committee.webp");
+        let group_neighborhood_contact =
+            load_linear_image(server, "embedded://visual/group-neighborhood-contact.webp");
 
         let (interface_layout, marker_layout, provenance_layout, frame_layout, surface_layout) =
             create_atlas_layouts(app);

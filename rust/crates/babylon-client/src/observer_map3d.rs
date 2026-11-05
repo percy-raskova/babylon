@@ -20,6 +20,7 @@ use crate::observer_focus::ObserverKeyboardClaim;
 use crate::observer_io::ObserverSet;
 use crate::observer_theme as theme;
 use crate::observer_ui::{grouped, ObserverFrame, ObserverUiState, ObserverViewport};
+use crate::organizer::{OrganizerClient, OrganizerInspector, OrganizerOverlay};
 use crate::production::PrimaryView;
 
 #[path = "map_relationships.rs"]
@@ -213,6 +214,8 @@ fn county_prism(
 
 fn hover_county(
     over: On<PointerOver>,
+    overlays: OrganizerOverlays,
+    windows: Query<&Window, With<PrimaryWindow>>,
     counties: Query<&CountySlab>,
     view: Res<PrimaryView>,
     ui: Res<ObserverUiState>,
@@ -222,6 +225,15 @@ fn hover_county(
         || ui.menu_open
         || ui.splash_visible
         || ui.comparison_open
+    {
+        return;
+    }
+    if *view == PrimaryView::Organizer
+        && (ui.history_open
+            || ui.disclosure.is_some()
+            || windows.single().is_ok_and(|window| {
+                overlay_contains(&overlays, over.pointer.position * window.scale_factor())
+            }))
     {
         return;
     }
@@ -303,9 +315,14 @@ fn update_observation(
         if (data_changed || input.view.is_changed()) && transform.scale.y.ne(&target_height) {
             transform.scale.y = target_height;
         }
-        let color = if *input.view == PrimaryView::Organizer
-            || matches!(input.ui.lens, MapLens::Relationships)
-        {
+        let color = if *input.view == PrimaryView::Organizer {
+            // Ink and ochre distinguish the geographic focus, independent of economic readings.
+            if county.fips == "26163" {
+                Color::srgb_u8(133, 105, 67)
+            } else {
+                Color::srgb_u8(60, 69, 63)
+            }
+        } else if matches!(input.ui.lens, MapLens::Relationships) {
             theme::LAND
         } else {
             value.map_or(theme::GRAY, |value| {
@@ -401,9 +418,30 @@ fn place_legend(
     }
 }
 
+type OrganizerOverlays<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static ComputedNode,
+        &'static UiGlobalTransform,
+        Option<&'static CalculatedClip>,
+    ),
+    With<OrganizerOverlay>,
+>;
+
+fn overlay_contains(overlays: &OrganizerOverlays, point: Vec2) -> bool {
+    overlays.iter().any(|(node, transform, clip)| {
+        node.size().min_element() > 0.0
+            && node.contains_point(*transform, point)
+            && clip.is_none_or(|clip| clip.contains_point(point))
+    })
+}
+
 #[derive(SystemParam)]
 struct NavigationInput<'w, 's> {
     windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
+    overlays: OrganizerOverlays<'w, 's>,
+    organizer: Option<Res<'w, OrganizerClient>>,
     viewport: Res<'w, ObserverViewport>,
     ui: Res<'w, ObserverUiState>,
     view: Res<'w, PrimaryView>,
@@ -418,26 +456,63 @@ struct NavigationInput<'w, 's> {
     buttons: Query<'w, 's, &'static Interaction, With<Button>>,
 }
 
-fn navigate(input: NavigationInput, geometry: Res<MapGeometry>, mut orbit: ResMut<MapOrbit>) {
+#[derive(Default)]
+struct OrganizerDrag {
+    orbit: bool,
+    pan: bool,
+}
+
+fn navigate(
+    input: NavigationInput,
+    geometry: Res<MapGeometry>,
+    mut orbit: ResMut<MapOrbit>,
+    mut drag: Local<OrganizerDrag>,
+) {
     if !matches!(*input.view, PrimaryView::Map | PrimaryView::Organizer)
         || input.ui.menu_open
         || input.ui.splash_visible
         || input.ui.comparison_open
         || input.ui.disclosure.is_some()
+        || (*input.view == PrimaryView::Organizer
+            && (input.ui.history_open
+                || input
+                    .organizer
+                    .as_ref()
+                    .is_some_and(|client| client.inspector != OrganizerInspector::Closed)))
     {
+        *drag = OrganizerDrag::default();
         return;
     }
     let Ok(window) = input.windows.single() else {
+        *drag = OrganizerDrag::default();
         return;
     };
     let over_map = window
         .cursor_position()
         .zip(input.viewport.0)
-        .is_some_and(|(cursor, rect)| rect.contains(cursor))
+        .is_some_and(|(cursor, rect)| {
+            rect.contains(cursor)
+                && (*input.view != PrimaryView::Organizer
+                    || !overlay_contains(&input.overlays, cursor * window.scale_factor()))
+        })
         && !input
             .buttons
             .iter()
             .any(|interaction| *interaction != Interaction::None);
+    // A held gesture keeps the permission granted at its origin. Leaving a
+    // paper panel cannot turn its gesture into a camera gesture.
+    if *input.view == PrimaryView::Organizer {
+        let OrganizerDrag { orbit, pan } = &mut *drag;
+        for (button, allowed) in [(MouseButton::Right, orbit), (MouseButton::Middle, pan)] {
+            if !input.mouse.pressed(button) {
+                *allowed = false;
+            } else if input.mouse.just_pressed(button) {
+                *allowed = over_map;
+            }
+        }
+    } else {
+        *drag = OrganizerDrag::default();
+    }
     let dt = input.time.delta_secs().min(0.1);
     if !input
         .keyboard_claim
@@ -467,26 +542,7 @@ fn navigate(input: NavigationInput, geometry: Res<MapGeometry>, mut orbit: ResMu
         }
     }
     if over_map {
-        if input.mouse.pressed(MouseButton::Right) && input.motion.delta != Vec2::ZERO {
-            orbit.yaw -= input.motion.delta.x * 0.004;
-            orbit.pitch = (orbit.pitch + input.motion.delta.y * 0.004).clamp(0.25, 1.45);
-        }
-        if input.mouse.pressed(MouseButton::Middle) && input.motion.delta != Vec2::ZERO {
-            let right = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin());
-            let north = Vec3::new(-orbit.yaw.sin(), 0.0, -orbit.yaw.cos());
-            let movement = (right * -input.motion.delta.x + north * input.motion.delta.y)
-                * orbit.distance
-                * 0.0008;
-            orbit.target += movement;
-        }
-        if input.scroll.delta.y != 0.0 {
-            let unit = if input.scroll.unit == MouseScrollUnit::Line {
-                0.12
-            } else {
-                0.002
-            };
-            orbit.distance *= (-input.scroll.delta.y * unit).exp();
-        }
+        pointer_orbit(&input, &drag, &mut orbit);
     }
     let min_distance = orbit.fitted_distance * 0.08;
     let max_distance = orbit.fitted_distance * 3.0;
@@ -501,6 +557,35 @@ fn navigate(input: NavigationInput, geometry: Res<MapGeometry>, mut orbit: ResMu
     }
     if orbit.target != bounded_target {
         orbit.target = bounded_target;
+    }
+}
+
+fn pointer_orbit(input: &NavigationInput, drag: &OrganizerDrag, orbit: &mut ResMut<MapOrbit>) {
+    if input.mouse.pressed(MouseButton::Right)
+        && (*input.view != PrimaryView::Organizer || drag.orbit)
+        && input.motion.delta != Vec2::ZERO
+    {
+        orbit.yaw -= input.motion.delta.x * 0.004;
+        orbit.pitch = (orbit.pitch + input.motion.delta.y * 0.004).clamp(0.25, 1.45);
+    }
+    if input.mouse.pressed(MouseButton::Middle)
+        && (*input.view != PrimaryView::Organizer || drag.pan)
+        && input.motion.delta != Vec2::ZERO
+    {
+        let right = Vec3::new(orbit.yaw.cos(), 0.0, -orbit.yaw.sin());
+        let north = Vec3::new(-orbit.yaw.sin(), 0.0, -orbit.yaw.cos());
+        let movement = (right * -input.motion.delta.x + north * input.motion.delta.y)
+            * orbit.distance
+            * 0.0008;
+        orbit.target += movement;
+    }
+    if input.scroll.delta.y != 0.0 {
+        let unit = if input.scroll.unit == MouseScrollUnit::Line {
+            0.12
+        } else {
+            0.002
+        };
+        orbit.distance *= (-input.scroll.delta.y * unit).exp();
     }
 }
 
@@ -666,7 +751,7 @@ impl Plugin for ObserverMap3dPlugin {
                 Update,
                 (sync_camera, place_legend).after(ObserverSet::Paint),
             );
-        app.add_systems(Update, scene::place_insets.after(sync_camera));
+        app.add_systems(Update, scene::place_geographic_labels.after(sync_camera));
         relationships::install(app);
     }
 }
@@ -836,6 +921,78 @@ mod tests {
                 .resource::<ObserverKeyboardClaim>()
                 .blocks_world_shortcuts());
         }
+    }
+
+    #[test]
+    fn organizer_paper_blocks_orbit_pan_and_wheel_beneath_nonbutton_content() {
+        let (mut app, _, _) = focused_navigation_app();
+        app.insert_resource(PrimaryView::Organizer);
+        let panel = app
+            .world_mut()
+            .spawn((
+                OrganizerOverlay,
+                ComputedNode {
+                    size: Vec2::splat(120.0),
+                    ..default()
+                },
+                UiGlobalTransform::from_translation(Vec2::splat(100.0)),
+            ))
+            .id();
+        let navigate = app.world_mut().register_system(navigate);
+        let before = app.world().resource::<MapOrbit>().transform();
+        {
+            let mut mouse = app.world_mut().resource_mut::<ButtonInput<MouseButton>>();
+            mouse.press(MouseButton::Right);
+            mouse.press(MouseButton::Middle);
+        }
+        app.world_mut()
+            .resource_mut::<AccumulatedMouseMotion>()
+            .delta = Vec2::new(40.0, 10.0);
+        app.world_mut()
+            .resource_mut::<AccumulatedMouseScroll>()
+            .delta = Vec2::Y;
+        app.world_mut().run_system(navigate).expect("camera input");
+        assert_eq!(app.world().resource::<MapOrbit>().transform(), before);
+        app.world_mut()
+            .resource_mut::<AccumulatedMouseScroll>()
+            .delta = Vec2::ZERO;
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .clear();
+        app.world_mut().despawn(panel);
+        app.world_mut()
+            .run_system(navigate)
+            .expect("held drag leaves paper");
+        assert_eq!(
+            app.world().resource::<MapOrbit>().transform(),
+            before,
+            "a paper gesture may not become a map drag"
+        );
+        {
+            let mut mouse = app.world_mut().resource_mut::<ButtonInput<MouseButton>>();
+            mouse.release(MouseButton::Right);
+            mouse.release(MouseButton::Middle);
+        }
+        app.world_mut().run_system(navigate).expect("release");
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Right);
+        app.world_mut()
+            .run_system(navigate)
+            .expect("fresh map drag");
+        let started = app.world().resource::<MapOrbit>().transform();
+        assert_ne!(started, before);
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .clear();
+        app.world_mut().resource_mut::<ObserverUiState>().disclosure =
+            Some(ObserverDisclosure::Time);
+        app.world_mut()
+            .run_system(navigate)
+            .expect("drawer opens midgesture");
+        app.world_mut().resource_mut::<ObserverUiState>().disclosure = None;
+        app.world_mut().run_system(navigate).expect("drawer closes");
+        assert_eq!(app.world().resource::<MapOrbit>().transform(), started);
     }
 
     #[derive(Resource, Default)]

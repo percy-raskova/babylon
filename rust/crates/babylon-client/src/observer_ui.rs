@@ -388,7 +388,7 @@ fn wrapped_identity(value: &str) -> String {
     wrapped
 }
 
-fn button(parent: &mut ChildSpawnerCommands, text: &str, command: ObserverCommand) {
+pub(crate) fn button(parent: &mut ChildSpawnerCommands, text: &str, command: ObserverCommand) {
     scoped_button(parent, text, command, false);
 }
 
@@ -444,6 +444,11 @@ fn row() -> Node {
     }
 }
 
+#[derive(Component)]
+struct ObserverChrome {
+    organizer: bool,
+}
+
 fn spawn_hud(commands: &mut Commands) {
     commands
         .spawn((
@@ -460,6 +465,7 @@ fn spawn_hud(commands: &mut Commands) {
             },
             BackgroundColor(theme::INK),
             ZIndex(8),
+            ObserverChrome { organizer: false },
             TabGroup::new(0),
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
@@ -625,6 +631,7 @@ fn spawn_footer(commands: &mut Commands) {
                 ..default()
             },
             BackgroundColor(theme::INK),
+            ObserverChrome { organizer: false },
             ObserverRegion::Footer,
             TabGroup::new(40),
             ZIndex(8),
@@ -721,6 +728,13 @@ fn spawn_drawers(commands: &mut Commands) {
                         button(bar, "Speed", ObserverCommand::Speed);
                         button(bar, "Stop on delivery", ObserverCommand::StopOnDelivery);
                     });
+                    panel
+                        .spawn((row(), ObserverChrome { organizer: true }))
+                        .with_children(|bar| {
+                            button(bar, "Previous period", ObserverCommand::PreviousPeriod);
+                            button(bar, "Next period", ObserverCommand::NextPeriod);
+                            button(bar, "Return Live", ObserverCommand::Live);
+                        });
                     panel.spawn(block_label(
                         "Space: play / pause     Enter: advance four weeks     H: inspect trends",
                         12.0,
@@ -1185,7 +1199,10 @@ fn button_visible(
                 && matches!(ui.lens, MapLens::Material { .. })
         }
         ObserverCommand::PreviousPeriod | ObserverCommand::NextPeriod | ObserverCommand::Live => {
-            ui.history_open || session.viewed_tick < session.durable_tick
+            ui.history_open
+                || session.viewed_tick < session.durable_tick
+                || (view == PrimaryView::Organizer
+                    && ui.disclosure == Some(ObserverDisclosure::Time))
         }
         ObserverCommand::EconomicDetails | ObserverCommand::Archive => {
             map && !ui.archive_open && !ui.history_open
@@ -2078,7 +2095,24 @@ fn inspector_visibility(ui: &ObserverUiState, view: PrimaryView) -> Visibility {
     }
 }
 
+fn show_observer_chrome(view: Res<PrimaryView>, mut chrome: Query<(&ObserverChrome, &mut Node)>) {
+    if !view.is_changed() {
+        return;
+    }
+    for (region, mut node) in &mut chrome {
+        let display = if region.organizer == (*view == PrimaryView::Organizer) {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if node.display != display {
+            node.display = display;
+        }
+    }
+}
+
 fn fit_viewport(
+    view: Res<PrimaryView>,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut scale: ResMut<UiScale>,
     ui: Res<ObserverUiState>,
@@ -2107,7 +2141,16 @@ fn fit_viewport(
         },
     );
     for (region, mut node) in &mut regions {
-        let rect = layout.region(*region);
+        let rect = if *view == PrimaryView::Organizer && matches!(region, ObserverRegion::History) {
+            Rect::new(
+                16.0,
+                87.0,
+                window.width() / scale.0 * 0.72,
+                (window.height() / scale.0 - 266.0).max(100.0),
+            )
+        } else {
+            layout.region(*region)
+        };
         let (left, top, width, height) = (
             px(rect.min.x),
             px(rect.min.y),
@@ -2121,7 +2164,11 @@ fn fit_viewport(
             node.height = height;
         }
     }
-    let rect = Rect::from_corners(layout.world.min * scale.0, layout.world.max * scale.0);
+    let rect = if *view == PrimaryView::Organizer {
+        Rect::from_corners(Vec2::ZERO, Vec2::new(window.width(), window.height()))
+    } else {
+        Rect::from_corners(layout.world.min * scale.0, layout.world.max * scale.0)
+    };
     if viewport.0 != Some(rect) {
         viewport.0 = Some(rect);
     }
@@ -2200,6 +2247,7 @@ impl Plugin for ObserverShellPlugin {
                     paint_menu_pages,
                     paint_buttons,
                     paint_view_controls,
+                    show_observer_chrome,
                     paint_circuit_navigation,
                 )
                     .in_set(crate::observer_io::ObserverSet::Paint),
@@ -2287,7 +2335,8 @@ pub(crate) mod tests {
     #[test]
     fn interface_scale_follows_window_resize_for_readable_full_hd() {
         let mut app = App::new();
-        app.init_resource::<ObserverUiState>()
+        app.insert_resource(PrimaryView::Map)
+            .init_resource::<ObserverUiState>()
             .init_resource::<ObserverViewport>()
             .init_resource::<UiScale>()
             .add_systems(Update, fit_viewport);
@@ -3141,18 +3190,23 @@ pub(crate) mod tests {
         )))
         .expect("atlas");
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, InputPlugin, CampaignBrowserPlugin, crate::test_support::HeadlessVisibilityPlugin,))
-            .insert_resource(atlas)
-            .init_resource::<SelectedCounty>()
-            .init_resource::<PrimaryView>()
-            .init_resource::<ObserverUiState>()
-            .init_resource::<ObserverKeyboardClaim>()
-            .add_message::<ObserverCommand>()
-            // Exercise the actual input systems without launching catalog reads or applying
-            // either request. In particular, a second consumer must not hide a collision.
-            .configure_sets(Update, ObserverSet::Install.run_if(|| false))
-            .configure_sets(Update, ObserverSet::Paint.run_if(|| false))
-            .add_systems(Update, keyboard.in_set(ObserverSet::Input));
+        app.add_plugins((
+            MinimalPlugins,
+            InputPlugin,
+            CampaignBrowserPlugin,
+            crate::test_support::HeadlessVisibilityPlugin,
+        ))
+        .insert_resource(atlas)
+        .init_resource::<SelectedCounty>()
+        .init_resource::<PrimaryView>()
+        .init_resource::<ObserverUiState>()
+        .init_resource::<ObserverKeyboardClaim>()
+        .add_message::<ObserverCommand>()
+        // Exercise the actual input systems without launching catalog reads or applying
+        // either request. In particular, a second consumer must not hide a collision.
+        .configure_sets(Update, ObserverSet::Install.run_if(|| false))
+        .configure_sets(Update, ObserverSet::Paint.run_if(|| false))
+        .add_systems(Update, keyboard.in_set(ObserverSet::Input));
         app.world_mut().spawn(ObserverCampaignCatalog);
 
         for (menu_open, splash_visible, comparison_open) in [

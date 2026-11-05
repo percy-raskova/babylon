@@ -43,6 +43,7 @@ Action = Literal[
     "continue_title",
     "open_organizer",
     "open_direction",
+    "inspect_practices",
     "inspect_receipts",
     "open_relationships",
     "scene_places",
@@ -350,6 +351,7 @@ class ControlChannel:
             "continue_title",
             "open_organizer",
             "open_direction",
+            "inspect_practices",
             "inspect_receipts",
             "open_relationships",
             "scene_places",
@@ -446,6 +448,9 @@ class ControlChannel:
         ):
             self.close()
             raise ControlRefusal("native period was not completely installed")
+        if action == "inspect_practices" and reply.state.inspector != "Practices":
+            self.close()
+            raise ControlRefusal("native practice list did not open")
         choice = {
             "choose_remote_aid": "remote_aid",
             "choose_local_aid": "local_aid",
@@ -546,6 +551,7 @@ def submit_choice(channel: ControlChannel, choice: PlannedChoice, timeout: float
             "reinforce": "choose_reinforce",
             "hold": "choose_hold",
         }
+        channel.perform("inspect_practices", timeout)
         channel.perform(actions[choice.choice], timeout)
     channel.perform("review", timeout)
     channel.perform("confirm", timeout)

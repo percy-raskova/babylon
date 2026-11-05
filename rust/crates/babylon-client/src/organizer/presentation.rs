@@ -9,6 +9,7 @@ use babylon_persistence::runtime_session::{
 use std::fmt::Write as _;
 
 use super::evidence::EvidenceMode;
+use super::workspace::{DispatchPractice, PeriodDispatch};
 use super::{OrganizerClient, OrganizerInspector};
 
 const REINFORCE_PURPOSE: &str = "Purpose: Try to contact the workplace partner for future report sharing. This is not household aid.";
@@ -367,17 +368,23 @@ fn collection_review_terms(client: &OrganizerClient) -> String {
         OrganizerGiftConsent::Accept => "accepted independently",
         OrganizerGiftConsent::Refuse => "refused independently",
     };
-    format!("Contributor: {}\nVoluntary gift: up to {} currency; {} shared material hours. Cash consent: {consent}.\nProtected cash floor: {} currency. Protected consumption, services, closing stock and due payments are checked at close. No cash or time is reserved. See the collection choice below for full terms.", terms.contributor_label, currency(terms.maximum_cash_micros), terms.collection_hours, currency(terms.protected_cash_floor_micros))
+    format!("Contributor: {}\nVoluntary gift: up to {} currency; {} shared material hours. Cash consent: {consent}.\nProtected cash floor: {} currency. Protected consumption, services, closing stock and due payments are checked at close. A partial gift still costs the fixed hours. Organization cash: {} currency. No cash or time is reserved.", terms.contributor_label, currency(terms.maximum_cash_micros), terms.collection_hours, currency(terms.protected_cash_floor_micros), currency(terms.organization_cash_micros))
 }
 
 fn aid_terms(preview: &OrganizerMaterialAidPreview) -> String {
-    use babylon_persistence::runtime_session::OrganizerAidTransportPreview;
     let surplus = preview.donor_stock.saturating_sub(preview.own_need);
     let mut text = format!(
         "Current pantry: {} units; own food need: {}; protected surplus: {surplus}.\nOrganization cash: {} micro-currency. Gift transfer: {} micro-currency per food unit, separate from any sale.\nCaptured maximum/request: {} food units ({} grams per unit); actual fulfillment may be lower.\nFulfillment: {} household hours per dispatched unit; later coordination: {} hours. These compete with other work.\n",
         preview.donor_stock, preview.own_need, preview.payer_cash, preview.gift_cash_per_unit,
         preview.maximum_quantity, preview.grams_per_unit, preview.fulfillment_hours_per_unit, preview.coordination_hours
     );
+    append_aid_constraints(&mut text, preview);
+    text.push_str("Preview only: no cash, food, freight or time is reserved. Later ordinary work has first call on time. Delivery and same-period consumption may permit a separate independently authorized practice; no agreement is guaranteed.");
+    text
+}
+
+fn append_aid_constraints(text: &mut String, preview: &OrganizerMaterialAidPreview) {
+    use babylon_persistence::runtime_session::OrganizerAidTransportPreview;
     if let Some(offer) = &preview.ordinary_offer {
         let _ = writeln!(text, "Ordinary quoted food price: {} micro-currency per unit; this gift is not a purchase at that price.", offer.unit_price);
     } else {
@@ -408,8 +415,6 @@ fn aid_terms(preview: &OrganizerMaterialAidPreview) -> String {
             }
         }
     }
-    text.push_str("Preview only: no cash, food, freight or time is reserved. Later ordinary work has first call on time. Delivery and same-period consumption may permit a separate independently authorized practice; no agreement is guaranteed.");
-    text
 }
 
 fn aid_history(client: &OrganizerClient, period: u64) -> String {
@@ -520,40 +525,41 @@ pub(super) fn approach(view: &OrganizerView, choice: OrganizerChoice) -> String 
     }
 }
 
-pub(super) fn aftermath(client: &OrganizerClient, view: &OrganizerView, period: u64) -> String {
-    let Some(receipt) = view
-        .receipts
-        .iter()
-        .filter(|receipt| receipt.actor_id == view.actor_id && receipt.period == period)
-        .max_by_key(|receipt| receipt.period)
-    else {
-        return if period > 0 {
-            format!("No receipt from this period is included in the recent window. Open Our practice Archive to review period {period}.")
+pub(super) fn dispatch_practices(dispatch: &PeriodDispatch) -> String {
+    if dispatch.current.practices.is_empty() {
+        let period = dispatch.period;
+        return if period == 0 {
+            "Opening period · No practice completed at period 0.".into()
         } else {
-            format!("No practice completed at period {period}.")
+            format!("No receipt from this period is included in the recent window. Open Our practice Archive to review period {period}.")
         };
-    };
+    }
+    dispatch
+        .current
+        .practices
+        .iter()
+        .map(practice_summary)
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn practice_summary(row: &DispatchPractice) -> String {
+    let receipt = row.receipt;
     let origin = if receipt.commitment_id.is_some() {
         "accepted ruling"
     } else {
         "saved routine"
     };
     if receipt.choice == OrganizerChoice::Collect {
-        let actual = client.collection_resolutions.iter().find(|row| {
-            row.practice == *receipt
-                && row.fact.actor_id == view.actor_id
-                && row.fact.period == receipt.period
-                && Some(row.fact.original_commitment_id) == receipt.commitment_id
-        });
+        let actual = row.collection;
         return actual.map_or_else(
             || format!("Period {} · {origin}\nCollection ruling resolved. Open Our practice Archive for the actual cash and shared-time result.", receipt.period),
             |row| format!("Period {} · {origin}\n{}\n{}", receipt.period, choice(receipt.choice), collection_result(row)),
         );
     }
-    let participant = receipt.partner_actor_id.map_or_else(
-        || "Partner participation".into(),
-        |actor| partner(view, actor).to_owned(),
-    );
+    let participant = row
+        .partner
+        .map_or("Partner participation", |partner| partner.label);
     let result = if receipt.contact_product_id.is_some() {
         "Contact recorded; agreement can renew next period".into()
     } else if receipt.observation_ids.is_empty() {
@@ -579,11 +585,16 @@ pub(super) fn encounter_history(
     period: u64,
 ) -> String {
     let mut text = String::new();
-    for row in client
-        .city_pd_encounters
+    let Some(dispatch) = super::workspace::dispatch_for_view(client, view, period) else {
+        return text;
+    };
+    for encounter in dispatch
+        .history
+        .encounters
         .iter()
-        .filter(|row| row.resolve_period <= period)
+        .chain(&dispatch.current.encounters)
     {
+        let row = encounter.encounter;
         let _ = write!(
             text,
             "\n\nCITY PD VISIT · PERIOD {}\nA public venue check-in records City PD visiting {}. It does not establish whether our organizers were present or what City PD learned. Other activity remains unknown.\nOpen Cited workplace Archive for the source.",
@@ -795,8 +806,10 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
     ) {
         if let Some(terms) = client.aid_preview(preview.choice) {
             let _ = write!(text, "\nLater coordination: {} hours, conditional on delivery, consumption, finite contributions and separate independent authorization.", terms.coordination_hours);
+            text.push('\n');
+            append_aid_constraints(&mut text, terms);
         }
-        text.push_str("\nPreview only: no cash, food, freight or time is reserved. See the selected aid choice below for route and capacity details.");
+        text.push_str("\nPreview only: no cash, food, freight or time is reserved.");
     }
     if preview.choice == OrganizerChoice::Reinforce {
         let _ = write!(text, "\n{REINFORCE_CONSEQUENCE}");
@@ -905,7 +918,7 @@ fn accepted_review(client: &OrganizerClient, commitment: &OrganizerCommitment) -
     text
 }
 
-fn outcome(value: OrganizerOutcome) -> &'static str {
+pub(super) fn outcome(value: OrganizerOutcome) -> &'static str {
     match value {
         OrganizerOutcome::CollectionCompleted => {
             "Voluntary contribution collected; funds available for later aid"
@@ -933,7 +946,7 @@ fn outcome(value: OrganizerOutcome) -> &'static str {
     }
 }
 
-fn response(value: OrganizerPartnerResponse) -> &'static str {
+pub(super) fn response(value: OrganizerPartnerResponse) -> &'static str {
     match value {
         OrganizerPartnerResponse::Participated => "participated",
         OrganizerPartnerResponse::Refused => "declined",
@@ -1016,6 +1029,8 @@ pub(super) fn inspector(client: &OrganizerClient, period: u64) -> (String, Strin
         );
     };
     match client.inspector {
+        OrganizerInspector::Practices => ("All practices".into(), String::new()),
+        OrganizerInspector::Review => ("Review the ruling".into(), String::new()),
         OrganizerInspector::Closed => (String::new(), String::new()),
         OrganizerInspector::Notes => ("Personal notes".into(), String::new()),
         OrganizerInspector::Evidence => evidence_inspector(client, view, period),
@@ -1102,7 +1117,7 @@ pub(super) fn inspector(client: &OrganizerClient, period: u64) -> (String, Strin
     }
 }
 
-fn currency(micros: i128) -> String {
+pub(super) fn currency(micros: i128) -> String {
     let amount = micros.unsigned_abs();
     let whole = amount / 1_000_000;
     let fraction = amount % 1_000_000;
@@ -1167,7 +1182,7 @@ fn collection_outcome(outcome: OrganizerCollectionOutcome) -> &'static str {
     }
 }
 
-fn collection_result(row: &OrganizerCollectionResolution) -> String {
+pub(super) fn collection_result(row: &OrganizerCollectionResolution) -> String {
     format!("Requested {} currency; collected {} currency; {} shared material hours. Result: {}. Original ruling resolved; no standing fallback. A collected gift can fund later aid; no membership, agreement or time gain is credited.", currency(row.fact.requested_cash_micros), currency(row.fact.collected_cash_micros), row.fact.performed_hours, collection_outcome(row.fact.outcome))
 }
 
@@ -1193,6 +1208,14 @@ fn collection_history(client: &OrganizerClient, view: &OrganizerView, period: u6
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn aftermath(client: &OrganizerClient, view: &OrganizerView, period: u64) -> String {
+        dispatch_practices(
+            &super::super::workspace::dispatch_for_view(client, view, period)
+                .expect("retained period"),
+        )
+    }
+
     use babylon_persistence::runtime_session::{
         OrganizerAgreement, OrganizerAidKind, OrganizerAidOption, OrganizerCommand,
         OrganizerCommitment, OrganizerGiftConsent, OrganizerStandingWork,

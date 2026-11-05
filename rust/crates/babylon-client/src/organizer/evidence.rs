@@ -80,6 +80,15 @@ impl OrganizerClient {
         }
     }
 
+    pub(super) fn open_evidence_report(&mut self, id: [u8; 32], period: u64) -> bool {
+        if self.lawful_evidence(id, period).is_none() {
+            return false;
+        }
+        self.evidence.mode = EvidenceMode::Reports;
+        self.evidence.selected_report = Some(id);
+        true
+    }
+
     pub(super) fn open_evidence_reports(&mut self, period: u64) {
         self.evidence.mode = EvidenceMode::Reports;
         if self

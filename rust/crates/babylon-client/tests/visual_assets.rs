@@ -81,6 +81,7 @@ fn expected_interface_assets() -> [ExpectedVisualAsset; 6] {
 fn expected_illustration_assets() -> [ExpectedVisualAsset; 14] {
     use babylon_client::visual_assets::VisualAssetId;
 
+    let groups = expected_group_portraits();
     [
         (
             VisualAssetId::HeroRedApparatus,
@@ -170,6 +171,16 @@ fn expected_illustration_assets() -> [ExpectedVisualAsset; 14] {
             1,
             1,
         ),
+        groups[0],
+        groups[1],
+        groups[2],
+    ]
+}
+
+fn expected_group_portraits() -> [ExpectedVisualAsset; 3] {
+    use babylon_client::visual_assets::VisualAssetId;
+
+    [
         (
             VisualAssetId::GroupWayneCollective,
             "Wayne Organizing Collective",

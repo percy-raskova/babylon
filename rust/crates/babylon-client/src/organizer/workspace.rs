@@ -279,6 +279,20 @@ fn practice<'a>(
     }
 }
 
+pub(super) fn reviewable(
+    client: &OrganizerClient,
+    session: &ObserverSession,
+    choice: OrganizerChoice,
+) -> bool {
+    client
+        .view
+        .as_ref()
+        .filter(|view| view.period == session.viewed_tick)
+        .is_some_and(|view| {
+            practice(client, view, session, choice).availability == ChoiceAvailability::Reviewable
+        })
+}
+
 fn availability(
     client: &OrganizerClient,
     view: &OrganizerView,
@@ -410,7 +424,14 @@ pub(super) struct PeriodDispatch<'a> {
 
 /// A missing current receipt is unknown; an older result cannot fill the gap.
 pub(super) fn dispatch(client: &OrganizerClient, period: u64) -> Option<PeriodDispatch<'_>> {
-    let view = client.view.as_ref()?;
+    dispatch_for_view(client, client.view.as_ref()?, period)
+}
+
+pub(super) fn dispatch_for_view<'a>(
+    client: &'a OrganizerClient,
+    view: &'a OrganizerView,
+    period: u64,
+) -> Option<PeriodDispatch<'a>> {
     if period > view.period {
         return None;
     }

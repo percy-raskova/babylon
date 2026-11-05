@@ -14,7 +14,10 @@ mod presentation;
 
 mod scene;
 
+mod board;
 mod workspace;
+pub(crate) use board::Overlay as OrganizerOverlay;
+mod workspace_copy;
 
 pub(crate) mod qualification_input;
 

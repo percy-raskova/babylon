@@ -37,6 +37,8 @@ pub(crate) enum OrganizerInspector {
     Direction,
     Receipts,
     Notes,
+    Review,
+    Practices,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

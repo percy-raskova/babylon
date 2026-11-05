@@ -19,7 +19,7 @@ babylon-practice-contract = { path = "../babylon-practice-contract" }
 babylon-tick = { path = "../babylon-tick" }
 fallible-iterator = "0.2"
 flate2 = "1"
-minijinja = { version = "=3.0.4", default-features = false, features = ["builtins", "serde"] }
+minijinja = { version = "=3.0.5", default-features = false, features = ["builtins", "serde"] }
 mimalloc = { version = "=0.1.52", default-features = false }
 postgres = { version = "=0.19.14", features = ["with-uuid-1"] }
 serde = { version = "1", features = ["derive"] }

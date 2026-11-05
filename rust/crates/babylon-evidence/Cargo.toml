@@ -14,7 +14,7 @@ workspace = true
 babylon-bsl = { path = "../babylon-bsl" }
 babylon-kernel = { path = "../babylon-kernel" }
 babylon-practice-contract = { path = "../babylon-practice-contract" }
-unicode-normalization = "=0.1.25"
+unicode-normalization = "=0.1.26"
 
 [dev-dependencies]
 pretty_assertions = "1"

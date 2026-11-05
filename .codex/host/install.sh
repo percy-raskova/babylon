@@ -44,6 +44,27 @@ fail() {
   exit 1
 }
 
+# Install once under the host lock. Publish only after the release digest matches.
+budget_binary="$(codex_rust_budget_bin "$(codex_rust_babylon_tools_root)")"
+install_budget_binary() (
+  if [ -e "$budget_binary" ] || [ -L "$budget_binary" ]; then
+    [ -x "$budget_binary" ] && codex_rust_budget_digest_matches "$budget_binary" ||
+      fail "installed cargo-worktree-budget differs from the pinned binary: $budget_binary"
+    exit 0
+  fi
+  [ "$(uname -s)/$(uname -m)" = Linux/x86_64 ] || fail "the pinned budget binary requires x86_64 Linux"
+  budget_parent="$(dirname -- "$budget_binary")"
+  codex_rust_create_physical_directory "$budget_parent" || fail "invalid tool directory: $budget_parent"
+  staged="$(mktemp "$budget_parent/.download.XXXXXX")" || fail "cannot stage the budget binary"
+  trap 'rm -f -- "$staged"' EXIT
+  release="https://github.com/goldenmonkeyrnd/cargo-worktree-budget/releases/download/v$CODEX_RUST_BUDGET_VERSION"
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+    --output "$staged" "$release/cargo-worktree-budget-x86_64-unknown-linux-gnu"
+  codex_rust_budget_digest_matches "$staged" || fail "cargo-worktree-budget release checksum mismatch"
+  chmod 755 "$staged"
+  mv -T -- "$staged" "$budget_binary"
+)
+
 acquire_install_lock() {
   command -v flock >/dev/null 2>&1 || fail "flock is required to serialize host-policy installation"
   mkdir -p "$policy_root"
@@ -237,6 +258,8 @@ assert_unit_property() {
 }
 
 verify_installation() {
+  [ -x "$budget_binary" ] && codex_rust_budget_digest_matches "$budget_binary" ||
+    fail "missing or corrupt pinned cargo-worktree-budget: $budget_binary"
   read_policy_high_water
   [ "$installed_highest_version" -eq "$CODEX_RUST_HOST_POLICY_VERSION" ] ||
     fail "policy high-water mark is v$installed_highest_version, expected v$CODEX_RUST_HOST_POLICY_VERSION"
@@ -286,6 +309,8 @@ verify_installation() {
     fail "PATH selects $resolved_from_path instead of the managed Cargo dispatcher"
 }
 
+cache_root="$(codex_rust_babylon_cache_root)"
+codex_rust_babylon_validate_storage
 acquire_install_lock
 
 for required_source in cargo cargo-config.py policy.sh \
@@ -318,6 +343,7 @@ if ! command -v systemd-analyze >/dev/null 2>&1; then
 fi
 systemd-analyze --user verify "$host_source_dir"/systemd/*.slice
 
+install_budget_binary
 mkdir -p "$local_bin" "$dispatcher_bin" "$systemd_root"
 stage_complete_install_root
 for unit_name in codex-rust.slice codex-rust-nnsims.slice codex-rust-babylon.slice; do
@@ -331,7 +357,6 @@ systemctl --user daemon-reload
 persist_policy_high_water
 verify_installation
 
-cache_root="$(codex_rust_cache_root)"
 for repository in nnsims babylon; do
   cache_dir="$(codex_rust_cache_dir "$repository" "$cache_root")"
   server_socket="$(codex_rust_server_socket "$repository" "$cache_root")"

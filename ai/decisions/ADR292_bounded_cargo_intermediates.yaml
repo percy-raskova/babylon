@@ -1,0 +1,26 @@
+ADR292_bounded_cargo_intermediates:
+  status: accepted
+  date: '2026-11-05'
+  title: Babylon leases a single Cargo intermediate directory on the media mount
+  issue: PER-363
+  evidence_class: Designed
+  context: |
+    Concurrent worktrees accumulated dependency objects, tests, and incremental
+    state on the host. Keeping the executable at a stable checkout path supports
+    ongoing campaigns, PostgreSQL proofs, packaging, and observer sessions.
+  decision: |
+    Version 13 of the host dispatcher uses cargo-worktree-budget 0.1.0 for
+    Babylon. Cargo target files belong to the checkout. The required media
+    mount holds a single intermediate directory. One checkout can keep it warm.
+    The lease spans compilation, test execution, and each coverage report.
+    Metadata inspection leaves the active owner alone. The manager applies a
+    64 GiB retention budget and a 40 GiB free-space reserve. Commands can use
+    more space temporarily while running. Normal dev and test profiles use line
+    tables and disable incremental compilation. The full-debug profile retains
+    full workspace symbols for debugger sessions.
+  scope: |
+    Rustup, four-job and systemd limits, and the repository-specific sccache
+    continue to govern managed builds. NNSims keeps its previous target policy.
+    Installer upgrades retain the immutable v12 bundle and reject downgrades.
+    This record covers Babylon source and its host policy.
+  supersedes: ADR290_host_policy_v12 (Babylon build storage and host policy version)

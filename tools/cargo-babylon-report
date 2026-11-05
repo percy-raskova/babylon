@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""Keep the outer Cargo command alive until the Rust reporter consumes its artifacts."""
+
+import sys
+
+from rust_test_report import main
+
+if sys.argv[1:3] != ["babylon-report", "--"]:
+    raise SystemExit("usage: cargo babylon-report -- <report command>")
+raise SystemExit(main(sys.argv[3:]))

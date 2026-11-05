@@ -2168,6 +2168,7 @@ pub(crate) mod tests {
     use crate::map::SelectedCounty;
     use crate::observer::ObservationContext;
     use crate::observer::SessionPhase;
+    use crate::observer_focus::ObserverFocusKind;
     use crate::observer_focus::ObserverKeyboardClaim;
     use crate::observer_ui::ObserverCommand;
     use crate::observer_ui::ObserverFrame;
@@ -3637,7 +3638,7 @@ pub(crate) mod tests {
                 .iter(world)
                 .filter(|(_, target, part)| {
                     target.available
-                        && target.kind == crate::observer_focus::ObserverFocusKind::Reading
+                        && target.kind == ObserverFocusKind::Reading
                         && matches!(part, TextPart::Situation)
                 })
                 .map(|(entity, _, _)| entity)
@@ -3939,8 +3940,7 @@ pub(crate) mod tests {
                 .get::<ObserverFocusTarget>(aftermath)
                 .expect("existing reading target");
             assert!(
-                target.available
-                    && target.kind == crate::observer_focus::ObserverFocusKind::Reading,
+                target.available && target.kind == ObserverFocusKind::Reading,
                 "the existing contextual reading remains eligible"
             );
             let reading = world

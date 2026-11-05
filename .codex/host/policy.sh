@@ -2,9 +2,15 @@
 # Shared constants for the Codex Rust host boundary. Keep this file POSIX so
 # the PATH dispatcher and the environment installer read one policy.
 
-CODEX_RUST_HOST_POLICY_VERSION=12
+CODEX_RUST_HOST_POLICY_VERSION=13
 CODEX_RUST_SCCACHE_POLICY_KEY=0.17.0-p2
 CODEX_RUST_SCCACHE_VERSION=0.17.0
+CODEX_RUST_BABYLON_MOUNT=/media/user/data
+CODEX_RUST_BUDGET_ROOT="$CODEX_RUST_BABYLON_MOUNT/codex-cache/cargo-worktree-budget/babylon"
+CODEX_RUST_BUDGET_VERSION=0.1.0
+CODEX_RUST_BUDGET_SHA256=60d70d72e9decb133cd8e368f993e07c2c34c2e9e8cbe598a9f5bf1e8e4d379b
+CODEX_RUST_BUDGET_BYTES=68719476736
+CODEX_RUST_RESERVE_BYTES=42949672960
 CODEX_RUST_MAX_ARGS=512
 CODEX_RUST_MAX_JOBS=4
 CODEX_RUST_PARENT_SLICE=codex-rust.slice
@@ -98,6 +104,63 @@ codex_rust_tools_root() {
     printf '%s\n' "${XDG_DATA_HOME:-$HOME/.local/share}/codex-tools"
   fi
 }
+
+codex_rust_babylon_cache_root() {
+  printf '%s\n' "${CODEX_RUST_CACHE_ROOT:-$CODEX_RUST_BABYLON_MOUNT/codex-cache}"
+}
+
+codex_rust_babylon_tools_root() {
+  printf '%s\n' "${CODEX_RUST_TOOLS_ROOT:-$CODEX_RUST_BABYLON_MOUNT/codex-tools}"
+}
+
+codex_rust_budget_bin() {
+  printf '%s/cargo-worktree-budget/%s/cargo-worktree-budget\n' "$1" "$CODEX_RUST_BUDGET_VERSION"
+}
+
+codex_rust_budget_digest_matches() {
+  [ -f "$1" ] && [ ! -L "$1" ] &&
+    [ "$(sha256sum <"$1" | cut -d' ' -f1)" = "$CODEX_RUST_BUDGET_SHA256" ]
+}
+
+# Check concrete paths before probing a binary or creating a cache. A bind
+# mount can share the parent device number while naming a different mount.
+codex_rust_babylon_validate_storage() (
+  mountpoint -q -- "$CODEX_RUST_BABYLON_MOUNT" || {
+    echo "cargo: storage requires the mounted $CODEX_RUST_BABYLON_MOUNT volume" >&2; exit 69
+  }
+  tools="$(codex_rust_babylon_tools_root)"
+  cache="$(codex_rust_babylon_cache_root)"
+  version_root="$tools/sccache/$CODEX_RUST_SCCACHE_VERSION"
+  python3 - "$CODEX_RUST_BABYLON_MOUNT" \
+    "$CODEX_RUST_BUDGET_ROOT/slot/build/llvm-cov-target" "$(codex_rust_budget_bin "$tools")" \
+    "$version_root/sccache" "$version_root/bin/sccache" \
+    "$(codex_rust_cache_dir babylon "$cache")" "$(codex_rust_server_socket babylon "$cache")" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+def mount_id(path):
+    descriptor = os.open(path, os.O_PATH | os.O_NOFOLLOW)
+    try:
+        for line in Path(f"/proc/self/fdinfo/{descriptor}").read_text().splitlines():
+            if line.startswith("mnt_id:"):
+                return int(line.split()[1])
+        raise SystemExit(f"cargo: cannot establish mount identity for {path}")
+    finally:
+        os.close(descriptor)
+
+volume = Path(sys.argv[1])
+expected = mount_id(volume)
+for argument in sys.argv[2:]:
+    path = Path(argument)
+    if str(path.resolve()) != argument or not path.is_relative_to(volume):
+        raise SystemExit(f"cargo: {argument} requires a physical path on {volume}")
+    while not path.exists():
+        path = path.parent
+    if mount_id(path) != expected:
+        raise SystemExit(f"cargo: {argument} requires the mounted {volume} volume")
+PY
+)
 
 codex_rust_sccache_matches_version() {
   codex_rust_sccache_candidate="$1"

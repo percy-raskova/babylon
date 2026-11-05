@@ -10,6 +10,7 @@ test_path="$(readlink -f -- "$0")"
 host_dir="$(dirname -- "$(dirname -- "$test_path")")"
 dispatcher="$host_dir/cargo"
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/nnsims-host-policy.XXXXXX")"
+export HOST_CONTRACT_BUDGET_ROOT="$temporary_root/budget"
 trap 'rm -rf -- "$temporary_root"' EXIT HUP INT TERM
 
 fail() {
@@ -343,6 +344,29 @@ grep -Fqx '<build.rustc-wrapper="">' "$managed_result" ||
 grep -Fqx '<install>' "$managed_result" ||
   fail "the exact pinned sccache bootstrap did not reach Cargo"
 
+budget_fixture="$managed_tools/cargo-worktree-budget/0.1.0/cargo-worktree-budget"
+mkdir -p "$(dirname -- "$budget_fixture")"
+cat > "$budget_fixture" <<'BUDGET'
+#!/bin/sh
+set -eu
+[ "$1" = --root ] && [ "$2" = "$HOST_CONTRACT_BUDGET_ROOT" ] || exit 64
+[ "$3" = --owner ] && [ "$4" = "$HOST_CONTRACT_BABYLON" ] || exit 64
+[ "$5" = --target-dir ] && [ "$6" = "$HOST_CONTRACT_BABYLON/rust/target" ] || exit 64
+[ "$7" = --mount ] && mountpoint -q "$8" || exit 64
+[ "$9" = --budget-bytes ] && [ "${10}" = 68719476736 ] || exit 64
+[ "${11}" = --reserve-bytes ] && [ "${12}" = 42949672960 ] || exit 64
+[ "${13}" = run ] && [ "${14}" = -- ] || exit 64
+shift 14
+printf 'admitted\n' >> "$HOST_CONTRACT_ADMISSIONS"
+export CARGO_WORKTREE_BUDGET_SESSION=fixture
+export CARGO_BUILD_BUILD_DIR="$HOST_CONTRACT_BUDGET_ROOT/slot/build"
+exec "$@"
+BUDGET
+chmod +x "$budget_fixture"
+fixture_digest="$(sha256sum < "$budget_fixture" | cut -d' ' -f1)"
+sed -i "s/^CODEX_RUST_BUDGET_SHA256=.*/CODEX_RUST_BUDGET_SHA256=$fixture_digest/" "$managed_host/policy.sh"
+export HOST_CONTRACT_BABYLON="$babylon_repository"
+export HOST_CONTRACT_ADMISSIONS="$temporary_root/admissions"
 printf '0::/user.slice/codex-rust.slice/codex-rust-babylon.slice/run-test.scope\n' \
   >"$managed_cgroup"
 if (
@@ -371,6 +395,36 @@ grep -Fqx '<+1.99.1>' "$managed_result" ||
   fail "Babylon's exact pinned bootstrap selector did not reach Cargo"
 grep -Fqx '<build.rustc-wrapper="">' "$managed_result" ||
   fail "Babylon's exact pinned bootstrap did not disable its self-wrapper"
+run_babylon() (
+  cd "$babylon_repository"
+  CODEX_RUST_SCOPE_ACTIVE=1 CODEX_RUST_CACHE_ROOT="$temporary_root/cache" \
+    CODEX_RUST_TOOLS_ROOT="$managed_tools" HOST_CONTRACT_RESULT="$managed_result" \
+    "$managed_dispatcher" "$@"
+)
+[ "$(wc -l < "$HOST_CONTRACT_ADMISSIONS")" -eq 1 ] || fail "bootstrap missed its lease"
+run_babylon metadata --locked --no-deps
+run_babylon --quiet metadata --no-deps
+run_babylon --color never metadata
+[ "$(wc -l < "$HOST_CONTRACT_ADMISSIONS")" -eq 1 ] || fail "metadata switched the warm owner"
+run_babylon test metadata
+run_babylon nextest run --profile ci
+[ "$(wc -l < "$HOST_CONTRACT_ADMISSIONS")" -eq 3 ] || fail "nextest escaped its lease"
+assert_line "$(cat "$managed_result")" "target=$babylon_repository/rust/target"
+assert_line "$(cat "$managed_result")" "build_dir=$HOST_CONTRACT_BUDGET_ROOT/slot/build"
+assert_line "$(cat "$managed_result")" "rustc_wrapper=set"
+assert_line "$(cat "$managed_result")" "cache=$temporary_root/cache/sccache/babylon/0.17.0-p2"
+coverage_build="$HOST_CONTRACT_BUDGET_ROOT/slot/build/llvm-cov-target"
+coverage_target="$babylon_repository/rust/target/llvm-cov-target"
+CARGO_WORKTREE_BUDGET_SESSION=fixture CARGO_BUILD_BUILD_DIR="$coverage_build" \
+  run_babylon clean --target-dir "$coverage_target"
+assert_line "$(cat "$managed_result")" "build_dir=$coverage_build"
+if CARGO_WORKTREE_BUDGET_SESSION=fixture CARGO_BUILD_BUILD_DIR="$coverage_build" \
+  run_babylon clean --target-dir "$temporary_root/other" >/dev/null 2>&1; then
+  fail "nested coverage admitted an arbitrary target"
+fi
+if CARGO_BUILD_BUILD_DIR="$coverage_build" run_babylon clean --target-dir "$coverage_target" >/dev/null 2>&1; then
+  fail "caller selected coverage paths outside a session"
+fi
 printf '0::/user.slice/codex-rust.slice/codex-rust-nnsims.slice/run-test.scope\n' \
   >"$managed_cgroup"
 

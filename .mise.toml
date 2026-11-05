@@ -1091,10 +1091,14 @@ description = "Report declared fuel, computed bounds and headroom for the explic
 dir = "rust"
 run = "cargo run -p babylon-tick --bin bsl-fuel-report --locked"
 
+[tasks."rust:build-budget"]
+description = "Inspect managed Cargo storage or prune idle intermediates"
+run = "tools/rust_build_budget.sh"
+
 [tasks."rust:client-dev-dylib"]
 description = "R1.4 (Director-approved 2026-08-18): run babylon-client with bevy/dynamic_linking for faster incremental Bevy rebuilds. LOCAL ITERATION ONLY — NEVER use in CI/release/pin-ceremony builds. Fenced by rust/crates/babylon-client/tests/dynamic_linking_fence.rs (compiled guard) + tools/check_dynamic_linking_fence.sh (workflow-visible static guard, wired into check:dynamic-linking-fence)."
 dir = "rust"
-run = "cargo run -p babylon-client --features dynamic_linking"
+run = "cargo run --profile dev-dylib -p babylon-client --features dynamic_linking"
 
 [tasks."bsl:grammar-test"]
 description = "Regenerate the derived tree-sitter-bsl parser from grammar.js and run its corpus tests (tools/tree-sitter-bsl). The grammar is DERIVED from docs/reference/bsl.ebnf and is normative for nothing — docs/reference/bsl-language.rst is. Generated parser sources are git-ignored build products, so this task is how a fresh clone gets one."

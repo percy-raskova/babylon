@@ -22,7 +22,7 @@ pub(crate) fn linear_image_settings(settings: &mut ImageLoaderSettings) {
     settings.sampler = ImageSampler::linear();
 }
 
-pub(crate) const EMBEDDED_VISUALS: [(&str, &[u8]); 17] = [
+pub(crate) const EMBEDDED_VISUALS: [(&str, &[u8]); 20] = [
     (
         "hero-liberty.webp",
         include_bytes!(concat!(
@@ -142,6 +142,27 @@ pub(crate) const EMBEDDED_VISUALS: [(&str, &[u8]); 17] = [
             "/../../../assets/visual/title-mark.png"
         )) as &[u8],
     ),
+    (
+        "group-wayne-collective.webp",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../assets/visual/group-wayne-collective.webp"
+        )) as &[u8],
+    ),
+    (
+        "group-workplace-committee.webp",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../assets/visual/group-workplace-committee.webp"
+        )) as &[u8],
+    ),
+    (
+        "group-neighborhood-contact.webp",
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../assets/visual/group-neighborhood-contact.webp"
+        )) as &[u8],
+    ),
 ];
 
 /// Loads the complete embedded visual-asset family and its atlas layouts.
@@ -225,10 +246,27 @@ impl Plugin for VisualAssetsPlugin {
             .with_settings(linear_image_settings)
             .load("embedded://visual/banner-collapse.webp");
 
+        let group_wayne_collective = server
+            .load_builder()
+            .with_settings(linear_image_settings)
+            .load("embedded://visual/group-wayne-collective.webp");
+        let group_workplace_committee = server
+            .load_builder()
+            .with_settings(linear_image_settings)
+            .load("embedded://visual/group-workplace-committee.webp");
+        let group_neighborhood_contact = server
+            .load_builder()
+            .with_settings(linear_image_settings)
+            .load("embedded://visual/group-neighborhood-contact.webp");
+
         let (interface_layout, marker_layout, provenance_layout, frame_layout, surface_layout) =
             create_atlas_layouts(app);
 
         app.insert_resource(VisualAssets {
+            group_wayne_collective,
+            group_workplace_committee,
+            group_neighborhood_contact,
+
             hero_liberty,
             hero_red_apparatus,
             hero_empire_anatomized,
@@ -326,6 +364,13 @@ pub(crate) fn create_atlas_layouts(app: &mut App) -> AtlasLayouts {
 /// Named image and layout handles for the complete visual-asset family.
 #[derive(Clone, Resource)]
 pub struct VisualAssets {
+    /// Anonymous collective illustration for Wayne Organizing Collective.
+    pub group_wayne_collective: Handle<Image>,
+    /// Anonymous collective illustration for Workplace Committee.
+    pub group_workplace_committee: Handle<Image>,
+    /// Anonymous collective illustration for Neighborhood Contact Group.
+    pub group_neighborhood_contact: Handle<Image>,
+
     /// Liberty at dusk, the game title backdrop.
     pub hero_liberty: Handle<Image>,
     /// The Red Apparatus hero illustration.
@@ -377,6 +422,10 @@ impl VisualAssets {
     #[must_use]
     pub fn image(&self, id: VisualAssetId) -> Handle<Image> {
         match id {
+            VisualAssetId::GroupWayneCollective => self.group_wayne_collective.clone(),
+            VisualAssetId::GroupWorkplaceCommittee => self.group_workplace_committee.clone(),
+            VisualAssetId::GroupNeighborhoodContact => self.group_neighborhood_contact.clone(),
+
             VisualAssetId::HeroLiberty => self.hero_liberty.clone(),
             VisualAssetId::TitleMark => self.title_mark.clone(),
             VisualAssetId::InterfaceAtlas => self.interface_atlas.clone(),

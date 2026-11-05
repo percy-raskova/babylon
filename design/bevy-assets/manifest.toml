@@ -235,3 +235,45 @@ rows = 1
 sampler = "linear"
 sha256 = "fd71508bf4f49e04f75a9386336291d23c64e422c373963321ba6a28fdacda99"
 license = "AGPL-3.0-or-later"
+
+[[asset]]
+id = "group-wayne-collective"
+category = "illustration"
+source = "design/bevy-assets/prompts/group-wayne-collective.md"
+runtime = "assets/visual/group-wayne-collective.webp"
+format = "webp"
+width = 512
+height = 512
+columns = 1
+rows = 1
+sampler = "linear"
+sha256 = "0f32163bff92bf33ef2be893dc7caf729b36edb95154b2fec18f4ae61e621000"
+license = "AGPL-3.0-or-later"
+
+[[asset]]
+id = "group-workplace-committee"
+category = "illustration"
+source = "design/bevy-assets/prompts/group-workplace-committee.md"
+runtime = "assets/visual/group-workplace-committee.webp"
+format = "webp"
+width = 512
+height = 512
+columns = 1
+rows = 1
+sampler = "linear"
+sha256 = "61dc358c12574ea9c120657dd6593c9b61a487d11953cd773f0e68b1b3a1216d"
+license = "AGPL-3.0-or-later"
+
+[[asset]]
+id = "group-neighborhood-contact"
+category = "illustration"
+source = "design/bevy-assets/prompts/group-neighborhood-contact.md"
+runtime = "assets/visual/group-neighborhood-contact.webp"
+format = "webp"
+width = 512
+height = 512
+columns = 1
+rows = 1
+sampler = "linear"
+sha256 = "61a713c977e696a47ff9d9d681e1a5ca96ea428c20c1d13043413b34894f1cc5"
+license = "AGPL-3.0-or-later"

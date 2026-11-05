@@ -37,6 +37,12 @@ pub enum VisualAssetId {
     BannerTopology,
     /// The collapse-story banner.
     BannerCollapse,
+    /// Anonymous collective illustration for Wayne Organizing Collective.
+    GroupWayneCollective,
+    /// Anonymous collective illustration for Workplace Committee.
+    GroupWorkplaceCommittee,
+    /// Anonymous collective illustration for Neighborhood Contact Group.
+    GroupNeighborhoodContact,
 }
 
 /// Immutable metadata for one entry in the visual-asset catalog.
@@ -56,7 +62,7 @@ pub struct VisualAssetDescriptor {
 }
 
 /// The fixed, manifest-ordered catalog of all embedded visual images.
-pub const VISUAL_ASSET_CATALOG: [VisualAssetDescriptor; 17] = [
+pub const VISUAL_ASSET_CATALOG: [VisualAssetDescriptor; 20] = [
     VisualAssetDescriptor {
         id: VisualAssetId::TitleMark,
         label: "Title mark",
@@ -190,6 +196,30 @@ pub const VISUAL_ASSET_CATALOG: [VisualAssetDescriptor; 17] = [
         label: "Liberty at dusk",
         width: 1672,
         height: 941,
+        columns: 1,
+        rows: 1,
+    },
+    VisualAssetDescriptor {
+        id: VisualAssetId::GroupWayneCollective,
+        label: "Wayne Organizing Collective",
+        width: 512,
+        height: 512,
+        columns: 1,
+        rows: 1,
+    },
+    VisualAssetDescriptor {
+        id: VisualAssetId::GroupWorkplaceCommittee,
+        label: "Workplace Committee",
+        width: 512,
+        height: 512,
+        columns: 1,
+        rows: 1,
+    },
+    VisualAssetDescriptor {
+        id: VisualAssetId::GroupNeighborhoodContact,
+        label: "Neighborhood Contact Group",
+        width: 512,
+        height: 512,
         columns: 1,
         rows: 1,
     },

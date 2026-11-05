@@ -19,18 +19,4 @@ fi
 status="$("$binary" --root "$CODEX_RUST_BUDGET_ROOT" --owner "$checkout" \
   --target-dir "$checkout/rust/target" --mount "$CODEX_RUST_BABYLON_MOUNT" \
   --budget-bytes "$CODEX_RUST_BUDGET_BYTES" --reserve-bytes "$CODEX_RUST_RESERVE_BYTES" "$@")"
-python3 - "$status" "$checkout/rust/target" "$cache_dir" <<'PY'
-import json
-import os
-import subprocess
-import sys
-
-result = json.loads(sys.argv[1])
-for key, path in zip(("checkout_target_bytes", "sccache_bytes"), sys.argv[2:], strict=True):
-    if os.path.lexists(path):
-        measured = subprocess.run(["du", "-sx", "-B1", "--", path], stdout=subprocess.PIPE)
-        result[key] = int(measured.stdout.split()[0]) if measured.returncode == 0 else None
-    else:
-        result[key] = 0
-print(json.dumps(result, indent=2))
-PY
+exec python3 "$checkout/tools/rust_build_budget.py" "$status" "$checkout" "$cache_dir"

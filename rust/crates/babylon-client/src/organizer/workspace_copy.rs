@@ -142,6 +142,7 @@ pub(super) struct Bulletin {
     pub heading: String,
     pub copy: String,
     pub links: Vec<(String, DatedLink)>,
+    pub compact: bool,
 }
 
 impl Bulletin {
@@ -231,6 +232,9 @@ pub(super) fn bulletin(scope: &Scope) -> Bulletin {
     };
     let mut bulletin = Bulletin {
         heading: format!("Period {} dispatch", dispatch.period),
+        compact: dispatch.coverage == DispatchCoverage::Opening
+            && dispatch.current.reports.is_empty()
+            && dispatch.current.encounters.is_empty(),
         ..Bulletin::default()
     };
     bulletin.copy = presentation::dispatch_practices(&dispatch);

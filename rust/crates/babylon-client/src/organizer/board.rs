@@ -40,6 +40,10 @@ struct BulletinLinks;
 #[derive(Component)]
 struct StockPaper;
 #[derive(Component)]
+pub(super) struct PaperAction;
+#[derive(Component)]
+struct DispatchPanel;
+#[derive(Component)]
 struct PeriodTitle;
 #[derive(Component)]
 struct CardLine {
@@ -181,7 +185,6 @@ fn dossier(root: &mut ChildSpawnerCommands) {
             padding: UiRect::all(px(12)),
             border: UiRect::top(px(3)),
             row_gap: px(6),
-            overflow: Overflow::scroll_y(),
             ..ui::column()
         },
         BackgroundColor(RAIL),
@@ -189,42 +192,48 @@ fn dossier(root: &mut ChildSpawnerCommands) {
     ))
     .with_children(|panel| {
         kicker(panel, "FIELD DOSSIER   /   WAYNE", theme::COPPER);
-        panel.spawn((
-            ImageNode::default(),
-            DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
-            Portrait(None),
-            Node {
-                width: percent(100),
-                aspect_ratio: Some(2.8),
-                flex_shrink: 0.0,
-                ..default()
-            },
-            Pickable::IGNORE,
-        ));
-        panel
-            .spawn((ui::text("", 18.0, theme::PAPER), SceneDetail))
-            .insert(ObserverFontRole::Display);
-        panel.spawn((ui::text("", 14.0, theme::PAPER), TextPart::Situation));
-        panel
-            .spawn((ui::row(), SceneEvidence))
-            .with_children(|links| {
-                ui::button(
-                    links,
-                    "Inspect selected evidence",
-                    OrganizerAction::Inspect(OrganizerInspector::Evidence),
-                );
+        ui::spawn_scrolling_reading(panel, |panel| {
+            panel.spawn((
+                ImageNode::default(),
+                DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
+                Portrait(None),
+                Node {
+                    width: percent(100),
+                    aspect_ratio: Some(2.8),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+                Pickable::IGNORE,
+            ));
+            panel
+                .spawn((ui::text("", 18.0, theme::PAPER), SceneDetail))
+                .insert(ObserverFontRole::Display);
+            panel.spawn((
+                ui::text("", 14.0, theme::PAPER),
+                TextPart::Situation,
+                ObserverFocusTarget::reading(None),
+            ));
+            panel
+                .spawn((ui::row(), SceneEvidence))
+                .with_children(|links| {
+                    ui::button(
+                        links,
+                        "Inspect selected evidence",
+                        OrganizerAction::Inspect(OrganizerInspector::Evidence),
+                    );
+                });
+            panel.spawn(ui::row()).with_children(|links| {
+                for (label, dest) in [
+                    ("Workplace evidence", OrganizerInspector::Evidence),
+                    ("Relationships", OrganizerInspector::Relationships),
+                    ("Direction / routine", OrganizerInspector::Direction),
+                    ("Practice history", OrganizerInspector::Receipts),
+                    ("Personal notes", OrganizerInspector::Notes),
+                ] {
+                    ui::button(links, label, OrganizerAction::Inspect(dest));
+                }
+                crate::observer_ui::button(links, "Trends", ObserverCommand::History);
             });
-        panel.spawn(ui::row()).with_children(|links| {
-            for (label, dest) in [
-                ("Workplace evidence", OrganizerInspector::Evidence),
-                ("Relationships", OrganizerInspector::Relationships),
-                ("Direction / routine", OrganizerInspector::Direction),
-                ("Practice history", OrganizerInspector::Receipts),
-                ("Personal notes", OrganizerInspector::Notes),
-            ] {
-                ui::button(links, label, OrganizerAction::Inspect(dest));
-            }
-            crate::observer_ui::button(links, "Trends", ObserverCommand::History);
         });
     });
 }
@@ -323,12 +332,14 @@ fn deck(root: &mut ChildSpawnerCommands) {
                         ..default()
                     },
                 ));
-            ui::button(
+            let practices = ui::button(
                 bar,
                 "All practices",
                 OrganizerAction::Inspect(OrganizerInspector::Practices),
             );
-            ui::button(bar, "Review choice", OrganizerAction::Review);
+            bar.commands().entity(practices).insert(PaperAction);
+            let review = ui::button(bar, "Review choice", OrganizerAction::Review);
+            bar.commands().entity(review).insert(PaperAction);
         });
         deck.spawn((
             ChoicePair,
@@ -416,12 +427,14 @@ fn comparison_cards(pair: &mut ChildSpawnerCommands) {
 fn dispatch_panel(root: &mut ChildSpawnerCommands) {
     root.spawn((
         Overlay,
+        DispatchPanel,
         Node {
             position_type: PositionType::Absolute,
             right: px(16),
             bottom: px(12),
             width: percent(26),
             height: px(240),
+            max_height: px(240),
             padding: UiRect::all(px(13)),
             border: UiRect::top(px(4)),
             row_gap: px(6),
@@ -609,6 +622,7 @@ fn paint_bulletin(
     mut commands: Commands,
     mut cached: Local<Option<Bulletin>>,
     links: Query<Entity, With<BulletinLinks>>,
+    mut panels: Query<&mut Node, With<DispatchPanel>>,
     mut text: Query<(&mut Text, Option<&PeriodTitle>, Option<&TextPart>)>,
 ) {
     if *scope.view != PrimaryView::Organizer
@@ -619,6 +633,12 @@ fn paint_bulletin(
     let next = copy::bulletin(&scope);
     if cached.as_ref() == Some(&next) {
         return;
+    }
+    for mut panel in &mut panels {
+        let height = if next.compact { Val::Auto } else { px(240) };
+        if panel.height != height {
+            panel.height = height;
+        }
     }
     for (mut text, heading, part) in &mut text {
         if heading.is_some() {

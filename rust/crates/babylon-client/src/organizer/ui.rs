@@ -14,7 +14,7 @@ use babylon_persistence::ArchiveEvidenceClass;
 use bevy::ecs::system::SystemParam;
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::ButtonState;
-use board::{ComparisonCard, Overlay};
+use board::{ComparisonCard, Overlay, PaperAction};
 use copy::{DatedLink, Destination};
 
 use bevy::input_focus::tab_navigation::TabGroup;
@@ -200,7 +200,11 @@ pub(super) fn row() -> Node {
     }
 }
 
-pub(crate) fn button(parent: &mut ChildSpawnerCommands, label: &str, action: OrganizerAction) {
+pub(crate) fn button(
+    parent: &mut ChildSpawnerCommands,
+    label: &str,
+    action: OrganizerAction,
+) -> Entity {
     parent
         .spawn((
             ui::pressable(),
@@ -231,7 +235,8 @@ pub(crate) fn button(parent: &mut ChildSpawnerCommands, label: &str, action: Org
                     TextPart::SceneModeMarker(mode),
                 ));
             }
-        });
+        })
+        .id()
 }
 
 fn relation_subject(parent: &mut ChildSpawnerCommands, node: &SceneNode) {
@@ -541,12 +546,36 @@ fn scene_detail(scene: Option<&OrganizerScene>, selected: Option<OrganizerSubjec
                 (relation.from == node.subject || relation.to == node.subject)
                     && relation.kind == kind
             })
-            .map(|relation| relation.label.as_str())
+            .map(|relation| {
+                if kind == RelationKind::Agreement {
+                    let partner = if relation.from == node.subject {
+                        relation.to
+                    } else {
+                        relation.from
+                    };
+                    scene
+                        .nodes
+                        .iter()
+                        .find(|other| other.subject == partner)
+                        .map_or_else(
+                            || relation.label.clone(),
+                            |other| format!("{} · {}", other.label, relation.label),
+                        )
+                } else {
+                    relation.label.clone()
+                }
+            })
             .collect::<Vec<_>>();
-        (!labels.is_empty()).then(|| relation_summary(kind, &labels))
+        (!labels.is_empty()).then(|| {
+            if kind == RelationKind::Agreement {
+                labels.join("\n")
+            } else {
+                relation_summary(kind, &labels.iter().map(String::as_str).collect::<Vec<_>>())
+            }
+        })
     })
     .collect::<Vec<_>>()
-    .join(" · ");
+    .join("\n");
     if relationships.is_empty() {
         node.caption()
     } else {
@@ -579,11 +608,20 @@ fn spawn_places(parent: &mut ChildSpawnerCommands, scene: &OrganizerScene) {
             })
             .with_children(|buttons| {
                 for node in &scene.nodes {
-                    button(
+                    let subject = button(
                         buttons,
                         &node.caption(),
                         OrganizerAction::SelectSubject(node.subject),
                     );
+                    buttons.commands().entity(subject).insert(Node {
+                        width: percent(100),
+                        max_width: percent(100),
+                        padding: UiRect::axes(px(8), px(5)),
+                        border: UiRect::bottom(px(2)),
+                        flex_shrink: 0.0,
+                        row_gap: px(0),
+                        ..column()
+                    });
                 }
             });
         });
@@ -864,7 +902,7 @@ fn position_relations(
     }
 }
 
-fn spawn_scrolling_reading(
+pub(super) fn spawn_scrolling_reading(
     parent: &mut ChildSpawnerCommands,
     contents: impl FnOnce(&mut ChildSpawnerCommands),
 ) {
@@ -1789,6 +1827,7 @@ type PaintedButtons<'w, 's> = Query<
     's,
     (
         &'static ActionButton,
+        Option<&'static PaperAction>,
         &'static Interaction,
         &'static mut Node,
         &'static mut BackgroundColor,
@@ -1972,7 +2011,7 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
 }
 
 fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
-    for (button, interaction, mut node, mut background, mut border) in &mut *buttons {
+    for (button, paper, interaction, mut node, mut background, mut border) in &mut *buttons {
         if matches!(button.0, OrganizerAction::Open) {
             let next = if scope.session.organizer_enabled {
                 Display::Flex
@@ -2000,7 +2039,13 @@ fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
                 OrganizerAction::Advance => scope.client.commitment.is_some(),
                 _ => false,
             };
-        let color = if !available {
+        let color = if paper.is_some() {
+            if !available || *interaction == Interaction::Pressed {
+                theme::INK
+            } else {
+                theme::PANEL
+            }
+        } else if !available {
             theme::INK
         } else if *interaction == Interaction::Pressed {
             theme::RED.with_alpha(0.4)
@@ -2010,13 +2055,18 @@ fn paint_buttons(scope: &Scope, buttons: &mut PaintedButtons) {
             theme::PANEL
         };
         background.set_if_neq(BackgroundColor(color));
-        border.set_if_neq(BorderColor::all(if selected || next_action {
-            theme::YELLOW
-        } else if available {
-            theme::GRAY
-        } else {
-            theme::GRAY.with_alpha(0.3)
-        }));
+        border.set_if_neq(BorderColor::all(
+            if selected
+                || next_action
+                || (paper.is_some() && available && *interaction == Interaction::Hovered)
+            {
+                theme::YELLOW
+            } else if available {
+                theme::GRAY
+            } else {
+                theme::GRAY.with_alpha(0.3)
+            },
+        ));
     }
 }
 
@@ -3374,19 +3424,30 @@ pub(crate) mod tests {
             .status(request_id, snapshot, &mut session)
             .expect("admitted scene");
         if let Some(view) = client.view.as_mut() {
+            let national: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v13.json"
+            )))
+            .expect("captured national opening");
             if viewport.x > 1400 {
-                let national: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/../babylon-persistence/tests/fixtures/national_organizer_opening_v13.json"
-                )))
-                .expect("captured national opening");
                 view.contact_hours = national.view.contact_hours;
                 view.available_hours = national.view.available_hours;
-                view.organization_label = national.view.organization_label;
-                view.neighborhood_partner_label = national.view.neighborhood_partner_label;
-                view.workplace_label = national.view.workplace_label;
-                view.workplace_partner_label = national.view.workplace_partner_label;
             }
+            view.agreements = national.view.agreements.clone();
+            for agreement in &mut view.agreements {
+                agreement.actor_id = view.actor_id;
+                agreement.partner_actor_id =
+                    if agreement.partner_actor_id == national.view.workplace_partner_id {
+                        view.workplace_partner_id
+                    } else {
+                        view.neighborhood_partner_id
+                    };
+            }
+            view.organization_label = national.view.organization_label;
+            view.neighborhood_partner_label = national.view.neighborhood_partner_label;
+            view.workplace_label = national.view.workplace_label;
+            view.workplace_partner_label = national.view.workplace_partner_label;
+            view.positions = national.view.positions;
             if long {
                 view.workplace_label = "Wayne County repair and maintenance workplace committee serving the eastern industrial district".into();
             }
@@ -3416,7 +3477,12 @@ pub(crate) mod tests {
             .init_resource::<InputFocus>()
             .add_systems(Startup, spawn)
             .init_resource::<RenderedScene>()
-            .add_systems(Update, (paint, render_scene).in_set(ObserverSet::Paint));
+            .add_systems(PreUpdate, sync_targets)
+            .add_systems(
+                Update,
+                (paint, render_scene, paint_button_markers).in_set(ObserverSet::Paint),
+            )
+            .add_systems(PostUpdate, paint_scroll_hints.after(UiSystems::Layout));
         board::install(&mut app);
         app.finish();
         app.cleanup();
@@ -3462,6 +3528,320 @@ pub(crate) mod tests {
         assert!(
             (clipped.size() - rect.size()).abs().max_element() <= 1.1,
             "{entity:?}: {rect:?} clipped to {clipped:?} by {limit:?}"
+        );
+    }
+
+    #[test]
+    fn native_workspace_roster_labels_stay_inside_their_panel() {
+        for (viewport, scale) in [
+            (UVec2::new(1366, 768), 1.0),
+            (UVec2::new(1920, 1080), 1.0),
+            (UVec2::new(1920, 1080), 1.25),
+        ] {
+            let mut app = measured_board(viewport, scale, false, false);
+            let subjects = {
+                let world = app.world_mut();
+                world
+                    .query::<(Entity, &ActionButton, &Children, &ChildOf)>()
+                    .iter(world)
+                    .filter(|(_, action, _, _)| {
+                        matches!(action.0, OrganizerAction::SelectSubject(_))
+                    })
+                    .map(|(entity, _, children, parent)| {
+                        (entity, children.iter().collect::<Vec<_>>(), parent.parent())
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(subjects.len(), 5, "all disclosed subjects remain reachable");
+            for (button, children, list) in subjects {
+                let panel = app
+                    .world()
+                    .get::<ChildOf>(list)
+                    .expect("roster panel")
+                    .parent();
+                let panel_bounds = workspace_rect(&app, panel);
+                assert_in_view(&app, button, panel_bounds);
+                for child in children {
+                    if app
+                        .world()
+                        .get::<Text>(child)
+                        .is_some_and(|text| !text.0.is_empty())
+                    {
+                        assert_in_view(&app, child, workspace_rect(&app, button));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_workspace_dossier_attributes_each_agreement_to_its_partner() {
+        let mut app = measured_board(UVec2::new(1366, 768), 1.0, false, false);
+        let world = app.world_mut();
+        let detail = world
+            .query_filtered::<&Text, With<SceneDetail>>()
+            .single(world)
+            .expect("selected collective dossier");
+        for partner in [
+            "Wayne Workplace Committee",
+            "Wayne Neighborhood Contact Group",
+        ] {
+            assert!(
+                detail
+                    .0
+                    .lines()
+                    .any(|line| line.contains(partner) && line.contains("Agreement · periods 0–1")),
+                "each agreement must retain its disclosed partner: {}",
+                detail.0
+            );
+        }
+        assert_eq!(
+            detail
+                .0
+                .lines()
+                .filter(|line| line.contains("Agreement"))
+                .count(),
+            2,
+            "independent agreements must remain distinguishable: {}",
+            detail.0
+        );
+    }
+
+    #[test]
+    fn native_workspace_dossier_exposes_scrolling_and_reaches_its_last_links() {
+        let mut app = measured_board(UVec2::new(1366, 768), 1.0, false, false);
+        let (reading, hint) = {
+            let world = app.world_mut();
+            let mut hints = world.query::<(Entity, &ScrollHint, &Text)>();
+            hints
+                .iter(world)
+                .find_map(|(entity, hint, text)| {
+                    text.0.contains("More below").then_some((hint.0, entity))
+                })
+                .expect("the clipped dossier must show a persistent scroll cue")
+        };
+        let reading_bounds = workspace_rect(&app, reading);
+        assert_in_view(
+            &app,
+            hint,
+            Rect::from_corners(Vec2::ZERO, Vec2::new(1366.0, 768.0)),
+        );
+        assert!(
+            workspace_rect(&app, hint).min.y >= reading_bounds.max.y,
+            "the scroll cue must remain outside the scrolling content"
+        );
+        let focused_readings = {
+            let world = app.world_mut();
+            world
+                .query::<(Entity, &ObserverFocusTarget, &TextPart)>()
+                .iter(world)
+                .filter(|(_, target, part)| {
+                    target.available
+                        && target.kind == crate::observer_focus::ObserverFocusKind::Reading
+                        && matches!(part, TextPart::Situation)
+                })
+                .map(|(entity, _, _)| entity)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            focused_readings.len(),
+            1,
+            "the dossier has one reading target"
+        );
+        let maximum = crate::observer_focus::scroll_max(
+            app.world()
+                .get::<ComputedNode>(reading)
+                .expect("reading layout"),
+        )
+        .expect("dossier scroll extent");
+        app.world_mut()
+            .get_mut::<ScrollPosition>(reading)
+            .expect("dossier scroll position")
+            .y = maximum.y;
+        app.update();
+        app.update();
+        let links = {
+            let world = app.world_mut();
+            world
+                .query::<(Entity, &Children)>()
+                .iter(world)
+                .filter_map(|(entity, children)| {
+                    children
+                        .iter()
+                        .any(|child| {
+                            world.get::<Text>(child).is_some_and(|text| {
+                                matches!(text.0.as_str(), "Personal notes" | "Trends")
+                            })
+                        })
+                        .then_some(entity)
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            links.len(),
+            2,
+            "both final navigation controls remain present"
+        );
+        for link in links {
+            assert_in_view(&app, link, workspace_rect(&app, reading));
+        }
+        assert!(
+            app.world()
+                .get::<Text>(hint)
+                .expect("scroll cue")
+                .0
+                .contains("More above"),
+            "cue after scrolling: {:?}; computed {:?}; requested {:?}",
+            app.world().get::<Text>(hint),
+            app.world().get::<ComputedNode>(reading),
+            app.world().get::<ScrollPosition>(reading)
+        );
+    }
+
+    fn paper_contrast(foreground: Color, background: Color) -> f32 {
+        fn luminance(color: [f32; 3]) -> f32 {
+            let linear = color.map(|channel| {
+                if channel <= 0.04045 {
+                    channel / 12.92
+                } else {
+                    ((channel + 0.055) / 1.055).powf(2.4)
+                }
+            });
+            0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+        }
+        let background = background.to_srgba();
+        let paper = Color::srgb_u8(229, 217, 191).to_srgba();
+        let background = [
+            background.red * background.alpha + paper.red * (1.0 - background.alpha),
+            background.green * background.alpha + paper.green * (1.0 - background.alpha),
+            background.blue * background.alpha + paper.blue * (1.0 - background.alpha),
+        ];
+        let foreground = foreground.to_srgba();
+        let text = luminance([foreground.red, foreground.green, foreground.blue]);
+        let surface = luminance(background);
+        (text.max(surface) + 0.05) / (text.min(surface) + 0.05)
+    }
+
+    #[test]
+    fn native_workspace_paper_actions_preserve_admission_and_readable_labels() {
+        let mut app = measured_board(UVec2::new(1366, 768), 1.0, false, false);
+        let review = {
+            let world = app.world_mut();
+            world
+                .query::<(Entity, &ActionButton)>()
+                .iter(world)
+                .find_map(|(entity, button)| {
+                    (button.0 == OrganizerAction::Review).then_some(entity)
+                })
+                .expect("paper Review action")
+        };
+        for (available, interaction) in [
+            (true, Interaction::None),
+            (true, Interaction::Hovered),
+            (true, Interaction::Pressed),
+            (false, Interaction::None),
+        ] {
+            if !available {
+                app.world_mut().resource_mut::<ObserverSession>().phase = SessionPhase::Advancing;
+            }
+            *app.world_mut()
+                .get_mut::<Interaction>(review)
+                .expect("paper action interaction") = interaction;
+            app.update();
+            let client = app.world().resource::<OrganizerClient>();
+            let session = app.world().resource::<ObserverSession>();
+            assert_eq!(enabled(OrganizerAction::Review, client, session), available);
+            let unavailable = app
+                .world()
+                .get::<Children>(review)
+                .expect("review labels")
+                .iter()
+                .any(|child| {
+                    app.world()
+                        .get::<Text>(child)
+                        .is_some_and(|text| text.0.contains("UNAVAILABLE"))
+                });
+            assert_eq!(unavailable, !available);
+            let background = app
+                .world()
+                .get::<BackgroundColor>(review)
+                .expect("paper action surface")
+                .0;
+            for child in app
+                .world()
+                .get::<Children>(review)
+                .expect("paper action labels")
+                .iter()
+            {
+                if app
+                    .world()
+                    .get::<Text>(child)
+                    .is_some_and(|text| !text.0.is_empty())
+                {
+                    let foreground = app
+                        .world()
+                        .get::<TextColor>(child)
+                        .expect("paper action ink")
+                        .0;
+                    assert!(paper_contrast(foreground, background) >= 4.5,
+                        "Review label contrast must remain readable; available={available}, contrast={}", paper_contrast(foreground, background));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_workspace_opening_dispatch_uses_its_content_height() {
+        let mut app = measured_board(UVec2::new(1366, 768), 1.0, false, false);
+        {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.viewed_tick = 0;
+            session.durable_tick = 0;
+        }
+        app.world_mut()
+            .resource_mut::<OrganizerClient>()
+            .view
+            .as_mut()
+            .expect("admitted opening")
+            .period = 0;
+        app.update();
+        app.update();
+        let (copy, reading) = {
+            let world = app.world_mut();
+            world
+                .query::<(Entity, &TextPart, &Text, &ChildOf)>()
+                .iter(world)
+                .find_map(|(entity, part, text, parent)| {
+                    matches!(part, TextPart::Aftermath).then_some((
+                        entity,
+                        parent.parent(),
+                        text.0.clone(),
+                    ))
+                })
+                .map(|(entity, parent, text)| {
+                    assert!(
+                        text.contains("Opening period"),
+                        "actual opening copy: {text}"
+                    );
+                    (entity, parent)
+                })
+                .expect("opening dispatch")
+        };
+        let panel = app
+            .world()
+            .get::<ChildOf>(reading)
+            .expect("dispatch panel")
+            .parent();
+        assert!(
+            workspace_rect(&app, panel).height() < 120.0,
+            "opening copy should not reserve a full decision-sized panel: {:?}",
+            workspace_rect(&app, panel)
+        );
+        assert_in_view(&app, copy, workspace_rect(&app, panel));
+        let overlay = app.world().get::<Overlay>(panel);
+        assert!(
+            overlay.is_some(),
+            "compact dispatch keeps its actual overlay input boundary"
         );
     }
 

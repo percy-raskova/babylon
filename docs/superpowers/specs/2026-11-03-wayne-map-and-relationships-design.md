@@ -266,6 +266,11 @@ on a real, visible, explainable committed result and its evidence, not on a
 predetermined partner response. Record failures and unavailable evidence
 honestly. Do not claim the broader national or Director gate from this slice.
 
+The [November 5 native evidence](../../../reports/wayne-game-workspace-2026-11-05.md)
+records the bounded Michigan decisions, an interruption and recovery of
+that same campaign through a distinct cold process. National performance,
+physical input and human comprehension and enjoyment remain open.
+
 ## Out of scope and sources
 
 This design authorizes no new game primitive, agency expansion, generalized

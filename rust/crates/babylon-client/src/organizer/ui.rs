@@ -3845,6 +3845,181 @@ pub(crate) mod tests {
         );
     }
 
+    fn measured_pending_support_dispatch(viewport: UVec2, scale: f32) -> (App, Entity) {
+        use babylon_persistence::runtime_session::{
+            OrganizerOutcome, OrganizerPartnerResponse, OrganizerReceipt,
+        };
+        let mut app = measured_board(viewport, scale, false, false);
+        {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.viewed_tick = 1;
+            session.durable_tick = 1;
+        }
+        {
+            let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+            let view = client.view.as_mut().expect("admitted P1 organizer view");
+            view.period = 1;
+            // The native P1 dispatch has two stages of one original command,
+            // zero organizer hours, and no requested partner practice.
+            view.receipts = [
+                OrganizerOutcome::AidAwaitingSupport,
+                OrganizerOutcome::AidScheduled,
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(index, outcome)| OrganizerReceipt {
+                receipt_id: [if index == 0 { 1 } else { 3 }; 32],
+                commitment_id: Some([2; 32]),
+                actor_id: view.actor_id,
+                period: 1,
+                choice: OrganizerChoice::RemoteAid,
+                standing_work: false,
+                outcome,
+                hours_spent: 0,
+                partner_actor_id: None,
+                partner_response: OrganizerPartnerResponse::NotRequested,
+                observation_ids: Vec::new(),
+                contact_product_id: None,
+                time_use: Vec::new(),
+            })
+            .collect();
+            view.total_receipt_count = 2;
+        }
+        app.update();
+        app.update();
+        let aftermath = {
+            let world = app.world_mut();
+            world
+                .query::<(Entity, &TextPart)>()
+                .iter(world)
+                .find_map(|(entity, part)| matches!(part, TextPart::Aftermath).then_some(entity))
+                .expect("the dispatch retains its admitted reading target")
+        };
+        let font = app
+            .world()
+            .get::<TextFont>(aftermath)
+            .expect("embedded body font")
+            .font
+            .clone();
+        {
+            let world = app.world_mut();
+            for (role, mut text) in world
+                .query::<(&ObserverFontRole, &mut TextFont)>()
+                .iter_mut(world)
+            {
+                if matches!(role, ObserverFontRole::Body) {
+                    text.font = font.clone();
+                }
+            }
+        }
+        for _ in 0..4 {
+            app.update();
+        }
+        (app, aftermath)
+    }
+
+    #[test]
+    fn native_workspace_dispatch_exposes_its_two_stage_receipt_continuation() {
+        for (viewport, scale) in [
+            (UVec2::new(1366, 768), 1.0),
+            (UVec2::new(1920, 1080), 1.0),
+            (UVec2::new(1920, 1080), 1.25),
+        ] {
+            let (mut app, aftermath) = measured_pending_support_dispatch(viewport, scale);
+            let world = app.world();
+            let body = world.get::<Text>(aftermath).expect("typed P1 dispatch");
+            assert!(
+                body.0
+                    .contains("Support committed; awaiting material resolution")
+                    && body.0.contains("Support remains in transit"),
+                "both actual stages remain distinct: {}",
+                body.0
+            );
+            let target = world
+                .get::<ObserverFocusTarget>(aftermath)
+                .expect("existing reading target");
+            assert!(
+                target.available
+                    && target.kind == crate::observer_focus::ObserverFocusKind::Reading,
+                "the existing contextual reading remains eligible"
+            );
+            let reading = world
+                .get::<ChildOf>(aftermath)
+                .expect("dispatch reading")
+                .parent();
+            let panel = world
+                .get::<ChildOf>(reading)
+                .expect("dispatch overlay")
+                .parent();
+            assert!(
+                world.get::<Overlay>(panel).is_some(),
+                "actual overlay bounds still own map input"
+            );
+            let maximum = crate::observer_focus::scroll_max(
+                world
+                    .get::<ComputedNode>(reading)
+                    .expect("real-font reading layout"),
+            )
+            .expect("scrolling dispatch");
+            assert!(
+                maximum.y > 1.0,
+                "actual typed P1 content overflows: {maximum:?}"
+            );
+            let hint = {
+                let world = app.world_mut();
+                world
+                    .query::<(Entity, &ScrollHint, &Text)>()
+                    .iter(world)
+                    .find_map(|(entity, hint, text)| {
+                        (hint.0 == reading && text.0.contains("More below")).then_some(entity)
+                    })
+                    .expect("clipped receipt continuation must have a visible scroll cue")
+            };
+            assert_in_view(&app, hint, workspace_rect(&app, panel));
+            assert!(
+                workspace_rect(&app, hint).min.y >= workspace_rect(&app, reading).max.y,
+                "the cue stays visible outside the scrolling content"
+            );
+            let continuation = {
+                let world = app.world_mut();
+                world.query::<(Entity, &ActionButton)>().iter(world).find_map(|(entity, action)| {
+                    matches!(action.0, OrganizerAction::Follow(link)
+                        if matches!(link.destination, Destination::Detail(DispatchDestination::Inspector(OrganizerInspector::Receipts))))
+                        .then_some(entity)
+                }).expect("dated practice receipt continuation")
+            };
+            app.world_mut()
+                .get_mut::<ScrollPosition>(reading)
+                .expect("existing dispatch scroll position")
+                .y = maximum.y;
+            app.update();
+            app.update();
+            assert_in_view(&app, continuation, workspace_rect(&app, reading));
+            for child in app
+                .world()
+                .get::<Children>(continuation)
+                .expect("receipt continuation labels")
+                .iter()
+            {
+                if app
+                    .world()
+                    .get::<Text>(child)
+                    .is_some_and(|text| !text.0.is_empty())
+                {
+                    assert_in_view(&app, child, workspace_rect(&app, reading));
+                }
+            }
+            assert!(
+                app.world()
+                    .get::<Text>(hint)
+                    .expect("persistent cue")
+                    .0
+                    .contains("More above"),
+                "scrolling to the continuation exposes the return reading direction"
+            );
+        }
+    }
+
     #[test]
     fn native_comparison_measures_projected_costs_and_terms_inside_the_visible_cards() {
         for (viewport, scale) in [

@@ -447,22 +447,14 @@ fn dispatch_panel(root: &mut ChildSpawnerCommands) {
         panel
             .spawn((ui::text("", 23.0, theme::PAPER), PeriodTitle))
             .insert(ObserverFontRole::Display);
-        panel
-            .spawn(Node {
-                flex_grow: 1.0,
-                min_height: px(0),
-                overflow: Overflow::scroll_y(),
-                row_gap: px(6),
-                ..ui::column()
-            })
-            .with_children(|reading| {
-                reading.spawn((
-                    ui::text("", 15.0, theme::PAPER),
-                    TextPart::Aftermath,
-                    ObserverFocusTarget::reading(None),
-                ));
-                reading.spawn((ui::row(), BulletinLinks));
-            });
+        ui::spawn_scrolling_reading(panel, |reading| {
+            reading.spawn((
+                ui::text("", 15.0, theme::PAPER),
+                TextPart::Aftermath,
+                ObserverFocusTarget::reading(None),
+            ));
+            reading.spawn((ui::row(), BulletinLinks));
+        });
     });
 }
 

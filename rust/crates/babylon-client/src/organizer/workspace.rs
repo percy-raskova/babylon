@@ -49,11 +49,13 @@ pub(super) fn resources(
 }
 
 fn shared_household_time(client: &OrganizerClient, period: u64) -> Option<(u64, u64)> {
-    let closed = period.checked_sub(1)?;
+    if period == 0 {
+        return None;
+    }
     let mut budget = None;
     for row in client.aid.iter().filter(|row| row.period == period) {
         let time = row.time.as_ref()?;
-        if time.period != closed || time.labor_unit_id != row.labor_unit_id {
+        if time.period != period || time.labor_unit_id != row.labor_unit_id {
             return None;
         }
         let disclosed = (
@@ -625,6 +627,7 @@ fn disclosed_encounter(
 
 #[cfg(test)]
 mod tests {
+    use super::super::RequestKind;
     use super::*;
     use crate::observer::Perspective;
     use babylon_persistence::runtime_session::{
@@ -857,8 +860,18 @@ mod tests {
         );
     }
 
-    fn admitted_resources() -> (OrganizerClient, ObserverSession) {
-        let (mut client, mut session, request, snapshot) = super::super::tests::status_fixture();
+    fn admitted_resources(period: u64) -> (OrganizerClient, ObserverSession) {
+        let (_, _, _, mut snapshot) = super::super::tests::status_fixture();
+        let (mut client, mut session) = super::super::tests::ready();
+        session.ready(period, None);
+        view_mut(&mut client).period = period;
+        snapshot.view.period = period;
+        snapshot.body_scope.period = period;
+        snapshot
+            .city_pd_encounters
+            .retain(|row| row.resolve_period <= period);
+        client.queue(&mut session, RequestKind::Status, None);
+        let request = client.outbox.take().expect("current-period status request");
         let babylon_persistence::runtime_session::RuntimeSessionRequest::OrganizerStatus {
             request_id,
             ..
@@ -870,13 +883,14 @@ mod tests {
             .status(request_id, snapshot, &mut session)
             .expect("admitted current status");
         install_aid(&mut client);
+        client.aid[0].period = period;
         client.aid[0].time = Some(babylon_persistence::runtime_session::OrganizerAidTime {
-            period: 2,
+            period,
             labor_unit_id: [9; 32],
             remaining_hours: 6,
         });
         client.collection = Some(OrganizerCollectionPreview {
-            period: 3,
+            period,
             mandate_id: [8; 32],
             actor_id: 90,
             contributor_id: 101,
@@ -893,7 +907,7 @@ mod tests {
 
     #[test]
     fn resource_cash_is_owned_and_absence_is_not_zero() {
-        let (mut client, session) = admitted_resources();
+        let (mut client, session) = admitted_resources(3);
         let summary = resources(&client, &session).expect("admitted resources");
         assert_eq!(
             summary.cash_micros,
@@ -933,63 +947,82 @@ mod tests {
 
     #[test]
     fn resource_shared_household_time_is_dated_once_and_conflicts_are_unavailable() {
-        let (mut client, session) = admitted_resources();
-        let mut duplicate = client.aid[0].clone();
-        duplicate.kind = OrganizerAidKind::Remote;
-        duplicate.mandate_id = [17; 32];
-        duplicate.recipient_id = [18; 32];
-        client.aid.push(duplicate);
-        assert_eq!(
-            resources(&client, &session).expect("current").shared_time,
-            Some((2, 6)),
-            "duplicate mandates share one budget, never twelve hours"
-        );
-        client.aid[1]
-            .time
-            .as_mut()
-            .expect("closed receipt")
-            .remaining_hours = 0;
-        assert_eq!(
-            resources(&client, &session).expect("current").shared_time,
-            None,
-            "conflicting disclosures must not choose a favorable row"
-        );
-        client.aid.pop();
-        client.aid[0]
-            .time
-            .as_mut()
-            .expect("closed receipt")
-            .remaining_hours = 0;
-        assert_eq!(
-            resources(&client, &session).expect("current").shared_time,
-            Some((2, 0)),
-            "zero observed remainder is known"
-        );
-        for invalid_period in [0, 1, 3, 4] {
-            client.aid[0].time.as_mut().expect("closed receipt").period = invalid_period;
+        // The engine-backed opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time
+        // contract closes P2 with preview.period == time.period == 2; the internal
+        // circuit is already at its next period, P3. The client view uses committed P2.
+        for period in [2, 3] {
+            let (mut client, session) = admitted_resources(period);
+            let mut duplicate = client.aid[0].clone();
+            duplicate.kind = OrganizerAidKind::Remote;
+            duplicate.mandate_id = [17; 32];
+            duplicate.recipient_id = [18; 32];
+            client.aid.push(duplicate);
+            assert_eq!(
+                resources(&client, &session).expect("current").shared_time,
+                Some((period, 6)),
+                "producer-aligned committed receipt is counted once across mandates"
+            );
+            client.aid[1]
+                .time
+                .as_mut()
+                .expect("closed receipt")
+                .remaining_hours = 0;
             assert_eq!(
                 resources(&client, &session).expect("current").shared_time,
                 None,
-                "only the immediately closed period is current disclosed supply"
+                "conflicting disclosures must not choose a favorable row"
+            );
+            client.aid.pop();
+            client.aid[0]
+                .time
+                .as_mut()
+                .expect("closed receipt")
+                .remaining_hours = 0;
+            assert_eq!(
+                resources(&client, &session).expect("current").shared_time,
+                Some((period, 0)),
+                "zero observed remainder is known"
+            );
+            for invalid_period in [0, period - 1, period + 1] {
+                client.aid[0].time.as_mut().expect("closed receipt").period = invalid_period;
+                assert_eq!(
+                    resources(&client, &session).expect("current").shared_time,
+                    None,
+                    "stale and future receipts cannot stand in for the committed period"
+                );
+            }
+            client.aid[0].time = None;
+            assert_eq!(
+                resources(&client, &session).expect("current").shared_time,
+                None,
+                "an absent receipt is unavailable, not zero"
             );
         }
+        let (client, session) = admitted_resources(0);
+        assert_eq!(
+            resources(&client, &session)
+                .expect("opening commitments")
+                .shared_time,
+            None,
+            "P0 has no completed-period household receipt"
+        );
     }
 
     #[test]
     fn resource_current_balances_never_fill_history_or_superseded_context() {
-        let (client, mut session) = admitted_resources();
+        let (client, mut session) = admitted_resources(3);
         session.inspect_tick(2);
         assert!(
             resources(&client, &session).is_none(),
             "current balances cannot fill history"
         );
-        let (client, mut session) = admitted_resources();
+        let (client, mut session) = admitted_resources(3);
         session.set_perspective(Perspective::PlayerKnowledge);
         assert!(
             resources(&client, &session).is_none(),
             "perspective changes require a fresh admission"
         );
-        let (client, mut session) = admitted_resources();
+        let (client, mut session) = admitted_resources(3);
         session.world_hash = Some("different world".into());
         assert!(
             resources(&client, &session).is_none(),

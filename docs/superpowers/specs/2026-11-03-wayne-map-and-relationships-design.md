@@ -304,6 +304,10 @@ immediately closed period, with the next period unknown. Repeated aid mandates
 for one household budget must not add its hours together. Conflicting budgets
 or stale, historical or changed-context readings remain unavailable.
 
+The latest closed receipt uses the same period index as the committed organizer
+view. The engine's internal next period has a separate index. Reject stale and
+future receipts. Period 0 has no closed household receipt.
+
 Use grouped physical quantities and exact common-currency money with a dollar
 sign and at least two decimal places: `$1,234.56`, `-$1.20`, `$0.000001`.
 Preserve precision below one cent without floating-point conversion. This display does

@@ -2281,7 +2281,7 @@ impl Plugin for ObserverShellPlugin {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    pub(crate) fn install_resource_header_fixture(app: &mut App) -> Entity {
+    pub(crate) fn install_resource_header_fixture(app: &mut App, viewport: UVec2) -> Entity {
         use bevy::ecs::system::RunSystemOnce as _;
         app.insert_resource(
             CountyAtlas::parse(include_bytes!(concat!(
@@ -2294,7 +2294,18 @@ pub(crate) mod tests {
         .init_resource::<ObserverAudioSettings>()
         .init_resource::<SelectedCounty>()
         .init_resource::<HoveredCounty>()
-        .add_systems(Update, (repaint, show_observer_chrome).chain());
+        .init_resource::<ObserverViewport>()
+        .add_systems(
+            Update,
+            (fit_viewport, repaint, show_observer_chrome).chain(),
+        );
+        app.world_mut().spawn((
+            Window {
+                resolution: (viewport.x, viewport.y).into(),
+                ..default()
+            },
+            PrimaryWindow,
+        ));
         app.world_mut()
             .run_system_once(|mut commands: Commands| spawn_hud(&mut commands))
             .expect("actual shared header");

@@ -10,9 +10,20 @@ use crate::production::PrimaryView;
 use super::tests;
 use super::{OrganizerRoot, TextPart};
 
-fn measured_resource_board(viewport: UVec2, scale: f32) -> (App, Entity, Entity) {
+#[derive(Clone, Copy)]
+enum InterfaceSize {
+    Standard,
+    Larger,
+}
+
+fn measured_resource_board(
+    viewport: UVec2,
+    size: InterfaceSize,
+    expected_scale: f32,
+) -> (App, Entity, Entity) {
     use bevy::asset::AssetApp as _;
-    let mut app = tests::measured_board(viewport, scale, false, false);
+    let mut app =
+        tests::measured_board(viewport, 1.0, matches!(size, InterfaceSize::Larger), false);
     // The base fixture measures layout; glyph checks also need Bevy's text renderer,
     // as in the existing relationship glyph fixture.
     app.init_asset::<Image>()
@@ -41,13 +52,13 @@ fn measured_resource_board(viewport: UVec2, scale: f32) -> (App, Entity, Entity)
         for row in &mut client.aid {
             row.period = period;
             row.time = Some(babylon_persistence::runtime_session::OrganizerAidTime {
-                period: period - 1,
+                period,
                 labor_unit_id: row.labor_unit_id,
                 remaining_hours: u64::MAX,
             });
         }
     }
-    let shared = crate::observer_ui::tests::install_resource_header_fixture(&mut app);
+    let shared = crate::observer_ui::tests::install_resource_header_fixture(&mut app, viewport);
     let means = {
         let world = app.world_mut();
         world
@@ -68,6 +79,14 @@ fn measured_resource_board(viewport: UVec2, scale: f32) -> (App, Entity, Entity)
             font.font = body_font.clone();
         }
     }
+    for _ in 0..4 {
+        app.update();
+    }
+    assert_eq!(
+        app.world().resource::<UiScale>().0.to_bits(),
+        expected_scale.to_bits(),
+        "actual viewport fitting applies the Larger setting once"
+    );
     (app, shared, means)
 }
 
@@ -114,12 +133,13 @@ fn assert_inspector_resources(app: &mut App, inspector_means: Entity) {
 
 #[test]
 fn native_resource_headers_keep_long_current_values_visible_across_views() {
-    for (viewport, scale) in [
-        (UVec2::new(1366, 768), 1.0),
-        (UVec2::new(1920, 1080), 1.0),
-        (UVec2::new(1920, 1080), 1.25),
+    for (viewport, size, expected_scale) in [
+        (UVec2::new(1366, 768), InterfaceSize::Standard, 1.0),
+        (UVec2::new(1366, 768), InterfaceSize::Larger, 1.15),
+        (UVec2::new(1920, 1080), InterfaceSize::Standard, 1.25),
+        (UVec2::new(1920, 1080), InterfaceSize::Larger, 1.4375),
     ] {
-        let (mut app, shared, means) = measured_resource_board(viewport, scale);
+        let (mut app, shared, means) = measured_resource_board(viewport, size, expected_scale);
         for view in [
             PrimaryView::Organizer,
             PrimaryView::Map,
@@ -170,7 +190,7 @@ fn native_resource_headers_keep_long_current_values_visible_across_views() {
                 "physical hours stay grouped in {view:?}"
             );
             assert!(
-                text.0.contains("closed P2") && text.0.contains("next period unknown"),
+                text.0.contains("closed P3") && text.0.contains("next period unknown"),
                 "past supply never becomes future capacity"
             );
         }
@@ -188,6 +208,9 @@ fn native_resource_headers_keep_long_current_values_visible_across_views() {
         assert_inspector_resources(&mut app, inspector_means);
         app.world_mut().resource_mut::<OrganizerClient>().inspector = OrganizerInspector::Closed;
         *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Production;
+        for _ in 0..4 {
+            app.update();
+        }
         // Only the organizer resource changes: shared shell must repaint without a session change.
         app.world_mut()
             .resource_mut::<OrganizerClient>()

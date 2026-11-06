@@ -1608,6 +1608,7 @@ mod tests {
     use crate::map::SelectedCounty;
     use crate::observer_focus::{ObserverKeyboardActivate, ObserverKeyboardClaim};
     use crate::observer_opening::ProductionSkip;
+    use crate::observer_ui::ObserverFeedback;
     use crate::observer_warning::ContinueWarning;
     use crate::ui::dossier_card::ActiveCountyDossier;
     use babylon_kernel::clock::CampaignDuration;
@@ -3219,7 +3220,7 @@ mod tests {
         app.init_resource::<OpeningPresentation>()
             .init_resource::<ObserverFrame>()
             .init_resource::<ProductionNavigation>()
-            .init_resource::<crate::observer_ui::ObserverFeedback>()
+            .init_resource::<ObserverFeedback>()
             .add_message::<ContinueWarning>()
             .add_systems(
                 Update,

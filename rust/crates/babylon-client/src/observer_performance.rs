@@ -25,6 +25,8 @@ enum RenderMode {
     OrganizerDirection,
     OrganizerReceipts,
     OrganizerNotes,
+    OrganizerReview,
+    OrganizerPractices,
 }
 
 impl RenderMode {
@@ -38,6 +40,8 @@ impl RenderMode {
             Self::OrganizerRelationships => "organizer-relationships",
             Self::OrganizerDirection => "organizer-direction",
             Self::OrganizerReceipts => "organizer-receipts",
+            Self::OrganizerReview => "organizer-review",
+            Self::OrganizerPractices => "organizer-practices",
             Self::OrganizerNotes => "organizer-notes",
         }
     }
@@ -171,11 +175,7 @@ fn sample_frames(
     mut sampler: ResMut<FrameSampler>,
 ) {
     let scope = windows.single().ok().and_then(|window| {
-        let rect = if *view == PrimaryView::Organizer {
-            Rect::from_corners(Vec2::ZERO, Vec2::new(window.width(), window.height()))
-        } else {
-            viewport.0?
-        };
+        let rect = viewport.0?;
         if !window.focused
             || ui.menu_open
             || ui.splash_visible
@@ -197,6 +197,8 @@ fn sample_frames(
                     OrganizerInspector::Relationships => RenderMode::OrganizerRelationships,
                     OrganizerInspector::Direction => RenderMode::OrganizerDirection,
                     OrganizerInspector::Receipts => RenderMode::OrganizerReceipts,
+                    OrganizerInspector::Review => RenderMode::OrganizerReview,
+                    OrganizerInspector::Practices => RenderMode::OrganizerPractices,
                     OrganizerInspector::Notes => RenderMode::OrganizerNotes,
                 },
                 (PrimaryView::Map, _) => RenderMode::Map3d,

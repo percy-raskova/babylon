@@ -2676,6 +2676,7 @@ def native_join_evidence(directory):
     actions = []
     generation = 1
     epoch = 7
+    choice = "remote_aid"
 
     def state(tick, **extra):
         return {
@@ -2693,7 +2694,7 @@ def native_join_evidence(directory):
             "organizer_pending": False,
             "organizer_status_due": False,
             "organizer_period": tick,
-            "choice": "remote_aid",
+            "choice": choice,
             "reviewed_command": None,
             "preview": None,
             "commitment": None,
@@ -2702,7 +2703,29 @@ def native_join_evidence(directory):
             "menu_open": False,
             "opening_stage": "Game",
             "primary_view": "Organizer",
-            "inspector": "None",
+            "inspector": "Closed",
+            "playing": False,
+            "periods_per_second": 1.0,
+            "perspective": "PlayerKnowledge",
+            # P0 has no committed world. Later controls use the same material
+            # identity as their boundary and checkpoint, not a second hash stub.
+            "world_hash": (
+                records[f"material-{tick}.json"]["facts"]["nominal_world_hash"] if tick else None
+            ),
+            # This Designed aid-only trace has no selected subject, site,
+            # county or workplace report. No such IDs or dates are fabricated.
+            "selected_subject": None,
+            "menu_page": "InGame",
+            "selected_report_id": None,
+            "selected_report_observed_period": None,
+            "selected_report_acquired_period": None,
+            "larger_interface": False,
+            "road_layer": "EconomyNetwork",
+            "network_sector": "All",
+            "selected_county": None,
+            "selected_site": None,
+            "production_details_open": False,
+            "production_reading": "Flow",
             **extra,
         }
 

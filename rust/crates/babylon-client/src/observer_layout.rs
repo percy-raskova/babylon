@@ -38,7 +38,7 @@ impl ObserverLayout {
         Self {
             world: Rect::new(
                 16.0,
-                84.0,
+                100.0,
                 world_right,
                 if history == HistoryDrawerState::Open {
                     history_top - 12.0
@@ -46,7 +46,7 @@ impl ObserverLayout {
                     world_bottom
                 },
             ),
-            subject: Rect::new(world_right + 16.0, 84.0, size.x - 16.0, size.y - 16.0),
+            subject: Rect::new(world_right + 16.0, 100.0, size.x - 16.0, size.y - 16.0),
             history: Rect::new(16.0, history_top, world_right, world_bottom),
             footer: Rect::new(16.0, size.y - 52.0, world_right, size.y - 12.0),
         }
@@ -67,8 +67,11 @@ mod tests {
 
     #[test]
     fn world_and_active_panels_remain_disjoint_at_supported_sizes_and_scales() {
-        for size in [Vec2::new(1366.0, 768.0), Vec2::new(1920.0, 1080.0)] {
-            for scale in [1.0, 1.15, 1.3] {
+        for (size, fitted) in [
+            (Vec2::new(1366.0, 768.0), 1.0),
+            (Vec2::new(1920.0, 1080.0), 1.25),
+        ] {
+            for scale in [fitted, fitted * 1.15] {
                 for history in [HistoryDrawerState::Closed, HistoryDrawerState::Open] {
                     let layout = ObserverLayout::new(size, scale, history);
                     let subject = layout.region(ObserverRegion::Context);

@@ -32,7 +32,7 @@ use crate::map::SelectedCounty;
 use crate::map_economy_lens::{CycleDirection, MapLens, ScopeTransition};
 use crate::observer_audio::ObserverAudioSettings;
 use crate::observer_controls;
-use crate::observer_opening::OpeningPresentation;
+use crate::observer_opening::{MenuPage, OpeningPresentation, OpeningStage};
 use crate::observer_progress::OperationProgress;
 use crate::observer_ui::ProductionEvidenceOutcome;
 use crate::observer_ui::RoadLayer;
@@ -810,7 +810,6 @@ pub(crate) fn apply_committed_response(
         audit.advance_committed(state, request_id)?;
     }
     if state.organizer_enabled {
-        state.pause_playback();
         state.set_organizer_control_pending(true);
         reset.organizer()?.committed();
     }
@@ -895,9 +894,20 @@ pub(crate) fn apply_command(command: ObserverCommand, context: &mut CommandConte
         refresh,
         feedback,
         time,
+        opening,
         ..
     } = context;
     match command {
+        ObserverCommand::ObserverCampaigns => {
+            if let Some(opening) = opening {
+                opening.stage = OpeningStage::Title;
+                opening.menu_page = MenuPage::Campaigns;
+                ui.menu_open = true;
+                ui.disclosure = None;
+                state.pause_playback();
+            }
+        }
+
         ObserverCommand::Quit => {
             state.pause_playback();
             state.quit_requested = true;

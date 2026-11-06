@@ -19,6 +19,7 @@ use crate::observer_io::ObserverSet;
 use crate::observer_opening::{OpeningPresentation, OpeningStage};
 
 use crate::observer_ui::ObserverCommand;
+use crate::organizer::ui::OrganizerFeedback;
 
 // +3 dB. The Purge's decoded -6.19 dBTP peak leaves headroom at full volume.
 pub(crate) const TITLE_GAIN: f32 = 1.412_537_6;
@@ -231,6 +232,20 @@ pub(crate) fn feedback(
     }
 }
 
+fn organizer_feedback(
+    event: On<OrganizerFeedback>,
+    mut commands: Commands,
+    settings: Res<ObserverAudioSettings>,
+    bank: Res<AudioBank>,
+) {
+    let cue = match *event {
+        OrganizerFeedback::Select => &bank.select,
+        OrganizerFeedback::Open => &bank.open,
+        OrganizerFeedback::Back => &bank.back,
+    };
+    let _ = effect(&mut commands, cue.clone(), settings.effects_volume);
+}
+
 pub(crate) fn gameplay_audio(opening: Option<Res<OpeningPresentation>>) -> bool {
     opening.is_none_or(|opening| opening.stage == OpeningStage::Game)
 }
@@ -361,7 +376,8 @@ impl Plugin for ObserverAudioPlugin {
         ] {
             register_audio(registry, name, bytes);
         }
-        app.init_resource::<ObserverAudioSettings>()
+        app.add_observer(organizer_feedback)
+            .init_resource::<ObserverAudioSettings>()
             .add_systems(Startup, setup)
             .add_systems(
                 Update,

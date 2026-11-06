@@ -623,6 +623,14 @@ fn paint_outline(
     *previous = next;
 }
 
+#[cfg(test)]
+pub(crate) fn install_outline_fixture(app: &mut App, entity: Entity) {
+    app.init_resource::<ObserverFocusPolicy>()
+        .insert_resource(InputFocus::from_entity(entity))
+        .insert_resource(InputFocusVisible(true))
+        .add_systems(PostUpdate, paint_outline.after(UiSystems::Layout));
+}
+
 fn queue_reveal(
     focus: Res<InputFocus>,
     scale: Res<UiScale>,

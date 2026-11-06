@@ -567,7 +567,7 @@ fn county_dossier_is_gameplay_role_but_gate_ineligible_until_an_action_opens() {
 }
 
 #[test]
-fn aid_cards_without_authenticated_material_terms_are_not_visible_choices() {
+fn observer_view_does_not_expose_unauthenticated_aid_as_visible_choices() {
     let mut app = observer_app();
     let world = app.world_mut();
     let parents = world
@@ -583,12 +583,21 @@ fn aid_cards_without_authenticated_material_terms_are_not_visible_choices() {
         .collect::<Vec<_>>();
     assert_eq!(parents.len(), 2);
     for parent in parents {
-        assert_eq!(
-            world
-                .get::<Node>(parent)
-                .expect("the fixture world holds the addressed component")
-                .display,
-            Display::None
+        let mut ancestor = Some(parent);
+        let mut hidden = false;
+        while let Some(entity) = ancestor {
+            if world
+                .get::<Node>(entity)
+                .is_some_and(|node| node.display == Display::None)
+            {
+                hidden = true;
+                break;
+            }
+            ancestor = world.get::<ChildOf>(entity).map(ChildOf::parent);
+        }
+        assert!(
+            hidden,
+            "the observer fixture must not expose an unauthenticated aid choice"
         );
         assert_eq!(
             world

@@ -78,9 +78,10 @@ fn expected_interface_assets() -> [ExpectedVisualAsset; 6] {
     ]
 }
 
-fn expected_illustration_assets() -> [ExpectedVisualAsset; 11] {
+fn expected_illustration_assets() -> [ExpectedVisualAsset; 14] {
     use babylon_client::visual_assets::VisualAssetId;
 
+    let groups = expected_group_portraits();
     [
         (
             VisualAssetId::HeroRedApparatus,
@@ -167,6 +168,40 @@ fn expected_illustration_assets() -> [ExpectedVisualAsset; 11] {
             "Liberty at dusk",
             1672,
             941,
+            1,
+            1,
+        ),
+        groups[0],
+        groups[1],
+        groups[2],
+    ]
+}
+
+fn expected_group_portraits() -> [ExpectedVisualAsset; 3] {
+    use babylon_client::visual_assets::VisualAssetId;
+
+    [
+        (
+            VisualAssetId::GroupWayneCollective,
+            "Wayne Organizing Collective",
+            512,
+            512,
+            1,
+            1,
+        ),
+        (
+            VisualAssetId::GroupWorkplaceCommittee,
+            "Workplace Committee",
+            512,
+            512,
+            1,
+            1,
+        ),
+        (
+            VisualAssetId::GroupNeighborhoodContact,
+            "Neighborhood Contact Group",
+            512,
+            512,
             1,
             1,
         ),
@@ -282,7 +317,7 @@ fn gallery_labels_match_the_fixed_visual_asset_catalog() {
     let mut labels = world.query_filtered::<&Text, With<GalleryAssetLabel>>();
     let actual: Vec<_> = labels
         .iter(world)
-        .take(18)
+        .take(21)
         .map(|text| text.0.clone())
         .collect();
     let expected: Vec<_> = babylon_client::visual_assets::VISUAL_ASSET_CATALOG
@@ -290,7 +325,7 @@ fn gallery_labels_match_the_fixed_visual_asset_catalog() {
         .map(|descriptor| descriptor.label.to_owned())
         .collect();
 
-    assert_eq!(actual.len(), 17);
+    assert_eq!(actual.len(), 20);
     assert_eq!(actual, expected);
 }
 
@@ -356,14 +391,14 @@ fn gallery_cards_are_non_shrinking_and_require_scroll_at_1080p() {
     assert_eq!(root_node.overflow.y, OverflowAxis::Scroll);
 
     let mut labels = world.query_filtered::<Entity, With<GalleryAssetLabel>>();
-    let label_entities: [Entity; 17] = labels
+    let label_entities: [Entity; 20] = labels
         .iter(world)
-        .take(18)
+        .take(21)
         .collect::<Vec<_>>()
         .try_into()
         .unwrap_or_else(|entities: Vec<Entity>| {
             panic!(
-                "gallery must contain exactly 17 labeled cards, found {}",
+                "gallery must contain exactly 20 labeled cards, found {}",
                 entities.len()
             )
         });

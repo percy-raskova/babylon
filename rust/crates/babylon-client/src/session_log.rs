@@ -87,6 +87,7 @@ fn observer_command_name(command: ObserverCommand) -> &'static str {
         ObserverCommand::CycleGood(_) => "cycle_good",
         ObserverCommand::Archive => "archive",
         ObserverCommand::Menu => "menu",
+        ObserverCommand::ObserverCampaigns => "observer_campaigns",
         ObserverCommand::NewCampaign => "new_campaign",
         ObserverCommand::NewStatewideBaselineCampaign => "new_statewide_baseline",
         ObserverCommand::NewStatewideFreightConstraintCampaign => {

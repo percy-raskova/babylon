@@ -564,7 +564,7 @@ pub(crate) mod tests {
         assert_eq!(app.world().resource::<ObserverSession>().durable_tick, 4);
     }
 
-    fn command_app() -> (App, Receiver<RuntimeSessionRequest>) {
+    pub(crate) fn command_app() -> (App, Receiver<RuntimeSessionRequest>) {
         let mut state = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
         state.ready(3, None);
         state.connected_fixture();
@@ -605,7 +605,13 @@ pub(crate) mod tests {
         (app, receiver)
     }
 
-    fn dispatch(app: &mut App, commands: &[ObserverCommand]) {
+    pub(crate) fn install_playback(app: &mut App) {
+        app.init_resource::<PlaybackClock>()
+            .add_systems(Update, runtime::playback.in_set(ObserverSet::Install))
+            .configure_sets(Update, (ObserverSet::Receive, ObserverSet::Install).chain());
+    }
+
+    pub(crate) fn dispatch(app: &mut App, commands: &[ObserverCommand]) {
         for &command in commands {
             app.world_mut()
                 .resource_mut::<Messages<ObserverCommand>>()
@@ -1834,6 +1840,56 @@ pub(crate) mod tests {
             receiver.try_recv(),
             Err(mpsc::TryRecvError::Empty)
         ));
+    }
+
+    #[test]
+    fn network_observer_campaign_route_preserves_the_organizer_world_and_authority() {
+        use crate::observer_opening::{MenuPage, OpeningPresentation, OpeningStage};
+        let (mut app, requests) = command_app();
+        app.insert_resource(OpeningPresentation {
+            stage: OpeningStage::Game,
+            ..default()
+        });
+        let campaign = {
+            let mut state = app.world_mut().resource_mut::<ObserverSession>();
+            state.organizer_enabled = true;
+            state.perspective = Perspective::PlayerKnowledge;
+            state.playing = true;
+            state.campaign
+        };
+        dispatch(&mut app, &[ObserverCommand::ObserverCampaigns]);
+        let opening = app.world().resource::<OpeningPresentation>();
+        assert_eq!(opening.stage, OpeningStage::Title);
+        assert_eq!(opening.menu_page, MenuPage::Campaigns);
+        assert!(app.world().resource::<ObserverUiState>().menu_open);
+        let state = app.world().resource::<ObserverSession>();
+        assert_eq!(
+            state.campaign, campaign,
+            "chooser cannot replace the current saved world"
+        );
+        assert_eq!(state.durable_tick, 3);
+        assert_eq!(state.perspective, Perspective::PlayerKnowledge);
+        assert!(!state.playing);
+        assert!(
+            matches!(
+                availability(
+                    ObserverCommand::RoadLayer(crate::observer_ui::RoadLayer::EconomyNetwork),
+                    state
+                ),
+                ControlAvailability::Disabled(_)
+            ),
+            "navigation cannot bypass the restricted network"
+        );
+        assert!(
+            requests.try_recv().is_err(),
+            "opening the chooser does not start a campaign"
+        );
+        dispatch(&mut app, &[ObserverCommand::Menu]);
+        assert!(
+            !app.world().resource::<ObserverUiState>().menu_open,
+            "Continue returns to the preserved organizer"
+        );
+        assert_eq!(app.world().resource::<ObserverSession>().campaign, campaign);
     }
 
     #[test]

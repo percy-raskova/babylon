@@ -217,8 +217,10 @@ pub fn signal_row_segments(atom: &ArchiveAtom) -> Vec<DossierSegment> {
 pub enum SignalDetailLevel {
     /// Label and value only.
     Collapsed,
-    /// Label, value, and the exact source, locator, and field.
+    /// Label, value, and a readable citation affordance.
     Expanded,
+    /// Exact source, locator and grant identity for technical inspection.
+    Technical,
 }
 
 /// Exact retained display labels and values, with evidence expanded inline.
@@ -231,8 +233,13 @@ pub fn retained_signal_segments(
         DossierSegment::new(format!("{}: ", signal.label()), DossierTone::BoneDim),
         DossierSegment::new(signal.value(), DossierTone::Bone),
     ];
-    if detail == SignalDetailLevel::Expanded {
-        parts.push(DossierSegment::new(
+    match detail {
+        SignalDetailLevel::Collapsed => {}
+        SignalDetailLevel::Expanded => parts.push(DossierSegment::new(
+            "\nSource: retained Archive citation. Exact reference in Technical evidence.",
+            DossierTone::Dim,
+        )),
+        SignalDetailLevel::Technical => parts.push(DossierSegment::new(
             format!(
                 "\nSource: {}\nLocator: {}\nField: {}",
                 signal.citation().source_id(),
@@ -240,7 +247,7 @@ pub fn retained_signal_segments(
                 signal.grant_key()
             ),
             DossierTone::Dim,
-        ));
+        )),
     }
     parts
 }

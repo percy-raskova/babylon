@@ -215,6 +215,18 @@ impl ProductionControlAvailability {
     }
 }
 
+/// Reuse the same snapshot/context capability for opt-in ordinary native controls.
+pub(crate) fn command_enabled(
+    command: &ProductionCommand,
+    snapshot: Option<&ProductionSnapshot>,
+    navigation: &ProductionNavigation,
+    state: &ObserverSession,
+) -> bool {
+    ProductionControlAvailability::for_snapshot(snapshot, navigation)
+        .refusal(command, snapshot, navigation, state)
+        .is_none()
+}
+
 /// A disclosed inspector temporarily occupies the log's shared side panel.
 pub(crate) fn readings_panel_visible(
     view: PrimaryView,
@@ -233,12 +245,12 @@ pub(crate) fn readings_panel_visible(
 }
 
 #[derive(SystemParam)]
-pub(super) struct ProductionLocation<'w> {
+pub(crate) struct ProductionLocation<'w> {
     atlas: Res<'w, CountyAtlas>,
     selected: ResMut<'w, SelectedCounty>,
 }
 
-pub(super) fn navigate(
+pub(crate) fn navigate(
     mut commands: Commands,
     mut events: MessageReader<ProductionCommand>,
     mut view: ResMut<PrimaryView>,

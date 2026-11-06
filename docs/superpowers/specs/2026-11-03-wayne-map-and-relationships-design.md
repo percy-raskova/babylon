@@ -1,18 +1,21 @@
 # Wayne map and relationships: design
 
-**Status:** Approved on 2026-11-03. The Director's exact decision was
+**Status:** Approved on 2026-11-03. Workspace redesign approved on 2026-11-05.
+The Director's exact November 3 decision was
 “Approve this design and limited disclosure”. This approves the design and
 the limited visibility ruling below. It does not prove native behavior or
-accept a game gate. The finite PER-336 closeout remains a prerequisite to
-implementation.
+accept a game gate.
+
+The November 3 approval required the finite PER-336
+closeout before implementation. The November 5
+[execution plan](../plans/2026-11-05-wayne-game-workspace.md) uses current `dev`.
 
 The earlier v3 interactive preview received “i feel like this
 is great!” from the Director. That preview was visual evidence.
 
-**Scope:** PER-292's bounded national Wayne organizer experience. This design uses
-`d2b8ea14d` plus Task 7e under repair as context. That work is not yet a
-qualified base. PER-336's finite Wayne closeout precedes this
-implementation. Neither this design nor that prerequisite claims the PER-355
+**Scope:** PER-292's bounded national Wayne organizer experience. The November 3
+design used `d2b8ea14d` plus Task 7e under repair as historical context.
+Neither this design nor its prerequisite claims the PER-355
 14-cell acceptance or full Director acceptance of the active goal.
 
 ## Player purpose and first slice
@@ -39,9 +42,10 @@ Inquiry and Reinforce do not target an arbitrary selected organization. When
 offered from another selected subject, name the captured workplace and committee
 as the action target and partner. Use the existing eligibility and review path.
 
-Keep the captured 2-hour practice and 2-hour cycle capacity. Show displaced
-standing neighborhood work when applicable, independent partner response, and
-report timing from the actual view. In period 0 no
+Use the captured campaign's actual practice hours and cycle capacity. The old
+2-hour examples describe their campaign. They set no universal cost. Show
+displaced standing neighborhood work when applicable, independent partner response,
+and report timing from the actual view. In period 0 no
 completed-period report exists. Do not promise a report or successful contact.
 
 Reviewing, navigating, or changing views does not advance time or submit a
@@ -86,6 +90,92 @@ own disclosed position. Selection persists across views and evidence navigation.
 Hover or keyboard focus gives transient feedback without changing selection.
 Keep the selected county and subject in sync where applicable. An existing draft
 survives view and evidence navigation, subject to the existing validity rules.
+
+## November 5 game workspace
+
+The Director approved a full geographic background with compact controls above
+it. A selected-group dossier sits at the right, with two directly comparable choices
+along the bottom. Keep Wayne in focus on the existing county atlas. Places and
+Relationships share stable selection and the same campaign, viewed period and
+draft. The top strip names the collective, period, actual committed means,
+standing neighborhood work and the separate advance control. Keep the ordinary
+map, production and Archive destinations.
+
+Give the collective, workplace committee and neighborhood group distinct,
+reusable illustrations. A portrait personifies a group, without a named person,
+faction seal, membership count, geographic location or disclosed relation. Use
+the existing industrial ink, paper, rust, bone and brass estate, especially
+[Red Apparatus](../../../design/bevy-assets/prompts/hero-red-apparatus.md),
+[Bunker Oracle](../../../design/bevy-assets/prompts/concept-bunker-oracle.md)
+and [Living Map](../../../design/bevy-assets/prompts/concept-living-map.md).
+Keep image provenance in the existing
+[asset catalog](../../../design/bevy-assets/manifest.toml).
+
+The narrow Victoria 3 lesson is a contextual choice with its actual cost and
+availability, plus deeper explanation on demand. Its shipped map-list decree
+controls separate hover information from the click action. The local
+[derivation design](2026-07-30-derivation-inspector-design.md) records related
+explanation and comparison goals.
+
+<!-- vale Vale.Spelling = NO -->
+The narrow Stellaris lesson is a dispatch that can lead to a known subject.
+Its shipped situation-log controls distinguish tracking a subject from moving
+the camera to it. These observations concern
+interface resources, not game-mechanics proof. Portraits follow Babylon's
+existing art direction and [North Star](../../../NORTH_STAR.md).
+
+The older [Victoria 3 study](../../../project/research/16-living-map/games/victoria-3.md)
+and [Stellaris study](../../../project/research/16-living-map/games/stellaris.md)
+are historical design inputs. Their broader prescriptions grant no live scope.
+<!-- vale Vale.Spelling = YES -->
+The [July map doctrine](../../gameplay/research/35-july-living-map-and-behemoth-threads.md)
+provides the repository's map-first context.
+
+The bottom deck names the captured target and partner, actual hours, displaced
+routine, possible benefit, resolving period and availability for both choices.
+When the personal draft is Hold, show Reinforce against Hold when available
+without selecting Reinforce. A non-Hold draft compares itself against Hold.
+All practices remains one reachable list, including both inquiries, collection,
+local aid, remote solidarity, pause and resume. Keep collection shared material
+time and later aid coordination distinct from fulfilled delivery or performed
+organizer time. Paused routines stay paused unless explicitly resumed.
+
+Use one inspector for deeper evidence, notes, relationships, practice history and
+review. Keep both alternatives' essential comparison visible at ordinary sizes,
+including Larger text and long names. Fit the paper to the actual terms and the
+map to its remaining scene region. Longer inspector reading uses one region that
+scrolls.
+
+Review shows the authenticated actual terms. Review, Confirm and Advance remain
+separate actions.
+Refused, unavailable, pending, historical, completed and failed states must
+explain what the player can do next.
+
+After a durable advance, show a period dispatch that leaves the workspace usable.
+Include only receipts for the exact viewed period and authorized actor.
+Show newly acquired reports with both observed and acquired dates, and actually
+disclosed public City PD encounters.
+
+Keep older receipts, reports and encounters in explicitly dated history. Period 0
+has no completed-period result. If the snapshot has no receipt for the inspected
+period, direct the player to the existing practice Archive. Do not invent a quiet
+result. A delayed report is new knowledge about its observed period, not a newly
+observed event. Participation, contact, report acquisition, gift dispatch and gift
+arrival remain separate outcomes.
+
+Dispatch links carry stable subject, report or existing inspector/Archive
+identities. Opening and returning from evidence preserves the viewed context,
+selected subject and captured draft. Historical and pending views cannot write or
+replace a missing historical fact with current information. Overlay bounds and
+camera geometry must agree: map click, drag and wheel input stop beneath the
+comparison, dossier, inspector and dispatch. Reuse existing audio and reduced
+motion settings for selection and committed-period feedback.
+
+Qualify the real native composition at 1366×768 at scale 1, 1920×1080 at scales
+1 and 1.25, and the existing larger text settings. Test both views, long names,
+different captured costs, unknown and pending states, every practice, keyboard
+access and evidence return. Screenshots and injected input do not prove human
+comprehension or enjoyment.
 
 ## Knowledge and relation contract
 
@@ -180,6 +270,11 @@ on a real, visible, explainable committed result and its evidence, not on a
 predetermined partner response. Record failures and unavailable evidence
 honestly. Do not claim the broader national or Director gate from this slice.
 
+The [November 5 native evidence](../../../reports/wayne-game-workspace-2026-11-05.md)
+records the bounded Michigan decisions, an interruption and recovery of
+that same campaign through a distinct cold process. National performance,
+physical input and human comprehension and enjoyment remain open.
+
 ## Out of scope and sources
 
 This design authorizes no new game primitive, agency expansion, generalized
@@ -198,3 +293,98 @@ behavior in the organizer
 and [national policy](../../../content/scenarios/national/defines.toml) at the
 qualified implementation head. The topology authority research is a bounded
 source-reading aid, not a grant or current campaign observation.
+
+## November 6 human testing corrections
+
+Keep the collective's cash, captured organizer-hours and dated shared household
+time visible in Organizer, World and Evidence. Read only admitted current
+context. Missing treasury or household-time disclosure means unavailable,
+including in the Michigan preset. It never means zero.
+
+Cash belongs to the
+collective account, not a personal wallet or the contribution cap. Organizer
+hours describe captured commitments. Shared household time describes the
+immediately closed period, with the next period unknown. Repeated aid mandates
+for one household budget must not add its hours together. Conflicting budgets
+or stale, historical or changed-context readings remain unavailable.
+
+The latest closed receipt uses the same period index as the committed organizer
+view. The engine's internal next period has a separate index. Reject stale and
+future receipts. Period 0 has no closed household receipt.
+
+Use grouped physical quantities and exact common-currency money with a dollar
+sign and at least two decimal places: `$1,234.56`, `-$1.20`, `$0.000001`.
+Preserve precision below one cent without floating-point conversion. This display does
+not convert the common currency to USD. Keep identifiers, dates and hashes exact.
+
+Give comparison cards, All practices and authenticated review one shared short
+sentence about intended work. Flavor cannot claim an outcome, consent, named
+people or a guaranteed benefit. Paused Hold leaves the pause in place. Opening
+inquiries still state that no completed-period report exists. Actual receipts
+remain factual. Keep costs, displaced routine, prerequisites and conditional
+benefits readable beside the intent.
+
+Play continues authorized standing or default work after each committed period.
+It waits for both the current observation and authenticated organizer Status.
+It never pipelines advances or resubmits a consumed one-off ruling from a draft.
+
+Advance submits exactly one period and pauses. Speed changes the delay between
+ready periods without confirming a ruling. Pause stops future scheduling. An
+already detached atomic period can finish once.
+
+Accepted report, inspector, saved-reference, Archive and Review navigation
+pauses Play. A rejected stale link and ordinary subject selection leave its
+state unchanged. History retains its existing pause. A newly admitted current
+City PD notice pauses once with a readable reason in its admitted live context.
+Older, repeated, hidden,
+foreign or stale notices do not interrupt routine Play. Ordinary automatic
+workplace reports do not stop each period.
+
+World's full economy network still requires FullObserver and an exact current
+frame. The map lens explains this boundary and opens the existing Observer
+Campaigns chooser. An observer campaign uses a separate saved world. The current
+organizer world remains available through Continue or Load Game. Opening the
+chooser does not replace it or expand player knowledge.
+
+Report reading starts with the selected kind and numerical answer, then the
+named source and observed and received periods. A requested report about an
+earlier period remains distinct from an automatic current report. Dispatch
+shows the actual acquired answer and a dated Read action. That action retains
+its exact report identity.
+
+Changing reports starts at the top of one reading region. Return stays fixed and preserves the selected subject and draft.
+Notebook controls and exact citation references follow the answer.
+
+World can show current earned workplace reports within the existing organizer
+scope when no wider production observation is available. It never fills that gap
+from observer access. For an admitted production observation, county developments
+use that period's disclosed event descriptions, with History for more records.
+An empty event list does not prove that nothing changed.
+
+Archive reading preserves the retained human labels and values. Evidence and
+changes shows observed and published dates and retained coverage. A separate
+Technical evidence control exposes exact source identifiers, locators, grant
+keys, atom changes, hashes and the original publication. The retained reader
+has no separate source title or historical display labels. The interface states
+that limit. It does not construct titles from keys or later publications.
+
+### November 6 native evidence
+
+The [November 6 follow-up evidence](../../../reports/wayne-playtest-followup-2026-11-06.md)
+records compiled source `2bd365e98e48541ff37acea2042834a2d18b2ded`. New native
+images show both complete alternatives and separate focused period/resource lines.
+The wrapped network notice fits at the four actual Standard/Larger settings.
+The owned run installed automatic periods 1/2, paused at 2 and stepped once to 3.
+It read the exact inquiry with observation at 2 and acquisition at 3.
+
+The Ready Archive page shows observation/publication at 3 and retains the reports'
+earlier observation dates. The evidence records full restore equality and exact
+fixture retirement. The first November 6 run remains visually limited with
+retained period 1 Archive content.
+
+The default atlas is more withdrawn and nearby county labels still crowd. Source
+review found the map area, Home and picking consumers aligned. Physical picking
+and post-fix human comprehension/enjoyment remain unqualified. Michigan treasury
+and household-time bindings remain absent. The next game priority remains a
+resource-funded commitment, independent partner response and visible material or
+social follow-up. This evidence grants no new mechanic or broader gate acceptance.

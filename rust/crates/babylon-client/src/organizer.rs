@@ -14,6 +14,12 @@ mod presentation;
 
 mod scene;
 
+mod board;
+mod workspace;
+pub(crate) use board::Overlay as OrganizerOverlay;
+pub(crate) use ui::SceneRoot as OrganizerSceneRegion;
+pub(crate) mod workspace_copy;
+
 pub(crate) mod qualification_input;
 
 pub(crate) mod ui;
@@ -703,7 +709,7 @@ pub(crate) mod tests {
         assert!(!held.contains("999"));
         let (_, current) = presentation::inspector(&client, 3);
         assert!(current.contains("999 kg"));
-        assert!(current.contains("Acquired period 3"));
+        assert!(current.contains("Received period 3"));
         assert!(current.contains("HISTORICAL REPORT"));
         client.inspector = OrganizerInspector::Relationships;
         let (_, held_relationships) = presentation::inspector(&client, 2);
@@ -850,3 +856,7 @@ pub(crate) mod tests {
         assert!(!historical.choice_available(OrganizerChoice::Collect));
     }
 }
+
+#[cfg(test)]
+#[path = "organizer/playback_tests.rs"]
+mod playback_tests;

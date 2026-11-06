@@ -34,6 +34,9 @@ _ILLUSTRATION_IDS = (
     "banner-topology",
     "banner-collapse",
     "hero-liberty",
+    "group-wayne-collective",
+    "group-workplace-committee",
+    "group-neighborhood-contact",
 )
 _EXPECTED_MANIFEST_METADATA = (
     (
@@ -274,6 +277,48 @@ _EXPECTED_MANIFEST_METADATA = (
         "fd71508bf4f49e04f75a9386336291d23c64e422c373963321ba6a28fdacda99",
         "AGPL-3.0-or-later",
     ),
+    (
+        "group-wayne-collective",
+        "illustration",
+        "design/bevy-assets/prompts/group-wayne-collective.md",
+        "assets/visual/group-wayne-collective.webp",
+        "webp",
+        512,
+        512,
+        1,
+        1,
+        "linear",
+        "0f32163bff92bf33ef2be893dc7caf729b36edb95154b2fec18f4ae61e621000",
+        "AGPL-3.0-or-later",
+    ),
+    (
+        "group-workplace-committee",
+        "illustration",
+        "design/bevy-assets/prompts/group-workplace-committee.md",
+        "assets/visual/group-workplace-committee.webp",
+        "webp",
+        512,
+        512,
+        1,
+        1,
+        "linear",
+        "61dc358c12574ea9c120657dd6593c9b61a487d11953cd773f0e68b1b3a1216d",
+        "AGPL-3.0-or-later",
+    ),
+    (
+        "group-neighborhood-contact",
+        "illustration",
+        "design/bevy-assets/prompts/group-neighborhood-contact.md",
+        "assets/visual/group-neighborhood-contact.webp",
+        "webp",
+        512,
+        512,
+        1,
+        1,
+        "linear",
+        "61a713c977e696a47ff9d9d681e1a5ca96ea428c20c1d13043413b34894f1cc5",
+        "AGPL-3.0-or-later",
+    ),
 )
 _PALETTE = {
     "#1a0000",
@@ -286,7 +331,7 @@ _PALETTE = {
     "#228b22",
 }
 _HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
-_MAX_MANIFEST_ASSETS = 17
+_MAX_MANIFEST_ASSETS = 20
 _MAX_SVG_COLOR_MATCHES = 32
 
 
@@ -295,7 +340,7 @@ def _bounded_manifest_rows(rows: object) -> tuple[dict[str, object], ...]:
         raise AssertionError("manifest asset rows must be a list")
     rows_with_sentinel = tuple(islice(rows, _MAX_MANIFEST_ASSETS + 1))
     if len(rows_with_sentinel) > _MAX_MANIFEST_ASSETS:
-        raise AssertionError("manifest must contain at most 17 asset rows")
+        raise AssertionError("manifest must contain at most 20 asset rows")
     bounded_rows = rows_with_sentinel[:_MAX_MANIFEST_ASSETS]
     for index in range(_MAX_MANIFEST_ASSETS):
         if index >= len(bounded_rows):
@@ -323,9 +368,9 @@ def _manifest_assets() -> tuple[dict[str, object], ...]:
     return _bounded_manifest_rows(data.get("asset"))
 
 
-def test_manifest_reader_rejects_an_eighteenth_row() -> None:
-    rows: list[object] = [{} for _ in range(18)]
-    with pytest.raises(AssertionError, match="at most 17 asset rows"):
+def test_manifest_reader_rejects_a_twenty_first_row() -> None:
+    rows: list[object] = [{} for _ in range(21)]
+    with pytest.raises(AssertionError, match="at most 20 asset rows"):
         _bounded_manifest_rows(rows)
 
 
@@ -354,14 +399,14 @@ def _manifest_metadata(asset: dict[str, object]) -> tuple[object, ...]:
 
 def test_manifest_pins_every_complete_metadata_tuple() -> None:
     assets = _manifest_assets()
-    assert len(assets) == 17
-    actual = tuple(_manifest_metadata(assets[index]) for index in range(17))
+    assert len(assets) == 20
+    actual = tuple(_manifest_metadata(assets[index]) for index in range(20))
     assert actual == _EXPECTED_MANIFEST_METADATA
 
 
 def test_interface_sources_and_rasters_match_the_manifest() -> None:
     manifest = _manifest_assets()
-    assert len(manifest) in (6, 17)
+    assert len(manifest) in (6, 20)
     assets = manifest[:6]
     assert tuple(assets[index]["id"] for index in range(6)) == _INTERFACE_IDS
     for index in range(6):
@@ -387,10 +432,10 @@ def test_interface_svg_colors_are_palette_roles() -> None:
 
 def test_illustrations_decode_and_match_the_manifest() -> None:
     manifest = _manifest_assets()
-    assert len(manifest) == 17
-    assets = manifest[6:17]
-    assert tuple(assets[index]["id"] for index in range(11)) == _ILLUSTRATION_IDS
-    for index in range(11):
+    assert len(manifest) == 20
+    assets = manifest[6:20]
+    assert tuple(assets[index]["id"] for index in range(14)) == _ILLUSTRATION_IDS
+    for index in range(14):
         asset = assets[index]
         assert (_ROOT / str(asset["source"])).is_file()
         runtime = _ROOT / str(asset["runtime"])
@@ -405,7 +450,7 @@ def test_illustrations_decode_and_match_the_manifest() -> None:
 
 def test_manifest_and_runtime_directory_have_exactly_the_same_files() -> None:
     assets = _manifest_assets()
-    assert len(assets) == 17
-    declared = {Path(str(assets[index]["runtime"])).name for index in range(17)}
-    actual = {path.name for path in islice(_RUNTIME.iterdir(), 18)}
+    assert len(assets) == 20
+    declared = {Path(str(assets[index]["runtime"])).name for index in range(20)}
+    actual = {path.name for path in islice(_RUNTIME.iterdir(), 21)}
     assert actual == declared

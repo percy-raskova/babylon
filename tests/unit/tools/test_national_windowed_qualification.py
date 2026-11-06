@@ -44,6 +44,22 @@ def state(tick: int = 0) -> dict[str, Any]:
         "opening_stage": "Game",
         "primary_view": "Organizer",
         "inspector": "Closed",
+        "playing": False,
+        "periods_per_second": 1.0,
+        "perspective": "PlayerKnowledge",
+        "world_hash": None if tick == 0 else "c" * 64,
+        "selected_subject": None,
+        "menu_page": "Home",
+        "selected_report_id": None,
+        "selected_report_observed_period": None,
+        "selected_report_acquired_period": None,
+        "larger_interface": False,
+        "road_layer": "EconomyNetwork",
+        "network_sector": "All",
+        "selected_county": "26163",
+        "selected_site": None,
+        "production_details_open": False,
+        "production_reading": None,
     }
 
 
@@ -63,6 +79,7 @@ def test_operator_controls_have_a_distinct_completed_frame_event() -> None:
 
     actions = set(get_args(windowed.Action))
     assert {
+        "inspect_practices",
         "inspect_receipts",
         "open_relationships",
         "archive_workplace",
@@ -261,7 +278,11 @@ def test_new_choice_reviews_confirms_and_checks_exact_readback(
                 event = "applied"
                 if action == "status":
                     event = "observed"
+                elif action == "inspect_practices":
+                    fields["inspector"] = "Practices"
                 elif action == "choose_" + choice:
+                    assert fields["inspector"] == "Practices"
+                    fields["inspector"] = "Closed"
                     fields["choice"] = "collect" if mismatched else wire
                 elif action == "review":
                     fields["reviewed_command"] = command
@@ -298,7 +319,7 @@ def test_new_choice_reviews_confirms_and_checks_exact_readback(
         channel.close()
         worker.join(2)
     assert not worker.is_alive()
-    assert requested == ["status", "choose_" + choice] + (
+    assert requested == ["status", "inspect_practices", "choose_" + choice] + (
         [] if mismatched else ["review", "confirm", "status"]
     )
 
@@ -758,7 +779,9 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
         "        request=json.loads(line); action=request['action']; event='applied'\n"
         "        if action=='status': event='observed'\n"
         "        elif action=='open_direction': state['inspector']='Direction'\n"
+        "        elif action=='inspect_practices': state['inspector']='Practices'\n"
         "        elif action.startswith('choose_'):\n"
+        "            assert state['inspector'] in ('Direction', 'Practices')\n"
         "            state['choice']=action.removeprefix('choose_'); state['inspector']='Closed'\n"
         "        elif action=='review':\n"
         "            state['reviewed_command']={'nonce':request['sequence'],'choice':state['choice']}\n"
@@ -809,6 +832,7 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
     saved = json.loads((tmp_path / "native-controls.json").read_bytes())
     applied = [entry["action"] for entry in saved["actions"] if entry["action"] != "status"]
     assert applied == [
+        "inspect_practices",
         "choose_remote_aid",
         "review",
         "confirm",
@@ -820,6 +844,7 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
         "confirm",
         "step",
         "reopen",
+        "inspect_practices",
         "choose_local_aid",
         "review",
         "confirm",
@@ -932,3 +957,130 @@ def test_duplicate_choice_schedule_refuses_before_launch(
             choices=(entry, entry),
         )
     assert not launched
+
+
+def test_automatic_progress_requires_admitted_playback_and_settles_once() -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+    try:
+        peer.sendall(response(1))
+        channel.observe(1)
+        peer.sendall(response(2, "applied", playing=True))
+        channel.perform("play", 1)
+        peer.sendall(
+            response(
+                3,
+                durable_tick=1,
+                viewed_tick=1,
+                generation=2,
+                organizer_period=1,
+                playing=True,
+                tick_content_hash="b" * 64,
+                world_hash="c" * 64,
+            )
+        )
+        assert channel.observe(1).durable_tick == 1
+        peer.sendall(
+            response(
+                4,
+                "applied",
+                durable_tick=1,
+                viewed_tick=1,
+                generation=2,
+                organizer_period=1,
+                playing=False,
+                advance_pending=True,
+                tick_content_hash="b" * 64,
+                world_hash="c" * 64,
+            )
+        )
+        channel.perform("pause", 1)
+        peer.sendall(
+            response(
+                5,
+                durable_tick=2,
+                viewed_tick=2,
+                generation=3,
+                organizer_period=2,
+                tick_content_hash="d" * 64,
+                world_hash="e" * 64,
+            )
+        )
+        assert channel.observe(1).durable_tick == 2
+        peer.sendall(
+            response(
+                6,
+                durable_tick=3,
+                viewed_tick=3,
+                generation=4,
+                organizer_period=3,
+                tick_content_hash="f" * 64,
+                world_hash="0" * 64,
+            )
+        )
+        with pytest.raises(windowed.ControlRefusal, match="period"):
+            channel.observe(1)
+    finally:
+        channel.close()
+        peer.close()
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"campaign_id": "b56caf73-d034-491c-a837-901fa40b1577"},
+        {"scope_epoch": 8},
+        {"foundation_sha256": "d" * 64},
+        {"tick_content_hash": "d" * 64},
+        {"world_hash": "e" * 64},
+        {"generation": 0},
+    ],
+)
+def test_playback_keeps_campaign_scope_and_stationary_identity(changes: dict[str, Any]) -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 1)
+    try:
+        peer.sendall(response(1, **state(1)))
+        channel.observe(1)
+        peer.sendall(response(2, "applied", **(state(1) | {"playing": True})))
+        channel.perform("play", 1)
+        peer.sendall(response(3, **(state(1) | {"playing": True} | changes)))
+        with pytest.raises(windowed.ControlRefusal):
+            channel.observe(1)
+    finally:
+        channel.close()
+        peer.close()
+
+
+@pytest.mark.parametrize("delta", [0, 1, 2])
+def test_paused_manual_step_keeps_its_exact_single_period_contract(delta: int) -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 1)
+    try:
+        peer.sendall(response(1, **state(1)))
+        channel.observe(1)
+        peer.sendall(response(2, "committed_and_installed", **state(1 + delta)))
+        if delta == 1:
+            assert channel.perform("step", 1).durable_tick == 2
+        else:
+            with pytest.raises(windowed.ControlRefusal, match="period"):
+                channel.perform("step", 1)
+    finally:
+        channel.close()
+        peer.close()
+
+
+def test_stationary_inspection_cannot_credit_automatic_progress() -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+    try:
+        peer.sendall(response(1))
+        channel.observe(1)
+        peer.sendall(response(2, "applied", playing=True))
+        channel.perform("play", 1)
+        peer.sendall(response(3, "applied", **state(1)))
+        with pytest.raises(windowed.ControlRefusal, match="period"):
+            channel.perform("inspect_evidence", 1)
+    finally:
+        channel.close()
+        peer.close()

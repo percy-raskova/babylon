@@ -3,7 +3,7 @@
 
 # Bevy asset provenance
 
-This file is the authoritative provenance and license record for the seventeen catalog assets in
+This file is the authoritative provenance and license record for the twenty catalog assets in
 `manifest.toml`. Every asset in this estate uses `AGPL-3.0-or-later`.
 
 ## Original interface work
@@ -54,7 +54,7 @@ selected result at quality 82 with method 6. The committed WebP files record the
 ## License disposition
 
 The project distributes the SVG masters, prompt records, interface PNG files, and generated WebP
-files under `AGPL-3.0-or-later`. This disposition covers all seventeen manifest rows. It does not
+files under `AGPL-3.0-or-later`. This disposition covers all twenty manifest rows. It does not
 change the separate CC0-1.0 classification of Babylon's shipped audio estates.
 
 ## Liberty and the production entrance
@@ -78,3 +78,20 @@ Regenerate the ink texture and synchronized pen path from the bundled font:
 mise exec -- uv run --frozen python design/bevy-assets/sources/generate_signature.py \
   --font assets/fonts/PinyonScript-Regular.ttf --output assets/opening
 ```
+
+## Wayne group portraits
+
+OpenAI built-in `image_gen__imagegen` created three original group illustrations on 2026-11-05.
+The tool received no input image. The operator inspected existing Babylon art before prompting.
+These scenes portray anonymous groups. They give no evidence of membership or observed events.
+Each prompt record retains the exact prompt, generated-master identifier and original PNG hash.
+
+| Asset | Prompt record | Original PNG SHA-256 |
+| --- | --- | --- |
+| `group-wayne-collective` | `prompts/group-wayne-collective.md` | `4f4977f5f5a9d0d03bb35c6653ef6da05441b859651e5c166dd19dabd9c648df` |
+| `group-workplace-committee` | `prompts/group-workplace-committee.md` | `bda5d5fe29448ade12488f86f6f9aa27526aacc4df476352f5c194274e3a1621` |
+| `group-neighborhood-contact` | `prompts/group-neighborhood-contact.md` | `73415344a7d673fddc358d1f3e8a580d1929ea8bba2b937ddcb104bfae407ed9` |
+
+`cwebp -resize 512 512 -q 82 -m 6` encoded each final square composition without a crop.
+The three opaque WebP files use linear sampling and the same AGPL-3.0-or-later disposition.
+They are presentation only and make no mechanical claims.

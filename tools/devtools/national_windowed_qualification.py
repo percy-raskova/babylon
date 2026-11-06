@@ -27,6 +27,7 @@ from pydantic import (
     Field,
     JsonValue,
     StrictBool,
+    StrictFloat,
     StrictInt,
     StrictStr,
     ValidationError,
@@ -39,6 +40,21 @@ Positive = Annotated[StrictInt, Field(gt=0, le=2**64 - 1)]
 Sha256 = Annotated[StrictStr, Field(pattern=r"^[0-9a-f]{64}$")]
 Action = Literal[
     "status",
+    "play",
+    "pause",
+    "speed",
+    "world",
+    "observer_campaigns",
+    "circuit",
+    "flow",
+    "economy_network",
+    "manufacturing_sector",
+    "all_sectors",
+    "select_first_county_cohort",
+    "standard_interface",
+    "larger_interface",
+    "read_inquiry_report",
+    "shell_evidence",
     "continue_warning",
     "continue_title",
     "open_organizer",
@@ -154,6 +170,29 @@ class ControlState(FrozenRecord):
     opening_stage: Literal["Warning", "Production", "Title", "Game"]
     primary_view: StrictStr
     inspector: StrictStr
+    playing: StrictBool
+    periods_per_second: StrictFloat
+    perspective: Literal["FullObserver", "PlayerKnowledge"]
+    world_hash: Sha256 | None
+    selected_subject: StrictStr | None
+    menu_page: StrictStr
+    selected_report_id: Sha256 | None
+    selected_report_observed_period: Nonnegative | None
+    selected_report_acquired_period: Nonnegative | None
+    larger_interface: StrictBool
+    road_layer: StrictStr
+    network_sector: StrictStr
+    selected_county: StrictStr | None
+    selected_site: StrictStr | None
+    production_details_open: StrictBool
+    production_reading: StrictStr | None
+
+    @field_validator("periods_per_second")
+    @classmethod
+    def supported_speed(cls, value: float) -> float:
+        if value not in {1.0, 2.0, 5.0}:
+            raise ValueError("native speed is not a supported scheduling setting")
+        return value
 
 
 class ControlResponse(FrozenRecord):
@@ -256,6 +295,8 @@ class ControlChannel:
         self.scope_epoch: int | None = None
         self.closed = False
         self.ready = False
+        self._playback_admitted = False
+        self._settling_tick: int | None = None
         self._check_capture = check_capture
 
     def close(self) -> None:
@@ -318,14 +359,50 @@ class ControlChannel:
                 raise ControlRefusal("native reopen did not restore its exact installed boundary")
         elif self.scope_epoch is not None and current.scope_epoch != self.scope_epoch:
             raise ControlRefusal("native control runtime scope changed")
-        if self.state is not None and self.ready:
-            expected = self.state.durable_tick + (
-                action == "step" and event == "committed_and_installed"
-            )
-            if current.durable_tick != expected:
+        prior = self.state
+        starts_playback = action == "play" and event == "applied" and current.playing
+        automatic = action in {"status", "play", "pause"} and (
+            self._playback_admitted or starts_playback or self._settling_tick is not None
+        )
+        if prior is not None and self.ready:
+            if current.generation < prior.generation:
+                raise ControlRefusal("native control generation moved backward")
+            if current.perspective != prior.perspective:
+                raise ControlRefusal("native control perspective changed")
+            if action == "step" and event == "committed_and_installed":
+                if current.durable_tick != prior.durable_tick + 1 or current.playing:
+                    raise ControlRefusal("native control period does not match its own action")
+            elif automatic:
+                if current.durable_tick < prior.durable_tick or (
+                    not self._playback_admitted
+                    and not starts_playback
+                    and self._settling_tick is not None
+                    and current.durable_tick > self._settling_tick
+                ):
+                    raise ControlRefusal(
+                        "native control automatic period exceeded admitted progress"
+                    )
+            elif current.durable_tick != prior.durable_tick:
                 raise ControlRefusal("native control period does not match its own action")
-            if action != "step" and current.tick_content_hash != self.state.tick_content_hash:
+            if current.durable_tick == prior.durable_tick and (
+                current.tick_content_hash != prior.tick_content_hash
+                or current.world_hash != prior.world_hash
+            ):
                 raise ControlRefusal("native control committed identity changed")
+        if current.playing and not (self._playback_admitted or starts_playback):
+            raise ControlRefusal("native control playback was not explicitly admitted")
+        if starts_playback:
+            self._playback_admitted = True
+        if not current.playing:
+            if self._playback_admitted:
+                self._settling_tick = current.durable_tick + int(current.advance_pending)
+            self._playback_admitted = False
+            if (
+                not current.advance_pending
+                and not current.organizer_pending
+                and not current.organizer_status_due
+            ):
+                self._settling_tick = None
         if current.phase in {"Ready", "Complete"}:
             if current.foundation_sha256 is None or current.scope_epoch is None:
                 raise ControlRefusal("ready native control lacks foundation/runtime identity")
@@ -347,6 +424,21 @@ class ControlChannel:
         if self.closed:
             raise ControlRefusal("native control channel is closed after refusal")
         if action not in EXPECTED and action not in {
+            "play",
+            "pause",
+            "speed",
+            "world",
+            "observer_campaigns",
+            "circuit",
+            "flow",
+            "economy_network",
+            "manufacturing_sector",
+            "all_sectors",
+            "select_first_county_cohort",
+            "standard_interface",
+            "larger_interface",
+            "read_inquiry_report",
+            "shell_evidence",
             "continue_warning",
             "continue_title",
             "open_organizer",
@@ -464,6 +556,9 @@ class ControlChannel:
         if choice is not None and reply.state.choice != choice:
             self.close()
             raise ControlRefusal("native handler applied a different choice")
+        if action in {"play", "pause"} and reply.state.playing != (action == "play"):
+            self.close()
+            raise ControlRefusal("native playback acknowledgment has the wrong scheduling state")
         if action == "review" and (
             reply.state.reviewed_command is None
             or reply.state.preview is None

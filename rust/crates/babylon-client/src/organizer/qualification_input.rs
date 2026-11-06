@@ -21,15 +21,23 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::scene::{OrganizerSceneMode, OrganizerSubject};
-use super::{ui, OrganizerClient, OrganizerInspector, RequestKind};
+use super::workspace::DispatchDestination;
+use super::workspace_copy::{DatedLink, Destination};
+use super::{ui, workspace, OrganizerClient, OrganizerInspector, RequestKind};
+use crate::atlas::CountyAtlas;
+use crate::map::SelectedCounty;
 use crate::observer::{ObservationContext, ObserverSession, SessionPhase};
 use crate::observer_controls::ControlAvailability;
 use crate::observer_io::{ObserverSet, RuntimePipe};
 use crate::observer_opening::MenuPage;
 use crate::observer_opening::{OpeningPresentation, OpeningStage};
-use crate::observer_ui::{ObserverCommand, ObserverUiState};
+use crate::observer_ui::{
+    NetworkSector, ObserverCommand, ObserverFrame, ObserverUiState, RoadLayer,
+};
 use crate::observer_warning::ContinueWarning;
-use crate::production::PrimaryView;
+use crate::production::{
+    PrimaryView, ProductionCommand, ProductionNavigation, ProductionReadingSection,
+};
 use crate::ui::dossier_card::{
     ArchiveEvidenceApplied, ArchiveEvidenceReceipt, OpenArchiveEvidence,
 };
@@ -88,6 +96,21 @@ fn read_startup(reader: &mut impl BufRead, campaign: &str) -> Result<(), &'stati
 #[serde(rename_all = "snake_case")]
 enum Action {
     Status,
+    Play,
+    Pause,
+    Speed,
+    World,
+    ObserverCampaigns,
+    Circuit,
+    Flow,
+    EconomyNetwork,
+    ManufacturingSector,
+    AllSectors,
+    SelectFirstCountyCohort,
+    StandardInterface,
+    LargerInterface,
+    ReadInquiryReport,
+    ShellEvidence,
     ContinueWarning,
     ContinueTitle,
     OpenOrganizer,
@@ -136,9 +159,26 @@ impl Action {
         }
     }
 
-    fn organizer(self, client: &OrganizerClient) -> Option<OrganizerAction> {
+    fn organizer(
+        self,
+        client: &OrganizerClient,
+        session: &ObserverSession,
+    ) -> Option<OrganizerAction> {
         use ui::OrganizerAction as O;
         Some(match self {
+            Self::ReadInquiryReport => {
+                let dispatch = workspace::dispatch(client, session.viewed_tick)?;
+                let report = dispatch
+                    .current
+                    .reports
+                    .iter()
+                    .find(|row| row.observation.receipt_id.is_some())?;
+                O::Follow(DatedLink::new(
+                    session,
+                    session.viewed_tick,
+                    Destination::Detail(report.destination),
+                ))
+            }
             Self::OpenOrganizer => O::Open,
             Self::InspectPractices => O::Inspect(OrganizerInspector::Practices),
             Self::OpenDirection => O::Inspect(OrganizerInspector::Direction),
@@ -341,6 +381,7 @@ struct Pending {
     handled: bool,
     foundation: Option<String>,
     content_hash: Option<String>,
+    world_hash: Option<String>,
     capture_state: Option<Value>,
     expected_evidence: Option<[u8; 32]>,
     resize_armed: bool,
@@ -372,6 +413,7 @@ impl Pending {
             handled: tracked.is_none(),
             foundation: situation.session.foundation_digest.clone(),
             content_hash: situation.session.content_hash.clone(),
+            world_hash: situation.session.world_hash.clone(),
         }
     }
 }
@@ -502,7 +544,15 @@ fn state(
         "commitment":client.commitment,"quit_requested":session.quit_requested,
         "splash_visible":ui.splash_visible,"menu_open":ui.menu_open,
         "opening_stage":format!("{:?}",opening.stage),"primary_view":format!("{view:?}"),
-        "inspector":format!("{:?}",client.inspector)})
+        "inspector":format!("{:?}",client.inspector),
+        "playing":session.playing,"periods_per_second":session.periods_per_second,
+        "perspective":format!("{:?}",session.perspective),"world_hash":session.world_hash,
+        "selected_report_id":client.selected_evidence_id(session.viewed_tick).map(crate::dossier::hex_bytes),
+        "selected_report_observed_period":client.selected_evidence_id(session.viewed_tick).and_then(|id| client.lawful_evidence(id, session.viewed_tick)).map(|report| report.observed_period),
+        "selected_report_acquired_period":client.selected_evidence_id(session.viewed_tick).and_then(|id| client.lawful_evidence(id, session.viewed_tick)).map(|report| report.acquired_period),
+        "selected_subject":client.selected_subject.map(|subject| format!("{subject:?}")),
+        "larger_interface":ui.larger_interface,"road_layer":format!("{:?}",ui.road_layer),
+        "network_sector":format!("{:?}",ui.network_sector),"menu_page":format!("{:?}",opening.menu_page)})
 }
 
 fn response(sequence: Option<u64>, event: &str, reason: Option<&str>, state: Value) -> Vec<u8> {
@@ -520,8 +570,13 @@ fn response(sequence: Option<u64>, event: &str, reason: Option<&str>, state: Val
 fn precondition(input: &Input, session: &ObserverSession) -> bool {
     input.campaign_id == session.campaign.as_uuid().to_string()
         && input.scope_epoch == session.runtime_scope().map(|scope| scope.epoch)
-        && input.expected_tick == session.durable_tick
-        && input.expected_generation == session.generation
+        && if input.action == Action::Pause {
+            input.expected_tick <= session.durable_tick
+                && input.expected_generation <= session.generation
+        } else {
+            input.expected_tick == session.durable_tick
+                && input.expected_generation == session.generation
+        }
 }
 
 fn available(
@@ -533,6 +588,9 @@ fn available(
     view: PrimaryView,
     pipe: bool,
 ) -> bool {
+    if let Some(result) = presentation_available(action, session, ui, pipe) {
+        return result;
+    }
     if matches!(
         action,
         Action::OpenRelationships
@@ -556,7 +614,7 @@ fn available(
     {
         return false;
     }
-    if let Some(action) = action.organizer(client) {
+    if let Some(action) = action.organizer(client, session) {
         return ui::visible(action, client, session, ui, view)
             && ui::enabled(action, client, session);
     }
@@ -626,6 +684,59 @@ fn available(
     }
 }
 
+fn presentation_available(
+    action: Action,
+    session: &ObserverSession,
+    ui: &ObserverUiState,
+    pipe: bool,
+) -> Option<bool> {
+    Some(match action {
+        Action::Pause => {
+            pipe && !session.quit_requested
+                && !session.lifecycle_pending()
+                && session.runtime_scope().is_some()
+                && matches!(
+                    session.phase,
+                    SessionPhase::Ready
+                        | SessionPhase::Loading
+                        | SessionPhase::Advancing
+                        | SessionPhase::Complete
+                )
+        }
+        Action::Play
+        | Action::Speed
+        | Action::ObserverCampaigns
+        | Action::ShellEvidence
+        | Action::EconomyNetwork
+        | Action::ManufacturingSector
+        | Action::AllSectors => {
+            pipe && !ui.splash_visible
+                && !ui.menu_open
+                && !ui.comparison_open
+                && crate::observer_controls::availability(observer_command(action), session)
+                    == ControlAvailability::Enabled
+        }
+        Action::StandardInterface | Action::LargerInterface => {
+            !ui.splash_visible
+                && !ui.comparison_open
+                && !session.playing
+                && !session.advance_pending()
+                && !session.lifecycle_pending()
+                && matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
+        }
+        Action::World | Action::Circuit | Action::Flow | Action::SelectFirstCountyCohort => {
+            !ui.splash_visible
+                && !ui.menu_open
+                && !ui.comparison_open
+                && !session.playing
+                && !session.advance_pending()
+                && !session.lifecycle_pending()
+                && matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
+        }
+        _ => return None,
+    })
+}
+
 #[derive(bevy::ecs::system::SystemParam)]
 struct Situation<'w> {
     session: Res<'w, ObserverSession>,
@@ -634,11 +745,16 @@ struct Situation<'w> {
     opening: Res<'w, OpeningPresentation>,
     view: Res<'w, PrimaryView>,
     pipe: Option<Res<'w, RuntimePipe>>,
+    frame: Option<Res<'w, ObserverFrame>>,
+    navigation: Option<Res<'w, ProductionNavigation>>,
+    atlas: Option<Res<'w, CountyAtlas>>,
+    selected: Option<Res<'w, SelectedCounty>>,
 }
 
 impl Situation<'_> {
     fn allows(&self, input: &Input) -> bool {
         precondition(input, &self.session)
+            && self.production_available(input.action)
             && available(
                 input.action,
                 &self.session,
@@ -651,13 +767,90 @@ impl Situation<'_> {
     }
 
     fn state(&self) -> Value {
-        state(
+        let mut result = state(
             &self.session,
             &self.client,
             &self.ui,
             &self.opening,
             *self.view,
+        );
+        result["selected_county"] = json!(self
+            .selected
+            .as_ref()
+            .and_then(|selected| selected.0)
+            .and_then(|index| self.atlas.as_ref()?.county(index))
+            .map(|county| county.fips));
+        result["selected_site"] = json!(self
+            .navigation
+            .as_ref()
+            .and_then(|nav| nav.selected_site.as_ref()));
+        result["production_details_open"] =
+            json!(self.navigation.as_ref().is_some_and(|nav| nav.details_open));
+        result["production_reading"] = json!(self
+            .navigation
+            .as_ref()
+            .map(|nav| format!("{:?}", nav.reading_section)));
+        result
+    }
+
+    fn production_available(&self, action: Action) -> bool {
+        if !matches!(
+            action,
+            Action::World | Action::Circuit | Action::Flow | Action::SelectFirstCountyCohort
+        ) {
+            return true;
+        }
+        let Some(command) = self.production_command(action) else {
+            return false;
+        };
+        if self.session.organizer_enabled && matches!(command, ProductionCommand::Open) {
+            return true; // The ordinary handler routes this to earned Evidence.
+        }
+        let Some(navigation) = self.navigation.as_ref() else {
+            return false;
+        };
+        let snapshot = self
+            .frame
+            .as_ref()
+            .and_then(|frame| frame.for_session(&self.session))
+            .and_then(|frame| frame.production.as_ref());
+        crate::production::navigation::command_enabled(
+            &command,
+            snapshot,
+            navigation,
+            &self.session,
         )
+    }
+
+    fn production_command(&self, action: Action) -> Option<ProductionCommand> {
+        Some(match action {
+            Action::World => ProductionCommand::Map,
+            Action::Circuit => ProductionCommand::Open,
+            Action::Flow => ProductionCommand::Reading(ProductionReadingSection::Flow),
+            Action::SelectFirstCountyCohort => {
+                let county = self
+                    .selected
+                    .as_ref()?
+                    .0
+                    .and_then(|index| self.atlas.as_ref()?.county(index))?;
+                let snapshot = self
+                    .frame
+                    .as_ref()?
+                    .for_session(&self.session)?
+                    .production
+                    .as_ref()?;
+                let site = snapshot
+                    .sites
+                    .iter()
+                    .filter(|site| site.is_in_county(county.fips))
+                    .min_by(|a, b| a.id.cmp(&b.id))?;
+                ProductionCommand::Select {
+                    site_id: site.id.clone(),
+                    context: self.session.context(),
+                }
+            }
+            _ => return None,
+        })
     }
 
     // The caller labels these as admission/completion samples; pixels remain
@@ -712,6 +905,14 @@ fn flush_reply(transport: &Transport, controls: &mut Controls) -> OutputReady {
 
 fn observer_command(action: Action) -> ObserverCommand {
     match action {
+        Action::Play | Action::Pause => ObserverCommand::TogglePlay,
+        Action::Speed => ObserverCommand::Speed,
+        Action::ObserverCampaigns => ObserverCommand::ObserverCampaigns,
+        Action::ShellEvidence => ObserverCommand::Evidence,
+        Action::EconomyNetwork => ObserverCommand::RoadLayer(RoadLayer::EconomyNetwork),
+        Action::ManufacturingSector => ObserverCommand::NetworkSector(NetworkSector::Manufacturing),
+        Action::AllSectors => ObserverCommand::NetworkSector(NetworkSector::All),
+        Action::StandardInterface | Action::LargerInterface => ObserverCommand::UiScale,
         Action::Step => ObserverCommand::Step,
         Action::Reopen => ObserverCommand::ReopenCampaign,
         Action::Quit => ObserverCommand::Quit,
@@ -793,6 +994,70 @@ fn request_resize(
     Ok(())
 }
 
+fn admitted_input(
+    transport: &Transport,
+    controls: &mut Controls,
+    situation: &Situation,
+    observer: &mut MessageWriter<ObserverCommand>,
+) -> Option<Input> {
+    match flush_reply(transport, controls) {
+        OutputReady::Ready if controls.disabled => return None,
+        OutputReady::Ready => {}
+        OutputReady::Backpressure => return None,
+        OutputReady::Closed => {
+            controls.disabled = true;
+            controls.pending = None;
+            observer.write(ObserverCommand::Quit);
+            return None;
+        }
+    }
+    let received = match transport.incoming.lock() {
+        Ok(receiver) => receiver.try_recv(),
+        Err(_) => Ok(Incoming::Failed("control_input_lock_failed")),
+    };
+    let input = match received {
+        Err(TryRecvError::Empty) => return None,
+        Ok(Incoming::Input(input)) if controls.pending.is_none() => input,
+        other => {
+            let reason = match other {
+                Ok(Incoming::Failed(reason)) => reason,
+                Ok(Incoming::Input(_)) => "control_input_pipelined",
+                _ => "control_input_closed",
+            };
+            controls.respond(None, "refused", Some(reason), situation);
+            controls.disabled = true;
+            controls.pending = None;
+            observer.write(ObserverCommand::Quit);
+            return None;
+        }
+    };
+    let sequence = input.sequence;
+    if controls.next_sequence != Some(sequence) {
+        controls.respond(
+            Some(sequence),
+            "refused",
+            Some("control_sequence_mismatch"),
+            situation,
+        );
+        return None;
+    }
+    controls.next_sequence = sequence.checked_add(1);
+    if !situation.allows(&input) {
+        controls.respond(
+            Some(sequence),
+            "refused",
+            Some("control_stale_or_unavailable"),
+            situation,
+        );
+        return None;
+    }
+    if input.action == Action::Status {
+        controls.respond(Some(sequence), "observed", None, situation);
+        return None;
+    }
+    Some(input)
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "`dispatch` declares each Bevy parameter explicitly"
@@ -804,73 +1069,44 @@ fn dispatch(
     situation: Situation,
     mut organizer: MessageWriter<OrganizerAction>,
     mut observer: MessageWriter<ObserverCommand>,
+    mut production: MessageWriter<ProductionCommand>,
     mut warning: MessageWriter<ContinueWarning>,
     mut evidence: MessageWriter<OpenArchiveEvidence>,
     mut commands: Commands,
     mut windows: Query<(Entity, &mut Window), With<PrimaryWindow>>,
     resized: Res<Messages<WindowResized>>,
 ) {
-    match flush_reply(&transport, &mut controls) {
-        OutputReady::Ready if controls.disabled => return,
-        OutputReady::Ready => {}
-        OutputReady::Backpressure => return,
-        OutputReady::Closed => {
-            controls.disabled = true;
-            controls.pending = None;
-            observer.write(ObserverCommand::Quit);
-            return;
-        }
-    }
-    let received = match transport.incoming.lock() {
-        Ok(receiver) => receiver.try_recv(),
-        Err(_) => Ok(Incoming::Failed("control_input_lock_failed")),
-    };
-    let input = match received {
-        Err(TryRecvError::Empty) => return,
-        Ok(Incoming::Input(input)) if controls.pending.is_none() => input,
-        other => {
-            let reason = match other {
-                Ok(Incoming::Failed(reason)) => reason,
-                Ok(Incoming::Input(_)) => "control_input_pipelined",
-                _ => "control_input_closed",
-            };
-            controls.respond(None, "refused", Some(reason), &situation);
-            controls.disabled = true;
-            controls.pending = None;
-            observer.write(ObserverCommand::Quit);
-            return;
-        }
+    let Some(input) = admitted_input(&transport, &mut controls, &situation, &mut observer) else {
+        return;
     };
     let sequence = input.sequence;
-    if controls.next_sequence != Some(sequence) {
-        controls.respond(
-            Some(sequence),
-            "refused",
-            Some("control_sequence_mismatch"),
-            &situation,
-        );
-        return;
-    }
-    controls.next_sequence = sequence.checked_add(1);
-    if !situation.allows(&input) {
-        controls.respond(
-            Some(sequence),
-            "refused",
-            Some("control_stale_or_unavailable"),
-            &situation,
-        );
-        return;
-    }
-    if input.action == Action::Status {
-        controls.respond(Some(sequence), "observed", None, &situation);
-        return;
-    }
     receipt.tracked = None;
     receipt.handled = None;
-    if let Some(action) = input.action.organizer(&situation.client) {
+    if let Some(action) = input
+        .action
+        .organizer(&situation.client, &situation.session)
+    {
         receipt.tracked = Some(Tracked::Organizer(organizer.write(action).id, input.action));
+    } else if matches!(
+        input.action,
+        Action::World | Action::Circuit | Action::Flow | Action::SelectFirstCountyCohort
+    ) {
+        let Some(command) = situation.production_command(input.action) else {
+            controls.respond(
+                Some(sequence),
+                "refused",
+                Some("control_subject_unavailable"),
+                &situation,
+            );
+            return;
+        };
+        production.write(command);
     } else {
         match input.action {
+            Action::Play if situation.session.playing => {}
+            Action::Pause if !situation.session.playing => {}
+            Action::LargerInterface if situation.ui.larger_interface => {}
+            Action::StandardInterface if !situation.ui.larger_interface => {}
             Action::ContinueWarning => {
                 warning.write(ContinueWarning);
             }
@@ -896,7 +1132,17 @@ fn dispatch(
                     return;
                 }
             }
-            action @ (Action::Step
+            action @ (Action::Play
+            | Action::Pause
+            | Action::Speed
+            | Action::ObserverCampaigns
+            | Action::ShellEvidence
+            | Action::EconomyNetwork
+            | Action::ManufacturingSector
+            | Action::AllSectors
+            | Action::StandardInterface
+            | Action::LargerInterface
+            | Action::Step
             | Action::Reopen
             | Action::Quit
             | Action::PreviousPeriod
@@ -978,6 +1224,20 @@ fn outcome(pending: &Pending, s: &Situation) -> Option<Result<&'static str, &'st
     if action == Action::Quit {
         return s.session.quit_requested.then_some(Ok("quit_requested"));
     }
+    if action == Action::Pause {
+        if s.session.campaign != pending.context.campaign
+            || s.session.perspective != pending.context.perspective
+            || s.session.foundation_digest != pending.foundation
+            || s.session.durable_tick < pending.input.expected_tick
+            || s.session.generation < pending.context.generation
+            || (s.session.durable_tick == pending.input.expected_tick
+                && (s.session.content_hash != pending.content_hash
+                    || s.session.world_hash != pending.world_hash))
+        {
+            return Some(Err("control_context_lost"));
+        }
+        return (!s.session.playing).then_some(Ok("applied"));
+    }
     if action != Action::Step && s.session.context() != pending.context {
         return Some(Err("control_context_changed"));
     }
@@ -1007,12 +1267,28 @@ fn outcome(pending: &Pending, s: &Situation) -> Option<Result<&'static str, &'st
     if matches!(action, Action::Review | Action::Confirm) {
         return organizer_outcome(pending, s);
     }
-    let applied = match action.organizer(&s.client) {
+    Some(if presentation_applied(pending, s) {
+        Ok("applied")
+    } else {
+        Err("ordinary_handler_refused")
+    })
+}
+
+fn presentation_applied(pending: &Pending, s: &Situation) -> bool {
+    let action = pending.input.action;
+    match action.organizer(&s.client, &s.session) {
         Some(OrganizerAction::Choose(choice)) => s.client.choice() == choice,
         Some(OrganizerAction::Open) => *s.view == PrimaryView::Organizer,
         Some(OrganizerAction::Inspect(inspector)) => s.client.inspector == inspector,
         Some(OrganizerAction::SetSceneMode(mode)) => s.client.scene_mode == mode,
         Some(OrganizerAction::SelectSubject(subject)) => s.client.selected_subject == Some(subject),
+        Some(OrganizerAction::Follow(link)) => match link.destination {
+            Destination::Detail(DispatchDestination::Report(id)) => {
+                s.client.inspector == OrganizerInspector::Evidence
+                    && s.client.selected_evidence_id(s.session.viewed_tick) == Some(id)
+            }
+            _ => false,
+        },
         Some(OrganizerAction::NextEvidence | OrganizerAction::PreviousEvidence) => {
             pending.expected_evidence.is_some()
                 && s.client.selected_evidence_id(s.session.viewed_tick) == pending.expected_evidence
@@ -1023,16 +1299,40 @@ fn outcome(pending: &Pending, s: &Situation) -> Option<Result<&'static str, &'st
             *s.view == PrimaryView::Map && s.ui.archive_open
         }
         _ => match action {
+            Action::Play => s.session.playing,
+            Action::Speed => true,
+            Action::World => *s.view == PrimaryView::Map,
+            Action::Circuit if s.session.organizer_enabled => {
+                s.client.inspector == OrganizerInspector::Evidence
+            }
+            Action::Circuit => *s.view == PrimaryView::Production,
+            Action::Flow => s.navigation.as_ref().is_some_and(|nav| {
+                nav.details_open && nav.reading_section == ProductionReadingSection::Flow
+            }),
+            Action::SelectFirstCountyCohort => {
+                s.production_command(action)
+                    .is_some_and(|command| match command {
+                        ProductionCommand::Select { site_id, .. } => s
+                            .navigation
+                            .as_ref()
+                            .is_some_and(|nav| nav.selected_site.as_ref() == Some(&site_id)),
+                        _ => false,
+                    })
+            }
+            Action::ShellEvidence => s.client.inspector == OrganizerInspector::Evidence,
+            Action::ObserverCampaigns => {
+                s.ui.menu_open && s.opening.menu_page == MenuPage::Campaigns
+            }
+            Action::EconomyNetwork => s.ui.road_layer == RoadLayer::EconomyNetwork,
+            Action::ManufacturingSector => s.ui.network_sector == NetworkSector::Manufacturing,
+            Action::AllSectors => s.ui.network_sector == NetworkSector::All,
+            Action::StandardInterface => !s.ui.larger_interface,
+            Action::LargerInterface => s.ui.larger_interface,
             Action::ContinueWarning => s.opening.stage == OpeningStage::Production,
             Action::ContinueTitle => !s.ui.menu_open,
             _ => false,
         },
-    };
-    Some(if applied {
-        Ok("applied")
-    } else {
-        Err("ordinary_handler_refused")
-    })
+    }
 }
 
 fn organizer_outcome(
@@ -1287,6 +1587,7 @@ fn complete(
 pub(crate) fn install(app: &mut App, transport: Transport) {
     app.insert_resource(transport)
         .add_message::<OpenArchiveEvidence>()
+        .add_message::<ProductionCommand>()
         .add_message::<WindowResized>()
         .init_resource::<ArchiveEvidenceReceipt>()
         .init_resource::<Controls>()
@@ -1298,6 +1599,7 @@ pub(crate) fn install(app: &mut App, transport: Transport) {
             complete
                 .after(ObserverSet::Install)
                 .after(ArchiveEvidenceApplied)
+                .after(crate::production::navigation::navigate)
                 .after(crate::observer_warning::apply_continue)
                 .before(crate::observer_opening::advance)
                 .before(ObserverSet::Paint),
@@ -1977,6 +2279,7 @@ mod tests {
             handled: false,
             foundation: session.foundation_digest.clone(),
             content_hash: session.content_hash.clone(),
+            world_hash: session.world_hash.clone(),
             capture_state: None,
             expected_evidence: None,
             resize_armed: false,
@@ -2739,5 +3042,178 @@ mod tests {
         input.scope_epoch = None;
         input.campaign_id = Uuid::from_u128(0x343).to_string();
         assert!(!precondition(&input, &session));
+    }
+    #[test]
+    fn pause_alone_accepts_a_raced_installed_period_in_the_same_scope() {
+        let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(0x342)));
+        session.connected_fixture();
+        session.phase = SessionPhase::Ready;
+        let client = OrganizerClient::default();
+        let mut input = pending(&session, &client, Action::Pause).input;
+        session.durable_tick = 1;
+        session.viewed_tick = 1;
+        session.generation += 1;
+        assert!(
+            precondition(&input, &session),
+            "Pause cancels scheduling across an atomic install"
+        );
+        input.action = Action::Play;
+        assert!(!precondition(&input, &session));
+        input.action = Action::Pause;
+        input.expected_tick = session.durable_tick + 1;
+        assert!(!precondition(&input, &session));
+        input.expected_tick = session.durable_tick;
+        input.expected_generation = session.generation + 1;
+        assert!(!precondition(&input, &session));
+        input.expected_generation = session.generation;
+        input.campaign_id = Uuid::from_u128(0x343).to_string();
+        assert!(!precondition(&input, &session));
+        input.campaign_id = session.campaign.as_uuid().to_string();
+        input.scope_epoch = Some(input.scope_epoch.expect("connected") + 1);
+        assert!(!precondition(&input, &session));
+    }
+    #[test]
+    fn playback_controls_use_ordinary_idempotent_handlers_during_pending_install() {
+        let (mut app, requests) = crate::observer_io::tests::command_app();
+        app.world_mut().resource_mut::<ObserverUiState>().menu_open = false;
+        app.init_resource::<OrganizerClient>()
+            .init_resource::<OpeningPresentation>()
+            .init_resource::<PrimaryView>()
+            .add_message::<OrganizerAction>()
+            .add_message::<ContinueWarning>()
+            .configure_sets(
+                Update,
+                (
+                    ObserverSet::Input,
+                    ObserverSet::Receive,
+                    ObserverSet::Install,
+                    ObserverSet::Paint,
+                )
+                    .chain(),
+            );
+        let (socket, _peer) = UnixStream::pair().expect("fixture socket");
+        let (incoming, receiver) = mpsc::channel();
+        let (outgoing, _output) = mpsc::sync_channel(1);
+        install(
+            &mut app,
+            Transport {
+                incoming: Mutex::new(receiver),
+                outgoing,
+                socket,
+                capture_dir: None,
+            },
+        );
+        for (index, action) in [Action::Play, Action::Play, Action::Pause, Action::Pause]
+            .into_iter()
+            .enumerate()
+        {
+            let mut input = pending(
+                app.world().resource::<ObserverSession>(),
+                app.world().resource::<OrganizerClient>(),
+                action,
+            )
+            .input;
+            input.sequence = u64::try_from(index).expect("bounded") + 1;
+            if index == 2 {
+                let mut session = app.world_mut().resource_mut::<ObserverSession>();
+                assert!(session.begin_advance().is_some());
+                session.generation += 1;
+            }
+            incoming.send(Incoming::Input(input)).expect("receiver");
+            app.update();
+            let reply: Value = serde_json::from_slice(
+                &app.world_mut()
+                    .resource_mut::<Controls>()
+                    .reply
+                    .take()
+                    .expect("ordinary handler reply"),
+            )
+            .expect("JSON");
+            assert_eq!(reply["event"], "applied", "{index}: {reply}");
+            assert_eq!(app.world().resource::<ObserverSession>().playing, index < 2);
+        }
+        assert!(
+            app.world().resource::<ObserverSession>().advance_pending(),
+            "Pause does not cancel the atomic period"
+        );
+        assert!(
+            requests.try_recv().is_err(),
+            "scheduling ACKs do not credit a runtime commit"
+        );
+    }
+
+    #[test]
+    fn disclosed_inquiry_control_selects_exact_dated_report_and_keeps_draft() {
+        use babylon_persistence::runtime_session::{OrganizerObservation, OrganizerReport};
+        let (mut app, _, draft) = ui::tests::dossier_navigation_fixture();
+        app.init_resource::<OpeningPresentation>()
+            .add_message::<ContinueWarning>();
+        {
+            let campaign = *app.world().resource::<ObserverSession>().campaign.as_uuid();
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.durable_tick = 3;
+            session.viewed_tick = 3;
+            let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+            client.campaign = Some(campaign);
+            let view = client.view.as_mut().expect("view");
+            view.period = 3;
+            let report = OrganizerObservation {
+                observation_id: [31; 32],
+                actor_id: view.actor_id,
+                subject_id: view.workplace_id,
+                source_actor_id: view.workplace_partner_id,
+                observed_period: 2,
+                acquired_period: 3,
+                receipt_id: Some([7; 32]),
+                report: OrganizerReport::Work {
+                    performed_labor_hours: 123,
+                    output_kg: 456,
+                    previous_labor_hours: None,
+                    previous_output_kg: None,
+                },
+            };
+            view.observations = vec![
+                report.clone(),
+                OrganizerObservation {
+                    observation_id: [32; 32],
+                    receipt_id: None,
+                    ..report
+                },
+            ];
+            view.total_observation_count = 2;
+        }
+        let (socket, _peer) = UnixStream::pair().expect("socket");
+        let (incoming, receiver) = mpsc::channel();
+        let (outgoing, _output) = mpsc::sync_channel(1);
+        install(
+            &mut app,
+            Transport {
+                incoming: Mutex::new(receiver),
+                outgoing,
+                socket,
+                capture_dir: None,
+            },
+        );
+        let input = pending(
+            app.world().resource::<ObserverSession>(),
+            app.world().resource::<OrganizerClient>(),
+            Action::ReadInquiryReport,
+        )
+        .input;
+        incoming.send(Incoming::Input(input)).expect("receiver");
+        app.update();
+        let reply: Value = serde_json::from_slice(
+            app.world()
+                .resource::<Controls>()
+                .reply
+                .as_ref()
+                .expect("reply"),
+        )
+        .expect("JSON");
+        assert_eq!(reply["event"], "applied", "{reply}");
+        assert_eq!(reply["state"]["selected_report_id"], "1f".repeat(32));
+        assert_eq!(reply["state"]["selected_report_observed_period"], 2);
+        assert_eq!(reply["state"]["selected_report_acquired_period"], 3);
+        assert_eq!(ui::tests::draft_debug(&app), draft);
     }
 }

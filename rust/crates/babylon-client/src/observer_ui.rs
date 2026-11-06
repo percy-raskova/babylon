@@ -223,6 +223,7 @@ pub enum ObserverCommand {
     CycleGood(bool),
     Archive,
     Menu,
+    ObserverCampaigns,
     NewCampaign,
     NewOrganizerCampaign,
     NewNationalCampaign,
@@ -766,6 +767,21 @@ fn spawn_drawers(commands: &mut Commands) {
     }
 }
 
+fn spawn_observer_campaign_route(panel: &mut ChildSpawnerCommands) {
+    panel.spawn(block_label(
+        "The full economy network requires an Observer campaign. Observer Campaigns opens a separate saved world. Your organizer world is preserved; return through Load Game.",
+        12.0,
+        theme::GRAY,
+    ));
+    panel.spawn(row()).with_children(|bar| {
+        button(
+            bar,
+            "Observer Campaigns",
+            ObserverCommand::ObserverCampaigns,
+        );
+    });
+}
+
 fn spawn_lens_controls(panel: &mut ChildSpawnerCommands) {
     panel.spawn(row()).with_children(|bar| {
         button(
@@ -787,6 +803,7 @@ fn spawn_lens_controls(panel: &mut ChildSpawnerCommands) {
         );
         button(bar, "Level geography", ObserverCommand::Relationships);
     });
+    spawn_observer_campaign_route(panel);
     panel.spawn(block_label(
         "Network / industry and its trading neighbors",
         12.0,
@@ -1209,7 +1226,8 @@ fn button_visible(
         | ObserverCommand::NetworkSector(_)
         | ObserverCommand::Workforce(_)
         | ObserverCommand::Lens(_)
-        | ObserverCommand::MaterialLens(_) => {
+        | ObserverCommand::MaterialLens(_)
+        | ObserverCommand::ObserverCampaigns => {
             map && ui.disclosure == Some(ObserverDisclosure::Lens)
         }
         ObserverCommand::CycleGood(_) => {
@@ -1452,7 +1470,7 @@ fn caption(
             "Quit game [Q]"
         }
         .to_owned(),
-        ObserverCommand::Speed => format!("Speed: {} period(s) / sec", state.periods_per_second),
+        ObserverCommand::Speed => format!("Speed: {}s delay", state.periods_per_second.recip()),
         ObserverCommand::UiScale => format!(
             "Interface size: {} [U]",
             if ui.larger_interface {
@@ -1921,6 +1939,19 @@ fn paint_pending_status(
     }
 }
 
+fn status_with_organizer_message(
+    status: &str,
+    organizer: Option<&OrganizerClient>,
+    state: &ObserverSession,
+) -> String {
+    organizer
+        .and_then(|client| client.paused_message_for(state))
+        .map_or_else(
+            || status.to_owned(),
+            |message| format!("{status} {message}"),
+        )
+}
+
 fn repaint(
     shell: ShellState,
     mut texts: Query<(&ObserverText, &mut Text)>,
@@ -1986,7 +2017,7 @@ fn repaint(
             } else { String::new() },
             ObserverText::Identity if state.organizer_enabled => String::new(),
             ObserverText::Identity => format!("{} | {}", state.perspective.label(), archive_status),
-            ObserverText::Status => turn.status.clone(),
+            ObserverText::Status => status_with_organizer_message(&turn.status, organizer.as_deref(), &state),
             ObserverText::Legend => match &ui.lens {
                 MapLens::Relationships => String::new(),
                 MapLens::Workforce(_) | MapLens::Qcew(_) => format!("0..{} {}", lens.maximum().map_or_else(|| "-".into(), grouped), lens.unit),
@@ -2317,6 +2348,123 @@ pub(crate) mod tests {
                 matches!(kind, ObserverText::CampaignMeans).then_some(entity)
             })
             .expect("shared resource reading exists in World and Evidence chrome")
+    }
+
+    fn world_notice_fixture() -> (App, Entity) {
+        use babylon_persistence::runtime_session::RuntimeSessionRequest;
+        let (mut client, mut session, request, mut snapshot) =
+            crate::organizer::tests::status_fixture();
+        snapshot.city_pd_encounters[0].resolve_period = 3;
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } = request else {
+            panic!("status fixture");
+        };
+        session.playing = true;
+        client
+            .status(request_id, snapshot, &mut session)
+            .expect("current admitted notice");
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(client)
+            .insert_resource(session)
+            .insert_resource(PrimaryView::Map)
+            .insert_resource(ObserverUiState {
+                splash_visible: false,
+                menu_open: false,
+                ..default()
+            })
+            .init_resource::<UiScale>();
+        install_resource_header_fixture(&mut app, UVec2::new(1920, 1080));
+        app.update();
+        let status = {
+            let world = app.world_mut();
+            world
+                .query::<(Entity, &ObserverText)>()
+                .iter(world)
+                .find_map(|(entity, kind)| matches!(kind, ObserverText::Status).then_some(entity))
+                .expect("actual shared World status")
+        };
+        (app, status)
+    }
+
+    #[test]
+    fn shared_world_status_shows_only_the_current_paused_organizer_notice() {
+        let (mut app, status) = world_notice_fixture();
+        assert!(
+            app.world()
+                .get::<Text>(status)
+                .expect("status text")
+                .0
+                .contains("City PD"),
+            "World must explain the development pause"
+        );
+        app.world_mut().resource_mut::<ObserverSession>().playing = true;
+        app.update();
+        assert!(
+            !app.world()
+                .get::<Text>(status)
+                .expect("status text")
+                .0
+                .contains("City PD"),
+            "resumed Play cannot retain a paused status"
+        );
+    }
+
+    #[test]
+    fn shared_world_status_keeps_ordinary_pause_without_foreign_or_stale_messages() {
+        for case in [
+            "history",
+            "generation",
+            "world_hash",
+            "content_hash",
+            "campaign",
+            "perspective",
+            "actor",
+            "view_period",
+        ] {
+            let (mut app, status) = world_notice_fixture();
+            match case {
+                "actor" => {
+                    app.world_mut()
+                        .resource_mut::<OrganizerClient>()
+                        .view
+                        .as_mut()
+                        .expect("current view")
+                        .actor_id += 1;
+                }
+                "view_period" => {
+                    app.world_mut()
+                        .resource_mut::<OrganizerClient>()
+                        .view
+                        .as_mut()
+                        .expect("current view")
+                        .period = 2;
+                }
+                _ => {
+                    let mut session = app.world_mut().resource_mut::<ObserverSession>();
+                    match case {
+                        "history" => session.inspect_tick(2),
+                        "generation" => session.generation += 1,
+                        "world_hash" => session.world_hash = Some("different world".into()),
+                        "content_hash" => session.content_hash = Some("different content".into()),
+                        "campaign" => {
+                            session.campaign = babylon_persistence::identity::CampaignId::from_uuid(
+                                Uuid::from_u128(999),
+                            );
+                        }
+                        "perspective" => session.set_perspective(Perspective::PlayerKnowledge),
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            app.update();
+            let text = &app.world().get::<Text>(status).expect("status text").0;
+            assert!(!text.contains("City PD"), "{case}: {text}");
+            assert!(
+                !text.is_empty(),
+                "ordinary paused/loading status survives {case}"
+            );
+            assert!(!app.world().resource::<ObserverSession>().playing);
+        }
     }
 
     pub(crate) fn install_pending_paint_fixture(app: &mut App) -> (Entity, Entity, Entity) {

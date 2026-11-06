@@ -198,7 +198,7 @@ fn setup_network(
 
 fn heading(projection: &NetworkProjection, filter: NetworkSector) -> String {
     if !projection.available {
-        return "ECONOMY NETWORK\nUnavailable in this observation".into();
+        return "ECONOMY NETWORK\nUnavailable in this observation. The full network requires an Observer campaign.\nOpen Map lens → Observer Campaigns for a separate saved world.\nYour organizer world remains available through Load Game.".into();
     }
     let Some(county) = &projection.selected_county else {
         return "ECONOMY NETWORK\nSelect a county to inspect its direct suppliers and buyers."

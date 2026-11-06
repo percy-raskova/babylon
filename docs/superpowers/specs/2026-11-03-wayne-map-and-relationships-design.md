@@ -319,3 +319,25 @@ people or a guaranteed benefit. Paused Hold leaves the pause in place. Opening
 inquiries still state that no completed-period report exists. Actual receipts
 remain factual. Keep costs, displaced routine, prerequisites and conditional
 benefits readable beside the intent.
+
+Play continues authorized standing or default work after each committed period.
+It waits for both the current observation and authenticated organizer Status.
+It never pipelines advances or resubmits a consumed one-off ruling from a draft.
+
+Advance submits exactly one period and pauses. Speed changes the delay between
+ready periods without confirming a ruling. Pause stops future scheduling. An
+already detached atomic period can finish once.
+
+Accepted report, inspector, saved-reference, Archive and Review navigation
+pauses Play. A rejected stale link and ordinary subject selection leave its
+state unchanged. History retains its existing pause. A newly admitted current
+City PD notice pauses once with a readable reason in its admitted live context.
+Older, repeated, hidden,
+foreign or stale notices do not interrupt routine Play. Ordinary automatic
+workplace reports do not stop each period.
+
+World's full economy network still requires FullObserver and an exact current
+frame. The map lens explains this boundary and opens the existing Observer
+Campaigns chooser. An observer campaign uses a separate saved world. The current
+organizer world remains available through Continue or Load Game. Opening the
+chooser does not replace it or expand player knowledge.

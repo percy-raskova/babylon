@@ -12,7 +12,7 @@ pub(crate) enum ControlAvailability {
 }
 
 pub(crate) fn period_advance_help() -> String {
-    format!("One period advances {WEEKS_PER_TICK} weeks / {DAYS_PER_TICK} days in one simulation tick. {TICKS_PER_YEAR} periods make a 52-week model year; these are not calendar months. Advance submits one period and then pauses. Play advances periods one at a time, waiting for each committed observation. Pause finishes the outstanding period. Disclosed freight loss pauses play; Stop on delivery adds delivery pauses. Production follows the previous period's committed plan. New deliveries enter planning for the following period. Time changes only after a confirmed commit.")
+    format!("One period advances {WEEKS_PER_TICK} weeks / {DAYS_PER_TICK} days in one simulation tick. {TICKS_PER_YEAR} periods make a 52-week model year; these are not calendar months. Advance submits one period and then pauses. Play continues authorized routine work one period at a time, waiting for each committed view and any updated organizer situation. A reviewed one-off ruling runs only once; a saved draft is not submitted by Play. Speed sets the delay between ready periods and never confirms a ruling. Pause stops future requests; a period already underway may finish once. Reading reports or a new disclosed City PD notice pauses Play. Disclosed freight loss pauses play; Stop on delivery adds delivery pauses. Production follows the previous period's committed plan. New deliveries enter planning for the following period. Time changes only after a confirmed commit.")
 }
 
 const PENDING: ControlAvailability =
@@ -125,13 +125,13 @@ pub(crate) fn availability(
         Perspective if state.organizer_enabled => {
             Disabled("This campaign uses the organization's earned knowledge")
         }
+        TogglePlay if state.playing => Enabled,
         Step | TogglePlay if state.organizer_control_pending() => {
             Disabled("Waiting for the organization's runtime response")
         }
         Step | TogglePlay if state.lifecycle_pending() => {
             Disabled("Waiting for the selected campaign to open")
         }
-        TogglePlay if state.playing => Enabled,
         TogglePlay => {
             let advance = advance_availability(state);
             if advance != Enabled {
@@ -238,6 +238,13 @@ fn turn_status(state: &ObserverSession) -> String {
     }
     if state.lifecycle_pending() {
         return "Opening the selected campaign...".into();
+    }
+    if state.organizer_control_pending() {
+        return if state.playing {
+            "Playing; reading the organization's committed situation...".into()
+        } else {
+            "Paused; reading the organization's committed situation...".into()
+        };
     }
     let historical = state.viewed_tick < state.durable_tick;
     match state.phase {

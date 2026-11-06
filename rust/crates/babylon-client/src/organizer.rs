@@ -855,3 +855,7 @@ pub(crate) mod tests {
         assert!(!historical.choice_available(OrganizerChoice::Collect));
     }
 }
+
+#[cfg(test)]
+#[path = "organizer/playback_tests.rs"]
+mod playback_tests;

@@ -995,6 +995,7 @@ fn deferred_organizer_evidence_preserves_world_before_render() {
         .add_message::<ProductionCommand>()
         // This is a legal ordering of the original Update systems.
         .add_systems(Update, navigation::navigate.after(observer_ui::clear_ui_camera));
+    app.world_mut().resource_mut::<ObserverSession>().playing = true;
     crate::organizer::ui::install_evidence_observer_for_test(&mut app);
     observer_ui::install_ui_camera_clear(&mut app);
     let camera = app
@@ -1009,6 +1010,10 @@ fn deferred_organizer_evidence_preserves_world_before_render() {
         .id();
     app.world_mut().write_message(ProductionCommand::Open);
     app.update();
+    assert!(
+        !app.world().resource::<ObserverSession>().playing,
+        "shell Evidence pauses play"
+    );
     assert_eq!(
         *app.world().resource::<PrimaryView>(),
         PrimaryView::Organizer

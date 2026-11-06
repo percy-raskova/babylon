@@ -1468,6 +1468,18 @@ fn action_available(action: OrganizerAction, state: &mut ActionState) -> bool {
     false
 }
 
+fn pauses_playback(action: OrganizerAction) -> bool {
+    matches!(action, OrganizerAction::Inspect(inspector) if inspector != OrganizerInspector::Closed)
+        || matches!(
+            action,
+            OrganizerAction::Review
+                | OrganizerAction::OpenReferences
+                | OrganizerAction::ArchiveWorkplace
+                | OrganizerAction::ArchiveOrganization
+                | OrganizerAction::Refresh
+        )
+}
+
 fn actions(
     mut events: MessageReader<OrganizerAction>,
     mut state: ActionState,
@@ -1475,8 +1487,7 @@ fn actions(
     mut observer_commands: MessageWriter<ObserverCommand>,
     mut qualification: Option<ResMut<HandlerReceipt>>,
 ) {
-    for (action, message_id) in events.read_with_id() {
-        let action = *action;
+    for (&action, message_id) in events.read_with_id() {
         if !action_available(action, &mut state) {
             if let Some(receipt) = qualification.as_deref_mut() {
                 receipt.organizer_finished(message_id, false, &state.client);
@@ -1496,6 +1507,9 @@ fn actions(
         let Some(action) = route_link(action, client, session.viewed_tick) else {
             continue;
         };
+        if pauses_playback(action) {
+            session.pause_playback();
+        }
         if let Some(cue) = feedback(action) {
             commands.trigger(cue);
         }
@@ -1729,10 +1743,11 @@ fn open_evidence(
     mut client: ResMut<OrganizerClient>,
     mut view: ResMut<PrimaryView>,
     focus: Res<InputFocus>,
-    session: Res<ObserverSession>,
+    mut session: ResMut<ObserverSession>,
     mut ui: ResMut<ObserverUiState>,
 ) {
     if session.organizer_enabled {
+        session.pause_playback();
         ui.archive_open = false;
         ui.history_open = false;
         ui.disclosure = None;
@@ -2215,7 +2230,7 @@ pub(crate) mod tests {
         seen.0.extend(events.read().copied());
     }
 
-    fn admitted_scene_fixture() -> (App, Option<OrganizerDraft>) {
+    pub(super) fn admitted_scene_fixture() -> (App, Option<OrganizerDraft>) {
         use babylon_persistence::runtime_session::{
             OrganizerBodySource, OrganizerObservation, OrganizerReport,
         };
@@ -5660,7 +5675,9 @@ pub(crate) mod tests {
     #[test]
     fn focused_organizer_circuit_shortcut_opens_earned_evidence_and_restores_draft_focus() {
         let (mut app, window, focus, draft) = focused_organizer(false);
+        app.world_mut().resource_mut::<ObserverSession>().playing = true;
         typing_key(&mut app, window, KeyCode::KeyP, "p");
+        assert!(!app.world().resource::<ObserverSession>().playing);
         let client = app.world().resource::<OrganizerClient>();
         assert_eq!(client.inspector, OrganizerInspector::Evidence);
         assert_eq!(client.return_focus, Some(focus));
@@ -5712,6 +5729,7 @@ pub(crate) mod tests {
         app.world_mut()
             .write_message(OrganizerAction::SelectSubject(subject));
         app.update();
+        app.world_mut().resource_mut::<ObserverSession>().playing = true;
         let (button, original) = {
             let world = app.world_mut();
             world
@@ -5746,6 +5764,7 @@ pub(crate) mod tests {
         app.update();
         let client = app.world().resource::<OrganizerClient>();
         assert_eq!(client.inspector, OrganizerInspector::Evidence);
+        assert!(!app.world().resource::<ObserverSession>().playing);
         assert_eq!(client.selected_evidence_id(3), Some([3; 32]));
         assert_eq!(client.draft, draft);
         press_named(&mut app, "Return to decision [Esc]");
@@ -5759,11 +5778,16 @@ pub(crate) mod tests {
         app.update();
         app.world_mut()
             .write_message(OrganizerAction::Follow(original));
+        app.world_mut().resource_mut::<ObserverSession>().playing = true;
         app.update();
         let client = app.world().resource::<OrganizerClient>();
         assert_eq!(client.inspector, OrganizerInspector::Closed);
         assert_eq!(client.draft, draft);
         assert!(client.outbox.is_none());
+        assert!(
+            app.world().resource::<ObserverSession>().playing,
+            "stale links cannot pause"
+        );
     }
 
     #[test]
@@ -5777,6 +5801,7 @@ pub(crate) mod tests {
                 .find_map(|(entity, button)| (button.0 == action).then_some(entity))
                 .expect("native action")
         };
+        app.world_mut().resource_mut::<ObserverSession>().playing = true;
         let review = control(&mut app, OrganizerAction::Review);
         let confirm = control(&mut app, OrganizerAction::Confirm);
         *app.world_mut()
@@ -5800,6 +5825,10 @@ pub(crate) mod tests {
                 client
                     .previewed(request_id, preview_for(&command), &mut session)
                     .expect("matching authenticated preview");
+                assert!(
+                    !session.playing,
+                    "Review keeps the authenticated terms readable"
+                );
                 command
             });
         app.update();
@@ -6567,3 +6596,7 @@ pub(crate) mod tests {
         assert!(app.world().resource::<OrganizerClient>().outbox.is_none());
     }
 }
+
+#[cfg(test)]
+#[path = "reading_pause_tests.rs"]
+mod reading_pause_tests;

@@ -252,6 +252,19 @@ impl OrganizerClient {
         Some((self.body.as_ref()?, self.body_scope.as_ref()?))
     }
 
+    /// Show a paused message only under the same exact live admission as resources.
+    pub(crate) fn paused_message_for(&self, session: &ObserverSession) -> Option<&str> {
+        if session.playing
+            || !session.organizer_enabled
+            || !matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
+            || self.message.is_empty()
+        {
+            return None;
+        }
+        super::workspace::resources(self, session)?;
+        Some(&self.message)
+    }
+
     pub(super) fn status_refusal(&self, session: &ObserverSession) -> Option<&str> {
         let refusal = self.status_refusal.as_ref()?;
         refusal
@@ -498,7 +511,9 @@ impl OrganizerClient {
         });
         self.outbox = Some(request);
         session.set_organizer_control_pending(true);
-        session.pause_playback();
+        if kind != RequestKind::Status {
+            session.pause_playback();
+        }
     }
 
     fn take_response(
@@ -595,6 +610,7 @@ impl OrganizerClient {
         if session.phase == SessionPhase::Ready && snapshot.duration.complete(session.viewed_tick) {
             session.complete();
         }
+        let new_city_pd_notice = self.new_city_pd_notice(&snapshot, &context);
         self.collection = snapshot.collection;
         self.city_pd_encounters = snapshot.city_pd_encounters;
         self.collection_resolutions = snapshot.collection_resolutions;
@@ -622,12 +638,35 @@ impl OrganizerClient {
         self.commitment = snapshot.pending;
         self.status_due = false;
         session.set_organizer_control_pending(false);
-        if self.draft_writable {
-            // The fixed decision footer renders the acknowledged state. Keep
-            // the message line for pending operations and actionable failures.
+        // The fixed footer renders acknowledgement. Keep the message line for
+        // new developments, pending operations and actionable failures.
+        if new_city_pd_notice {
+            self.pause_for_city_pd_notice(session);
+        } else if self.draft_writable {
             self.message.clear();
         }
         Ok(StatusDisposition::Installed)
+    }
+
+    // Call only after status scope, actor, period and context admission.
+    // The retained rows supply notice identity without another event ledger.
+    fn new_city_pd_notice(&self, snapshot: &OrganizerSnapshot, context: &StatusContext) -> bool {
+        context.observation.tick == context.durable_tick
+            && snapshot.city_pd_encounters.iter().any(|notice| {
+                notice.resolve_period == context.durable_tick
+                    && !self
+                        .city_pd_encounters
+                        .iter()
+                        .any(|previous| previous.receipt_id == notice.receipt_id)
+            })
+    }
+
+    fn pause_for_city_pd_notice(&mut self, session: &mut ObserverSession) {
+        session.pause_playback();
+        self.message = format!(
+            "Play paused: new City PD notice in period {}. Read the period dispatch or Archive.",
+            session.durable_tick
+        );
     }
 
     pub(crate) fn previewed(
@@ -713,6 +752,7 @@ impl OrganizerClient {
         self.outbox = None;
         self.clear_review();
         session.set_organizer_control_pending(false);
+        session.pause_playback();
         true
     }
 }

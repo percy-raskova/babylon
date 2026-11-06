@@ -221,6 +221,17 @@ fn heading(projection: &NetworkProjection, filter: NetworkSector) -> String {
         filter.label(), projection.external.len())
 }
 
+fn heading_bundle(projection: &NetworkProjection, filter: NetworkSector) -> impl Bundle {
+    (
+        super::label_bundle(heading(projection, filter), None, 0, theme::PAPER),
+        // At fractional UI scales, rounding the final content width can add a
+        // wrapped line after height measurement. Keep both on the same width.
+        LayoutConfig {
+            use_rounding: false,
+        },
+    )
+}
+
 fn spawn_legend(commands: &mut Commands) {
     commands
         .spawn((
@@ -304,12 +315,7 @@ fn rebuild_network(
         }
     }
     commands
-        .spawn(super::label_bundle(
-            heading(&projection, observation.ui.network_sector),
-            None,
-            0,
-            theme::PAPER,
-        ))
+        .spawn(heading_bundle(&projection, observation.ui.network_sector))
         .remove::<RelationshipEntity>()
         .insert((EconomyEntity, Pickable::IGNORE));
     if projection.available {
@@ -885,3 +891,6 @@ mod tests {
 #[cfg(test)]
 #[path = "map_network_focus_tests.rs"]
 mod focus_tests;
+#[cfg(test)]
+#[path = "map_network_render_tests.rs"]
+mod render_tests;

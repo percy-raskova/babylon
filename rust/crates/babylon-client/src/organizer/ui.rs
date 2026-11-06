@@ -93,7 +93,7 @@ pub(crate) struct OrganizerInspectorRoot;
 #[derive(Component)]
 pub(super) struct OrganizerRoot;
 #[derive(Component)]
-struct SceneRoot;
+pub(crate) struct SceneRoot;
 #[derive(Component)]
 struct SceneContent;
 #[derive(Component)]
@@ -442,7 +442,6 @@ fn render_scene(
         } else {
             Display::None
         };
-        next.bottom = px(266);
         root.set_if_neq(next);
     }
     let next = scope.client.scene_for(&scope.session);
@@ -2071,6 +2070,9 @@ pub(crate) fn install_evidence_observer_for_test(app: &mut App) {
 mod report_reading_tests;
 
 #[cfg(test)]
+#[path = "render_geometry_tests.rs"]
+mod render_geometry_tests;
+#[cfg(test)]
 #[path = "resource_header_tests.rs"]
 mod resource_header_tests;
 
@@ -2102,7 +2104,6 @@ pub(crate) mod tests {
     use babylon_persistence::runtime_session::{RuntimeSessionRequest, RuntimeSessionResponse};
     use bevy::text::TextLayoutInfo;
     use bevy::time::TimeUpdateStrategy;
-    use board::ChoicePair;
     use std::sync::mpsc::Sender;
     use uuid::Uuid;
 
@@ -4348,41 +4349,6 @@ pub(crate) mod tests {
                     assert_in_view(&app, message, bounds);
                 }
             }
-        }
-    }
-
-    #[test]
-    fn long_names_and_larger_text_stack_cards_in_a_single_reading_region() {
-        for (viewport, larger, long, scale) in [
-            (UVec2::new(1366, 768), true, false, 1.15),
-            (UVec2::new(1920, 1080), true, false, 1.4375),
-            (UVec2::new(1366, 768), false, true, 1.0),
-        ] {
-            let mut app = measured_board(viewport, scale, larger, long);
-            let world = app.world_mut();
-            let (entity, node, computed) = world
-                .query_filtered::<(Entity, &Node, &ComputedNode), With<ChoicePair>>()
-                .single(world)
-                .expect("one decision reading");
-            assert_eq!(node.flex_direction, FlexDirection::Column);
-            let maximum = crate::observer_focus::scroll_max(computed).expect("scroll extent");
-            assert!(maximum.y > 0.0, "{maximum:?}");
-            let cards = world
-                .query_filtered::<Entity, With<ComparisonCard>>()
-                .iter(world)
-                .collect::<Vec<_>>();
-            assert_eq!(cards.len(), 2);
-            app.world_mut()
-                .get_mut::<ScrollPosition>(entity)
-                .expect("reading region")
-                .y = maximum.y;
-            app.update();
-            let lower = cards
-                .into_iter()
-                .map(|card| workspace_rect(&app, card))
-                .max_by(|left, right| left.max.y.total_cmp(&right.max.y))
-                .expect("last card");
-            assert!(lower.max.y <= workspace_rect(&app, entity).max.y + 1.0);
         }
     }
 

@@ -437,6 +437,43 @@ fn overlay_contains(overlays: &OrganizerOverlays, point: Vec2) -> bool {
     })
 }
 
+#[cfg(test)]
+pub(crate) fn assert_paper_blocks_navigation(app: &mut App, point: Vec2) {
+    use bevy::ecs::system::RunSystemOnce as _;
+    app.init_resource::<ButtonInput<MouseButton>>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .insert_resource(AccumulatedMouseMotion {
+            delta: Vec2::new(40.0, 10.0),
+        })
+        .insert_resource(AccumulatedMouseScroll {
+            delta: Vec2::Y,
+            ..default()
+        })
+        .insert_resource(MapGeometry {
+            extent: Vec2::splat(200.0),
+            ..default()
+        })
+        .insert_resource(MapOrbit::new(200.0));
+    {
+        let world = app.world_mut();
+        let mut windows = world.query_filtered::<&mut Window, With<PrimaryWindow>>();
+        windows
+            .single_mut(world)
+            .expect("native window")
+            .set_cursor_position(Some(point));
+    }
+    for button in [MouseButton::Right, MouseButton::Middle] {
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(button);
+    }
+    let before = app.world().resource::<MapOrbit>().transform();
+    app.world_mut()
+        .run_system_once(navigate)
+        .expect("ordinary camera input");
+    assert_eq!(app.world().resource::<MapOrbit>().transform(), before);
+}
+
 #[derive(SystemParam)]
 struct NavigationInput<'w, 's> {
     windows: Query<'w, 's, &'static Window, With<PrimaryWindow>>,

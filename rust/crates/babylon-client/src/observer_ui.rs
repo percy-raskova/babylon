@@ -38,6 +38,7 @@ use crate::organizer::ui::OrganizerAction;
 use crate::organizer::ui::OrganizerInspectorRoot;
 use crate::organizer::OrganizerClient;
 use crate::organizer::OrganizerInspector;
+use crate::organizer::OrganizerSceneRegion;
 use crate::production::PrimaryView;
 use crate::production::ProductionCommand;
 use crate::ui;
@@ -459,7 +460,7 @@ fn spawn_hud(commands: &mut Commands) {
                 left: px(16),
                 right: px(16),
                 top: px(8),
-                height: px(76),
+                height: px(88),
                 padding: UiRect::axes(px(8), px(2)),
                 flex_direction: FlexDirection::Column,
                 row_gap: px(0),
@@ -474,7 +475,7 @@ fn spawn_hud(commands: &mut Commands) {
         .with_children(|hud| {
             hud.spawn(Node {
                 width: percent(100),
-                height: px(36),
+                height: px(48),
                 flex_shrink: 0.0,
                 ..row()
             })
@@ -2202,6 +2203,7 @@ fn fit_viewport(
     ui: Res<ObserverUiState>,
     mut viewport: ResMut<ObserverViewport>,
     mut regions: Query<(&ObserverRegion, &mut Node)>,
+    organizer_scene: Query<(&ComputedNode, &UiGlobalTransform), With<OrganizerSceneRegion>>,
 ) {
     let Ok(window) = windows.single() else {
         return;
@@ -2224,14 +2226,22 @@ fn fit_viewport(
             HistoryDrawerState::Closed
         },
     );
+    // Camera fitting and navigation use the same measured region left by the
+    // organizer papers, including comparisons that grow with Larger text.
+    let scene_rect = organizer_scene.single().ok().and_then(|(node, transform)| {
+        (node.size().min_element() > 0.0).then(|| {
+            let center = transform.affine().translation;
+            Rect::from_center_size(
+                center / window.scale_factor(),
+                node.size() / window.scale_factor(),
+            )
+        })
+    });
     for (region, mut node) in &mut regions {
         let rect = if *view == PrimaryView::Organizer && matches!(region, ObserverRegion::History) {
-            Rect::new(
-                16.0,
-                87.0,
-                window.width() / scale.0 * 0.72,
-                (window.height() / scale.0 - 266.0).max(100.0),
-            )
+            scene_rect.map_or(layout.world, |rect| {
+                Rect::from_corners(rect.min / scale.0, rect.max / scale.0)
+            })
         } else {
             layout.region(*region)
         };
@@ -2249,7 +2259,9 @@ fn fit_viewport(
         }
     }
     let rect = if *view == PrimaryView::Organizer {
-        Rect::from_corners(Vec2::ZERO, Vec2::new(window.width(), window.height()))
+        scene_rect.unwrap_or_else(|| {
+            Rect::from_corners(layout.world.min * scale.0, layout.world.max * scale.0)
+        })
     } else {
         Rect::from_corners(layout.world.min * scale.0, layout.world.max * scale.0)
     };
@@ -2341,6 +2353,17 @@ impl Plugin for ObserverShellPlugin {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    pub(crate) fn focus_clock(app: &mut App) -> Entity {
+        let world = app.world_mut();
+        let entity = world
+            .query::<(Entity, &ObserverText)>()
+            .iter(world)
+            .find_map(|(entity, text)| matches!(text, ObserverText::Clock).then_some(entity))
+            .expect("actual period reading");
+        crate::observer_focus::install_outline_fixture(app, entity);
+        entity
+    }
+
     pub(crate) fn install_resource_header_fixture(app: &mut App, viewport: UVec2) -> Entity {
         use bevy::ecs::system::RunSystemOnce as _;
         app.insert_resource(

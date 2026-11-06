@@ -2,7 +2,7 @@
 use super::scene::OrganizerSubject;
 use super::ui::{
     self, ActionButton, DetailControls, OrganizerAction, OrganizerRoot, SceneDetail, SceneEvidence,
-    Scope, TextPart,
+    SceneRoot, Scope, TextPart,
 };
 use super::workspace;
 use super::workspace::ALL_PRACTICES;
@@ -33,6 +33,8 @@ pub(crate) struct Overlay;
 struct Portrait(Option<VisualAssetId>);
 #[derive(Component)]
 pub(super) struct ChoicePair;
+#[derive(Component)]
+pub(crate) struct DecisionDeck;
 #[derive(Component)]
 pub(super) struct ComparisonCard(usize);
 #[derive(Component)]
@@ -285,12 +287,12 @@ pub(super) fn subject_reading(scope: &Scope) -> String {
 fn deck(root: &mut ChildSpawnerCommands) {
     root.spawn((
         Overlay,
+        DecisionDeck,
         Node {
             position_type: PositionType::Absolute,
             left: px(16),
             right: percent(28),
             bottom: px(12),
-            height: px(240),
             padding: UiRect::all(px(12)),
             row_gap: px(6),
             border: UiRect::top(px(4)),
@@ -343,7 +345,7 @@ fn deck(root: &mut ChildSpawnerCommands) {
         deck.spawn((
             ChoicePair,
             Node {
-                flex_grow: 1.0,
+                flex_shrink: 0.0,
                 min_height: px(0),
                 column_gap: px(8),
                 row_gap: px(8),
@@ -385,6 +387,7 @@ fn comparison_cards(pair: &mut ChildSpawnerCommands) {
             Node {
                 flex_basis: px(0),
                 flex_grow: 1.0,
+                flex_shrink: 0.0,
                 min_width: px(0),
                 padding: UiRect::axes(px(12), px(7)),
                 border: UiRect::left(px(4)),
@@ -730,37 +733,18 @@ fn print_paper(
     }
 }
 
-fn fit_deck(
-    scope: Scope,
-    mut pairs: Query<&mut Node, With<ChoicePair>>,
-    mut cards: Query<&mut Node, (With<ComparisonCard>, Without<ChoicePair>)>,
+fn fit_scene(
+    decks: Query<&ComputedNode, With<DecisionDeck>>,
+    mut scenes: Query<&mut Node, With<SceneRoot>>,
 ) {
-    let stacked = scope.ui.larger_interface
-        || scope.client.view.as_ref().is_some_and(|view| {
-            [
-                view.workplace_label.as_str(),
-                view.workplace_partner_label.as_str(),
-                view.neighborhood_partner_label.as_str(),
-            ]
-            .iter()
-            .any(|label| label.chars().count() > 60)
-        });
-    for mut pair in &mut pairs {
-        let direction = if stacked {
-            FlexDirection::Column
-        } else {
-            FlexDirection::Row
-        };
-        if pair.flex_direction != direction {
-            pair.flex_direction = direction;
-        }
-    }
-    for mut card in &mut cards {
-        let basis = if stacked { Val::Auto } else { px(0) };
-        if card.flex_basis != basis {
-            card.flex_basis = basis;
-            card.flex_grow = if stacked { 0.0 } else { 1.0 };
-            card.flex_shrink = if stacked { 0.0 } else { 1.0 };
+    let Ok(deck) = decks.single() else {
+        return;
+    };
+    // Keep the map and its relation reading above the actual comparison text.
+    let bottom = px(deck.size().y * deck.inverse_scale_factor + 26.0);
+    for mut scene in &mut scenes {
+        if scene.bottom != bottom {
+            scene.bottom = bottom;
         }
     }
 }
@@ -769,12 +753,12 @@ pub(super) fn install(app: &mut App) {
     app.add_systems(
         Update,
         (
+            fit_scene,
             paint_cards,
             paint_bulletin,
             paint_history_links,
             print_paper,
             paint_portraits,
-            fit_deck,
         )
             .in_set(ObserverSet::Paint),
     );

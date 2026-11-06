@@ -17,6 +17,7 @@ mod scene;
 mod board;
 mod workspace;
 pub(crate) use board::Overlay as OrganizerOverlay;
+pub(crate) use ui::SceneRoot as OrganizerSceneRegion;
 pub(crate) mod workspace_copy;
 
 pub(crate) mod qualification_input;

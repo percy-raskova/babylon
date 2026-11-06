@@ -141,9 +141,13 @@ time and later aid coordination distinct from fulfilled delivery or performed
 organizer time. Paused routines stay paused unless explicitly resumed.
 
 Use one inspector for deeper evidence, notes, relationships, practice history and
-review. Keep the essential comparison visible at ordinary sizes. Larger text and
-long names use stacked rows and one reading region that scrolls. Review shows the
-authenticated actual terms. Review, Confirm and Advance remain separate actions.
+review. Keep both alternatives' essential comparison visible at ordinary sizes,
+including Larger text and long names. Fit the paper to the actual terms and the
+map to its remaining scene region. Longer inspector reading uses one region that
+scrolls.
+
+Review shows the authenticated actual terms. Review, Confirm and Advance remain
+separate actions.
 Refused, unavailable, pending, historical, completed and failed states must
 explain what the player can do next.
 
@@ -363,3 +367,24 @@ Technical evidence control exposes exact source identifiers, locators, grant
 keys, atom changes, hashes and the original publication. The retained reader
 has no separate source title or historical display labels. The interface states
 that limit. It does not construct titles from keys or later publications.
+
+### November 6 native evidence
+
+The [November 6 follow-up evidence](../../../reports/wayne-playtest-followup-2026-11-06.md)
+records compiled source `2bd365e98e48541ff37acea2042834a2d18b2ded`. New native
+images show both complete alternatives and separate focused period/resource lines.
+The wrapped network notice fits at the four actual Standard/Larger settings.
+The owned run installed automatic periods 1/2, paused at 2 and stepped once to 3.
+It read the exact inquiry with observation at 2 and acquisition at 3.
+
+The Ready Archive page shows observation/publication at 3 and retains the reports'
+earlier observation dates. The evidence records full restore equality and exact
+fixture retirement. The first November 6 run remains visually limited with
+retained period 1 Archive content.
+
+The default atlas is more withdrawn and nearby county labels still crowd. Source
+review found the map area, Home and picking consumers aligned. Physical picking
+and post-fix human comprehension/enjoyment remain unqualified. Michigan treasury
+and household-time bindings remain absent. The next game priority remains a
+resource-funded commitment, independent partner response and visible material or
+social follow-up. This evidence grants no new mechanic or broader gate acceptance.

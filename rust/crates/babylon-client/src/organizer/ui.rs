@@ -38,7 +38,6 @@ use crate::observer::SessionPhase;
 use crate::observer_controls::ControlAvailability;
 use crate::ui;
 use crate::ui::Interaction;
-use babylon_kernel::clock::CampaignDuration;
 use babylon_persistence::runtime_session::OrganizerGiftConsent;
 use bevy::input_focus::FocusCause;
 use bevy::text::LineBreak;
@@ -146,6 +145,7 @@ pub(super) enum TextPart {
     Title,
     Situation,
     Means,
+    InspectorMeans,
     Context,
     Aftermath,
     ChoiceHeading,
@@ -273,20 +273,36 @@ fn relation_subject(parent: &mut ChildSpawnerCommands, node: &SceneNode) {
 }
 
 fn spawn(mut commands: Commands) {
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            width: percent(100),
-            height: percent(100),
-            display: Display::None,
-            ..default()
-        },
-        BackgroundColor(theme::INK.with_alpha(0.8)),
-        ZIndex(24),
-        InspectorShield,
-        Overlay,
-        DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
-    ));
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                width: percent(100),
+                height: percent(100),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(theme::INK.with_alpha(0.8)),
+            ZIndex(24),
+            InspectorShield,
+            Overlay,
+            DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
+        ))
+        .with_children(|shield| {
+            shield
+                .spawn((text("", 14.0, theme::PAPER), TextPart::InspectorMeans))
+                .insert((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: px(18),
+                        right: px(18),
+                        top: px(16),
+                        height: px(50),
+                        ..default()
+                    },
+                    Pickable::IGNORE,
+                ));
+        });
 
     spawn_scene(&mut commands);
     board::spawn_workspace(&mut commands);
@@ -1974,12 +1990,7 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
         let value = match part {
             TextPart::Title => scope.client.view.as_ref().map_or_else(|| "Wayne Organizing Collective".into(), |view| view.organization_label.clone()),
             TextPart::Situation => board::subject_reading(scope),
-            TextPart::Means => scope.client.view.as_ref().filter(|view| view.period == scope.session.viewed_tick).map_or_else(
-                || format!("Period {} · means unavailable", scope.session.viewed_tick), |view| {
-                let endpoint = scope.session.duration.and_then(CampaignDuration::final_period).map_or_else(String::new, |value| format!(" / {value}"));
-                let routine = if view.standing.authorized { "authorized" } else { "paused" };
-                format!("Period {}{endpoint}   ·   {} organizer-hours\nNeighborhood work {routine}", view.period, view.available_hours)
-            }),
+            TextPart::Means | TextPart::InspectorMeans => copy::resource_masthead(&scope.client, &scope.session),
             TextPart::Context => scope.client.view.as_ref().filter(|view| view.period == scope.session.viewed_tick).map_or_else(String::new, presentation::context),
             TextPart::Aftermath => continue,
             TextPart::ChoiceHeading => if complete { "Campaign complete".into() } else if historical { "Past commitments".into() } else { format!("Work for period {}", scope.session.viewed_tick.saturating_add(1)) },
@@ -2157,6 +2168,10 @@ pub(super) fn install(app: &mut App) {
 pub(crate) fn install_evidence_observer_for_test(app: &mut App) {
     app.add_observer(open_evidence);
 }
+
+#[cfg(test)]
+#[path = "resource_header_tests.rs"]
+mod resource_header_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -3410,7 +3425,7 @@ pub(crate) mod tests {
     #[derive(Resource, Default)]
     struct ArchiveRequests(Vec<bool>);
 
-    fn measured_board(viewport: UVec2, scale: f32, larger: bool, long: bool) -> App {
+    pub(super) fn measured_board(viewport: UVec2, scale: f32, larger: bool, long: bool) -> App {
         let (mut app, body_font) = crate::test_support::ui_text_app();
         let display = Font::from_bytes(
             include_bytes!(concat!(
@@ -3509,7 +3524,7 @@ pub(crate) mod tests {
         app
     }
 
-    fn workspace_rect(app: &App, entity: Entity) -> Rect {
+    pub(super) fn workspace_rect(app: &App, entity: Entity) -> Rect {
         let world = app.world();
         Rect::from_center_size(
             world
@@ -3625,7 +3640,7 @@ pub(crate) mod tests {
         app
     }
 
-    fn glyph_rects(app: &App, entity: Entity) -> Vec<Rect> {
+    pub(super) fn glyph_rects(app: &App, entity: Entity) -> Vec<Rect> {
         let world = app.world();
         let node = world
             .get::<ComputedNode>(entity)
@@ -3651,7 +3666,7 @@ pub(crate) mod tests {
             .collect()
     }
 
-    fn assert_glyphs_in(app: &App, entity: Entity, bounds: Rect) {
+    pub(super) fn assert_glyphs_in(app: &App, entity: Entity, bounds: Rect) {
         let glyphs = glyph_rects(app, entity);
         assert!(
             !glyphs.is_empty(),
@@ -6437,7 +6452,7 @@ pub(crate) mod tests {
             let review = painted_text(&mut app, false);
             for term in [
                 "Fixture contributor",
-                "up to 0.4 currency",
+                "up to $0.40 currency",
                 "2 shared material hours",
                 "consent: accepted",
                 "Protected consumption",
@@ -6469,7 +6484,8 @@ pub(crate) mod tests {
             app.update();
             let accepted = painted_text(&mut app, false);
             assert!(
-                accepted.contains("Fixture contributor") && accepted.contains("up to 0.4 currency"),
+                accepted.contains("Fixture contributor")
+                    && accepted.contains("up to $0.40 currency"),
                 "{accepted}"
             );
             assert!(
@@ -6528,7 +6544,7 @@ pub(crate) mod tests {
                 matches!(part, TextPart::Approach(OrganizerChoice::Collect)).then(|| text.0.clone())
             })
             .expect("the fixture yields the searched value");
-        assert!(card.contains("up to 0.4 currency; 2 shared material hours"));
+        assert!(card.contains("up to $0.40 currency; 2 shared material hours"));
         review_selected(&mut app);
         // Paint the reviewed model before inspecting the actual native text.
         app.update();

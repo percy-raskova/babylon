@@ -122,54 +122,53 @@ fn masthead(root: &mut ChildSpawnerCommands) {
             top: px(0),
             left: px(0),
             right: px(0),
-            height: px(74),
-            align_items: AlignItems::Center,
-            padding: UiRect::axes(px(18), px(6)),
+            height: px(82),
+            padding: UiRect::axes(px(18), px(2)),
             border: UiRect::bottom(px(2)),
-            column_gap: px(14),
-            ..default()
+            row_gap: px(2),
+            ..ui::column()
         },
         BackgroundColor(theme::INK),
         BorderColor::all(theme::YELLOW),
     ))
     .with_children(|bar| {
-        bar.spawn((
-            Node {
-                width: px(6),
-                height: px(48),
-                flex_shrink: 0.0,
-                ..default()
-            },
-            BackgroundColor(RUST),
-        ));
         bar.spawn(Node {
-            flex_grow: 1.0,
-            flex_basis: px(250),
-            row_gap: px(0),
-            ..ui::column()
+            width: percent(100),
+            height: px(40),
+            flex_shrink: 0.0,
+            column_gap: px(12),
+            align_items: AlignItems::Center,
+            ..default()
         })
-        .with_children(|id| {
-            kicker(id, "BABYLON   /   WAYNE COUNTY", theme::COPPER);
-            id.spawn((ui::text("", 25.0, theme::PAPER), TextPart::Title))
-                .insert(ObserverFontRole::Display);
+        .with_children(|row| {
+            row.spawn((ui::text("", 22.0, theme::PAPER), TextPart::Title))
+                .insert((
+                    ObserverFontRole::Display,
+                    Node {
+                        flex_grow: 1.0,
+                        min_width: px(0),
+                        ..default()
+                    },
+                ));
+            ui::button(row, "Advance one period", OrganizerAction::Advance);
+            crate::production::button(row, "World", ProductionCommand::Map);
+            crate::production::button(row, "Evidence", ProductionCommand::Open);
+            ui::button(row, "Archive", OrganizerAction::ArchiveWorkplace);
+            crate::observer_ui::button(
+                row,
+                "Time",
+                ObserverCommand::Disclosure(ObserverDisclosure::Time),
+            );
+            crate::observer_ui::button(row, "Menu", ObserverCommand::Menu);
         });
-        bar.spawn((ui::text("", 15.0, theme::PAPER), TextPart::Means))
+        bar.spawn((ui::text("", 14.0, theme::PAPER), TextPart::Means))
             .insert(Node {
-                flex_grow: 1.0,
-                flex_basis: px(180),
+                width: percent(100),
+                height: px(34),
+                flex_shrink: 0.0,
                 min_width: px(0),
                 ..default()
             });
-        ui::button(bar, "Advance one period", OrganizerAction::Advance);
-        crate::production::button(bar, "World", ProductionCommand::Map);
-        crate::production::button(bar, "Evidence", ProductionCommand::Open);
-        ui::button(bar, "Archive", OrganizerAction::ArchiveWorkplace);
-        crate::observer_ui::button(
-            bar,
-            "Time",
-            ObserverCommand::Disclosure(ObserverDisclosure::Time),
-        );
-        crate::observer_ui::button(bar, "Menu", ObserverCommand::Menu);
     });
 }
 

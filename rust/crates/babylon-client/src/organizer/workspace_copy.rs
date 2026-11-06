@@ -3,13 +3,43 @@ use super::presentation;
 use super::scene::OrganizerSubject;
 use super::ui::Scope;
 use super::workspace;
-use super::OrganizerInspector;
+use super::{OrganizerClient, OrganizerInspector};
 use crate::observer::{ObservationContext, ObserverSession, Perspective};
 use crate::organizer::workspace::{
     ChoiceAvailability, DispatchCoverage, DispatchDestination, DispatchRows, HourUse,
     PossibleBenefit, PracticeChoice, RoutineEffect,
 };
+use babylon_kernel::clock::CampaignDuration;
 use babylon_persistence::identity::CampaignId;
+
+/// One current resource reading shared by Organizer, World and Evidence headers.
+pub(crate) fn resource_masthead(client: &OrganizerClient, session: &ObserverSession) -> String {
+    let Some(means) = workspace::resources(client, session) else {
+        return format!("P{} · Resources unavailable for this inspected context\nCollective cash unavailable · Organizer-hours unavailable · Shared household time unavailable", session.viewed_tick);
+    };
+    let cash = means
+        .cash_micros
+        .map_or_else(|| "unavailable".into(), crate::human_numbers::currency);
+    let shared = means.shared_time.map_or_else(
+        || "unavailable · next period unknown".into(),
+        |(period, hours)| {
+            format!(
+                "{} h left in closed P{period} · next period unknown",
+                crate::observer_ui::grouped(hours)
+            )
+        },
+    );
+    let endpoint = session
+        .duration
+        .and_then(CampaignDuration::final_period)
+        .map_or_else(String::new, |period| format!(" / P{period}"));
+    let routine = if means.standing_authorized {
+        "authorized"
+    } else {
+        "paused"
+    };
+    format!("P{}{endpoint} committed · Collective cash {cash} · Organizer-hours pledged {}\nShared household time {shared} · Neighborhood {routine}", means.period, crate::observer_ui::grouped(means.organizer_hours))
+}
 
 pub(super) fn availability(term: ChoiceAvailability) -> String {
     match term {
@@ -42,10 +72,16 @@ pub(super) fn terms(choice: &PracticeChoice) -> String {
     };
     let cost = choice.hours.map_or_else(
         || "Hours unknown".into(),
-        |hours| match choice.hour_use {
-            HourUse::Organizer => format!("{hours} of {} organizer-hours", choice.available_hours),
-            HourUse::SharedMaterial => format!("{hours} shared material hours"),
-            HourUse::LaterCoordination => format!("{hours} later coordination hours"),
+        |hours| {
+            let hours = crate::observer_ui::grouped(hours);
+            match choice.hour_use {
+                HourUse::Organizer => format!(
+                    "{hours} of {} organizer-hours",
+                    crate::observer_ui::grouped(choice.available_hours)
+                ),
+                HourUse::SharedMaterial => format!("{hours} shared material hours"),
+                HourUse::LaterCoordination => format!("{hours} later coordination hours"),
+            }
         },
     );
     let routine = match choice.routine {
@@ -73,7 +109,7 @@ pub(super) fn terms(choice: &PracticeChoice) -> String {
             |row| {
                 format!(
                     "Voluntary gift up to {} currency after protected needs.",
-                    presentation::currency(row.maximum_cash_micros)
+                    crate::human_numbers::currency(row.maximum_cash_micros)
                 )
             },
         ),
@@ -82,7 +118,7 @@ pub(super) fn terms(choice: &PracticeChoice) -> String {
             |row| {
                 format!(
                     "Offer up to {} units; delivery and later cooperation are separate.",
-                    row.maximum_quantity
+                    crate::observer_ui::grouped(row.maximum_quantity)
                 )
             },
         ),
@@ -93,7 +129,10 @@ pub(super) fn terms(choice: &PracticeChoice) -> String {
         || "Resolution unknown".into(),
         |period| format!("Resolves P{period}"),
     );
-    format!("{parties}\n{cost}   ·   {resolution}\n{routine}. {benefit}")
+    format!(
+        "{}\n{parties}\n{cost}   ·   {resolution}\n{routine}. {benefit}",
+        choice.intent
+    )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -172,11 +211,19 @@ impl Bulletin {
             }
             if let Some(row) = row.aid {
                 use babylon_persistence::runtime_session::OrganizerAidSupportStatus;
-                let moved = row.support.material_postings.dispatched_quantity;
+                let moved =
+                    crate::observer_ui::grouped(row.support.material_postings.dispatched_quantity);
                 let status = match row.support.status {
                     OrganizerAidSupportStatus::AwaitingDelivery => "awaiting delivery".into(),
                     OrganizerAidSupportStatus::TerminalFailure => "support failed".into(),
-                    OrganizerAidSupportStatus::Granted { granted_quantity, consumed_quantity } => format!("{granted_quantity} granted · recipient consumed {consumed_quantity} of the same good in total"),
+                    OrganizerAidSupportStatus::Granted {
+                        granted_quantity,
+                        consumed_quantity,
+                    } => format!(
+                        "{} granted · recipient consumed {} of the same good in total",
+                        crate::observer_ui::grouped(granted_quantity),
+                        crate::observer_ui::grouped(consumed_quantity)
+                    ),
                 };
                 let _ = writeln!(self.copy, "{moved} units dispatched · {status}");
             }

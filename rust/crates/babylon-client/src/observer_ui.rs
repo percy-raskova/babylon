@@ -278,6 +278,7 @@ struct CircuitNavigation;
 #[derive(Component, Clone, Copy)]
 enum ObserverText {
     Clock,
+    CampaignMeans,
     Identity,
     Status,
     Legend,
@@ -457,10 +458,10 @@ fn spawn_hud(commands: &mut Commands) {
                 left: px(16),
                 right: px(16),
                 top: px(8),
-                height: px(68),
-                padding: UiRect::axes(px(8), px(4)),
+                height: px(76),
+                padding: UiRect::axes(px(8), px(2)),
                 flex_direction: FlexDirection::Column,
-                row_gap: px(4),
+                row_gap: px(0),
                 ..default()
             },
             BackgroundColor(theme::INK),
@@ -470,7 +471,13 @@ fn spawn_hud(commands: &mut Commands) {
             DeclaredSurface::new(SurfaceId::ObserverShell),
         ))
         .with_children(|hud| {
-            hud.spawn(row()).with_children(|bar| {
+            hud.spawn(Node {
+                width: percent(100),
+                height: px(36),
+                flex_shrink: 0.0,
+                ..row()
+            })
+            .with_children(|bar| {
                 bar.spawn(role_label(
                     "BABYLON",
                     26.0,
@@ -508,12 +515,24 @@ fn spawn_hud(commands: &mut Commands) {
                 crate::organizer::ui::button(bar, "Organize", OrganizerAction::Open);
                 button(bar, "Menu [Esc]", ObserverCommand::Menu);
             });
-            hud.spawn(row()).with_children(|bar| {
+            hud.spawn(Node {
+                width: percent(100),
+                height: px(32),
+                flex_shrink: 0.0,
+                ..row()
+            })
+            .with_children(|bar| {
+                bar.spawn((
+                    label("", 13.0, theme::PAPER),
+                    ObserverText::CampaignMeans,
+                    Node {
+                        flex_grow: 1.0,
+                        flex_basis: px(0),
+                        min_width: px(0),
+                        ..default()
+                    },
+                ));
                 bar.spawn((label("", 14.0, theme::YELLOW), ObserverText::Status));
-                bar.spawn(Node {
-                    flex_grow: 1.0,
-                    ..default()
-                });
                 bar.spawn((label("", 13.0, theme::GRAY), ObserverText::Identity));
             });
         });
@@ -1777,15 +1796,7 @@ pub(crate) fn keyboard(
 
 #[must_use]
 pub fn grouped(value: u64) -> String {
-    let raw = value.to_string();
-    let mut text = String::with_capacity(raw.len() + raw.len() / 3);
-    for (index, byte) in raw.bytes().enumerate() {
-        if index > 0 && (raw.len() - index).is_multiple_of(3) {
-            text.push(',');
-        }
-        text.push(char::from(byte));
-    }
-    text
+    crate::human_numbers::grouped(u128::from(value))
 }
 
 #[must_use]
@@ -1840,6 +1851,7 @@ fn county_developments(snapshot: Option<&ObserverEconomySnapshot>, county: &str)
 struct ShellState<'w> {
     state: Res<'w, ObserverSession>,
     frame: Res<'w, ObserverFrame>,
+    organizer: Option<Res<'w, OrganizerClient>>,
     ui: Res<'w, ObserverUiState>,
     view: Res<'w, PrimaryView>,
     audio: Res<'w, ObserverAudioSettings>,
@@ -1855,6 +1867,10 @@ impl ShellState<'_> {
     fn needs_repaint(&self) -> bool {
         self.state.is_changed()
             || self.frame.is_changed()
+            || self
+                .organizer
+                .as_ref()
+                .is_some_and(DetectChanges::is_changed)
             || self.ui.is_changed()
             || self.selected.is_changed()
             || self.hovered.is_changed()
@@ -1916,6 +1932,7 @@ fn repaint(
     let ShellState {
         state,
         frame,
+        organizer,
         ui,
         view,
         audio,
@@ -1961,6 +1978,13 @@ fn repaint(
         }
         let value = match kind {
             ObserverText::Clock => turn.period.clone(),
+            ObserverText::CampaignMeans => if state.organizer_enabled {
+                organizer.as_deref().map_or_else(
+                    || "Collective cash unavailable · Organizer-hours unavailable · Shared household time unavailable".into(),
+                    |client| crate::organizer::workspace_copy::resource_masthead(client, &state),
+                )
+            } else { String::new() },
+            ObserverText::Identity if state.organizer_enabled => String::new(),
             ObserverText::Identity => format!("{} | {}", state.perspective.label(), archive_status),
             ObserverText::Status => turn.status.clone(),
             ObserverText::Legend => match &ui.lens {
@@ -2257,6 +2281,33 @@ impl Plugin for ObserverShellPlugin {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    pub(crate) fn install_resource_header_fixture(app: &mut App) -> Entity {
+        use bevy::ecs::system::RunSystemOnce as _;
+        app.insert_resource(
+            CountyAtlas::parse(include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../assets/map/county_atlas.bin"
+            )))
+            .expect("captured county atlas"),
+        )
+        .init_resource::<ObserverFrame>()
+        .init_resource::<ObserverAudioSettings>()
+        .init_resource::<SelectedCounty>()
+        .init_resource::<HoveredCounty>()
+        .add_systems(Update, (repaint, show_observer_chrome).chain());
+        app.world_mut()
+            .run_system_once(|mut commands: Commands| spawn_hud(&mut commands))
+            .expect("actual shared header");
+        let world = app.world_mut();
+        world
+            .query::<(Entity, &ObserverText)>()
+            .iter(world)
+            .find_map(|(entity, kind)| {
+                matches!(kind, ObserverText::CampaignMeans).then_some(entity)
+            })
+            .expect("shared resource reading exists in World and Evidence chrome")
+    }
+
     pub(crate) fn install_pending_paint_fixture(app: &mut App) -> (Entity, Entity, Entity) {
         let status = app
             .world_mut()

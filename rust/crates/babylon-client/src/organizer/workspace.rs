@@ -12,6 +12,64 @@ use crate::observer::{ObserverSession, SessionPhase};
 use super::scene::OrganizerSubject;
 use super::{presentation, OrganizerClient, OrganizerInspector};
 
+/// Current disclosed means; absence never stands for a zero balance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct ResourceSummary {
+    pub period: u64,
+    pub cash_micros: Option<i128>,
+    pub organizer_hours: u64,
+    pub standing_authorized: bool,
+    pub shared_time: Option<(u64, u64)>,
+}
+
+pub(super) fn resources(
+    client: &OrganizerClient,
+    session: &ObserverSession,
+) -> Option<ResourceSummary> {
+    let view = client.view.as_ref()?;
+    let (_, scope) = client.body_for(session)?;
+    if view.period != session.viewed_tick
+        || view.period != session.durable_tick
+        || scope.period != view.period
+        || scope.actor_id != view.actor_id
+        || scope.campaign_id != *session.campaign.as_uuid().as_bytes()
+        || scope.content_digest != view.content_digest
+    {
+        return None;
+    }
+    Some(ResourceSummary {
+        period: view.period,
+        cash_micros: client
+            .collection_preview()
+            .map(|row| row.organization_cash_micros),
+        organizer_hours: view.available_hours,
+        standing_authorized: view.standing.authorized,
+        shared_time: shared_household_time(client, view.period),
+    })
+}
+
+fn shared_household_time(client: &OrganizerClient, period: u64) -> Option<(u64, u64)> {
+    let closed = period.checked_sub(1)?;
+    let mut budget = None;
+    for row in client.aid.iter().filter(|row| row.period == period) {
+        let time = row.time.as_ref()?;
+        if time.period != closed || time.labor_unit_id != row.labor_unit_id {
+            return None;
+        }
+        let disclosed = (
+            row.donor_id,
+            time.labor_unit_id,
+            time.period,
+            time.remaining_hours,
+        );
+        if budget.is_some_and(|previous| previous != disclosed) {
+            return None;
+        }
+        budget = Some(disclosed);
+    }
+    budget.map(|(_, _, period, hours)| (period, hours))
+}
+
 pub(super) const ALL_PRACTICES: [OrganizerChoice; 9] = [
     OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
     OrganizerChoice::Inquiry(OrganizerInquiry::MaintenanceReceived),
@@ -89,6 +147,7 @@ pub(super) enum ChoiceAvailability {
 pub(super) struct PracticeChoice<'a> {
     pub choice: OrganizerChoice,
     pub title: &'static str,
+    pub intent: &'static str,
     pub target: Option<NamedSubject<'a>>,
     pub partner: Option<NamedPartner<'a>>,
     pub captured_period: u64,
@@ -260,6 +319,7 @@ fn practice<'a>(
     PracticeChoice {
         choice,
         title: presentation::choice(choice),
+        intent: presentation::flavor(view, choice),
         target,
         partner,
         captured_period: view.period,
@@ -566,6 +626,7 @@ fn disclosed_encounter(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::observer::Perspective;
     use babylon_persistence::runtime_session::{
         OrganizerAidOption, OrganizerAidPending, OrganizerAidTransportPreview, OrganizerOutcome,
         OrganizerPartnerResponse, OrganizerPreview, OrganizerReport,
@@ -793,6 +854,146 @@ mod tests {
             client.choice(),
             OrganizerChoice::Hold,
             "inspection preserves the draft"
+        );
+    }
+
+    fn admitted_resources() -> (OrganizerClient, ObserverSession) {
+        let (mut client, mut session, request, snapshot) = super::super::tests::status_fixture();
+        let babylon_persistence::runtime_session::RuntimeSessionRequest::OrganizerStatus {
+            request_id,
+            ..
+        } = request
+        else {
+            panic!("fixture status request")
+        };
+        client
+            .status(request_id, snapshot, &mut session)
+            .expect("admitted current status");
+        install_aid(&mut client);
+        client.aid[0].time = Some(babylon_persistence::runtime_session::OrganizerAidTime {
+            period: 2,
+            labor_unit_id: [9; 32],
+            remaining_hours: 6,
+        });
+        client.collection = Some(OrganizerCollectionPreview {
+            period: 3,
+            mandate_id: [8; 32],
+            actor_id: 90,
+            contributor_id: 101,
+            contributor_label: "Captured contributor".into(),
+            source_hash: [16; 32],
+            cash_consent: OrganizerGiftConsent::Accept,
+            maximum_cash_micros: 400_000,
+            protected_cash_floor_micros: 123_000,
+            collection_hours: 5,
+            organization_cash_micros: 1_234_560_000,
+        });
+        (client, session)
+    }
+
+    #[test]
+    fn resource_cash_is_owned_and_absence_is_not_zero() {
+        let (mut client, session) = admitted_resources();
+        let summary = resources(&client, &session).expect("admitted resources");
+        assert_eq!(
+            summary.cash_micros,
+            Some(1_234_560_000),
+            "use collective account, never cap, floor or arbitrary aid payer"
+        );
+        assert_eq!(
+            summary.organizer_hours, 16,
+            "captured commitments are organizer hours"
+        );
+        client
+            .collection
+            .as_mut()
+            .expect("collection")
+            .organization_cash_micros = 0;
+        assert_eq!(
+            resources(&client, &session).expect("current").cash_micros,
+            Some(0),
+            "real zero is disclosed"
+        );
+        client.collection.as_mut().expect("collection").actor_id += 1;
+        assert_eq!(
+            resources(&client, &session).expect("current").cash_micros,
+            None,
+            "foreign accounts are not collective cash"
+        );
+        client.collection = None;
+        client.aid.clear();
+        let summary = resources(&client, &session)
+            .expect("Michigan still discloses captured organizer commitments");
+        assert_eq!(summary.cash_micros, None, "missing treasury is unavailable");
+        assert_eq!(
+            summary.shared_time, None,
+            "fixed organizer commitments cannot invent household time"
+        );
+    }
+
+    #[test]
+    fn resource_shared_household_time_is_dated_once_and_conflicts_are_unavailable() {
+        let (mut client, session) = admitted_resources();
+        let mut duplicate = client.aid[0].clone();
+        duplicate.kind = OrganizerAidKind::Remote;
+        duplicate.mandate_id = [17; 32];
+        duplicate.recipient_id = [18; 32];
+        client.aid.push(duplicate);
+        assert_eq!(
+            resources(&client, &session).expect("current").shared_time,
+            Some((2, 6)),
+            "duplicate mandates share one budget, never twelve hours"
+        );
+        client.aid[1]
+            .time
+            .as_mut()
+            .expect("closed receipt")
+            .remaining_hours = 0;
+        assert_eq!(
+            resources(&client, &session).expect("current").shared_time,
+            None,
+            "conflicting disclosures must not choose a favorable row"
+        );
+        client.aid.pop();
+        client.aid[0]
+            .time
+            .as_mut()
+            .expect("closed receipt")
+            .remaining_hours = 0;
+        assert_eq!(
+            resources(&client, &session).expect("current").shared_time,
+            Some((2, 0)),
+            "zero observed remainder is known"
+        );
+        for invalid_period in [0, 1, 3, 4] {
+            client.aid[0].time.as_mut().expect("closed receipt").period = invalid_period;
+            assert_eq!(
+                resources(&client, &session).expect("current").shared_time,
+                None,
+                "only the immediately closed period is current disclosed supply"
+            );
+        }
+    }
+
+    #[test]
+    fn resource_current_balances_never_fill_history_or_superseded_context() {
+        let (client, mut session) = admitted_resources();
+        session.inspect_tick(2);
+        assert!(
+            resources(&client, &session).is_none(),
+            "current balances cannot fill history"
+        );
+        let (client, mut session) = admitted_resources();
+        session.set_perspective(Perspective::PlayerKnowledge);
+        assert!(
+            resources(&client, &session).is_none(),
+            "perspective changes require a fresh admission"
+        );
+        let (client, mut session) = admitted_resources();
+        session.world_hash = Some("different world".into());
+        assert!(
+            resources(&client, &session).is_none(),
+            "world identity changes require a fresh admission"
         );
     }
 

@@ -707,8 +707,10 @@ fn describe_prices(value: &mut String, site: &ProductionSite, snapshot: &Product
     {
         writeln!(
             value,
-            "\nQUOTE / {}\n{} micro-currency per {}",
-            row.good, row.current_price_micro, row.unit
+            "\nQUOTE / {}\n{} currency per {}",
+            row.good,
+            crate::human_numbers::currency(row.current_price_micro),
+            row.unit
         )
         .expect("String write");
         if let Some(done) = &row.completed {
@@ -722,8 +724,8 @@ fn describe_prices(value: &mut String, site: &ProductionSite, snapshot: &Product
             writeln!(
                 value,
                 "{reason}: {} → {}\n{} unserved · {} closing stock",
-                done.old_price_micro,
-                done.next_price_micro,
+                crate::human_numbers::currency(done.old_price_micro),
+                crate::human_numbers::currency(done.next_price_micro),
                 grouped(done.unserved_quantity),
                 grouped(done.closing_stock)
             )
@@ -738,7 +740,7 @@ fn describe_prices(value: &mut String, site: &ProductionSite, snapshot: &Product
                     } else {
                         "released from seller stock"
                     };
-                    writeln!(value,"{} {} {basis} · {} carrying + {} handling wages (micro-currency)\nCommitted direct cost per unit: {}",grouped(done.basis_quantity),row.unit,done.carrying_cost_micro,done.handling_wages_micro,done.unit_cost_micro.expect("validated price evidence")).expect("String write");
+                    writeln!(value,"{} {} {basis} · {} carrying + {} handling wages (currency)\nCommitted direct cost per unit: {}",grouped(done.basis_quantity),row.unit,crate::human_numbers::currency(done.carrying_cost_micro),crate::human_numbers::currency(done.handling_wages_micro),crate::human_numbers::currency(done.unit_cost_micro.expect("validated price evidence"))).expect("String write");
                 }
             }
         }

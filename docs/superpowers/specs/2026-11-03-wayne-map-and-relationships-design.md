@@ -289,3 +289,29 @@ behavior in the organizer
 and [national policy](../../../content/scenarios/national/defines.toml) at the
 qualified implementation head. The topology authority research is a bounded
 source-reading aid, not a grant or current campaign observation.
+
+## November 6 human testing corrections
+
+Keep the collective's cash, captured organizer-hours and dated shared household
+time visible in Organizer, World and Evidence. Read only admitted current
+context. Missing treasury or household-time disclosure means unavailable,
+including in the Michigan preset. It never means zero.
+
+Cash belongs to the
+collective account, not a personal wallet or the contribution cap. Organizer
+hours describe captured commitments. Shared household time describes the
+immediately closed period, with the next period unknown. Repeated aid mandates
+for one household budget must not add its hours together. Conflicting budgets
+or stale, historical or changed-context readings remain unavailable.
+
+Use grouped physical quantities and exact common-currency money with a dollar
+sign and at least two decimal places: `$1,234.56`, `-$1.20`, `$0.000001`.
+Preserve precision below one cent without floating-point conversion. This display does
+not convert the common currency to USD. Keep identifiers, dates and hashes exact.
+
+Give comparison cards, All practices and authenticated review one shared short
+sentence about intended work. Flavor cannot claim an outcome, consent, named
+people or a guaranteed benefit. Paused Hold leaves the pause in place. Opening
+inquiries still state that no completed-period report exists. Actual receipts
+remain factual. Keep costs, displaced routine, prerequisites and conditional
+benefits readable beside the intent.

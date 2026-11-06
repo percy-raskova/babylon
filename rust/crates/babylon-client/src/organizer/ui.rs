@@ -2080,6 +2080,7 @@ mod resource_header_tests;
 pub(crate) mod tests {
     use super::super::draft::OrganizerDraft;
     use super::super::editor::NoteEditor;
+    use babylon_persistence::runtime_session::OrganizerAllocation;
 
     use super::super::OrganizerCommand;
     use super::super::OrganizerPreview;
@@ -3347,7 +3348,7 @@ pub(crate) mod tests {
         if let Some(view) = client.view.as_mut() {
             let national: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v13.json"
+                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v14.json"
             )))
             .expect("captured national opening");
             if viewport.x > 1400 {
@@ -4446,6 +4447,7 @@ pub(crate) mod tests {
         session.phase = SessionPhase::Ready;
         session.organizer_enabled = true;
         let draft = OrganizerDraft {
+            collection_allocation: OrganizerAllocation::None,
             workplace_id: 91,
             choice: OrganizerChoice::Reinforce,
             notes: NoteEditor::from_text("Keep this draft while reading evidence.".into())
@@ -4608,6 +4610,7 @@ pub(crate) mod tests {
 
     fn preview_for(command: &OrganizerCommand) -> OrganizerPreview {
         OrganizerPreview {
+            allocation: command.allocation,
             choice: command.choice,
             current_period: command.expected_period,
             resolves_period: command.expected_period + 1,
@@ -6311,6 +6314,7 @@ pub(crate) mod tests {
                         contributor_label: "Fixture contributor".into(),
                         source_hash: [16; 32],
                         cash_consent: OrganizerGiftConsent::Accept,
+                        initial_cash_micros: 400_000,
                         maximum_cash_micros: 400_000,
                         protected_cash_floor_micros: 0,
                         collection_hours: 2,
@@ -6387,6 +6391,13 @@ pub(crate) mod tests {
         {
             let mut client = app.world_mut().resource_mut::<OrganizerClient>();
             client.clear_review();
+            client
+                .draft
+                .as_mut()
+                .expect("personal draft")
+                .collection_allocation = OrganizerAllocation::Collection {
+                target_cash_micros: 400_000,
+            };
             client.collection = Some(
                 babylon_persistence::runtime_session::OrganizerCollectionPreview {
                     period: 3,
@@ -6400,6 +6411,7 @@ pub(crate) mod tests {
                     contributor_label: "Fixture contributor".into(),
                     source_hash: [16; 32],
                     cash_consent: OrganizerGiftConsent::Accept,
+                    initial_cash_micros: 400_000,
                     maximum_cash_micros: 400_000,
                     protected_cash_floor_micros: 0,
                     collection_hours: 2,

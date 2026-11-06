@@ -187,6 +187,7 @@ fn collection_mandate(
         ),
         labor_unit_id: first.labor_unit_id.as_bytes(),
         cash_consent: d.collection_cash_consent,
+        initial_cash_micros: d.collection_initial_cash_micros,
         maximum_cash_micros: d.collection_maximum_cash_micros,
         protected_cash_floor_micros: d.collection_protected_cash_floor_micros,
         collection_hours: d.collection_hours,

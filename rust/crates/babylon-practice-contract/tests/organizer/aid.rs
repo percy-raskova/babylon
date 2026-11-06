@@ -1,4 +1,5 @@
 use super::support;
+use babylon_practice_contract::OrganizerCommand;
 use babylon_practice_contract::ResolvedOrganizerPeriod;
 use babylon_practice_contract::{
     OrganizerAidBinding, OrganizerAidKind, OrganizerAidMaterialPostings, OrganizerAidSupport,
@@ -1222,7 +1223,7 @@ fn later_support_cannot_repeat_dispatch_postings_or_foreign_actor_authority() {
 
 #[test]
 fn current_organizer_refuses_prior_schema_even_without_aid() {
-    assert_eq!(ORGANIZER_SCHEMA_VERSION, 8);
+    assert_eq!(ORGANIZER_SCHEMA_VERSION, 9);
     let mut prior = support::config();
     prior.schema_version = 6;
     assert_eq!(
@@ -1244,12 +1245,7 @@ fn current_organizer_refuses_prior_schema_even_without_aid() {
     assert!(babylon_practice_contract::decode_organizer_state(&state_bytes).is_err());
 }
 
-#[test]
-#[allow(
-    clippy::too_many_lines,
-    reason = "one scenario asserts the whole capture-to-resolution chain; splitting it would duplicate the fixture setup"
-)]
-fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
+fn captured_collection() -> OrganizerConfig {
     let mut config = captured();
     config.collection = Some(OrganizerCollectionMandate {
         mandate_id: [93; 32],
@@ -1261,10 +1257,79 @@ fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
         social_class_target: [98; 32],
         labor_unit_id: babylon_practice_contract::organizer_time_unit_id().as_bytes(),
         cash_consent: OrganizerGiftConsent::Accept,
+        initial_cash_micros: 2,
         maximum_cash_micros: 2,
         protected_cash_floor_micros: 0,
         collection_hours: 2,
     });
+    config
+}
+
+#[test]
+fn collection_allocation_binds_exact_target_to_admission_and_commitment() {
+    let config = captured_collection();
+    let state = babylon_practice_contract::initial_organizer_state(&config)
+        .expect("the captured organizer opens");
+    let make = |target: &str| {
+        let mut wire =
+            serde_json::to_value(support::command(&config, &state, OrganizerChoice::Collect))
+                .expect("the command serializes");
+        wire["allocation"] = serde_json::json!({"collection":{"target_cash_micros":target}});
+        serde_json::from_value::<OrganizerCommand>(wire)
+    };
+    let one = make("1").expect("a selected positive target decodes");
+    let two = make("2").expect("a selected target equal to the cap decodes");
+    let first = babylon_practice_contract::admit_organizer(&config, &state, &one)
+        .expect("a target below the captured cap admits");
+    let second = babylon_practice_contract::admit_organizer(&config, &state, &two)
+        .expect("the captured cap admits");
+    assert_eq!(first.command.nonce, second.command.nonce);
+    assert_ne!(first.commitment_id, second.commitment_id);
+    let first_intent =
+        babylon_practice_contract::organizer_practice_intent(&config, &state, &first)
+            .expect("the first collection has an authenticated action");
+    let second_intent =
+        babylon_practice_contract::organizer_practice_intent(&config, &state, &second)
+            .expect("the second collection has an authenticated action");
+    assert_ne!(
+        babylon_practice_contract::encode_practice_intent(&first_intent)
+            .expect("first action encodes"),
+        babylon_practice_contract::encode_practice_intent(&second_intent)
+            .expect("second action encodes"),
+        "the actual consumed action input must bind the selected target"
+    );
+    assert_eq!(
+        babylon_practice_contract::admit_organizer(&config, &state, &one),
+        Ok(first.clone())
+    );
+    let mut changed = first;
+    changed.command = two;
+    assert_eq!(
+        babylon_practice_contract::validate_organizer_commitment(&changed),
+        Err(OrganizerError::InvalidCommitment)
+    );
+    for target in ["0", "3", "170141183460469231731687303715884105727"] {
+        let command = make(target).expect("nonnegative exact money decodes before cap admission");
+        assert_eq!(
+            babylon_practice_contract::admit_organizer(&config, &state, &command),
+            Err(OrganizerError::Refused(OrganizerRefusal::InvalidCommand))
+        );
+    }
+    for target in ["-1", "170141183460469231731687303715884105728", "01", "1.0"] {
+        assert!(
+            make(target).is_err(),
+            "noncanonical or out-of-range money must reject: {target}"
+        );
+    }
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one scenario asserts the whole capture-to-resolution chain; splitting it would duplicate the fixture setup"
+)]
+fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
+    let config = captured_collection();
     let first = babylon_practice_contract::initial_organizer_state(&config)
         .expect("the authored config admits an opening organizer state");
     let gift = babylon_practice_contract::admit_organizer(

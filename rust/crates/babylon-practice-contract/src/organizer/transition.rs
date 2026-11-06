@@ -3,6 +3,7 @@ use super::aid::OrganizerAidSupport;
 use super::aid::OrganizerAidSupportStatus;
 use super::aid::OrganizerPendingAidPractice;
 use super::time_resources::OrganizerPeriodTimeResources;
+use super::OrganizerAllocation;
 use super::OrganizerChoice;
 use super::OrganizerCommand;
 use super::OrganizerCommitment;
@@ -102,11 +103,21 @@ pub(super) fn intent_for_authorized_commitment(
                 .collection
                 .as_ref()
                 .ok_or(OrganizerError::InvalidCommitment)?;
+            let OrganizerAllocation::Collection { target_cash_micros } =
+                commitment.command.allocation
+            else {
+                return Err(OrganizerError::InvalidCommitment);
+            };
             (
                 PracticeId::MutualAid,
                 PracticeTargetTag::SocialClass,
                 row.social_class_target,
-                vec![],
+                vec![PracticeParameter {
+                    key_u8: 3,
+                    value_kind_u8: 2,
+                    value_length_u16: 16,
+                    value_bytes: target_cash_micros.to_be_bytes().to_vec(),
+                }],
             )
         }
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
@@ -454,6 +465,7 @@ fn routine_commitment(
     let mut nonce = [0; 16];
     nonce.copy_from_slice(&digest[..16]);
     let command = OrganizerCommand {
+        allocation: OrganizerAllocation::None,
         campaign_id: config.campaign_id,
         actor_id: config.controlled_actor_id,
         authority_id: config.input_authority_id,
@@ -464,7 +476,7 @@ fn routine_commitment(
         choice: OrganizerChoice::Hold,
     };
     Ok(OrganizerCommitment {
-        commitment_id: super::contract::identity(b"babylon.organizer-commitment.v1", &command)?,
+        commitment_id: super::contract::identity(b"babylon.organizer-commitment.v2", &command)?,
         command,
         resolves_period,
     })

@@ -111,12 +111,149 @@ pub(crate) mod tests {
         (
             OrganizerClient {
                 campaign: Some(campaign),
-                draft: Some(OrganizerDraft::new(91)),
+                draft: Some(OrganizerDraft::new(
+                    91,
+                    babylon_practice_contract::OrganizerAllocation::Collection {
+                        target_cash_micros: 400_000,
+                    },
+                )),
                 view: Some(view),
                 ..default()
             },
             session,
         )
+    }
+
+    #[test]
+    fn collection_command_carries_the_personal_selected_target_and_ordinary_choices_do_not() {
+        use babylon_practice_contract::OrganizerAllocation;
+        let (mut client, session) = ready();
+        client
+            .draft
+            .as_mut()
+            .expect("personal draft")
+            .collection_allocation = OrganizerAllocation::Collection {
+            target_cash_micros: 123_000_000,
+        };
+        let command = client
+            .make_command(&session, OrganizerChoice::Collect)
+            .expect("selected collection");
+        assert_eq!(
+            command.allocation,
+            OrganizerAllocation::Collection {
+                target_cash_micros: 123_000_000
+            }
+        );
+        assert_eq!(
+            client
+                .make_command(&session, OrganizerChoice::Hold)
+                .expect("hold")
+                .allocation,
+            OrganizerAllocation::None
+        );
+    }
+
+    #[test]
+    fn admitted_collection_terms_seed_a_new_draft_and_its_reviewed_command() {
+        use babylon_practice_contract::OrganizerAllocation;
+        let (_, _, _, mut snapshot) = status_fixture();
+        let campaign = Uuid::new_v4();
+        let mut session = ObserverSession::new(CampaignId::from_uuid(campaign));
+        session.connected_fixture();
+        session.ready(3, None);
+        assert!(session.installed(&session.context()));
+        session.organizer_enabled = true;
+        snapshot.body_scope.campaign_id = *campaign.as_bytes();
+        snapshot.city_pd_encounters.clear();
+        snapshot.collection = Some(OrganizerCollectionPreview {
+            period: 3,
+            mandate_id: [8; 32],
+            actor_id: snapshot.view.actor_id,
+            contributor_id: 1,
+            contributor_label: "Fixture contributor".into(),
+            source_hash: [16; 32],
+            cash_consent: OrganizerGiftConsent::Accept,
+            initial_cash_micros: 280_000_000,
+            maximum_cash_micros: 1_450_000_000,
+            protected_cash_floor_micros: 0,
+            collection_hours: 2,
+            organization_cash_micros: 1_000_000,
+        });
+        let mut client = OrganizerClient {
+            campaign: Some(campaign),
+            ..default()
+        };
+        client.queue(&mut session, RequestKind::Status, None);
+        let request = client.pending.as_ref().expect("status request").id;
+        assert_eq!(
+            client.status(request, snapshot, &mut session),
+            Ok(StatusDisposition::Installed)
+        );
+        assert!(
+            client.draft_writable,
+            "a missing draft initializes normally"
+        );
+        let allocation = OrganizerAllocation::Collection {
+            target_cash_micros: 280_000_000,
+        };
+        let draft = client
+            .draft
+            .as_mut()
+            .expect("new draft from admitted terms");
+        assert_eq!(draft.collection_allocation, allocation);
+        draft.choice = OrganizerChoice::Collect;
+        let command = client
+            .make_command(&session, client.choice())
+            .expect("selected command");
+        assert_eq!(command.allocation, allocation);
+        client.queue(&mut session, RequestKind::Preview, Some(command.clone()));
+        let request = client.pending.as_ref().expect("preview request").id;
+        client
+            .previewed(
+                request,
+                OrganizerPreview {
+                    choice: OrganizerChoice::Collect,
+                    allocation,
+                    current_period: 3,
+                    resolves_period: 4,
+                    available_hours: 16,
+                    required_hours: 2,
+                    replaces_standing_work: true,
+                    refusal: None,
+                    observations: vec![],
+                },
+                &mut session,
+            )
+            .expect("matching authenticated preview");
+        assert_eq!(client.reviewed_command, Some(command));
+        assert!(client.commitment.is_none());
+    }
+
+    #[test]
+    fn collection_review_refuses_a_preview_for_a_different_selected_target() {
+        use babylon_practice_contract::OrganizerAllocation;
+        let (mut client, mut session) = ready();
+        let command = client
+            .make_command(&session, OrganizerChoice::Collect)
+            .expect("selected collection");
+        client.queue(&mut session, RequestKind::Preview, Some(command));
+        let id = client.pending.as_ref().expect("pending preview").id;
+        let changed = OrganizerPreview {
+            choice: OrganizerChoice::Collect,
+            allocation: OrganizerAllocation::Collection {
+                target_cash_micros: 1,
+            },
+            current_period: 3,
+            resolves_period: 4,
+            available_hours: 16,
+            required_hours: 2,
+            replaces_standing_work: true,
+            refusal: None,
+            observations: vec![],
+        };
+        assert!(client.previewed(id, changed, &mut session).is_err());
+        assert!(client.reviewed_command.is_none());
+        assert!(client.commitment.is_none());
     }
 
     pub(crate) fn status_fixture() -> (
@@ -659,6 +796,7 @@ pub(crate) mod tests {
         client.review_context = Some(session.context());
         client.reviewed_command = Some(command.clone());
         client.preview = Some(OrganizerPreview {
+            allocation: babylon_practice_contract::OrganizerAllocation::None,
             choice: command.choice,
             current_period: command.expected_period,
             resolves_period: command.expected_period + 1,
@@ -788,6 +926,7 @@ pub(crate) mod tests {
             contributor_label: "Fixture contributor".into(),
             source_hash: [16; 32],
             cash_consent: OrganizerGiftConsent::Accept,
+            initial_cash_micros: 400_000,
             maximum_cash_micros: 400_000,
             protected_cash_floor_micros: 0,
             collection_hours: 2,

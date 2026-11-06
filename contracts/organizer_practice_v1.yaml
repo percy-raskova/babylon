@@ -7,11 +7,12 @@ meta:
   scope: Captured Wayne collective, two independent partners, and one workplace
 
 encoding:
-  runtime_session_protocol_version: 11
+  runtime_session_protocol_version: 14
   outer: exact_ASCII_domain_then_NUL_then_canonical_UTF8_JSON
-  version: config_and_state_schema_version_7_where_present
-  current_domains: {config: "babylon.organizer-config.v7\0", state: "babylon.organizer-state.v5\0",
-                    receipt: "babylon.organizer-receipt.v2\0"}
+  version: config_and_state_schema_version_9_where_present
+  current_domains: {config: "babylon.organizer-config.v8\0", state: "babylon.organizer-state.v7\0",
+                    receipt: "babylon.organizer-receipt.v2\0", commitment: "babylon.organizer-commitment.v2\0",
+                    period_entries: "babylon.organizer-period-entries.v2\0", journal: "babylon.organizer-journal.v2\0"}
   field_order: Rust_declared_struct_field_order
   numbers: whole_unsigned_integers_and_strict_nonnegative_i128_decimal_cash_strings
   byte_arrays: fixed_length_JSON_unsigned_integer_arrays
@@ -36,7 +37,7 @@ captured_content:
   initial_knowledge: attributed_period_specific_observations
   costs: captured_scenario_defines_organizer_table
   source_digest: authored_declarations_and_organizer_defines
-  collection: independent_cash_consent_cap_protected_floor_fixed_hours_and_mandate_source
+  collection: independent_cash_consent_initial_target_cap_protected_floor_fixed_hours_and_mandate_source
   collection_preview: controlled_actor_contributor_captured_participant_label_and_mandate_source_hash
   collection_terms: Designed_with_current_committed_period_as_verification_date
 
@@ -50,18 +51,23 @@ admission:
     - resource_contract_digest
     - stable_submission_nonce
     - typed_choice_and_inquiry_question
+    - required_typed_allocation_None_or_Collection_target_cash_micros
   durable: accepted_commitment_persisted_before_acknowledgement
   retry: exact_nonce_and_bytes_return_original_commitment
   conflict: changed_bytes_for_existing_nonce_refuse
   period: at_most_one_accepted_commitment_per_organization
   effect: no_time_advance_or_material_mutation
   immutable: accepted_commitment_cannot_be_revised
+  allocation: Collect_requires_positive_target_within_captured_cap_other_current_practices_require_None
+  draft: schema_3_required_collection_allocation_initial_from_captured_policy_no_command_authority
   failure: failed_tick_leaves_pending_commitment_available_for_retry
 
 causal_order:
   - Within material-cycle, staffing, household reproduction and due payments precede collection.
   - Collection freezes eligible cash after reproduction and due payments, before collection and distributions.
-  - A lawful gift is min(cap, max(0, eligible cash - protected floor)); zero refuses, positive below cap is partial.
+  - A lawful gift is min(selected target, max(0, eligible cash - protected floor));
+    zero refuses, positive below target is partial.
+  - The uncollected remainder ends at the original close and never retries automatically.
   - Full and partial gifts consume the captured fixed hours once; refusals transfer zero and perform zero hours.
   - Same-period incoming gifts and later ownership payouts cannot fund another collection.
   - Ownership distributions and the remaining material close finish before organizer-products.

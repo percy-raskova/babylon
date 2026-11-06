@@ -82,6 +82,7 @@ use babylon_material_circuit::SupplierTransport;
 use babylon_material_circuit::UnitId;
 use babylon_practice_contract::OrganizerAidBinding;
 use babylon_practice_contract::OrganizerAidKind;
+use babylon_practice_contract::OrganizerAllocation;
 use babylon_practice_contract::OrganizerChoice;
 use babylon_practice_contract::OrganizerCommand;
 use babylon_practice_contract::OrganizerCommitment;
@@ -865,6 +866,17 @@ pub(crate) fn commitment(session: &Session, choice: OrganizerChoice) -> Organize
         config,
         state,
         &OrganizerCommand {
+            allocation: if choice == OrganizerChoice::Collect {
+                OrganizerAllocation::Collection {
+                    target_cash_micros: config
+                        .collection
+                        .as_ref()
+                        .expect("captured collection terms")
+                        .maximum_cash_micros,
+                }
+            } else {
+                OrganizerAllocation::None
+            },
             campaign_id: config.campaign_id,
             actor_id: config.controlled_actor_id,
             authority_id: config.input_authority_id,

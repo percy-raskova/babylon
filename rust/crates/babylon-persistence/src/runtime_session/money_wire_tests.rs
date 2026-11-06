@@ -130,8 +130,8 @@ fn organizer_body_fields_are_required_in_current_wire_and_fixtures() {
         );
     }
     for bytes in [
-        include_str!("../../tests/fixtures/national_organizer_opening_v13.json"),
-        include_str!("../../tests/fixtures/national_organizer_pending_v13.json"),
+        include_str!("../../tests/fixtures/national_organizer_opening_v14.json"),
+        include_str!("../../tests/fixtures/national_organizer_pending_v14.json"),
     ] {
         let snapshot: OrganizerSnapshot =
             serde_json::from_str(bytes).expect("current fixture is complete");
@@ -201,6 +201,7 @@ fn collection_snapshot_requires_evidence_and_exact_cash_strings() {
         contributor_label: "Fixture contributor".into(),
         source_hash: [16; 32],
         cash_consent: OrganizerGiftConsent::Accept,
+        initial_cash_micros: i128::MAX,
         maximum_cash_micros: i128::MAX,
         protected_cash_floor_micros: 0,
         collection_hours: 2,
@@ -237,6 +238,7 @@ fn collection_snapshot_requires_evidence_and_exact_cash_strings() {
         );
     }
     for field in [
+        "initial_cash_micros",
         "actor_id",
         "contributor_id",
         "contributor_label",

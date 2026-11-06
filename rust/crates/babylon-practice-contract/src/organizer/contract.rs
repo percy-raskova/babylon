@@ -1,6 +1,7 @@
 use super::aid::OrganizerAidOption;
 use super::aid::OrganizerGiftConsent;
 use super::OrganizerAgreement;
+use super::OrganizerAllocation;
 use super::OrganizerChoice;
 use super::OrganizerCommand;
 use super::OrganizerCommitment;
@@ -539,7 +540,7 @@ pub fn validate_organizer_pair(
 /// serialization fails or exceeds the encoded ceiling.
 pub fn encode_organizer_config(config: &OrganizerConfig) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_config(config)?;
-    canonical(b"babylon.organizer-config.v7", config)
+    canonical(b"babylon.organizer-config.v8", config)
 }
 
 /// Decode a canonical config and refuse anything that would not re-encode.
@@ -550,7 +551,7 @@ pub fn encode_organizer_config(config: &OrganizerConfig) -> Result<Vec<u8>, Orga
 /// [`OrganizerError::Codec`] for a foreign domain frame or non-canonical body,
 /// and the validation faults [`validate_organizer_config`] reports.
 pub fn decode_organizer_config(bytes: &[u8]) -> Result<OrganizerConfig, OrganizerError> {
-    let value = decode(b"babylon.organizer-config.v7", bytes)?;
+    let value = decode(b"babylon.organizer-config.v8", bytes)?;
     validate_organizer_config(&value)?;
     Ok(value)
 }
@@ -566,7 +567,7 @@ pub fn decode_organizer_config(bytes: &[u8]) -> Result<OrganizerConfig, Organize
 /// exceeds the encoded ceiling.
 pub fn encode_organizer_state(state: &OrganizerState) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_state(state)?;
-    canonical(b"babylon.organizer-state.v6", state)
+    canonical(b"babylon.organizer-state.v7", state)
 }
 
 /// Decode a canonical state and refuse anything that would not re-encode.
@@ -577,7 +578,7 @@ pub fn encode_organizer_state(state: &OrganizerState) -> Result<Vec<u8>, Organiz
 /// [`OrganizerError::Codec`] for a foreign domain frame or non-canonical body,
 /// and the validation faults [`validate_organizer_state`] reports.
 pub fn decode_organizer_state(bytes: &[u8]) -> Result<OrganizerState, OrganizerError> {
-    let value = decode(b"babylon.organizer-state.v6", bytes)?;
+    let value = decode(b"babylon.organizer-state.v7", bytes)?;
     validate_organizer_state(&value)?;
     Ok(value)
 }
@@ -594,7 +595,7 @@ pub fn encode_organizer_period_entries(
     entries: &OrganizerPeriodJournalEntries,
 ) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_period_entries(config, entries)?;
-    canonical(b"babylon.organizer-period-entries.v1", entries)
+    canonical(b"babylon.organizer-period-entries.v2", entries)
 }
 
 /// Decode one canonical period of evidence.
@@ -607,7 +608,7 @@ pub fn decode_organizer_period_entries(
     config: &OrganizerConfig,
     bytes: &[u8],
 ) -> Result<OrganizerPeriodJournalEntries, OrganizerError> {
-    let value = decode(b"babylon.organizer-period-entries.v1", bytes)?;
+    let value = decode(b"babylon.organizer-period-entries.v2", bytes)?;
     validate_organizer_period_entries(config, &value)?;
     Ok(value)
 }
@@ -630,7 +631,7 @@ pub fn encode_organizer_journal(
         prior = Some(entries.period);
         validate_organizer_period_entries(config, entries)?;
     }
-    canonical(b"babylon.organizer-journal.v1", journal)
+    canonical(b"babylon.organizer-journal.v2", journal)
 }
 
 /// Decode a canonical retained evidence window.
@@ -643,7 +644,7 @@ pub fn decode_organizer_journal(
     config: &OrganizerConfig,
     bytes: &[u8],
 ) -> Result<OrganizerPeriodJournal, OrganizerError> {
-    let value: OrganizerPeriodJournal = decode(b"babylon.organizer-journal.v1", bytes)?;
+    let value: OrganizerPeriodJournal = decode(b"babylon.organizer-journal.v2", bytes)?;
     let mut prior = None;
     for entries in &value.periods {
         if prior.is_some_and(|period| period >= entries.period) {
@@ -1155,6 +1156,8 @@ pub fn preview_organizer(
         Some(OrganizerRefusal::ContentChanged)
     } else if command.resource_digest != organizer_resource_digest()? {
         Some(OrganizerRefusal::ResourceContractChanged)
+    } else if !command.allocation.matches_choice(command.choice) {
+        Some(OrganizerRefusal::InvalidCommand)
     } else if state
         .pending_aid
         .iter()
@@ -1170,7 +1173,19 @@ pub fn preview_organizer(
     {
         Some(OrganizerRefusal::AidReceivingRefused)
     } else if command.choice == OrganizerChoice::Collect {
-        super::collection::collection_refusal(config)?
+        if let Some(refusal) = super::collection::collection_refusal(config)? {
+            Some(refusal)
+        } else if let (Some(terms), OrganizerAllocation::Collection { target_cash_micros }) =
+            (&config.collection, command.allocation)
+        {
+            (target_cash_micros > terms.maximum_cash_micros
+                || target_cash_micros
+                    .checked_add(terms.protected_cash_floor_micros)
+                    .is_none())
+            .then_some(OrganizerRefusal::InvalidCommand)
+        } else {
+            Some(OrganizerRefusal::InvalidCommand)
+        }
     } else if command.choice == OrganizerChoice::ResumeStanding && state.standing.authorized {
         Some(OrganizerRefusal::StandingWorkAlreadyActive)
     } else if super::aid::aid_kind(command.choice).is_none() && cost > available_hours {
@@ -1185,6 +1200,7 @@ pub fn preview_organizer(
     );
     Ok(OrganizerPreview {
         choice: command.choice,
+        allocation: command.allocation,
         current_period: state.period,
         resolves_period,
         available_hours: if authorized { available_hours } else { 0 },
@@ -1232,7 +1248,7 @@ pub fn admit_organizer(
     let commitment = OrganizerCommitment {
         command: command.clone(),
         resolves_period: preview.resolves_period,
-        commitment_id: identity(b"babylon.organizer-commitment.v1", command)?,
+        commitment_id: identity(b"babylon.organizer-commitment.v2", command)?,
     };
     validate_organizer_commitment(&commitment)?;
     Ok(commitment)
@@ -1250,9 +1266,10 @@ pub fn validate_organizer_commitment(
 ) -> Result<(), OrganizerError> {
     let command = &commitment.command;
     if command.actor_id == 0
+        || !command.allocation.matches_choice(command.choice)
         || command.authority_id == [0; 16]
         || command.expected_period.checked_add(1) != Some(commitment.resolves_period)
-        || identity(b"babylon.organizer-commitment.v1", command)? != commitment.commitment_id
+        || identity(b"babylon.organizer-commitment.v2", command)? != commitment.commitment_id
     {
         return Err(OrganizerError::InvalidCommitment);
     }

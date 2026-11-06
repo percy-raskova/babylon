@@ -369,6 +369,7 @@ mod tests {
     use super::*;
     use babylon_persistence::identity::CampaignId;
     use babylon_persistence::runtime_session::OrganizerAidKind;
+    use babylon_persistence::runtime_session::OrganizerAllocation;
     use uuid::Uuid;
 
     fn fixture() -> (
@@ -379,7 +380,7 @@ mod tests {
         OrganizerPreview,
     ) {
         let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v13.json"
+            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v14.json"
         ))
         .expect("the authored JSON matches the declared schema");
         let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
@@ -387,6 +388,7 @@ mod tests {
         session.ready(0, None);
         session.duration = Some(snapshot.duration);
         let command = OrganizerCommand {
+            allocation: OrganizerAllocation::None,
             campaign_id: *session.campaign.canonical_bytes(),
             actor_id: snapshot.view.actor_id,
             authority_id: snapshot.view.authority_id,
@@ -397,6 +399,7 @@ mod tests {
             choice: OrganizerChoice::LocalAid,
         };
         let preview = OrganizerPreview {
+            allocation: OrganizerAllocation::None,
             choice: OrganizerChoice::LocalAid,
             current_period: 0,
             resolves_period: 1,

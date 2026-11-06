@@ -53,6 +53,7 @@ pub(crate) mod tests {
     use crate::observer_progress::OperationProgress;
     use crate::observer_ui::ObserverDisclosure;
     use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::runtime_session::OrganizerAllocation;
     use babylon_persistence::runtime_session::OrganizerSnapshot;
     use babylon_persistence::runtime_session::RuntimeSessionErrorCode;
     use babylon_persistence::ProductionEvidenceError;
@@ -138,6 +139,7 @@ pub(crate) mod tests {
                 };
                 snapshot.pending = Some(OrganizerCommitment {
                     command: OrganizerCommand {
+                        allocation: OrganizerAllocation::None,
                         campaign_id: *session.campaign.as_uuid().as_bytes(),
                         actor_id: snapshot.view.actor_id,
                         authority_id: snapshot.view.authority_id,

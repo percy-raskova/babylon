@@ -1,6 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::super::MaterialRuntimeError;
+use babylon_practice_contract::OrganizerAllocation;
 
 use babylon_kernel::replay::ReplaySessionId;
 
@@ -46,12 +47,34 @@ pub(in crate::material_runtime) fn reconstruct(
     if receipt.commitment_id.is_none() && receipt.choice != OrganizerChoice::Hold {
         return Err(MaterialRuntimeError::InvalidCheckpoint);
     }
+    let allocation = if receipt.choice == OrganizerChoice::Collect {
+        let mut matches = entries
+            .collection_receipts
+            .iter()
+            .filter(|row| Some(row.commitment.commitment_id) == receipt.commitment_id);
+        let original = matches
+            .next()
+            .ok_or(MaterialRuntimeError::InvalidCheckpoint)?;
+        if matches.next().is_some() || original.practice != *receipt {
+            return Err(MaterialRuntimeError::InvalidCheckpoint);
+        }
+        babylon_practice_contract::validate_organizer_collection_fact(
+            config,
+            &original.commitment,
+            &original.fact,
+        )
+        .map_err(|_| MaterialRuntimeError::InvalidCheckpoint)?;
+        original.commitment.command.allocation
+    } else {
+        OrganizerAllocation::None
+    };
     let mut accepted = None;
     for intent in parse(session, tick, bytes)? {
         if intent.actor_org_id.to_bytes() != config.controlled_actor_id.to_be_bytes() {
             continue;
         }
         let command = OrganizerCommand {
+            allocation,
             campaign_id: config.campaign_id,
             actor_id: config.controlled_actor_id,
             authority_id: intent.input_authority_id.as_bytes(),

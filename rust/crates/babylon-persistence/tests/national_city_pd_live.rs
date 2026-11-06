@@ -12,9 +12,10 @@ use babylon_persistence::economic_catalog::{
     CapturedEconomicCatalog, EconomicCatalogInput, NationalOpponent,
 };
 use babylon_persistence::identity::CampaignId;
+use babylon_practice_contract::OrganizerAllocation;
 use babylon_practice_contract::{
     CityPdCaseSource, CityPdConfig, CityPdDecision, CityPdOutcome, OrganizerChoice,
-    OrganizerCommand, PublicVenueRecordKind,
+    OrganizerCommand, OrganizerConfig, PublicVenueRecordKind,
 };
 use babylon_tick::material_replay::MaterialReplaySession;
 use babylon_tick::material_world::CityPdAttempt;
@@ -27,6 +28,20 @@ mod national_capture;
 
 #[path = "fixtures/city_pd_acceptance.rs"]
 mod city_pd_acceptance;
+
+fn opening_command(config: &OrganizerConfig, choice: OrganizerChoice) -> OrganizerCommand {
+    OrganizerCommand {
+        allocation: OrganizerAllocation::None,
+        campaign_id: config.campaign_id,
+        actor_id: config.controlled_actor_id,
+        authority_id: config.input_authority_id,
+        expected_period: 0,
+        content_digest: config.content_digest,
+        resource_digest: babylon_practice_contract::organizer_resource_digest().expect("resources"),
+        nonce: [1; 16],
+        choice,
+    }
+}
 
 #[test]
 fn actual_national_opening_and_two_periods_use_committed_pd_cash() {
@@ -55,16 +70,7 @@ fn actual_national_opening_and_two_periods_use_committed_pd_cash() {
         .organizer_state()
         .expect("organizer state")
         .clone();
-    let command = OrganizerCommand {
-        campaign_id: config.campaign_id,
-        actor_id: config.controlled_actor_id,
-        authority_id: config.input_authority_id,
-        expected_period: 0,
-        content_digest: config.content_digest,
-        resource_digest: babylon_practice_contract::organizer_resource_digest().expect("resources"),
-        nonce: [1; 16],
-        choice: OrganizerChoice::Reinforce,
-    };
+    let command = opening_command(&config, OrganizerChoice::Reinforce);
     let commitment = babylon_practice_contract::admit_organizer(&config, &state, &command)
         .expect("admitted ruling");
     let actions = babylon_practice_contract::organizer_action_batch(
@@ -201,16 +207,7 @@ fn assert_no_pd_control(
         .material()
         .organizer_state()
         .expect("organizer state");
-    let command = OrganizerCommand {
-        campaign_id: config.campaign_id,
-        actor_id: config.controlled_actor_id,
-        authority_id: config.input_authority_id,
-        expected_period: 0,
-        content_digest: config.content_digest,
-        resource_digest: babylon_practice_contract::organizer_resource_digest().expect("resources"),
-        nonce: [1; 16],
-        choice: OrganizerChoice::Reinforce,
-    };
+    let command = opening_command(config, OrganizerChoice::Reinforce);
     let commitment = babylon_practice_contract::admit_organizer(config, state, &command)
         .expect("control command");
     let actions = babylon_practice_contract::organizer_action_batch(
@@ -367,16 +364,7 @@ fn withheld_contact_completes_paid_visit_without_a_new_case() {
     let mut session = foundation.into_session().expect("scheduled native host");
     let config = session.material().organizer_config().expect("organizer");
     let state = session.material().organizer_state().expect("state");
-    let command = OrganizerCommand {
-        campaign_id: config.campaign_id,
-        actor_id: config.controlled_actor_id,
-        authority_id: config.input_authority_id,
-        expected_period: 0,
-        content_digest: config.content_digest,
-        resource_digest: babylon_practice_contract::organizer_resource_digest().expect("resources"),
-        nonce: [1; 16],
-        choice: OrganizerChoice::Hold,
-    };
+    let command = opening_command(config, OrganizerChoice::Hold);
     let commitment =
         babylon_practice_contract::admit_organizer(config, state, &command).expect("admit hold");
     let actions = babylon_practice_contract::organizer_action_batch(
@@ -461,16 +449,7 @@ fn national_no_opponent_still_publishes_the_real_contact() {
     assert!(session.material().city_pd().is_none());
     let config = session.material().organizer_config().expect("organizer");
     let state = session.material().organizer_state().expect("state");
-    let command = OrganizerCommand {
-        campaign_id: config.campaign_id,
-        actor_id: config.controlled_actor_id,
-        authority_id: config.input_authority_id,
-        expected_period: 0,
-        content_digest: config.content_digest,
-        resource_digest: babylon_practice_contract::organizer_resource_digest().expect("resources"),
-        nonce: [1; 16],
-        choice: OrganizerChoice::Reinforce,
-    };
+    let command = opening_command(config, OrganizerChoice::Reinforce);
     let commitment =
         babylon_practice_contract::admit_organizer(config, state, &command).expect("admit contact");
     let actions = babylon_practice_contract::organizer_action_batch(

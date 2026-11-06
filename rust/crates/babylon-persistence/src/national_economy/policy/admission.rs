@@ -202,6 +202,8 @@ pub(super) fn parse(source: &str) -> Result<NationalGamePolicy, Error> {
 
 fn validate_organizer(organizer: &GameOrganizerPolicy) -> Result<(), Error> {
     if organizer.collection_maximum_cash_micros <= 0
+        || organizer.collection_initial_cash_micros <= 0
+        || organizer.collection_initial_cash_micros > organizer.collection_maximum_cash_micros
         || organizer.collection_protected_cash_floor_micros < 0
         || organizer
             .collection_maximum_cash_micros

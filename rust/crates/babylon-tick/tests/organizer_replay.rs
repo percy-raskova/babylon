@@ -39,6 +39,7 @@ use babylon_material_circuit::StaffingPoolBinding;
 use babylon_material_circuit::StaffingPoolId;
 use babylon_material_circuit::StaffingWorkSource;
 use babylon_material_circuit::UnitId;
+use babylon_practice_contract::OrganizerAllocation;
 use babylon_practice_contract::OrganizerChoice;
 use babylon_practice_contract::OrganizerCommand;
 use babylon_practice_contract::OrganizerCommitment;
@@ -411,6 +412,7 @@ fn commitment(session: &Session, choice: OrganizerChoice) -> OrganizerCommitment
         config,
         state,
         &OrganizerCommand {
+            allocation: OrganizerAllocation::None,
             campaign_id: config.campaign_id,
             actor_id: config.controlled_actor_id,
             authority_id: config.input_authority_id,

@@ -14,8 +14,8 @@ const SCHEMA_VERSION: u16 = 2;
 pub const PRACTICE_INTENT_DOMAIN_BYTES: &[u8] = b"babylon.practice-intent.v2";
 /// SHA-256 of the exact language-neutral current intent schema bytes.
 pub const PRACTICE_INTENT_SOURCE_SHA256: [u8; 32] = [
-    0x81, 0x9e, 0xef, 0x26, 0x71, 0x13, 0x9f, 0x5f, 0x21, 0x16, 0x28, 0x51, 0x91, 0x7b, 0x60, 0x97,
-    0xfd, 0x85, 0x06, 0x01, 0xa0, 0x28, 0xc9, 0x67, 0x16, 0xd7, 0xae, 0xe6, 0x82, 0xda, 0xab, 0xcd,
+    0xbe, 0x5d, 0x2e, 0x52, 0xa8, 0x3d, 0x48, 0x90, 0x92, 0x1c, 0xaa, 0x37, 0x8f, 0xff, 0xe7, 0x3b,
+    0x54, 0x36, 0xd5, 0x43, 0xba, 0x29, 0x7f, 0xd0, 0x9a, 0xf0, 0x72, 0x82, 0xd0, 0x55, 0x2d, 0xfa,
 ];
 /// Designed bound on parameters in one intent; executable keys are exact-allowlist.
 pub const MAX_PRACTICE_PARAMETERS: usize = 16;
@@ -345,6 +345,23 @@ fn validate_parameters(value: &PracticeIntent) -> Result<(), PracticeIntentError
             && parameter.value_kind_u8 == 1
             && parameter.value_length_u16 == 1
             && matches!(parameter.value_bytes.as_slice(), [1..=5])
+        {
+            Ok(())
+        } else {
+            Err(PracticeIntentError::IntentParameterUnsupported)
+        }
+    } else if value.practice_id == PracticeId::MutualAid && value.parameters.len() == 1 {
+        // Collection is the sole amount-bearing MutualAid control. Other aid
+        // currently has no parameters; an arbitrary tagged row is not accepted.
+        let parameter = &value.parameters[0];
+        if parameter.key_u8 == 3
+            && parameter.value_kind_u8 == 2
+            && parameter.value_length_u16 == 16
+            && parameter
+                .value_bytes
+                .as_slice()
+                .try_into()
+                .is_ok_and(|bytes: [u8; 16]| i128::from_be_bytes(bytes) > 0)
         {
             Ok(())
         } else {

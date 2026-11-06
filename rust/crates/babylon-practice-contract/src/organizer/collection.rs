@@ -1,6 +1,7 @@
 //! Explicit captured voluntary cash terms and original material acknowledgments.
 use super::aid::OrganizerGiftConsent;
 use super::nonnegative_decimal_i128;
+use super::OrganizerAllocation;
 use super::OrganizerChoice;
 use super::OrganizerCommitment;
 use super::OrganizerConfig;
@@ -26,6 +27,8 @@ pub struct OrganizerCollectionMandate {
     pub social_class_target: [u8; 32],
     pub labor_unit_id: [u8; 32],
     pub cash_consent: OrganizerGiftConsent,
+    #[serde(with = "nonnegative_decimal_i128")]
+    pub initial_cash_micros: i128,
     #[serde(with = "nonnegative_decimal_i128")]
     pub maximum_cash_micros: i128,
     #[serde(with = "nonnegative_decimal_i128")]
@@ -94,6 +97,8 @@ pub(super) fn validate_collection_config(config: &OrganizerConfig) -> Result<(),
         ]
         .contains(&[0; 32])
         || row.maximum_cash_micros <= 0
+        || row.initial_cash_micros <= 0
+        || row.initial_cash_micros > row.maximum_cash_micros
         || row.protected_cash_floor_micros < 0
         || row.collection_hours == 0
         || row
@@ -164,6 +169,9 @@ pub fn validate_organizer_collection_fact(
         .as_ref()
         .ok_or(OrganizerError::CollectionSupportMismatch)?;
     let command = &commitment.command;
+    let OrganizerAllocation::Collection { target_cash_micros } = command.allocation else {
+        return Err(OrganizerError::CollectionSupportMismatch);
+    };
     let paid = matches!(
         fact.outcome,
         OrganizerCollectionOutcome::Collected | OrganizerCollectionOutcome::PartiallyCollected
@@ -185,12 +193,14 @@ pub fn validate_organizer_collection_fact(
         || fact.household_principal_id != row.household_principal_id
         || fact.organization_account_id != row.organization_account_id
         || fact.labor_unit_id != row.labor_unit_id
-        || fact.requested_cash_micros != row.maximum_cash_micros
+        || target_cash_micros <= 0
+        || target_cash_micros > row.maximum_cash_micros
+        || fact.requested_cash_micros != target_cash_micros
         || (fact.outcome == OrganizerCollectionOutcome::Collected
-            && fact.collected_cash_micros != row.maximum_cash_micros)
+            && fact.collected_cash_micros != target_cash_micros)
         || (fact.outcome == OrganizerCollectionOutcome::PartiallyCollected
             && (fact.collected_cash_micros <= 0
-                || fact.collected_cash_micros >= row.maximum_cash_micros))
+                || fact.collected_cash_micros >= target_cash_micros))
         || (paid
             && (row.cash_consent != OrganizerGiftConsent::Accept
                 || fact.performed_hours != row.collection_hours

@@ -105,7 +105,7 @@ fn stale_version_twelve_refuses_before_organizer_status() {
         rows.as_slice(),
         [
             RuntimeSessionResponse::Hello {
-                protocol_version: 13,
+                protocol_version: 14,
                 ..
             },
             RuntimeSessionResponse::Error {

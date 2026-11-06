@@ -330,6 +330,7 @@ pub struct GameOrganizerPolicy {
     pub local_receiving_consent: OrganizerGiftConsent,
     pub remote_receiving_consent: OrganizerGiftConsent,
     pub collection_cash_consent: OrganizerGiftConsent,
+    pub collection_initial_cash_micros: i128,
     pub collection_maximum_cash_micros: i128,
     pub collection_protected_cash_floor_micros: i128,
     pub collection_hours: u64,

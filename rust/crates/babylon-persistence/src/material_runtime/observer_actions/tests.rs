@@ -27,6 +27,123 @@ fn authored(routed: bool) -> Session {
     )
 }
 
+fn collection_session() -> Session {
+    use babylon_material_circuit::AccountId;
+    use babylon_practice_contract::{OrganizerCollectionMandate, OrganizerGiftConsent};
+    let base = authored(false);
+    let mut config = fixture::config();
+    let mandate = &base.catalog().aid_mandates[0];
+    let AccountId::Organization(account) = mandate.payer else {
+        panic!("organization payer")
+    };
+    config.collection = Some(OrganizerCollectionMandate {
+        mandate_id: [93; 32],
+        source_hash: [94; 32],
+        actor_id: config.controlled_actor_id,
+        contributor_id: mandate.donor_contributor_id,
+        household_principal_id: mandate.donor.as_bytes(),
+        organization_account_id: account.as_bytes(),
+        social_class_target: config.aid_bindings[0].social_class_target,
+        labor_unit_id: mandate.labor_unit_id.as_bytes(),
+        cash_consent: OrganizerGiftConsent::Accept,
+        initial_cash_micros: 2,
+        maximum_cash_micros: 8,
+        protected_cash_floor_micros: 0,
+        collection_hours: 2,
+    });
+    fixture::try_session(
+        crate::michigan_dynamic_hex_foundation().expect("foundation"),
+        &format!(
+            "{}\n{}\n{}",
+            fixture::MATERIAL,
+            fixture::PRODUCTS,
+            fixture::PRACTICE
+        ),
+        fixture::Materials {
+            catalog: base.catalog().clone().into_definition(),
+            state: base.material().state().clone(),
+        },
+        config,
+    )
+    .expect("collection session")
+}
+
+#[test]
+fn collection_restart_reconstructs_selected_target_only_from_the_original_resolution() {
+    use babylon_practice_contract::OrganizerAllocation;
+    let mut session = collection_session();
+    let config = session
+        .material()
+        .organizer_config()
+        .expect("config")
+        .clone();
+    let prior = session
+        .material()
+        .organizer_state()
+        .expect("organizer")
+        .clone();
+    let mut command = fixture::commitment(&session, OrganizerChoice::Collect).command;
+    command.allocation = OrganizerAllocation::Collection {
+        target_cash_micros: 2,
+    };
+    let accepted = babylon_practice_contract::admit_organizer(&config, &prior, &command)
+        .expect("selected target");
+    let identity = session.graph_session().session_identity().clone();
+    let batch = babylon_practice_contract::organizer_action_batch(
+        &config,
+        &prior,
+        Some(&accepted),
+        identity.clone(),
+    )
+    .expect("selected action");
+    let candidate = fixture::prepare(&session, Some(&accepted));
+    fixture::commit(&mut session, &mut CollectingSink::default(), candidate);
+    let current = session.material().organizer_state().expect("organizer");
+    let journal = session.material().organizer_journal().expect("journal");
+    assert_eq!(
+        reconstruct(
+            &config,
+            &prior,
+            current,
+            journal,
+            &identity,
+            1,
+            batch.canonical_bytes()
+        )
+        .expect("exact reconstruction"),
+        batch
+    );
+    let mut missing = journal.clone();
+    missing.periods[0].collection_receipts.clear();
+    assert!(reconstruct(
+        &config,
+        &prior,
+        current,
+        &missing,
+        &identity,
+        1,
+        batch.canonical_bytes()
+    )
+    .is_err());
+    let mut changed = journal.clone();
+    changed.periods[0].collection_receipts[0]
+        .commitment
+        .command
+        .allocation = OrganizerAllocation::Collection {
+        target_cash_micros: 8,
+    };
+    assert!(reconstruct(
+        &config,
+        &prior,
+        current,
+        &changed,
+        &identity,
+        1,
+        batch.canonical_bytes()
+    )
+    .is_err());
+}
+
 fn verify_advance(session: &mut Session, choice: Option<OrganizerChoice>) {
     let config = session
         .material()

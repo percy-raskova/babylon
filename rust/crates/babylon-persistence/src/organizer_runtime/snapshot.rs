@@ -776,6 +776,7 @@ mod collection_history_tests {
             social_class_target: binding.social_class_target,
             labor_unit_id: catalog.aid_mandates[0].labor_unit_id.as_bytes(),
             cash_consent: OrganizerGiftConsent::Accept,
+            initial_cash_micros: 8,
             maximum_cash_micros: 8,
             protected_cash_floor_micros: 2,
             collection_hours: 2,

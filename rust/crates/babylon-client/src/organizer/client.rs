@@ -2,6 +2,7 @@
 
 use super::scene::{OrganizerScene, OrganizerSceneMode, OrganizerSubject};
 use super::{draft, evidence, presentation, ui};
+use babylon_persistence::runtime_session::OrganizerAllocation;
 use babylon_persistence::ArchiveEvidenceClass;
 
 use babylon_persistence::runtime_session::{
@@ -423,7 +424,17 @@ impl OrganizerClient {
         choice: OrganizerChoice,
     ) -> Option<OrganizerCommand> {
         let view = self.view.as_ref()?;
+        let allocation = if choice == OrganizerChoice::Collect {
+            let allocation = self.draft.as_ref()?.collection_allocation;
+            if !matches!(allocation, OrganizerAllocation::Collection { .. }) {
+                return None;
+            }
+            allocation
+        } else {
+            OrganizerAllocation::None
+        };
         Some(OrganizerCommand {
+            allocation,
             campaign_id: *session.campaign.as_uuid().as_bytes(),
             actor_id: view.actor_id,
             authority_id: view.authority_id,
@@ -593,17 +604,7 @@ impl OrganizerClient {
             return Ok(StatusDisposition::Superseded);
         }
         if self.draft.is_none() {
-            match draft::load(*session.campaign.as_uuid(), snapshot.view.workplace_id) {
-                Ok(value) => {
-                    self.draft = Some(value);
-                    self.draft_writable = true;
-                }
-                Err(error) => {
-                    self.message = error;
-                    self.draft = Some(OrganizerDraft::new(snapshot.view.workplace_id));
-                    self.draft_writable = false;
-                }
-            }
+            self.initialize_draft(*session.campaign.as_uuid(), &snapshot);
         }
         self.clear_review();
         session.duration = Some(snapshot.duration);
@@ -648,6 +649,32 @@ impl OrganizerClient {
         Ok(StatusDisposition::Installed)
     }
 
+    fn initialize_draft(&mut self, campaign: Uuid, snapshot: &OrganizerSnapshot) {
+        let initial_collection =
+            snapshot
+                .collection
+                .as_ref()
+                .map_or(OrganizerAllocation::None, |terms| {
+                    OrganizerAllocation::Collection {
+                        target_cash_micros: terms.initial_cash_micros,
+                    }
+                });
+        match draft::load(campaign, snapshot.view.workplace_id, initial_collection) {
+            Ok(value) => {
+                self.draft = Some(value);
+                self.draft_writable = true;
+            }
+            Err(error) => {
+                self.message = error;
+                self.draft = Some(OrganizerDraft::new(
+                    snapshot.view.workplace_id,
+                    initial_collection,
+                ));
+                self.draft_writable = false;
+            }
+        }
+    }
+
     // Call only after status scope, actor, period and context admission.
     // The retained rows supply notice identity without another event ledger.
     fn new_city_pd_notice(&self, snapshot: &OrganizerSnapshot, context: &StatusContext) -> bool {
@@ -678,6 +705,7 @@ impl OrganizerClient {
         let pending = self.take_response(request_id, RequestKind::Preview)?;
         let command = pending.command.ok_or("Organizer preview had no command.")?;
         if preview.choice != command.choice
+            || preview.allocation != command.allocation
             || preview.current_period != command.expected_period
             || preview.resolves_period
                 != command

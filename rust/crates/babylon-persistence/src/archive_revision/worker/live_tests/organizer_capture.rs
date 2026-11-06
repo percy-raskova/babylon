@@ -14,6 +14,7 @@ use crate::{
 };
 use crate::{ArchiveKnowledge, OrganizerDossierProducer};
 use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_practice_contract::OrganizerAllocation;
 use babylon_practice_contract::{OrganizerChoice, OrganizerCommand};
 use michigan_content::MichiganContentPreset;
 use michigan_material::MichiganDeliveryPreset;
@@ -301,6 +302,7 @@ fn committed_organizer_periods(
         .expect("the fixture snapshot builds");
     runtime
         .submit_organizer_command(&OrganizerCommand {
+            allocation: OrganizerAllocation::None,
             campaign_id: *campaign.canonical_bytes(),
             actor_id: snapshot.view.actor_id,
             authority_id: snapshot.view.authority_id,

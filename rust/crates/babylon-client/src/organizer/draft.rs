@@ -4,7 +4,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use babylon_persistence::runtime_session::OrganizerChoice;
+use babylon_persistence::runtime_session::{OrganizerAllocation, OrganizerChoice};
 use serde_json::json;
 
 use super::editor::NoteEditor;
@@ -19,16 +19,18 @@ pub(super) const MAX_EVIDENCE_REFERENCES: usize = 32;
 pub(super) struct OrganizerDraft {
     pub workplace_id: u64,
     pub choice: OrganizerChoice,
+    pub collection_allocation: OrganizerAllocation,
     pub notes: NoteEditor,
     pub references: Vec<[u8; 32]>,
     pub selected_reference: Option<[u8; 32]>,
 }
 
 impl OrganizerDraft {
-    pub fn new(workplace_id: u64) -> Self {
+    pub fn new(workplace_id: u64, collection_allocation: OrganizerAllocation) -> Self {
         Self {
             workplace_id,
             choice: OrganizerChoice::Hold,
+            collection_allocation,
             notes: NoteEditor::default(),
             references: Vec::new(),
             selected_reference: None,
@@ -46,15 +48,24 @@ fn path(campaign: Uuid) -> Result<PathBuf, String> {
         .join(format!("{campaign}.json")))
 }
 
-pub(super) fn load(campaign: Uuid, workplace_id: u64) -> Result<OrganizerDraft, String> {
-    read_at(&path(campaign)?, campaign, workplace_id)
+pub(super) fn load(
+    campaign: Uuid,
+    workplace_id: u64,
+    initial_collection: OrganizerAllocation,
+) -> Result<OrganizerDraft, String> {
+    read_at(&path(campaign)?, campaign, workplace_id, initial_collection)
 }
 
-fn read_at(path: &Path, campaign: Uuid, workplace_id: u64) -> Result<OrganizerDraft, String> {
+fn read_at(
+    path: &Path,
+    campaign: Uuid,
+    workplace_id: u64,
+    initial_collection: OrganizerAllocation,
+) -> Result<OrganizerDraft, String> {
     let file = match File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == ErrorKind::NotFound => {
-            return Ok(OrganizerDraft::new(workplace_id))
+            return Ok(OrganizerDraft::new(workplace_id, initial_collection))
         }
         Err(_) => return Err("Cannot read this campaign's personal draft.".into()),
     };
@@ -70,10 +81,10 @@ fn read_at(path: &Path, campaign: Uuid, workplace_id: u64) -> Result<OrganizerDr
     let object = value
         .as_object()
         .ok_or("Personal draft is invalid; retained for recovery.")?;
-    if value["schema"] != 2 {
+    if value["schema"] != 3 {
         return Err("Personal draft format is unsupported; the original file is retained and will not be overwritten.".into());
     }
-    if object.len() != 7
+    if object.len() != 8
         || !object.contains_key("selected_reference")
         || value["campaign"] != campaign.to_string()
         || value["workplace"] != workplace_id
@@ -85,6 +96,10 @@ fn read_at(path: &Path, campaign: Uuid, workplace_id: u64) -> Result<OrganizerDr
     }
     let choice = serde_json::from_value(value["choice"].clone())
         .map_err(|_| "Personal draft has an unsupported approach.")?;
+    let collection_allocation: OrganizerAllocation =
+        serde_json::from_value(value["collection_allocation"].clone())
+            .map_err(|_| "Personal draft contribution target is invalid; retained for recovery.")?;
+    validate_collection(collection_allocation)?;
     let notes = value["notes"]
         .as_str()
         .ok_or("Personal draft notes are invalid.")?;
@@ -96,6 +111,7 @@ fn read_at(path: &Path, campaign: Uuid, workplace_id: u64) -> Result<OrganizerDr
     Ok(OrganizerDraft {
         workplace_id,
         choice,
+        collection_allocation,
         notes: NoteEditor::from_text(notes.to_owned()).map_err(str::to_owned)?,
         references,
         selected_reference,
@@ -108,6 +124,7 @@ pub(super) fn save(campaign: Uuid, draft: &OrganizerDraft) -> Result<(), String>
 
 fn write_at(path: &Path, campaign: Uuid, draft: &OrganizerDraft) -> Result<(), String> {
     validate_references(&draft.references, draft.selected_reference)?;
+    validate_collection(draft.collection_allocation)?;
     let parent = path
         .parent()
         .ok_or("Personal draft directory is unavailable.")?;
@@ -123,7 +140,7 @@ fn write_at(path: &Path, campaign: Uuid, draft: &OrganizerDraft) -> Result<(), S
     let mut file = options
         .open(&temporary)
         .map_err(|_| "Cannot save the personal draft.")?;
-    let bytes = serde_json::to_vec(&json!({"schema":2,"campaign":campaign.to_string(),"workplace":draft.workplace_id,"choice":draft.choice,"notes":draft.notes.text,"references":draft.references,"selected_reference":draft.selected_reference})).map_err(|_| "Cannot encode the personal draft.")?;
+    let bytes = serde_json::to_vec(&json!({"schema":3,"collection_allocation":draft.collection_allocation,"campaign":campaign.to_string(),"workplace":draft.workplace_id,"choice":draft.choice,"notes":draft.notes.text,"references":draft.references,"selected_reference":draft.selected_reference})).map_err(|_| "Cannot encode the personal draft.")?;
     let result = file
         .write_all(&bytes)
         .and_then(|()| file.sync_all())
@@ -132,6 +149,16 @@ fn write_at(path: &Path, campaign: Uuid, draft: &OrganizerDraft) -> Result<(), S
         let _ = fs::remove_file(&temporary);
     }
     result.map_err(|_| "Cannot save the personal draft; notes remain in this window.".into())
+}
+
+fn validate_collection(allocation: OrganizerAllocation) -> Result<(), String> {
+    if matches!(allocation, OrganizerAllocation::Collection { target_cash_micros } if target_cash_micros <= 0)
+    {
+        return Err(
+            "Personal draft contribution target must be positive; retained for recovery.".into(),
+        );
+    }
+    Ok(())
 }
 
 fn validate_references(references: &[[u8; 32]], selected: Option<[u8; 32]>) -> Result<(), String> {
@@ -166,7 +193,7 @@ mod tests {
         let path = directory.join("draft.json");
         let first = [1u8; 32];
         let second = [2u8; 32];
-        let value = json!({"schema":2,"campaign":campaign.to_string(),"workplace":42,
+        let value = json!({"schema":3,"collection_allocation":"none","campaign":campaign.to_string(),"workplace":42,
             "choice":"reinforce","notes":"Keep the café report.",
             "references":[first,second],"selected_reference":second});
         fs::write(
@@ -174,11 +201,13 @@ mod tests {
             serde_json::to_vec(&value).expect("the value serializes to canonical JSON bytes"),
         )
         .expect("the fixture sink accepts the authored bytes");
-        let draft = read_at(&path, campaign, 42).expect("current draft references must load");
+        let draft = read_at(&path, campaign, 42, OrganizerAllocation::None)
+            .expect("current draft references must load");
         assert_eq!(draft.notes.text, "Keep the café report.");
         write_at(&path, campaign, &draft).expect("the fixture file accepts the authored bytes");
         assert_eq!(
-            read_at(&path, campaign, 42).expect("the fixture file holds the authored range"),
+            read_at(&path, campaign, 42, OrganizerAllocation::None)
+                .expect("the fixture file holds the authored range"),
             draft
         );
         let saved: Value = serde_json::from_slice(
@@ -189,8 +218,8 @@ mod tests {
         for key in ["nonce", "authority_id", "commitment", "command"] {
             assert!(saved.get(key).is_none());
         }
-        assert!(read_at(&path, Uuid::new_v4(), 42).is_err());
-        assert!(read_at(&path, campaign, 43).is_err());
+        assert!(read_at(&path, Uuid::new_v4(), 42, OrganizerAllocation::None).is_err());
+        assert!(read_at(&path, campaign, 43, OrganizerAllocation::None).is_err());
         fs::remove_file(path).expect("the fixture file exists before removal");
         fs::remove_dir(directory).expect("the fixture directory exists before removal");
     }
@@ -203,7 +232,7 @@ mod tests {
         let path = directory.join("draft.json");
         let first = [1u8; 32];
         let second = [2u8; 32];
-        let current = json!({"schema":2,"campaign":campaign.to_string(),"workplace":42,
+        let current = json!({"schema":3,"collection_allocation":"none","campaign":campaign.to_string(),"workplace":42,
             "choice":"hold","notes":"Preserve these bytes.",
             "references":[first],"selected_reference":first});
         let mut malformed = Vec::new();
@@ -236,7 +265,7 @@ mod tests {
             let bytes =
                 serde_json::to_vec(&value).expect("the value serializes to canonical JSON bytes");
             fs::write(&path, &bytes).expect("the fixture sink accepts the authored bytes");
-            assert!(read_at(&path, campaign, 42).is_err());
+            assert!(read_at(&path, campaign, 42, OrganizerAllocation::None).is_err());
             assert_eq!(
                 fs::read(&path).expect("the fixture reader returns its authored facts"),
                 bytes
@@ -251,22 +280,30 @@ mod tests {
         let campaign = Uuid::new_v4();
         let directory = std::env::temp_dir().join(format!("babylon-organizer-draft-{campaign}"));
         let path = directory.join("draft.json");
-        let mut draft = OrganizerDraft::new(42);
+        let mut draft = OrganizerDraft::new(42, OrganizerAllocation::None);
         draft.notes.insert("Keep the workplace objection.");
         draft.choice = OrganizerChoice::Reinforce;
+        draft.collection_allocation = OrganizerAllocation::Collection {
+            target_cash_micros: 123_000_000,
+        };
         write_at(&path, campaign, &draft).expect("the fixture file accepts the authored bytes");
         assert_eq!(
-            read_at(&path, campaign, 42).expect("the fixture file holds the authored range"),
+            read_at(&path, campaign, 42, OrganizerAllocation::None)
+                .expect("the fixture file holds the authored range"),
             draft
         );
-        assert!(read_at(&path, Uuid::new_v4(), 42).is_err());
-        assert!(read_at(&path, campaign, 43).is_err());
+        assert!(read_at(&path, Uuid::new_v4(), 42, OrganizerAllocation::None).is_err());
+        assert!(read_at(&path, campaign, 43, OrganizerAllocation::None).is_err());
         let bytes = fs::read(&path).expect("the fixture reader returns its authored facts");
         let value: Value =
             serde_json::from_slice(&bytes).expect("the authored bytes match the declared schema");
         assert!(value.get("nonce").is_none());
         assert!(value.get("authority_id").is_none());
         assert!(value.get("commitment").is_none());
+        assert_eq!(
+            value["collection_allocation"]["collection"]["target_cash_micros"],
+            "123000000"
+        );
         assert_eq!(
             fs::read_dir(&directory)
                 .expect("the fixture directory is readable")

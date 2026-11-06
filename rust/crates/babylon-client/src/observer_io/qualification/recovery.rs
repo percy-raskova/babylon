@@ -334,6 +334,7 @@ impl NativeAudit {
 pub(super) mod tests {
     use super::super::tests::Directory;
     use super::super::{aid, Candidate};
+    use babylon_persistence::runtime_session::OrganizerAllocation;
 
     use super::super::tests;
     use super::*;
@@ -345,7 +346,7 @@ pub(super) mod tests {
         let directory = Directory::new();
         let (mut audit, mut session) = tests::fixture(&directory);
         let status: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v13.json"
+            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v14.json"
         ))
         .expect("the authored JSON matches the declared schema");
         session.ready(0, None);
@@ -722,6 +723,7 @@ pub(super) mod tests {
         let (_directory, mut audit, mut session, mut status) = source();
         let commitment = OrganizerCommitment {
             command: OrganizerCommand {
+                allocation: OrganizerAllocation::None,
                 campaign_id: *session.campaign.canonical_bytes(),
                 actor_id: status.view.actor_id,
                 authority_id: status.view.authority_id,

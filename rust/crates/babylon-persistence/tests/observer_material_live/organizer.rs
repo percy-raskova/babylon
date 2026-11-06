@@ -29,6 +29,7 @@ use babylon_persistence::{
     ArchiveDossierProducer, ArchiveKnowledge, OrganizerDossierProducer, PendingArchiveReceipt,
     SemanticArchiveError,
 };
+use babylon_practice_contract::OrganizerAllocation;
 use babylon_practice_contract::OrganizerPartnerPolicy;
 use babylon_practice_contract::OrganizerPeriodJournalEntries;
 use postgres::{Config, NoTls};
@@ -44,6 +45,7 @@ fn command(
         .organizer_snapshot()
         .expect("the fixture snapshot builds");
     OrganizerCommand {
+        allocation: OrganizerAllocation::None,
         campaign_id: *runtime.campaign_id().canonical_bytes(),
         actor_id: snapshot.view.actor_id,
         authority_id: snapshot.view.authority_id,

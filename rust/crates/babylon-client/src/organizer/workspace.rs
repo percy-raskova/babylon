@@ -630,6 +630,7 @@ mod tests {
     use super::super::RequestKind;
     use super::*;
     use crate::observer::Perspective;
+    use babylon_persistence::runtime_session::OrganizerAllocation;
     use babylon_persistence::runtime_session::{
         OrganizerAidOption, OrganizerAidPending, OrganizerAidTransportPreview, OrganizerOutcome,
         OrganizerPartnerResponse, OrganizerPreview, OrganizerReport,
@@ -811,6 +812,7 @@ mod tests {
     fn preview_refusals_pending_requests_and_historical_views_cannot_offer_writes() {
         let (mut client, mut session) = super::super::tests::ready();
         client.preview = Some(OrganizerPreview {
+            allocation: OrganizerAllocation::None,
             choice: OrganizerChoice::Reinforce,
             current_period: 3,
             resolves_period: 4,
@@ -897,6 +899,7 @@ mod tests {
             contributor_label: "Captured contributor".into(),
             source_hash: [16; 32],
             cash_consent: OrganizerGiftConsent::Accept,
+            initial_cash_micros: 400_000,
             maximum_cash_micros: 400_000,
             protected_cash_floor_micros: 123_000,
             collection_hours: 5,
@@ -1074,6 +1077,7 @@ mod tests {
             contributor_label: "Captured contributor".into(),
             source_hash: [16; 32],
             cash_consent: OrganizerGiftConsent::Refuse,
+            initial_cash_micros: 400_000,
             maximum_cash_micros: 400_000,
             protected_cash_floor_micros: 0,
             collection_hours: 5,

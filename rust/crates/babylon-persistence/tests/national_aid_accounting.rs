@@ -3,13 +3,14 @@ use babylon_persistence::qualification_audit::aid::{Accepted, Audit, Refusal};
 use babylon_persistence::runtime_session::{
     OrganizerAidKind, OrganizerChoice, OrganizerCommitment, OrganizerPreview, OrganizerSnapshot,
 };
+use babylon_practice_contract::OrganizerAllocation;
 
 use babylon_practice_contract::OrganizerRefusal;
 use sha2::{Digest, Sha256};
 
 fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
     let mut before: OrganizerSnapshot =
-        serde_json::from_str(include_str!("fixtures/national_organizer_opening_v13.json"))
+        serde_json::from_str(include_str!("fixtures/national_organizer_opening_v14.json"))
             .expect("the authored JSON matches the declared schema");
     before.view.actor_id = 42;
     before.view.authority_id = [17; 16];
@@ -30,6 +31,7 @@ fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
         .expect("the fixture holds the searched element")
         .coordination_hours = 5;
     let command = babylon_practice_contract::OrganizerCommand {
+        allocation: OrganizerAllocation::None,
         campaign_id: [9; 16],
         actor_id: 42,
         authority_id: [17; 16],
@@ -39,7 +41,7 @@ fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
         nonce: [21; 16],
         choice: OrganizerChoice::LocalAid,
     };
-    let mut bytes = b"babylon.organizer-commitment.v1\0".to_vec();
+    let mut bytes = b"babylon.organizer-commitment.v2\0".to_vec();
     bytes.extend_from_slice(
         &serde_json::to_vec(&command).expect("the value serializes to canonical JSON bytes"),
     );
@@ -51,6 +53,7 @@ fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
     babylon_practice_contract::validate_organizer_commitment(&commitment)
         .expect("the authored fixture satisfies the rule");
     let preview = OrganizerPreview {
+        allocation: OrganizerAllocation::None,
         choice: OrganizerChoice::LocalAid,
         current_period: 0,
         resolves_period: 1,

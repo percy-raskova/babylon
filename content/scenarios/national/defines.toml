@@ -383,7 +383,8 @@ local_receiving_consent = "accept"
 remote_receiving_consent = "accept"
 # Independent Designed cash consent; protected material needs remain mandatory.
 collection_cash_consent = "accept"
-collection_maximum_cash_micros = 400000
+collection_initial_cash_micros = 280000000
+collection_maximum_cash_micros = 1450000000
 collection_protected_cash_floor_micros = 0
 collection_hours = 2
 workplace_policy = "participate"

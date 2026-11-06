@@ -25,6 +25,7 @@ use babylon_material_circuit::{
 use babylon_practice_contract::OrganizerAidResolutionReceipt;
 use babylon_practice_contract::OrganizerAidSupport;
 use babylon_practice_contract::OrganizerCollectionOutcome;
+use babylon_practice_contract::OrganizerCommitment;
 use babylon_practice_contract::OrganizerConfig;
 use babylon_practice_contract::OrganizerPeriodJournalEntries;
 use babylon_practice_contract::OrganizerState;
@@ -689,7 +690,7 @@ fn collection_config_for_control() -> OrganizerConfig {
         "household_principal_id": organizer_aid_fixture::household().as_bytes().to_vec(),
         "organization_account_id":([96_u8;32].to_vec()),"social_class_target":([98_u8;32].to_vec()),
         "labor_unit_id": base.catalog().aid_mandates[0].labor_unit_id.as_bytes().to_vec(),
-        "cash_consent":"accept","maximum_cash_micros":"2","protected_cash_floor_micros":"0","collection_hours":2
+        "cash_consent":"accept","initial_cash_micros":"2","maximum_cash_micros":"2","protected_cash_floor_micros":"0","collection_hours":2
     });
     serde_json::from_value(value).expect("the JSON value matches the declared type")
 }
@@ -1406,6 +1407,104 @@ fn capped_collection_session(cap: i128, floor: i128) -> Session {
     .expect("the fixture opens a session")
 }
 
+fn selected_collection(session: &Session, target: i128) -> OrganizerCommitment {
+    let mut command = organizer_aid_fixture::commitment(session, OrganizerChoice::Collect).command;
+    command.allocation = babylon_practice_contract::OrganizerAllocation::Collection {
+        target_cash_micros: target,
+    };
+    babylon_practice_contract::admit_organizer(
+        session
+            .material()
+            .organizer_config()
+            .expect("captured organizer"),
+        session
+            .material()
+            .organizer_state()
+            .expect("current organizer"),
+        &command,
+    )
+    .expect("selected target is within the captured cap")
+}
+
+#[test]
+fn selected_collection_target_limits_actual_cash_without_changing_protection_or_time() {
+    use babylon_material_circuit::{AccountId, OrganizationAccountId};
+    for (target, granted, outcome) in [
+        (2, 2, "collected"),
+        (4, 4, "collected"),
+        (7, 4, "partially_collected"),
+    ] {
+        let session = capped_collection_session(8, 2);
+        let accepted = selected_collection(&session, target);
+        let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
+        let journal = candidate.material().register().history();
+        let fact = &journal.collection_receipts[0].fact;
+        assert_eq!(journal.collection_receipts[0].commitment, accepted);
+        assert_eq!(fact.requested_cash_micros, target);
+        assert_eq!(fact.collected_cash_micros, granted);
+        assert_eq!(fact.performed_hours, 2);
+        assert_eq!(
+            serde_json::to_value(fact.outcome).expect("outcome encodes"),
+            outcome
+        );
+        let rows = babylon_tick::material_world::decode_material_receipts(
+            candidate.material().receipt_bytes(),
+        )
+        .expect("material receipts decode");
+        let posting = &rows.money_transfers[usize::try_from(
+            fact.transfer_ordinal.expect("positive transfer"),
+        )
+        .expect("ordinal fits")];
+        assert_eq!(posting.debit.delta.micro_units(), -granted);
+        assert_eq!(posting.credit.delta.micro_units(), granted);
+        let donor = AccountId::Household(organizer_aid_fixture::household());
+        let recipient = AccountId::Organization(OrganizationAccountId::from_bytes([96; 32]));
+        assert_eq!(
+            rows.income
+                .iter()
+                .find(|r| r.account == donor)
+                .expect("donor statement")
+                .statement
+                .gift_expense
+                .micro_units(),
+            granted
+        );
+        assert_eq!(
+            rows.income
+                .iter()
+                .find(|r| r.account == recipient)
+                .expect("recipient statement")
+                .statement
+                .gift_income
+                .micro_units(),
+            granted
+        );
+        let CircuitAccounting::Monetary(economy) =
+            &candidate.material().register().state().accounting
+        else {
+            panic!("monetary fixture")
+        };
+        assert_eq!(
+            economy.book.cash(donor).expect("donor cash").micro_units(),
+            6 - granted
+        );
+        assert_eq!(
+            economy
+                .book
+                .cash(recipient)
+                .expect("recipient cash")
+                .micro_units(),
+            granted
+        );
+    }
+    let session = capped_collection_session(8, 2);
+    let ordinary = organizer_aid_fixture::prepare(&session, None);
+    assert_eq!(
+        ordinary.material().register().history().collection_receipts,
+        Vec::<babylon_practice_contract::OrganizerCollectionResolution>::new()
+    );
+}
+
 fn material_collection_input(session: &Session) -> CollectionResolveInput {
     let accepted = organizer_aid_fixture::commitment(session, OrganizerChoice::Collect);
     let terms = session
@@ -1595,7 +1694,7 @@ fn external_register_reopen_adopts_authenticated_bytes_and_rejects_wire_changes(
 #[test]
 fn partial_collection_failure_exact_retry_and_reopen_publish_one_original_receipt() {
     let mut session = capped_collection_session(8, 2);
-    let accepted = organizer_aid_fixture::commitment(&session, OrganizerChoice::Collect);
+    let accepted = selected_collection(&session, 7);
     let before = session.material().canonical_bytes().to_vec();
     let graph_before = session
         .graph_session()
@@ -1652,6 +1751,12 @@ fn partial_collection_failure_exact_retry_and_reopen_publish_one_original_receip
         .expect("the fixture register carries organizer state");
     let organizer_entries = reopened.history();
     assert_eq!(organizer_entries.collection_receipts.len(), 1);
+    assert_eq!(
+        organizer_entries.collection_receipts[0]
+            .fact
+            .requested_cash_micros,
+        7
+    );
     assert_eq!(
         organizer_entries.collection_receipts[0].commitment,
         accepted

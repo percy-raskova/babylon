@@ -18,6 +18,8 @@ pub struct OrganizerCollectionPreview {
     pub source_hash: [u8; 32],
     pub cash_consent: OrganizerGiftConsent,
     #[serde(with = "nonnegative_decimal_i128")]
+    pub initial_cash_micros: i128,
+    #[serde(with = "nonnegative_decimal_i128")]
     pub maximum_cash_micros: i128,
     #[serde(with = "nonnegative_decimal_i128")]
     pub protected_cash_floor_micros: i128,
@@ -70,6 +72,7 @@ pub(super) fn projection(
         contributor_label: participant.label.clone(),
         source_hash: m.source_hash,
         cash_consent: m.cash_consent,
+        initial_cash_micros: m.initial_cash_micros,
         maximum_cash_micros: m.maximum_cash_micros,
         protected_cash_floor_micros: m.protected_cash_floor_micros,
         collection_hours: m.collection_hours,
@@ -130,6 +133,7 @@ mod tests {
             social_class_target: binding.social_class_target,
             labor_unit_id,
             cash_consent: OrganizerGiftConsent::Accept,
+            initial_cash_micros: 400_000,
             maximum_cash_micros: 400_000,
             protected_cash_floor_micros: 0,
             collection_hours: 2,

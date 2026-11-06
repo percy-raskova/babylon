@@ -1,0 +1,69 @@
+ADR293_wayne_resource_allocations:
+  status: accepted
+  date: '2026-11-06'
+  title: Authenticated Wayne allocations preserve requests, material legs and one response
+  issue: PER-364
+  authority: Director approval of the Wayne solidarity loop on 2026-11-06
+  evidence_class: Designed
+  context: |
+    Fixed collection and linked cash-per-food terms prevent the player from
+    choosing a contribution target or independently choosing food and cash.
+    National policy is already a separately admitted source. Numeric authoring
+    belongs to the selected scenario's existing defines.toml, not exclusively
+    to the Michigan fixture. This clarification changes no game law.
+  decision: |
+    Bind each selected allocation to the required organizer command, preview,
+    nonce, original commitment, material input, receipt and retained history.
+    Collection selects a positive signed i128 amount in currency micros, bounded
+    by its captured maximum. National whole-dollar input runs from $1 to $1450,
+    initially $280. The national defines file authors both initial and maximum
+    targets; the captured collection terms supply the new personal draft.
+    A partial gift records exact actual micros and still costs the existing
+    two hours. Protected needs, due payments, floor and time remain binding.
+    The uncollected remainder is terminal and never retries automatically.
+
+    The approved complete aid allocation independently selects food from zero
+    to four person-period packages (initially one) and cash from $0 to $1450
+    (initially zero), excluding zero/zero. Food retains actual stock, protection,
+    fulfillment, freight, arrival and consumption. Cash grants once at the
+    existing P+1 support close, after household order admission, and can fund
+    ordinary P+2 purchasing. Cash grants use matching transfer and gift-cost
+    accounting. Neither leg substitutes for, reverses or fabricates the other.
+
+    Retain original requests separately from actual results, independent leg
+    outcomes and dates, and one separately retained response attempt. The first
+    positive received cash or actually consumed food permits one independently
+    adjudicated response. Refusal or insufficient time is final; later arrivals
+    never retry the response. All legs terminal without qualifying support
+    records NoQualifyingSupport and charges no coordination time. Retain the
+    authorization until both requested legs and that response are terminal.
+    Preserve the real opening $1 treasury, household endowments, consent,
+    political pledges and actual household time. No gift grants participation,
+    knowledge rights, membership or released time by itself.
+  implementation_stage: |
+    Task 1A is an internal compiling collection slice. OrganizerAllocation has
+    None and Collection { target_cash_micros } only. Existing fixed aid still
+    uses None and retains its current real behavior until Task 1B adds the
+    complete independent Aid variant and material/response lifecycle. No
+    interim public release, campaign creation or native acceptance is claimed.
+    Task 3 owns the allocation editor; 1A supplies its saved draft/command seam.
+  current_contract: |
+    Organizer schema 9, config domain v8, state v7, commitment v2, journal and
+    period-entry domains v2; runtime protocol 14 and personal draft schema 3.
+    Missing allocation/initial target and unsupported older formats refuse;
+    preserved old artifacts receive no fallback, migration or inferred amount.
+    The Collection MUTUAL_AID control has exactly one PracticeParameter:
+    key 3, kind 2, length 16, strictly positive signed i128 big-endian micros.
+    Existing practice-intent v2 framing is unchanged. Other practice parameter
+    combinations remain rejected; fixed aid retains an empty parameter list.
+    Exact retained collection resolution and its original commitment recover
+    the selected target on restart. The configured cap is never a replacement.
+  verification: |
+    Required-allocation and mismatched-choice RED/GREEN, cap and canonical-money
+    bounds, target-sensitive command and consumed-action identity, exact original
+    restart joins, real collection/accounting/time controls, protected refusals,
+    partial terminal remainder, failed publication and replay. The complete aid
+    requirements need their own material, response and restart evidence in 1B.
+  related:
+    - ADR262_native_organizer_practice
+    - ADR275_material_gifts_and_delayed_practice

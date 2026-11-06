@@ -20,6 +20,31 @@ Neither this design nor its prerequisite claims the PER-355
 
 ## Player purpose and first slice
 
+The November 6 approved solidarity loop adds a selected contribution target
+and independent food and cash allocations, governed by ADR293.
+
+National contribution input is $1–$1450, initially $280. Food is 0–4 person-period
+packages, initially 1. Cash is $0–$1450, initially $0. Zero food and zero cash
+cannot form valid aid. These Designed values belong in the national
+scenario's existing defines file. Preserve the opening $1 treasury and real
+household endowments.
+
+Keep selected amounts distinct from actual amounts. One try can fulfill only
+part of a selected leg. The rest ends without retry. Food moves physically.
+Cash settles at the existing following-period support close, after ordinary
+order admission, and can support ordinary purchasing in the next period.
+
+The first positive received cash or consumed food permits one independent
+response under existing political and actual-time constraints.
+Later arrivals do not retry it. Aid that delivers no support ends with an
+explicit no-support result and no coordination cost. Giving and receiving
+do not grant reporting rights, participation or membership.
+
+The internal Task 1A slice supplies required allocation identity, selected
+collection, captured initial targets and saved draft/command construction.
+Independent aid legs and response state remain Task 1B work. The editor and
+native acceptance remain later work. This stage is not a public release.
+
 The geographic world is the persistent home. The player must see where the
 collective can act, understand a known partner's relationship and concern, and
 follow an actual choice into its delayed consequence. The first playable slice

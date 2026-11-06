@@ -13,7 +13,7 @@ use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
 /// Current organizer representation. Older representations are unsupported.
-pub const ORGANIZER_SCHEMA_VERSION: u16 = 8;
+pub const ORGANIZER_SCHEMA_VERSION: u16 = 9;
 
 /// Whole organizer-hours are Designed participant time commitments, not jobs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,6 +120,29 @@ pub enum OrganizerChoice {
     ResumeStanding,
 }
 
+/// Exact selected material request, authenticated with its practice kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum OrganizerAllocation {
+    None,
+    Collection {
+        #[serde(with = "super::nonnegative_decimal_i128")]
+        target_cash_micros: i128,
+    },
+}
+
+impl OrganizerAllocation {
+    pub(super) fn matches_choice(self, choice: OrganizerChoice) -> bool {
+        match (choice, self) {
+            (OrganizerChoice::Collect, Self::Collection { target_cash_micros }) => {
+                target_cash_micros > 0
+            }
+            (OrganizerChoice::Collect, Self::None) | (_, Self::Collection { .. }) => false,
+            (_, Self::None) => true,
+        }
+    }
+}
+
 /// A command binds a ruling to the exact current campaign and contracts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -132,6 +155,7 @@ pub struct OrganizerCommand {
     pub resource_digest: [u8; 32],
     pub nonce: [u8; 16],
     pub choice: OrganizerChoice,
+    pub allocation: OrganizerAllocation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,6 +191,7 @@ pub enum OrganizerRefusal {
 #[serde(deny_unknown_fields)]
 pub struct OrganizerPreview {
     pub choice: OrganizerChoice,
+    pub allocation: OrganizerAllocation,
     pub current_period: u64,
     pub resolves_period: u64,
     pub available_hours: u64,

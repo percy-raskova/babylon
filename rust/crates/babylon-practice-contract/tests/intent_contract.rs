@@ -177,7 +177,7 @@ fn intent_schema_and_vectors_drive_the_rust_boundary() {
             serde_json::from_str(line).expect("the authored JSON matches the declared schema")
         })
         .collect();
-    assert_eq!(cases.len(), 17);
+    assert_eq!(cases.len(), 20);
 
     let intent_case = cases
         .iter()

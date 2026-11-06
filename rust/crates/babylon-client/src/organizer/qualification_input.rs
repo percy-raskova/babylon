@@ -1613,6 +1613,7 @@ mod tests {
     use crate::ui::dossier_card::ActiveCountyDossier;
     use babylon_kernel::clock::CampaignDuration;
     use babylon_persistence::identity::CampaignId;
+    use babylon_persistence::runtime_session::OrganizerAllocation;
     use bevy::input_focus::InputFocus;
     use bevy::time::TimeUpdateStrategy;
     use fs::Permissions;
@@ -2759,6 +2760,7 @@ mod tests {
             .previewed(
                 request_id,
                 babylon_persistence::runtime_session::OrganizerPreview {
+                    allocation: OrganizerAllocation::None,
                     choice: command.choice,
                     current_period: command.expected_period,
                     resolves_period: command.expected_period + 1,

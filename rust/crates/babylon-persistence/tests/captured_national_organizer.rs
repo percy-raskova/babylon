@@ -5,6 +5,7 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::OrganizationAccountId;
 use babylon_material_circuit::PublicAccountId;
+use babylon_practice_contract::OrganizerAllocation;
 
 use babylon_persistence::economic_catalog::{
     CapturedEconomicCatalog, NationalOpponent, SourceArtifactKind as Kind,
@@ -253,12 +254,30 @@ fn assert_admitted_inputs(
         matches!(&config.time_binding, OrganizerTimeBindingMode::Household{bindings} if bindings.len()==3)
     );
     assert_eq!(config.aid_bindings.len(), 2);
+    let collection = config
+        .collection
+        .as_ref()
+        .expect("national contribution terms");
+    assert_eq!(collection.initial_cash_micros, 280_000_000);
+    assert_eq!(collection.maximum_cash_micros, 1_450_000_000);
+    assert_eq!(collection.collection_hours, 2);
     let journal = initial
         .organizer_journal()
         .expect("the fixture register carries organizer journal");
     assert!(journal.periods.is_empty() && state.pending_aid.is_empty());
     assert!(state.contact_products.is_empty() && state.learned_authority_index.is_empty());
     let command = |choice, nonce| OrganizerCommand {
+        allocation: if choice == OrganizerChoice::Collect {
+            OrganizerAllocation::Collection {
+                target_cash_micros: config
+                    .collection
+                    .as_ref()
+                    .expect("captured collection")
+                    .initial_cash_micros,
+            }
+        } else {
+            OrganizerAllocation::None
+        },
         campaign_id: config.campaign_id,
         actor_id: config.controlled_actor_id,
         authority_id: config.input_authority_id,

@@ -1,5 +1,6 @@
 //! Text projections over granted organizer records, never material ledger truth.
 
+use babylon_persistence::runtime_session::OrganizerAllocation;
 use babylon_persistence::runtime_session::{
     OrganizerAidOption, OrganizerChoice, OrganizerCollectionOutcome, OrganizerCollectionResolution,
     OrganizerCommitment, OrganizerGiftConsent, OrganizerInquiry, OrganizerMaterialAidPreview,
@@ -785,6 +786,13 @@ pub(super) fn review(
 
 fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> String {
     let mut text = format!("REVIEW · {}", choice(preview.choice));
+    if let OrganizerAllocation::Collection { target_cash_micros } = preview.allocation {
+        let _ = write!(
+            text,
+            "\nSelected contribution target: {} currency.",
+            crate::human_numbers::currency(target_cash_micros)
+        );
+    }
     if let Some(view) = &client.view {
         let _ = write!(text, "\n{}", flavor(view, preview.choice));
     }
@@ -1933,6 +1941,7 @@ mod tests {
             preview.period = view.period;
             let commitment = OrganizerCommitment {
                 command: OrganizerCommand {
+                    allocation: OrganizerAllocation::None,
                     campaign_id: [3; 16],
                     actor_id: view.actor_id,
                     authority_id: view.authority_id,
@@ -2055,6 +2064,7 @@ mod tests {
         OrganizerClient {
             view: Some(view),
             preview: Some(OrganizerPreview {
+                allocation: OrganizerAllocation::None,
                 choice: OrganizerChoice::Inquiry(OrganizerInquiry::WorkLost),
                 current_period: period,
                 resolves_period: period + 1,
@@ -2324,6 +2334,7 @@ mod tests {
             let client = OrganizerClient {
                 view: Some(view()),
                 preview: Some(OrganizerPreview {
+                    allocation: OrganizerAllocation::None,
                     choice,
                     current_period: 5,
                     resolves_period: 6,
@@ -2359,6 +2370,9 @@ mod tests {
         practice.standing_work = false;
         practice.hours_spent = 0;
         let command = OrganizerCommand {
+            allocation: OrganizerAllocation::Collection {
+                target_cash_micros: 400_000,
+            },
             campaign_id: [3; 16],
             actor_id: view.actor_id,
             authority_id: view.authority_id,
@@ -2437,6 +2451,7 @@ mod tests {
                 contributor_label: "Fixture contributor".into(),
                 source_hash: [16; 32],
                 cash_consent: OrganizerGiftConsent::Accept,
+                initial_cash_micros: 400_000,
                 maximum_cash_micros: 400_000,
                 protected_cash_floor_micros: 0,
                 collection_hours: 2,

@@ -10,6 +10,7 @@ use babylon_persistence::runtime_session::{
     RuntimeSessionTail, RuntimeSessionTarget, RUNTIME_SESSION_MAX_LINE_BYTES,
     RUNTIME_SESSION_PROTOCOL_VERSION,
 };
+use babylon_practice_contract::OrganizerAllocation;
 
 use postgres::{Config, NoTls};
 use std::fs::OpenOptions;
@@ -297,6 +298,17 @@ impl Session {
         nonce: [u8; 16],
     ) -> (Option<OrganizerCommitment>, OrganizerPreview) {
         let command = OrganizerCommand {
+            allocation: if choice == OrganizerChoice::Collect {
+                OrganizerAllocation::Collection {
+                    target_cash_micros: snapshot
+                        .collection
+                        .as_ref()
+                        .expect("captured collection")
+                        .initial_cash_micros,
+                }
+            } else {
+                OrganizerAllocation::None
+            },
             campaign_id: *campaign.canonical_bytes(),
             actor_id: snapshot.view.actor_id,
             authority_id: snapshot.view.authority_id,
@@ -628,6 +640,7 @@ fn standing_pause_nonce_probe_is_a_distinct_valid_control() {
 #[test]
 fn standing_control_submission_retains_exact_command_envelope() {
     let command = OrganizerCommand {
+        allocation: OrganizerAllocation::None,
         campaign_id: [1; 16],
         actor_id: 101,
         authority_id: [2; 16],

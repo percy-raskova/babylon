@@ -71,7 +71,7 @@ fn site(id: &str, suppliers: &[&str]) -> ProductionSite {
     }
 }
 
-fn snapshot() -> ProductionSnapshot {
+pub(crate) fn snapshot() -> ProductionSnapshot {
     ProductionSnapshot {
         physical_routes: vec![
             babylon_persistence::production_observation::PhysicalRouteDefinition {

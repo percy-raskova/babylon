@@ -341,3 +341,25 @@ frame. The map lens explains this boundary and opens the existing Observer
 Campaigns chooser. An observer campaign uses a separate saved world. The current
 organizer world remains available through Continue or Load Game. Opening the
 chooser does not replace it or expand player knowledge.
+
+Report reading starts with the selected kind and numerical answer, then the
+named source and observed and received periods. A requested report about an
+earlier period remains distinct from an automatic current report. Dispatch
+shows the actual acquired answer and a dated Read action. That action retains
+its exact report identity.
+
+Changing reports starts at the top of one reading region. Return stays fixed and preserves the selected subject and draft.
+Notebook controls and exact citation references follow the answer.
+
+World can show current earned workplace reports within the existing organizer
+scope when no wider production observation is available. It never fills that gap
+from observer access. For an admitted production observation, county developments
+use that period's disclosed event descriptions, with History for more records.
+An empty event list does not prove that nothing changed.
+
+Archive reading preserves the retained human labels and values. Evidence and
+changes shows observed and published dates and retained coverage. A separate
+Technical evidence control exposes exact source identifiers, locators, grant
+keys, atom changes, hashes and the original publication. The retained reader
+has no separate source title or historical display labels. The interface states
+that limit. It does not construct titles from keys or later publications.

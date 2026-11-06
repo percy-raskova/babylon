@@ -2,6 +2,9 @@
 
 use super::{board, workspace, workspace_copy as copy};
 
+#[path = "report_view.rs"]
+mod report_view;
+
 use super::scene::{
     BodyShape, OrganizerScene, OrganizerSceneMode, OrganizerSubject, RelationKind, SceneNode,
 };
@@ -306,7 +309,7 @@ fn spawn(mut commands: Commands) {
 
     spawn_scene(&mut commands);
     board::spawn_workspace(&mut commands);
-    spawn_inspector(&mut commands);
+    report_view::spawn(&mut commands);
 }
 
 fn spawn_scene(commands: &mut Commands) {
@@ -994,128 +997,6 @@ pub(super) fn spawn_approach(cards: &mut ChildSpawnerCommands, choice: Organizer
             ));
             card.spawn(text(presentation::choice(choice), 18.0, theme::PAPER));
             card.spawn((text("", 14.0, theme::GRAY), TextPart::Approach(choice)));
-        });
-}
-
-fn spawn_inspector(commands: &mut Commands) {
-    commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: percent(18),
-                right: percent(18),
-                top: px(98),
-                bottom: px(48),
-                padding: UiRect::all(px(22)),
-                border: UiRect::all(px(2)),
-                display: Display::None,
-                ..column()
-            },
-            BackgroundColor(theme::INK),
-            BorderColor::all(theme::YELLOW),
-            ZIndex(25),
-            OrganizerInspectorRoot,
-            Overlay,
-            TabGroup::modal(),
-            DeclaredSurface::new(SurfaceId::OrganizerWorkspace),
-        ))
-        .with_children(|panel| {
-            inspector_header(panel);
-            panel.spawn((text("", 12.0, theme::GRAY), TextPart::DraftStatus));
-            panel.spawn((text("", 13.0, theme::YELLOW), TextPart::Message));
-            panel
-                .spawn((column(), DetailControls(OrganizerInspector::Evidence)))
-                .with_children(|controls| {
-                    controls.spawn(row()).with_children(|buttons| {
-                        button(
-                            buttons,
-                            "Previous report",
-                            OrganizerAction::PreviousEvidence,
-                        );
-                        button(buttons, "Next report", OrganizerAction::NextEvidence);
-                        button(
-                            buttons,
-                            "Keep report in draft",
-                            OrganizerAction::KeepEvidence,
-                        );
-                        button(
-                            buttons,
-                            "Remove saved reference",
-                            OrganizerAction::RemoveReference,
-                        );
-                    });
-                });
-            panel
-                .spawn((row(), DetailControls(OrganizerInspector::Direction)))
-                .with_children(|controls| {
-                    button(
-                        controls,
-                        "Pause routine",
-                        OrganizerAction::Choose(OrganizerChoice::PauseStanding),
-                    );
-                    button(
-                        controls,
-                        "Authorize / resume routine",
-                        OrganizerAction::Choose(OrganizerChoice::ResumeStanding),
-                    );
-                    button(
-                        controls,
-                        "Refresh committed situation",
-                        OrganizerAction::Refresh,
-                    );
-                });
-            spawn_scrolling_reading(panel, |body| {
-                board::all_practices(body);
-                body.spawn((column(), DetailControls(OrganizerInspector::Review)))
-                    .with_children(|review| {
-                        review.spawn((
-                            text("", 19.0, theme::PAPER),
-                            TextPart::Review,
-                            ObserverFocusTarget::reading(None),
-                        ));
-                    });
-                body.spawn((column(), DetailControls(OrganizerInspector::Direction)))
-                    .with_children(|detail| {
-                        detail.spawn((text("", 16.0, theme::PAPER), TextPart::Context));
-                    });
-                body.spawn((column(), DetailControls(OrganizerInspector::Receipts)))
-                    .with_children(board::history_links);
-                spawn_notes(body);
-                body.spawn((
-                    text("", 17.0, theme::PAPER),
-                    TextPart::InspectorBody,
-                    ObserverFocusTarget::reading(None),
-                ));
-            });
-        });
-}
-
-fn inspector_header(panel: &mut ChildSpawnerCommands) {
-    panel.spawn(row()).with_children(|bar| {
-        bar.spawn((
-            text("Evidence", 24.0, theme::YELLOW),
-            TextPart::InspectorTitle,
-        ));
-        button(
-            bar,
-            "Return to decision [Esc]",
-            OrganizerAction::CloseInspector,
-        );
-        button(
-            bar,
-            "Cited workplace Archive",
-            OrganizerAction::ArchiveWorkplace,
-        );
-        button(
-            bar,
-            "Our practice Archive",
-            OrganizerAction::ArchiveOrganization,
-        );
-    });
-    panel
-        .spawn((row(), DetailControls(OrganizerInspector::Review)))
-        .with_children(|controls| {
-            button(controls, "Confirm ruling", OrganizerAction::Confirm);
         });
 }
 
@@ -2148,6 +2029,7 @@ fn normalize_history_inspector(
 
 pub(super) fn install(app: &mut App) {
     board::install(app);
+    report_view::install(app);
     app.init_resource::<RenderedScene>()
         .add_message::<OrganizerAction>()
         .add_systems(Startup, spawn)
@@ -2183,6 +2065,10 @@ pub(super) fn install(app: &mut App) {
 pub(crate) fn install_evidence_observer_for_test(app: &mut App) {
     app.add_observer(open_evidence);
 }
+
+#[cfg(test)]
+#[path = "report_reading_tests.rs"]
+mod report_reading_tests;
 
 #[cfg(test)]
 #[path = "resource_header_tests.rs"]
@@ -3518,6 +3404,7 @@ pub(crate) mod tests {
             )
             .add_systems(PostUpdate, paint_scroll_hints.after(UiSystems::Layout));
         board::install(&mut app);
+        report_view::install(&mut app);
         app.finish();
         app.cleanup();
         app.update();

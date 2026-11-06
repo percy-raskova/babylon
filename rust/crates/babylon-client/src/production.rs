@@ -2,7 +2,7 @@
 //! County aggregates have no invented geographic placement.
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 pub(crate) mod maintenance;
 

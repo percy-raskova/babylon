@@ -708,7 +708,7 @@ pub(crate) mod tests {
         assert!(!held.contains("999"));
         let (_, current) = presentation::inspector(&client, 3);
         assert!(current.contains("999 kg"));
-        assert!(current.contains("Acquired period 3"));
+        assert!(current.contains("Received period 3"));
         assert!(current.contains("HISTORICAL REPORT"));
         client.inspector = OrganizerInspector::Relationships;
         let (_, held_relationships) = presentation::inspector(&client, 2);

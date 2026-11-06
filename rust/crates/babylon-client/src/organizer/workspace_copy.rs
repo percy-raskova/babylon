@@ -1,4 +1,6 @@
 //! Short card copy and dated navigation derived from the admitted view.
+use std::fmt::Write as _;
+
 use super::presentation;
 use super::scene::OrganizerSubject;
 use super::ui::Scope;
@@ -39,6 +41,46 @@ pub(crate) fn resource_masthead(client: &OrganizerClient, session: &ObserverSess
         "paused"
     };
     format!("P{}{endpoint} committed · Collective cash {cash} · Organizer-hours pledged {}\nShared household time {shared} · Neighborhood {routine}", means.period, crate::observer_ui::grouped(means.organizer_hours))
+}
+
+/// Current earned workplace knowledge for World; broad production remains undisclosed.
+pub(crate) fn world_reports(client: &OrganizerClient, session: &ObserverSession) -> Option<String> {
+    workspace::resources(client, session)?;
+    let view = client.view.as_ref()?;
+    let mut text = String::from("Earned workplace reports · open Evidence to read");
+    let mut reports: Vec<_> = view
+        .observations
+        .iter()
+        .filter(|item| {
+            item.actor_id == view.actor_id
+                && item.subject_id == view.workplace_id
+                && item.observed_period <= session.viewed_tick
+                && item.acquired_period <= session.viewed_tick
+        })
+        .collect();
+    reports.sort_by_key(|item| {
+        (
+            item.acquired_period,
+            item.observed_period,
+            item.observation_id,
+        )
+    });
+    if reports.is_empty() {
+        text.push_str("\nNo acquired workplace report is available here. Open Cited workplace Archive for retained evidence.");
+    }
+    for item in reports.iter().rev().take(2) {
+        let _ = write!(
+            text,
+            "\n{}\n{}\nSource: {}",
+            presentation::report_caption(item),
+            presentation::report(&item.report),
+            presentation::partner(view, item.source_actor_id)
+        );
+    }
+    text.push_str(
+        "\nThis is workplace report scope; the wider production circuit is not disclosed.",
+    );
+    Some(text)
 }
 
 pub(super) fn availability(term: ChoiceAvailability) -> String {
@@ -193,7 +235,6 @@ impl Bulletin {
     }
 
     fn rows(&mut self, session: &ObserverSession, period: u64, rows: &DispatchRows) {
-        use std::fmt::Write as _;
         for row in &rows.practices {
             let receipt = row.receipt;
             if let Some(partner) = row
@@ -238,16 +279,18 @@ impl Bulletin {
             let observation = row.observation;
             let _ = writeln!(
                 self.copy,
-                "{} · report observed P{}, acquired P{}",
-                row.source.label, observation.observed_period, observation.acquired_period
+                "{} · report observed P{}, acquired P{}\n{} · {}\n{}",
+                row.source.label,
+                observation.observed_period,
+                observation.acquired_period,
+                presentation::report_kind(&observation.report),
+                presentation::report_origin(observation),
+                presentation::report(&observation.report)
             );
             self.link(
                 session,
                 period,
-                format!(
-                    "Read P{} report · {}",
-                    observation.observed_period, row.source.label
-                ),
+                format!("Read {}", presentation::report_caption(observation)),
                 Destination::Detail(row.destination),
             );
         }

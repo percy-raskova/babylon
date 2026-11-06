@@ -1846,7 +1846,7 @@ fn county_developments(snapshot: Option<&ObserverEconomySnapshot>, county: &str)
     if snapshot.resolve_tick == 0 {
         return "Opening period. No completed production period yet.".into();
     }
-    let records = production
+    let developments: Vec<_> = production
         .events
         .iter()
         .filter(|event| {
@@ -1858,11 +1858,40 @@ fn county_developments(snapshot: Option<&ObserverEconomySnapshot>, county: &str)
                         .any(|site| site.id == *id && site.is_in_county(county))
                 })
         })
-        .count();
-    format!(
-        "Period {}: {records} committed records for this county. Open History to inspect the evidence.",
-        snapshot.resolve_tick
-    )
+        .map(|event| event.description.as_str())
+        .collect();
+    if developments.is_empty() {
+        return format!("Period {}: no production developments are disclosed for this county in this observation. This does not establish that nothing changed. Open History or the cited Archive.", snapshot.resolve_tick);
+    }
+    let mut text = format!("Period {} · reported developments", snapshot.resolve_tick);
+    for description in developments.iter().take(4) {
+        text.push_str("\n• ");
+        text.push_str(description);
+    }
+    if developments.len() > 4 {
+        text.push_str("\nMore reported developments are available in History.");
+    }
+    text
+}
+
+fn world_developments(
+    snapshot: Option<&ObserverEconomySnapshot>,
+    county: Option<&str>,
+    organizer: Option<&OrganizerClient>,
+    session: &ObserverSession,
+) -> String {
+    let Some(county) = county else {
+        return String::new();
+    };
+    let earned = (session.organizer_enabled
+        && county == "26163"
+        && snapshot.is_none_or(|snapshot| snapshot.production.is_none()))
+    .then(|| {
+        organizer
+            .and_then(|client| crate::organizer::workspace_copy::world_reports(client, session))
+    })
+    .flatten();
+    earned.unwrap_or_else(|| county_developments(snapshot, county))
 }
 
 #[derive(SystemParam)]
@@ -2047,7 +2076,7 @@ fn repaint(
                 MapLens::Qcew(_) => "OBSERVED | BLS QCEW | 2024 annual\nJobs are annual averages; weekly wages are means. Monetary values are dollars, not physical output.".into(),
                 MapLens::Material {kind, ..} => format!("{}\n{}\nZero is a measured account; unavailable and unmodeled counties have no numeric reading.", lens.evidence, match kind {MaterialLensKind::ProducedThisPeriod => "Output in the selected period; foundation has no production receipt.",MaterialLensKind::OnHand => "Stock held at the end of the selected period. Goods remain with the disclosed owner until transfer or final-demand fulfillment.",MaterialLensKind::InboundInTransit => "Actual lots destined for this county, counted once. This is not traffic passing through the county."}),
             },
-            ObserverText::Developments => county.as_ref().map_or_else(String::new, |county| county_developments(installed, county.fips)),
+            ObserverText::Developments => world_developments(installed, county.as_ref().map(|county| county.fips), organizer.as_deref(), &state),
             ObserverText::Production => installed.and_then(|snapshot| snapshot.production.as_ref())
                 .map_or_else(|| "Production relationships are unavailable in this observation.".into(), |production|
                     county_circuit_intro(production, county.as_ref().map(|county| county.fips))),
@@ -2350,6 +2379,14 @@ pub(crate) mod tests {
             .expect("shared resource reading exists in World and Evidence chrome")
     }
 
+    pub(crate) fn install_world_report_fixture(app: &mut App, viewport: UVec2) {
+        use bevy::ecs::system::RunSystemOnce as _;
+        install_resource_header_fixture(app, viewport);
+        app.world_mut()
+            .run_system_once(|mut commands: Commands| spawn_inspector(&mut commands))
+            .expect("actual World county inspector");
+    }
+
     fn world_notice_fixture() -> (App, Entity) {
         use babylon_persistence::runtime_session::RuntimeSessionRequest;
         let (mut client, mut session, request, mut snapshot) =
@@ -2384,6 +2421,69 @@ pub(crate) mod tests {
                 .expect("actual shared World status")
         };
         (app, status)
+    }
+
+    #[test]
+    fn county_developments_use_only_current_disclosed_descriptions() {
+        use babylon_persistence::production_observation::ProductionEvent;
+        let mut production = crate::production::tests::snapshot();
+        production.events = [
+            (
+                4,
+                "a",
+                "Cohort a: 7 of 8 planned batches; 70 kg steel produced.",
+            ),
+            (3, "a", "older material event"),
+            (4, "hidden", "undisclosed workplace"),
+            (5, "a", "future material event"),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, (period, site, description))| ProductionEvent {
+            id: index.to_string(),
+            period,
+            subject_site_ids: vec![site.into()],
+            kind: "production".into(),
+            description: description.into(),
+            receipt_digest: "exact-digest".into(),
+            delivery_evidence: None,
+        })
+        .collect();
+        let mut snapshot = ObserverEconomySnapshot {
+            campaign_id: Uuid::nil().to_string(),
+            resolve_tick: 4,
+            foundation_digest: "fixture".into(),
+            tick_content_hash: None,
+            nominal_world_hash: None,
+            envelope_digest: None,
+            visibility: ObserverVisibility::FullObserver,
+            production: Some(production),
+            counties: Vec::new(),
+        };
+        let text = county_developments(Some(&snapshot), "26163");
+        assert!(
+            text.contains("Cohort a: 7 of 8 planned batches; 70 kg steel produced."),
+            "{text}"
+        );
+        for absent in [
+            "older material",
+            "undisclosed workplace",
+            "future material",
+            "exact-digest",
+            "committed records",
+        ] {
+            assert!(!text.contains(absent), "{text}");
+        }
+        snapshot
+            .production
+            .as_mut()
+            .expect("production")
+            .events
+            .clear();
+        assert!(county_developments(Some(&snapshot), "26163")
+            .contains("does not establish that nothing changed"));
+        snapshot.production = None;
+        assert!(county_developments(Some(&snapshot), "26163").contains("not disclosed"));
     }
 
     #[test]

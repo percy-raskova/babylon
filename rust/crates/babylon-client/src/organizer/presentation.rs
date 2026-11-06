@@ -110,7 +110,7 @@ pub(super) fn partner(view: &OrganizerView, actor: u64) -> &str {
     }
 }
 
-fn report(value: &OrganizerReport) -> String {
+pub(super) fn report(value: &OrganizerReport) -> String {
     match value {
         OrganizerReport::ReducedWork { previous_labor_hours, performed_labor_hours } => format!(
             "Less work was performed: {} labor-hours, compared with {} in the previous period.", crate::observer_ui::grouped(*performed_labor_hours), crate::observer_ui::grouped(*previous_labor_hours)
@@ -118,7 +118,7 @@ fn report(value: &OrganizerReport) -> String {
         OrganizerReport::Work { performed_labor_hours, output_kg, previous_labor_hours, previous_output_kg } => {
             let mut text = format!("Work performed: {} labor-hours. Output: {} kg.", crate::observer_ui::grouped(*performed_labor_hours), crate::observer_ui::grouped(*output_kg));
             if let Some(hours) = previous_labor_hours { let _ = write!(text, " Previous work: {} labor-hours.", crate::observer_ui::grouped(*hours)); }
-            if let Some(output) = previous_output_kg { let _ = write!(text, " Previous output: {} kg.", crate::observer_ui::grouped(*output)); }
+            if let Some(output) = previous_output_kg { let _ = write!(text, " Previous output: {} kg.", crate::observer_ui::grouped(*output)); } else { text.push_str(" Earlier output was not reported."); }
             text
         },
         OrganizerReport::Maintenance { enabled_batches, consumed_batches, expired_batches } => format!(
@@ -127,45 +127,55 @@ fn report(value: &OrganizerReport) -> String {
     }
 }
 
+pub(super) fn report_kind(value: &OrganizerReport) -> &'static str {
+    match value {
+        OrganizerReport::Work { .. } => "Work and output",
+        OrganizerReport::ReducedWork { .. } => "Reduced work",
+        OrganizerReport::Maintenance { .. } => "Maintenance received",
+    }
+}
+
+pub(super) fn report_origin(item: &OrganizerObservation) -> &'static str {
+    if item.receipt_id.is_some() {
+        "Requested inquiry"
+    } else if item.observed_period == 0 && item.acquired_period == 0 {
+        "Captured initial report · period 0"
+    } else {
+        "Automatic report"
+    }
+}
+
+pub(super) fn report_caption(item: &OrganizerObservation) -> String {
+    format!(
+        "{} · observed P{}, received P{} · {}",
+        report_kind(&item.report),
+        item.observed_period,
+        item.acquired_period,
+        report_origin(item)
+    )
+}
+
 pub(super) fn observation(
     view: &OrganizerView,
     item: &OrganizerObservation,
     current_period: u64,
 ) -> String {
-    let age = if item.observed_period < current_period {
-        "HISTORICAL REPORT"
-    } else {
-        "REPORTED"
-    };
-    let source = item.receipt_id.map_or_else(
-        || {
-            if item.observed_period == 0 && item.acquired_period == 0 {
-                "Captured initial report · period 0".into()
-            } else {
-                format!(
-                    "Automatic report from {} · source actor {}",
-                    partner(view, item.source_actor_id),
-                    item.source_actor_id
-                )
-            }
-        },
-        |receipt| {
-            receipt
-                .iter()
-                .fold(String::from("Committed receipt "), |mut text, byte| {
-                    let _ = write!(text, "{byte:02x}");
-                    text
-                })
-        },
-    );
-    format!(
-        "{age} · period {} · {}\n{}\nAcquired period {}. {}",
-        item.observed_period,
-        partner(view, item.source_actor_id),
+    let mut text = format!(
+        "{}\n\nSource: {}\nObserved period {} · Received period {}\n{}\nWorkplace: {}",
         report(&item.report),
+        partner(view, item.source_actor_id),
+        item.observed_period,
         item.acquired_period,
-        source
-    )
+        report_origin(item),
+        view.workplace_label,
+    );
+    if item.observed_period < current_period {
+        text.push_str("\nHISTORICAL REPORT · These facts describe the earlier observed period.");
+    }
+    if item.receipt_id.is_some() {
+        text.push_str("\nReceived through your inquiry. Acquiring this report did not cause its work or output.");
+    }
+    text
 }
 
 pub(super) fn situation(view: &OrganizerView, period: u64) -> String {
@@ -1003,62 +1013,68 @@ fn evidence_inspector(
     period: u64,
 ) -> (String, String) {
     let saved = client.evidence.mode == EvidenceMode::Saved;
-    let title = format!(
-        "{} · {}",
-        if saved {
-            "Current personal draft references"
-        } else {
-            "Circuit evidence"
+    let id = client.selected_evidence_id(period);
+    let item = id.and_then(|id| client.lawful_evidence(id, period));
+    let title = item.map_or_else(
+        || "Workplace evidence".into(),
+        |item| {
+            let ids = client.evidence_ids(period);
+            let index = ids
+                .iter()
+                .position(|id| *id == item.observation_id)
+                .map_or(1, |i| i + 1);
+            format!("{} · {} of {}", report_kind(&item.report), index, ids.len())
         },
-        view.workplace_label
     );
-    let mut text = String::from("WORKPLACE EVIDENCE\nThese reports describe one observed period. References are personal presentation, not new knowledge or executable instructions. Provider-private accounts remain undisclosed. Workplace reports do not establish aid delivery, household consumption or independent participation.\n\n");
-    if saved {
-        text.push_str("CURRENT PERSONAL DRAFT · saved references are present-day notebook context, not a historical reconstruction.\n\n");
-    }
-    if period == view.period {
-        let _ = writeln!(text, "{} recent and latest report(s) shown; {} acquired through committed period {}. Older reports remain in Cited workplace Archive.\n", view.observations.len(), view.total_observation_count, view.period);
-    } else {
-        text.push_str("The as-of total is unavailable. Open Cited workplace Archive for earned reports at the inspected period.\n\n");
-    }
-    let Some(id) = client.selected_evidence_id(period) else {
-        text.push_str(if saved {
-            "No saved references. Open Workplace evidence and keep a report in the draft."
+    let mut text = item.map_or_else(|| {
+        if id.is_some() && saved {
+            "This reference is unavailable in this inspected view. Open Cited workplace Archive to review earned reports, or select another reference. It remains in the current draft and grants no additional access.".into()
+        } else if id.is_some() {
+            "The selected report is unavailable in this inspected view. Open Cited workplace Archive to review earned reports, or select another report.".into()
+        } else if saved {
+            "No saved references. Open Workplace evidence and keep a report in the draft.".into()
         } else if period != view.period {
-            "Open Cited workplace Archive to inspect earned reports at this period."
+            "Open Cited workplace Archive to inspect earned reports at this period.".into()
         } else {
-            "No acquired workplace report is available at this period."
-        });
-        return (title, text);
-    };
-    let ids = client.evidence_ids(period);
-    if saved || period == view.period {
-        if let Some(index) = ids.iter().position(|item| *item == id) {
-            let label = if saved {
-                "CURRENT DRAFT REFERENCE"
-            } else {
-                "REPORT"
-            };
-            let _ = writeln!(text, "{label} {} OF {}\n", index + 1, ids.len());
+            "No acquired workplace report is available at this period.".into()
+        }
+    }, |item| observation(view, item, period));
+    text.push_str("\n\nREPORT SCOPE\nWorkplace reports do not establish aid delivery, household consumption or independent participation. Provider-private accounts remain undisclosed.");
+    if period == view.period {
+        let _ = write!(text, "\n{} recent and latest report(s) shown; {} acquired through committed period {}. Older reports remain in Cited workplace Archive.", view.observations.len(), view.total_observation_count, view.period);
+    } else {
+        text.push_str("\nThe as-of total is unavailable. Open Cited workplace Archive for earned reports at the inspected period.");
+    }
+    if saved {
+        text.push_str("\n\nCURRENT PERSONAL DRAFT · saved references are present-day notebook context, not a historical reconstruction.");
+    }
+    if let Some(id) = id {
+        text.push_str(
+            match (client.evidence_is_saved(id), period == view.period) {
+                (true, true) => "\n\nIN PERSONAL DRAFT",
+                (false, true) => "\n\nNOT IN PERSONAL DRAFT",
+                (true, false) => "\n\nIN CURRENT PERSONAL DRAFT",
+                (false, false) => "\n\nNOT IN CURRENT PERSONAL DRAFT",
+            },
+        );
+    }
+    text.push_str(
+        "\n\nReferences are personal presentation, not new knowledge or executable instructions.",
+    );
+    if let Some(item) = item {
+        let _ = write!(
+            text,
+            "\n\nEXACT CITATION\nReport {}",
+            crate::dossier::hex_bytes(item.observation_id)
+        );
+        if let Some(receipt) = item.receipt_id {
+            let _ = write!(
+                text,
+                "\nInquiry receipt {}",
+                crate::dossier::hex_bytes(receipt)
+            );
         }
     }
-    let Some(item) = client.lawful_evidence(id, period) else {
-        if saved {
-            text.push_str("This reference is unavailable in this inspected view. Open Cited workplace Archive to review earned reports, or select another reference. It remains in the current draft and grants no additional access.");
-        } else {
-            text.push_str("The selected report is unavailable in this inspected view. Open Cited workplace Archive to review earned reports, or select another report.");
-        }
-        return (title, text);
-    };
-    text.push_str(
-        match (client.evidence_is_saved(id), period == view.period) {
-            (true, true) => "IN PERSONAL DRAFT\n\n",
-            (false, true) => "NOT IN PERSONAL DRAFT\n\n",
-            (true, false) => "IN CURRENT PERSONAL DRAFT\n\n",
-            (false, false) => "NOT IN CURRENT PERSONAL DRAFT\n\n",
-        },
-    );
-    text.push_str(&observation(view, item, period));
     (title, text)
 }
 
@@ -2276,15 +2292,16 @@ mod tests {
             },
         };
         let automatic = observation(&view, &item, 5);
-        assert!(automatic.contains("Automatic report from Fixture workplace contacts"));
-        assert!(automatic.contains("source actor 92"));
+        assert!(automatic.contains("Automatic report"));
+        assert!(automatic.contains("Source: Fixture workplace contacts"));
+        assert!(!automatic.contains("source actor 92"));
         assert!(!automatic.contains("Captured initial report"));
         item.observed_period = 0;
         item.acquired_period = 0;
         assert!(observation(&view, &item, 5).contains("Captured initial report · period 0"));
         item.receipt_id = Some([7; 32]);
-        assert!(observation(&view, &item, 5)
-            .contains(&format!("Committed receipt {}", "07".repeat(32))));
+        assert!(observation(&view, &item, 5).contains("Received through your inquiry"));
+        assert!(!observation(&view, &item, 5).contains(&"07".repeat(32)));
     }
 
     #[test]

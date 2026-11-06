@@ -110,7 +110,6 @@ enum Action {
     StandardInterface,
     LargerInterface,
     ReadInquiryReport,
-    ShellEvidence,
     ContinueWarning,
     ContinueTitle,
     OpenOrganizer,
@@ -706,7 +705,6 @@ fn presentation_available(
         Action::Play
         | Action::Speed
         | Action::ObserverCampaigns
-        | Action::ShellEvidence
         | Action::EconomyNetwork
         | Action::ManufacturingSector
         | Action::AllSectors => {
@@ -908,7 +906,6 @@ fn observer_command(action: Action) -> ObserverCommand {
         Action::Play | Action::Pause => ObserverCommand::TogglePlay,
         Action::Speed => ObserverCommand::Speed,
         Action::ObserverCampaigns => ObserverCommand::ObserverCampaigns,
-        Action::ShellEvidence => ObserverCommand::Evidence,
         Action::EconomyNetwork => ObserverCommand::RoadLayer(RoadLayer::EconomyNetwork),
         Action::ManufacturingSector => ObserverCommand::NetworkSector(NetworkSector::Manufacturing),
         Action::AllSectors => ObserverCommand::NetworkSector(NetworkSector::All),
@@ -1136,7 +1133,6 @@ fn dispatch(
             | Action::Pause
             | Action::Speed
             | Action::ObserverCampaigns
-            | Action::ShellEvidence
             | Action::EconomyNetwork
             | Action::ManufacturingSector
             | Action::AllSectors
@@ -1319,7 +1315,6 @@ fn presentation_applied(pending: &Pending, s: &Situation) -> bool {
                         _ => false,
                     })
             }
-            Action::ShellEvidence => s.client.inspector == OrganizerInspector::Evidence,
             Action::ObserverCampaigns => {
                 s.ui.menu_open && s.opening.menu_page == MenuPage::Campaigns
             }
@@ -1664,6 +1659,7 @@ mod tests {
             );
         }
         assert!(serde_json::from_value::<Action>(json!("capture_desktop")).is_err());
+        assert!(serde_json::from_value::<Action>(json!("shell_evidence")).is_err());
     }
 
     fn resize_fixture(
@@ -3214,6 +3210,108 @@ mod tests {
         assert_eq!(reply["state"]["selected_report_id"], "1f".repeat(32));
         assert_eq!(reply["state"]["selected_report_observed_period"], 2);
         assert_eq!(reply["state"]["selected_report_acquired_period"], 3);
+        assert_eq!(ui::tests::draft_debug(&app), draft);
+    }
+    #[test]
+    fn organizer_shell_evidence_opens_real_report_and_preserves_subject_and_draft() {
+        use babylon_persistence::runtime_session::{OrganizerObservation, OrganizerReport};
+        let (mut app, _, draft) = ui::tests::dossier_navigation_fixture();
+        app.init_resource::<OpeningPresentation>()
+            .init_resource::<ObserverFrame>()
+            .init_resource::<ProductionNavigation>()
+            .init_resource::<crate::observer_ui::ObserverFeedback>()
+            .add_message::<ContinueWarning>()
+            .add_systems(
+                Update,
+                crate::production::navigation::navigate
+                    .after(ObserverSet::Install)
+                    .before(ObserverSet::Paint),
+            );
+        let (_runtime_requests, _runtime_responses) =
+            crate::observer_io::tests::install_pending_command_fixture(&mut app);
+        *app.world_mut().resource_mut::<PrimaryView>() = PrimaryView::Map;
+        {
+            let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+            let view = client.view.as_mut().expect("view");
+            view.observations = vec![OrganizerObservation {
+                observation_id: [31; 32],
+                actor_id: view.actor_id,
+                subject_id: view.workplace_id,
+                source_actor_id: view.workplace_partner_id,
+                observed_period: 0,
+                acquired_period: 0,
+                receipt_id: None,
+                report: OrganizerReport::Work {
+                    performed_labor_hours: 123,
+                    output_kg: 456,
+                    previous_labor_hours: None,
+                    previous_output_kg: None,
+                },
+            }];
+            view.total_observation_count = 1;
+            client.selected_subject = Some(OrganizerSubject::WorkplaceCommittee(
+                view.workplace_partner_id,
+            ));
+        }
+        let subject = app.world().resource::<OrganizerClient>().selected_subject;
+        let (socket, _peer) = UnixStream::pair().expect("socket");
+        let (incoming, receiver) = mpsc::channel();
+        let (outgoing, _output) = mpsc::sync_channel(1);
+        install(
+            &mut app,
+            Transport {
+                incoming: Mutex::new(receiver),
+                outgoing,
+                socket,
+                capture_dir: None,
+            },
+        );
+        let action = Action::Circuit;
+        let input = pending(
+            app.world().resource::<ObserverSession>(),
+            app.world().resource::<OrganizerClient>(),
+            action,
+        )
+        .input;
+        incoming.send(Incoming::Input(input)).expect("receiver");
+        app.update();
+        let reply: Value = serde_json::from_slice(
+            app.world()
+                .resource::<Controls>()
+                .reply
+                .as_ref()
+                .expect("reply"),
+        )
+        .expect("JSON");
+        assert_eq!(reply["event"], "applied", "{reply}");
+        assert_eq!(
+            *app.world().resource::<PrimaryView>(),
+            PrimaryView::Organizer
+        );
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().inspector,
+            OrganizerInspector::Evidence
+        );
+        assert_eq!(reply["state"]["selected_report_id"], "1f".repeat(32));
+        assert!(
+            !app.world().resource::<ObserverUiState>().evidence_open,
+            "readable Evidence is not verification settings"
+        );
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().selected_subject,
+            subject
+        );
+        app.world_mut()
+            .write_message(OrganizerAction::CloseInspector);
+        app.update();
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().inspector,
+            OrganizerInspector::Closed
+        );
+        assert_eq!(
+            app.world().resource::<OrganizerClient>().selected_subject,
+            subject
+        );
         assert_eq!(ui::tests::draft_debug(&app), draft);
     }
 }

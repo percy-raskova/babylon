@@ -22,8 +22,9 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import AbstractContextManager, contextmanager, nullcontext
+from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
@@ -918,16 +919,41 @@ def verify_process_credentials(pid: int, uid: int, gid: int) -> None:
 
 
 class OwnedPostgresScope:
-    """Freeze only an already admitted container; restore partial Docker pauses.
+    """Authenticate the physical owner around the native stop and the live authority around PG."""
 
-    This is not another lease authority. The required supervisor callback checks
-    its exact active record, volume, database and credentials outside the pause.
-    During suspension we recheck exact container, cgroup inode and membership.
-    """
-
-    def __init__(self, admission: PostgresAdmission, verify_ownership: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        admission: PostgresAdmission,
+        verify_physical_owner: Callable[[], None],
+        verify_live_authority: Callable[[], None],
+    ) -> None:
         self.admission = admission
-        self._verify_ownership = verify_ownership
+        self._verify_physical_owner = verify_physical_owner
+        self._verify_live_authority = verify_live_authority
+
+    @contextmanager
+    def _capture(
+        self, *, sequence: int, timeout: float
+    ) -> Iterator[Callable[[], AbstractContextManager[tuple[ProcessBinding, ...]]]]:
+        """Run the postcheck after native restoration, only for a proven PG thaw."""
+        with _timed_sampler_stage("PhysicalOwnerBeforeNativeStop", sequence):
+            self._verify_physical_owner()
+        restored = ExitStack()
+        failure: BaseException | None = None
+        try:
+            yield partial(self._quiescent, timeout=timeout, sequence=sequence, restored=restored)
+        except BaseException as error:
+            failure = error
+            raise
+        finally:
+            try:
+                restored.close()
+            except BaseException as postcheck:
+                if failure is not None:
+                    raise BaseExceptionGroup(
+                        "capture and physical postcheck failed", [failure, postcheck]
+                    ) from None
+                raise
 
     def verify(self, *, timeout: float, paused: bool) -> tuple[int, ...]:
         expected = self.admission
@@ -971,8 +997,15 @@ class OwnedPostgresScope:
         return members
 
     @contextmanager
-    def quiescent(self, *, timeout: float) -> Iterator[tuple[ProcessBinding, ...]]:
-        self._verify_ownership()
+    def _quiescent(
+        self, *, timeout: float, sequence: int, restored: ExitStack
+    ) -> Iterator[tuple[ProcessBinding, ...]]:
+        def physical_after_restore() -> None:
+            with _timed_sampler_stage("PhysicalOwnerAfterNativeRestore", sequence):
+                self._verify_physical_owner()
+
+        with _timed_sampler_stage("LiveAuthorityBeforePause", sequence):
+            self._verify_live_authority()
         self.verify(timeout=timeout, paused=False)
         attempted = False
         failure: BaseException | None = None
@@ -1022,7 +1055,9 @@ class OwnedPostgresScope:
                     if state.paused:
                         docker_command(["unpause", self.admission.container_id], timeout=timeout)
                     self.verify(timeout=timeout, paused=False)
-                    self._verify_ownership()
+                    restored.callback(physical_after_restore)
+                    with _timed_sampler_stage("LiveAuthorityAfterUnpause", sequence):
+                        self._verify_live_authority()
                 except BaseException as error:
                     restoration.append(error)
             if restoration:
@@ -1200,15 +1235,19 @@ def collect_running_game(
     atomic global snapshot or proof of a continuous resident-memory peak.
     """
     boot = boot_identity()
-    with native.quiescent(timeout=timeout) as native_capture:
+    with (
+        postgres._capture(sequence=sequence, timeout=timeout) as freeze,
+        native.quiescent(timeout=timeout) as native_capture,
+    ):
         with _timed_sampler_stage("OpeningMarker", sequence):
             before = read_marker()
         if before.campaign != campaign or (
             foundation_sha256 is not None and before.foundation_sha256 != foundation_sha256
         ):
             raise CaptureRefusal("memory committed campaign/foundation differs")
-        with _timed_sampler_stage("PostgresQuiescentScope", sequence):
-            with postgres.quiescent(timeout=timeout) as pg_bindings:
+        # This stopped-side scope now excludes both physical owner reconstructions.
+        with _timed_sampler_stage("PostgresBarrierAndLiveAuthority", sequence):
+            with freeze() as pg_bindings:
                 started = time.monotonic_ns()  # Both barriers now hold.
                 with _timed_sampler_stage("NativeCounterRead", sequence):
                     processes = native_capture.observe()

@@ -17,6 +17,7 @@ import tempfile
 import time
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, ExitStack, nullcontext
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Literal, Protocol, Self
 from uuid import UUID
@@ -36,6 +37,7 @@ from pydantic import (
     model_validator,
 )
 from tools import run_observer_session as launcher
+from tools.devtools.wayne_qualification_storage import PrivateEvidence
 
 Nonnegative = Annotated[StrictInt, Field(ge=0, le=2**64 - 1)]
 Positive = Annotated[StrictInt, Field(gt=0, le=2**64 - 1)]
@@ -128,8 +130,64 @@ OUTPUT_BYTES = 32_768
 POLL_SECONDS = 0.25
 
 
+ControlFailureReason = Literal[
+    "control_refused",
+    "cold_deadline",
+    "wall_deadline",
+    "readiness_deadline",
+    "navigation_deadline",
+    "send_deadline",
+    "response_deadline",
+    "response_ended",
+    "transport_timeout",
+    "transport_error",
+    "driver_failure",
+]
+ControlPhase = Literal[
+    "socket_admission",
+    "initial_readiness",
+    "opening_navigation",
+    "organizer_readiness",
+    "opening_boundary",
+    "advance",
+    "recovery",
+    "finalization",
+]
+
+
 class ControlRefusal(ValueError):
-    """A bounded native-control failure, safe to display without credentials."""
+    """A bounded reason identifies the failing operation without publishing transport text."""
+
+    def __init__(self, message: str, *, reason: ControlFailureReason = "control_refused") -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
+def _failure_reason(error: BaseException) -> ControlFailureReason:
+    if isinstance(error, ControlRefusal):
+        return error.reason
+    if isinstance(error, TimeoutError):
+        return "transport_timeout"
+    if isinstance(error, OSError):
+        return "transport_error"
+    return "driver_failure"
+
+
+@dataclass(frozen=True)
+class ColdControlWindow:
+    started_ns: int
+    maximum_seconds: int
+
+    @property
+    def deadline_ns(self) -> int:
+        return self.started_ns + self.maximum_seconds * 1_000_000_000
+
+    def clock_record(self) -> dict[str, int]:
+        return {
+            "version": 1,
+            "cold_started_monotonic_ns": self.started_ns,
+            "cold_deadline_monotonic_ns": self.deadline_ns,
+        }
 
 
 class CaptureMonitor(Protocol):
@@ -665,7 +723,7 @@ def remaining_control_time(
         if wall_deadline <= now:
             if on_wall_expired is not None:
                 on_wall_expired()
-            raise ControlRefusal("smoke wall deadline exceeded")
+            raise ControlRefusal("smoke wall deadline exceeded", reason="wall_deadline")
         deadline = min(deadline, wall_deadline)
     return deadline - now
 
@@ -680,6 +738,7 @@ class ControlChannel:
         initial_tick: int,
         *,
         check_capture: Callable[[], None] | None = None,
+        on_refusal: Callable[[BaseException], None] | None = None,
         on_observed: Callable[[ControlState], None] | None = None,
         wall_deadline: float | None = None,
         on_wall_expired: Callable[[], None] | None = None,
@@ -703,6 +762,7 @@ class ControlChannel:
         self.ready = False
         self._playback_admitted = False
         self._settling_tick: int | None = None
+        self._on_refusal = on_refusal
         self._check_capture = check_capture
         self._on_observed = on_observed
         self._wall_deadline = wall_deadline
@@ -712,6 +772,17 @@ class ControlChannel:
         self.closed = True
         self.connection.close()
 
+    def _refuse(
+        self, message: str, *, reason: ControlFailureReason = "control_refused"
+    ) -> ControlRefusal:
+        failure = ControlRefusal(message, reason=reason)
+        try:
+            if self._on_refusal is not None:
+                self._on_refusal(failure)
+        finally:
+            self.close()
+        return failure
+
     def _receive(self, deadline: float) -> ControlResponse:
         raw = self.response_bytes
         while b"\n" not in raw:
@@ -719,7 +790,9 @@ class ControlChannel:
                 self._check_capture()
             remaining = remaining_control_time(deadline, self._wall_deadline, self._on_wall_expired)
             if remaining <= 0:
-                raise ControlRefusal("native control response deadline exceeded")
+                raise ControlRefusal(
+                    "native control response deadline exceeded", reason="response_deadline"
+                )
             self.connection.settimeout(min(remaining, 0.25) if self._check_capture else remaining)
             try:
                 part = self.connection.recv(OUTPUT_BYTES + 1 - len(raw))
@@ -729,12 +802,18 @@ class ControlChannel:
                 )
                 if self._check_capture is not None and remaining > 0:
                     continue
-                raise ControlRefusal("native control response deadline exceeded") from None
+                raise ControlRefusal(
+                    "native control response deadline exceeded", reason="response_deadline"
+                ) from None
             raw.extend(part)
             if remaining_control_time(deadline, self._wall_deadline, self._on_wall_expired) < 0:
-                raise ControlRefusal("native control response deadline exceeded")
+                raise ControlRefusal(
+                    "native control response deadline exceeded", reason="response_deadline"
+                )
             if not part:
-                raise ControlRefusal("native control response ended before a complete frame")
+                raise ControlRefusal(
+                    "native control response ended before a complete frame", reason="response_ended"
+                )
             if len(raw) > OUTPUT_BYTES:
                 raise ControlRefusal("native control response exceeds its byte bound")
         if raw[-1:] != b"\n" or raw.count(b"\n") != 1:
@@ -910,7 +989,9 @@ class ControlChannel:
         try:
             remaining = remaining_control_time(deadline, self._wall_deadline, self._on_wall_expired)
             if remaining <= 0:
-                raise ControlRefusal("native control send deadline exceeded")
+                raise ControlRefusal(
+                    "native control send deadline exceeded", reason="send_deadline"
+                )
             self.connection.settimeout(remaining)
             self.sequence = request.sequence
             self.last_response = None
@@ -949,16 +1030,16 @@ class ControlChannel:
             self.state = reply.state
             return reply
         except (OSError, ControlRefusal) as error:
-            self.close()
-            raise ControlRefusal("native control exchange refused: " + str(error)) from error
+            raise self._refuse(
+                "native control exchange refused: " + str(error), reason=_failure_reason(error)
+            ) from error
 
     def observe(self, timeout: float) -> ControlState:
         reply = self._exchange("status", timeout)
         if reply.event != "observed" and not (
             reply.event == "refused" and reply.reason == "control_stale_or_unavailable"
         ):
-            self.close()
-            raise ControlRefusal("native status request refused")
+            raise self._refuse("native status request refused")
         return reply.state
 
     def witness_blocked_editor(self, action: Literal["review", "confirm"], timeout: float) -> None:
@@ -981,8 +1062,7 @@ class ControlChannel:
             or reply.reason not in ("ordinary_handler_refused", "control_stale_or_unavailable")
             or reply.state != prior
         ):
-            self.close()
-            raise ControlRefusal("invalid allocation action changed state or escaped refusal")
+            raise self._refuse("invalid allocation action changed state or escaped refusal")
 
     def perform(
         self, action: Action, timeout: float, *, allow_review_refusal: bool = False
@@ -991,11 +1071,9 @@ class ControlChannel:
         if action == "review" and (
             prior is None or prior.phase != "Ready" or prior.selected_allocation is None
         ):
-            self.close()
-            raise ControlRefusal("native review requires a valid current selection")
+            raise self._refuse("native review requires a valid current selection")
         if action == "confirm" and (self._review_witness is None or self._review_witness != prior):
-            self.close()
-            raise ControlRefusal("native confirmation requires this channel's current review")
+            raise self._refuse("native confirmation requires this channel's current review")
         reply = self._exchange(action, timeout)
         observed_refusal = (
             allow_review_refusal
@@ -1008,19 +1086,16 @@ class ControlChannel:
         if not observed_refusal and (
             reply.event != expected_event(action) or reply.reason is not None
         ):
-            self.close()
             reason = f": {reply.reason}" if reply.reason is not None else ""
-            raise ControlRefusal("ordinary native handler refused the requested action" + reason)
+            raise self._refuse("ordinary native handler refused the requested action" + reason)
         if action == "step" and (
             reply.state.phase not in {"Ready", "Complete"}
             or reply.state.viewed_tick != reply.state.durable_tick
             or reply.state.advance_pending
         ):
-            self.close()
-            raise ControlRefusal("native period was not completely installed")
+            raise self._refuse("native period was not completely installed")
         if action == "inspect_practices" and reply.state.inspector != "Practices":
-            self.close()
-            raise ControlRefusal("native practice list did not open")
+            raise self._refuse("native practice list did not open")
         choice = (
             {
                 "choose_collect": "collect",
@@ -1039,8 +1114,7 @@ class ControlChannel:
             else None
         )
         if choice is not None and reply.state.choice != choice:
-            self.close()
-            raise ControlRefusal("native handler applied a different choice")
+            raise self._refuse("native handler applied a different choice")
         bounded_play = (
             action == "play"
             and reply.state.play_interlock is not None
@@ -1050,8 +1124,7 @@ class ControlChannel:
         if action in ("play", "pause") and reply.state.playing != (
             action == "play" and not bounded_play
         ):
-            self.close()
-            raise ControlRefusal("native playback acknowledgment has the wrong scheduling state")
+            raise self._refuse("native playback acknowledgment has the wrong scheduling state")
         if action == "review":
             command = reply.state.reviewed_command
             preview = reply.state.preview
@@ -1071,8 +1144,7 @@ class ControlChannel:
                 or preview.current_period != command.expected_period
                 or preview.resolves_period != command.expected_period + 1
             ):
-                self.close()
-                raise ControlRefusal("native preview differs from its selected original")
+                raise self._refuse("native preview differs from its selected original")
             self._review_witness = None if observed_refusal else reply.state
         if action == "confirm" and (
             prior is None
@@ -1083,8 +1155,7 @@ class ControlChannel:
             or reply.state.commitment.resolves_period != prior.preview.resolves_period
             or reply.state.commitment.command != prior.reviewed_command
         ):
-            self.close()
-            raise ControlRefusal("native acceptance failed to consume its reviewed original")
+            raise self._refuse("native acceptance failed to consume its reviewed original")
         return reply.state
 
 
@@ -1274,7 +1345,7 @@ def wait_ready(channel: ControlChannel, timeout: float, *, organizer: bool) -> C
         ):
             return current
         time.sleep(min(POLL_SECONDS, max(0, deadline - time.monotonic())))
-    raise ControlRefusal("native control readiness deadline exceeded")
+    raise ControlRefusal("native control readiness deadline exceeded", reason="readiness_deadline")
 
 
 def drive_pair(
@@ -1298,7 +1369,7 @@ def drive_pair(
     play_penultimate_close: bool = False,
     on_opened: Callable[[ControlState], None] | None = None,
     on_observed: Callable[[ControlState], None] | None = None,
-    cold_deadline: float | None = None,
+    cold_window: ColdControlWindow | None = None,
     wall_deadline: float | None = None,
     on_wall_expired: Callable[[], None] | None = None,
     on_spawned: Callable[[Literal["runtime", "client"], subprocess.Popen[bytes]], None]
@@ -1332,6 +1403,36 @@ def drive_pair(
         raise ControlRefusal("native choice schedule duplicates or exceeds the actual horizon")
     if not directory.is_dir() or directory.is_symlink():
         raise ControlRefusal("native drive requires its existing evidence directory")
+    cold_deadline = None
+    if cold_window is not None:
+        cold_deadline = cold_window.deadline_ns / 1e9
+        PrivateEvidence(directory).publish_json(
+            "native-cold-clock.json", cold_window.clock_record()
+        )
+
+    phase: ControlPhase = "socket_admission"
+    attempted_diagnostic = False
+
+    def diagnose(error: BaseException) -> None:
+        nonlocal attempted_diagnostic
+        if cold_window is None or attempted_diagnostic:
+            return
+        attempted_diagnostic = True
+        try:
+            PrivateEvidence(directory).publish_json(
+                "native-control-failure.json",
+                {
+                    **cold_window.clock_record(),
+                    "failed_monotonic_ns": time.monotonic_ns(),
+                    "phase": phase,
+                    "reason": _failure_reason(error),
+                },
+            )
+        except BaseException as publication:
+            raise BaseExceptionGroup(
+                "native control and diagnostic publication failed", [error, publication]
+            ) from None
+
     with ExitStack() as resources:
         temporary = tempfile.TemporaryDirectory(prefix="babylon-q-", dir="/tmp", delete=False)
         release_directory = True
@@ -1368,28 +1469,37 @@ def drive_pair(
                     deadline = min(deadline, cold_deadline)
                 remaining = remaining_control_time(deadline, wall_deadline, on_wall_expired)
                 if remaining <= 0:
-                    raise ControlRefusal("process-cold installation deadline exceeded")
+                    raise ControlRefusal(
+                        "process-cold installation deadline exceeded", reason="cold_deadline"
+                    )
                 return min(operation_timeout, remaining)
 
-            listener.settimeout(opening_timeout())
+            try:
+                listener.settimeout(opening_timeout())
+            except BaseException as error:
+                diagnose(error)
+                raise
 
-            def controlled(client: subprocess.Popen[bytes], capture: CaptureMonitor | None) -> None:
+            def admit_channel(
+                client: subprocess.Popen[bytes], capture: CaptureMonitor | None
+            ) -> ControlChannel:
                 listener.settimeout(opening_timeout())
                 try:
                     connection, _address = listener.accept()
                 except TimeoutError:
                     opening_timeout()
                     raise
-                _pid, uid, _gid = struct.unpack(
-                    "3i",
-                    connection.getsockopt(
-                        socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")
-                    ),
-                )
-                if uid != os.getuid() or _pid != client.pid:
-                    connection.close()
-                    raise ControlRefusal("native control socket peer is not the exact owned client")
                 try:
+                    _pid, uid, _gid = struct.unpack(
+                        "3i",
+                        connection.getsockopt(
+                            socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")
+                        ),
+                    )
+                    if uid != os.getuid() or _pid != client.pid:
+                        raise ControlRefusal(
+                            "native control socket peer is not the exact owned client"
+                        )
                     if capture is not None:
                         capture.check()
                     connection.settimeout(opening_timeout())
@@ -1406,31 +1516,46 @@ def drive_pair(
                         .encode("ascii")
                         + b"\n"
                     )
-                    channel = ControlChannel(
+                    return ControlChannel(
                         connection,
                         str(initial_target.campaign),
                         initial_tick,
                         check_capture=capture.check if capture is not None else None,
+                        on_refusal=diagnose,
                         on_observed=on_observed,
                         wall_deadline=wall_deadline,
                         on_wall_expired=on_wall_expired,
                     )
-                except TimeoutError:
-                    connection.close()
-                    opening_timeout()
+                except BaseException as error:
+                    try:
+                        diagnose(error)
+                    finally:
+                        connection.close()
+                    if isinstance(error, TimeoutError):
+                        opening_timeout()
                     raise
-                except BaseException:
-                    connection.close()
+
+            def controlled(client: subprocess.Popen[bytes], capture: CaptureMonitor | None) -> None:
+                nonlocal phase
+                try:
+                    channel = admit_channel(client, capture)
+                except BaseException as error:
+                    diagnose(error)
                     raise
+                phase = "initial_readiness"
                 result: Literal["incomplete", "completed"] = "incomplete"
                 failure: BaseException | None = None
                 try:
                     current = wait_ready(channel, opening_timeout(), organizer=False)
+                    phase = "opening_navigation"
                     opening_deadline = time.monotonic() + opening_timeout()
                     while current.splash_visible or current.menu_open:
                         remaining = opening_deadline - time.monotonic()
                         if remaining <= 0:
-                            raise ControlRefusal("native opening navigation deadline exceeded")
+                            raise ControlRefusal(
+                                "native opening navigation deadline exceeded",
+                                reason="navigation_deadline",
+                            )
                         if current.opening_stage == "Warning":
                             channel.perform("continue_warning", remaining)
                         elif current.opening_stage == "Title":
@@ -1438,19 +1563,28 @@ def drive_pair(
                         time.sleep(min(POLL_SECONDS, max(0, opening_deadline - time.monotonic())))
                         remaining = opening_deadline - time.monotonic()
                         if remaining <= 0:
-                            raise ControlRefusal("native opening navigation deadline exceeded")
+                            raise ControlRefusal(
+                                "native opening navigation deadline exceeded",
+                                reason="navigation_deadline",
+                            )
                         current = channel.observe(remaining)
                         if time.monotonic() > opening_deadline:
-                            raise ControlRefusal("native opening navigation deadline exceeded")
+                            raise ControlRefusal(
+                                "native opening navigation deadline exceeded",
+                                reason="navigation_deadline",
+                            )
                     if current.primary_view != "Organizer":
                         channel.perform("open_organizer", opening_timeout())
+                    phase = "organizer_readiness"
                     current = wait_ready(channel, opening_timeout(), organizer=True)
+                    phase = "opening_boundary"
                     if on_opened is not None:
                         on_opened(current)
                     on_boundary(current)
                     if on_installed is not None:
                         on_installed(channel, endpoint.parent, current)
                     for offset in range(periods):
+                        phase = "advance"
                         if planned := schedule.get(current.durable_tick + 1):
                             submit_choice(channel, planned, operation_timeout)
                         before = current.durable_tick
@@ -1503,6 +1637,7 @@ def drive_pair(
                                 "ordinary advance installed outside the requested single close"
                             )
                         on_boundary(current)
+                        phase = "recovery"
                         current = channel.perform("reopen", operation_timeout)
                         current = wait_ready(channel, operation_timeout, organizer=True)
                         on_recovery(current)
@@ -1511,12 +1646,18 @@ def drive_pair(
                         write_observations(
                             directory / "native-controls.json", channel, "incomplete"
                         )
+                    phase = "finalization"
                     if capture is not None:
                         capture.finish()
                     channel.perform("quit", operation_timeout)
                     result = "completed"
                 except BaseException as error:
                     failure = error
+                    try:
+                        diagnose(error)
+                    except BaseException as diagnostic_failure:
+                        failure = diagnostic_failure
+                        raise
                     raise
                 finally:
                     finish_observations(

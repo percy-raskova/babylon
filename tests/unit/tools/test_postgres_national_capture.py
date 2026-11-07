@@ -131,6 +131,82 @@ def test_live_supervisor_refuses_incomplete_or_changed_sql_observation(tmp_path,
     assert (tmp_path / "calls").read_text().splitlines() == ["call"]
 
 
+@pytest.mark.parametrize("route", ["national_verify_live", "national_verify_live_authority"])
+@pytest.mark.parametrize("fault", [None, "physical", "oid", "lease", "mode", "roles", "client"])
+def test_media_live_authority_and_physical_components(tmp_path, route, fault):
+    canary = "12" * 16
+    suffix = canary[:12]
+    names = {
+        f"national_{role}_{suffix}": oid
+        for role, oid in (("observer", 51), ("reader", 52), ("writer", 53))
+    }
+    frozen = json.dumps(names, sort_keys=True)
+    (tmp_path / "native-role-oids.json").write_text(frozen + "\n")
+    (tmp_path / "native-role-oids.json").chmod(0o600)
+    if fault == "oid":
+        names[f"national_reader_{suffix}"] += 1
+    observed = json.dumps(names, sort_keys=True)
+    database = f"national_{suffix}"
+    packet = f"{canary}|babylon_test,{database},postgres,template0,template1|42|"
+    packet += ("1" if fault in {"roles", "client"} else "0") + "|" + observed
+    script = r"""
+source "$1"
+umask 077
+printf '%s\n' original > "$NATIONAL_RECORD"
+cp "$NATIONAL_RECORD" "$BABYLON_STORAGE_REPORT_DIRECTORY/ownership"
+case "$FAULT" in
+  lease) printf '%s\n' changed > "$NATIONAL_RECORD" ;;
+  mode) chmod 0644 "$BABYLON_STORAGE_REPORT_DIRECTORY/ownership" ;;
+esac
+wayne_media() {
+  printf 'physical\n' >> "$BABYLON_STORAGE_REPORT_DIRECTORY/events"
+  [ "$FAULT" != physical ] || return 1
+  printf '%s\n' original
+}
+national_sql() {
+  printf 'authority\n' >> "$BABYLON_STORAGE_REPORT_DIRECTORY/events"
+  [[ "$1" = *pg_auth_members* && "$1" = *bad_clients* && "$1" = *rolbypassrls* &&
+     "$1" = *"r.oid"* ]] || return 1
+  printf '%s\n' "$PACKET"
+}
+"$2"
+"""
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "media-probe",
+            str(REPOSITORY / "tools/postgres_national_lifecycle.sh"),
+            route,
+        ],
+        env={
+            "PATH": os.defpath,
+            "BABYLON_WAYNE_PROFILE": "smoke-01",
+            "BABYLON_STORAGE_REPORT_DIRECTORY": str(tmp_path),
+            "NATIONAL_RECORD": str(tmp_path / "active"),
+            "CANARY": canary,
+            "NATIONAL_DATABASE": database,
+            "NATIONAL_WRITER": f"national_writer_{suffix}",
+            "NATIONAL_DATABASE_OID": "42",
+            "PACKET": packet,
+            "FAULT": fault or "",
+            "CONTAINER_ID": "a" * 64,
+            "IMAGE_ID": "b" * 64,
+            "VOLUME": "fixture",
+        },
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+    complete = route == "national_verify_live"
+    assert (result.returncode == 0) == (fault is None or fault == "physical" and not complete)
+    assert not result.stdout
+    if result.returncode == 0:
+        events = (tmp_path / "events").read_text().splitlines()
+        assert events == (["physical", "authority"] if complete else ["authority"])
+
+
 @pytest.mark.parametrize("oid", ["", "42"])
 def test_terminal_supervisor_preserves_private_identity_without_live_role_checks(tmp_path, oid):
     result = _supervisor_probe(tmp_path, oid=oid, live=False)

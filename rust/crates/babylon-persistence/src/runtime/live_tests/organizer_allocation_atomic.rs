@@ -60,7 +60,7 @@ use uuid::Uuid;
 
 type Result<T> = StdResult<T, Box<dyn Error>>;
 const EXACT: &str = "runtime::live_tests::organizer_allocation_atomic::national_collection_and_local_cash_survive_sql_retries";
-const RUN: &str = "/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-02/sql-01";
+const RUN: &str = "/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-03/sql-01";
 const CASH: i128 = 1_450_000_000;
 const STAGES: [&str; 21] = [
     "bootstrap",

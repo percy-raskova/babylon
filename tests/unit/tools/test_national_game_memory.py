@@ -775,7 +775,7 @@ def test_failed_pause_after_actual_freeze_is_reconciled_and_unpaused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A modeled Docker timeout after pause; no real Docker/PG is touched."""
-    scope = memory.OwnedPostgresScope(postgres_admission(), lambda: None)
+    scope = memory.OwnedPostgresScope(postgres_admission(), lambda: None, lambda: None)
     paused = False
     commands = []
 
@@ -801,7 +801,11 @@ def test_failed_pause_after_actual_freeze_is_reconciled_and_unpaused(
     monkeypatch.setattr(memory, "docker_command", command)
     monkeypatch.setattr(memory, "docker_state", state)
     monkeypatch.setattr(scope, "verify", lambda **_kwargs: (17,))
-    with pytest.raises(memory.CaptureRefusal, match="pause timed out"), scope.quiescent(timeout=2):
+    with (
+        pytest.raises(memory.CaptureRefusal, match="pause timed out"),
+        scope._capture(sequence=1, timeout=2) as freeze,
+        freeze(),
+    ):
         pytest.fail("a failed pause must not publish a sample")
     assert commands == ["pause", "unpause"] and not paused
 
@@ -809,7 +813,7 @@ def test_failed_pause_after_actual_freeze_is_reconciled_and_unpaused(
 def test_postgres_helper_failure_unpauses_and_preserves_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    scope = memory.OwnedPostgresScope(postgres_admission(), lambda: None)
+    scope = memory.OwnedPostgresScope(postgres_admission(), lambda: None, lambda: None)
     paused = False
 
     def command(arguments: list[str], *, timeout: float) -> bytes:
@@ -831,7 +835,11 @@ def test_postgres_helper_failure_unpauses_and_preserves_failure(
     monkeypatch.setattr(scope, "verify", lambda **_kwargs: (17,))
     monkeypatch.setattr(memory, "read_kernel_record", lambda _path: stat())
     monkeypatch.setattr(memory, "verify_process_credentials", lambda *_args: None)
-    with pytest.raises(RuntimeError, match="helper failed"), scope.quiescent(timeout=2):
+    with (
+        pytest.raises(RuntimeError, match="helper failed"),
+        scope._capture(sequence=1, timeout=2) as freeze,
+        freeze(),
+    ):
         assert paused
         raise RuntimeError("helper failed")
     assert not paused
@@ -846,16 +854,16 @@ def test_crossing_capture_is_unassigned_only_after_normal_publication_and_restor
     transition: str,
 ) -> None:
     """Actual native children, modeled PostgreSQL barrier and committed markers."""
-    pg = memory.OwnedPostgresScope(postgres_admission(), lambda: None)
+    pg = memory.OwnedPostgresScope(postgres_admission(), lambda: None, lambda: None)
     binding = memory.ProcessBinding(
         pid=17, start_time_ticks=123, role="game-postgresql", executable_sha256="c" * 64
     )
 
     @contextmanager
-    def pg_barrier(*, timeout: float) -> Iterator[tuple[memory.ProcessBinding, ...]]:
+    def pg_barrier(**_kwargs) -> Iterator[tuple[memory.ProcessBinding, ...]]:
         yield (binding,)
 
-    monkeypatch.setattr(pg, "quiescent", pg_barrier)
+    monkeypatch.setattr(pg, "_quiescent", pg_barrier)
     monkeypatch.setattr(
         pg,
         "observe",
@@ -1034,16 +1042,16 @@ def test_running_capture_authenticates_each_exact_child_executable_once_per_life
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Real native barriers revalidate the authenticated, immutable running inode."""
-    pg = memory.OwnedPostgresScope(postgres_admission(), lambda: None)
+    pg = memory.OwnedPostgresScope(postgres_admission(), lambda: None, lambda: None)
     binding = memory.ProcessBinding(
         pid=17, start_time_ticks=123, role="game-postgresql", executable_sha256="c" * 64
     )
 
     @contextmanager
-    def pg_barrier(*, timeout: float) -> Iterator[tuple[memory.ProcessBinding, ...]]:
+    def pg_barrier(**_kwargs) -> Iterator[tuple[memory.ProcessBinding, ...]]:
         yield (binding,)
 
-    monkeypatch.setattr(pg, "quiescent", pg_barrier)
+    monkeypatch.setattr(pg, "_quiescent", pg_barrier)
     monkeypatch.setattr(
         pg,
         "observe",
@@ -1271,7 +1279,7 @@ def capture_runner(
         foundation_sha256=foundation,
         runtime_sha256=executable_sha(children[0]),
         client_sha256=executable_sha(children[1]),
-        postgres=memory.OwnedPostgresScope(postgres_admission(), lambda: None),
+        postgres=memory.OwnedPostgresScope(postgres_admission(), lambda: None, lambda: None),
         read_marker=lambda: memory.CampaignMemoryMarker(
             campaign="81b979ee-a9c1-48fd-8835-06cbfe594675",
             foundation_sha256="a" * 64,
@@ -1283,6 +1291,199 @@ def capture_runner(
         operation_lock=operation_lock,
         cold_segment_period=cold_segment_period,
     )
+
+
+class ModeledFreezer:
+    def __init__(
+        self,
+        pg: memory.OwnedPostgresScope,
+        native_state: Callable[[bool], None],
+        events: list[str],
+        fault: str | None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self.paused = False
+        self.admission = pg.admission
+        self.native_state = native_state
+        self.events = events
+        self.fault = fault
+        original_read = memory.read_kernel_record
+
+        def read_kernel(path: Path, *, allow_empty: bool = False) -> bytes:
+            if path == Path("/proc/17/stat"):
+                return stat()
+            return original_read(path, allow_empty=allow_empty)
+
+        monkeypatch.setattr(memory, "read_kernel_record", read_kernel)
+        monkeypatch.setattr(memory, "verify_process_credentials", lambda *_args: None)
+        monkeypatch.setattr(memory, "docker_command", self.command)
+        monkeypatch.setattr(memory, "docker_state", self.state)
+        monkeypatch.setattr(pg, "verify", self.verify)
+
+    def command(self, arguments: list[str], *, timeout: float) -> bytes:
+        self.events.append(arguments[0])
+        self.native_state(True)
+        self.paused = arguments[0] == "pause"
+        if self.paused and self.fault == "pause":
+            raise memory.CaptureRefusal("partial pause")
+        return b""
+
+    def verify(self, *, timeout: float, paused: bool) -> tuple[int, ...]:
+        if not paused and "unpause" in self.events and self.fault == "restore":
+            raise memory.CaptureRefusal("unproven restoration")
+        assert paused == self.paused
+        return (17,)
+
+    def state(self, _cid: str, *, timeout: float) -> memory.DockerState:
+        return memory.DockerState(
+            container_id=self.admission.container_id,
+            image_id=self.admission.image_id,
+            host_pid=17,
+            running=True,
+            paused=self.paused,
+        )
+
+
+def assert_failed_capture(
+    collector: memory.RunningMemoryCapture,
+    events: list[str],
+    fault: str,
+    error: BaseException,
+) -> None:
+    reasons = [str(leaf) for leaf in leaf_errors(error)]
+    expected = {
+        "counter-and-post": ["counter", "physical-post"],
+        "crossing-post": ["physical-post"],
+        "restore": ["unproven restoration"],
+        "pause": ["partial pause"],
+    }
+    assert reasons == expected.get(fault, [fault])
+    assert not collector._samples and collector._unassigned_count == 0
+    assert not list(collector._records.glob("*.json"))
+    assert not list(collector._unassigned_records.glob("*.json"))
+    if fault in {"physical-pre", "authority-pre", "restore"}:
+        assert "physical-post" not in events
+    else:
+        assert events[-1] == "physical-post"
+    if fault == "physical-pre":
+        assert events == ["physical-pre"]
+    if fault == "restore":
+        assert "authority-post" not in events
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "physical-pre",
+        "physical-post",
+        "counter-and-post",
+        "pause",
+        "restore",
+        "authority-pre",
+        "authority-post",
+        "crossing",
+        "crossing-post",
+        "cancelled",
+    ],
+)
+def test_capture_brackets_physical_owner_while_children_run(
+    tmp_path: Path,
+    owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str | None,
+) -> None:
+    collector = capture_runner(tmp_path, owned_children)
+    events: list[str] = []
+    pg = collector._postgres
+
+    def native_state(stopped: bool) -> None:
+        for binding in native.bindings:
+            assert all((row.state == "T") == stopped for row in memory.thread_census(binding))
+
+    freezer = ModeledFreezer(pg, native_state, events, fault, monkeypatch)
+
+    def physical() -> None:
+        stage = "physical-post" if events else "physical-pre"
+        events.append(stage)
+        native_state(False)
+        assert not freezer.paused
+        assert not list(collector._records.glob("*.json"))
+        assert not list(collector._unassigned_records.glob("*.json"))
+        if fault == stage or (
+            stage == "physical-post" and fault in {"counter-and-post", "crossing-post"}
+        ):
+            raise memory.CaptureRefusal(stage)
+
+    def authority() -> None:
+        stage = "authority-post" if "pause" in events else "authority-pre"
+        events.append(stage)
+        native_state(True)
+        assert not freezer.paused
+        if fault == stage:
+            raise memory.CaptureRefusal(stage)
+
+    def marker():
+        native_state(True)
+        assert not freezer.paused
+        events.append("marker")
+        mark = original_marker()
+        if fault in {"crossing", "crossing-post"} and events.count("marker") == 2:
+            return memory.CampaignMemoryMarker(
+                campaign=mark.campaign,
+                foundation_sha256=mark.foundation_sha256,
+                campaign_age_ticks=1,
+                tick_content_hash="b" * 64,
+            )
+        return mark
+
+    def observe(bindings, *, timeout):
+        native_state(True)
+        assert freezer.paused
+        events.append("pg-count")
+        if fault == "counter-and-post":
+            raise memory.CaptureRefusal("counter")
+        if fault == "cancelled":
+            raise KeyboardInterrupt("cancelled")
+        return memory.decode_postgres_observations(helper_frame(bindings[0]), bindings)
+
+    native_observe = memory._NativeCapture.observe
+
+    def observe_native(capture):
+        native_state(True)
+        assert freezer.paused
+        events.append("native-count")
+        return native_observe(capture)
+
+    original_marker = collector._read_marker
+    collector._read_marker = marker
+    monkeypatch.setattr(pg, "_verify_physical_owner", physical)
+    monkeypatch.setattr(pg, "_verify_live_authority", authority)
+    monkeypatch.setattr(pg, "observe", observe)
+    monkeypatch.setattr(memory._NativeCapture, "observe", observe_native)
+    with pair(owned_children) as native:
+        if fault is None or fault == "crossing":
+            collector._capture_periodic(native)
+            assert events == [
+                "physical-pre",
+                "marker",
+                "authority-pre",
+                "pause",
+                "native-count",
+                "pg-count",
+                "unpause",
+                "authority-post",
+                "marker",
+                "physical-post",
+            ]
+            assert len(collector._samples) == int(fault is None)
+            assert collector._unassigned_count == int(fault == "crossing")
+        else:
+            with pytest.raises(BaseException) as refused:
+                collector._capture_periodic(native)
+            assert_failed_capture(collector, events, fault, refused.value)
+        native_state(False)
+        assert not freezer.paused
 
 
 @pytest.mark.parametrize("failure", [None, "counter", "cancelled"])
@@ -1311,7 +1512,7 @@ def test_counter_interval_is_bracketed_and_evidence_waits_for_native_restore(
             assert all(thread.state != "T" for thread in memory.thread_census(row))
 
     @contextmanager
-    def pg_barrier(*, timeout: float) -> Iterator[tuple[memory.ProcessBinding, ...]]:
+    def pg_barrier(**_kwargs) -> Iterator[tuple[memory.ProcessBinding, ...]]:
         events.append("postgres-stopped")
         try:
             yield (binding,)
@@ -1339,7 +1540,7 @@ def test_counter_interval_is_bracketed_and_evidence_waits_for_native_restore(
         original_write(destination, record)
 
     collector._read_marker = marker
-    monkeypatch.setattr(collector._postgres, "quiescent", pg_barrier)
+    monkeypatch.setattr(collector._postgres, "_quiescent", pg_barrier)
     monkeypatch.setattr(collector._postgres, "observe", observe)
     monkeypatch.setattr(memory, "write_capture_record", write)
     with pair(owned_children) as native:
@@ -1606,7 +1807,7 @@ def test_helper_scope_is_fixed_and_cancellation_removes_only_authenticated_helpe
         pytest.fail("unexpected helper operation")
 
     monkeypatch.setattr(memory, "docker_command", command)
-    scope = memory.OwnedPostgresScope(postgres_admission(), lambda: None)
+    scope = memory.OwnedPostgresScope(postgres_admission(), lambda: None, lambda: None)
     binding = memory.ProcessBinding(
         pid=17, start_time_ticks=123, role="game-postgresql", executable_sha256="c" * 64
     )

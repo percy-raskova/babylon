@@ -272,11 +272,31 @@ print(value)
 ' "$BABYLON_STORAGE_REPORT_DIRECTORY/policy.json" "${BABYLON_NATIONAL_STORAGE_PERIODS:-}"
 }
 
-# Shared nonmutating authority for live capture and terminal retention. A live
-# game admits only its confined capabilities; terminal retention still requires
-# every client to have exited. Neither path terminates a racing client.
-national_verify_identity() {
-  local identity inventory packet live=0 role_cte="" refused_sql=0
+national_private_owner_file() {
+  [ -f "$1" ] && [ ! -L "$1" ] && [ -O "$1" ] && [ "$(stat -c '%a' "$1")" = 600 ]
+}
+
+national_verify_owner_files() {
+  national_private_owner_file "$NATIONAL_RECORD" || return 1
+  if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+    local frozen="$BABYLON_STORAGE_REPORT_DIRECTORY/ownership"
+    national_private_owner_file "$frozen" && cmp -s -- "$NATIONAL_RECORD" "$frozen" || return 1
+  fi
+}
+
+national_verify_physical_owner() {
+  [ "$#" -eq 0 ] && national_verify_owner_files || return 1
+  (set -o pipefail; national_record_contents | cmp -s -- "$NATIONAL_RECORD" -) || return 1
+  if [ -z "${BABYLON_WAYNE_PROFILE:-}" ]; then
+    local identity
+    identity="$(docker inspect --format '{{.Id}}|{{.Image}}|{{index .Config.Labels "babylon.disposable_runtime"}}|{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$CONTAINER_ID")" || return 1
+    [ "$identity" = "$CONTAINER_ID|$IMAGE_ID|$CANARY|$VOLUME" ] || return 1
+  fi
+}
+
+# Compare the single fresh authority packet while the exact container is running.
+national_verify_database_authority() {
+  local packet expected live=0 role_cte="" refused_sql=0 role_oids_sql=""
   case "$#" in
     0) ;;
     1) [ "$1" = --live ] || return 1; live=1 ;;
@@ -287,19 +307,13 @@ national_verify_identity() {
       [ "$NATIONAL_DATABASE" = "national_${CANARY:0:12}" ] &&
       [ "$NATIONAL_WRITER" = "national_writer_${CANARY:0:12}" ] &&
       [[ "${NATIONAL_DATABASE_OID:-}" =~ ^[1-9][0-9]*$ ]] || return 1
-  fi
-  [ -f "$NATIONAL_RECORD" ] && [ ! -L "$NATIONAL_RECORD" ] || return 1
-  [ "$(stat -c '%a' "$NATIONAL_RECORD")" = 600 ] || return 1
-  cmp -s -- "$NATIONAL_RECORD" <(national_record_contents) || return 1
-  if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
-    cmp -s -- "$NATIONAL_RECORD" "$BABYLON_STORAGE_REPORT_DIRECTORY/ownership" || return 1
-    # Recomputed media owner above already reauthenticates the physical cluster.
-    identity="$CONTAINER_ID|$IMAGE_ID|$CANARY|$VOLUME"
-  else
-  identity="$(docker inspect --format '{{.Id}}|{{.Image}}|{{index .Config.Labels "babylon.disposable_runtime"}}|{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$CONTAINER_ID")" || return 1
-  [ "$identity" = "$CONTAINER_ID|$IMAGE_ID|$CANARY|$VOLUME" ] || return 1
-  fi
-  if [ "$live" -eq 1 ]; then
+    if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+      national_private_owner_file "$BABYLON_STORAGE_REPORT_DIRECTORY/native-role-oids.json" || return 1
+      # Match the sorted JSON object published by PrivateEvidence.publish_json.
+      role_oids_sql=", (SELECT '{' || string_agg(to_json(r.rolname)::text || ': ' || r.oid::text,
+        ', ' ORDER BY r.rolname COLLATE \"C\") || '}' FROM pg_catalog.pg_roles r
+        JOIN expected e ON e.name=r.rolname WHERE e.login)"
+    fi
     role_cte="
 WITH expected(name,login,parent) AS (VALUES
   ('$NATIONAL_WRITER',true,NULL::text),
@@ -334,18 +348,33 @@ SELECT pg_catalog.current_setting('babylon.disposable_runtime',true),
   CASE WHEN '$NATIONAL_DATABASE_OID'='' THEN '' ELSE
     (SELECT oid::text FROM pg_catalog.pg_database WHERE datname='$NATIONAL_DATABASE'
       AND datdba=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='$NATIONAL_WRITER')) END,
-  $refused_sql;")" || return 1
-  [ "$packet" = "$CANARY|babylon_test,$NATIONAL_DATABASE,postgres,template0,template1|$NATIONAL_DATABASE_OID|0" ] || return 1
-  if [ "$live" -eq 0 ]; then
-    inventory="${packet#*|}"
-    inventory="${inventory%%|*}"
-    printf '%s\n' "$identity" "$inventory"
+  $refused_sql$role_oids_sql;")" || return 1
+  expected="$CANARY|babylon_test,$NATIONAL_DATABASE,postgres,template0,template1|$NATIONAL_DATABASE_OID|0"
+  if [ -n "$role_oids_sql" ]; then
+    [[ "$packet" = "$expected|"* ]] || return 1
+    cmp -s -- "$BABYLON_STORAGE_REPORT_DIRECTORY/native-role-oids.json" <(printf '%s\n' "${packet#"$expected|"}") || return 1
+  else
+    [ "$packet" = "$expected" ] || return 1
   fi
 }
 
+national_verify_live_authority() {
+  [ "$#" -eq 0 ] && national_verify_owner_files && national_verify_database_authority --live
+}
+
 national_verify_live() {
-  [ "$#" -eq 0 ] || return 1
-  national_verify_identity --live
+  [ "$#" -eq 0 ] && national_verify_identity --live
+}
+
+national_verify_identity() {
+  if [ "$#" -ne 0 ]; then
+    [ "$#" -eq 1 ] && [ "$1" = --live ] || return 1
+    shift
+    national_verify_physical_owner "$@" && national_verify_live_authority "$@"
+    return
+  fi
+  national_verify_physical_owner "$@" && national_verify_database_authority || return 1
+  printf '%s\n' "$CONTAINER_ID|$IMAGE_ID|$CANARY|$VOLUME" "babylon_test,$NATIONAL_DATABASE,postgres,template0,template1"
 }
 
 national_verify_success() {

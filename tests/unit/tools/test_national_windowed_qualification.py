@@ -6,6 +6,7 @@ import json
 import socket
 import sys
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -587,6 +588,73 @@ def test_slow_fragments_cannot_reset_the_overall_response_deadline(
     assert not channel.records
     assert peer.closed
     assert peer.timeouts == pytest.approx([0.05, 0.05, 0.03, 0.01])
+
+
+def test_cold_first_reply_failure_is_private_and_precedes_capture_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started_ns = time.monotonic_ns()
+    runtime = tmp_path / "runtime"
+    client = tmp_path / "client"
+    runtime.write_text(f"#!{sys.executable}\nimport sys\nsys.stdin.buffer.read()\n")
+    client.write_text(
+        f"#!{sys.executable}\nimport sys,socket\n"
+        "s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)\n"
+        "s.connect(sys.argv[sys.argv.index('--qualification-control')+1])\n"
+        "r=s.makefile('rb'); r.readline(); r.readline(); s.close()\n"
+    )
+    runtime.chmod(0o700)
+    client.chmod(0o700)
+    seen = []
+    diagnosis_before_close: list[bool] = []
+    original_close = windowed.ControlChannel.close
+
+    def close(channel: windowed.ControlChannel) -> None:
+        diagnosis_before_close.append((tmp_path / "native-control-failure.json").is_file())
+        original_close(channel)
+
+    monkeypatch.setattr(windowed.ControlChannel, "close", close)
+
+    @contextmanager
+    def monitor(*_children):
+        try:
+            yield None
+        finally:
+            path = tmp_path / "native-control-failure.json"
+            seen.append(json.loads(path.read_bytes()))
+            assert path.stat().st_mode & 0o077 == 0
+
+    with pytest.raises(windowed.ControlRefusal):
+        windowed.drive_pair(
+            runtime,
+            client,
+            tmp_path,
+            {},
+            {},
+            defines_path=tmp_path / "d",
+            initial_target=windowed.launcher.OpenCampaignTarget(windowed.UUID(CAMPAIGN)),
+            initial_tick=0,
+            periods=0,
+            directory=tmp_path,
+            operation_timeout=2,
+            on_started=lambda *_args: None,
+            on_boundary=lambda _state: None,
+            on_recovery=lambda _state: None,
+            capture_lifecycle=monitor,
+            cold_window=windowed.ColdControlWindow(started_ns, 180),
+        )
+    assert diagnosis_before_close and all(diagnosis_before_close)
+    assert len(seen) == 1
+    failed = seen[0]
+    assert failed.pop("failed_monotonic_ns") >= started_ns
+    assert failed == {
+        "version": 1,
+        "phase": "initial_readiness",
+        "reason": "response_ended",
+        "cold_started_monotonic_ns": started_ns,
+        "cold_deadline_monotonic_ns": started_ns + 180_000_000_000,
+    }
 
 
 def test_failed_evidence_write_still_closes_and_preserves_original_failure(

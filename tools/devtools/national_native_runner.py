@@ -60,6 +60,7 @@ from tools.devtools.national_windowed_qualification import (
     AidAmounts,
     Bytes32,
     Choice,
+    ColdControlWindow,
     CollectionAllocation,
     CollectionAmount,
     Command,
@@ -341,18 +342,39 @@ class NativeRun:
 
     def verify_live(self) -> None:
         with self.operation_lock:
-            self._verify_live_locked()
+            self._verify_supervisor("national_verify_live")
 
-    def _verify_live_locked(self) -> None:
-        if private_bytes(self.lease, 4096) != self.ownership:
+    def _verify_physical_owner(self) -> None:
+        self._verify_supervisor("national_verify_physical_owner")
+
+    def _verify_capture_authority(self) -> None:
+        # Anonymous volumes keep their original stopped-side Docker inspection.
+        if self.wayne_profile is None:
+            self.verify_live()
+        else:
+            self._verify_supervisor("national_verify_live_authority")
+
+    def _verify_supervisor(
+        self,
+        operation: Literal[
+            "national_verify_live",
+            "national_verify_physical_owner",
+            "national_verify_live_authority",
+        ],
+    ) -> None:
+        if (
+            private_bytes(self.lease, 4096) != self.ownership
+            or private_bytes(self.directory / "ownership", 4096) != self.ownership
+        ):
             raise NativeRunRefusal("national ownership changed during the native run")
         result = subprocess.run(
             [
                 "bash",
                 "-c",
-                'source "$1"; national_verify_live',
+                'source "$1" && "$2"',
                 "national-native",
                 str(self.root / "tools/postgres_national_lifecycle.sh"),
+                operation,
             ],
             env=self.supervisor,
             cwd=self.root,
@@ -595,7 +617,9 @@ class NativeRun:
             foundation_sha256=self._foundation,
             runtime_sha256=self.binaries[self.runtime],
             client_sha256=self.binaries[self.client],
-            postgres=memory.OwnedPostgresScope(admission, self.verify_live),
+            postgres=memory.OwnedPostgresScope(
+                admission, self._verify_physical_owner, self._verify_capture_authority
+            ),
             read_marker=self.marker,
             sample_gap_seconds=self.policy.maximum_combined_memory_sample_gap_seconds,
             operation_timeout=30,
@@ -1133,7 +1157,7 @@ class NativeRun:
             directory=self.directory,
             operation_timeout=self.timeout,
             on_started=started,
-            cold_deadline=cold_start / 1e9 + self.policy.maximum_cold_open_seconds
+            cold_window=ColdControlWindow(cold_start, self.policy.maximum_cold_open_seconds)
             if self.wayne_profile
             else None,
             on_opened=lambda state: self.check_budget(
@@ -2088,7 +2112,9 @@ class WayneWalk:
             on_recovery=self.run.on_recovery if main else lambda _state: None,
             on_opened=self.cold_install,
             on_observed=self.observed,
-            cold_deadline=self.process_start / 1e9 + self.run.policy.maximum_cold_open_seconds,
+            cold_window=ColdControlWindow(
+                self.process_start, self.run.policy.maximum_cold_open_seconds
+            ),
             on_installed=self.installed,
             play_penultimate_close=main,
             capture_lifecycle=self.segment_capture.lifecycle,

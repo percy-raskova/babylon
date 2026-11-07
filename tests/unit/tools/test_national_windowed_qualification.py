@@ -1331,3 +1331,48 @@ def test_witnessed_acceptance_must_clear_and_match_original(
     with pytest.raises(windowed.ControlRefusal):
         channel.perform("confirm", 1)
     assert channel.sequence == 3
+
+
+@pytest.mark.parametrize("case", ["matching", "changed", "unwitnessed", "refused"])
+def test_capture_preserves_only_its_witnessed_review(
+    organizer_channel: OrganizerChannel, case: str
+) -> None:
+    channel, peer = organizer_channel
+    command, preview, commitment = admission_fields("local_aid", 0, nonce=87)
+    reviewed = {"choice": "local_aid", "reviewed_command": command, "preview": preview}
+    peer.sendall(response(1, **(reviewed if case == "unwitnessed" else {"choice": "local_aid"})))
+    channel.observe(1)
+    if case != "unwitnessed":
+        peer.sendall(response(2, "preview_admitted", **reviewed))
+        channel.perform("review", 1)
+    sequence = channel.sequence + 1
+    if case == "refused":
+        frame = json.loads(response(sequence, "refused", **reviewed))
+        frame["reason"] = "capture_image_invalid"
+        peer.sendall(json.dumps(frame).encode() + b"\n")
+        with pytest.raises(windowed.ControlRefusal, match="capture_image_invalid"):
+            channel.perform("capture_frame", 1)
+    else:
+        captured = {**reviewed, "generation": 2} if case == "changed" else reviewed
+        peer.sendall(response(sequence, "frame_captured", **captured))
+        pictured = channel.perform("capture_frame", 1)
+        if case == "matching":
+            peer.sendall(
+                response(
+                    sequence + 1, "acceptance_admitted", choice="local_aid", commitment=commitment
+                )
+            )
+            accepted = channel.perform("confirm", 1).commitment
+            assert accepted == windowed.Commitment.model_validate(commitment)
+            assert accepted is not None and accepted.command == pictured.reviewed_command
+            with peer.makefile("rb") as requests:
+                assert [
+                    json.loads(requests.readline())["action"] for _ in range(channel.sequence)
+                ] == ["status", "review", "capture_frame", "confirm"]
+            # Replaying the pictured readback cannot revive the consumed Review.
+            peer.sendall(response(channel.sequence + 1, **reviewed))
+            channel.observe(1)
+    last_sent = channel.sequence
+    with pytest.raises(windowed.ControlRefusal, match="requires this channel's current review"):
+        channel.perform("confirm", 1)
+    assert channel.sequence == last_sent

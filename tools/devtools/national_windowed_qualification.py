@@ -739,8 +739,8 @@ class ControlChannel:
                     )
                 )
             if (
-                action != "status"
-                or reply.event != "observed"
+                action not in ("status", "capture_frame")
+                or reply.event != expected_event(action)
                 or reply.reason is not None
                 or reply.state != self._review_witness
             ):

@@ -358,7 +358,7 @@ pub fn validate_organizer_state(state: &OrganizerState) -> Result<(), OrganizerE
     Ok(())
 }
 
-/// Validate one period's exact evidence against the captured contracts.
+/// Validate one period's exact evidence, including agreement with captured opening reports.
 ///
 /// # Errors
 ///
@@ -368,7 +368,37 @@ pub fn validate_organizer_period_entries(
     config: &OrganizerConfig,
     entries: &OrganizerPeriodJournalEntries,
 ) -> Result<(), OrganizerError> {
+    validate_journal_contents(config, std::slice::from_ref(entries))
+}
+
+fn validate_journal_contents(
+    config: &OrganizerConfig,
+    periods: &[OrganizerPeriodJournalEntries],
+) -> Result<(), OrganizerError> {
     validate_organizer_config(config)?;
+    let mut prior = None;
+    for entries in periods {
+        if prior.is_some_and(|period| period >= entries.period) {
+            return Err(OrganizerError::InvalidState);
+        }
+        prior = Some(entries.period);
+        validate_period_rows(config, entries)?;
+    }
+    if !consistent_partner_reports(
+        config
+            .initial_observations
+            .iter()
+            .chain(periods.iter().flat_map(|entries| &entries.observations)),
+    ) {
+        return Err(OrganizerError::InvalidState);
+    }
+    Ok(())
+}
+
+fn validate_period_rows(
+    config: &OrganizerConfig,
+    entries: &OrganizerPeriodJournalEntries,
+) -> Result<(), OrganizerError> {
     if entries.period == 0
         || entries.observations.len() > MAX_ORGANIZER_ROWS
         || entries.receipts.len() > MAX_ORGANIZER_ROWS
@@ -389,9 +419,6 @@ pub fn validate_organizer_period_entries(
         if row.practice.period != entries.period || !receipt_ids.insert(row.practice.receipt_id) {
             return Err(OrganizerError::InvalidState);
         }
-    }
-    if !consistent_partner_reports(entries.observations.iter()) {
-        return Err(OrganizerError::InvalidState);
     }
     let mut observation_ids = BTreeSet::new();
     for observation in &entries.observations {
@@ -427,24 +454,7 @@ pub fn validate_organizer_journal(
     journal: &OrganizerPeriodJournal,
 ) -> Result<(), OrganizerError> {
     validate_organizer_pair(config, state)?;
-    let mut prior = None;
-    for entries in &journal.periods {
-        if prior.is_some_and(|period| period >= entries.period) {
-            return Err(OrganizerError::InvalidState);
-        }
-        prior = Some(entries.period);
-        validate_organizer_period_entries(config, entries)?;
-    }
-    if !consistent_partner_reports(
-        config.initial_observations.iter().chain(
-            journal
-                .periods
-                .iter()
-                .flat_map(|entries| &entries.observations),
-        ),
-    ) {
-        return Err(OrganizerError::InvalidState);
-    }
+    validate_journal_contents(config, &journal.periods)?;
     let latest = journal.latest();
     if state.period == 0 {
         if latest.is_some() {
@@ -654,7 +664,7 @@ pub fn decode_organizer_period_entries(
     Ok(value)
 }
 
-/// Encode the retained evidence window in its canonical framed form.
+/// Encode the retained evidence window after checking dated facts across its acquisitions.
 ///
 /// # Errors
 ///
@@ -664,14 +674,7 @@ pub fn encode_organizer_journal(
     config: &OrganizerConfig,
     journal: &OrganizerPeriodJournal,
 ) -> Result<Vec<u8>, OrganizerError> {
-    let mut prior = None;
-    for entries in &journal.periods {
-        if prior.is_some_and(|period| period >= entries.period) {
-            return Err(OrganizerError::InvalidState);
-        }
-        prior = Some(entries.period);
-        validate_organizer_period_entries(config, entries)?;
-    }
+    validate_journal_contents(config, &journal.periods)?;
     canonical(b"babylon.organizer-journal.v5", journal)
 }
 
@@ -686,14 +689,7 @@ pub fn decode_organizer_journal(
     bytes: &[u8],
 ) -> Result<OrganizerPeriodJournal, OrganizerError> {
     let value: OrganizerPeriodJournal = decode(b"babylon.organizer-journal.v5", bytes)?;
-    let mut prior = None;
-    for entries in &value.periods {
-        if prior.is_some_and(|period| period >= entries.period) {
-            return Err(OrganizerError::InvalidState);
-        }
-        prior = Some(entries.period);
-        validate_organizer_period_entries(config, entries)?;
-    }
+    validate_journal_contents(config, &value.periods)?;
     Ok(value)
 }
 

@@ -1938,6 +1938,13 @@ fn dated_opening_refuses_conflicting_captured_stock() {
     );
 }
 
+// Frame the typed payload independently of either validating encoder.
+fn journal_frame(domain_with_nul: &[u8], body: &impl serde::Serialize) -> Vec<u8> {
+    let mut bytes = domain_with_nul.to_vec();
+    serde_json::to_writer(&mut bytes, body).expect("typed evidence serializes");
+    bytes
+}
+
 #[test]
 fn dated_completed_refuses_conflict_within_and_across_acquisitions() {
     let config = dated_report_config();
@@ -1957,14 +1964,57 @@ fn dated_completed_refuses_conflict_within_and_across_acquisitions() {
     journal.periods[1]
         .observations
         .push(dated_food(&config, 0, 1, 2, 3));
+    journal.periods[1]
+        .observations
+        .push(dated_food(&config, 0, 2, 2, 4));
     assert!(
         babylon_practice_contract::validate_organizer_journal(&config, &state, &journal).is_ok()
     );
-    journal.periods[1].observations[0] = dated_food(&config, 0, 1, 2, 4);
+    let domain = b"babylon.organizer-journal.v5\0";
+    let valid_bytes = journal_frame(domain, &journal);
+    let decoded = babylon_practice_contract::decode_organizer_journal(&config, &valid_bytes)
+        .expect("identical reacquired P1 facts and independent P2 facts");
+    assert_eq!(decoded, journal);
     assert_eq!(
-        babylon_practice_contract::validate_organizer_journal(&config, &state, &journal),
-        Err(OrganizerError::InvalidState)
+        babylon_practice_contract::encode_organizer_journal(&config, &decoded)
+            .expect("valid journal re-encodes"),
+        valid_bytes
     );
+    journal.periods[1].observations[0] = dated_food(&config, 0, 1, 2, 4);
+    let conflicting_bytes = journal_frame(domain, &journal);
+    let failures = [
+        babylon_practice_contract::validate_organizer_journal(&config, &state, &journal).err(),
+        babylon_practice_contract::encode_organizer_journal(&config, &journal).err(),
+        babylon_practice_contract::decode_organizer_journal(&config, &conflicting_bytes).err(),
+    ];
+    assert_eq!(failures, [Some(OrganizerError::InvalidState); 3]);
+}
+
+#[test]
+fn dated_period_codec_compares_reacquired_opening_assessment_with_captured_seed() {
+    let mut config = dated_report_config();
+    config.initial_observations = vec![dated_food(&config, 0, 0, 0, 3)];
+    let mut entry = OrganizerPeriodJournalEntries::new(2);
+    entry.observations.push(dated_food(&config, 0, 0, 2, 3));
+    let domain = b"babylon.organizer-period-entries.v5\0";
+    let valid_bytes = journal_frame(domain, &entry);
+    let decoded = babylon_practice_contract::decode_organizer_period_entries(&config, &valid_bytes)
+        .expect("reacquired opening assessment agrees with its seed");
+    assert_eq!(decoded, entry);
+    assert_eq!(
+        babylon_practice_contract::encode_organizer_period_entries(&config, &decoded)
+            .expect("valid period re-encodes"),
+        valid_bytes
+    );
+    entry.observations[0] = dated_food(&config, 0, 0, 2, 4);
+    let conflicting_bytes = journal_frame(domain, &entry);
+    let failures = [
+        babylon_practice_contract::validate_organizer_period_entries(&config, &entry).err(),
+        babylon_practice_contract::encode_organizer_period_entries(&config, &entry).err(),
+        babylon_practice_contract::decode_organizer_period_entries(&config, &conflicting_bytes)
+            .err(),
+    ];
+    assert_eq!(failures, [Some(OrganizerError::InvalidState); 3]);
 }
 
 #[test]

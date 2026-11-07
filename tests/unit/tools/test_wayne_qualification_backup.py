@@ -6,6 +6,7 @@ import hashlib
 import io
 import struct
 import tarfile
+from functools import partial
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -73,7 +74,7 @@ def fixture() -> tuple[dict[str, bytes | None], backup.PhysicalWitness]:
     before[RELATION] = backup.Member("file", 0o600, 71, 73, 8192, None)
     physical["pgss"] = {"preload": "pg_stat_statements", "save": "on", "version": "1.11"}
     physical["relation_sizes"] = {RELATION: 8192}
-    physical["relation_page_samples"] = {RELATION: {"0": True}}
+    physical["relation_page_occupancy"] = {RELATION: "01"}
     before["pg_stat_tmp/pgss_query_texts.stat"] = backup.Member("file", 0o600, 71, 73, 12, None)
     for name in ("pg_stat", "pg_stat_tmp"):
         payloads[name] = None
@@ -300,7 +301,17 @@ def test_retirement_needs_both_stopped_reads_and_reread_source_seals(
 
 
 @pytest.mark.parametrize(
-    "fault", ["none", "restore_failure", "wrong_restored", "wrong_probe", "foreign_session"]
+    "fault",
+    [
+        "none",
+        "restore_failure",
+        "wrong_restored",
+        "wrong_probe",
+        "foreign_session",
+        "shared-grant",
+        "shared-setting",
+        "baseline-client",
+    ],
 )
 def test_only_verified_restore_is_dropped_without_force(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
@@ -319,7 +330,8 @@ def test_only_verified_restore_is_dropped_without_force(
     db = MagicMock()
     db.__enter__.return_value = db
     monkeypatch.setattr(backup, "_conn", lambda *_args: db)
-    monkeypatch.setattr(backup.Run, "authenticate", lambda _self: {})
+    auth = MagicMock(return_value={})
+    monkeypatch.setattr(backup.Run, "authenticate", auth)
     roster = {run.database: 30}
     state: dict[str, Any] = {
         "campaign": "campaign",
@@ -329,6 +341,7 @@ def test_only_verified_restore_is_dropped_without_force(
     commands = []
     probes: list[str] = []
     seen = []
+    baseline_read: list[bool] = []
 
     def inventory(
         conn: MagicMock,
@@ -336,6 +349,8 @@ def test_only_verified_restore_is_dropped_without_force(
         verified_oid: int | None = None,
         admitted: object = None,
     ) -> dict[str, int]:
+        if fault == "baseline-client" and baseline_read:
+            raise backup.Refusal("already-counted client is still active before creation")
         if fault == "foreign_session" and probes == [run.database, run.verification]:
             raise backup.Refusal("unexpected client in task cluster")
         return roster
@@ -381,21 +396,40 @@ def test_only_verified_restore_is_dropped_without_force(
     monkeypatch.setattr(backup, "_command", command)
     gate = MagicMock()
     gate.limit = -1
-    gate.postmaster = "startup"
-    gate.reset = None
+    baseline = backup.ClusterStats("startup", {run.database: backup.SessionTotal(30, 1, None)})
+    gate.baseline = baseline
+    gate.admin_backend = backup.Backend(5, "100", 5, "test", "127.0.0.1", 41500)
+
+    def census(_c: object) -> backup.ClusterStats:
+        baseline_read.append(True)
+        return baseline
+
+    monkeypatch.setattr(backup, "_cluster_stats", census)
+    shared = {**state["database"], "allows_connections": False}
+    if fault == "shared-grant":
+        shared["acl"] = [["writer", "unexpected", "CONNECT", True]]
+    elif fault == "shared-setting":
+        shared["settings"] = [["unexpected", "search_path=public"]]
+    monkeypatch.setattr(backup, "_catalog", lambda _c, _n: shared)
+    source, maintenance = MagicMock(), MagicMock()
+    gate.final_fence.return_value.__enter__.return_value = (source, maintenance, ())
     gate.sessions = []
     monkeypatch.setattr(backup, "RestoreAdmission", lambda *_args: gate)
     if fault == "foreign_session":
-        gate.reconcile.side_effect = backup.Refusal("unaccounted session")
+        gate.check_fence.side_effect = backup.Refusal("unaccounted session")
     if fault == "none":
         backup._logical(run, target, state)
+        auth.assert_called_with(physical_connection=maintenance)
     else:
         with pytest.raises(backup.Refusal):
             backup._logical(run, target, state)
-    calls = [call.args[0].as_string() for call in db.execute.call_args_list]
+    calls = [
+        call.args[0] if isinstance(call.args[0], str) else call.args[0].as_string()
+        for call in db.execute.call_args_list
+    ]
     drops = [statement for statement in calls if statement.startswith("DROP DATABASE")]
     assert drops == ([f'DROP DATABASE "{run.verification}"'] if fault == "none" else [])
-    assert [
+    restore_command = [
         "docker",
         "exec",
         "-i",
@@ -406,7 +440,8 @@ def test_only_verified_restore_is_dropped_without_force(
         "-U",
         "test",
         "--dbname=" + run.verification,
-    ] in commands
+    ]
+    assert (restore_command in commands) == (fault != "baseline-client")
     assert all(
         not {"--no-owner", "--no-privileges", "--create", "--force"} & set(argv)
         for argv in commands
@@ -709,6 +744,8 @@ def test_interrupted_command_preserves_partial_streams_and_primary_failure(
         "foreign_transport",
         "startup_lock",
         "replication_slots",
+        "finished-source",
+        "finished-maintenance",
     ],
 )
 def test_restore_admission_requires_actual_incarnation_closed_gate_and_exact_cumulative_sessions(
@@ -729,20 +766,15 @@ def test_restore_admission_requires_actual_incarnation_closed_gate_and_exact_cum
         "server": "100",
         "locks": 0,
         "senders": 0,
+        "other": {30: 11, 5: 7},
+        "grant": False,
     }
 
     def query(conn: Any, stmt: str, args: tuple[object, ...] = ()) -> tuple[Any, ...]:
         if "FROM pg_locks" in stmt:
             return (state["locks"],)
-        if "FROM pg_stat_database" in stmt:
-            return (
-                state["sessions"],
-                state["epoch"],
-                state["server"],
-                "on",
-                "on",
-                state["senders"],
-            )
+        if "pg_postmaster_start_time" in stmt:
+            return state["server"], "on", "on", state["senders"]
         if "datallowconn" in stmt:
             return (313, "writer", state["open"], state["limit"])
         return (313, "writer")
@@ -752,7 +784,19 @@ def test_restore_admission_requires_actual_incarnation_closed_gate_and_exact_cum
     actual = backup.Backend(120, "1000", 313, "test", None, -1)
     roster = [actual]
     monkeypatch.setattr(backup, "_clients", lambda _admin: roster)
-    gate = backup.RestoreAdmission(admin, run, 313, -1)
+    original = {
+        run.database: backup.SessionTotal(30, 11, None),
+        "postgres": backup.SessionTotal(5, 7, None),
+    }
+    prior = backup.ClusterStats("100", original)
+    admin.execute.return_value.fetchall.side_effect = lambda: (
+        [(name, total.oid, state["other"][total.oid], None) for name, total in original.items()]
+        + [(run.verification, 313, state["sessions"], state["epoch"])]
+    )
+    monkeypatch.setattr(
+        backup, "_own_backend", lambda *_args: backup.Backend(1, "1", 5, "test", "127.0.0.1", 1000)
+    )
+    gate = backup.RestoreAdmission(admin, run, 313, -1, prior)
     state["limit"] = -1
     if fault == "foreign_transport":
         roster[0] = backup.Backend(120, "1000", 313, "test", "127.0.0.1", 50111)
@@ -771,14 +815,17 @@ def test_restore_admission_requires_actual_incarnation_closed_gate_and_exact_cum
         return
     roster.clear()
     state["sessions"] = 2 if fault == "short_foreign" else 0 if fault == "unflushed" else 1
-    if fault == "reset":
-        state["epoch"] = "new"
-    if fault == "restart":
-        state["server"] = "101"
-    if fault == "startup_lock":
-        state["locks"] = 1
-    if fault == "replication_slots":
-        state["senders"] = 1
+    if fault in ("finished-source", "finished-maintenance"):
+        # A client changed shared authority and completed. No active PID remains.
+        state["other"][30 if fault == "finished-source" else 5] += 1
+        state["grant"] = True
+    changes: dict[str, dict[str, object]] = {
+        "reset": {"epoch": "new"},
+        "restart": {"server": "101"},
+        "startup_lock": {"locks": 1},
+        "replication_slots": {"senders": 1},
+    }
+    state.update(changes.get(fault, {}))
     if fault == "none":
         gate.finish_restore()
         assert gate.sessions[0]["backend"]["started"] == "1000"
@@ -862,3 +909,328 @@ def test_command_monitor_failure_syncs_both_streams_and_directory(
             b"partial native"
         )
     assert seen.count(str(tmp_path)) >= 4
+
+
+@pytest.mark.parametrize("middle", ["populated", "new", "masked"])
+def test_stopped_middle_block_requires_complete_source_occupancy(
+    tmp_path: Path, middle: str
+) -> None:
+    files, witness = fixture()
+    page = files[RELATION]
+    assert isinstance(page, bytes)
+    src = page + (page if middle == "populated" else bytes(backup.PAGE)) + page
+    if middle == "masked":
+        src = src[: backup.PAGE + 40] + b"x" + src[backup.PAGE + 41 :]
+    witness.members[RELATION] = backup.Member("file", 0o600, 71, 73, len(src), None)
+    sizes = {RELATION: len(src)}
+    witness.physical["relation_sizes"] = sizes
+    conn = MagicMock()
+    conn.execute.return_value.fetchone.return_value = (src,)
+    if middle == "masked":
+        with pytest.raises(backup.Refusal):
+            backup._source_pages(conn, sizes)
+        return
+    samples = backup._source_pages(conn, sizes)
+    witness.physical["relation_page_occupancy"] = samples
+    files[RELATION] = page + bytes(backup.PAGE) + page
+    for filename in ["first.tar", "second.tar"]:
+        target = tmp_path / filename
+        archive(target, files)
+        with target.open("rb") as stream:
+            if middle == "new":
+                assert backup.archive_manifest(stream, witness)[1] == "container"
+            else:
+                with pytest.raises(backup.Refusal):
+                    backup.archive_manifest(stream, witness)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["none", "toast-heap-truncated", "toast-index-truncated", "missing-toast", "missing-index"],
+)
+def test_toast_payload_and_index_require_their_measured_extents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    files, witness = fixture()
+    root_name = "babylon_state.tick_commit"
+    monkeypatch.setattr(backup, "REQUIRED_ROWS", {root_name})
+    toast = "base/551/4000"
+    index = "base/551/4001"
+    rows = [
+        (2930, root_name, "r", 4000, None, None, RELATION, 8192),
+        (4000, "pg_toast.pg_toast_2930", "t", 0, None, None, toast, 8192),
+        (4001, "pg_toast.pg_toast_2930_index", "i", 0, 4000, True, index, 8192),
+    ]
+    if fault in ("missing-toast", "missing-index"):
+        rows.pop(1 if fault == "missing-toast" else 2)
+    conn = MagicMock()
+    conn.execute.return_value.fetchall.return_value = rows
+    if fault in ("missing-toast", "missing-index"):
+        with pytest.raises(backup.Refusal):
+            backup._terminal_relations(conn, 551)
+        return
+    relations, sizes = backup._terminal_relations(conn, 551)
+    assert set(relations.values()) == {RELATION, toast, index}
+    witness.relations.update(relations)
+    witness.physical["relation_sizes"] = sizes
+    witness.physical["relation_page_occupancy"] = dict.fromkeys(sizes, "01")
+    for name in (toast, index):
+        files[name] = files[RELATION]
+        witness.members[name] = witness.members[RELATION]
+    if fault != "none":
+        files[toast if fault == "toast-heap-truncated" else index] = b""
+    for filename in ["first.tar", "second.tar"]:
+        target = tmp_path / filename
+        archive(target, files)
+        with target.open("rb") as stream:
+            if fault == "none":
+                assert backup.archive_manifest(stream, witness)[1] == "container"
+            else:
+                with pytest.raises(backup.Refusal):
+                    backup.archive_manifest(stream, witness)
+
+
+def _change_held_fence(
+    fault: str, live: list[backup.Backend], totals: dict[str, backup.SessionTotal]
+) -> None:
+    if fault == "lost-slot":
+        live.pop()
+    elif fault == "replaced-slot":
+        live[-1] = backup.Backend(live[-1].pid, "foreign", 5, "test", "127.0.0.1", 50101)
+    elif fault == "unobserved-reset":
+        t = totals["babylon_test"]
+        totals["babylon_test"] = backup.SessionTotal(t.oid, t.sessions, "new")
+    elif fault == "helper-extra":
+        t = totals["template1"]
+        totals["template1"] = backup.SessionTotal(t.oid, t.sessions + 1, t.reset)
+    elif fault == "changed-database":
+        t = totals["template1"]
+        totals["template1"] = backup.SessionTotal(200, t.sessions, t.reset)
+
+
+def _fence_query(
+    conn: Any,
+    stmt: str,
+    args: tuple[object, ...] = (),
+    *,
+    owner: list[str],
+    admin: MagicMock,
+    own_admin: backup.Backend,
+    closed_limit: list[int],
+    fault: str,
+) -> tuple[Any, ...]:
+    if "max_connections" in stmt:
+        return 48 if fault == "wrong-capacity" else 50, 0, "0"
+    if "pg_postmaster_start_time" in stmt:
+        return "start", "on", "on", 0
+    if "pg_locks" in stmt:
+        return (0,)
+    if "datallowconn" in stmt:
+        return 51, owner[8], False, closed_limit[0]
+    if "idle_session_timeout" in stmt:
+        return ("0",)
+    if "babylon.disposable_runtime" in stmt:
+        return owner[2], owner[20], "test", "test", "postgres"
+    assert "pid=pg_backend_pid()" in stmt
+    backend = own_admin if conn is admin else conn.actual
+    return (
+        backend.pid,
+        backend.started,
+        backend.oid,
+        backend.role,
+        backend.address,
+        backend.port,
+    )
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "none",
+        "foreign-source",
+        "foreign-postgres",
+        "unobserved-reset",
+        "lost-slot",
+        "replaced-slot",
+        "can't-fill",
+        "wrong-capacity",
+        "helper-extra",
+        "changed-database",
+    ],
+)
+def test_final_drop_requires_complete_live_slot_fence_and_cluster_counters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    from contextlib import contextmanager
+
+    owner = ["x"] * 21
+    owner[2], owner[7], owner[8], owner[9], owner[20] = (
+        "3" * 32,
+        "national_src",
+        "writer",
+        "31",
+        "123",
+    )
+    run = backup.Run(tmp_path, tmp_path, tuple(owner), "campaign", 2)
+    names = {"template0": 4, "template1": 1, "postgres": 5, "babylon_test": 30, run.database: 31}
+    totals = {name: backup.SessionTotal(oid, 4, None) for name, oid in names.items()}
+    prior = backup.ClusterStats("start", totals.copy())
+    totals[run.verification] = backup.SessionTotal(51, 0, None)
+    live: list[backup.Backend] = []
+    own_admin = backup.Backend(9, "2", 5, "test", "127.0.0.1", 50100)
+    admin = MagicMock()
+    admin.info.backend_pid = own_admin.pid
+    closed_limit = [0]
+    received: list[tuple[str, int]] = []
+    released = []
+
+    def execute(stmt: str, *args: object) -> MagicMock:
+        cursor = MagicMock()
+        if "LEFT JOIN pg_stat_database" in stmt:
+            cursor.fetchall.return_value = [
+                (name, t.oid, t.sessions, t.reset) for name, t in totals.items()
+            ]
+        elif "JOIN pg_roles" in stmt:
+            cursor.fetchall.return_value = [
+                (name, t.oid, owner[8] if name in (run.database, run.verification) else "test")
+                for name, t in totals.items()
+            ]
+        return cursor
+
+    @contextmanager
+    def connect(_run: backup.Run, database: str) -> Any:
+        if len(received) == 30 and fault == "can't-fill":
+            raise backup.Refusal("could not acquire a required client slot")
+        row = totals[database]
+        pid = 1000 + len(received)
+        actual = backup.Backend(pid, str(pid), row.oid, "test", "127.0.0.1", 50000 + pid)
+        conn = MagicMock()
+        conn.actual = actual
+        conn.info.backend_pid = pid
+        totals[database] = backup.SessionTotal(row.oid, row.sessions + 1, row.reset)
+        received.append((database, pid))
+        live.append(actual)
+        try:
+            yield conn
+        finally:
+            released.append(pid)
+            if actual in live:
+                live.remove(actual)
+
+    monkeypatch.setattr(
+        backup,
+        "_one",
+        partial(
+            _fence_query,
+            owner=owner,
+            admin=admin,
+            own_admin=own_admin,
+            closed_limit=closed_limit,
+            fault=fault,
+        ),
+    )
+    admin.execute.side_effect = execute
+    monkeypatch.setattr(backup, "_conn", connect)
+    monkeypatch.setattr(backup, "_clients", lambda _admin: sorted(live, key=lambda b: b.pid))
+    gate = backup.RestoreAdmission(admin, run, 51, -1, prior)
+    closed_limit[0] = -1
+    databases = {run.verification: {"grants": {"writer"}}}
+
+    def decision() -> None:
+        if fault in ("foreign-source", "foreign-postgres"):
+            # A completed client mutated the verification database's shared ACL.
+            # With no active foreign session, the final census must still refuse.
+            db = run.database if fault == "foreign-source" else "postgres"
+            t = totals[db]
+            totals[db] = backup.SessionTotal(t.oid, t.sessions + 1, t.reset)
+            databases[run.verification]["grants"].add("unexpected")
+        with gate.final_fence() as (source, maintenance, held):
+            assert (
+                source.info.backend_pid == received[0][1]
+                and maintenance.info.backend_pid == received[1][1]
+                and [row[0] for row in received[:2]] == [run.database, "template1"]
+            )
+            assert len(live) == len(held) == 49
+            _change_held_fence(fault, live, totals)
+            gate.check_fence(held)
+            del databases[run.verification]
+
+    if fault == "none":
+        decision()
+    else:
+        with pytest.raises(backup.Refusal):
+            decision()
+    assert (run.verification in databases) == (fault != "none")
+    if fault in ("foreign-source", "foreign-postgres"):
+        assert databases[run.verification]["grants"] == {"writer", "unexpected"}
+    assert sorted(released) == sorted(pid for _, pid in received)
+
+
+@pytest.mark.parametrize("fault", ["foreign-source", "missing-checkpoint"])
+def test_checkpoint_flush_requires_the_authenticated_original_before_block_occupancy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    owner = ["x"] * 21
+    owner[2], owner[7], owner[9] = "3" * 32, "national_src", "31"
+    run = backup.Run(tmp_path, tmp_path, tuple(owner), "campaign", 2)
+    conn = MagicMock()
+    conn.__enter__.return_value = conn
+    monkeypatch.setattr(backup, "_conn", lambda *_args: conn)
+    results = [
+        (
+            "test",
+            "test",
+            run.database,
+            "foreign" if fault == "foreign-source" else owner[2],
+            "123",
+            "31",
+        ),
+        (None,),
+    ]
+    monkeypatch.setattr(backup, "_one", lambda *_args: results.pop(0))
+    with pytest.raises(backup.Refusal):
+        backup._physical_witness(run, {"cluster": "123"})
+    statements = [c.args[0] for c in conn.execute.call_args_list]
+    assert statements == (
+        []
+        if fault == "foreign-source"
+        else ["CHECKPOINT", "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"]
+    )
+
+
+@pytest.mark.parametrize("occupancy", [{}, {RELATION: ""}, {RELATION: "03"}, {RELATION: "xx"}])
+def test_stopped_archive_refuses_missing_or_unmeasured_occupancy(
+    tmp_path: Path,
+    occupancy: dict[str, str],
+) -> None:
+    files, witness = fixture()
+    witness.physical["relation_page_occupancy"] = occupancy
+    path = tmp_path / "copy.tar"
+    archive(path, files)
+    with path.open("rb") as stream, pytest.raises(backup.Refusal):
+        backup.archive_manifest(stream, witness)
+
+
+@pytest.mark.parametrize("database", [None, "verified"])
+def test_shared_database_owner_acl_and_settings_bind_the_same_target(database: str | None) -> None:
+    conn = MagicMock()
+    results = [
+        [("writer", "UTF8", "C", "C", "b", "C.UTF-8", None, -1, False, False)],
+        [("writer", "reader", "CONNECT", False)],
+        [(None, "timezone=UTC")],
+    ]
+
+    def execute(stmt: str, args: tuple[object, ...]) -> MagicMock:
+        assert args == (database,) and stmt.count("%s") == len(args)
+        cursor = MagicMock()
+        cursor.fetchall.return_value = results.pop(0)
+        return cursor
+
+    conn.execute.side_effect = execute
+    catalog = backup._catalog(conn, database)
+    assert catalog["owner"] == "writer" and catalog["settings"] == [[None, "timezone=UTC"]]
+    assert catalog["acl"] == [["writer", "reader", "CONNECT", False]] and not results

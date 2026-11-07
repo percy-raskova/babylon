@@ -26,6 +26,7 @@ Refusal = storage.StorageRefusal
 Connection = psycopg.Connection[Any]
 Evidence = storage.PrivateEvidence
 Reference = storage.Reference
+NATIVE_CLIENT_SLOTS = 50  # docker/postgres/postgresql.ci.conf
 WAL_NAME = re.compile(r"pg_wal/([A-F0-9]{8})([A-F0-9]{8})([A-F0-9]{8})\Z")
 STABLE_BYTES = {
     "PG_VERSION",
@@ -62,27 +63,34 @@ def _one(
     return tuple(rows[0])
 
 
-def _catalog(conn: Connection) -> dict[str, Any]:
+def _catalog(conn: Connection, database: str | None = None) -> dict[str, Any]:
     owner, encoding, collate, ctype, provider, locale, rules, connlimit, default_acl, allows = _one(
         conn,
         """
         SELECT pg_get_userbyid(datdba),pg_encoding_to_char(encoding),datcollate,datctype,
                datlocprovider::text,datlocale,daticurules,datconnlimit,datacl IS NULL,datallowconn
-        FROM pg_catalog.pg_database WHERE datname=current_database()
+        FROM pg_catalog.pg_database WHERE datname=coalesce(%s::text,current_database())
     """,
+        (database,),
     )
-    acl = conn.execute("""
+    acl = conn.execute(
+        """
         SELECT pg_get_userbyid(a.grantor),CASE WHEN a.grantee=0 THEN NULL ELSE pg_get_userbyid(a.grantee) END,
                a.privilege_type,a.is_grantable
         FROM pg_catalog.pg_database d CROSS JOIN LATERAL aclexplode(COALESCE(d.datacl,acldefault('d',d.datdba))) a
-        WHERE datname=current_database() ORDER BY 1,2 NULLS FIRST,3,4
-    """).fetchall()
-    settings = conn.execute("""
+        WHERE datname=coalesce(%s::text,current_database()) ORDER BY 1,2 NULLS FIRST,3,4
+    """,
+        (database,),
+    ).fetchall()
+    settings = conn.execute(
+        """
         SELECT CASE WHEN s.setrole=0 THEN NULL ELSE pg_get_userbyid(s.setrole) END,setting
         FROM pg_catalog.pg_db_role_setting s CROSS JOIN LATERAL unnest(s.setconfig) setting
-        WHERE s.setdatabase=(SELECT oid FROM pg_database WHERE datname=current_database())
+        WHERE s.setdatabase=(SELECT oid FROM pg_database WHERE datname=coalesce(%s::text,current_database()))
         ORDER BY 1 NULLS FIRST,2
-    """).fetchall()
+    """,
+        (database,),
+    ).fetchall()
     return {
         "owner": owner,
         "encoding": encoding,
@@ -466,37 +474,72 @@ def _initialized(header: bytes | memoryview) -> bool:
     return True
 
 
-def _source_pages(conn: Connection, sizes: dict[str, int]) -> dict[str, dict[str, bool]]:
-    samples = [
-        (name, offset)
-        for name, length in _extent_files(sizes).items()
-        if length
-        for offset in sorted({0, length - PAGE})
-    ]
-    result: dict[str, dict[str, bool]] = {}
-    rows = conn.execute(
-        """
-        SELECT path,off,pg_read_binary_file(path,off,24)
-        FROM unnest(%s::text[],%s::bigint[]) AS e(path,off) ORDER BY path,off
-    """,
-        ([name for name, _ in samples], [off for _, off in samples]),
-    ).fetchall()
-    if {(r[0], r[1]) for r in rows} != set(samples) or len(rows) != len(samples):
-        raise Refusal("source boundary block inventory differs from the SQL main-fork sizes")
-    for path, offset, header in rows:
-        result.setdefault(path, {})[str(offset)] = _initialized(bytes(header))
-    return result
+def _terminal_relations(
+    conn: Connection, database_oid: int
+) -> tuple[dict[str, str], dict[str, int]]:
+    rows = conn.execute("""
+        WITH RECURSIVE heaps(oid, toast) AS (
+            SELECT c.oid,c.reltoastrelid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE c.relkind IN ('r','m') AND n.nspname IN ('babylon_state','babylon_meta')
+            UNION
+            SELECT t.oid,t.reltoastrelid FROM heaps h JOIN pg_class t ON t.oid=h.toast
+        ), files AS (
+            SELECT oid FROM heaps UNION SELECT i.indexrelid FROM heaps h JOIN pg_index i ON i.indrelid=h.oid
+        )
+        SELECT c.oid,n.nspname||'.'||c.relname,c.relkind::text,c.reltoastrelid,i.indrelid,
+               i.indisunique AND i.indisvalid AND i.indisready AND i.indislive,
+               pg_relation_filepath(c.oid),pg_relation_size(c.oid,'main')
+        FROM files f JOIN pg_class c ON c.oid=f.oid JOIN pg_namespace n ON n.oid=c.relnamespace
+        LEFT JOIN pg_index i ON i.indexrelid=c.oid ORDER BY c.oid
+    """).fetchall()
+    relations = {name: path for _, name, _, _, _, _, path, _ in rows}
+    sizes = {path: length for _, _, _, _, _, _, path, length in rows}
+    declared = {toast for _, _, _, toast, _, _, _, _ in rows if toast}
+    toast_heaps = {oid for oid, _, kind, _, _, _, _, _ in rows if kind == "t"}
+    indexed = {parent for _, _, kind, _, parent, valid, _, _ in rows if kind == "i" and valid}
+    if (
+        len(relations) != len(rows)
+        or len(sizes) != len(rows)
+        or not REQUIRED_ROWS <= relations.keys()
+        or declared != toast_heaps
+        or not toast_heaps <= indexed
+        or any(not re.fullmatch(rf"base/{database_oid}/[1-9][0-9]*", path or "") for path in sizes)
+    ):
+        raise Refusal("terminal heap, TOAST or index storage identity is incomplete")
+    return relations, sizes
 
 
-def _verify_blocks(chunk: bytes, start: int, samples: dict[str, bool]) -> None:
+def _source_pages(conn: Connection, sizes: dict[str, int]) -> dict[str, str]:
+    occupancy = {}
+    for path, length in _extent_files(sizes).items():
+        bits = bytearray((length // PAGE + 7) // 8)
+        for pos in range(0, length, 1024 * 1024):
+            count = min(1024 * 1024, length - pos)
+            row = conn.execute(
+                "SELECT pg_read_binary_file(%s,%s,%s)", (path, pos, count)
+            ).fetchone()
+            if row is None or len(row[0]) != count:
+                raise Refusal("source extent changed while reading block occupancy")
+            view = memoryview(row[0])
+            for i in range(0, count, PAGE):
+                block = (pos + i) // PAGE
+                if _initialized(view[i : i + 24]):
+                    bits[block // 8] |= 1 << (block % 8)
+                elif view[i : i + PAGE] != bytes(PAGE):
+                    raise Refusal("zero source header masks nonzero block contents")
+        occupancy[path] = bits.hex()
+    return occupancy
+
+
+def _verify_blocks(chunk: bytes, start: int, occupancy: bytes) -> None:
     if len(chunk) % PAGE:
         raise Refusal("incomplete terminal relation block")
     view = memoryview(chunk)
     for i in range(0, len(chunk), PAGE):
-        initialized = _initialized(view[i : i + 24])
-        # Mutable pages may be rewritten. An independently observed populated
-        # boundary cannot turn into an unproved hole at clean shutdown.
-        if not initialized and (samples.get(str(start + i)) or view[i : i + PAGE] != bytes(PAGE)):
+        block = (start + i) // PAGE
+        if not _initialized(view[i : i + 24]) and (
+            occupancy[block // 8] & (1 << (block % 8)) or view[i : i + PAGE] != bytes(PAGE)
+        ):
             raise Refusal("terminal block is missing or its zero header masks nonzero contents")
 
 
@@ -591,10 +634,22 @@ def _valid_wal(path: str, header: bytes, size: int, witness: PhysicalWitness) ->
 def archive_manifest(stream: BinaryIO, witness: PhysicalWitness) -> tuple[dict[str, Member], str]:
     result: dict[str, Member] = {}
     extent_files = _extent_files(witness.physical["relation_sizes"])
-    samples = witness.physical["relation_page_samples"]
+    encoded = witness.physical["relation_page_occupancy"]
+    if set(encoded) != set(extent_files):
+        raise Refusal("independent block occupancy extent roster differs")
+    occupancy = {}
     for path, length in extent_files.items():
-        if length and set(samples.get(path, {})) != {str(x) for x in (0, length - PAGE)}:
-            raise Refusal("independent boundary block samples are absent")
+        blocks = length // PAGE
+        value = encoded[path]
+        if (
+            not isinstance(value, str)
+            or not re.fullmatch("[0-9a-f]*", value)
+            or len(value) != 2 * ((blocks + 7) // 8)
+        ):
+            raise Refusal("independent block occupancy has the wrong size or encoding")
+        occupancy[path] = bytes.fromhex(value)
+        if blocks % 8 and occupancy[path][-1] >> (blocks % 8):
+            raise Refusal("independent block occupancy has nonzero padding")
     wal: dict[str, int] = {}
     control = b""
     with tarfile.open(fileobj=stream, mode="r:") as archive:
@@ -609,6 +664,10 @@ def archive_manifest(stream: BinaryIO, witness: PhysicalWitness) -> tuple[dict[s
                 or item.mode & ~0o7777
             ):
                 raise Refusal("duplicate, link, sparse, special or malformed PGDATA member")
+            if path in extent_files and (item.isdir() or item.size != extent_files[path]):
+                raise Refusal(
+                    "stopped terminal heap or index extent differs from the measured source"
+                )
             digest = None
             if item.isdir():
                 if item.size:
@@ -622,12 +681,12 @@ def archive_manifest(stream: BinaryIO, witness: PhysicalWitness) -> tuple[dict[s
                         PAGE if path == "global/pg_control" or path in extent_files else 64
                     )
                     if path in extent_files:
-                        _verify_blocks(header, 0, samples.get(path, {}))
+                        _verify_blocks(header, 0, occupancy[path])
                     hasher = hashlib.sha256(header)
                     size = len(header)
                     while data := source.read(1024 * 1024):
                         if path in extent_files:
-                            _verify_blocks(data, size, samples.get(path, {}))
+                            _verify_blocks(data, size, occupancy[path])
                         hasher.update(data)
                         size += len(data)
                     if size != item.size:
@@ -736,7 +795,7 @@ class Run:
     def port(self) -> int:
         return int(self.owner[19])
 
-    def authenticate(self) -> dict[str, Any]:
+    def authenticate(self, *, physical_connection: Connection | None = None) -> dict[str, Any]:
         if (
             len(self.owner) != 21
             or self.owner[0] != "national-storage-runner-media-v2"
@@ -750,12 +809,26 @@ class Run:
             or self.owner[8] != "national_writer_" + self.owner[2][:12]
         ):
             raise Refusal("backup requires the exact terminal media-native owner")
-        storage.reauthenticate_native_owner(self.root, self.evidence, self.owner)
-        physical = storage._current_physical(
-            Evidence(self.evidence), self.root, self.container, self.owner[2], self.owner[6]
+        storage.reauthenticate_native_owner(
+            self.root, self.evidence, self.owner, physical_connection=physical_connection
         )
-        if type(physical.get("max_wal_senders")) is not int or physical["max_wal_senders"] != 0:
-            raise Refusal("native physical receipt does not exclude uncounted replication sessions")
+        physical = storage._current_physical(
+            Evidence(self.evidence),
+            self.root,
+            self.container,
+            self.owner[2],
+            self.owner[6],
+            physical_connection=physical_connection,
+        )
+        if (
+            type(physical.get("max_wal_senders")) is not int
+            or physical["max_wal_senders"] != 0
+            or type(physical.get("max_connections")) is not int
+            or physical["max_connections"] != NATIVE_CLIENT_SLOTS
+        ):
+            raise Refusal(
+                "native physical receipt differs from the selected 50 client slots and zero WAL senders"
+            )
         return physical
 
 
@@ -800,10 +873,47 @@ def _own_backend(conn: Connection, oid: int, role: str) -> Backend:
     return own
 
 
+@dataclass(frozen=True)
+class SessionTotal:
+    oid: int
+    sessions: int
+    reset: str | None
+
+
+@dataclass(frozen=True)
+class ClusterStats:
+    postmaster: str
+    databases: dict[str, SessionTotal]
+
+
+def _cluster_stats(admin: Connection) -> ClusterStats:
+    started, counts, activities, senders = _one(
+        admin,
+        """
+        SELECT (extract(epoch FROM pg_postmaster_start_time())*1000000)::bigint::text,
+               current_setting('track_counts'),current_setting('track_activities'),current_setting('max_wal_senders')::int
+    """,
+    )
+    if not started or (counts, activities, senders) != ("on", "on", 0):
+        raise Refusal("cluster does not supply complete ordinary-client session statistics")
+    rows = admin.execute("""
+        SELECT d.datname::text,d.oid,s.sessions,(extract(epoch FROM s.stats_reset)*1000000)::bigint::text
+        FROM pg_database d LEFT JOIN pg_stat_database s ON s.datid=d.oid ORDER BY d.oid
+    """).fetchall()
+    databases = {name: SessionTotal(oid, count, reset) for name, oid, count, reset in rows}
+    if len(databases) != len(rows) or any(
+        type(t.sessions) is not int or t.sessions < 0 for t in databases.values()
+    ):
+        raise Refusal("cluster database session counter is absent or ambiguous")
+    return ClusterStats(started, databases)
+
+
 class RestoreAdmission:
     """One admitted backend per closed verification-database window."""
 
-    def __init__(self, admin: Connection, run: Run, oid: int, original_limit: int) -> None:
+    def __init__(
+        self, admin: Connection, run: Run, oid: int, original_limit: int, prior: ClusterStats
+    ) -> None:
         self.admin = admin
         self.run = run
         self.oid = oid
@@ -812,11 +922,19 @@ class RestoreAdmission:
         self.sessions: list[dict[str, Any]] = []
         self._guard(False, 0)
         self._barrier()
-        count, self.reset, self.postmaster = self._stats()
-        if count or original_limit == 0:
+        current = _cluster_stats(admin)
+        new = current.databases.get(run.verification)
+        if new is None or new.oid != oid or new.sessions or original_limit == 0:
             raise Refusal(
-                "new verification database has a prior session or source forbids connections"
+                "new verification database has wrong identity, prior sessions or a forbidden limit"
             )
+        self.baseline = ClusterStats(prior.postmaster, {**prior.databases, run.verification: new})
+        if current != self.baseline or run.verification in prior.databases:
+            raise Refusal(
+                "cluster sessions, database identity or reset epoch changed during creation"
+            )
+        self.expected = self.baseline.databases.copy()
+        self.admin_backend = _own_backend(admin, prior.databases["postgres"].oid, "test")
 
     def _guard(self, opened: bool, limit: int) -> None:
         actual = _one(
@@ -850,30 +968,10 @@ class RestoreAdmission:
         if _one(
             self.admin,
             """SELECT count(*) FROM pg_locks WHERE locktype='object'
-            AND classid='pg_catalog.pg_database'::regclass AND objid=%s::oid
+            AND classid='pg_catalog.pg_database'::regclass
             AND mode='RowExclusiveLock'""",
-            (self.oid,),
         ) != (0,):
             raise Refusal("a verification backend is still entering the database")
-
-    def _stats(self) -> tuple[int, str | None, str]:
-        n, reset, started, counts, activities, senders = _one(
-            self.admin,
-            """
-            SELECT sessions,(extract(epoch FROM stats_reset)*1000000)::bigint::text,(extract(epoch FROM pg_postmaster_start_time())*1000000)::bigint::text,
-                   current_setting('track_counts'),current_setting('track_activities'),current_setting('max_wal_senders')::int
-            FROM pg_stat_database WHERE datid=%s
-        """,
-            (self.oid,),
-        )
-        if (
-            type(n) is not int
-            or n < 0
-            or not started
-            or (counts, activities, senders) != ("on", "on", 0)
-        ):
-            raise Refusal("server does not supply usable session statistics")
-        return n, reset, started
 
     def reconcile(self, closing: Backend | None = None) -> None:
         self._guard(False, self.limit)
@@ -890,22 +988,83 @@ class RestoreAdmission:
         _inventory(self.admin, self.run, self.oid)
         # Flush occurs in before_shmem_exit; activity removal is on_shmem_exit.
         # Fresh autocommit statements read the count AFTER the zero-backend barrier.
-        if self._stats() != (len(self.sessions), self.reset, self.postmaster):
-            raise Refusal("verification session total, reset epoch or postmaster differs")
+        self.check_totals()
 
-    def _record(self, purpose: str, backend: Backend, opened_limit: int) -> None:
+    def check_totals(self) -> None:
+        if _cluster_stats(self.admin) != ClusterStats(self.baseline.postmaster, self.expected):
+            raise Refusal(
+                "cluster session totals, database identities, reset epochs or postmaster differ"
+            )
+
+    def _admit(
+        self, purpose: str, backend: Backend, database: str, opened_limit: int | None
+    ) -> None:
         if any(row["backend"] == asdict(backend) for row in self.sessions):
             raise Refusal("verification backend incarnation reused for another admitted connection")
+        previous = self.expected[database]
+        if backend.oid != previous.oid:
+            raise Refusal("admitted backend differs from its database identity")
+        self.expected[database] = SessionTotal(previous.oid, previous.sessions + 1, previous.reset)
         self.sessions.append(
             {
                 "purpose": purpose,
+                "database": database,
                 "backend": asdict(backend),
                 "open_limit": opened_limit,
-                "closed_limit": self.limit,
-                "expected_sessions": len(self.sessions) + 1,
+                "closed_limit": self.limit if opened_limit is not None else None,
+                "expected_sessions": previous.sessions + 1,
             }
         )
+
+    def _record(self, purpose: str, backend: Backend, opened_limit: int) -> None:
+        self._admit(purpose, backend, self.run.verification, opened_limit)
         self.reconcile(backend)
+
+    @contextmanager
+    def final_fence(self) -> Iterator[tuple[Connection, Connection, tuple[Backend, ...]]]:
+        # REL_17_11 proc.c allocates exactly max_connections regular PGPROCs.
+        # Superusers share this list; WAL senders have a separate, empty list.
+        self.reconcile()
+        if _one(
+            self.admin,
+            """SELECT current_setting('max_connections')::int,
+                current_setting('max_wal_senders')::int,current_setting('idle_session_timeout')""",
+        ) != (NATIVE_CLIENT_SLOTS, 0, "0"):
+            raise Refusal(
+                "final fence requires the selected 50 ordinary slots and zero WAL senders"
+            )
+        held: list[Backend] = []
+        sockets = []
+        with ExitStack() as stack:
+            databases = [self.run.database, "template1"] + ["postgres"] * (NATIVE_CLIENT_SLOTS - 3)
+            for db in databases:
+                conn = stack.enter_context(_conn(self.run, db))
+                own = _own_backend(conn, self.expected[db].oid, "test")
+                if _one(conn, "SELECT current_setting('idle_session_timeout')") != ("0",):
+                    raise Refusal("a final fence session can time out while held")
+                conn.execute("SELECT pg_stat_force_next_flush()")
+                self._admit("final-fence", own, db, None)
+                held.append(own)
+                sockets.append(conn)
+            admitted = tuple(held)
+            self.check_fence(admitted)
+            yield sockets[0], sockets[1], admitted
+
+    def check_fence(self, admitted: tuple[Backend, ...]) -> None:
+        if (
+            len({backend.pid for backend in (self.admin_backend, *admitted)}) != NATIVE_CLIENT_SLOTS
+            or len(admitted) != NATIVE_CLIENT_SLOTS - 1
+        ):
+            raise Refusal("final fence lacks all 50 distinct authenticated ordinary clients")
+        if (
+            _own_backend(self.admin, self.baseline.databases["postgres"].oid, "test")
+            != self.admin_backend
+        ):
+            raise Refusal("final maintenance backend incarnation changed")
+        self._guard(False, self.limit)
+        self._barrier()
+        _inventory(self.admin, self.run, self.oid, admitted)
+        self.check_totals()
 
     @contextmanager
     def window(self, limit: int) -> Iterator[None]:
@@ -959,7 +1118,7 @@ def _inventory(
     conn: Connection,
     run: Run,
     verified_oid: int | None = None,
-    admitted: Backend | None = None,
+    admitted: Backend | tuple[Backend, ...] | None = None,
 ) -> dict[str, int]:
     rows = conn.execute("""
         SELECT d.datname::text,d.oid,r.rolname::text FROM pg_database d JOIN pg_roles r ON r.oid=d.datdba
@@ -984,7 +1143,10 @@ def _inventory(
     )
     if endpoint != (run.owner[2], run.owner[20], "test", "test", "postgres"):
         raise Refusal("backup administrator identity or cluster differs from the captured owner")
-    if _clients(conn) != ([] if admitted is None else [admitted]):
+    expected_clients = (
+        admitted if isinstance(admitted, tuple) else (() if admitted is None else (admitted,))
+    )
+    if _clients(conn) != sorted(expected_clients, key=lambda backend: backend.pid):
         raise Refusal("unexpected client on the task cluster during recovery")
     return {name: oid for name, (oid, _) in identities.items()}
 
@@ -1278,6 +1440,14 @@ def _logical(run: Run, backup: Evidence, functional: dict[str, Any]) -> list[Ref
         if _inventory(admin, run) != initial:
             raise Refusal("cluster changed during logical dump")
         _restrict_writer(admin, run)
+        admin.execute("SELECT pg_stat_force_next_flush()")
+        prior = _cluster_stats(admin)
+        # Read cumulative counts first, then prove that no already-counted
+        # backend survived the baseline into verification database creation.
+        if {name: total.oid for name, total in prior.databases.items()} != initial or _inventory(
+            admin, run
+        ) != initial:
+            raise Refusal("pre-creation session baseline or database roster changed")
         oid = _verify_create(admin, run, original["database"])
         refs.append(
             backup.publish_json(
@@ -1292,7 +1462,7 @@ def _logical(run: Run, backup: Evidence, functional: dict[str, Any]) -> list[Ref
             **original,
             "database": {**original["database"], "allows_connections": False},
         }
-        gate = RestoreAdmission(admin, run, oid, original["database"]["connection_limit"])
+        gate = RestoreAdmission(admin, run, oid, original["database"]["connection_limit"], prior)
         with gate.window(0):
             refs.append(
                 _command(
@@ -1325,40 +1495,59 @@ def _logical(run: Run, backup: Evidence, functional: dict[str, Any]) -> list[Ref
         refs.append(backup.publish_json("restored-terminal.json", restored))
         if restored != expected_closed or restored_probes != probes or original != functional:
             raise Refusal("restored state or restricted operations differ; retain both databases")
-        refs.append(
-            backup.publish_json(
-                "verification-admission.json",
-                {
-                    "verification_oid": oid,
-                    "original_allow_connections": True,
-                    "verified_final_allow_connections": False,
-                    "source_connection_limit": gate.limit,
-                    "creation_connection_limit": 0,
-                    "stats_reset": gate.reset,
-                    "postmaster_stamp": gate.postmaster,
-                    "sessions": gate.sessions,
-                },
+        with gate.final_fence() as (source_conn, maintenance_conn, admitted):
+            run.authenticate(physical_connection=maintenance_conn)
+            if terminal_snapshot(source_conn, run.campaign, run.period) != functional:
+                raise Refusal(
+                    "original terminal state changed during restore; retain verification database"
+                )
+            shared = _catalog(admin, run.verification)
+            if shared != expected_closed["database"]:
+                raise Refusal("closed verification database authority changed before removal")
+            gate.check_fence(admitted)
+            refs.append(
+                backup.publish_json(
+                    "verification-admission.json",
+                    {
+                        "verification_oid": oid,
+                        "original_allow_connections": True,
+                        "verified_final_allow_connections": False,
+                        "source_connection_limit": gate.limit,
+                        "creation_connection_limit": 0,
+                        "baseline": asdict(gate.baseline),
+                        "maintenance_backend": asdict(gate.admin_backend),
+                        "sessions": gate.sessions,
+                        "final_cluster_stats": asdict(_cluster_stats(admin)),
+                        "final_shared_database": shared,
+                        "held_client_slots": len(admitted) + 1,
+                    },
+                )
             )
-        )
-        for ref in refs:
-            backup.verify(ref)
-        run.authenticate()
-        with _conn(run, run.database) as source_conn:
-            final_original = terminal_snapshot(source_conn, run.campaign, run.period)
-        if final_original != functional:
-            raise Refusal(
-                "original terminal state changed during restore; retain verification database"
-            )
-        gate.reconcile()
-        admin.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(run.verification)))
-        if _inventory(admin, run) != initial:
-            raise Refusal("normal cluster inventory differs after verification DB removal")
+            for ref in refs:
+                backup.verify(ref)
+            gate.check_fence(admitted)
+            admin.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(run.verification)))
+            if _inventory(admin, run, admitted=admitted) != initial:
+                raise Refusal("normal cluster inventory differs after verification DB removal")
     return refs
 
 
 def _physical_witness(run: Run, physical: dict[str, Any]) -> PhysicalWitness:
-    with _conn(run, run.database) as conn, conn.transaction():
+    with _conn(run, run.database) as conn, ExitStack() as transactions:
+        if _one(
+            conn,
+            """SELECT session_user::text,current_user::text,current_database()::text,
+                current_setting('babylon.disposable_runtime',true),(pg_control_system()).system_identifier::text,
+                (SELECT oid::text FROM pg_database WHERE datname=current_database())""",
+        ) != ("test", "test", run.database, run.owner[2], physical["cluster"], run.owner[9]):
+            raise Refusal("source checkpoint requires the exact authenticated terminal database")
+        conn.execute("CHECKPOINT")
+        transactions.enter_context(conn.transaction())
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        (checkpoint,) = _one(conn, "SELECT (pg_control_checkpoint()).checkpoint_lsn::text")
+        if not isinstance(checkpoint, str) or not re.fullmatch("[0-9A-F]+/[0-9A-F]+", checkpoint):
+            raise Refusal("source checkpoint has no measured WAL location")
+        physical = {**physical, "source_checkpoint": checkpoint}
         spaces = conn.execute("SELECT spcname FROM pg_tablespace ORDER BY spcname").fetchall()
         if spaces != [("pg_default",), ("pg_global",)]:
             raise Refusal("external tablespaces cannot be included in this PGDATA archive")
@@ -1406,29 +1595,9 @@ def _physical_witness(run: Run, physical: dict[str, Any]) -> PhysicalWitness:
                 "source PostgreSQL ABI, relation geometry or statistics extension differs"
             )
         physical = {**physical, "pgss": {"preload": preload, "save": save, "version": extension}}
-        selected = conn.execute("""
-            WITH terminal AS (
-                SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-                WHERE c.relkind IN ('r','m') AND n.nspname IN ('babylon_state','babylon_meta')
-            ), files AS (
-                SELECT oid FROM terminal UNION SELECT indexrelid FROM pg_index JOIN terminal ON indrelid=oid
-            ) SELECT n.nspname||'.'||c.relname,pg_relation_filepath(c.oid),pg_relation_size(c.oid,'main')
-            FROM files JOIN pg_class c USING(oid) JOIN pg_namespace n ON n.oid=c.relnamespace ORDER BY 1
-        """).fetchall()
-        relations = {name: path for name, path, _ in selected}
-        physical["relation_sizes"] = {path: int(length) for _, path, length in selected}
-        if (
-            len(relations) != len(selected)
-            or not REQUIRED_ROWS <= relations.keys()
-            or any(
-                not re.fullmatch(rf"base/{oid}/[1-9][0-9]*", path or "")
-                for path in relations.values()
-            )
-        ):
-            raise Refusal(
-                "terminal table and index relation paths are incomplete or outside the database"
-            )
-        physical["relation_page_samples"] = _source_pages(conn, physical["relation_sizes"])
+        relations, sizes = _terminal_relations(conn, oid)
+        physical["relation_sizes"] = sizes
+        physical["relation_page_occupancy"] = _source_pages(conn, sizes)
     cmd = ["docker", "exec", "-w", storage.PGDATA, run.container]
     # GNU find does not follow symlinks here. Its NUL-separated names are data.
     raw = storage._exec_bytes(

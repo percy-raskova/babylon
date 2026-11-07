@@ -63,7 +63,6 @@ fn reply(payer: i128, gift: i128, price: i128) -> RuntimeSessionResponse {
                 initial_food_quantity: 1,
                 initial_cash_micros: 0,
                 cash_receiving_consent: OrganizerGiftConsent::Accept,
-
                 kind: OrganizerAidKind::Local,
                 mandate_id: [1; 32],
                 period: 0,
@@ -71,22 +70,24 @@ fn reply(payer: i128, gift: i128, price: i128) -> RuntimeSessionResponse {
                 recipient_id: [3; 32],
                 good_id: [4; 32],
                 unit_id: [5; 32],
-                donor_stock: 10,
-                own_need: 2,
-                grams_per_unit: 100,
-                payer_cash: payer,
-                ordinary_offer: Some(OrganizerAidOrdinaryOffer {
-                    seller_id: [6; 32],
-                    unit_price: price,
+                food: Some(crate::runtime_session::OrganizerAidFoodPreview {
+                    donor_stock: 10,
+                    own_need: 2,
+                    grams_per_unit: 100,
+                    ordinary_offer: Some(OrganizerAidOrdinaryOffer {
+                        seller_id: [6; 32],
+                        unit_price: price,
+                    }),
+                    labor_unit_id: [7; 32],
+                    fulfillment_hours_per_unit: 1,
+                    time: None,
+                    transport: OrganizerAidTransportPreview::Local,
                 }),
+                payer_cash: Some(payer),
                 maximum_quantity: 3,
                 maximum_cash_micros: gift,
-                labor_unit_id: [7; 32],
-                fulfillment_hours_per_unit: 1,
                 coordination_hours: 1,
                 receiving_consent: OrganizerGiftConsent::Accept,
-                time: None,
-                transport: OrganizerAidTransportPreview::Local,
             }],
             pending_aid: vec![],
             aid_resolutions: vec![],
@@ -115,7 +116,10 @@ fn tagged_organizer_money_roundtrips_exact_full_i128() {
         let aid = &wire["snapshot"]["aid"][0];
         assert_eq!(aid["payer_cash"], payer.to_string());
         assert_eq!(aid["maximum_cash_micros"], gift.to_string());
-        assert_eq!(aid["ordinary_offer"]["unit_price"], price.to_string());
+        assert_eq!(
+            aid["food"]["ordinary_offer"]["unit_price"],
+            price.to_string()
+        );
     }
 }
 
@@ -134,8 +138,8 @@ fn organizer_body_fields_are_required_in_current_wire_and_fixtures() {
         );
     }
     for bytes in [
-        include_str!("../../tests/fixtures/national_organizer_opening_v15.json"),
-        include_str!("../../tests/fixtures/national_organizer_pending_v15.json"),
+        include_str!("../../tests/fixtures/national_organizer_opening_v16.json"),
+        include_str!("../../tests/fixtures/national_organizer_pending_v16.json"),
     ] {
         let snapshot: OrganizerSnapshot =
             serde_json::from_str(bytes).expect("current fixture is complete");
@@ -172,10 +176,13 @@ fn tagged_organizer_money_refuses_noncanonical_numeric_and_overflow_values() {
     ];
     for field in ["payer_cash", "maximum_cash_micros", "unit_price"] {
         for value in &bad {
+            if field == "payer_cash" && value.is_null() {
+                continue;
+            }
             let mut changed = valid.clone();
             let aid = &mut changed["snapshot"]["aid"][0];
             if field == "unit_price" {
-                aid["ordinary_offer"][field] = value.clone();
+                aid["food"]["ordinary_offer"][field] = value.clone();
             } else {
                 aid[field] = value.clone();
             }
@@ -261,4 +268,24 @@ fn collection_snapshot_requires_evidence_and_exact_cash_strings() {
     let mut absent = wire;
     absent["snapshot"]["collection"] = Value::Null;
     assert!(serde_json::from_value::<RuntimeSessionResponse>(absent).is_ok());
+}
+
+#[test]
+fn unavailable_preview_legs_are_explicit_required_nulls() {
+    let valid = serde_json::to_value(reply(42, 3, 7)).expect("wire value");
+    for field in ["food", "payer_cash"] {
+        let mut unavailable = valid.clone();
+        unavailable["snapshot"]["aid"][0][field] = Value::Null;
+        let decoded: RuntimeSessionResponse =
+            serde_json::from_value(unavailable.clone()).expect("explicit unavailable leg");
+        assert_eq!(serde_json::to_value(decoded).expect("wire"), unavailable);
+        unavailable["snapshot"]["aid"][0]
+            .as_object_mut()
+            .expect("offer")
+            .remove(field);
+        assert!(
+            serde_json::from_value::<RuntimeSessionResponse>(unavailable).is_err(),
+            "missing {field} is not unavailable"
+        );
+    }
 }

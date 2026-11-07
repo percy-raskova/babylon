@@ -591,6 +591,13 @@ impl DurableMaterialRuntime {
         if command.campaign_id != *self.campaign_id().canonical_bytes() {
             return Err(RuntimeSessionErrorCode::OrganizerRefused);
         }
+        material_preview::validate_selected(
+            self.session().catalog(),
+            register.state(),
+            config,
+            state.period,
+            command,
+        )?;
         let mut client = self
             .organizer_connection()
             .map_err(|error| classify(&error))?;
@@ -622,6 +629,13 @@ impl DurableMaterialRuntime {
         {
             return Err(RuntimeSessionErrorCode::OrganizerRefused);
         }
+        material_preview::validate_selected(
+            self.session().catalog(),
+            register.state(),
+            config,
+            state.period,
+            command,
+        )?;
         let command_bytes =
             serde_json::to_vec(command).map_err(|_| RuntimeSessionErrorCode::InvalidRequest)?;
         let mut client = self

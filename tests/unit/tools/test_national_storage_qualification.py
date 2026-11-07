@@ -1448,7 +1448,7 @@ def playable_evidence(count=2):
             "status": "passed",
             "completed_original_commands": commands,
             "terminal_original_commands": commands,
-            "basis": "actual_consumed_support_independent_partner_response_and_authenticated_finite_debits",
+            "basis": "actual_qualifying_support_independent_partner_response_and_authenticated_finite_debits",
         },
         "independent_account_posting_audit": {
             "cash_and_in_kind_postings": "passed",
@@ -1472,7 +1472,16 @@ def playable_evidence(count=2):
                     "independent_practices": [
                         {
                             "original_commitment": commands[n - 1],
-                            "consumed_support": True,
+                            "mandate": commands[n - 1],
+                            "dispatch_period": n,
+                            "qualifying_received_support": True,
+                            "food_consumed": True,
+                            "food_consumed_quantity": 1,
+                            "food_consumption_period": n,
+                            "cash_received_micros": "0",
+                            "cash_received_period": None,
+                            "first_response_period": n,
+                            "partner_actor": 10,
                             "recipient_debited_hours": 1,
                             "finite_practice_completed": True,
                             "period": n,
@@ -1621,6 +1630,7 @@ def operational_aid_evidence():
         audit["periods"][1]["independent_practices"][0],
     ):
         row["original_commitment"] = command
+    audit["periods"][1]["independent_practices"][0].update(mandate=command, dispatch_period=1)
     report["independent_finite_aid_practice"].update(
         status="incomplete",
         completed_original_commands=[command],
@@ -1646,7 +1656,12 @@ def test_operational_smoke_still_requires_actual_independent_aid_proof(defect):
     if defect == "debit":
         audit["periods"][1]["independent_practices"][0]["recipient_debited_hours"] = 0
     elif defect == "consumption":
-        audit["periods"][1]["independent_practices"][0]["consumed_support"] = False
+        audit["periods"][1]["independent_practices"][0].update(
+            qualifying_received_support=False,
+            food_consumed=False,
+            food_consumed_quantity=0,
+            food_consumption_period=None,
+        )
     elif defect == "delivery":
         audit["periods"][1]["selected_aid"] = []
     elif defect == "audit":
@@ -1843,7 +1858,12 @@ def test_playable_refuses_malformed_stale_or_disconnected_evidence(mutation):
         lambda r: r["independent_account_posting_audit"]["periods"][0].update(selected_aid=[]),
         lambda r: r["independent_account_posting_audit"]["periods"][0]["independent_practices"][
             0
-        ].update(consumed_support=False),
+        ].update(
+            qualifying_received_support=False,
+            food_consumed=False,
+            food_consumed_quantity=0,
+            food_consumption_period=None,
+        ),
         lambda r: r["independent_account_posting_audit"]["periods"][0]["independent_practices"][
             0
         ].update(recipient_debited_hours=0),
@@ -2863,7 +2883,7 @@ def native_join_evidence(directory):
             },
         }
         generation += 1
-        aid = {"version": 1, **report["independent_account_posting_audit"]["periods"][n - 1]}
+        aid = {"version": 2, **report["independent_account_posting_audit"]["periods"][n - 1]}
         facts = {
             "version": 1,
             "campaign": campaign,
@@ -3549,3 +3569,126 @@ def test_native_evaluator_main_consumes_joined_components_and_enforces_refusal(
     (tmp_path / "native-report.json").write_text(json.dumps(manifest))
     assert main() == 1
     assert json.loads(capsys.readouterr().out)["native_window"]["status"] == "incomplete"
+
+
+def test_cash_qualifies_practice_without_certifying_consumed_food():
+    report = operational_aid_evidence()
+    facts = report["independent_account_posting_audit"]["periods"]
+    response = facts[1]["independent_practices"].pop()
+    response.update(
+        dispatch_period=1,
+        period=1,
+        first_response_period=1,
+        food_consumed=False,
+        food_consumed_quantity=0,
+        food_consumption_period=None,
+        cash_received_micros="3",
+        cash_received_period=1,
+    )
+    facts[0]["independent_practices"] = [response]
+    facts[0]["selected_aid"][0].update(
+        outcome="CashGranted",
+        quantity=0,
+        cash_micros="3",
+        dispatch_period=1,
+        mandate=response["mandate"],
+    )
+    facts[1]["selected_aid"] = []
+    report["remote_consumed"] = False
+    result = playable_result(report)
+    assert result["operational_smoke_status"] == "qualified"
+    assert result["positive_aid_practice_status"] == "incomplete"
+    facts[0]["selected_aid"][0]["cash_micros"] = "4"
+    assert playable_result(report)["operational_smoke_status"] == "incomplete"
+    facts[0]["selected_aid"] = []
+    assert playable_result(report)["operational_smoke_status"] == "incomplete"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda row: row.pop("food_consumed"),
+        lambda row: row.update(consumed_support=True),
+        lambda row: row.update(food_consumption_period=1),
+        lambda row: row.update(food_consumed=False),
+        lambda row: row.update(cash_received_micros="3", cash_received_period=None),
+        lambda row: row.update(first_response_period=3),
+    ],
+    ids=[
+        "missing-food-fact",
+        "obsolete-alias",
+        "wrong-food-date",
+        "changed-food-flag",
+        "missing-cash-date",
+        "future-response",
+    ],
+)
+def test_support_audit_requires_strict_actual_food_and_cash_dates(mutation):
+    report = operational_aid_evidence()
+    mutation(report["independent_account_posting_audit"]["periods"][1]["independent_practices"][0])
+    with pytest.raises(ValueError):
+        playable_result(report)
+
+
+def test_current_aid_boundary_requires_v2_and_explicit_food_facts():
+    from tools.devtools.national_native_evidence import AidBoundary
+
+    period = playable_evidence()[0]["independent_account_posting_audit"]["periods"][0]
+    current = AidBoundary.model_validate({"version": 2, **period})
+    assert current.independent_practices[0].food_consumed_quantity == 1
+    for version in (1, 3, True, "2"):
+        with pytest.raises(ValueError):
+            AidBoundary.model_validate({"version": version, **period})
+    for field in ("food_consumed", "cash_received_period", "first_response_period"):
+        missing = current.model_dump(mode="json")
+        missing["independent_practices"][0].pop(field)
+        with pytest.raises(ValueError):
+            AidBoundary.model_validate(missing)
+
+
+@pytest.mark.parametrize("consumed_quantity", [0, 1])
+def test_retained_cash_response_uses_original_period_posting_not_arrival_period(consumed_quantity):
+    from copy import deepcopy
+
+    report = operational_aid_evidence()
+    facts = report["independent_account_posting_audit"]["periods"]
+    arrival = facts[1]["independent_practices"][0]
+    first = deepcopy(arrival)
+    first.update(
+        period=1,
+        first_response_period=1,
+        food_consumed=False,
+        food_consumed_quantity=0,
+        food_consumption_period=None,
+        cash_received_micros="3",
+        cash_received_period=1,
+    )
+    facts[0]["independent_practices"] = [first]
+    facts[0]["selected_aid"].append(
+        {
+            "original_commitment": first["original_commitment"],
+            "mandate": first["mandate"],
+            "dispatch_period": 1,
+            "outcome": "CashGranted",
+            "quantity": 0,
+            "cash_micros": "3",
+        }
+    )
+    arrival.update(
+        first_response_period=1,
+        qualifying_received_support=consumed_quantity > 0,
+        food_consumed=consumed_quantity > 0,
+        food_consumed_quantity=consumed_quantity,
+        food_consumption_period=2 if consumed_quantity else None,
+        finite_practice_completed=False,
+        outcome="aid_response_retained",
+        partner_actor=None,
+        partner_response="not_requested",
+        recipient_debited_hours=0,
+    )
+    report["remote_consumed"] = consumed_quantity > 0
+    assert playable_result(report)["operational_smoke_status"] == "qualified"
+    assert first["food_consumed"] is False and first["food_consumption_period"] is None
+    assert arrival["cash_received_micros"] == "0" and arrival["cash_received_period"] is None
+    facts[0]["selected_aid"].pop()
+    assert playable_result(report)["operational_smoke_status"] == "incomplete"

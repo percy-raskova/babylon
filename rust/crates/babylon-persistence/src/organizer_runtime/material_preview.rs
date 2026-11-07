@@ -4,6 +4,7 @@ use babylon_material_circuit::AidMandate;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CorridorId;
 use babylon_material_circuit::FinalDemandPrincipalId;
+use babylon_material_circuit::MonetaryError;
 use babylon_material_circuit::RecurringEconomy;
 use babylon_material_circuit::UnitId;
 use babylon_material_circuit::{
@@ -14,6 +15,7 @@ use babylon_practice_contract::{
     OrganizerAidKind, OrganizerAidSupport, OrganizerConfig, OrganizerGiftConsent,
     OrganizerPendingAidPractice, OrganizerPeriodJournalEntries, OrganizerReceipt,
 };
+use babylon_practice_contract::{OrganizerChoice, OrganizerCommand};
 use serde::{Deserialize, Serialize};
 type Result<T> = std::result::Result<T, RuntimeSessionErrorCode>;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,12 +28,10 @@ pub struct OrganizerMaterialAidPreview {
     pub recipient_id: [u8; 32],
     pub good_id: [u8; 32],
     pub unit_id: [u8; 32],
-    pub donor_stock: u64,
-    pub own_need: u64,
-    pub grams_per_unit: u64,
-    #[serde(with = "decimal_i128")]
-    pub payer_cash: i128,
-    pub ordinary_offer: Option<OrganizerAidOrdinaryOffer>,
+    #[serde(deserialize_with = "required_food")]
+    pub food: Option<OrganizerAidFoodPreview>,
+    #[serde(with = "optional_decimal_i128")]
+    pub payer_cash: Option<i128>,
     pub maximum_quantity: u64,
     #[serde(with = "decimal_i128")]
     pub maximum_cash_micros: i128,
@@ -39,13 +39,30 @@ pub struct OrganizerMaterialAidPreview {
     #[serde(with = "decimal_i128")]
     pub initial_cash_micros: i128,
     pub cash_receiving_consent: OrganizerGiftConsent,
-    pub labor_unit_id: [u8; 32],
-    pub fulfillment_hours_per_unit: u64,
     pub coordination_hours: u64,
     pub receiving_consent: OrganizerGiftConsent,
+}
+
+/// Available physical food facts. Absence on the parent means that leg is unwired.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrganizerAidFoodPreview {
+    pub donor_stock: u64,
+    pub own_need: u64,
+    pub grams_per_unit: u64,
+    pub ordinary_offer: Option<OrganizerAidOrdinaryOffer>,
+    pub labor_unit_id: [u8; 32],
+    pub fulfillment_hours_per_unit: u64,
     pub time: Option<OrganizerAidTime>,
     pub transport: OrganizerAidTransportPreview,
 }
+
+fn required_food<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<OrganizerAidFoodPreview>, D::Error> {
+    Option::<OrganizerAidFoodPreview>::deserialize(deserializer)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OrganizerAidOrdinaryOffer {
@@ -160,28 +177,12 @@ pub(super) fn projections(
         {
             return Err(refused());
         }
-        let (donor_stock, own_need) = pantry_amounts(catalog, recurring, mandate)?;
-        let ordinary_offer = recurring
-            .household_purchases
-            .iter()
-            .find(|p| {
-                p.principal_id == mandate.donor
-                    && p.good_id == mandate.good_id
-                    && p.unit_id == mandate.unit_id
-            })
-            .and_then(|p| {
-                recurring.offers.iter().find(|o| {
-                    o.site_id == p.retailer_site_id
-                        && o.good_id == mandate.good_id
-                        && o.unit_id == mandate.unit_id
-                })
-            })
-            .map(|o| OrganizerAidOrdinaryOffer {
-                seller_id: o.site_id.as_bytes(),
-                unit_price: o.unit_price.micro_units(),
-            });
-        let time = remaining_time(state, mandate.donor, mandate.labor_unit_id, period)?;
-        let transport = transport(catalog, state, mandate.transport)?;
+        let food = food_projection(catalog, state, recurring, mandate, period)?;
+        let payer_cash = match economy.book.cash(mandate.payer) {
+            Ok(cash) => Some(cash.micro_units()),
+            Err(MonetaryError::UnknownAccount) => None,
+            Err(_) => return Err(refused()),
+        };
         result.push(OrganizerMaterialAidPreview {
             kind: binding.kind,
             mandate_id: mandate.id,
@@ -190,36 +191,123 @@ pub(super) fn projections(
             recipient_id: mandate.recipient.as_bytes(),
             good_id: mandate.good_id.as_bytes(),
             unit_id: mandate.unit_id.as_bytes(),
-            donor_stock,
-            own_need,
-            grams_per_unit: catalog
-                .commodities
-                .iter()
-                .find(|r| r.good_id == mandate.good_id && r.unit_id == mandate.unit_id)
-                .ok_or_else(refused)?
-                .grams_per_unit()
-                .map_err(|_| refused())?,
-            payer_cash: economy
-                .book
-                .cash(mandate.payer)
-                .map_err(|_| refused())?
-                .micro_units(),
-            ordinary_offer,
+            food,
+            payer_cash,
             maximum_quantity: mandate.maximum_quantity,
             maximum_cash_micros: mandate.maximum_cash.micro_units(),
             initial_food_quantity: mandate.initial_quantity,
             initial_cash_micros: mandate.initial_cash.micro_units(),
             cash_receiving_consent: binding.cash_receiving_consent,
-            labor_unit_id: mandate.labor_unit_id.as_bytes(),
-            fulfillment_hours_per_unit: mandate.hours_per_unit,
             coordination_hours: binding.coordination_hours,
             receiving_consent: binding.receiving_consent,
-            time,
-            transport,
         });
     }
     Ok(result)
 }
+pub(crate) fn validate_selected(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+    config: &OrganizerConfig,
+    period: u64,
+    command: &OrganizerCommand,
+) -> Result<()> {
+    let OrganizerAllocation::Aid {
+        food_quantity,
+        cash_micros,
+    } = command.allocation
+    else {
+        return Ok(());
+    };
+    let kind = match command.choice {
+        OrganizerChoice::LocalAid => OrganizerAidKind::Local,
+        OrganizerChoice::RemoteAid => OrganizerAidKind::Remote,
+        _ => return Err(refused()),
+    };
+    let offers = projections(catalog, state, config, period)?;
+    let offer = offers
+        .iter()
+        .find(|row| row.kind == kind)
+        .ok_or_else(refused)?;
+    if (food_quantity > 0 && offer.food.is_none())
+        || (cash_micros > 0 && offer.payer_cash.is_none())
+    {
+        return Err(refused());
+    }
+    Ok(())
+}
+
+fn food_projection(
+    catalog: &MaterialCatalog,
+    state: &MaterialCircuitState,
+    recurring: &RecurringEconomy,
+    mandate: &AidMandate,
+    period: u64,
+) -> Result<Option<OrganizerAidFoodPreview>> {
+    let Some(commodity) = catalog
+        .commodities
+        .iter()
+        .find(|row| row.good_id == mandate.good_id && row.unit_id == mandate.unit_id)
+    else {
+        return Ok(None);
+    };
+    for principal in [mandate.donor, mandate.recipient] {
+        if !recurring.household_stocks.iter().any(|row| {
+            (row.principal_id, row.good_id, row.unit_id)
+                == (principal, mandate.good_id, mandate.unit_id)
+        }) || !catalog.household_needs.iter().any(|row| {
+            (row.principal_id, row.good_id, row.unit_id)
+                == (principal, mandate.good_id, mandate.unit_id)
+        }) || !catalog
+            .household_time_policy
+            .iter()
+            .any(|row| row.principal_id == principal && row.labor_unit_id == mandate.labor_unit_id)
+        {
+            return Ok(None);
+        }
+    }
+    if let AidTransport::Routed { route_id, .. } = mandate.transport {
+        if !catalog
+            .route_stages
+            .iter()
+            .any(|row| row.route_id == route_id)
+        {
+            return Ok(None);
+        }
+    }
+    let (donor_stock, own_need) = pantry_amounts(catalog, recurring, mandate)?;
+    let ordinary_offer = recurring
+        .household_purchases
+        .iter()
+        .find(|p| {
+            p.principal_id == mandate.donor
+                && p.good_id == mandate.good_id
+                && p.unit_id == mandate.unit_id
+        })
+        .and_then(|p| {
+            recurring.offers.iter().find(|o| {
+                o.site_id == p.retailer_site_id
+                    && o.good_id == mandate.good_id
+                    && o.unit_id == mandate.unit_id
+            })
+        })
+        .map(|o| OrganizerAidOrdinaryOffer {
+            seller_id: o.site_id.as_bytes(),
+            unit_price: o.unit_price.micro_units(),
+        });
+    let time = remaining_time(state, mandate.donor, mandate.labor_unit_id, period)?;
+    let transport = transport(catalog, state, mandate.transport)?;
+    Ok(Some(OrganizerAidFoodPreview {
+        donor_stock,
+        own_need,
+        grams_per_unit: commodity.grams_per_unit().map_err(|_| refused())?,
+        ordinary_offer,
+        labor_unit_id: mandate.labor_unit_id.as_bytes(),
+        fulfillment_hours_per_unit: mandate.hours_per_unit,
+        time,
+        transport,
+    }))
+}
+
 fn pantry_amounts(
     catalog: &MaterialCatalog,
     recurring: &RecurringEconomy,
@@ -449,5 +537,29 @@ pub(super) mod decimal_i128 {
             }
         }
         deserializer.deserialize_str(Decimal)
+    }
+}
+
+mod optional_decimal_i128 {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Serialize, Deserialize)]
+    struct Decimal(#[serde(with = "super::decimal_i128")] i128);
+
+    #[allow(
+        clippy::ref_option,
+        reason = "Serde field adapters receive a reference to the complete field"
+    )]
+    pub fn serialize<S: Serializer>(
+        value: &Option<i128>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        value.map(Decimal).serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<i128>, D::Error> {
+        Option::<Decimal>::deserialize(deserializer).map(|value| value.map(|amount| amount.0))
     }
 }

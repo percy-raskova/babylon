@@ -380,7 +380,7 @@ mod tests {
         OrganizerPreview,
     ) {
         let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v15.json"
+            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v16.json"
         ))
         .expect("the authored JSON matches the declared schema");
         let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));
@@ -460,7 +460,7 @@ mod tests {
             matches_source(&source, &foreign).is_err(),
             "material scope remains checked"
         );
-        status.aid[0].payer_cash += 1;
+        *status.aid[0].payer_cash.as_mut().expect("cash account") += 1;
         assert!(
             matches_source(&source, &status).is_err(),
             "changed material remains refused"
@@ -530,7 +530,7 @@ mod tests {
             .status(&session, snapshot.clone())
             .expect("the fixture command reports its status");
         let mut changed = snapshot;
-        changed.aid[0].payer_cash += 1;
+        *changed.aid[0].payer_cash.as_mut().expect("cash account") += 1;
         assert!(custody.status(&session, changed).is_err());
         session.generation += 1;
         assert!(custody.stage(&session, &request, Some(&preview)).is_err());

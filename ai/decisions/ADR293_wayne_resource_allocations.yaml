@@ -51,14 +51,22 @@ ADR293_wayne_resource_allocations:
     amount editor or native acceptance proceed. Task 2 owns topic-specific need
     reports and Task 3 owns the amount editor. No native campaign acceptance or
     live PostgreSQL proof is claimed here.
-    The current food qualifier joins delivery to same-close household consumption
-    of the same good, without allocating consumed units to each original gift.
-    Fresh review must assess this attribution limit against the approved intent.
+    Food qualification uses a bounded credit per original commitment. Within one
+    recipient, good, unit and close, ascending original commitment identity takes
+    at most its actual grant from the remaining actual household consumption.
+    The household aggregate remains a separate fact. Credit is deterministic
+    across receipt order and restart; it is not parcel lineage or proof of a
+    marginal consumption increase. Cash qualifies independently, and a retained
+    first response remains final even if a later food credit is zero.
   current_contract: |
-    Organizer schema 10, config domain v9, state v8, commitment v3, journal and
-    period-entry domains v3; receipt domain v2, runtime protocol 15, personal
+    Organizer schema 11, config domain v10, state v9, commitment v3, journal and
+    period-entry domains v4; receipt domain v2, runtime protocol 16, personal
     draft schema 4. Material catalog schema 2/domain v2, circuit state schema
     22, world register v7 and tick receipts v20 are the only current formats.
+    Runtime food preview and payer cash are required nullable facts. An absent
+    unselected leg cannot block the selected independent leg; selected missing
+    material wiring refuses. Aid audit boundary v2 distinguishes qualifying
+    received support, bounded food consumption credit and actual cash dates.
     Missing allocations/initial terms and unsupported old formats refuse.
     Collection MUTUAL_AID has exactly key 3, kind 2, length 16, positive signed
     i128 big-endian micros. Aid MUTUAL_AID has exactly key 4, kind 3, length 8,

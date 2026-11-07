@@ -265,6 +265,7 @@ pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) 
             || lot.good_id != mandate.good_id
             || lot.unit_id != mandate.unit_id
             || lot.quantity == 0
+            || lot.quantity > mandate.maximum_quantity
             || lot.dispatch_period >= state.period
             || lot.stage_arrival_period < state.period
             || lot.commitment_id != aid_commitment_id(mandate.id, lot.dispatch_period)

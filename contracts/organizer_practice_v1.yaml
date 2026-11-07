@@ -7,12 +7,12 @@ meta:
   scope: Captured Wayne collective, two independent partners, and one workplace
 
 encoding:
-  runtime_session_protocol_version: 15
+  runtime_session_protocol_version: 16
   outer: exact_ASCII_domain_then_NUL_then_canonical_UTF8_JSON
-  version: config_and_state_schema_version_10_where_present
-  current_domains: {config: "babylon.organizer-config.v9\0", state: "babylon.organizer-state.v8\0",
+  version: config_and_state_schema_version_11_where_present
+  current_domains: {config: "babylon.organizer-config.v10\0", state: "babylon.organizer-state.v9\0",
                     receipt: "babylon.organizer-receipt.v2\0", commitment: "babylon.organizer-commitment.v3\0",
-                    period_entries: "babylon.organizer-period-entries.v3\0", journal: "babylon.organizer-journal.v3\0"}
+                    period_entries: "babylon.organizer-period-entries.v4\0", journal: "babylon.organizer-journal.v4\0"}
   field_order: Rust_declared_struct_field_order
   numbers: whole_unsigned_integers_and_strict_nonnegative_i128_decimal_cash_strings
   byte_arrays: fixed_length_JSON_unsigned_integer_arrays
@@ -127,6 +127,10 @@ independent_aid:
   cash_actual: min_requested_lawful_available_payer_cash_with_transfer_and_gift_cost_postings
   cash_remainder: terminal_no_reserve_refund_retry_or_substitution
   food: protected_surplus_real_fulfillment_time_physical_freight_loss_arrival_and_consumption
+  food_credit: min_actual_grant_and_shared_remaining_household_good_unit_period_consumption_in_original_identity_order
+  household_consumption: separate_aggregate_not_parcel_lineage_or_marginal_causality
+  preview: required_nullable_food_facts_and_payer_cash_missing_selected_leg_refuses
+  audit: boundary_v2_separate_qualifying_support_food_credit_cash_amount_and_actual_periods
   response: first_positive_settled_cash_or_consumed_food_one_independent_attempt
   retained: original_command_dispatch_support_cash_result_response_receipt_and_cumulative_food_loss
   response_outcomes: success_refusal_no_response_or_insufficient_time_never_retried

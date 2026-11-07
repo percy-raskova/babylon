@@ -231,8 +231,8 @@ pub fn admit_organizer_aid_pending(
     Ok(gift)
 }
 
-/// Food-leg evidence: delivery and aggregate same-period recipient consumption.
-/// Cash qualifies independently; these totals do not attribute marginal consumption or time to a gift.
+/// Food delivery, bounded original-gift consumption credit and the household aggregate.
+/// Credit follows canonical original identity order; it is not parcel lineage or marginal causality.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum OrganizerAidSupportStatus {
@@ -246,7 +246,10 @@ pub enum OrganizerAidSupportStatus {
     TerminalFailure,
     Granted {
         granted_quantity: u64,
+        /// This original's bounded share of actual same-close household consumption.
         consumed_quantity: u64,
+        /// Actual household total, shared across all same-good originals in this close.
+        household_consumed_quantity: u64,
     },
 }
 
@@ -291,6 +294,67 @@ pub struct OrganizerAidSupport {
     pub status: OrganizerAidSupportStatus,
     pub cash_status: OrganizerAidCashStatus,
     pub material_postings: OrganizerAidMaterialPostings,
+}
+
+/// Assign bounded consumption credit in canonical original-commitment order.
+///
+/// Each recipient/good/unit/period has one actual household consumption budget.
+/// Credit cannot exceed either the original grant or the unassigned budget.
+/// It does not identify individual parcels or attribute marginal effects.
+///
+/// # Errors
+/// Refuses duplicate originals or inconsistent household aggregate facts.
+pub fn attribute_organizer_food_consumption(
+    supports: &mut [OrganizerAidSupport],
+) -> Result<(), OrganizerError> {
+    supports.sort_by_key(|row| row.original_commitment_id);
+    let mut originals = BTreeSet::new();
+    let mut budgets = BTreeMap::new();
+    for row in supports {
+        if !originals.insert(row.original_commitment_id) {
+            return Err(OrganizerError::AidSupportMismatch);
+        }
+        let OrganizerAidSupportStatus::Granted {
+            granted_quantity,
+            consumed_quantity,
+            household_consumed_quantity,
+        } = &mut row.status
+        else {
+            continue;
+        };
+        let key = (
+            row.recipient_principal_id,
+            row.good_id,
+            row.unit_id,
+            row.period,
+        );
+        let (aggregate, remaining) = budgets
+            .entry(key)
+            .or_insert((*household_consumed_quantity, *household_consumed_quantity));
+        if *aggregate != *household_consumed_quantity || *granted_quantity == 0 {
+            return Err(OrganizerError::AidSupportMismatch);
+        }
+        *consumed_quantity = (*granted_quantity).min(*remaining);
+        *remaining -= *consumed_quantity;
+    }
+    Ok(())
+}
+
+pub(super) fn validate_consumption_credits(
+    entries: &OrganizerPeriodJournalEntries,
+) -> Result<(), OrganizerError> {
+    let mut actual: Vec<_> = entries
+        .aid_receipts
+        .iter()
+        .map(|row| row.support.clone())
+        .collect();
+    actual.sort_by_key(|row| row.original_commitment_id);
+    let mut expected = actual.clone();
+    attribute_organizer_food_consumption(&mut expected)?;
+    if actual != expected {
+        return Err(OrganizerError::AidSupportMismatch);
+    }
+    Ok(())
 }
 
 /// Independent captured deterministic-policy authority for the later response.
@@ -437,6 +501,16 @@ pub(super) fn validate_support(
     support: &OrganizerAidSupport,
     period: u64,
 ) -> Result<(), OrganizerError> {
+    if let OrganizerAidSupportStatus::Granted {
+        granted_quantity,
+        consumed_quantity,
+        household_consumed_quantity,
+    } = support.status
+    {
+        if consumed_quantity > granted_quantity || consumed_quantity > household_consumed_quantity {
+            return Err(OrganizerError::AidSupportMismatch);
+        }
+    }
     let postings = &support.material_postings;
     let current = support.period == support.dispatch_period;
     let super::OrganizerAllocation::Aid {

@@ -30,6 +30,11 @@
 - Source/CI, native behavior/rendering and human acceptance are separate evidence. No merge is authorized. Use required mise commit workflow and coauthor trailer, Part of PER-364/PER-58/PER-345 as applicable. No doc-generating aggregate, Sphinx or cargo doc.
 - Test meaningful regressions through RED/GREEN, smallest first. Run applicable conformance/replay/format/strict Clippy/BSL/publishing gates serially, once per relevant final change. Do not weaken baselines or budgets; intentional byte/content baselines require the existing ceremony and trailer.
 
+For each recipient, good, unit and close, original commitment identity sets the
+order of food consumption credit. Each original draws at most its actual grant
+from the remaining household consumption. The household total stays separate.
+This convention does not trace parcels or claim marginal effects.
+
 ## Review Focus
 
 - Food/cash ownership and permissions, exact expense/income matching, partial outcomes and no duplicate charges.

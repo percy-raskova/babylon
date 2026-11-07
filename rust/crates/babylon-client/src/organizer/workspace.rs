@@ -54,8 +54,9 @@ fn shared_household_time(client: &OrganizerClient, period: u64) -> Option<(u64, 
     }
     let mut budget = None;
     for row in client.aid.iter().filter(|row| row.period == period) {
-        let time = row.time.as_ref()?;
-        if time.period != period || time.labor_unit_id != row.labor_unit_id {
+        let food = row.food.as_ref()?;
+        let time = food.time.as_ref()?;
+        if time.period != period || time.labor_unit_id != food.labor_unit_id {
             return None;
         }
         let disclosed = (
@@ -886,11 +887,12 @@ mod tests {
             .expect("admitted current status");
         install_aid(&mut client);
         client.aid[0].period = period;
-        client.aid[0].time = Some(babylon_persistence::runtime_session::OrganizerAidTime {
-            period,
-            labor_unit_id: [9; 32],
-            remaining_hours: 6,
-        });
+        client.aid[0].food.as_mut().expect("food offer").time =
+            Some(babylon_persistence::runtime_session::OrganizerAidTime {
+                period,
+                labor_unit_id: [9; 32],
+                remaining_hours: 6,
+            });
         client.collection = Some(OrganizerCollectionPreview {
             period,
             mandate_id: [8; 32],
@@ -966,6 +968,9 @@ mod tests {
                 "producer-aligned committed receipt is counted once across mandates"
             );
             client.aid[1]
+                .food
+                .as_mut()
+                .expect("food offer")
                 .time
                 .as_mut()
                 .expect("closed receipt")
@@ -977,6 +982,9 @@ mod tests {
             );
             client.aid.pop();
             client.aid[0]
+                .food
+                .as_mut()
+                .expect("food offer")
                 .time
                 .as_mut()
                 .expect("closed receipt")
@@ -987,14 +995,21 @@ mod tests {
                 "zero observed remainder is known"
             );
             for invalid_period in [0, period - 1, period + 1] {
-                client.aid[0].time.as_mut().expect("closed receipt").period = invalid_period;
+                client.aid[0]
+                    .food
+                    .as_mut()
+                    .expect("food offer")
+                    .time
+                    .as_mut()
+                    .expect("closed receipt")
+                    .period = invalid_period;
                 assert_eq!(
                     resources(&client, &session).expect("current").shared_time,
                     None,
                     "stale and future receipts cannot stand in for the committed period"
                 );
             }
-            client.aid[0].time = None;
+            client.aid[0].food.as_mut().expect("food offer").time = None;
             assert_eq!(
                 resources(&client, &session).expect("current").shared_time,
                 None,
@@ -1046,7 +1061,6 @@ mod tests {
             initial_cash_micros: 0,
             cash_receiving_consent:
                 babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
-
             kind: OrganizerAidKind::Local,
             mandate_id: [4; 32],
             period: 3,
@@ -1054,19 +1068,23 @@ mod tests {
             recipient_id: [6; 32],
             good_id: [7; 32],
             unit_id: [8; 32],
-            donor_stock: 12,
-            own_need: 4,
-            grams_per_unit: 1000,
-            payer_cash: 120,
+            food: Some(
+                babylon_persistence::runtime_session::OrganizerAidFoodPreview {
+                    donor_stock: 12,
+                    own_need: 4,
+                    grams_per_unit: 1000,
+                    ordinary_offer: None,
+                    labor_unit_id: [9; 32],
+                    fulfillment_hours_per_unit: 2,
+                    time: None,
+                    transport: OrganizerAidTransportPreview::Local,
+                },
+            ),
+            payer_cash: Some(120),
             maximum_cash_micros: 10,
-            ordinary_offer: None,
             maximum_quantity: 8,
-            labor_unit_id: [9; 32],
-            fulfillment_hours_per_unit: 2,
             coordination_hours: 3,
             receiving_consent: OrganizerGiftConsent::Accept,
-            time: None,
-            transport: OrganizerAidTransportPreview::Local,
         });
     }
 

@@ -979,6 +979,7 @@ pub(crate) fn encode_bound_organizer(
     };
     organizer_collection::validate_binding(catalog, config, circuit)?;
     organizer_collection::current(config, state, journal, circuit, completed_tick)?;
+    organizer_support::validate_pending_freight(circuit, state)?;
     babylon_practice_contract::validate_organizer_journal(config, state, journal)?;
     if state.period != completed_tick {
         return Err(MaterialWorldError::PeriodMismatch);

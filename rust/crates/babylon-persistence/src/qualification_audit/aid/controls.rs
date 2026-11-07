@@ -255,10 +255,13 @@ fn changed_dynamic_original_offer_is_refused_before_admission() {
         let mut changed = before.clone();
         let row = &mut changed.aid[0];
         match change {
-            0 => row.payer_cash += 1,
-            1 => row.donor_stock += 1,
+            0 => *row.payer_cash.as_mut().expect("cash available") += 1,
+            1 => row.food.as_mut().expect("food available").donor_stock += 1,
             2 => {
-                row.ordinary_offer
+                row.food
+                    .as_mut()
+                    .expect("food available")
+                    .ordinary_offer
                     .as_mut()
                     .expect("the fixture set the optional field before this borrow")
                     .unit_price += 1;
@@ -266,7 +269,7 @@ fn changed_dynamic_original_offer_is_refused_before_admission() {
             _ => {
                 if let crate::runtime_session::OrganizerAidTransportPreview::Routed {
                     stages, ..
-                } = &mut row.transport
+                } = &mut row.food.as_mut().expect("food available").transport
                 {
                     stages[0].travel_periods += 1;
                 }
@@ -589,4 +592,59 @@ fn authorized_zero_transfer_aid_cannot_disappear_from_retained_resolution() {
     audit
         .read(session.catalog(), &admitted, session.material(), &after)
         .expect("actual zero-transfer refusal remains readable");
+}
+
+#[test]
+fn cash_only_qualifies_response_without_claiming_food_consumption() {
+    let (mut session, mut audit, before, _, _) =
+        start(false, false, OrganizerPartnerPolicy::Participate, 1);
+    let commitment = fixture::commitment_with_allocation(
+        &session,
+        OrganizerChoice::LocalAid,
+        OrganizerAllocation::Aid {
+            food_quantity: 0,
+            cash_micros: 3,
+        },
+    );
+    let preview = babylon_practice_contract::preview_organizer(
+        session.material().organizer_config().expect("config"),
+        session.material().organizer_state().expect("state"),
+        &commitment.command,
+    )
+    .expect("cash preview");
+    audit
+        .accept(Accepted::capture(&commitment, &preview, &before).expect("capture"))
+        .expect("accepted cash original");
+    let (admitted, after) = advance(&mut session, Some(&commitment));
+    assert_eq!(
+        after.aid_resolutions[0]
+            .support
+            .material_postings
+            .payer_cash_granted_micros,
+        3
+    );
+    assert_eq!(
+        after.aid_resolutions[0].practice.outcome,
+        OrganizerOutcome::InsufficientTime
+    );
+    assert!(!admitted
+        .receipts
+        .aid
+        .iter()
+        .any(|row| row.outcome == AidOutcome::Granted));
+    let fact = audit
+        .read(session.catalog(), &admitted, session.material(), &after)
+        .expect("exact cash audit");
+    let response = &fact.independent_practices[0];
+    assert!(
+        response.get("consumed_support").is_none(),
+        "obsolete ambiguous fact is retired"
+    );
+    assert_eq!(response["food_consumed_quantity"], 0);
+    assert_eq!(response["food_consumption_period"], serde_json::Value::Null);
+    assert_eq!(response["cash_received_micros"], "3");
+    assert_eq!(response["cash_received_period"], 1);
+    assert_eq!(response["first_response_period"], 1);
+    assert_eq!(response["qualifying_received_support"], true);
+    assert_eq!(response["food_consumed"], false);
 }

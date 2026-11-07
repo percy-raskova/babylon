@@ -346,7 +346,7 @@ pub(super) mod tests {
         let directory = Directory::new();
         let (mut audit, mut session) = tests::fixture(&directory);
         let status: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v15.json"
+            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v16.json"
         ))
         .expect("the authored JSON matches the declared schema");
         session.ready(0, None);
@@ -548,7 +548,7 @@ pub(super) mod tests {
             1
         );
         let mut wrong = status.clone();
-        wrong.aid[0].payer_cash += 1;
+        *wrong.aid[0].payer_cash.as_mut().expect("cash account") += 1;
         assert!(audit.status(&session, wrong).is_err());
         assert!(audit.awaiting_recovery_status());
         audit

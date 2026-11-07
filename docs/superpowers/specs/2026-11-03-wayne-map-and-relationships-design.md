@@ -40,11 +40,16 @@ Later arrivals do not retry it. Aid that delivers no support ends with an
 explicit no-support result and no coordination cost. Giving and receiving
 do not grant reporting rights, participation or membership.
 
-The current food check joins an original delivery to positive household
-consumption of the same good in that close. It does not assign consumed units
-to individual gifts. Old stock or overlapping deliveries can share
-that household consumption fact. Fresh review must assess whether this meets
-the approved intent for actually consumed food before acceptance.
+Food qualification assigns bounded consumption credit to each original gift.
+For a recipient, good, unit and close, ascending original commitment identity
+receives at most its actual granted quantity from the remaining actual
+household consumption. The household total stays separate. Two deliveries
+cannot both use the same consumed unit.
+
+This deterministic convention survives
+receipt reordering and restart. It does not trace parcels or claim that a gift
+caused more consumption. Cash still qualifies independently, and a first
+response stays final even if a later food delivery receives zero credit.
 
 The backend supplies required allocation identity, selected collection,
 independent aid legs, captured initial targets and saved draft/command

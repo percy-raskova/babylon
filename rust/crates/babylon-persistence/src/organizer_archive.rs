@@ -455,7 +455,7 @@ fn receipt_text(receipt: &OrganizerReceipt) -> String {
         OrganizerOutcome::CollectionRefused => "Collection refused; no standing fallback",
         OrganizerOutcome::AidScheduled => "Support committed for material resolution",
         OrganizerOutcome::AidAwaitingSupport => "Support remains in transit",
-        OrganizerOutcome::NoQualifyingSupport => "Support did not provide current consumption",
+        OrganizerOutcome::NoQualifyingSupport => "Support did not qualify joint work",
         OrganizerOutcome::AidPracticeCompleted => "Independent aid practice completed",
         OrganizerOutcome::AidPracticeUncompleted => "Independent aid practice uncompleted",
         OrganizerOutcome::EvidenceObtained => "Evidence obtained",
@@ -818,13 +818,13 @@ fn aid_support_text(evidence: &AidSupportEvidence<'_>) -> String {
             "Pending: surviving freight remains in transit.".into(),
         OrganizerAidSupportStatus::ReceivingRefused => "Food receiving was refused; cash settles independently.".into(),
         OrganizerAidSupportStatus::TerminalFailure =>
-            "Terminal: no support was granted in this period; no surviving delivery remains.".into(),
-        OrganizerAidSupportStatus::Granted { granted_quantity, consumed_quantity } => format!(
-            "Granted quantity: {granted_quantity}; recipient total consumption of the same good and unit in this period: {consumed_quantity}. This is aggregate consumption, not attribution to donated units. The original aid attempt is terminal; independent practice may still refuse or lack time."
+            "Terminal food failure: no food was granted in this period; no surviving food delivery remains.".into(),
+        OrganizerAidSupportStatus::Granted { granted_quantity, consumed_quantity, household_consumed_quantity } => format!(
+            "Granted quantity: {granted_quantity}; recipient total consumption of the same good and unit in this period: {household_consumed_quantity}. This is aggregate consumption, not attribution to donated units. Bounded credit for this original: {consumed_quantity}; no parcel lineage is claimed. The original aid attempt is terminal; independent practice may still refuse or lack time."
         ),
     };
     format!(
-        "Original human admission period: {}\nMaterial dispatch period: {}\nActual support resolution period: {}\nOriginal commitment: {}\nMaterial commitment: {}\nGood: {}; unit: {}\n{support}\nActual material postings in period {}: Dispatched food: {} units; donor household fulfillment: {} hours. Aid payer cash: gift paid {} micro-units; fulfillment is separate from independent coordination.\nDesigned eligibility requires positive cash settled at original dispatch or a food grant with positive same-period consumption. It does not prove donated units caused additional consumption or released time; receiving support does not authorize agreement or participation.",
+        "Original human admission period: {}\nMaterial dispatch period: {}\nActual support resolution period: {}\nOriginal commitment: {}\nMaterial commitment: {}\nGood: {}; unit: {}\n{support}\nActual material postings in period {}: Dispatched food: {} units; donor household fulfillment: {} hours. Aid payer cash: gift paid {} micro-units; fulfillment is separate from independent coordination.\nDesigned eligibility requires positive cash settled at original dispatch or a food grant with positive bounded same-period consumption credit. It does not prove donated units caused additional consumption or released time; receiving support does not authorize agreement or participation.",
         evidence.admission,
         evidence.dispatch,
         evidence.resolution,
@@ -1029,7 +1029,8 @@ mod projection_tests {
     fn aid_evidence_preserves_original_dates_and_distinguishes_support_from_consumption() {
         let status = OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
-            consumed_quantity: 5,
+            household_consumed_quantity: 5,
+            consumed_quantity: 2,
         };
         let material_postings = OrganizerAidMaterialPostings {
             dispatched_quantity: 0,
@@ -1077,10 +1078,20 @@ mod projection_tests {
         let failed = OrganizerAidSupportStatus::TerminalFailure;
         evidence.status = &failed;
         let text = aid_support_text(&evidence);
-        assert!(text.contains("Terminal: no support was granted"));
+        assert!(text.contains("Terminal food failure: no food was granted"));
+        assert!(!text.contains("no support was granted"));
         assert!(text.contains("donor household fulfillment: 0 hours"));
         assert!(text.contains("gift paid 0"));
         assert!(!text.contains("Pending:"));
+        let cash_only = OrganizerAidMaterialPostings {
+            payer_cash_granted_micros: 6,
+            ..empty_postings
+        };
+        evidence.material_postings = &cash_only;
+        let text = aid_support_text(&evidence);
+        assert!(text.contains("Terminal food failure"));
+        assert!(text.contains("gift paid 6 micro-units"));
+        assert!(!text.contains("no support was granted"));
     }
 
     #[test]

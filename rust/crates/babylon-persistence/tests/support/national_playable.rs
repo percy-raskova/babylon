@@ -795,7 +795,14 @@ fn verify_offer(snapshot: &OrganizerSnapshot, kind: OrganizerAidKind) {
     assert_eq!(preview.initial_food_quantity, 1);
     assert_eq!(preview.initial_cash_micros, 0);
     assert_eq!(preview.cash_receiving_consent, OrganizerGiftConsent::Accept);
-    verify_offer_transport(&preview.transport, kind);
+    verify_offer_transport(
+        &preview
+            .food
+            .as_ref()
+            .expect("national food offer")
+            .transport,
+        kind,
+    );
 }
 fn verify_offer_transport(transport: &OrganizerAidTransportPreview, kind: OrganizerAidKind) {
     match (transport, kind) {
@@ -818,7 +825,7 @@ fn positive(snapshot: &OrganizerSnapshot, commitment: Option<&OrganizerCommitmen
         if r.pending.original_commitment_id!=commitment.commitment_id {return false;}
         assert_eq!(r.pending.admitted_period,commitment.command.expected_period);
         assert_eq!(r.support.original_commitment_id,commitment.commitment_id);
-        matches!(r.support.status,OrganizerAidSupportStatus::Granted {granted_quantity,consumed_quantity}
+        matches!(r.support.status,OrganizerAidSupportStatus::Granted {granted_quantity,consumed_quantity,..}
             if granted_quantity>0 && consumed_quantity>0)
     })
 }

@@ -195,7 +195,7 @@ pub(super) fn check_time(
         .aid
         .iter()
         .filter(|p| p.donor_id == row.donor.as_bytes())
-        .filter_map(|p| p.time.as_ref());
+        .filter_map(|p| p.food.as_ref().and_then(|food| food.time.as_ref()));
     for time in donor_times {
         if time.period != row.period
             || time.labor_unit_id != unit

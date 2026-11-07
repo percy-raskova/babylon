@@ -1,4 +1,6 @@
 //! Native organizational decisions over the one authoritative runtime connection.
+#[cfg(test)]
+use serde_json::Value;
 
 #[cfg(test)]
 use crate::observer::Perspective;
@@ -345,6 +347,73 @@ pub(crate) mod tests {
         };
         assert!(client.previewed(request, stale, &mut session).is_err());
         assert!(client.reviewed_command.is_none());
+    }
+
+    #[test]
+    fn real_independent_leg_status_seeds_draft_and_authenticated_review() {
+        use babylon_practice_contract::{OrganizerAllocation, OrganizerConfig, OrganizerState};
+        for bytes in [
+            include_str!("../../babylon-persistence/tests/fixtures/food_only_no_payer_v16.json"),
+            include_str!("../../babylon-persistence/tests/fixtures/cash_only_no_food_v16.json"),
+        ] {
+            let capture: Value = serde_json::from_str(bytes).expect("producer capture");
+            let snapshot: OrganizerSnapshot =
+                serde_json::from_value(capture["snapshot"].clone()).expect("ordinary status");
+            let config: OrganizerConfig =
+                serde_json::from_value(capture["config"].clone()).expect("captured authority");
+            let state: OrganizerState =
+                serde_json::from_value(capture["state"].clone()).expect("captured state");
+            let expected: OrganizerCommitment =
+                serde_json::from_value(capture["accepted"].clone()).expect("actual admission");
+            let campaign = Uuid::from_bytes(config.campaign_id);
+            let mut session = ObserverSession::new(CampaignId::from_uuid(campaign));
+            session.connected_fixture();
+            session.ready(0, None);
+            assert!(session.installed(&session.context()));
+            session.organizer_enabled = true;
+            let mut client = OrganizerClient {
+                campaign: Some(campaign),
+                ..default()
+            };
+            client.queue(&mut session, RequestKind::Status, None);
+            let request = client.pending.as_ref().expect("status request").id;
+            assert_eq!(
+                client.status(request, snapshot, &mut session),
+                Ok(StatusDisposition::Installed)
+            );
+            let draft = client.draft.as_mut().expect("new draft from real status");
+            assert_eq!(draft.aid_allocation, expected.command.allocation);
+            draft.choice = expected.command.choice;
+            let command = client
+                .make_command(&session, client.choice())
+                .expect("independent selected leg");
+            let mut normalized = command.clone();
+            normalized.nonce = expected.command.nonce;
+            assert_eq!(normalized, expected.command);
+            let preview = babylon_practice_contract::preview_organizer(&config, &state, &command)
+                .expect("engine-authenticated preview");
+            assert_eq!(
+                serde_json::to_value(&preview).expect("preview"),
+                capture["preview"]
+            );
+            client.queue(&mut session, RequestKind::Preview, Some(command.clone()));
+            let request = client.pending.as_ref().expect("preview request").id;
+            client
+                .previewed(request, preview, &mut session)
+                .expect("ordinary review accepts authentic selected allocation");
+            assert_eq!(client.reviewed_command, Some(command.clone()));
+            let accepted = babylon_practice_contract::admit_organizer(&config, &state, &command)
+                .expect("actual command admission");
+            assert_eq!(accepted.command, command);
+            client.draft.as_mut().expect("draft").aid_allocation = OrganizerAllocation::Aid {
+                food_quantity: 1,
+                cash_micros: 3,
+            };
+            assert!(
+                client.make_command(&session, client.choice()).is_none(),
+                "positive unwired leg cannot submit"
+            );
+        }
     }
 
     #[test]
@@ -698,7 +767,6 @@ pub(crate) mod tests {
             initial_cash_micros: 0,
             cash_receiving_consent:
                 babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
-
             kind: OrganizerAidKind::Local,
             mandate_id: [4; 32],
             period: 3,
@@ -706,19 +774,23 @@ pub(crate) mod tests {
             recipient_id: [6; 32],
             good_id: [7; 32],
             unit_id: [8; 32],
-            donor_stock: 12,
-            own_need: 4,
-            grams_per_unit: 1000,
-            payer_cash: 120,
+            food: Some(
+                babylon_persistence::runtime_session::OrganizerAidFoodPreview {
+                    donor_stock: 12,
+                    own_need: 4,
+                    grams_per_unit: 1000,
+                    ordinary_offer: None,
+                    labor_unit_id: [9; 32],
+                    fulfillment_hours_per_unit: 2,
+                    time: None,
+                    transport: OrganizerAidTransportPreview::Local,
+                },
+            ),
+            payer_cash: Some(120),
             maximum_cash_micros: 10,
-            ordinary_offer: None,
             maximum_quantity: 8,
-            labor_unit_id: [9; 32],
-            fulfillment_hours_per_unit: 2,
             coordination_hours: 3,
             receiving_consent: OrganizerGiftConsent::Accept,
-            time: None,
-            transport: OrganizerAidTransportPreview::Local,
         }
     }
 

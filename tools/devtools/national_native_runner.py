@@ -713,10 +713,10 @@ class NativeRun:
             for path in sorted(self.directory.glob("aid-*.json"))
         ]
         posted = {
-            aid_identity(row.get("original_commitment"))
+            row.original_commitment
             for _facts, aid in audits
             for row in aid.independent_practices
-            if row.get("consumed_support") is True
+            if row.food_consumed
         }
         consumed = {
             original.commitment.command.choice

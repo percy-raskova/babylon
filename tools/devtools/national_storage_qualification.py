@@ -15,7 +15,16 @@ from uuid import UUID
 
 from defusedxml import ElementTree as ET  # type: ignore[import-untyped]
 from defusedxml.common import DefusedXmlException  # type: ignore[import-untyped]
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    StrictStr,
+    field_validator,
+    model_validator,
+)
 
 Nonnegative = Annotated[StrictInt, Field(ge=0, le=2**63 - 1)]
 RELATION_COLUMNS = (
@@ -37,6 +46,61 @@ class FrozenRecord(BaseModel):
 
 
 Positive = Annotated[StrictInt, Field(gt=0, le=2**63 - 1)]
+Quantity = Annotated[StrictInt, Field(ge=0, le=2**64 - 1)]
+
+
+class AidPracticeEvidence(FrozenRecord):
+    """Current close facts; food credit never attributes a later cash-funded purchase."""
+
+    original_commitment: Annotated[
+        tuple[Annotated[StrictInt, Field(ge=0, le=255)], ...], Field(min_length=32, max_length=32)
+    ]
+    mandate: Annotated[
+        tuple[Annotated[StrictInt, Field(ge=0, le=255)], ...], Field(min_length=32, max_length=32)
+    ]
+    dispatch_period: Positive
+    period: Positive
+    qualifying_received_support: StrictBool
+    food_consumed: StrictBool
+    food_consumed_quantity: Quantity
+    food_consumption_period: Positive | None
+    cash_received_micros: Annotated[StrictStr, Field(pattern=r"^(0|[1-9][0-9]*)$")]
+    cash_received_period: Positive | None
+    first_response_period: Positive | None
+    partner_actor: Quantity | None
+    partner_response: Literal["not_requested", "no_response", "refused", "participated"]
+    outcome: Literal[
+        "aid_awaiting_support",
+        "no_qualifying_support",
+        "aid_response_retained",
+        "aid_practice_completed",
+        "aid_practice_uncompleted",
+        "insufficient_time",
+    ]
+    recipient_debited_hours: Quantity
+    finite_practice_completed: StrictBool
+
+    @model_validator(mode="after")
+    def actual_close_facts(self) -> AidPracticeEvidence:
+        cash = int(self.cash_received_micros)
+        food = self.food_consumed_quantity > 0
+        if (
+            not any(self.original_commitment)
+            or not any(self.mandate)
+            or self.dispatch_period > self.period
+            or cash > 2**127 - 1
+            or (cash > 0 and self.dispatch_period != self.period)
+            or self.food_consumed != food
+            or self.food_consumption_period != (self.period if food else None)
+            or self.cash_received_period != (self.period if cash > 0 else None)
+            or self.qualifying_received_support != (food or cash > 0)
+            or (
+                self.first_response_period is not None
+                and not self.dispatch_period <= self.first_response_period <= self.period
+            )
+        ):
+            raise ValueError("aid support facts must retain actual receipt amounts and dates")
+        return self
 
 
 class Policy(FrozenRecord):
@@ -1028,7 +1092,6 @@ class TradeSummary(FrozenRecord):
         return self
 
 
-Quantity = Annotated[StrictInt, Field(ge=0, le=2**64 - 1)]
 MoneyText = Annotated[str, Field(strict=True, pattern=r"^(0|[1-9][0-9]{0,38})$")]
 PriceReason = Literal["fixed", "hold", "unserved_demand", "excess_stock", "cost_pressure"]
 
@@ -1631,7 +1694,7 @@ def evaluate_playable(
         or not 1 <= len(accepted_commands) <= 2
     )
     positive_commands: set[tuple[int, ...]] = set()
-    delivered_commands: set[tuple[int, ...]] = set()
+    consumed_commands: set[tuple[int, ...]] = set()
     for boundary, fact in zip(playable.boundaries, facts, strict=True):
         if (
             not isinstance(fact, dict)
@@ -1648,28 +1711,64 @@ def evaluate_playable(
         practices = fact.get("independent_practices")
         if not isinstance(selected, (list, tuple)) or not isinstance(practices, (list, tuple)):
             raise ValueError("independent aid and practice evidence must be arrays")
+        delivered_this_period: dict[tuple[int, ...], int] = {}
+        cash_this_period: dict[tuple[int, ...], tuple[tuple[int, ...], int, str]] = {}
+        used_cash: set[tuple[int, ...]] = set()
         for row in selected:
             if not isinstance(row, dict):
                 raise ValueError("independent selected aid must be records")
             quantity = row.get("quantity")
             if row.get("outcome") == "Granted" and type(quantity) is int and quantity > 0:
-                delivered_commands.add(command_identity(row.get("original_commitment")))
+                command = command_identity(row.get("original_commitment"))
+                delivered_this_period[command] = delivered_this_period.get(command, 0) + quantity
+            if row.get("outcome") == "CashGranted":
+                command = command_identity(row.get("original_commitment"))
+                mandate = command_identity(row.get("mandate"))
+                dispatch = row.get("dispatch_period")
+                cash = row.get("cash_micros")
+                if (
+                    type(quantity) is not int
+                    or quantity != 0
+                    or type(dispatch) is not int
+                    or dispatch != boundary.tick
+                    or not isinstance(cash, str)
+                    or re.fullmatch(r"[1-9][0-9]*", cash) is None
+                    or int(cash) > 2**127 - 1
+                    or command in cash_this_period
+                ):
+                    raise ValueError(
+                        "cash posting must be unique, positive and in its dispatch close"
+                    )
+                cash_this_period[command] = (mandate, dispatch, cash)
         for row in practices:
-            if not isinstance(row, dict):
-                raise ValueError("independent practice must be records")
-            hours = row.get("recipient_debited_hours")
-            consumed = row.get("consumed_support")
+            evidence = AidPracticeEvidence.model_validate(row)
+            if evidence.period != boundary.tick:
+                raise ValueError("independent practice period differs from receipt")
+            command = evidence.original_commitment
+            food_matches = evidence.food_consumed and (
+                evidence.food_consumed_quantity <= delivered_this_period.get(command, 0)
+            )
+            cash_matches = int(evidence.cash_received_micros) > 0 and cash_this_period.get(
+                command
+            ) == (evidence.mandate, evidence.period, evidence.cash_received_micros)
+            if cash_matches:
+                used_cash.add(command)
+            incomplete |= (int(evidence.cash_received_micros) > 0 and not cash_matches) or (
+                evidence.food_consumed and not food_matches
+            )
+            if food_matches:
+                consumed_commands.add(command)
+            qualifying = evidence.qualifying_received_support and (cash_matches or food_matches)
             if (
-                row.get("finite_practice_completed") is True
-                and type(hours) is int
-                and hours > 0
-                and consumed is True
-                and row.get("partner_response") == "participated"
-                and row.get("outcome") == "aid_practice_completed"
+                evidence.finite_practice_completed
+                and evidence.recipient_debited_hours > 0
+                and qualifying
+                and evidence.first_response_period == evidence.period
+                and evidence.partner_response == "participated"
+                and evidence.outcome == "aid_practice_completed"
             ):
-                if type(row.get("period")) is not int or row.get("period") != boundary.tick:
-                    raise ValueError("independent practice period differs from receipt")
-                positive_commands.add(command_identity(row.get("original_commitment")))
+                positive_commands.add(command)
+        incomplete |= used_cash != set(cash_this_period)
     practice = playable.independent_finite_aid_practice
     completed = practice.get("completed_original_commands")
     completed_commands = (
@@ -1689,11 +1788,10 @@ def evaluate_playable(
         and terminal_commands == completed_commands
         and practice.get("status") == ("passed" if len(accepted_commands) == 2 else "incomplete")
         and practice.get("basis")
-        == "actual_consumed_support_independent_partner_response_and_authenticated_finite_debits"
+        == "actual_qualifying_support_independent_partner_response_and_authenticated_finite_debits"
         and isinstance(completed, (list, tuple))
         and len(completed) == len(completed_commands) == len(accepted_commands)
         and completed_commands == positive_commands
-        and positive_commands <= delivered_commands
         and positive_commands == accepted_commands
     )
     incomplete |= not positive_practice_verified
@@ -1701,6 +1799,7 @@ def evaluate_playable(
     full_positive_aid = (
         len(accepted_commands) == 2
         and positive_practice_verified
+        and accepted_commands <= consumed_commands
         and playable.remote_consumed
         and playable.local_consumed
         and playable.positive_aid_consequences == "passed"

@@ -16,7 +16,7 @@ pub(super) fn read(
     resolution: &OrganizerAidResolution,
     terms: &Terms<'_>,
 ) -> Result<Value> {
-    let consumed = identity(resolution, terms, admitted.receipts.resolve_tick)?;
+    let qualifying = identity(resolution, terms, admitted.receipts.resolve_tick)?;
     requested_legs(admitted, resolution)?;
     support(admitted, resolution)?;
     let practice = &resolution.practice;
@@ -39,7 +39,7 @@ pub(super) fn read(
             }
         }
         OrganizerOutcome::AidAwaitingSupport | OrganizerOutcome::NoQualifyingSupport => {
-            if consumed
+            if qualifying
                 || !practice.time_use.is_empty()
                 || practice.partner_response != OrganizerPartnerResponse::NotRequested
                 || practice.partner_actor_id.is_some()
@@ -48,7 +48,7 @@ pub(super) fn read(
             }
         }
         OrganizerOutcome::AidPracticeCompleted => {
-            if !consumed
+            if !qualifying
                 || practice.partner_response != OrganizerPartnerResponse::Participated
                 || terms.binding.partner.policy != OrganizerPartnerPolicy::Participate
                 || practice.partner_actor_id != Some(recipient)
@@ -73,16 +73,41 @@ pub(super) fn read(
         }
         _ => return Err(Refusal::Practice),
     }
-    if consumed
+    if qualifying
         && practice.outcome != OrganizerOutcome::AidResponseRetained
         && practice.partner_actor_id != Some(recipient)
     {
         return Err(Refusal::Practice);
     }
     let recipient_hours = debits(admitted, resolution, terms)?;
-    Ok(
-        json!({"original_commitment":terms.accepted.commitment.commitment_id,"mandate":terms.mandate.id,"dispatch_period":terms.accepted.commitment.resolves_period,"period":practice.period,"consumed_support":consumed,"partner_actor":practice.partner_actor_id,"partner_response":practice.partner_response,"outcome":practice.outcome,"recipient_debited_hours":recipient_hours,"finite_practice_completed":practice.outcome==OrganizerOutcome::AidPracticeCompleted}),
-    )
+    let food_consumed_quantity = match resolution.support.status {
+        OrganizerAidSupportStatus::Granted {
+            consumed_quantity, ..
+        } => consumed_quantity,
+        _ => 0,
+    };
+    let cash_received = resolution
+        .support
+        .material_postings
+        .payer_cash_granted_micros;
+    Ok(json!({
+        "original_commitment": terms.accepted.commitment.commitment_id,
+        "mandate": terms.mandate.id,
+        "dispatch_period": terms.accepted.commitment.resolves_period,
+        "period": practice.period,
+        "qualifying_received_support": qualifying,
+        "food_consumed": food_consumed_quantity > 0,
+        "food_consumed_quantity": food_consumed_quantity,
+        "food_consumption_period": (food_consumed_quantity > 0).then_some(practice.period),
+        "cash_received_micros": cash_received.to_string(),
+        "cash_received_period": (cash_received > 0).then_some(practice.period),
+        "first_response_period": resolution.pending.response.as_ref().map(|row| row.period),
+        "partner_actor": practice.partner_actor_id,
+        "partner_response": practice.partner_response,
+        "outcome": practice.outcome,
+        "recipient_debited_hours": recipient_hours,
+        "finite_practice_completed": practice.outcome == OrganizerOutcome::AidPracticeCompleted,
+    }))
 }
 fn identity(resolution: &OrganizerAidResolution, terms: &Terms<'_>, tick: u64) -> Result<bool> {
     let accepted = &terms.accepted.commitment;
@@ -226,6 +251,7 @@ fn support(
     if let OrganizerAidSupportStatus::Granted {
         granted_quantity,
         consumed_quantity,
+        household_consumed_quantity,
     } = s.status
     {
         let c = super::one(
@@ -239,7 +265,9 @@ fn support(
         if granted == 0
             || granted != granted_quantity
             || c.period != s.period
-            || c.consumed_quantity != consumed_quantity
+            || c.consumed_quantity != household_consumed_quantity
+            || consumed_quantity > granted_quantity
+            || consumed_quantity > household_consumed_quantity
         {
             return Err(Refusal::Support);
         }

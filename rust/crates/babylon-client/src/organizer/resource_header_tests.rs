@@ -34,7 +34,7 @@ fn measured_resource_board(
         );
     let captured: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../babylon-persistence/tests/fixtures/national_organizer_opening_v15.json"
+        "/../babylon-persistence/tests/fixtures/national_organizer_opening_v16.json"
     )))
     .expect("captured national resources");
     {
@@ -51,9 +51,10 @@ fn measured_resource_board(
         client.aid = captured.aid;
         for row in &mut client.aid {
             row.period = period;
-            row.time = Some(babylon_persistence::runtime_session::OrganizerAidTime {
+            let food = row.food.as_mut().expect("national food offer");
+            food.time = Some(babylon_persistence::runtime_session::OrganizerAidTime {
                 period,
-                labor_unit_id: row.labor_unit_id,
+                labor_unit_id: food.labor_unit_id,
                 remaining_hours: u64::MAX,
             });
         }

@@ -508,6 +508,7 @@ fn resolve_supported_aid(
         facts.period,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 1,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -605,6 +606,7 @@ fn remote_authorization_survives_then_attempts_after_real_grant_and_consumption(
         2,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -719,6 +721,7 @@ fn unshipped_or_granted_unconsumed_support_never_completes_and_retires_once() {
         OrganizerAidSupportStatus::TerminalFailure,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
+            household_consumed_quantity: 0,
             consumed_quantity: 0,
         },
     ] {
@@ -778,6 +781,7 @@ fn missing_foreign_duplicate_future_and_changed_support_fail_without_mutating_op
         2,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 1,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -890,6 +894,7 @@ fn later_ordinary_work_precedes_aid_and_cannot_double_spend_actual_supply() {
         2,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -968,6 +973,7 @@ fn independently_refused_delayed_practice_keeps_valid_grant_and_consumption_evid
         2,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -1053,6 +1059,7 @@ fn dropped_aid_resolution_period_is_refused_by_the_window_chain() {
         3,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -1126,6 +1133,7 @@ fn cutting_real_support_with_unrelated_free_time_blocks_delayed_completion() {
         OrganizerAidSupportStatus::TerminalFailure,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
+            household_consumed_quantity: 0,
             consumed_quantity: 0,
         },
     ] {
@@ -1209,6 +1217,7 @@ fn later_support_cannot_repeat_dispatch_postings_or_foreign_actor_authority() {
         2,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 1,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -1244,7 +1253,7 @@ fn later_support_cannot_repeat_dispatch_postings_or_foreign_actor_authority() {
 
 #[test]
 fn current_organizer_refuses_prior_schema_even_without_aid() {
-    assert_eq!(ORGANIZER_SCHEMA_VERSION, 10);
+    assert_eq!(ORGANIZER_SCHEMA_VERSION, 11);
     let mut prior = support::config();
     prior.schema_version = 6;
     assert_eq!(
@@ -1389,6 +1398,7 @@ fn collection_ack_does_not_recharge_material_time_before_delayed_aid() {
         2,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 2,
+            household_consumed_quantity: 1,
             consumed_quantity: 1,
         },
     );
@@ -1577,7 +1587,9 @@ fn independent_cash_first_retains_one_response_through_delayed_food_restart() {
             OrganizerOutcome::InsufficientTime,
         ),
     ] {
-        retained_cash_response(policy, hours, outcome);
+        for consumed_quantity in [0, 1] {
+            retained_cash_response(policy, hours, outcome, consumed_quantity);
+        }
     }
 }
 
@@ -1589,6 +1601,7 @@ fn retained_cash_response(
     policy: OrganizerPartnerPolicy,
     recipient_hours: u64,
     outcome: OrganizerOutcome,
+    consumed_quantity: u64,
 ) {
     let mut config = captured();
     config.aid_bindings[1].partner.policy = policy;
@@ -1688,7 +1701,8 @@ fn retained_cash_response(
         13,
         OrganizerAidSupportStatus::Granted {
             granted_quantity: 1,
-            consumed_quantity: 1,
+            household_consumed_quantity: consumed_quantity,
+            consumed_quantity,
         },
     );
     arrival.cash_status = OrganizerAidCashStatus::Granted;

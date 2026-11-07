@@ -1,4 +1,5 @@
 //! Text projections over granted organizer records, never material ledger truth.
+use babylon_persistence::runtime_session::OrganizerAidFoodPreview;
 
 use babylon_persistence::runtime_session::OrganizerAllocation;
 use babylon_persistence::runtime_session::{
@@ -401,10 +402,20 @@ fn aid_review_terms(client: &OrganizerClient, choice: OrganizerChoice) -> String
     };
     let consent = match terms.receiving_consent {
         OrganizerGiftConsent::Accept => "accepted",
-        OrganizerGiftConsent::Refuse => "refused; gift unavailable",
+        OrganizerGiftConsent::Refuse => "refused for food",
     };
-    let surplus = terms.donor_stock.saturating_sub(terms.own_need);
-    format!("Recipient: {}\nGift request: up to {} food units ({} grams each); protected surplus: {} units. Actual fulfillment may be lower.\nIndependent cash cap: {} currency; organization cash: {} currency. Fulfillment: {} household hours per dispatched unit.\nReceiving consent: {consent}.", recipient.partner_label, crate::observer_ui::grouped(terms.maximum_quantity), crate::observer_ui::grouped(terms.grams_per_unit), crate::observer_ui::grouped(surplus), crate::human_numbers::currency(terms.maximum_cash_micros), crate::human_numbers::currency(terms.payer_cash), crate::observer_ui::grouped(terms.fulfillment_hours_per_unit))
+    let food = terms.food.as_ref().map_or_else(
+        || "Food delivery is unavailable.".into(),
+        |food| format!("Gift request: up to {} food units ({} grams each); protected surplus: {} units. Actual fulfillment may be lower.\nFulfillment: {} household hours per dispatched unit.", crate::observer_ui::grouped(terms.maximum_quantity), crate::observer_ui::grouped(food.grams_per_unit), crate::observer_ui::grouped(food.donor_stock.saturating_sub(food.own_need)), crate::observer_ui::grouped(food.fulfillment_hours_per_unit)),
+    );
+    format!("Recipient: {}\n{food}\nIndependent cash cap: {} currency; organization cash: {}.\nReceiving consent: {consent}.", recipient.partner_label, crate::human_numbers::currency(terms.maximum_cash_micros), aid_cash_text(terms.payer_cash))
+}
+
+fn aid_cash_text(cash: Option<i128>) -> String {
+    cash.map_or_else(
+        || "unavailable".into(),
+        |value| format!("{} currency", crate::human_numbers::currency(value)),
+    )
 }
 
 fn collection_review_terms(client: &OrganizerClient) -> String {
@@ -419,25 +430,30 @@ fn collection_review_terms(client: &OrganizerClient) -> String {
 }
 
 fn aid_terms(preview: &OrganizerMaterialAidPreview) -> String {
-    let surplus = preview.donor_stock.saturating_sub(preview.own_need);
     let mut text = format!(
-        "Current pantry: {} units; own food need: {}; protected surplus: {}.\nOrganization cash: {} currency. Independent cash cap: {} currency, separate from food.\nCaptured food maximum: {} food units ({} grams per unit); actual fulfillment may be lower.\nFulfillment: {} household hours per dispatched unit; later coordination: {} hours. These compete with other work.\n",
-        crate::observer_ui::grouped(preview.donor_stock), crate::observer_ui::grouped(preview.own_need), crate::observer_ui::grouped(surplus), crate::human_numbers::currency(preview.payer_cash), crate::human_numbers::currency(preview.maximum_cash_micros),
-        crate::observer_ui::grouped(preview.maximum_quantity), crate::observer_ui::grouped(preview.grams_per_unit), crate::observer_ui::grouped(preview.fulfillment_hours_per_unit), crate::observer_ui::grouped(preview.coordination_hours)
+        "Organization cash: {}. Independent cash cap: {} currency, separate from food.\n",
+        aid_cash_text(preview.payer_cash),
+        crate::human_numbers::currency(preview.maximum_cash_micros)
     );
-    append_aid_constraints(&mut text, preview);
-    text.push_str("Preview only: no cash, food, freight or time is reserved. Later ordinary work has first call on time. Delivery and same-period consumption may permit a separate independently authorized practice; no agreement is guaranteed.");
+    if let Some(food) = &preview.food {
+        let surplus = food.donor_stock.saturating_sub(food.own_need);
+        let _ = writeln!(text, "Current pantry: {} units; own food need: {}; protected surplus: {}.\nCaptured food maximum: {} food units ({} grams per unit); actual fulfillment may be lower.\nFulfillment: {} household hours per dispatched unit; later coordination: {} hours. These compete with other work.", crate::observer_ui::grouped(food.donor_stock), crate::observer_ui::grouped(food.own_need), crate::observer_ui::grouped(surplus), crate::observer_ui::grouped(preview.maximum_quantity), crate::observer_ui::grouped(food.grams_per_unit), crate::observer_ui::grouped(food.fulfillment_hours_per_unit), crate::observer_ui::grouped(preview.coordination_hours));
+        append_aid_constraints(&mut text, food);
+    } else {
+        text.push_str("Food delivery is unavailable.\n");
+    }
+    text.push_str("Preview only: no cash, food, freight or time is reserved. Later ordinary work has first call on time. Settled cash or bounded consumed-food credit may permit a separate independently authorized practice; no agreement is guaranteed.");
     text
 }
 
-fn append_aid_constraints(text: &mut String, preview: &OrganizerMaterialAidPreview) {
+fn append_aid_constraints(text: &mut String, food: &OrganizerAidFoodPreview) {
     use babylon_persistence::runtime_session::OrganizerAidTransportPreview;
-    if let Some(offer) = &preview.ordinary_offer {
+    if let Some(offer) = &food.ordinary_offer {
         let _ = writeln!(text, "Ordinary quoted food price: {} currency per unit; this gift is not a purchase at that price.", crate::human_numbers::currency(offer.unit_price));
     } else {
         text.push_str("No ordinary food quote is available for comparison.\n");
     }
-    match &preview.time {
+    match &food.time {
         Some(time) => {
             let _ = writeln!(text, "Last closed period {}: {} household hours remain. This is observed past supply, not next-period reserved time.", time.period, crate::observer_ui::grouped(time.remaining_hours));
         }
@@ -445,7 +461,7 @@ fn append_aid_constraints(text: &mut String, preview: &OrganizerMaterialAidPrevi
             "No closed household time receipt yet; available future hours are unknown.\n",
         ),
     }
-    match &preview.transport {
+    match &food.transport {
         OrganizerAidTransportPreview::Local => text.push_str("Local aid can reach the pantry in its dispatch period; own needs, cash and time still constrain fulfillment.\n"),
         OrganizerAidTransportPreview::Routed { stages, .. } => {
             let earliest = stages.last().and_then(|stage| stage.departure_period.checked_add(u64::from(stage.travel_periods)));
@@ -509,13 +525,14 @@ fn aid_history(client: &OrganizerClient, period: u64) -> String {
                 text.push_str("Food receiving was refused; cash settles independently.\n");
             }
             OrganizerAidSupportStatus::TerminalFailure => {
-                text.push_str("Terminal support failure; no grant and no surviving delivery.\n");
+                text.push_str("Terminal food failure; no food grant and no surviving delivery.\n");
             }
             OrganizerAidSupportStatus::Granted {
                 granted_quantity,
                 consumed_quantity,
+                household_consumed_quantity,
             } => {
-                let _ = writeln!(text, "Granted {} units; total same-period recipient consumption of the same good/unit: {}. Aggregate consumption is not attribution to donated units or proof of additional time.", crate::observer_ui::grouped(granted_quantity), crate::observer_ui::grouped(consumed_quantity));
+                let _ = writeln!(text, "Granted {} units; total same-period recipient consumption of the same good/unit: {}. Aggregate consumption is not attribution to donated units or proof of additional time. This original has {} units of bounded consumption credit, without parcel lineage.", crate::observer_ui::grouped(granted_quantity), crate::observer_ui::grouped(household_consumed_quantity), crate::observer_ui::grouped(consumed_quantity));
             }
         }
         let postings = &row.support.material_postings;
@@ -868,7 +885,9 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
         if let Some(terms) = client.aid_preview(preview.choice) {
             let _ = write!(text, "\nLater coordination: {} hours, conditional on delivery, consumption, finite contributions and separate independent authorization.", crate::observer_ui::grouped(terms.coordination_hours));
             text.push('\n');
-            append_aid_constraints(&mut text, terms);
+            if let Some(food) = &terms.food {
+                append_aid_constraints(&mut text, food);
+            }
         }
         text.push_str("\nPreview only: no cash, food, freight or time is reserved.");
     }
@@ -993,7 +1012,7 @@ pub(super) fn outcome(value: OrganizerOutcome) -> &'static str {
         OrganizerOutcome::ContactUncompleted => "Contact attempt uncompleted",
         OrganizerOutcome::AidScheduled => "Support committed; awaiting material resolution",
         OrganizerOutcome::AidAwaitingSupport => "Support remains in transit",
-        OrganizerOutcome::NoQualifyingSupport => "No qualifying cash or consumed food",
+        OrganizerOutcome::NoQualifyingSupport => "Support did not qualify joint work",
         OrganizerOutcome::AidResponseRetained => "Earlier coordination response retained",
         OrganizerOutcome::AidPracticeCompleted => {
             "Mutual-aid practice completed; delivery has separate evidence"
@@ -1396,7 +1415,8 @@ mod tests {
                 unit_id: [15; 32],
                 status: OrganizerAidSupportStatus::Granted {
                     granted_quantity: 4,
-                    consumed_quantity: 5,
+                    household_consumed_quantity: 5,
+                    consumed_quantity: 4,
                 },
                 material_postings: OrganizerAidMaterialPostings {
                     dispatched_quantity: 4,
@@ -1470,7 +1490,8 @@ mod tests {
         row.practice.partner_response = OrganizerPartnerResponse::Refused;
         row.support.status = OrganizerAidSupportStatus::Granted {
             granted_quantity: 3,
-            consumed_quantity: 6,
+            household_consumed_quantity: 6,
+            consumed_quantity: 3,
         };
         row.support.material_postings = OrganizerAidMaterialPostings {
             dispatched_quantity: 0,
@@ -1589,6 +1610,63 @@ mod tests {
     }
 
     #[test]
+    fn failed_food_keeps_independent_cash_grant_visible() {
+        let mut client = aid_history_client();
+        let row = client
+            .aid_resolutions
+            .first_mut()
+            .expect("cash-grant copy fixture");
+        row.support.status = babylon_practice_contract::OrganizerAidSupportStatus::TerminalFailure;
+        row.support.material_postings.dispatched_quantity = 0;
+        row.support.material_postings.fulfillment_hours = 0;
+        row.pending.dispatch_support = row.support.clone();
+        row.pending.response = Some(row.practice.clone());
+        let (_, text) = inspector(&client, 3);
+        assert!(
+            text.contains("Terminal food failure; no food grant"),
+            "{text}"
+        );
+        assert!(text.contains("gift paid $0.000012 currency"), "{text}");
+        assert!(!text.contains("no support was granted"));
+    }
+
+    #[test]
+    fn uncredited_food_stays_visible_without_qualifying_joint_work() {
+        let mut client = aid_history_client();
+        let row = client.aid_resolutions.first_mut().expect("copy fixture");
+        row.pending.allocation = babylon_practice_contract::OrganizerAllocation::Aid {
+            food_quantity: 1,
+            cash_micros: 0,
+        };
+        row.support.status = babylon_practice_contract::OrganizerAidSupportStatus::Granted {
+            granted_quantity: 1,
+            consumed_quantity: 0,
+            household_consumed_quantity: 1,
+        };
+        row.support.cash_status = OrganizerAidCashStatus::NotRequested;
+        row.support.material_postings.dispatched_quantity = 1;
+        row.support.material_postings.fulfillment_hours = 2;
+        row.support.material_postings.payer_cash_granted_micros = 0;
+        row.pending.dispatch_support = row.support.clone();
+        row.practice.outcome = OrganizerOutcome::NoQualifyingSupport;
+        row.practice.hours_spent = 0;
+        row.practice.time_use.clear();
+        row.practice.partner_actor_id = None;
+        row.practice.partner_response = OrganizerPartnerResponse::NotRequested;
+        let (_, text) = inspector(&client, 3);
+        assert!(text.contains("Granted 1 units"), "{text}");
+        assert!(
+            text.contains("This original has 0 units of bounded consumption credit"),
+            "{text}"
+        );
+        assert!(
+            text.contains("Support did not qualify joint work"),
+            "{text}"
+        );
+        assert!(!text.contains("no grant"));
+    }
+
+    #[test]
     fn aid_history_filters_current_snapshot_rows_without_reconstructing_older_postings() {
         let client = aid_history_client();
         let (_, before) = inspector(&client, 2);
@@ -1628,38 +1706,40 @@ mod tests {
             recipient_id: [3; 32],
             good_id: [4; 32],
             unit_id: [5; 32],
-            donor_stock: 12,
-            own_need: 4,
-            grams_per_unit: 1000,
-            payer_cash: 120,
-            ordinary_offer: Some(OrganizerAidOrdinaryOffer {
-                seller_id: [6; 32],
-                unit_price: 25,
-            }),
-            maximum_quantity: 8,
-            maximum_cash_micros: 10,
-            labor_unit_id: [7; 32],
-            fulfillment_hours_per_unit: 2,
-            coordination_hours: 3,
-            receiving_consent: babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
-            time: None,
-            transport: OrganizerAidTransportPreview::Routed {
-                route_id: [8; 32],
-                from_node_id: [9; 32],
-                to_node_id: [10; 32],
-                stages: vec![OrganizerAidRouteStage {
-                    stage_index: 0,
+            food: Some(OrganizerAidFoodPreview {
+                donor_stock: 12,
+                own_need: 4,
+                grams_per_unit: 1000,
+                ordinary_offer: Some(OrganizerAidOrdinaryOffer {
+                    seller_id: [6; 32],
+                    unit_price: 25,
+                }),
+                labor_unit_id: [7; 32],
+                fulfillment_hours_per_unit: 2,
+                time: None,
+                transport: OrganizerAidTransportPreview::Routed {
+                    route_id: [8; 32],
                     from_node_id: [9; 32],
                     to_node_id: [10; 32],
-                    travel_periods: 2,
-                    loss_ppm: 15000,
-                    departure_period: 1,
-                    capacities: vec![OrganizerAidCapacity {
-                        corridor_id: [11; 32],
-                        remaining_grams: Some(4000),
+                    stages: vec![OrganizerAidRouteStage {
+                        stage_index: 0,
+                        from_node_id: [9; 32],
+                        to_node_id: [10; 32],
+                        travel_periods: 2,
+                        loss_ppm: 15000,
+                        departure_period: 1,
+                        capacities: vec![OrganizerAidCapacity {
+                            corridor_id: [11; 32],
+                            remaining_grams: Some(4000),
+                        }],
                     }],
-                }],
-            },
+                },
+            }),
+            payer_cash: Some(120),
+            maximum_quantity: 8,
+            maximum_cash_micros: 10,
+            coordination_hours: 3,
+            receiving_consent: babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
         }
     }
 
@@ -1717,7 +1797,7 @@ mod tests {
             let mut preview = aid_preview();
             preview.kind = kind;
             if kind == OrganizerAidKind::Local {
-                preview.transport =
+                preview.food.as_mut().expect("food offer").transport =
                     babylon_persistence::runtime_session::OrganizerAidTransportPreview::Local;
             }
             let client = OrganizerClient {
@@ -1857,7 +1937,8 @@ mod tests {
         };
         let mut local = remote.clone();
         local.kind = OrganizerAidKind::Local;
-        local.transport = babylon_persistence::runtime_session::OrganizerAidTransportPreview::Local;
+        local.food.as_mut().expect("food offer").transport =
+            babylon_persistence::runtime_session::OrganizerAidTransportPreview::Local;
         OrganizerClient {
             view: Some(view),
             aid: vec![remote, local],

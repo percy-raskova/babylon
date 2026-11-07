@@ -1,4 +1,5 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
+use crate::runtime_session::OrganizerAidFoodPreview;
 
 use super::{postings, practice, MaterialWorldRegister};
 
@@ -200,15 +201,40 @@ pub(in crate::qualification_audit) fn terms<'a>(
         || p.recipient_id != mandate.recipient.as_bytes()
         || p.good_id != mandate.good_id.as_bytes()
         || p.unit_id != mandate.unit_id.as_bytes()
-        || p.labor_unit_id != mandate.labor_unit_id.as_bytes()
         || p.maximum_cash_micros != mandate.maximum_cash.micro_units()
-        || p.fulfillment_hours_per_unit != mandate.hours_per_unit
         || p.maximum_quantity != mandate.maximum_quantity
         || p.coordination_hours != binding.coordination_hours
     {
         return Err(Refusal::Capture);
     }
-    let route_matches = match (&p.transport, mandate.transport) {
+    let babylon_practice_contract::OrganizerAllocation::Aid {
+        food_quantity,
+        cash_micros,
+    } = command.allocation
+    else {
+        return Err(Refusal::Capture);
+    };
+    if (food_quantity > 0 && p.food.is_none()) || (cash_micros > 0 && p.payer_cash.is_none()) {
+        return Err(Refusal::Capture);
+    }
+    if let Some(food) = &p.food {
+        validate_food_capture(food, mandate)?;
+    }
+    Ok(Terms {
+        accepted,
+        mandate,
+        binding,
+        config,
+    })
+}
+
+fn validate_food_capture(food: &OrganizerAidFoodPreview, mandate: &AidMandate) -> Result<()> {
+    if food.labor_unit_id != mandate.labor_unit_id.as_bytes()
+        || food.fulfillment_hours_per_unit != mandate.hours_per_unit
+    {
+        return Err(Refusal::Capture);
+    }
+    let route_matches = match (&food.transport, mandate.transport) {
         (OrganizerAidTransportPreview::Local, AidTransport::Local) => true,
         (
             OrganizerAidTransportPreview::Routed {
@@ -232,12 +258,7 @@ pub(in crate::qualification_audit) fn terms<'a>(
     if !route_matches {
         return Err(Refusal::Capture);
     }
-    Ok(Terms {
-        accepted,
-        mandate,
-        binding,
-        config,
-    })
+    Ok(())
 }
 
 pub(in crate::qualification_audit) type Totals = BTreeMap<[u8; 32], (u64, i128, i128)>;
@@ -424,7 +445,7 @@ impl Audit {
             independent_practices.push(fact);
         }
         let fact = Boundary {
-            version: 1,
+            version: 2,
             period: tick,
             tick_content_hash: super::super::hex(admitted.identity.tick_content_hash().as_bytes()),
             canonical_receipt_sha256: super::super::hex(&admitted.identity.receipt_digest()),
@@ -480,7 +501,7 @@ impl Audit {
     }
     #[must_use]
     pub fn practice_report(&self) -> Value {
-        json!({"status":if self.completed_kinds.contains(&OrganizerAidKind::Local)&&self.completed_kinds.contains(&OrganizerAidKind::Remote){"passed"}else{"incomplete"},"completed_original_commands":self.completed_practices,"terminal_original_commands":self.terminal_practices,"basis":"actual_consumed_support_independent_partner_response_and_authenticated_finite_debits"})
+        json!({"status":if self.completed_kinds.contains(&OrganizerAidKind::Local)&&self.completed_kinds.contains(&OrganizerAidKind::Remote){"passed"}else{"incomplete"},"completed_original_commands":self.completed_practices,"terminal_original_commands":self.terminal_practices,"basis":"actual_qualifying_support_independent_partner_response_and_authenticated_finite_debits"})
     }
 }
 

@@ -378,8 +378,8 @@ fn validate_parameters(value: &PracticeIntent) -> Result<(), PracticeIntentError
             Err(PracticeIntentError::IntentParameterUnsupported)
         }
     } else if value.practice_id == PracticeId::MutualAid && value.parameters.len() == 1 {
-        // Collection is the sole amount-bearing MutualAid control. Other aid
-        // currently has no parameters; an arbitrary tagged row is not accepted.
+        // The one-parameter MutualAid branch is the selected Collection amount.
+        // Food and cash Aid use the two-parameter branch above.
         let parameter = &value.parameters[0];
         if parameter.key_u8 == 3
             && parameter.value_kind_u8 == 2

@@ -258,14 +258,15 @@ impl Bulletin {
                     OrganizerAidSupportStatus::NotRequested => "no food selected".into(),
                     OrganizerAidSupportStatus::ReceivingRefused => "food receiving refused".into(),
                     OrganizerAidSupportStatus::AwaitingDelivery => "awaiting delivery".into(),
-                    OrganizerAidSupportStatus::TerminalFailure => "support failed".into(),
+                    OrganizerAidSupportStatus::TerminalFailure => "food failed".into(),
                     OrganizerAidSupportStatus::Granted {
                         granted_quantity,
-                        consumed_quantity,
+                        household_consumed_quantity,
+                        ..
                     } => format!(
                         "{} granted · recipient consumed {} of the same good in total",
                         crate::observer_ui::grouped(granted_quantity),
-                        crate::observer_ui::grouped(consumed_quantity)
+                        crate::observer_ui::grouped(household_consumed_quantity)
                     ),
                 };
                 let _ = writeln!(self.copy, "{moved} units dispatched · {status}");

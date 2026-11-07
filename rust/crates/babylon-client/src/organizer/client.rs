@@ -435,7 +435,17 @@ impl OrganizerClient {
             OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
         ) {
             let allocation = self.draft.as_ref()?.aid_allocation;
-            if !matches!(allocation, OrganizerAllocation::Aid { .. }) {
+            let OrganizerAllocation::Aid {
+                food_quantity,
+                cash_micros,
+            } = allocation
+            else {
+                return None;
+            };
+            let offer = self.aid_preview(choice)?;
+            if (food_quantity > 0 && offer.food.is_none())
+                || (cash_micros > 0 && offer.payer_cash.is_none())
+            {
                 return None;
             }
             allocation

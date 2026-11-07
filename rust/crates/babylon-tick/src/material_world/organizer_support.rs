@@ -5,6 +5,7 @@ use babylon_material_circuit::{
     CircuitAccounting, MaterialCatalog, MaterialCircuitState, MaterialCircuitTransition,
     MoneyLocation, MoneyTransferPurpose, OrderId,
 };
+use babylon_practice_contract::OrganizerError;
 use babylon_practice_contract::{
     OrganizerAidCashStatus, OrganizerAidCommitment, OrganizerAidMaterialPostings,
     OrganizerAidSupport, OrganizerAidSupportStatus, OrganizerAllocation, OrganizerChoice,
@@ -42,8 +43,36 @@ pub(super) fn facts(
             babylon_practice_contract::organizer_aid_commitment(config, organizer, accepted)?;
         result.push(support(catalog, &gift, opening, transition)?);
     }
-    result.sort_by_key(|row| row.original_commitment_id);
+    babylon_practice_contract::attribute_organizer_food_consumption(&mut result)?;
     Ok(result)
+}
+
+pub(super) fn validate_pending_freight(
+    circuit: &MaterialCircuitState,
+    organizer: &OrganizerState,
+) -> Result<(), MaterialWorldError> {
+    if organizer.pending_aid.is_empty() {
+        return Ok(());
+    }
+    let CircuitAccounting::Monetary(economy) = &circuit.accounting else {
+        return Err(OrganizerError::AidSupportMismatch.into());
+    };
+    for pending in &organizer.pending_aid {
+        let id = OrderId::from_bytes(pending.material_commitment_id);
+        let remaining = freight_quantity(&economy.aid.freight, id)?;
+        if remaining == 0
+            || remaining.checked_add(pending.lost_quantity)
+                != Some(
+                    pending
+                        .dispatch_support
+                        .material_postings
+                        .dispatched_quantity,
+                )
+        {
+            return Err(OrganizerError::AidSupportMismatch.into());
+        }
+    }
+    Ok(())
 }
 
 fn support(
@@ -232,7 +261,8 @@ fn food_status(
             .ok_or(MaterialWorldError::Arithmetic)?;
         OrganizerAidSupportStatus::Granted {
             granted_quantity: granted,
-            consumed_quantity: consumed,
+            consumed_quantity: 0,
+            household_consumed_quantity: consumed,
         }
     } else if refused > 0 {
         OrganizerAidSupportStatus::ReceivingRefused

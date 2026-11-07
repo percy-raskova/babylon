@@ -3356,7 +3356,7 @@ pub(crate) mod tests {
         if let Some(view) = client.view.as_mut() {
             let national: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v15.json"
+                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v16.json"
             )))
             .expect("captured national opening");
             if viewport.x > 1400 {
@@ -6150,7 +6150,6 @@ pub(crate) mod tests {
                 initial_cash_micros: 0,
                 cash_receiving_consent:
                     babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
-
                 kind,
                 mandate_id: [1; 32],
                 period: 3,
@@ -6158,36 +6157,40 @@ pub(crate) mod tests {
                 recipient_id: [3; 32],
                 good_id: [4; 32],
                 unit_id: [5; 32],
-                donor_stock: 12,
-                own_need: 4,
-                grams_per_unit: 1000,
-                payer_cash: 120,
-                ordinary_offer: None,
+                food: Some(
+                    babylon_persistence::runtime_session::OrganizerAidFoodPreview {
+                        donor_stock: 12,
+                        own_need: 4,
+                        grams_per_unit: 1000,
+                        ordinary_offer: None,
+                        labor_unit_id: [6; 32],
+                        fulfillment_hours_per_unit: 2,
+                        time: None,
+                        transport: if kind == OrganizerAidKind::Local {
+                            OrganizerAidTransportPreview::Local
+                        } else {
+                            OrganizerAidTransportPreview::Routed {
+                                route_id: [7; 32],
+                                from_node_id: [8; 32],
+                                to_node_id: [9; 32],
+                                stages: vec![OrganizerAidRouteStage {
+                                    stage_index: 0,
+                                    from_node_id: [8; 32],
+                                    to_node_id: [9; 32],
+                                    travel_periods: 2,
+                                    loss_ppm: 0,
+                                    departure_period: 4,
+                                    capacities: vec![],
+                                }],
+                            }
+                        },
+                    },
+                ),
+                payer_cash: Some(120),
                 maximum_quantity: 8,
                 maximum_cash_micros: 10,
-                labor_unit_id: [6; 32],
-                fulfillment_hours_per_unit: 2,
                 coordination_hours: 3,
                 receiving_consent: OrganizerGiftConsent::Accept,
-                time: None,
-                transport: if kind == OrganizerAidKind::Local {
-                    OrganizerAidTransportPreview::Local
-                } else {
-                    OrganizerAidTransportPreview::Routed {
-                        route_id: [7; 32],
-                        from_node_id: [8; 32],
-                        to_node_id: [9; 32],
-                        stages: vec![OrganizerAidRouteStage {
-                            stage_index: 0,
-                            from_node_id: [8; 32],
-                            to_node_id: [9; 32],
-                            travel_periods: 2,
-                            loss_ppm: 0,
-                            departure_period: 4,
-                            capacities: vec![],
-                        }],
-                    }
-                },
             });
             client.draft.as_mut().expect("draft").aid_allocation =
                 babylon_persistence::runtime_session::OrganizerAllocation::Aid {

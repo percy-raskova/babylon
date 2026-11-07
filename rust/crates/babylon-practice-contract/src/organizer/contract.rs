@@ -382,6 +382,7 @@ pub fn validate_organizer_period_entries(
     }
     super::collection::validate_collection_history(config, entries)?;
     super::aid::validate_aid_history(config, entries)?;
+    super::aid::validate_consumption_credits(entries)?;
     super::aid::validate_period_allocations(config, entries)?;
     Ok(())
 }
@@ -539,7 +540,7 @@ pub fn validate_organizer_pair(
 /// serialization fails or exceeds the encoded ceiling.
 pub fn encode_organizer_config(config: &OrganizerConfig) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_config(config)?;
-    canonical(b"babylon.organizer-config.v9", config)
+    canonical(b"babylon.organizer-config.v10", config)
 }
 
 /// Decode a canonical config and refuse anything that would not re-encode.
@@ -550,7 +551,7 @@ pub fn encode_organizer_config(config: &OrganizerConfig) -> Result<Vec<u8>, Orga
 /// [`OrganizerError::Codec`] for a foreign domain frame or non-canonical body,
 /// and the validation faults [`validate_organizer_config`] reports.
 pub fn decode_organizer_config(bytes: &[u8]) -> Result<OrganizerConfig, OrganizerError> {
-    let value = decode(b"babylon.organizer-config.v9", bytes)?;
+    let value = decode(b"babylon.organizer-config.v10", bytes)?;
     validate_organizer_config(&value)?;
     Ok(value)
 }
@@ -566,7 +567,7 @@ pub fn decode_organizer_config(bytes: &[u8]) -> Result<OrganizerConfig, Organize
 /// exceeds the encoded ceiling.
 pub fn encode_organizer_state(state: &OrganizerState) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_state(state)?;
-    canonical(b"babylon.organizer-state.v8", state)
+    canonical(b"babylon.organizer-state.v9", state)
 }
 
 /// Decode a canonical state and refuse anything that would not re-encode.
@@ -577,7 +578,7 @@ pub fn encode_organizer_state(state: &OrganizerState) -> Result<Vec<u8>, Organiz
 /// [`OrganizerError::Codec`] for a foreign domain frame or non-canonical body,
 /// and the validation faults [`validate_organizer_state`] reports.
 pub fn decode_organizer_state(bytes: &[u8]) -> Result<OrganizerState, OrganizerError> {
-    let value = decode(b"babylon.organizer-state.v8", bytes)?;
+    let value = decode(b"babylon.organizer-state.v9", bytes)?;
     validate_organizer_state(&value)?;
     Ok(value)
 }
@@ -594,7 +595,7 @@ pub fn encode_organizer_period_entries(
     entries: &OrganizerPeriodJournalEntries,
 ) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_period_entries(config, entries)?;
-    canonical(b"babylon.organizer-period-entries.v3", entries)
+    canonical(b"babylon.organizer-period-entries.v4", entries)
 }
 
 /// Decode one canonical period of evidence.
@@ -607,7 +608,7 @@ pub fn decode_organizer_period_entries(
     config: &OrganizerConfig,
     bytes: &[u8],
 ) -> Result<OrganizerPeriodJournalEntries, OrganizerError> {
-    let value = decode(b"babylon.organizer-period-entries.v3", bytes)?;
+    let value = decode(b"babylon.organizer-period-entries.v4", bytes)?;
     validate_organizer_period_entries(config, &value)?;
     Ok(value)
 }
@@ -630,7 +631,7 @@ pub fn encode_organizer_journal(
         prior = Some(entries.period);
         validate_organizer_period_entries(config, entries)?;
     }
-    canonical(b"babylon.organizer-journal.v3", journal)
+    canonical(b"babylon.organizer-journal.v4", journal)
 }
 
 /// Decode a canonical retained evidence window.
@@ -643,7 +644,7 @@ pub fn decode_organizer_journal(
     config: &OrganizerConfig,
     bytes: &[u8],
 ) -> Result<OrganizerPeriodJournal, OrganizerError> {
-    let value: OrganizerPeriodJournal = decode(b"babylon.organizer-journal.v3", bytes)?;
+    let value: OrganizerPeriodJournal = decode(b"babylon.organizer-journal.v4", bytes)?;
     let mut prior = None;
     for entries in &value.periods {
         if prior.is_some_and(|period| period >= entries.period) {

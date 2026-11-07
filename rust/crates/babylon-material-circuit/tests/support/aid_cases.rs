@@ -774,6 +774,29 @@ fn serialized_pending_gift_refuses_invented_arrival_cash_owner_and_principal() {
 }
 
 #[test]
+fn pending_physical_gift_refuses_quantity_above_captured_cap() {
+    let (catalog, opening) = aid_opening(true);
+    let first = close_aid(&catalog, &opening, &[input(2)]).expect("pending gift closes");
+    let before = first.state.clone();
+    let mut invented = before.clone();
+    let CircuitAccounting::Monetary(economy) = &mut invented.accounting else {
+        panic!("monetary fixture");
+    };
+    let lot = &mut economy.aid.freight[0];
+    let mandate = catalog
+        .aid_mandates
+        .iter()
+        .find(|row| row.id == lot.mandate_id)
+        .expect("captured mandate");
+    lot.quantity = mandate.maximum_quantity + 1;
+    assert_eq!(
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &invented),
+        Err(MaterialCircuitError::AidInvariant)
+    );
+    assert_eq!(first.state, before);
+}
+
+#[test]
 fn donor_own_food_need_is_protected_even_when_requested_time_and_cash_are_available() {
     let (catalog, mut state) = aid_opening(false);
     let CircuitAccounting::Monetary(accounts) = &mut state.accounting else {

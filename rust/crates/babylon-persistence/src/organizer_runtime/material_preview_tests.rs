@@ -1,12 +1,16 @@
 //! Projection controls use the same real captured circuit/organizer fixture.
 use super::{remaining_time, OrganizerAidTime};
 use crate::organizer_aid_fixture as fixture;
+use crate::organizer_aid_fixture::Session;
+use crate::runtime_session::OrganizerSnapshot;
 use crate::runtime_session::RuntimeSessionErrorCode;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_material_circuit::{CircuitAccounting, HouseholdTimeAccounting};
 use babylon_practice_contract::OrganizerAidKind;
 use babylon_practice_contract::OrganizerAllocation;
+use babylon_practice_contract::OrganizerCommitment;
 use babylon_practice_contract::{OrganizerChoice, OrganizerOutcome};
+use serde_json::Value;
 
 #[test]
 fn remote_projection_preserves_admission_dispatch_and_resolution_dates() {
@@ -111,7 +115,7 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
     .expect("the fixture call `projections` succeeds for the authored inputs");
     assert_eq!(opening.len(), 1);
     assert_eq!(opening[0].period, 0);
-    assert_eq!(opening[0].time, None);
+    assert_eq!(opening[0].food.as_ref().expect("food offer").time, None);
     assert!(super::projections(
         session.catalog(),
         session.material().state(),
@@ -165,7 +169,7 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
         .sum::<u64>();
     assert!(spent > 0);
     assert_eq!(
-        preview[0].time,
+        preview[0].food.as_ref().expect("food offer").time,
         Some(OrganizerAidTime {
             period: 2,
             labor_unit_id: row.labor_unit_id.as_bytes(),
@@ -180,5 +184,207 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
     assert_eq!(
         remaining_time(register.state(), principal, row.labor_unit_id, 1),
         Err(RuntimeSessionErrorCode::OrganizerRefused)
+    );
+}
+
+fn independent_leg_session(cash_only: bool) -> Session {
+    use babylon_material_circuit::{
+        AccountId, AidTransport, LogisticsNodeId, OrganizationAccountId, RouteId,
+    };
+    let mut materials = fixture::aid_opening(false);
+    let mut config = fixture::config();
+    config.collection = None;
+    let mandate = &mut materials.catalog.aid_mandates[0];
+    if cash_only {
+        config.aid_bindings[0].kind = OrganizerAidKind::Remote;
+        mandate.good_id = fixture::good(99);
+        mandate.transport = AidTransport::Routed {
+            route_id: RouteId::from_bytes([99; 32]),
+            from_node_id: LogisticsNodeId::from_bytes([98; 32]),
+            to_node_id: LogisticsNodeId::from_bytes([99; 32]),
+        };
+        mandate.initial_quantity = 0;
+        mandate.initial_cash = fixture::money(3);
+        config.aid_bindings[0].initial_food_quantity = 0;
+        config.aid_bindings[0].initial_cash_micros = 3;
+    } else {
+        mandate.payer = AccountId::Organization(OrganizationAccountId::from_bytes([99; 32]));
+        mandate.initial_cash = fixture::money(0);
+        config.aid_bindings[0].initial_cash_micros = 0;
+    }
+    fixture::try_session(
+        crate::michigan_dynamic_hex_foundation().expect("foundation"),
+        &format!(
+            "{}\n{}\n{}",
+            fixture::MATERIAL,
+            fixture::PRODUCTS,
+            fixture::PRACTICE
+        ),
+        materials,
+        config,
+    )
+    .expect("valid selected-leg capture")
+}
+
+#[test]
+fn stock_only_status_admits_food_without_unselected_payer() {
+    let session = independent_leg_session(false);
+    let snapshot = crate::organizer_runtime::captured_organizer_snapshot(
+        session.catalog(),
+        session.material(),
+        None,
+        session.duration(),
+    )
+    .expect("ordinary status permits food with unavailable unrelated cash");
+    assert_eq!(snapshot.aid[0].initial_food_quantity, 1);
+    let accepted = fixture::commitment_with_allocation(
+        &session,
+        OrganizerChoice::LocalAid,
+        OrganizerAllocation::Aid {
+            food_quantity: 1,
+            cash_micros: 0,
+        },
+    );
+    verify_independent_selected_terms(&session, &snapshot, &accepted);
+    let candidate = fixture::prepare(&session, Some(&accepted));
+    let facts = super::resolutions(
+        candidate
+            .material()
+            .register()
+            .organizer_journal()
+            .expect("journal")
+            .latest()
+            .expect("close"),
+    );
+    assert!(matches!(
+        facts[0].support.status,
+        babylon_practice_contract::OrganizerAidSupportStatus::Granted {
+            granted_quantity: 1,
+            ..
+        }
+    ));
+    assert_eq!(
+        facts[0].support.material_postings.payer_cash_granted_micros,
+        0
+    );
+}
+
+#[test]
+fn cash_only_status_admits_cash_without_unselected_food_metadata() {
+    let session = independent_leg_session(true);
+    let snapshot = crate::organizer_runtime::captured_organizer_snapshot(
+        session.catalog(),
+        session.material(),
+        None,
+        session.duration(),
+    )
+    .expect("ordinary status permits cash with unavailable unrelated food");
+    assert_eq!(snapshot.aid[0].initial_cash_micros, 3);
+    let accepted = fixture::commitment_with_allocation(
+        &session,
+        OrganizerChoice::RemoteAid,
+        OrganizerAllocation::Aid {
+            food_quantity: 0,
+            cash_micros: 3,
+        },
+    );
+    verify_independent_selected_terms(&session, &snapshot, &accepted);
+    let candidate = fixture::prepare(&session, Some(&accepted));
+    let facts = super::resolutions(
+        candidate
+            .material()
+            .register()
+            .organizer_journal()
+            .expect("journal")
+            .latest()
+            .expect("close"),
+    );
+    assert_eq!(
+        facts[0].support.status,
+        babylon_practice_contract::OrganizerAidSupportStatus::NotRequested
+    );
+    assert_eq!(
+        facts[0].support.material_postings.payer_cash_granted_micros,
+        3
+    );
+}
+
+fn verify_independent_selected_terms(
+    session: &Session,
+    snapshot: &OrganizerSnapshot,
+    accepted: &OrganizerCommitment,
+) {
+    let cash_only = accepted.command.choice == OrganizerChoice::RemoteAid;
+    let expected: Value = serde_json::from_str(if cash_only {
+        include_str!("../../tests/fixtures/cash_only_no_food_v16.json")
+    } else {
+        include_str!("../../tests/fixtures/food_only_no_payer_v16.json")
+    })
+    .expect("actual producer fixture");
+    assert_eq!(
+        serde_json::to_value(snapshot).expect("status JSON"),
+        expected["snapshot"]
+    );
+    let config = session.material().organizer_config().expect("config");
+    let state = session.material().organizer_state().expect("state");
+    assert_eq!(
+        serde_json::to_value(config).expect("config JSON"),
+        expected["config"]
+    );
+    assert_eq!(
+        serde_json::to_value(state).expect("state JSON"),
+        expected["state"]
+    );
+    assert_eq!(
+        serde_json::to_value(accepted).expect("command JSON"),
+        expected["accepted"]
+    );
+    let before = session.material().canonical_bytes().to_vec();
+    super::validate_selected(
+        session.catalog(),
+        session.material().state(),
+        config,
+        0,
+        &accepted.command,
+    )
+    .expect("selected leg has its actual material wiring");
+    let preview = babylon_practice_contract::preview_organizer(config, state, &accepted.command)
+        .expect("authenticated preview");
+    assert_eq!(
+        serde_json::to_value(preview).expect("preview JSON"),
+        expected["preview"]
+    );
+    assert_eq!(snapshot.aid[0].food.is_none(), cash_only);
+    assert_eq!(snapshot.aid[0].payer_cash.is_none(), !cash_only);
+    let mut missing_selected = accepted.command.clone();
+    missing_selected.allocation = OrganizerAllocation::Aid {
+        food_quantity: 1,
+        cash_micros: 3,
+    };
+    assert_eq!(
+        super::validate_selected(
+            session.catalog(),
+            session.material().state(),
+            config,
+            0,
+            &missing_selected
+        ),
+        Err(RuntimeSessionErrorCode::OrganizerRefused)
+    );
+    let mut changed_source = config.clone();
+    changed_source.aid_bindings[0].source_hash = [99; 32];
+    assert_eq!(
+        super::projections(
+            session.catalog(),
+            session.material().state(),
+            &changed_source,
+            0
+        ),
+        Err(RuntimeSessionErrorCode::OrganizerRefused)
+    );
+    assert_eq!(
+        session.material().canonical_bytes(),
+        before,
+        "all previews leave authoritative state unchanged"
     );
 }

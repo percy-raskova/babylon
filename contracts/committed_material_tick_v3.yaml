@@ -428,7 +428,9 @@ receipts:
 
   validation:
     - Aid commitment identity matches mandate ID and dispatch period; receipts retain explicit payer and goods owners.
-    - Aid local route padding is zero; transport, payer and outcome tags are closed and quantity is positive.
+    - Aid local route padding is zero; transport, payer and outcome tags are closed.
+    - Food rows have positive physical quantity and zero cash; cash rows have zero physical quantity.
+    - CashRequested and CashGranted have positive exact cash amounts; cash refusal rows have zero cash.
     - Aid period equals resolve tick; dispatch period is positive and no later than resolve tick.
     - Captured mandate joins authenticate source, actor, payer, households, native units and outcome terms.
     - Independent Aid cash moves directly from payer to recipient once at original dispatch via Cash(MutualAid).

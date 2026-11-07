@@ -13,7 +13,7 @@ use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
 /// Current organizer representation. Older representations are unsupported.
-pub const ORGANIZER_SCHEMA_VERSION: u16 = 10;
+pub const ORGANIZER_SCHEMA_VERSION: u16 = 11;
 
 /// Whole organizer-hours are Designed participant time commitments, not jobs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

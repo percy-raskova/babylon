@@ -2212,6 +2212,7 @@ fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
             row.support.status,
             OrganizerAidSupportStatus::Granted {
                 granted_quantity: 1,
+                household_consumed_quantity: 1,
                 consumed_quantity: 1
             }
         ));
@@ -2315,4 +2316,178 @@ fn separated_aid_schedule_completes_both_original_independent_practices() {
 #[test]
 fn consumed_remote_gift_does_not_force_independent_participation() {
     run_dual_aid_schedule(true, true);
+}
+
+#[test]
+fn overlapping_food_originals_share_one_consumed_unit_without_duplicate_credit() {
+    use babylon_practice_contract::OrganizerAidSupportStatus;
+    let mut session = dual_aid_schedule::overlapping_session();
+    let mut restored = dual_aid_schedule::overlapping_session();
+    let mut sink = CollectingSink::default();
+    let allocation = babylon_practice_contract::OrganizerAllocation::Aid {
+        food_quantity: 1,
+        cash_micros: 0,
+    };
+    let remote = organizer_aid_fixture::commitment_with_allocation(
+        &session,
+        OrganizerChoice::RemoteAid,
+        allocation,
+    );
+    let first = organizer_aid_fixture::prepare(&session, Some(&remote));
+    restored
+        .restore_full_checkpoint(
+            first.graph_report().result_stable_graph(),
+            first.graph_report().material_state_rows(),
+            first.graph_report().result_registers().canonical_bytes(),
+            MaterialWorldRegister::decode_external(
+                session.catalog(),
+                first.material().register().canonical_bytes().to_vec(),
+            )
+            .expect("cold pending register"),
+        )
+        .expect("full checkpoint");
+    organizer_aid_fixture::commit(&mut session, &mut sink, first);
+    let local = organizer_aid_fixture::commitment_with_allocation(
+        &session,
+        OrganizerChoice::LocalAid,
+        allocation,
+    );
+    let second = organizer_aid_fixture::prepare(&session, Some(&local));
+    let cold_second = organizer_aid_fixture::prepare(&restored, Some(&local));
+    assert_eq!(second.identity(), cold_second.identity());
+    assert_eq!(
+        second.material().receipt_bytes(),
+        cold_second.material().receipt_bytes()
+    );
+    organizer_aid_fixture::commit(&mut session, &mut sink, second);
+    let rows = &session.material().history().aid_receipts;
+    assert_eq!(rows.len(), 2);
+    let first_original = remote.commitment_id.min(local.commitment_id);
+    for row in rows {
+        let expected_credit = u64::from(row.support.original_commitment_id == first_original);
+        assert_eq!(
+            row.support.status,
+            OrganizerAidSupportStatus::Granted {
+                granted_quantity: 1,
+                consumed_quantity: expected_credit,
+                household_consumed_quantity: 1,
+            }
+        );
+        assert_eq!(
+            row.practice.outcome,
+            if expected_credit == 1 {
+                OrganizerOutcome::AidPracticeCompleted
+            } else {
+                OrganizerOutcome::NoQualifyingSupport
+            }
+        );
+        if expected_credit == 0 {
+            assert_eq!(row.practice.time_use, []);
+            assert_eq!(row.practice.hours_spent, 0);
+        }
+    }
+    let mut canonical: Vec<_> = rows.iter().map(|row| row.support.clone()).collect();
+    canonical.sort_by_key(|support| support.original_commitment_id);
+    let mut reversed = canonical.clone();
+    reversed.reverse();
+    babylon_practice_contract::attribute_organizer_food_consumption(&mut reversed)
+        .expect("receipt order is not allocation order");
+    assert_eq!(reversed, canonical);
+    assert_shared_consumption_journal_refuses_duplicate_credit(&session, first_original);
+    let CircuitAccounting::Monetary(economy) = &session.material().state().accounting else {
+        panic!("monetary fixture");
+    };
+    let pantry = economy
+        .recurring
+        .as_ref()
+        .expect("households")
+        .household_stocks
+        .iter()
+        .find(|row| {
+            row.principal_id == organizer_aid_fixture::recipient()
+                && row.good_id == organizer_aid_fixture::good(2)
+        })
+        .expect("recipient pantry");
+    assert_eq!(
+        pantry.quantity, 1,
+        "two actual grants, only one consumed unit"
+    );
+}
+
+fn assert_shared_consumption_journal_refuses_duplicate_credit(
+    session: &Session,
+    first_original: [u8; 32],
+) {
+    use babylon_practice_contract::OrganizerAidSupportStatus;
+    let mut changed = session
+        .material()
+        .organizer_journal()
+        .expect("journal")
+        .clone();
+    let last = changed
+        .periods
+        .last_mut()
+        .expect("shared consumption close");
+    let uncredited = last
+        .aid_receipts
+        .iter_mut()
+        .find(|row| row.support.original_commitment_id != first_original)
+        .expect("uncredited original");
+    let OrganizerAidSupportStatus::Granted {
+        consumed_quantity, ..
+    } = &mut uncredited.support.status
+    else {
+        panic!("actual food grant");
+    };
+    *consumed_quantity = 1;
+    assert!(
+        babylon_practice_contract::encode_organizer_journal(
+            session.material().organizer_config().expect("config"),
+            &changed,
+        )
+        .is_err(),
+        "canonical journal refuses reusing the same consumed unit"
+    );
+}
+
+#[test]
+fn pending_register_refuses_remaining_food_above_original_dispatch_below_cap() {
+    let mut config = organizer_aid_fixture::config();
+    config.aid_bindings[0].kind = OrganizerAidKind::Remote;
+    let session = organizer_aid_fixture::authored_session(
+        michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation().expect("foundation"),
+        config,
+        false,
+        true,
+    );
+    let accepted = organizer_aid_fixture::commitment_with_allocation(
+        &session,
+        OrganizerChoice::RemoteAid,
+        babylon_practice_contract::OrganizerAllocation::Aid {
+            food_quantity: 1,
+            cash_micros: 0,
+        },
+    );
+    let candidate = organizer_aid_fixture::prepare(&session, Some(&accepted));
+    let original = candidate.material().register();
+    let mut changed = original.state().clone();
+    let CircuitAccounting::Monetary(economy) = &mut changed.accounting else {
+        panic!("monetary fixture");
+    };
+    assert_eq!(economy.aid.freight[0].quantity, 1);
+    economy.aid.freight[0].quantity = 2;
+    let bare = MaterialWorldRegister::try_new(session.catalog(), 1, changed)
+        .expect("quantity still satisfies captured material cap");
+    assert_eq!(
+        bare.with_organizer(
+            session.catalog(),
+            original.organizer_config().expect("config").clone(),
+            original.organizer_state().expect("state").clone(),
+            original.organizer_journal().expect("journal").clone(),
+        ),
+        Err(material_world::MaterialWorldError::Organizer(
+            babylon_practice_contract::OrganizerError::AidSupportMismatch,
+        )),
+        "original dispatch of one cannot retain two physical units"
+    );
 }

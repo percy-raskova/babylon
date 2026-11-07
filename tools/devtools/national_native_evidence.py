@@ -17,6 +17,7 @@ from uuid import UUID
 
 from pydantic import Field, JsonValue, StrictInt, StrictStr, field_validator, model_validator
 from tools.devtools.national_storage_qualification import (
+    AidPracticeEvidence,
     CombinedMemoryEvidence,
     EconomicBoundary,
     EconomicSummary,
@@ -166,12 +167,12 @@ class BoundaryFacts(Opening):
 
 
 class AidBoundary(NativeRecord):
-    version: Literal[1]
+    version: Literal[2]
     period: Positive
     tick_content_hash: Sha256
     canonical_receipt_sha256: Sha256
     selected_aid: tuple[dict[str, JsonValue], ...]
-    independent_practices: tuple[dict[str, JsonValue], ...]
+    independent_practices: tuple[AidPracticeEvidence, ...]
 
 
 class AidSummary(NativeRecord):

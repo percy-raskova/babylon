@@ -86,8 +86,8 @@ pub(super) fn dispatch_line(row: &OrganizerAidResolution) -> String {
     if postings.dispatched_quantity > 0 && postings.dispatched_quantity < food_quantity {
         remainder.push_str(" Partial food dispatch. The rest will not be retried.");
     }
-    format!("P{} request: {} food parcels and {}. P{} dispatch: {} parcels, {} household hours; cash {} ({}).{remainder}",
-        row.pending.admitted_period,food_quantity,crate::human_numbers::currency(cash_micros),transfer.dispatch_period,postings.dispatched_quantity,postings.fulfillment_hours,crate::human_numbers::currency(postings.payer_cash_granted_micros),transfer.cash_status.label())
+    format!("P{} request: {} food parcels and {}. P{} dispatch: {} parcels, {} household hours. Cash at dispatch P{}: {} ({}).{remainder}",
+        row.pending.admitted_period,food_quantity,crate::human_numbers::currency(cash_micros),transfer.dispatch_period,postings.dispatched_quantity,postings.fulfillment_hours,transfer.dispatch_period,crate::human_numbers::currency(postings.payer_cash_granted_micros),transfer.cash_status.label())
 }
 
 pub(super) fn response_line(row: &OrganizerAidResolution) -> Option<String> {

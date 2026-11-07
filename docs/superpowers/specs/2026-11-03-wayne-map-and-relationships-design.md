@@ -469,10 +469,12 @@ The completed time report deducts the final period's posted contributions once f
 
 The decision paper keeps the selected group in view. The player can enter a whole-dollar contribution target. The initial target is $280. Compare collection with the current routine. For aid, enter food parcels and whole dollars independently. The two destinations share the same basket.
 
+The entries stay on the screen when the player selects another partner. If the new terms allow those amounts, both cards and the review use them. A positive food amount needs food terms. A positive cash gift needs a cash payer. Notes and citations keep their own place in the draft, even when an amount needs correction before review.
+
 The household owns the pantry. Each parcel that actually leaves costs two household hours. The resources above the map distinguish the treasury, pledged organizer time and dated household time.
 
 A partner report can start a personal proposal and keep its citation. The player can change the amounts, review the terms and confirm the exact command. Advance resolves the next period. A new amount cancels earlier review. An invalid entry keeps the last valid saved basket and requires correction before review.
 
-The dispatch dates the cash transfer, physical delivery and first partner response separately. A partner can respond once to settled cash before freight arrives. The household can buy goods at the next opportunity after settlement. A shared report can tell the player what the household received or consumed. If food in transit can still prompt a response, the player can review a pause in routine work.
+Cash keeps its dispatch date when food arrives later. The player can read the date of delivery and the date of the first partner response. A partner can respond once to settled cash before freight arrives. The household can buy goods at the next opportunity after settlement. A shared report can tell the player what the household received or consumed. If food in transit can still prompt a response, the player can review a pause in routine work.
 
 A new support result or a first or changed shared shortfall can pause Play. A report with the same unmet quantity can carry a new date without interrupting Play. Reopening a campaign starts from the developments already on record. Independent national windowed qualification and human play remain pending.

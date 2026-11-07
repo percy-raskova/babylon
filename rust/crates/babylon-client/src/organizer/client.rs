@@ -699,29 +699,12 @@ impl OrganizerClient {
     }
 
     fn initialize_draft(&mut self, campaign: Uuid, snapshot: &OrganizerSnapshot) {
-        let initial_collection =
-            snapshot
-                .collection
-                .as_ref()
-                .map_or(OrganizerAllocation::None, |terms| {
-                    OrganizerAllocation::Collection {
-                        target_cash_micros: terms.initial_cash_micros,
-                    }
-                });
-        let initial_aid = snapshot
-            .aid
-            .first()
-            .map_or(OrganizerAllocation::None, |terms| {
-                OrganizerAllocation::Aid {
-                    food_quantity: terms.initial_food_quantity,
-                    cash_micros: terms.initial_cash_micros,
-                }
-            });
+        let captured = OrganizerDraft::captured(snapshot);
         match draft::load(
             campaign,
             snapshot.view.workplace_id,
-            initial_collection,
-            initial_aid,
+            captured.collection_allocation,
+            captured.aid_allocation,
         ) {
             Ok(value) => {
                 self.draft = Some(value);
@@ -729,11 +712,7 @@ impl OrganizerClient {
             }
             Err(error) => {
                 self.message = error;
-                self.draft = Some(OrganizerDraft::new(
-                    snapshot.view.workplace_id,
-                    initial_collection,
-                    initial_aid,
-                ));
+                self.draft = Some(captured);
                 self.draft_writable = false;
             }
         }

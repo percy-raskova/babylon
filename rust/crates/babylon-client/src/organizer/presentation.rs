@@ -580,16 +580,6 @@ fn aid_history(client: &OrganizerClient, period: u64) -> String {
             row.pending.dispatch_period,
             row.practice.period
         );
-        if let OrganizerAllocation::Aid {
-            food_quantity,
-            cash_micros,
-        } = row.pending.allocation
-        {
-            let _ = writeln!(
-                text,
-                "Original request {food_quantity} food units and {cash_micros} cash micros."
-            );
-        }
         match row.support.status {
             OrganizerFoodDelivery::NotRequested => text.push_str("No food selected.\n"),
             OrganizerFoodDelivery::AwaitingDelivery => {
@@ -617,9 +607,8 @@ fn aid_history(client: &OrganizerClient, period: u64) -> String {
         );
         let _ = writeln!(
             text,
-            "Aid payer cash: gift paid {} currency. Cash outcome: {} on this dated leg. Freight loss: {} units in this period.",
-            crate::human_numbers::currency(postings.payer_cash_granted_micros),
-            row.support.cash_status.label(),
+            "Freight loss in P{}: {} units.",
+            row.support.period,
             crate::observer_ui::grouped(postings.lost_quantity)
         );
         let _ = writeln!(text, "{}", super::developments::dispatch_line(row));
@@ -1582,14 +1571,18 @@ mod tests {
             babylon_persistence::runtime_session::OrganizerAidCashStatus::ReceivingRefused;
         row.support.material_postings.payer_cash_granted_micros = 0;
         row.support.material_postings.lost_quantity = 1;
+        row.pending.dispatch_support = row.support.clone();
         let period = row.practice.period;
         let text = aid_history(&client, period);
         assert!(
-            text.contains("Cash outcome: receiving refused") && text.contains("Freight loss: 1")
+            text.contains("Cash at dispatch P3: $0.00 (receiving refused)")
+                && text.contains("Freight loss in P3: 1")
         );
         client.aid_resolutions[0].support.cash_status =
             babylon_persistence::runtime_session::OrganizerAidCashStatus::Unfunded;
-        assert!(aid_history(&client, period).contains("Cash outcome: unfunded"));
+        client.aid_resolutions[0].pending.dispatch_support =
+            client.aid_resolutions[0].support.clone();
+        assert!(aid_history(&client, period).contains("Cash at dispatch P3: $0.00 (unfunded)"));
     }
 
     fn aid_arrival_client() -> OrganizerClient {
@@ -1645,6 +1638,63 @@ mod tests {
     }
 
     #[test]
+    fn repaired_later_freight_keeps_original_cash_and_first_response_dates() {
+        let mut client = aid_arrival_client();
+        let row = &mut client.aid_resolutions[0];
+        row.pending.allocation = OrganizerAllocation::Aid {
+            food_quantity: 4,
+            cash_micros: 37_000_000,
+        };
+        row.pending.dispatch_support.cash_status = OrganizerAidCashStatus::Granted;
+        row.pending
+            .dispatch_support
+            .material_postings
+            .payer_cash_granted_micros = 37_000_000;
+        let mut first = row.practice.clone();
+        first.period = row.pending.dispatch_period;
+        first.receipt_id = babylon_practice_contract::organizer_receipt_id(
+            [34; 16],
+            first.actor_id,
+            first.period,
+            row.pending.original_commitment_id,
+        )
+        .expect("unique dispatch response");
+        row.pending.response = Some(first);
+        row.support.cash_status = OrganizerAidCashStatus::Granted;
+        row.support.material_postings.lost_quantity = 1;
+        row.pending.lost_quantity = 1;
+        row.practice.outcome = OrganizerOutcome::AidResponseRetained;
+        row.practice.receipt_id = babylon_practice_contract::organizer_receipt_id(
+            [34; 16],
+            row.practice.actor_id,
+            row.practice.period,
+            row.pending.original_commitment_id,
+        )
+        .expect("unique delivery receipt");
+        row.practice.partner_response = OrganizerPartnerResponse::NotRequested;
+        row.practice.partner_actor_id = None;
+        row.practice.hours_spent = 0;
+        row.practice.time_use.clear();
+        let (_, text) = inspector(&client, 5);
+        assert!(text.contains("Cash at dispatch P3: $37.00"), "{text}");
+        assert!(
+            text.contains("Freight loss in P5: 1")
+                && text.contains("P3 partner response:")
+                && text.contains("Additional coordination: 0"),
+            "{text}"
+        );
+        assert!(
+            !text.contains("37000000 cash micros") && !text.contains("gift paid $0.00"),
+            "{text}"
+        );
+        let now = super::super::developments::current_support(&client.aid_resolutions, 5);
+        assert!(
+            now.contains("lost in P5") && !now.contains("$37") && !now.contains("partner response"),
+            "{now}"
+        );
+    }
+
+    #[test]
     fn local_aid_history_separates_postings_from_coordination_and_preserves_gift_privacy() {
         let client = aid_history_client();
         let (_, local) = inspector(&client, 3);
@@ -1659,7 +1709,7 @@ mod tests {
         );
         assert!(local.contains("Actual material postings in period 3: dispatched food 4 units; donor household fulfillment 8 hours."), "{local}");
         assert!(
-            local.contains("Aid payer cash: gift paid $0.000012 currency."),
+            local.contains("Cash at dispatch P3: $0.000012 (granted)"),
             "{local}"
         );
         assert!(
@@ -1693,6 +1743,8 @@ mod tests {
         row.practice.partner_response = OrganizerPartnerResponse::NotRequested;
         row.support.status = OrganizerFoodDelivery::AwaitingDelivery;
         row.support.material_postings.payer_cash_granted_micros = 0;
+        row.support.cash_status = OrganizerAidCashStatus::Unfunded;
+        row.pending.dispatch_support = row.support.clone();
         let (_, dispatched) = inspector(&client, 3);
         assert!(
             dispatched.contains("Surviving freight remains pending"),
@@ -1703,7 +1755,7 @@ mod tests {
             "{dispatched}"
         );
         assert!(
-            dispatched.contains("Aid payer cash: gift paid $0.00 currency."),
+            dispatched.contains("Cash at dispatch P3: $0.00 (unfunded)"),
             "{dispatched}"
         );
         assert!(dispatched.contains("coordination 0 hours"), "{dispatched}");
@@ -1720,7 +1772,7 @@ mod tests {
         );
         assert!(arrival.contains("Actual material postings in period 5: dispatched food 0 units; donor household fulfillment 0 hours."), "{arrival}");
         assert!(
-            arrival.contains("Aid payer cash: gift paid $0.00 currency."),
+            arrival.contains("Cash at dispatch P3: $0.00 (not requested)"),
             "{arrival}"
         );
         assert!(arrival.contains("Granted 3 units."), "{arrival}");
@@ -1757,7 +1809,10 @@ mod tests {
             text.contains("Terminal food failure; no food grant"),
             "{text}"
         );
-        assert!(text.contains("gift paid $0.000012 currency"), "{text}");
+        assert!(
+            text.contains("Cash at dispatch P3: $0.000012 (granted)"),
+            "{text}"
+        );
         assert!(!text.contains("no support was granted"));
     }
 
@@ -1808,7 +1863,7 @@ mod tests {
             !historical.contains("Actual material postings"),
             "{historical}"
         );
-        assert!(!historical.contains("gift paid 9"), "{historical}");
+        assert!(!historical.contains("Cash at dispatch P3:"), "{historical}");
         assert!(
             !historical.contains("Actual material postings in period 3"),
             "{historical}"

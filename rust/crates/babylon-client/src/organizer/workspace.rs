@@ -1097,13 +1097,6 @@ mod tests {
                 label: "Recipient collective".into(),
             },
         );
-        view_mut(client).aid_partners.push(
-            babylon_persistence::runtime_session::OrganizerKnownAidPartner {
-                kind: OrganizerAidKind::Local,
-                actor_id: 95,
-                label: "Recipient collective".into(),
-            },
-        );
         view_mut(client).aid_options.push(OrganizerAidOption {
             kind: OrganizerAidKind::Local,
             partner_actor_id: 95,

@@ -4,7 +4,9 @@ use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use babylon_persistence::runtime_session::{OrganizerAllocation, OrganizerChoice};
+use babylon_persistence::runtime_session::{
+    OrganizerAllocation, OrganizerChoice, OrganizerSnapshot,
+};
 use serde_json::json;
 
 use super::editor::NoteEditor;
@@ -27,6 +29,26 @@ pub(super) struct OrganizerDraft {
 }
 
 impl OrganizerDraft {
+    pub(super) fn captured(snapshot: &OrganizerSnapshot) -> Self {
+        let collection = snapshot
+            .collection
+            .as_ref()
+            .map_or(OrganizerAllocation::None, |r| {
+                OrganizerAllocation::Collection {
+                    target_cash_micros: r.initial_cash_micros,
+                }
+            });
+        let aid =
+            snapshot
+                .aid
+                .first()
+                .map_or(OrganizerAllocation::None, |r| OrganizerAllocation::Aid {
+                    food_quantity: r.initial_food_quantity,
+                    cash_micros: r.initial_cash_micros,
+                });
+        Self::new(snapshot.view.workplace_id, collection, aid)
+    }
+
     pub fn new(
         workplace_id: u64,
         collection_allocation: OrganizerAllocation,
@@ -174,12 +196,14 @@ fn write_at(path: &Path, campaign: Uuid, draft: &OrganizerDraft) -> Result<(), S
     result.map_err(|_| "Cannot save the personal draft; notes remain in this window.".into())
 }
 
+// Personal storage preserves exact captured micros. Whole-dollar entry and Review are
+// validated against the selected current mandate in the amount editor.
 fn validate_collection(allocation: OrganizerAllocation) -> Result<(), String> {
     match allocation {
         OrganizerAllocation::None => Ok(()),
-        OrganizerAllocation::Collection { target_cash_micros } if target_cash_micros > 0 && target_cash_micros % 1_000_000 == 0 => Ok(()),
+        OrganizerAllocation::Collection { target_cash_micros } if target_cash_micros > 0 => Ok(()),
         _ => Err(
-            "Personal draft contribution target must use positive whole dollars; retained for recovery.".into(),
+            "Personal draft contribution target must be positive; retained for recovery.".into(),
         ),
     }
 }
@@ -208,12 +232,7 @@ fn validate_aid(allocation: OrganizerAllocation) -> Result<(), String> {
         OrganizerAllocation::Aid {
             food_quantity,
             cash_micros,
-        } if cash_micros >= 0
-            && cash_micros % 1_000_000 == 0
-            && (food_quantity > 0 || cash_micros > 0) =>
-        {
-            Ok(())
-        }
+        } if cash_micros >= 0 && (food_quantity > 0 || cash_micros > 0) => Ok(()),
         _ => Err("Personal draft aid amounts are invalid; retained for recovery.".into()),
     }
 }
@@ -223,6 +242,57 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use uuid::Uuid;
+
+    #[test]
+    fn repaired_exact_captured_fraction_saves_unrelated_personal_notes_and_reference() {
+        use babylon_persistence::runtime_session::OrganizerSnapshot;
+        let capture: Value = serde_json::from_str(include_str!(
+            "../../../babylon-persistence/tests/fixtures/cash_only_no_food_v18.json"
+        ))
+        .expect("cash-only producer capture");
+        let snapshot: OrganizerSnapshot =
+            serde_json::from_value(capture["snapshot"].clone()).expect("ordinary visible snapshot");
+        let campaign = Uuid::from_bytes(snapshot.body_scope.campaign_id);
+        let path = std::env::temp_dir()
+            .join(format!("babylon-fractional-personal-{}", Uuid::new_v4()))
+            .join("draft.json");
+        let mut draft = OrganizerDraft::captured(&snapshot);
+        let original = draft.aid_allocation;
+        assert_eq!(
+            original,
+            OrganizerAllocation::Aid {
+                food_quantity: 0,
+                cash_micros: 3
+            }
+        );
+        draft.notes =
+            NoteEditor::from_text("Keep the actual amount.".into()).expect("bounded personal text");
+        // Personal storage preserves an opaque retained reference even if the current view no longer carries it.
+        let id = Some([19; 32]);
+        draft.references.push([19; 32]);
+        draft.selected_reference = id;
+        write_at(&path, campaign, &draft)
+            .expect("notes can save while the captured amount is untouched");
+        let opened = read_at(
+            &path,
+            campaign,
+            snapshot.view.workplace_id,
+            draft.collection_allocation,
+            original,
+        )
+        .expect("reopen the saved personal record");
+        assert_eq!(
+            (
+                opened.aid_allocation,
+                opened.notes.text,
+                opened.selected_reference
+            ),
+            (original, draft.notes.text, id)
+        );
+        fs::remove_file(&path).expect("remove owned test record");
+        fs::remove_dir(path.parent().expect("isolated parent directory"))
+            .expect("remove owned empty directory");
+    }
 
     #[test]
     fn draft_references_roundtrip_without_executable_authority() {

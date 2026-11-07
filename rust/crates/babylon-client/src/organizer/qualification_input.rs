@@ -14,6 +14,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use bevy::ecs::message::{MessageCursor, MessageId, Messages};
+use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode, WindowResized};
@@ -168,8 +169,8 @@ enum AmountKey {
     End,
 }
 impl AmountKey {
-    fn send(self, window: Entity, commands: &mut Commands) {
-        use bevy::input::keyboard::{Key, KeyboardInput, NativeKeyCode};
+    fn pressed(self, window: Entity) -> KeyboardInput {
+        use bevy::input::keyboard::{Key, NativeKeyCode};
         use bevy::input::ButtonState;
         let (key_code, logical_key, text) = match self {
             Self::Character(c) => {
@@ -195,22 +196,14 @@ impl AmountKey {
             Self::Home => (KeyCode::Home, Key::Home, None),
             Self::End => (KeyCode::End, Key::End, None),
         };
-        commands.queue(move |world: &mut World| {
-            for state in [ButtonState::Pressed, ButtonState::Released] {
-                world.write_message(KeyboardInput {
-                    key_code,
-                    logical_key: logical_key.clone(),
-                    state,
-                    text: if state == ButtonState::Pressed {
-                        text.clone()
-                    } else {
-                        None
-                    },
-                    repeat: false,
-                    window,
-                });
-            }
-        });
+        KeyboardInput {
+            key_code,
+            logical_key,
+            state: ButtonState::Pressed,
+            text,
+            repeat: false,
+            window,
+        }
     }
 }
 
@@ -462,7 +455,8 @@ struct Pending {
     world_hash: Option<String>,
     capture_state: Option<Value>,
     expected_evidence: Option<[u8; 32]>,
-    amount_revision: u64,
+    amount_target: Option<(Entity, AmountField)>,
+    amount_handled: Option<bool>,
     resize_armed: bool,
     presentation_started: Instant,
 }
@@ -470,7 +464,8 @@ struct Pending {
 impl Pending {
     fn new(input: Input, situation: &Situation, tracked: Option<Tracked>) -> Self {
         Self {
-            amount_revision: situation.client.amounts.revision,
+            amount_target: situation.amount_target(),
+            amount_handled: None,
             resize_armed: false,
             presentation_started: Instant::now(),
             expected_evidence: match input.action {
@@ -833,9 +828,12 @@ struct Situation<'w, 's> {
 }
 
 impl Situation<'_, '_> {
-    fn focused_amount(&self) -> Option<AmountField> {
+    fn amount_target(&self) -> Option<(Entity, AmountField)> {
         let entity = self.focus.as_ref()?.get()?;
-        self.amount_fields.get(entity).ok().copied()
+        Some((entity, *self.amount_fields.get(entity).ok()?))
+    }
+    fn focused_amount(&self) -> Option<AmountField> {
+        self.amount_target().map(|(_, field)| field)
     }
     fn allows(&self, input: &Input) -> bool {
         precondition(input, &self.session)
@@ -1211,18 +1209,7 @@ fn dispatch(
         production.write(command);
     } else {
         match input.action {
-            Action::AmountKey(key) => {
-                let Ok((window, _)) = windows.single() else {
-                    controls.respond(
-                        Some(sequence),
-                        "refused",
-                        Some("primary_window_unavailable"),
-                        &situation,
-                    );
-                    return;
-                };
-                key.send(window, &mut commands);
-            }
+            Action::AmountKey(_) => {} // Delivered from the admitted pending input on the next frame.
             Action::Play if situation.session.playing => {}
             Action::Pause if !situation.session.playing => {}
             Action::LargerInterface if situation.ui.larger_interface => {}
@@ -1275,6 +1262,55 @@ fn dispatch(
         }
     }
     controls.pending = Some(Pending::new(input, &situation, receipt.tracked));
+}
+
+/// Bevy's focused event drops the buffered message ID. Bind this one injected event to
+/// its original entity and situation, and collect the ordinary observer's synchronous receipt.
+fn deliver_amount_key(
+    situation: Situation,
+    mut controls: ResMut<Controls>,
+    windows: Query<Entity, With<PrimaryWindow>>,
+    mut commands: Commands,
+) {
+    let Some(pending) = controls.pending.as_mut() else {
+        return;
+    };
+    let Action::AmountKey(key) = pending.input.action else {
+        return;
+    };
+    if pending.amount_handled.is_some() {
+        return;
+    }
+    let Some((entity, _)) = pending.amount_target else {
+        pending.amount_handled = Some(false);
+        return;
+    };
+    let Ok(window) = windows.single() else {
+        pending.amount_handled = Some(false);
+        return;
+    };
+    if situation.amount_target() != pending.amount_target
+        || !situation.allows(&pending.input)
+        || situation.session.context() != pending.context
+        || situation.session.runtime_scope() != pending.scope.as_ref()
+    {
+        pending.amount_handled = Some(false);
+        return;
+    }
+    let sequence = pending.input.sequence;
+    let context = pending.context.clone();
+    commands.queue(move |world: &mut World| {
+        let handled =
+            super::amount_editor::deliver_key(world, entity, context, key.pressed(window));
+        if let Some(pending) = world
+            .resource_mut::<Controls>()
+            .pending
+            .as_mut()
+            .filter(|p| p.input.sequence == sequence)
+        {
+            pending.amount_handled = Some(handled);
+        }
+    });
 }
 
 fn capture_handler(pending: &mut Pending, witness: Witness) -> Result<(), &'static str> {
@@ -1361,12 +1397,19 @@ fn outcome(pending: &Pending, s: &Situation) -> Option<Result<&'static str, &'st
         return Some(Err("control_context_changed"));
     }
     if matches!(action, Action::AmountKey(_)) {
-        if s.client.amounts.revision > pending.amount_revision {
-            return Some(Ok("applied"));
+        if pending.amount_target.is_none()
+            || s.amount_target() != pending.amount_target
+            || !s.allows(&pending.input)
+        {
+            return Some(Err("ordinary_handler_refused"));
         }
-        return (s.focused_amount().is_none()
-            || pending.presentation_started.elapsed() >= PRESENTATION_TIMEOUT)
-            .then_some(Err("ordinary_handler_refused"));
+        return pending.amount_handled.map(|handled| {
+            if handled {
+                Ok("applied")
+            } else {
+                Err("ordinary_handler_refused")
+            }
+        });
     }
     if action == Action::Refresh {
         return Some(Ok("refresh_requested"));
@@ -1734,7 +1777,12 @@ pub(crate) fn install(app: &mut App, transport: Transport) {
         .init_resource::<ArchiveEvidenceReceipt>()
         .init_resource::<Controls>()
         .init_resource::<HandlerReceipt>()
-        .add_systems(Update, dispatch.before(ObserverSet::Input))
+        .add_systems(
+            Update,
+            (deliver_amount_key, dispatch)
+                .chain()
+                .before(ObserverSet::Input),
+        )
         .add_systems(
             Update,
             // Witness the real warning transition before a long frame reaches Title.
@@ -2427,7 +2475,8 @@ mod tests {
             world_hash: session.world_hash.clone(),
             capture_state: None,
             expected_evidence: None,
-            amount_revision: 0,
+            amount_target: None,
+            amount_handled: None,
             resize_armed: false,
             presentation_started: Instant::now(),
         }
@@ -2666,16 +2715,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn qualification_amount_keys_require_focused_ordinary_editor_and_report_real_readback() {
-        let (mut app, _window) = super::ui::tests::allocation_opening();
+    fn amount_control_transport(
+        app: &mut App,
+    ) -> (UnixStream, Sender<Incoming>, Receiver<Vec<u8>>) {
         app.init_resource::<OpeningPresentation>()
             .add_message::<ContinueWarning>();
-        let (socket, _peer) = UnixStream::pair().expect("local test peer");
+        let (socket, peer) = UnixStream::pair().expect("local test peer");
         let (incoming, receiver) = mpsc::channel();
         let (outgoing, output) = mpsc::sync_channel(4);
         install(
-            &mut app,
+            app,
             Transport {
                 incoming: Mutex::new(receiver),
                 outgoing,
@@ -2683,6 +2732,13 @@ mod tests {
                 capture_dir: None,
             },
         );
+        (peer, incoming, output)
+    }
+
+    #[test]
+    fn qualification_amount_keys_require_focused_ordinary_editor_and_report_real_readback() {
+        let (mut app, _window) = super::ui::tests::allocation_opening();
+        let (_peer, incoming, output) = amount_control_transport(&mut app);
         let mut sequence = 0;
         let mut send = |app: &mut App, action: Value| {
             sequence += 1;
@@ -2739,8 +2795,137 @@ mod tests {
         assert!(bad["state"]["reviewed_command"].is_null() && bad["state"]["commitment"].is_null());
     }
 
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Interference {
+        OtherKey,
+        AnotherField,
+        ChangedContext,
+    }
+    fn press_focused_home(app: &mut App, window: Entity) {
+        use bevy::input::keyboard::{Key, KeyboardInput};
+        use bevy::input::ButtonState;
+        use bevy::input_focus::FocusedInput;
+        let entity = app
+            .world()
+            .resource::<InputFocus>()
+            .get()
+            .expect("ordinary field has focus");
+        app.world_mut().trigger(FocusedInput::new(
+            entity,
+            KeyboardInput {
+                window,
+                key_code: KeyCode::Home,
+                logical_key: Key::Home,
+                text: None,
+                repeat: false,
+                state: ButtonState::Pressed,
+            },
+            window,
+        ));
+    }
+
+    fn competing_amount_input(race: Interference) {
+        use crate::observer::Perspective;
+        use bevy::ecs::system::RunSystemOnce;
+        use bevy::input_focus::FocusCause;
+        let (mut app, window) = super::ui::tests::allocation_opening();
+        for action in [
+            OrganizerAction::Inspect(OrganizerInspector::Practices),
+            OrganizerAction::Choose(OrganizerChoice::LocalAid),
+            OrganizerAction::FocusAmount(AmountField::Food),
+        ] {
+            app.world_mut().write_message(action);
+            app.update();
+            app.update();
+        }
+        let (_peer, sender, output) = amount_control_transport(&mut app);
+        let input = pending(
+            app.world().resource::<ObserverSession>(),
+            app.world().resource::<OrganizerClient>(),
+            Action::AmountKey(AmountKey::Backspace),
+        )
+        .input;
+        sender
+            .send(Incoming::Input(input))
+            .expect("live input channel");
+        app.world_mut()
+            .run_system_once(dispatch)
+            .expect("ordinary dispatch resources installed");
+        assert!(app.world().resource::<Controls>().pending.is_some());
+        if race == Interference::AnotherField {
+            let world = app.world_mut();
+            let cash = world
+                .query::<(Entity, &AmountField)>()
+                .iter(world)
+                .find(|(_, f)| **f == AmountField::Cash)
+                .expect("cash field in the native deck")
+                .0;
+            world
+                .resource_mut::<InputFocus>()
+                .set(cash, FocusCause::Navigated);
+        }
+        if race == Interference::ChangedContext {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            let other = match session.perspective {
+                Perspective::FullObserver => Perspective::PlayerKnowledge,
+                Perspective::PlayerKnowledge => Perspective::FullObserver,
+            };
+            session.set_perspective(other);
+        }
+        press_focused_home(&mut app, window);
+        app.world_mut()
+            .run_system_once(complete)
+            .expect("ordinary completion resources installed");
+        if race == Interference::OtherKey {
+            assert!(
+                app.world().resource::<Controls>().reply.is_none(),
+                "a genuine Home key cannot acknowledge a pending Backspace"
+            );
+            app.update();
+            app.update();
+            let applied: Value =
+                serde_json::from_slice(&output.try_recv().expect("processed original key reply"))
+                    .expect("bounded key response");
+            assert_eq!(applied["event"], "applied");
+            assert_eq!(applied["state"]["focused_amount"], "food");
+            assert_eq!(
+                AmountField::Food.text(app.world().resource::<OrganizerClient>()),
+                "1",
+                "the actual Backspace at Home leaves the text intact"
+            );
+        } else {
+            let raw = app
+                .world()
+                .resource::<Controls>()
+                .reply
+                .as_ref()
+                .expect("original focus lost");
+            let value: Value = serde_json::from_slice(raw).expect("bounded refusal frame");
+            assert_eq!(value["event"], "refused");
+            app.update();
+            assert_eq!(
+                AmountField::Cash.text(app.world().resource::<OrganizerClient>()),
+                "0",
+                "queued Food key must not edit cash"
+            );
+        }
+    }
+    #[test]
+    fn repaired_qualification_competing_key_cannot_acknowledge_another_key() {
+        competing_amount_input(Interference::OtherKey);
+    }
+    #[test]
+    fn repaired_qualification_focus_switch_cannot_retarget_or_acknowledge_the_key() {
+        competing_amount_input(Interference::AnotherField);
+    }
+
+    #[test]
+    fn repaired_qualification_context_change_refuses_the_queued_key() {
+        competing_amount_input(Interference::ChangedContext);
+    }
     #[test]
     fn qualification_status_authenticates_the_reviewed_and_accepted_original() {
+        use super::super::draft::OrganizerDraft;
         use babylon_persistence::runtime_session::OrganizerSnapshot;
         use babylon_practice_contract::{OrganizerConfig, OrganizerState};
         use bevy::ecs::system::RunSystemOnce;
@@ -2764,6 +2949,8 @@ mod tests {
         assert!(session.installed(&session.context()));
         let mut client = OrganizerClient::default();
         client.admitted(campaign);
+        client.draft = Some(OrganizerDraft::captured(&snapshot));
+        client.draft_writable = true;
         client.queue(&mut session, RequestKind::Status, None);
         let request = client.pending.as_ref().expect("status sent").id;
         client

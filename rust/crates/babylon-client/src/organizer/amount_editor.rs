@@ -4,8 +4,8 @@ use super::ui::{ActionButton, OrganizerAction, Scope};
 use super::OrganizerClient;
 use super::RequestKind;
 use crate::decision_surface::{DeclaredSurface, SurfaceId};
-use crate::observer::ObserverSession;
 use crate::observer::SessionPhase;
+use crate::observer::{ObservationContext, ObserverSession};
 use crate::observer_focus::ObserverFocusTarget;
 use crate::observer_io::ObserverSet;
 use crate::observer_theme as theme;
@@ -113,7 +113,7 @@ impl AmountField {
 pub(super) struct AmountEdits {
     raw: [Option<NoteEditor>; 3],
     rejected: [Option<&'static str>; 3],
-    pub(super) revision: u64,
+    expected_input: Option<(Entity, ObservationContext, KeyboardInput)>,
 }
 
 pub(super) fn allocation(client: &OrganizerClient) -> Result<OrganizerAllocation, String> {
@@ -131,6 +131,19 @@ pub(super) fn allocation(client: &OrganizerClient) -> Result<OrganizerAllocation
                 .parsed(client)?
                 .checked_mul(MICROS)
                 .ok_or("Cash exceeds currency capacity.")?;
+            let terms = client
+                .aid_preview(client.choice())
+                .ok_or("Current aid terms unavailable.")?;
+            if food_quantity > 0 && terms.food.is_none() {
+                return Err(
+                    "Food terms are unavailable for this partner. Set food parcels to zero.".into(),
+                );
+            }
+            if cash_micros > 0 && terms.payer_cash.is_none() {
+                return Err(
+                    "No cash payer is available for this offer. Set the cash gift to zero.".into(),
+                );
+            }
             if food_quantity == 0 && cash_micros == 0 {
                 return Err("Choose at least one food parcel or a positive cash gift.".into());
             }
@@ -141,6 +154,18 @@ pub(super) fn allocation(client: &OrganizerClient) -> Result<OrganizerAllocation
         }
         _ => Ok(OrganizerAllocation::None),
     }
+}
+
+/// Install only the entire basket currently valid for the selected recipient.
+pub(super) fn reconcile(client: &mut OrganizerClient) -> Result<(), String> {
+    let selected = allocation(client)?;
+    let draft = client.draft.as_mut().ok_or("Personal draft unavailable.")?;
+    match selected {
+        OrganizerAllocation::Aid { .. } => draft.aid_allocation = selected,
+        OrganizerAllocation::Collection { .. } => draft.collection_allocation = selected,
+        OrganizerAllocation::None => {}
+    }
+    Ok(())
 }
 
 pub(super) fn editing_allowed(client: &OrganizerClient, session: &ObserverSession) -> bool {
@@ -333,25 +358,63 @@ fn input(
         client.amounts.rejected[field.index()] = error;
     }
     client.amounts.raw[field.index()] = Some(editor);
-    client.amounts.revision = client.amounts.revision.saturating_add(1);
+    if client
+        .amounts
+        .expected_input
+        .as_ref()
+        .is_some_and(|(target, context, key)| {
+            *target == entity && *context == session.context() && *key == event.input
+        })
+    {
+        client.amounts.expected_input = None;
+    }
     if !changed {
         return;
     }
     client.clear_review();
-    match allocation(&client) {
-        Ok(value) => {
-            if let Some(draft) = client.draft.as_mut() {
-                if field == AmountField::Contribution {
-                    draft.collection_allocation = value;
-                } else {
-                    draft.aid_allocation = value;
-                }
-            }
+    match reconcile(&mut client) {
+        Ok(()) => {
             client.dirty(time.elapsed_secs_f64());
             client.message.clear();
         }
         Err(message) => client.message = message,
     }
+}
+
+/// Synchronously deliver the same focused keyboard event Bevy dispatches for a physical key.
+pub(super) fn deliver_key(
+    world: &mut World,
+    target: Entity,
+    context: ObservationContext,
+    key: KeyboardInput,
+) -> bool {
+    if world.resource::<InputFocus>().get() != Some(target)
+        || world.resource::<ObserverSession>().context() != context
+    {
+        return false;
+    }
+    let window = key.window;
+    world
+        .resource_mut::<OrganizerClient>()
+        .amounts
+        .expected_input = Some((target, context, key.clone()));
+    world.trigger(FocusedInput::new(target, key.clone(), window));
+    let handled = world
+        .resource_mut::<OrganizerClient>()
+        .amounts
+        .expected_input
+        .take()
+        .is_none();
+    world.trigger(FocusedInput::new(
+        target,
+        KeyboardInput {
+            state: ButtonState::Released,
+            text: None,
+            ..key
+        },
+        window,
+    ));
+    handled
 }
 
 pub(super) fn install(app: &mut App) {

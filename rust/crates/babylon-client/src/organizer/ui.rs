@@ -1399,7 +1399,12 @@ fn action_available(action: OrganizerAction, state: &mut ActionState) -> bool {
     if enabled(action, &state.client, &state.session) {
         return true;
     }
-    state.client.message = unavailable_message(action, &state.client, &state.session).into();
+    let allocation_error = (action == OrganizerAction::Review
+        && state.client.available(&state.session))
+    .then(|| amount_editor::allocation(&state.client).err())
+    .flatten();
+    state.client.message = allocation_error
+        .unwrap_or_else(|| unavailable_message(action, &state.client, &state.session).into());
     false
 }
 
@@ -1533,9 +1538,9 @@ fn actions(
                 }
             }
             OrganizerAction::Review => {
-                client.return_focus = focus.get();
-                client.inspector = OrganizerInspector::Review;
-                review_approach(client, session);
+                if !review_approach(client, session, focus) {
+                    continue;
+                }
             }
             OrganizerAction::Confirm => {
                 confirm_approach(client, session);
@@ -1676,7 +1681,7 @@ fn choose_approach(
     }
     client.clear_review();
     client.dirty(now);
-    client.message = amount_editor::allocation(client).err().unwrap_or_default();
+    client.message = amount_editor::reconcile(client).err().unwrap_or_default();
     if matches!(
         client.inspector,
         OrganizerInspector::Direction | OrganizerInspector::Practices
@@ -1688,12 +1693,25 @@ fn choose_approach(
     }
 }
 
-fn review_approach(client: &mut OrganizerClient, session: &mut ObserverSession) {
-    if let Some(command) = client.make_command(session, client.choice()) {
-        client.queue(session, RequestKind::Preview, Some(command));
-        client.message =
-            "Checking the next-period commitment against current authority and time…".into();
+fn review_approach(
+    client: &mut OrganizerClient,
+    session: &mut ObserverSession,
+    focus: &InputFocus,
+) -> bool {
+    if let Err(reason) = amount_editor::reconcile(client) {
+        client.message = reason;
+        return false;
     }
+    let Some(command) = client.make_command(session, client.choice()) else {
+        client.message = "Current terms do not support the selected request.".into();
+        return false;
+    };
+    client.queue(session, RequestKind::Preview, Some(command));
+    client.return_focus = focus.get();
+    client.inspector = OrganizerInspector::Review;
+    client.message =
+        "Checking the next-period commitment against current authority and time…".into();
+    true
 }
 
 fn confirm_approach(client: &mut OrganizerClient, session: &mut ObserverSession) {

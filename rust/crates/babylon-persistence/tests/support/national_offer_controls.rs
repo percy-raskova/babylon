@@ -3,14 +3,14 @@ use babylon_persistence::runtime_session::{OrganizerAidKind, OrganizerSnapshot};
 
 fn opening() -> OrganizerSnapshot {
     serde_json::from_str(include_str!(
-        "../fixtures/national_organizer_opening_v16.json"
+        "../fixtures/national_organizer_opening_v17.json"
     ))
     .expect("the authored JSON matches the declared schema")
 }
 
 fn remote_in_transit() -> OrganizerSnapshot {
     serde_json::from_str(include_str!(
-        "../fixtures/national_organizer_pending_v16.json"
+        "../fixtures/national_organizer_pending_v17.json"
     ))
     .expect("the actual engine pending snapshot matches the current schema")
 }
@@ -60,7 +60,7 @@ fn second_actionable_offer_is_refused() {
 #[test]
 fn captured_pending_boundary_retains_both_terms_and_only_the_local_action() {
     let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
-        "../fixtures/national_organizer_pending_v16.json"
+        "../fixtures/national_organizer_pending_v17.json"
     ))
     .expect("the authored JSON matches the declared schema");
     assert_eq!(snapshot.view.period, 1);

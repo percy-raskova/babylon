@@ -7,7 +7,7 @@ meta:
   scope: Captured Wayne collective, two independent partners, and one workplace
 
 encoding:
-  runtime_session_protocol_version: 16
+  runtime_session_protocol_version: 17
   outer: exact_ASCII_domain_then_NUL_then_canonical_UTF8_JSON
   version: config_and_state_schema_version_11_where_present
   current_domains: {config: "babylon.organizer-config.v10\0", state: "babylon.organizer-state.v9\0",

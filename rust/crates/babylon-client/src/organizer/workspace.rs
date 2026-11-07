@@ -960,7 +960,7 @@ mod tests {
             let mut duplicate = client.aid[0].clone();
             duplicate.kind = OrganizerAidKind::Remote;
             duplicate.mandate_id = [17; 32];
-            duplicate.recipient_id = [18; 32];
+            duplicate.recipient_actor_id = 18;
             client.aid.push(duplicate);
             assert_eq!(
                 resources(&client, &session).expect("current").shared_time,
@@ -1065,7 +1065,7 @@ mod tests {
             mandate_id: [4; 32],
             period: 3,
             donor_id: [5; 32],
-            recipient_id: [6; 32],
+            recipient_actor_id: 6,
             good_id: [7; 32],
             unit_id: [8; 32],
             food: Some(

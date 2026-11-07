@@ -481,7 +481,7 @@ fn append_aid_constraints(text: &mut String, food: &OrganizerAidFoodPreview) {
 }
 
 fn aid_history(client: &OrganizerClient, period: u64) -> String {
-    use babylon_persistence::runtime_session::OrganizerAidSupportStatus;
+    use babylon_persistence::runtime_session::OrganizerFoodDelivery;
     let mut text = String::from("\nAID SUPPORT · separate from workplace observations\n");
     for pending in &client.pending_aid {
         if client
@@ -517,22 +517,22 @@ fn aid_history(client: &OrganizerClient, period: u64) -> String {
             row.practice.period
         );
         match row.support.status {
-            OrganizerAidSupportStatus::NotRequested => text.push_str("No food selected.\n"),
-            OrganizerAidSupportStatus::AwaitingDelivery => {
+            OrganizerFoodDelivery::NotRequested => text.push_str("No food selected.\n"),
+            OrganizerFoodDelivery::AwaitingDelivery => {
                 text.push_str("Surviving freight remains pending.\n");
             }
-            OrganizerAidSupportStatus::ReceivingRefused => {
+            OrganizerFoodDelivery::ReceivingRefused => {
                 text.push_str("Food receiving was refused; cash settles independently.\n");
             }
-            OrganizerAidSupportStatus::TerminalFailure => {
+            OrganizerFoodDelivery::TerminalFailure => {
                 text.push_str("Terminal food failure; no food grant and no surviving delivery.\n");
             }
-            OrganizerAidSupportStatus::Granted {
-                granted_quantity,
-                consumed_quantity,
-                household_consumed_quantity,
-            } => {
-                let _ = writeln!(text, "Granted {} units; total same-period recipient consumption of the same good/unit: {}. Aggregate consumption is not attribution to donated units or proof of additional time. This original has {} units of bounded consumption credit, without parcel lineage.", crate::observer_ui::grouped(granted_quantity), crate::observer_ui::grouped(household_consumed_quantity), crate::observer_ui::grouped(consumed_quantity));
+            OrganizerFoodDelivery::Granted { granted_quantity } => {
+                let _ = writeln!(
+                    text,
+                    "Granted {} units.",
+                    crate::observer_ui::grouped(granted_quantity)
+                );
             }
         }
         let postings = &row.support.material_postings;
@@ -1376,11 +1376,12 @@ mod tests {
     }
 
     fn aid_history_client() -> OrganizerClient {
+        use babylon_persistence::runtime_session::OrganizerAidTransfer;
         use babylon_persistence::runtime_session::{
             OrganizerAidMaterialPostings, OrganizerAidPending, OrganizerAidResolution,
-            OrganizerAidSupportStatus, OrganizerReceipt,
+            OrganizerFoodDelivery, OrganizerReceipt,
         };
-        use babylon_practice_contract::{OrganizerAidSupport, OrganizerTimeUse};
+        use babylon_practice_contract::OrganizerTimeUse;
         let mut view = view();
         view.period = 3;
         let row = OrganizerAidResolution {
@@ -1402,21 +1403,17 @@ mod tests {
                 good_id: [14; 32],
                 unit_id: [15; 32],
             },
-            support: OrganizerAidSupport {
+            support: OrganizerAidTransfer {
                 cash_status: OrganizerAidCashStatus::Granted,
                 original_commitment_id: [11; 32],
                 material_commitment_id: [12; 32],
                 mandate_id: [13; 32],
-                source_hash: [16; 32],
                 dispatch_period: 3,
                 period: 3,
-                recipient_principal_id: [17; 32],
                 good_id: [14; 32],
                 unit_id: [15; 32],
-                status: OrganizerAidSupportStatus::Granted {
+                status: OrganizerFoodDelivery::Granted {
                     granted_quantity: 4,
-                    household_consumed_quantity: 5,
-                    consumed_quantity: 4,
                 },
                 material_postings: OrganizerAidMaterialPostings {
                     dispatched_quantity: 4,
@@ -1455,7 +1452,7 @@ mod tests {
 
     fn aid_arrival_client() -> OrganizerClient {
         use babylon_persistence::runtime_session::{
-            OrganizerAidMaterialPostings, OrganizerAidSupportStatus,
+            OrganizerAidMaterialPostings, OrganizerFoodDelivery,
         };
         use babylon_practice_contract::OrganizerTimeUse;
         let mut client = aid_history_client();
@@ -1488,10 +1485,8 @@ mod tests {
         }];
         row.practice.partner_actor_id = Some(95);
         row.practice.partner_response = OrganizerPartnerResponse::Refused;
-        row.support.status = OrganizerAidSupportStatus::Granted {
+        row.support.status = OrganizerFoodDelivery::Granted {
             granted_quantity: 3,
-            household_consumed_quantity: 6,
-            consumed_quantity: 3,
         };
         row.support.material_postings = OrganizerAidMaterialPostings {
             dispatched_quantity: 0,
@@ -1515,13 +1510,11 @@ mod tests {
             local.contains("Local: original admission 2; dispatch 3; actual resolution 3."),
             "{local}"
         );
+        assert!(local.contains("Granted 4 units."), "{local}");
         assert!(
-            local.contains(
-                "Granted 4 units; total same-period recipient consumption of the same good/unit: 5"
-            ),
+            !local.contains("recipient consumption") && !local.contains("consumption credit"),
             "{local}"
         );
-        assert!(local.contains("Aggregate consumption is not attribution to donated units or proof of additional time"), "{local}");
         assert!(local.contains("Actual material postings in period 3: dispatched food 4 units; donor household fulfillment 8 hours."), "{local}");
         assert!(
             local.contains("Aid payer cash: gift paid $0.000012 currency."),
@@ -1546,7 +1539,7 @@ mod tests {
     #[test]
     fn routed_aid_dispatch_history_reports_actual_cost_without_crediting_delivery_or_coordination()
     {
-        use babylon_persistence::runtime_session::OrganizerAidSupportStatus;
+        use babylon_persistence::runtime_session::OrganizerFoodDelivery;
         let mut client = aid_history_client();
         let row = &mut client.aid_resolutions[0];
         row.pending.kind = OrganizerAidKind::Remote;
@@ -1556,7 +1549,7 @@ mod tests {
         row.practice.time_use.clear();
         row.practice.partner_actor_id = None;
         row.practice.partner_response = OrganizerPartnerResponse::NotRequested;
-        row.support.status = OrganizerAidSupportStatus::AwaitingDelivery;
+        row.support.status = OrganizerFoodDelivery::AwaitingDelivery;
         row.support.material_postings.payer_cash_granted_micros = 0;
         let (_, dispatched) = inspector(&client, 3);
         assert!(
@@ -1588,12 +1581,7 @@ mod tests {
             arrival.contains("Aid payer cash: gift paid $0.00 currency."),
             "{arrival}"
         );
-        assert!(
-            arrival.contains(
-                "Granted 3 units; total same-period recipient consumption of the same good/unit: 6"
-            ),
-            "{arrival}"
-        );
+        assert!(arrival.contains("Granted 3 units."), "{arrival}");
         assert!(
             arrival.contains("partner declined; coordination 3 hours"),
             "{arrival}"
@@ -1616,7 +1604,8 @@ mod tests {
             .aid_resolutions
             .first_mut()
             .expect("cash-grant copy fixture");
-        row.support.status = babylon_practice_contract::OrganizerAidSupportStatus::TerminalFailure;
+        row.support.status =
+            babylon_persistence::runtime_session::OrganizerFoodDelivery::TerminalFailure;
         row.support.material_postings.dispatched_quantity = 0;
         row.support.material_postings.fulfillment_hours = 0;
         row.pending.dispatch_support = row.support.clone();
@@ -1638,10 +1627,8 @@ mod tests {
             food_quantity: 1,
             cash_micros: 0,
         };
-        row.support.status = babylon_practice_contract::OrganizerAidSupportStatus::Granted {
+        row.support.status = babylon_persistence::runtime_session::OrganizerFoodDelivery::Granted {
             granted_quantity: 1,
-            consumed_quantity: 0,
-            household_consumed_quantity: 1,
         };
         row.support.cash_status = OrganizerAidCashStatus::NotRequested;
         row.support.material_postings.dispatched_quantity = 1;
@@ -1655,10 +1642,7 @@ mod tests {
         row.practice.partner_response = OrganizerPartnerResponse::NotRequested;
         let (_, text) = inspector(&client, 3);
         assert!(text.contains("Granted 1 units"), "{text}");
-        assert!(
-            text.contains("This original has 0 units of bounded consumption credit"),
-            "{text}"
-        );
+        assert!(!text.contains("consumption credit"), "{text}");
         assert!(
             text.contains("Support did not qualify joint work"),
             "{text}"
@@ -1703,7 +1687,7 @@ mod tests {
             mandate_id: [1; 32],
             period: 0,
             donor_id: [2; 32],
-            recipient_id: [3; 32],
+            recipient_actor_id: 3,
             good_id: [4; 32],
             unit_id: [5; 32],
             food: Some(OrganizerAidFoodPreview {

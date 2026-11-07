@@ -4,6 +4,7 @@ use crate::economic_content::{EconomicAdmissionOwner, EconomicContentHandle};
 use crate::identity::CampaignId;
 use crate::material_runtime::MaterialRuntimeError;
 use crate::organizer_runtime::CityPdEncounter;
+use crate::organizer_runtime::OrganizerFoodDelivery;
 use crate::{
     ArchiveCitation, ArchiveDirtyBatch, ArchiveDossierProducer, ArchiveKnowledge, ArchivePageInput,
     ArchiveProducerOutcome, ArchiveSignal, ArchiveSubject, ArchiveSubjectKind,
@@ -19,9 +20,9 @@ use crate::production_projection::diagnostics::Timing;
 use crate::CampaignFoundation;
 use babylon_practice_contract::OrganizerCollectionResolution;
 use babylon_practice_contract::{
-    OrganizerAidMaterialPostings, OrganizerAidResolutionReceipt, OrganizerAidSupportStatus,
-    OrganizerChoice, OrganizerConfig, OrganizerInquiry, OrganizerObservation, OrganizerOutcome,
-    OrganizerPartnerResponse, OrganizerReceipt, OrganizerReport,
+    OrganizerAidMaterialPostings, OrganizerAidResolutionReceipt, OrganizerChoice, OrganizerConfig,
+    OrganizerInquiry, OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse,
+    OrganizerReceipt, OrganizerReport,
 };
 use babylon_tick::material_world::MaterialWorldRegister;
 use postgres::Config;
@@ -807,20 +808,20 @@ struct AidSupportEvidence<'a> {
     material_commitment: &'a [u8; 32],
     good: &'a [u8; 32],
     unit: &'a [u8; 32],
-    status: &'a OrganizerAidSupportStatus,
+    status: OrganizerFoodDelivery,
     material_postings: &'a OrganizerAidMaterialPostings,
 }
 
 fn aid_support_text(evidence: &AidSupportEvidence<'_>) -> String {
     let support = match evidence.status {
-        OrganizerAidSupportStatus::NotRequested => "No food selected; cash is adjudicated independently.".into(),
-        OrganizerAidSupportStatus::AwaitingDelivery =>
+        OrganizerFoodDelivery::NotRequested => "No food selected; cash is adjudicated independently.".into(),
+        OrganizerFoodDelivery::AwaitingDelivery =>
             "Pending: surviving freight remains in transit.".into(),
-        OrganizerAidSupportStatus::ReceivingRefused => "Food receiving was refused; cash settles independently.".into(),
-        OrganizerAidSupportStatus::TerminalFailure =>
+        OrganizerFoodDelivery::ReceivingRefused => "Food receiving was refused; cash settles independently.".into(),
+        OrganizerFoodDelivery::TerminalFailure =>
             "Terminal food failure: no food was granted in this period; no surviving food delivery remains.".into(),
-        OrganizerAidSupportStatus::Granted { granted_quantity, consumed_quantity, household_consumed_quantity } => format!(
-            "Granted quantity: {granted_quantity}; recipient total consumption of the same good and unit in this period: {household_consumed_quantity}. This is aggregate consumption, not attribution to donated units. Bounded credit for this original: {consumed_quantity}; no parcel lineage is claimed. The original aid attempt is terminal; independent practice may still refuse or lack time."
+        OrganizerFoodDelivery::Granted { granted_quantity } => format!(
+            "Granted quantity: {granted_quantity}. The partner decides independently whether to participate."
         ),
     };
     format!(
@@ -848,7 +849,7 @@ fn aid_signal(row: &OrganizerAidResolutionReceipt) -> Result<ArchiveSignal, Sema
         material_commitment: &row.support.material_commitment_id,
         good: &row.support.good_id,
         unit: &row.support.unit_id,
-        status: &row.support.status,
+        status: row.support.status.into(),
         material_postings: &row.support.material_postings,
     };
     // Keep the existing actor-scoped grant and receipt citation. The producer
@@ -1027,10 +1028,8 @@ mod projection_tests {
 
     #[test]
     fn aid_evidence_preserves_original_dates_and_distinguishes_support_from_consumption() {
-        let status = OrganizerAidSupportStatus::Granted {
+        let status = OrganizerFoodDelivery::Granted {
             granted_quantity: 2,
-            household_consumed_quantity: 5,
-            consumed_quantity: 2,
         };
         let material_postings = OrganizerAidMaterialPostings {
             dispatched_quantity: 0,
@@ -1046,7 +1045,7 @@ mod projection_tests {
             material_commitment: &[2; 32],
             good: &[3; 32],
             unit: &[4; 32],
-            status: &status,
+            status,
             material_postings: &material_postings,
         };
         let text = aid_support_text(&evidence);
@@ -1059,10 +1058,10 @@ mod projection_tests {
         assert!(text.contains("fulfillment is separate from independent coordination"));
         assert!(text.contains(&hex(&[2; 32])));
         assert!(text.contains("Granted quantity: 2"));
-        assert!(text.contains("this period: 5"));
-        assert!(text.contains("not attribution to donated units"));
-        assert!(text.contains("independent practice may still refuse"));
-        let waiting = OrganizerAidSupportStatus::AwaitingDelivery;
+        assert!(!text.contains("recipient total consumption"));
+        assert!(!text.contains("Bounded credit for this original"));
+        assert!(text.contains("partner decides independently"));
+        let waiting = OrganizerFoodDelivery::AwaitingDelivery;
         let empty_postings = OrganizerAidMaterialPostings {
             dispatched_quantity: 0,
             fulfillment_hours: 0,
@@ -1070,13 +1069,13 @@ mod projection_tests {
             lost_quantity: 0,
         };
         evidence.material_postings = &empty_postings;
-        evidence.status = &waiting;
+        evidence.status = waiting;
         let text = aid_support_text(&evidence);
         assert!(text.contains("Pending: surviving freight"));
         assert!(text.contains("Aid payer cash: gift paid 0 micro-units"));
         assert!(!text.contains("Granted quantity"));
-        let failed = OrganizerAidSupportStatus::TerminalFailure;
-        evidence.status = &failed;
+        let failed = OrganizerFoodDelivery::TerminalFailure;
+        evidence.status = failed;
         let text = aid_support_text(&evidence);
         assert!(text.contains("Terminal food failure: no food was granted"));
         assert!(!text.contains("no support was granted"));

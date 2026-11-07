@@ -67,7 +67,7 @@ fn reply(payer: i128, gift: i128, price: i128) -> RuntimeSessionResponse {
                 mandate_id: [1; 32],
                 period: 0,
                 donor_id: [2; 32],
-                recipient_id: [3; 32],
+                recipient_actor_id: 3,
                 good_id: [4; 32],
                 unit_id: [5; 32],
                 food: Some(crate::runtime_session::OrganizerAidFoodPreview {
@@ -138,8 +138,8 @@ fn organizer_body_fields_are_required_in_current_wire_and_fixtures() {
         );
     }
     for bytes in [
-        include_str!("../../tests/fixtures/national_organizer_opening_v16.json"),
-        include_str!("../../tests/fixtures/national_organizer_pending_v16.json"),
+        include_str!("../../tests/fixtures/national_organizer_opening_v17.json"),
+        include_str!("../../tests/fixtures/national_organizer_pending_v17.json"),
     ] {
         let snapshot: OrganizerSnapshot =
             serde_json::from_str(bytes).expect("current fixture is complete");

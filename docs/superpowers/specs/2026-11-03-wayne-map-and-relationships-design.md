@@ -56,9 +56,13 @@ independent aid legs, captured initial targets and saved draft/command
 construction. Original requests, dispatch facts and the first response remain
 available through delayed delivery and restart. Normal-national collection
 remains blocked by actual protected needs, including a funded utility order
-that received seven of eight units. A separate national repair must prove
-a lawful funded path before the editor, topic report grants and native
-acceptance proceed. This stage is not a public release.
+that received seven of eight units. The report work can proceed independently. Native acceptance still requires
+a lawful funded path in the normal national campaign.
+
+A sender can see the original allocation, food movement, actual cash gift
+and independent practice response. The partner controls reports about
+household consumption, services and available time. The engine assigns
+bounded food credit internally to resolve joint work.
 
 The geographic world is the persistent home. The player must see where the
 collective can act, understand a known partner's relationship and concern, and

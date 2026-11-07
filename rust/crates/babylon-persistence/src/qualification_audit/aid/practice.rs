@@ -1,6 +1,6 @@
 use super::{postings, Refusal, Result, Terms};
 use crate::observer_reader::CommittedMaterialReceipts;
-use crate::runtime_session::OrganizerAidResolution;
+use babylon_practice_contract::OrganizerAidResolutionReceipt;
 
 use babylon_material_circuit::{AidOutcome, FinalDemandPrincipalId};
 use babylon_practice_contract::{
@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 
 pub(super) fn read(
     admitted: &CommittedMaterialReceipts,
-    resolution: &OrganizerAidResolution,
+    resolution: &OrganizerAidResolutionReceipt,
     terms: &Terms<'_>,
 ) -> Result<Value> {
     let qualifying = identity(resolution, terms, admitted.receipts.resolve_tick)?;
@@ -24,7 +24,7 @@ pub(super) fn read(
     match practice.outcome {
         OrganizerOutcome::AidResponseRetained => {
             let original = resolution
-                .pending
+                .authorization
                 .response
                 .as_ref()
                 .ok_or(Refusal::Practice)?;
@@ -101,7 +101,7 @@ pub(super) fn read(
         "food_consumption_period": (food_consumed_quantity > 0).then_some(practice.period),
         "cash_received_micros": cash_received.to_string(),
         "cash_received_period": (cash_received > 0).then_some(practice.period),
-        "first_response_period": resolution.pending.response.as_ref().map(|row| row.period),
+        "first_response_period": resolution.authorization.response.as_ref().map(|row| row.period),
         "partner_actor": practice.partner_actor_id,
         "partner_response": practice.partner_response,
         "outcome": practice.outcome,
@@ -109,19 +109,21 @@ pub(super) fn read(
         "finite_practice_completed": practice.outcome == OrganizerOutcome::AidPracticeCompleted,
     }))
 }
-fn identity(resolution: &OrganizerAidResolution, terms: &Terms<'_>, tick: u64) -> Result<bool> {
+fn identity(
+    resolution: &OrganizerAidResolutionReceipt,
+    terms: &Terms<'_>,
+    tick: u64,
+) -> Result<bool> {
     let accepted = &terms.accepted.commitment;
-    let p = &resolution.pending;
+    let p = &resolution.authorization;
     let s = &resolution.support;
     let r = &resolution.practice;
     let material =
         babylon_material_circuit::aid_commitment_id(terms.mandate.id, accepted.resolves_period)
             .as_bytes();
-    if p.allocation != accepted.command.allocation
-        || p.original_commitment_id != accepted.commitment_id
-        || p.mandate_id != terms.mandate.id
-        || p.kind != terms.binding.kind
-        || p.admitted_period != accepted.command.expected_period
+    if p.gift.commitment != *accepted
+        || p.gift.mandate_id != terms.mandate.id
+        || p.gift.kind != terms.binding.kind
         || p.dispatch_period != accepted.resolves_period
         || p.material_commitment_id != material
         || p.good_id != terms.mandate.good_id.as_bytes()
@@ -148,14 +150,14 @@ fn identity(resolution: &OrganizerAidResolution, terms: &Terms<'_>, tick: u64) -
 }
 fn requested_legs(
     admitted: &CommittedMaterialReceipts,
-    resolution: &OrganizerAidResolution,
+    resolution: &OrganizerAidResolutionReceipt,
 ) -> Result<()> {
     use babylon_practice_contract::OrganizerAllocation;
-    let pending = &resolution.pending;
+    let pending = &resolution.authorization;
     let OrganizerAllocation::Aid {
         food_quantity,
         cash_micros,
-    } = pending.allocation
+    } = pending.gift.commitment.command.allocation
     else {
         return Err(Refusal::Support);
     };
@@ -208,7 +210,7 @@ fn requested_legs(
 }
 fn support(
     admitted: &CommittedMaterialReceipts,
-    resolution: &OrganizerAidResolution,
+    resolution: &OrganizerAidResolutionReceipt,
 ) -> Result<()> {
     let s = &resolution.support;
     let mut granted = 0;
@@ -286,7 +288,7 @@ fn use_id(receipt: [u8; 32], actor: u64, contributor: u64) -> [u8; 32] {
 }
 fn debits(
     admitted: &CommittedMaterialReceipts,
-    resolution: &OrganizerAidResolution,
+    resolution: &OrganizerAidResolutionReceipt,
     terms: &Terms<'_>,
 ) -> Result<u64> {
     let practice = &resolution.practice;

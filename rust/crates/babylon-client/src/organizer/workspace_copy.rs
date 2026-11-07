@@ -251,23 +251,17 @@ impl Bulletin {
                 }
             }
             if let Some(row) = row.aid {
-                use babylon_persistence::runtime_session::OrganizerAidSupportStatus;
+                use babylon_persistence::runtime_session::OrganizerFoodDelivery;
                 let moved =
                     crate::observer_ui::grouped(row.support.material_postings.dispatched_quantity);
                 let status = match row.support.status {
-                    OrganizerAidSupportStatus::NotRequested => "no food selected".into(),
-                    OrganizerAidSupportStatus::ReceivingRefused => "food receiving refused".into(),
-                    OrganizerAidSupportStatus::AwaitingDelivery => "awaiting delivery".into(),
-                    OrganizerAidSupportStatus::TerminalFailure => "food failed".into(),
-                    OrganizerAidSupportStatus::Granted {
-                        granted_quantity,
-                        household_consumed_quantity,
-                        ..
-                    } => format!(
-                        "{} granted · recipient consumed {} of the same good in total",
-                        crate::observer_ui::grouped(granted_quantity),
-                        crate::observer_ui::grouped(household_consumed_quantity)
-                    ),
+                    OrganizerFoodDelivery::NotRequested => "no food selected".into(),
+                    OrganizerFoodDelivery::ReceivingRefused => "food receiving refused".into(),
+                    OrganizerFoodDelivery::AwaitingDelivery => "awaiting delivery".into(),
+                    OrganizerFoodDelivery::TerminalFailure => "food failed".into(),
+                    OrganizerFoodDelivery::Granted { granted_quantity } => {
+                        format!("{} granted", crate::observer_ui::grouped(granted_quantity))
+                    }
                 };
                 let _ = writeln!(self.copy, "{moved} units dispatched · {status}");
             }

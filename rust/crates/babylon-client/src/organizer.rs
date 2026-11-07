@@ -51,23 +51,21 @@ use bevy::prelude::*;
 
 #[cfg(test)]
 pub(crate) mod tests {
-    pub(crate) fn aid_dispatch_fixture() -> babylon_persistence::runtime_session::OrganizerAidSupport
-    {
+    pub(crate) fn aid_dispatch_fixture(
+    ) -> babylon_persistence::runtime_session::OrganizerAidTransfer {
         use babylon_persistence::runtime_session::{
-            OrganizerAidCashStatus, OrganizerAidMaterialPostings, OrganizerAidSupport,
-            OrganizerAidSupportStatus,
+            OrganizerAidCashStatus, OrganizerAidMaterialPostings, OrganizerAidTransfer,
+            OrganizerFoodDelivery,
         };
-        OrganizerAidSupport {
+        OrganizerAidTransfer {
             original_commitment_id: [11; 32],
             material_commitment_id: [12; 32],
             mandate_id: [13; 32],
-            source_hash: [16; 32],
             dispatch_period: 3,
             period: 3,
-            recipient_principal_id: [17; 32],
             good_id: [14; 32],
             unit_id: [15; 32],
-            status: OrganizerAidSupportStatus::AwaitingDelivery,
+            status: OrganizerFoodDelivery::AwaitingDelivery,
             cash_status: OrganizerAidCashStatus::Granted,
             material_postings: OrganizerAidMaterialPostings {
                 dispatched_quantity: 4,
@@ -353,8 +351,8 @@ pub(crate) mod tests {
     fn real_independent_leg_status_seeds_draft_and_authenticated_review() {
         use babylon_practice_contract::{OrganizerAllocation, OrganizerConfig, OrganizerState};
         for bytes in [
-            include_str!("../../babylon-persistence/tests/fixtures/food_only_no_payer_v16.json"),
-            include_str!("../../babylon-persistence/tests/fixtures/cash_only_no_food_v16.json"),
+            include_str!("../../babylon-persistence/tests/fixtures/food_only_no_payer_v17.json"),
+            include_str!("../../babylon-persistence/tests/fixtures/cash_only_no_food_v17.json"),
         ] {
             let capture: Value = serde_json::from_str(bytes).expect("producer capture");
             let snapshot: OrganizerSnapshot =
@@ -771,7 +769,7 @@ pub(crate) mod tests {
             mandate_id: [4; 32],
             period: 3,
             donor_id: [5; 32],
-            recipient_id: [6; 32],
+            recipient_actor_id: 6,
             good_id: [7; 32],
             unit_id: [8; 32],
             food: Some(

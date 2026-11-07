@@ -90,6 +90,35 @@ fn remote_projection_preserves_admission_dispatch_and_resolution_dates() {
         OrganizerOutcome::AidPracticeCompleted
     );
     assert!(returned.iter().all(|r| r.practice.period == state.period));
+    let practice = &entries.aid_receipts[0].practice;
+    assert!(practice
+        .time_use
+        .iter()
+        .any(|usage| usage.actor_id != practice.actor_id));
+    assert!(returned[0]
+        .practice
+        .time_use
+        .iter()
+        .all(|usage| usage.actor_id == practice.actor_id));
+    assert_eq!(
+        returned[0].practice.partner_response,
+        practice.partner_response
+    );
+    assert_eq!(returned[0].practice.hours_spent, practice.hours_spent);
+    let mut withheld = entries.clone();
+    let babylon_practice_contract::OrganizerAidSupportStatus::Granted {
+        household_consumed_quantity,
+        ..
+    } = &mut withheld.aid_receipts[0].support.status
+    else {
+        panic!("the arrived fixture must contain an actual grant");
+    };
+    *household_consumed_quantity += 1;
+    assert_eq!(
+        super::resolutions(&withheld),
+        returned,
+        "a sender's practice receipt cannot disclose the recipient's private consumption"
+    );
 }
 
 #[test]
@@ -258,7 +287,7 @@ fn stock_only_status_admits_food_without_unselected_payer() {
     );
     assert!(matches!(
         facts[0].support.status,
-        babylon_practice_contract::OrganizerAidSupportStatus::Granted {
+        super::OrganizerFoodDelivery::Granted {
             granted_quantity: 1,
             ..
         }
@@ -301,7 +330,7 @@ fn cash_only_status_admits_cash_without_unselected_food_metadata() {
     );
     assert_eq!(
         facts[0].support.status,
-        babylon_practice_contract::OrganizerAidSupportStatus::NotRequested
+        super::OrganizerFoodDelivery::NotRequested
     );
     assert_eq!(
         facts[0].support.material_postings.payer_cash_granted_micros,
@@ -316,9 +345,9 @@ fn verify_independent_selected_terms(
 ) {
     let cash_only = accepted.command.choice == OrganizerChoice::RemoteAid;
     let expected: Value = serde_json::from_str(if cash_only {
-        include_str!("../../tests/fixtures/cash_only_no_food_v16.json")
+        include_str!("../../tests/fixtures/cash_only_no_food_v17.json")
     } else {
-        include_str!("../../tests/fixtures/food_only_no_payer_v16.json")
+        include_str!("../../tests/fixtures/food_only_no_payer_v17.json")
     })
     .expect("actual producer fixture");
     assert_eq!(

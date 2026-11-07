@@ -198,7 +198,7 @@ pub(in crate::qualification_audit) fn terms<'a>(
         || p.initial_food_quantity != mandate.initial_quantity
         || p.initial_cash_micros != mandate.initial_cash.micro_units()
         || p.donor_id != mandate.donor.as_bytes()
-        || p.recipient_id != mandate.recipient.as_bytes()
+        || p.recipient_actor_id != mandate.recipient_actor
         || p.good_id != mandate.good_id.as_bytes()
         || p.unit_id != mandate.unit_id.as_bytes()
         || p.maximum_cash_micros != mandate.maximum_cash.micro_units()
@@ -423,8 +423,15 @@ impl Audit {
         }
         let mut independent_practices = Vec::new();
         let mut seen = BTreeSet::new();
-        for resolution in &after.aid_resolutions {
-            let original = resolution.pending.original_commitment_id;
+        let entries = register
+            .organizer_journal()
+            .and_then(|journal| journal.latest())
+            .ok_or(Refusal::Capture)?;
+        if entries.period != tick {
+            return Err(Refusal::Period);
+        }
+        for resolution in &entries.aid_receipts {
+            let original = resolution.authorization.gift.commitment.commitment_id;
             if !seen.insert(original) {
                 return Err(Refusal::Duplicate);
             }

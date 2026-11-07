@@ -8,26 +8,25 @@ use crate::michigan_material::MichiganDeliveryPreset;
 pub use crate::organizer_runtime::{
     CityPdEncounter, OrganizerAidCapacity, OrganizerAidFoodPreview, OrganizerAidOrdinaryOffer,
     OrganizerAidPending, OrganizerAidResolution, OrganizerAidRouteStage, OrganizerAidTime,
-    OrganizerAidTransportPreview, OrganizerBodyDisclosure, OrganizerBodyPart, OrganizerBodyScope,
-    OrganizerBodySource, OrganizerCollectionPreview, OrganizerMaterialAidPreview,
-    OrganizerSnapshot, CITY_PD_ENCOUNTER_SCHEMA_VERSION,
+    OrganizerAidTransfer, OrganizerAidTransportPreview, OrganizerBodyDisclosure, OrganizerBodyPart,
+    OrganizerBodyScope, OrganizerBodySource, OrganizerCollectionPreview, OrganizerFoodDelivery,
+    OrganizerMaterialAidPreview, OrganizerSnapshot, CITY_PD_ENCOUNTER_SCHEMA_VERSION,
 };
 
 pub use babylon_practice_contract::{
     OrganizerAgreement, OrganizerAidCashStatus, OrganizerAidKind, OrganizerAidMaterialPostings,
-    OrganizerAidOption, OrganizerAidSupport, OrganizerAidSupportStatus, OrganizerAllocation,
-    OrganizerChoice, OrganizerCollectionOutcome, OrganizerCollectionResolution, OrganizerCommand,
-    OrganizerCommitment, OrganizerGiftConsent, OrganizerInquiry, OrganizerObservation,
-    OrganizerOutcome, OrganizerPartnerResponse, OrganizerPauseReason, OrganizerPosition,
-    OrganizerPreview, OrganizerReceipt, OrganizerRefusal, OrganizerReport, OrganizerStandingWork,
-    OrganizerView,
+    OrganizerAidOption, OrganizerAllocation, OrganizerChoice, OrganizerCollectionOutcome,
+    OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment, OrganizerGiftConsent,
+    OrganizerInquiry, OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse,
+    OrganizerPauseReason, OrganizerPosition, OrganizerPreview, OrganizerReceipt, OrganizerRefusal,
+    OrganizerReport, OrganizerStandingWork, OrganizerView,
 };
 
 pub use crate::material_runtime::MaterialAdvanceStage as RuntimeAdvanceStage;
 use babylon_kernel::clock::CampaignDuration;
 use uuid::Uuid;
 
-pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 16;
+pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 17;
 pub const RUNTIME_SESSION_MAX_LINE_BYTES: usize = 131_072;
 
 /// A lifecycle incarnation, distinct even when the same campaign is reopened.
@@ -335,7 +334,7 @@ mod selection_tests {
 
 #[test]
 fn advance_progress_current_wire_is_closed_and_versioned() {
-    assert_eq!(RUNTIME_SESSION_PROTOCOL_VERSION, 16);
+    assert_eq!(RUNTIME_SESSION_PROTOCOL_VERSION, 17);
     assert!(
         serde_json::from_value::<RuntimeSessionTail>(serde_json::json!({
             "resolve_tick": 0, "tick_content_hash": null

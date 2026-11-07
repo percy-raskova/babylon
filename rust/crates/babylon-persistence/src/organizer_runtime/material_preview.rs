@@ -25,7 +25,7 @@ pub struct OrganizerMaterialAidPreview {
     pub mandate_id: [u8; 32],
     pub period: u64,
     pub donor_id: [u8; 32],
-    pub recipient_id: [u8; 32],
+    pub recipient_actor_id: u64,
     pub good_id: [u8; 32],
     pub unit_id: [u8; 32],
     #[serde(deserialize_with = "required_food")]
@@ -105,6 +105,73 @@ pub struct OrganizerAidCapacity {
     pub corridor_id: [u8; 32],
     pub remaining_grams: Option<u64>,
 }
+/// Food movements observable by the sender under its practice receipt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum OrganizerFoodDelivery {
+    NotRequested,
+    AwaitingDelivery,
+    ReceivingRefused,
+    TerminalFailure,
+    Granted { granted_quantity: u64 },
+}
+
+impl From<babylon_practice_contract::OrganizerAidSupportStatus> for OrganizerFoodDelivery {
+    fn from(status: babylon_practice_contract::OrganizerAidSupportStatus) -> Self {
+        use babylon_practice_contract::OrganizerAidSupportStatus as Status;
+        match status {
+            Status::NotRequested => Self::NotRequested,
+            Status::AwaitingDelivery => Self::AwaitingDelivery,
+            Status::ReceivingRefused => Self::ReceivingRefused,
+            Status::TerminalFailure => Self::TerminalFailure,
+            Status::Granted {
+                granted_quantity, ..
+            } => Self::Granted { granted_quantity },
+        }
+    }
+}
+
+/// The sender can follow its own original commitment, transfers and delivery dates.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrganizerAidTransfer {
+    pub original_commitment_id: [u8; 32],
+    pub material_commitment_id: [u8; 32],
+    pub mandate_id: [u8; 32],
+    pub dispatch_period: u64,
+    pub period: u64,
+    pub good_id: [u8; 32],
+    pub unit_id: [u8; 32],
+    pub status: OrganizerFoodDelivery,
+    pub cash_status: babylon_practice_contract::OrganizerAidCashStatus,
+    pub material_postings: babylon_practice_contract::OrganizerAidMaterialPostings,
+}
+
+impl From<&OrganizerAidSupport> for OrganizerAidTransfer {
+    fn from(row: &OrganizerAidSupport) -> Self {
+        Self {
+            original_commitment_id: row.original_commitment_id,
+            material_commitment_id: row.material_commitment_id,
+            mandate_id: row.mandate_id,
+            dispatch_period: row.dispatch_period,
+            period: row.period,
+            good_id: row.good_id,
+            unit_id: row.unit_id,
+            status: row.status.into(),
+            cash_status: row.cash_status,
+            material_postings: row.material_postings.clone(),
+        }
+    }
+}
+
+fn owned_practice(receipt: &OrganizerReceipt) -> OrganizerReceipt {
+    let mut disclosed = receipt.clone();
+    disclosed
+        .time_use
+        .retain(|row| row.actor_id == receipt.actor_id);
+    disclosed
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OrganizerAidPending {
@@ -117,7 +184,7 @@ pub struct OrganizerAidPending {
     pub good_id: [u8; 32],
     pub unit_id: [u8; 32],
     pub allocation: OrganizerAllocation,
-    pub dispatch_support: OrganizerAidSupport,
+    pub dispatch_support: OrganizerAidTransfer,
     pub response: Option<OrganizerReceipt>,
     pub lost_quantity: u64,
 }
@@ -125,7 +192,7 @@ pub struct OrganizerAidPending {
 #[serde(deny_unknown_fields)]
 pub struct OrganizerAidResolution {
     pub pending: OrganizerAidPending,
-    pub support: OrganizerAidSupport,
+    pub support: OrganizerAidTransfer,
     pub practice: OrganizerReceipt,
 }
 fn refused() -> RuntimeSessionErrorCode {
@@ -134,8 +201,8 @@ fn refused() -> RuntimeSessionErrorCode {
 pub(super) fn pending(row: &OrganizerPendingAidPractice) -> OrganizerAidPending {
     OrganizerAidPending {
         allocation: row.gift.commitment.command.allocation,
-        dispatch_support: row.dispatch_support.clone(),
-        response: row.response.clone(),
+        dispatch_support: (&row.dispatch_support).into(),
+        response: row.response.as_ref().map(owned_practice),
         lost_quantity: row.lost_quantity,
         kind: row.gift.kind,
         original_commitment_id: row.gift.commitment.commitment_id,
@@ -188,7 +255,7 @@ pub(super) fn projections(
             mandate_id: mandate.id,
             period,
             donor_id: mandate.donor.as_bytes(),
-            recipient_id: mandate.recipient.as_bytes(),
+            recipient_actor_id: binding.partner.actor_id,
             good_id: mandate.good_id.as_bytes(),
             unit_id: mandate.unit_id.as_bytes(),
             food,
@@ -447,8 +514,8 @@ pub(super) fn resolutions(entries: &OrganizerPeriodJournalEntries) -> Vec<Organi
         .filter(|r| r.practice.period == entries.period)
         .map(|r| OrganizerAidResolution {
             pending: pending(&r.authorization),
-            support: r.support.clone(),
-            practice: r.practice.clone(),
+            support: (&r.support).into(),
+            practice: owned_practice(&r.practice),
         })
         .collect()
 }

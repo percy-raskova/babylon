@@ -3356,7 +3356,7 @@ pub(crate) mod tests {
         if let Some(view) = client.view.as_mut() {
             let national: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v16.json"
+                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v17.json"
             )))
             .expect("captured national opening");
             if viewport.x > 1400 {
@@ -6154,7 +6154,7 @@ pub(crate) mod tests {
                 mandate_id: [1; 32],
                 period: 3,
                 donor_id: [2; 32],
-                recipient_id: [3; 32],
+                recipient_actor_id: 3,
                 good_id: [4; 32],
                 unit_id: [5; 32],
                 food: Some(

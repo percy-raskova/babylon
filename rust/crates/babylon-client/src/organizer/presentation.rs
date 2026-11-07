@@ -82,7 +82,7 @@ pub(super) fn refusal(value: OrganizerRefusal) -> &'static str {
         OrganizerRefusal::AidReceivingRefused => {
             "The recipient has not consented to receive this gift."
         }
-        OrganizerRefusal::PendingAidConflict => "A different aid commitment is already pending.",
+        OrganizerRefusal::PendingAidConflict => "The earlier commitment to this partner is still open, including its freight. A new cash-only proposal also waits for closure.",
         OrganizerRefusal::HouseholdTimeAlreadySpent => {
             "Those household hours were already committed to a resolved period."
         }
@@ -114,7 +114,7 @@ pub(super) fn partner(view: &OrganizerView, actor: u64) -> &str {
 
 pub(super) fn report(value: &OrganizerReport) -> String {
     match value {
-        OrganizerReport::Partner { facts, .. } => facts.detail(),
+        OrganizerReport::Partner { facts, .. } => super::partner_copy::detail(facts),
         OrganizerReport::ReducedWork { previous_labor_hours, performed_labor_hours } => format!(
             "Less work was performed: {} labor-hours, compared with {} in the previous period.", crate::observer_ui::grouped(*performed_labor_hours), crate::observer_ui::grouped(*previous_labor_hours)
         ),
@@ -154,7 +154,10 @@ pub(super) fn report_origin(item: &OrganizerObservation) -> &'static str {
 pub(super) fn report_caption(item: &OrganizerObservation) -> String {
     format!(
         "{} · observed P{}, received P{} · {}",
-        report_kind(&item.report),
+        match &item.report {
+            OrganizerReport::Partner { facts, .. } => super::partner_copy::headline(facts),
+            other => report_kind(other).to_owned(),
+        },
         item.observed_period,
         item.acquired_period,
         report_origin(item)
@@ -180,31 +183,13 @@ pub(super) fn observation(
         },
     );
     if let OrganizerReport::Partner { facts, .. } = &item.report {
-        let prior = view
-            .observations
-            .iter()
-            .filter(|r| {
-                r.actor_id == view.actor_id
-                    && r.subject_id == item.subject_id
-                    && r.source_actor_id == item.source_actor_id
-                    && r.observed_period < item.observed_period
-                    && r.acquired_period <= current_period
-            })
-            .filter_map(|r| match &r.report {
-                OrganizerReport::Partner {
-                    facts: previous, ..
-                } if std::mem::discriminant(previous) == std::mem::discriminant(facts) => {
-                    Some((r, previous))
-                }
-                _ => None,
-            })
-            .max_by_key(|(r, _)| (r.observed_period, r.acquired_period));
+        let prior = super::partner_copy::prior(view, item, current_period, facts);
         if let Some((r, previous)) = prior {
             let _ = write!(
                 text,
                 "\nEarlier shared report P{}. {}",
                 r.observed_period,
-                previous.detail()
+                super::partner_copy::detail(previous)
             );
         } else {
             text.push_str("\nEarlier comparable report unknown.");
@@ -377,7 +362,8 @@ fn approach_terms(
         } else {
             "Accepted support remains pending. Read its actual result in Practice history."
         };
-        return format!("PENDING SUPPORT · {kind}\nOriginal admission: period {}; dispatch: period {}.\n{progress}\nOpen Practice history to follow this commitment's dispatch, arrival or terminal failure.\nAnother {kind} ruling remains unavailable while this support is pending. Later coordination still needs independent authorization.", pending.admitted_period, pending.dispatch_period);
+        let response=pending.response.as_ref().map_or_else(||"Later coordination still needs independent authorization.".to_owned(),|r|format!("Partner response in P{}: {}. Later food will not consume more coordination hours.",r.period,response(r.partner_response)));
+        return format!("PENDING SUPPORT · {kind}\nOriginal admission: period {}; dispatch: period {}.\n{progress}\nOpen Practice history to follow this commitment's dispatch, arrival or terminal failure.\nAnother {kind} ruling remains unavailable while this support is pending. {response}", pending.admitted_period, pending.dispatch_period);
     }
     let recipient = aid_recipient(view, preview);
     let mut text = recipient.map_or_else(
@@ -419,6 +405,7 @@ fn aid_recipient<'a>(
     options.next().filter(|option| {
         options.next().is_none()
             && view.period == preview.period
+            && option.partner_actor_id == preview.recipient_actor_id
             && option.receiving_consent == preview.receiving_consent
             && !option.partner_label.trim().is_empty()
     })
@@ -449,9 +436,33 @@ fn aid_review_terms(client: &OrganizerClient, choice: OrganizerChoice) -> String
     };
     let food = terms.food.as_ref().map_or_else(
         || "Food delivery is unavailable.".into(),
-        |food| format!("Gift request: up to {} food units ({} grams each); protected surplus: {} units. Actual fulfillment may be lower.\nFulfillment: {} household hours per dispatched unit.", crate::observer_ui::grouped(terms.maximum_quantity), crate::observer_ui::grouped(food.grams_per_unit), crate::observer_ui::grouped(food.donor_stock.saturating_sub(food.own_need)), crate::observer_ui::grouped(food.fulfillment_hours_per_unit)),
+        |food| format!("Food mandate ceiling: up to {} food units ({} grams each); protected surplus: {} units. Actual fulfillment may be lower.\nFulfillment: {} household hours per dispatched unit.", crate::observer_ui::grouped(terms.maximum_quantity), crate::observer_ui::grouped(food.grams_per_unit), crate::observer_ui::grouped(food.donor_stock.saturating_sub(food.own_need)), crate::observer_ui::grouped(food.fulfillment_hours_per_unit)),
     );
     format!("Recipient: {}\n{food}\nIndependent cash cap: {} currency; organization cash: {}.\nReceiving consent: {consent}.", recipient.partner_label, crate::human_numbers::currency(terms.maximum_cash_micros), aid_cash_text(terms.payer_cash))
+}
+
+fn selected_aid(
+    client: &OrganizerClient,
+    allocation: OrganizerAllocation,
+    choice: OrganizerChoice,
+    resolves: u64,
+) -> String {
+    let OrganizerAllocation::Aid {
+        food_quantity,
+        cash_micros,
+    } = allocation
+    else {
+        return "Selected allocation unavailable.".into();
+    };
+    let terms = client.aid_preview(choice);
+    let hours = terms
+        .and_then(|t| t.food.as_ref())
+        .and_then(|food| food.fulfillment_hours_per_unit.checked_mul(food_quantity));
+    let next = resolves.checked_add(1).map_or_else(
+        || "outside the campaign clock".to_owned(),
+        |p| format!("P{p}"),
+    );
+    format!("Selected: {food_quantity} food parcels and {}. Up to {} donor household hours if all selected parcels dispatch. Cash receiving: {}. At P{resolves} cash can settle after ordinary orders. The next ordinary purchase opportunity is {next}; purchases and prices are uncertain. Food travels separately. First positive cash or actually consumed food permits one independent response.",crate::human_numbers::currency(cash_micros),hours.map_or_else(||"unknown".into(),|h|h.to_string()),terms.map_or("unknown",|t|match t.cash_receiving_consent{OrganizerGiftConsent::Accept=>"accepted",OrganizerGiftConsent::Refuse=>"refused"}))
 }
 
 fn aid_cash_text(cash: Option<i128>) -> String {
@@ -480,7 +491,7 @@ fn aid_terms(preview: &OrganizerMaterialAidPreview) -> String {
     );
     if let Some(food) = &preview.food {
         let surplus = food.donor_stock.saturating_sub(food.own_need);
-        let _ = writeln!(text, "Current pantry: {} units; own food need: {}; protected surplus: {}.\nCaptured food maximum: {} food units ({} grams per unit); actual fulfillment may be lower.\nFulfillment: {} household hours per dispatched unit; later coordination: {} hours. These compete with other work.", crate::observer_ui::grouped(food.donor_stock), crate::observer_ui::grouped(food.own_need), crate::observer_ui::grouped(surplus), crate::observer_ui::grouped(preview.maximum_quantity), crate::observer_ui::grouped(food.grams_per_unit), crate::observer_ui::grouped(food.fulfillment_hours_per_unit), crate::observer_ui::grouped(preview.coordination_hours));
+        let _ = writeln!(text, "Donor household pantry: {} units; own food need: {}; protected surplus: {}.\nCaptured food maximum: {} food units ({} grams per unit); actual fulfillment may be lower.\nFulfillment: {} household hours per dispatched unit; later coordination: {} hours. These compete with other work.", crate::observer_ui::grouped(food.donor_stock), crate::observer_ui::grouped(food.own_need), crate::observer_ui::grouped(surplus), crate::observer_ui::grouped(preview.maximum_quantity), crate::observer_ui::grouped(food.grams_per_unit), crate::observer_ui::grouped(food.fulfillment_hours_per_unit), crate::observer_ui::grouped(preview.coordination_hours));
         append_aid_constraints(&mut text, food);
     } else {
         text.push_str("Food delivery is unavailable.\n");
@@ -542,7 +553,17 @@ fn aid_history(client: &OrganizerClient, period: u64) -> String {
             if period < pending.dispatch_period {
                 let _ = writeln!(text, "Pending {label}: original admission {}. Scheduled dispatch: period {}; no delivery is credited.", pending.admitted_period, pending.dispatch_period);
             } else {
-                let _ = writeln!(text, "Pending {label}: original admission {}; dispatch {}. Surviving delivery awaits actual arrival; no later coordination is credited.", pending.admitted_period, pending.dispatch_period);
+                let coordination = pending.response.as_ref().map_or_else(
+                    || "Independent response awaits qualifying support.".to_owned(),
+                    |r| {
+                        format!(
+                            "Partner response in P{}: {}. No repeat on arrival.",
+                            r.period,
+                            response(r.partner_response)
+                        )
+                    },
+                );
+                let _=writeln!(text,"Pending {label}: original admission {}; dispatch {}. Surviving delivery awaits actual arrival. {coordination}",pending.admitted_period,pending.dispatch_period);
             }
         }
     }
@@ -596,11 +617,19 @@ fn aid_history(client: &OrganizerClient, period: u64) -> String {
         );
         let _ = writeln!(
             text,
-            "Aid payer cash: gift paid {} currency. Cash outcome: {} at original dispatch. Freight loss: {} units in this period.",
+            "Aid payer cash: gift paid {} currency. Cash outcome: {} on this dated leg. Freight loss: {} units in this period.",
             crate::human_numbers::currency(postings.payer_cash_granted_micros),
             row.support.cash_status.label(),
             crate::observer_ui::grouped(postings.lost_quantity)
         );
+        let _ = writeln!(text, "{}", super::developments::dispatch_line(row));
+        if let Some(first) = super::developments::response_line(row) {
+            let _ = writeln!(text, "{first}");
+        }
+        if row.practice.outcome == OrganizerOutcome::AidResponseRetained {
+            let _=writeln!(text,"P{} delivery update. The original response is final. Additional coordination: 0 hours.",row.support.period);
+            continue;
+        }
         let _ = writeln!(text, "Independent outcome: {}; partner {}; coordination {} hours. A declined practice never revokes a delivered gift.", outcome(row.practice.outcome), response(row.practice.partner_response), crate::observer_ui::grouped(row.practice.hours_spent));
     }
     text
@@ -784,6 +813,16 @@ fn accepted_aid_review(client: &OrganizerClient, commitment: &OrganizerCommitmen
         "\n{}",
         aid_review_terms(client, commitment.command.choice)
     );
+    let _ = write!(
+        text,
+        "\n{}",
+        selected_aid(
+            client,
+            commitment.command.allocation,
+            commitment.command.choice,
+            commitment.resolves_period
+        )
+    );
     if let Some(preview) = client.aid_preview(commitment.command.choice) {
         let _ = write!(
             text,
@@ -791,7 +830,7 @@ fn accepted_aid_review(client: &OrganizerClient, commitment: &OrganizerCommitmen
             crate::observer_ui::grouped(preview.coordination_hours)
         );
     }
-    text.push_str("\nRuling fixed. Advance for material resolution. Later coordination depends on delivery, consumption, finite contributions and independent authorization; no coordination time is reserved.");
+    text.push_str("\nRuling fixed. Advance for material resolution. Coordination can follow positive cash or consumed food, subject to finite contributions and independent authorization; no coordination time is reserved.");
     text
 }
 
@@ -820,7 +859,13 @@ fn accepted_collection_review(
                 "The neighborhood routine remains paused; no standing fallback."
             }
         });
-    format!("ACCEPTED · collection resolution period {}\n{terms}. Protected needs and fixed shared time are checked at close.\n{routine} Actual full, partial or refused payment appears after Advance. Later aid needs its own ruling.", commitment.resolves_period)
+    let selected = match commitment.command.allocation {
+        OrganizerAllocation::Collection { target_cash_micros } => {
+            crate::human_numbers::currency(target_cash_micros)
+        }
+        _ => "unavailable".into(),
+    };
+    format!("ACCEPTED · collection resolution period {}\nSelected contribution target {selected}.\n{terms}. Protected needs and fixed shared time are checked at close.\n{routine} Actual full, partial or refused payment appears after Advance. Later aid needs its own ruling.", commitment.resolves_period)
 }
 
 pub(super) fn review(
@@ -884,7 +929,17 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
     }
     match preview.choice {
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => {
-            let _ = write!(text, "\n{}", aid_review_terms(client, preview.choice));
+            let _ = write!(
+                text,
+                "\n{}\n{}",
+                selected_aid(
+                    client,
+                    preview.allocation,
+                    preview.choice,
+                    preview.resolves_period
+                ),
+                aid_review_terms(client, preview.choice)
+            );
         }
         OrganizerChoice::Collect => {
             let _ = write!(text, "\n{}", collection_review_terms(client));
@@ -904,41 +959,13 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
             );
         }
     }
-    let _ = write!(
-        text,
-        "\n{}",
-        match preview.choice {
-            OrganizerChoice::Collect | OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
-                if matches!(
-                    preview.refusal,
-                    Some(OrganizerRefusal::WrongCampaign | OrganizerRefusal::WrongAuthority)
-                ) =>
-                "Routine effect is unavailable for this preview.",
-            OrganizerChoice::Collect
-            | OrganizerChoice::LocalAid
-            | OrganizerChoice::RemoteAid
-            | OrganizerChoice::Inquiry(_)
-            | OrganizerChoice::Reinforce
-                if preview.replaces_standing_work =>
-                "Replaces neighborhood work once; later work remains subject to eligibility.",
-            OrganizerChoice::Collect
-            | OrganizerChoice::LocalAid
-            | OrganizerChoice::RemoteAid
-            | OrganizerChoice::Inquiry(_)
-            | OrganizerChoice::Reinforce => "The neighborhood routine remains paused.",
-            OrganizerChoice::PauseStanding =>
-                "Pauses the saved routine until you explicitly resume it.",
-            OrganizerChoice::ResumeStanding =>
-                "Authorizes and performs the saved routine; continues afterward while eligible.",
-            OrganizerChoice::Hold => "Keeps the saved routine; does not resume a paused routine.",
-        }
-    );
+    let _ = write!(text, "\n{}", preview_routine(preview));
     if matches!(
         preview.choice,
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
     ) {
         if let Some(terms) = client.aid_preview(preview.choice) {
-            let _ = write!(text, "\nLater coordination: {} hours, conditional on delivery, consumption, finite contributions and separate independent authorization.", crate::observer_ui::grouped(terms.coordination_hours));
+            let _ = write!(text, "\nLater coordination: {} hours, conditional on positive cash or consumed food, finite contributions and separate independent authorization.", crate::observer_ui::grouped(terms.coordination_hours));
             text.push('\n');
             if let Some(food) = &terms.food {
                 append_aid_constraints(&mut text, food);
@@ -958,6 +985,40 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
     }
     append_preview_result(&mut text, client, preview);
     text
+}
+
+fn preview_routine(preview: &OrganizerPreview) -> &'static str {
+    match preview.choice {
+        OrganizerChoice::Collect | OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+            if matches!(
+                preview.refusal,
+                Some(OrganizerRefusal::WrongCampaign | OrganizerRefusal::WrongAuthority)
+            ) =>
+        {
+            "Routine effect is unavailable for this preview."
+        }
+        OrganizerChoice::Collect
+        | OrganizerChoice::LocalAid
+        | OrganizerChoice::RemoteAid
+        | OrganizerChoice::Inquiry(_)
+        | OrganizerChoice::Reinforce
+            if preview.replaces_standing_work =>
+        {
+            "Replaces neighborhood work once; later work remains subject to eligibility."
+        }
+        OrganizerChoice::Collect
+        | OrganizerChoice::LocalAid
+        | OrganizerChoice::RemoteAid
+        | OrganizerChoice::Inquiry(_)
+        | OrganizerChoice::Reinforce => "The neighborhood routine remains paused.",
+        OrganizerChoice::PauseStanding => {
+            "Pauses the saved routine until you explicitly resume it."
+        }
+        OrganizerChoice::ResumeStanding => {
+            "Authorizes and performs the saved routine; continues afterward while eligible."
+        }
+        OrganizerChoice::Hold => "Keeps the saved routine; does not resume a paused routine.",
+    }
 }
 
 fn append_preview_result(text: &mut String, client: &OrganizerClient, preview: &OrganizerPreview) {
@@ -1108,7 +1169,11 @@ fn evidence_inspector(
                 .iter()
                 .position(|id| *id == item.observation_id)
                 .map_or(1, |i| i + 1);
-            format!("{} · {} of {}", report_kind(&item.report), index, ids.len())
+            let title = match &item.report {
+                OrganizerReport::Partner { facts, .. } => super::partner_copy::headline(facts),
+                other => report_kind(other).to_owned(),
+            };
+            format!("{title} · {} of {}", index, ids.len())
         },
     );
     let mut text = item.map_or_else(|| {
@@ -1161,20 +1226,6 @@ fn evidence_inspector(
     text.push_str(
         "\n\nReferences are personal presentation, not new knowledge or executable instructions.",
     );
-    if let Some(item) = item {
-        let _ = write!(
-            text,
-            "\n\nEXACT CITATION\nReport {}",
-            crate::dossier::hex_bytes(item.observation_id)
-        );
-        if let Some(receipt) = item.receipt_id {
-            let _ = write!(
-                text,
-                "\nInquiry receipt {}",
-                crate::dossier::hex_bytes(receipt)
-            );
-        }
-    }
     (title, text)
 }
 
@@ -1778,7 +1829,7 @@ mod tests {
             mandate_id: [1; 32],
             period: 0,
             donor_id: [2; 32],
-            recipient_actor_id: 3,
+            recipient_actor_id: 95,
             good_id: [4; 32],
             unit_id: [5; 32],
             food: Some(OrganizerAidFoodPreview {
@@ -1871,6 +1922,11 @@ mod tests {
             view.aid_options = aid_options();
             let mut preview = aid_preview();
             preview.kind = kind;
+            preview.recipient_actor_id = if kind == OrganizerAidKind::Local {
+                94
+            } else {
+                95
+            };
             if kind == OrganizerAidKind::Local {
                 preview.food.as_mut().expect("food offer").transport =
                     babylon_persistence::runtime_session::OrganizerAidTransportPreview::Local;
@@ -1918,6 +1974,10 @@ mod tests {
             vec![],
             vec![view.aid_options[0].clone()],
             vec![view.aid_options[1].clone(), view.aid_options[1].clone()],
+            vec![OrganizerAidOption {
+                partner_actor_id: 1,
+                ..view.aid_options[1].clone()
+            }],
             vec![OrganizerAidOption {
                 partner_label: " ".into(),
                 ..view.aid_options[1].clone()
@@ -2012,6 +2072,7 @@ mod tests {
         };
         let mut local = remote.clone();
         local.kind = OrganizerAidKind::Local;
+        local.recipient_actor_id = 94;
         local.food.as_mut().expect("food offer").transport =
             babylon_persistence::runtime_session::OrganizerAidTransportPreview::Local;
         OrganizerClient {
@@ -2130,6 +2191,11 @@ mod tests {
             view.aid_options = aid_options();
             let mut preview = aid_preview();
             preview.kind = kind;
+            preview.recipient_actor_id = if kind == OrganizerAidKind::Local {
+                94
+            } else {
+                95
+            };
             preview.period = view.period;
             let commitment = OrganizerCommitment {
                 command: OrganizerCommand {
@@ -2160,7 +2226,7 @@ mod tests {
             assert!(text.contains("Later coordination: 3 hours"), "{text}");
             assert!(
                 text.contains(
-                    "delivery, consumption, finite contributions and independent authorization"
+                    "positive cash or consumed food, subject to finite contributions and independent authorization"
                 ),
                 "{text}"
             );

@@ -78,6 +78,11 @@ pub(super) fn spawn(commands: &mut Commands) {
                 body.spawn((ui::column(), DetailControls(OrganizerInspector::Evidence)))
                     .with_children(|controls| {
                         ui::button(controls, "Report Archive", OrganizerAction::ArchiveReport);
+                        ui::button(
+                            controls,
+                            "Prepare aid from this report",
+                            OrganizerAction::DraftFromReport,
+                        );
                         neighbor(controls, ReportDirection::Previous);
                         neighbor(controls, ReportDirection::Next);
                         controls.spawn(ui::row()).with_children(|buttons| {

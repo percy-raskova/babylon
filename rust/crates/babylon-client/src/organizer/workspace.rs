@@ -149,6 +149,7 @@ pub(super) enum ChoiceAvailability {
 #[derive(Debug)]
 pub(super) struct PracticeChoice<'a> {
     pub choice: OrganizerChoice,
+    pub allocation: babylon_persistence::runtime_session::OrganizerAllocation,
     pub title: &'static str,
     pub intent: &'static str,
     pub target: Option<NamedSubject<'a>>,
@@ -201,12 +202,17 @@ pub(super) fn comparison<'a>(
     } else {
         draft_choice
     };
+    let alternatives = if matches!(
+        draft_choice,
+        OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+    ) {
+        [OrganizerChoice::LocalAid, OrganizerChoice::RemoteAid]
+    } else {
+        [alternative, OrganizerChoice::Hold]
+    };
     Some(ChoiceComparison {
         draft_choice,
-        alternatives: [
-            practice(client, view, session, alternative),
-            practice(client, view, session, OrganizerChoice::Hold),
-        ],
+        alternatives: alternatives.map(|choice| practice(client, view, session, choice)),
         all_practices: ALL_PRACTICES.map(|choice| practice(client, view, session, choice)),
     })
 }
@@ -269,11 +275,10 @@ fn captured_parties<'a>(
         ),
         OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => (
             None,
-            view.aid_options
+            view.aid_partners
                 .iter()
-                .find(|option| Some(option.kind) == aid_kind(choice))
-                .filter(|_| presentation::aid_terms_attributed(client, choice))
-                .map(|option| known_partner(view, option.partner_actor_id)),
+                .find(|partner| Some(partner.kind) == aid_kind(choice))
+                .map(|partner| known_partner(view, partner.actor_id)),
         ),
     }
 }
@@ -322,6 +327,14 @@ fn practice<'a>(
     };
     let (target, partner) = captured_parties(client, view, choice);
     PracticeChoice {
+        allocation: client.draft.as_ref().map_or(
+            babylon_persistence::runtime_session::OrganizerAllocation::None,
+            |d| match choice {
+                OrganizerChoice::Collect => d.collection_allocation,
+                OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid => d.aid_allocation,
+                _ => babylon_persistence::runtime_session::OrganizerAllocation::None,
+            },
+        ),
         choice,
         title: presentation::choice(choice),
         intent: presentation::flavor(view, choice),
@@ -418,7 +431,9 @@ fn availability(
         let Some(terms) = client.aid_preview(choice) else {
             return ChoiceAvailability::MissingTerms;
         };
-        if terms.receiving_consent == OrganizerGiftConsent::Refuse {
+        if terms.receiving_consent == OrganizerGiftConsent::Refuse
+            && terms.cash_receiving_consent == OrganizerGiftConsent::Refuse
+        {
             return ChoiceAvailability::Refused(OrganizerRefusal::AidReceivingRefused);
         }
         if !presentation::aid_terms_attributed(client, choice) || !client.choice_available(choice) {
@@ -740,6 +755,30 @@ mod tests {
     }
 
     #[test]
+    fn national_aid_compares_destinations_and_preserves_the_shared_basket() {
+        use babylon_persistence::runtime_session::OrganizerSnapshot;
+        let captured: OrganizerSnapshot = serde_json::from_str(include_str!(
+            "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v18.json"
+        ))
+        .expect("released national opening snapshot");
+        let (mut client, mut session) = super::super::tests::ready();
+        session.ready(0, None);
+        client.view = Some(captured.view);
+        client.aid = captured.aid;
+        let draft = client.draft.as_mut().expect("draft");
+        draft.choice = OrganizerChoice::LocalAid;
+        let cards = comparison(&client, &session).expect("current comparison");
+        assert_eq!(
+            cards.alternatives.map(|card| card.choice),
+            [OrganizerChoice::LocalAid, OrganizerChoice::RemoteAid]
+        );
+        assert!(cards
+            .all_practices
+            .iter()
+            .any(|card| card.choice == OrganizerChoice::Hold));
+    }
+
+    #[test]
     fn non_hold_compares_its_captured_practice_and_p0_has_no_completed_report() {
         let (mut client, mut session) = super::super::tests::ready();
         client.draft.as_mut().expect("fixture draft").choice =
@@ -1058,6 +1097,13 @@ mod tests {
                 label: "Recipient collective".into(),
             },
         );
+        view_mut(client).aid_partners.push(
+            babylon_persistence::runtime_session::OrganizerKnownAidPartner {
+                kind: OrganizerAidKind::Local,
+                actor_id: 95,
+                label: "Recipient collective".into(),
+            },
+        );
         view_mut(client).aid_options.push(OrganizerAidOption {
             kind: OrganizerAidKind::Local,
             partner_actor_id: 95,
@@ -1074,7 +1120,7 @@ mod tests {
             mandate_id: [4; 32],
             period: 3,
             donor_id: [5; 32],
-            recipient_actor_id: 6,
+            recipient_actor_id: 95,
             good_id: [7; 32],
             unit_id: [8; 32],
             food: Some(

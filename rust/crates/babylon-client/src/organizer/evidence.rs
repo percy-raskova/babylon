@@ -37,6 +37,31 @@ impl OrganizerClient {
         })
     }
 
+    pub(super) fn report_aid_choice(
+        &self,
+        session: &ObserverSession,
+    ) -> Option<babylon_persistence::runtime_session::OrganizerChoice> {
+        use babylon_persistence::runtime_session::{
+            OrganizerAidKind, OrganizerChoice, OrganizerReport,
+        };
+        let row = self.lawful_evidence(
+            self.selected_evidence_id(session.viewed_tick)?,
+            session.viewed_tick,
+        )?;
+        if !matches!(row.report, OrganizerReport::Partner { .. }) {
+            return None;
+        }
+        self.view
+            .as_ref()?
+            .aid_partners
+            .iter()
+            .find(|partner| partner.actor_id == row.subject_id)
+            .map(|partner| match partner.kind {
+                OrganizerAidKind::Local => OrganizerChoice::LocalAid,
+                OrganizerAidKind::Remote => OrganizerChoice::RemoteAid,
+            })
+    }
+
     pub(super) fn evidence_ids(&self, period: u64) -> Vec<[u8; 32]> {
         if self.evidence.mode == EvidenceMode::Saved {
             return self

@@ -177,9 +177,9 @@ fn write_at(path: &Path, campaign: Uuid, draft: &OrganizerDraft) -> Result<(), S
 fn validate_collection(allocation: OrganizerAllocation) -> Result<(), String> {
     match allocation {
         OrganizerAllocation::None => Ok(()),
-        OrganizerAllocation::Collection { target_cash_micros } if target_cash_micros > 0 => Ok(()),
+        OrganizerAllocation::Collection { target_cash_micros } if target_cash_micros > 0 && target_cash_micros % 1_000_000 == 0 => Ok(()),
         _ => Err(
-            "Personal draft contribution target must be positive; retained for recovery.".into(),
+            "Personal draft contribution target must use positive whole dollars; retained for recovery.".into(),
         ),
     }
 }
@@ -208,7 +208,12 @@ fn validate_aid(allocation: OrganizerAllocation) -> Result<(), String> {
         OrganizerAllocation::Aid {
             food_quantity,
             cash_micros,
-        } if cash_micros >= 0 && (food_quantity > 0 || cash_micros > 0) => Ok(()),
+        } if cash_micros >= 0
+            && cash_micros % 1_000_000 == 0
+            && (food_quantity > 0 || cash_micros > 0) =>
+        {
+            Ok(())
+        }
         _ => Err("Personal draft aid amounts are invalid; retained for recovery.".into()),
     }
 }

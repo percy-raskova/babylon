@@ -20,6 +20,7 @@ use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode, WindowResized};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use super::amount_editor::AmountField;
 use super::scene::{OrganizerSceneMode, OrganizerSubject};
 use super::workspace::DispatchDestination;
 use super::workspace_copy::{DatedLink, Destination};
@@ -41,6 +42,7 @@ use crate::production::{
 use crate::ui::dossier_card::{
     ArchiveEvidenceApplied, ArchiveEvidenceReceipt, OpenArchiveEvidence,
 };
+use babylon_persistence::runtime_session::OrganizerAidKind;
 use babylon_persistence::runtime_session::{
     OrganizerChoice, OrganizerCommand, OrganizerInquiry, RuntimeSessionScope,
 };
@@ -56,7 +58,7 @@ use uuid::Uuid;
 // Designed bounds for instrumentation, independent of the captured game policy.
 const INPUT_BYTES: u64 = 4096;
 const OUTPUT_BYTES: usize = 32_768;
-const RESIZE_TIMEOUT: Duration = Duration::from_secs(3);
+const PRESENTATION_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -85,7 +87,7 @@ fn read_startup(reader: &mut impl BufRead, campaign: &str) -> Result<(), &'stati
     }
     let admission: StartupAdmission =
         serde_json::from_slice(&bytes).map_err(|_| "capture_startup_frame_invalid")?;
-    if admission.version != 2 || admission.campaign_id != campaign {
+    if admission.version != 3 || admission.campaign_id != campaign {
         return Err("capture_startup_identity_invalid");
     }
     let StartupPhase::CaptureReady = admission.phase;
@@ -95,6 +97,13 @@ fn read_startup(reader: &mut impl BufRead, campaign: &str) -> Result<(), &'stati
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 enum Action {
+    ChooseCollect,
+    FocusAmount(AmountField),
+    AmountKey(AmountKey),
+    SelectAidPartner(OrganizerAidKind),
+    InspectSubjectEvidence,
+    DraftFromReport,
+    ArchiveReport,
     Status,
     Play,
     Pause,
@@ -149,6 +158,62 @@ enum Action {
     Quit,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum AmountKey {
+    Character(char),
+    Backspace,
+    Delete,
+    Home,
+    End,
+}
+impl AmountKey {
+    fn send(self, window: Entity, commands: &mut Commands) {
+        use bevy::input::keyboard::{Key, KeyboardInput, NativeKeyCode};
+        use bevy::input::ButtonState;
+        let (key_code, logical_key, text) = match self {
+            Self::Character(c) => {
+                let raw = c.to_string();
+                let key = match c {
+                    '0' => KeyCode::Digit0,
+                    '1' => KeyCode::Digit1,
+                    '2' => KeyCode::Digit2,
+                    '3' => KeyCode::Digit3,
+                    '4' => KeyCode::Digit4,
+                    '5' => KeyCode::Digit5,
+                    '6' => KeyCode::Digit6,
+                    '7' => KeyCode::Digit7,
+                    '8' => KeyCode::Digit8,
+                    '9' => KeyCode::Digit9,
+                    '-' => KeyCode::Minus,
+                    _ => KeyCode::Unidentified(NativeKeyCode::Unidentified),
+                };
+                (key, Key::Character(raw.clone().into()), Some(raw.into()))
+            }
+            Self::Backspace => (KeyCode::Backspace, Key::Backspace, None),
+            Self::Delete => (KeyCode::Delete, Key::Delete, None),
+            Self::Home => (KeyCode::Home, Key::Home, None),
+            Self::End => (KeyCode::End, Key::End, None),
+        };
+        commands.queue(move |world: &mut World| {
+            for state in [ButtonState::Pressed, ButtonState::Released] {
+                world.write_message(KeyboardInput {
+                    key_code,
+                    logical_key: logical_key.clone(),
+                    state,
+                    text: if state == ButtonState::Pressed {
+                        text.clone()
+                    } else {
+                        None
+                    },
+                    repeat: false,
+                    window,
+                });
+            }
+        });
+    }
+}
+
 impl Action {
     fn extent(self) -> Option<UVec2> {
         match self {
@@ -178,6 +243,20 @@ impl Action {
                     Destination::Detail(report.destination),
                 ))
             }
+            Self::ChooseCollect => O::Choose(OrganizerChoice::Collect),
+            Self::FocusAmount(field) => O::FocusAmount(field),
+            Self::SelectAidPartner(kind) => O::SelectSubject(OrganizerSubject::AidPartner(
+                client
+                    .view
+                    .as_ref()?
+                    .aid_partners
+                    .iter()
+                    .find(|p| p.kind == kind)?
+                    .actor_id,
+            )),
+            Self::InspectSubjectEvidence => O::InspectSubjectEvidence,
+            Self::DraftFromReport => O::DraftFromReport,
+            Self::ArchiveReport => O::ArchiveReport,
             Self::OpenOrganizer => O::Open,
             Self::InspectPractices => O::Inspect(OrganizerInspector::Practices),
             Self::OpenDirection => O::Inspect(OrganizerInspector::Direction),
@@ -251,7 +330,7 @@ fn read_input(reader: &mut impl BufRead) -> Result<Option<Input>, &'static str> 
         return Err("control_frame_not_bounded");
     }
     let input: Input = serde_json::from_slice(&bytes).map_err(|_| "control_frame_invalid")?;
-    if input.version != 2 || input.sequence == 0 {
+    if input.version != 3 || input.sequence == 0 {
         return Err("control_version_or_sequence_invalid");
     }
     Ok(Some(input))
@@ -383,15 +462,17 @@ struct Pending {
     world_hash: Option<String>,
     capture_state: Option<Value>,
     expected_evidence: Option<[u8; 32]>,
+    amount_revision: u64,
     resize_armed: bool,
-    resize_started: Instant,
+    presentation_started: Instant,
 }
 
 impl Pending {
     fn new(input: Input, situation: &Situation, tracked: Option<Tracked>) -> Self {
         Self {
+            amount_revision: situation.client.amounts.revision,
             resize_armed: false,
-            resize_started: Instant::now(),
+            presentation_started: Instant::now(),
             expected_evidence: match input.action {
                 Action::NextEvidence => situation
                     .client
@@ -556,11 +637,11 @@ fn state(
 
 fn response(sequence: Option<u64>, event: &str, reason: Option<&str>, state: Value) -> Vec<u8> {
     let mut bytes = serde_json::to_vec(
-        &json!({"version":2,"sequence":sequence,"event":event,"reason":reason,"state":state}),
+        &json!({"version":3,"sequence":sequence,"event":event,"reason":reason,"state":state}),
     )
     .expect("control response contains only finite typed state");
     if bytes.len() >= OUTPUT_BYTES {
-        bytes = br#"{"version":2,"sequence":null,"event":"refused","reason":"control_response_not_bounded"}"#.to_vec();
+        bytes = br#"{"version":3,"sequence":null,"event":"refused","reason":"control_response_not_bounded"}"#.to_vec();
     }
     bytes.push(b'\n');
     bytes
@@ -618,7 +699,7 @@ fn available(
             && ui::enabled(action, client, session);
     }
     match action {
-        Action::Status => true,
+        Action::Status | Action::AmountKey(_) => true,
         Action::OpenArchiveEvidence => {
             ui.archive_open
                 && !ui.splash_visible
@@ -736,7 +817,9 @@ fn presentation_available(
 }
 
 #[derive(bevy::ecs::system::SystemParam)]
-struct Situation<'w> {
+struct Situation<'w, 's> {
+    amount_fields: Query<'w, 's, &'static AmountField>,
+    focus: Option<Res<'w, bevy::input_focus::InputFocus>>,
     session: Res<'w, ObserverSession>,
     client: Res<'w, OrganizerClient>,
     ui: Res<'w, ObserverUiState>,
@@ -749,9 +832,27 @@ struct Situation<'w> {
     selected: Option<Res<'w, SelectedCounty>>,
 }
 
-impl Situation<'_> {
+impl Situation<'_, '_> {
+    fn focused_amount(&self) -> Option<AmountField> {
+        let entity = self.focus.as_ref()?.get()?;
+        self.amount_fields.get(entity).ok().copied()
+    }
     fn allows(&self, input: &Input) -> bool {
         precondition(input, &self.session)
+            && (!matches!(input.action, Action::AmountKey(_))
+                || self.focused_amount().is_some_and(|field| {
+                    ui::visible(
+                        OrganizerAction::FocusAmount(field),
+                        &self.client,
+                        &self.session,
+                        &self.ui,
+                        *self.view,
+                    ) && ui::enabled(
+                        OrganizerAction::FocusAmount(field),
+                        &self.client,
+                        &self.session,
+                    )
+                }))
             && self.production_available(input.action)
             && available(
                 input.action,
@@ -772,6 +873,16 @@ impl Situation<'_> {
             &self.opening,
             *self.view,
         );
+        result["focused_amount"] = json!(self.focused_amount());
+        result["amount_text"] = json!(self.focused_amount().map(|field| field.text(&self.client)));
+        result["allocation_error"] = json!(super::amount_editor::allocation(&self.client).err());
+        result["collection_allocation"] = json!(self
+            .client
+            .draft
+            .as_ref()
+            .map(|draft| draft.collection_allocation));
+        result["aid_allocation"] =
+            json!(self.client.draft.as_ref().map(|draft| draft.aid_allocation));
         result["selected_county"] = json!(self
             .selected
             .as_ref()
@@ -1100,6 +1211,18 @@ fn dispatch(
         production.write(command);
     } else {
         match input.action {
+            Action::AmountKey(key) => {
+                let Ok((window, _)) = windows.single() else {
+                    controls.respond(
+                        Some(sequence),
+                        "refused",
+                        Some("primary_window_unavailable"),
+                        &situation,
+                    );
+                    return;
+                };
+                key.send(window, &mut commands);
+            }
             Action::Play if situation.session.playing => {}
             Action::Pause if !situation.session.playing => {}
             Action::LargerInterface if situation.ui.larger_interface => {}
@@ -1237,6 +1360,14 @@ fn outcome(pending: &Pending, s: &Situation) -> Option<Result<&'static str, &'st
     if action != Action::Step && s.session.context() != pending.context {
         return Some(Err("control_context_changed"));
     }
+    if matches!(action, Action::AmountKey(_)) {
+        if s.client.amounts.revision > pending.amount_revision {
+            return Some(Ok("applied"));
+        }
+        return (s.focused_amount().is_none()
+            || pending.presentation_started.elapsed() >= PRESENTATION_TIMEOUT)
+            .then_some(Err("ordinary_handler_refused"));
+    }
     if action == Action::Refresh {
         return Some(Ok("refresh_requested"));
     }
@@ -1274,6 +1405,26 @@ fn presentation_applied(pending: &Pending, s: &Situation) -> bool {
     let action = pending.input.action;
     match action.organizer(&s.client, &s.session) {
         Some(OrganizerAction::Choose(choice)) => s.client.choice() == choice,
+        Some(OrganizerAction::FocusAmount(field)) => s.focused_amount() == Some(field),
+        Some(OrganizerAction::DraftFromReport) => {
+            s.client.inspector == OrganizerInspector::Closed
+                && s.client.draft.as_ref().is_some_and(|d| {
+                    d.selected_reference
+                        .is_some_and(|id| d.references.contains(&id))
+                })
+        }
+        Some(OrganizerAction::InspectSubjectEvidence) => {
+            s.client.inspector == OrganizerInspector::Evidence
+                && matches!(
+                    s.client.evidence.mode,
+                    super::evidence::EvidenceMode::Subject(_)
+                )
+        }
+        Some(
+            OrganizerAction::ArchiveReport
+            | OrganizerAction::ArchiveWorkplace
+            | OrganizerAction::ArchiveOrganization,
+        ) => *s.view == PrimaryView::Map && s.ui.archive_open,
         Some(OrganizerAction::Open) => *s.view == PrimaryView::Organizer,
         Some(OrganizerAction::Inspect(inspector)) => s.client.inspector == inspector,
         Some(OrganizerAction::SetSceneMode(mode)) => s.client.scene_mode == mode,
@@ -1290,10 +1441,6 @@ fn presentation_applied(pending: &Pending, s: &Situation) -> bool {
                 && s.client.selected_evidence_id(s.session.viewed_tick) == pending.expected_evidence
         }
         Some(OrganizerAction::CloseInspector) => s.client.inspector == OrganizerInspector::Closed,
-        Some(OrganizerAction::ArchiveWorkplace) => *s.view == PrimaryView::Map && s.ui.archive_open,
-        Some(OrganizerAction::ArchiveOrganization) => {
-            *s.view == PrimaryView::Map && s.ui.archive_open
-        }
         _ => match action {
             Action::Play => s.session.playing,
             Action::Speed => true,
@@ -1483,7 +1630,7 @@ fn resize_outcome(
     });
     if applied {
         Some(Ok("applied"))
-    } else if pending.resize_started.elapsed() >= RESIZE_TIMEOUT {
+    } else if pending.presentation_started.elapsed() >= PRESENTATION_TIMEOUT {
         Some(Err("primary_window_resize_timeout"))
     } else {
         None
@@ -1832,8 +1979,8 @@ mod tests {
             }
             let mut controls = app.world_mut().resource_mut::<Controls>();
             let pending = controls.pending.as_mut().expect("resize remains pending");
-            pending.resize_started = Instant::now()
-                .checked_sub(RESIZE_TIMEOUT)
+            pending.presentation_started = Instant::now()
+                .checked_sub(PRESENTATION_TIMEOUT)
                 .expect("monotonic clock");
             app.update();
             let controls = app.world().resource::<Controls>();
@@ -1897,8 +2044,8 @@ mod tests {
             .pending
             .as_mut()
             .expect("pending resize")
-            .resize_started = Instant::now()
-            .checked_sub(RESIZE_TIMEOUT)
+            .presentation_started = Instant::now()
+            .checked_sub(PRESENTATION_TIMEOUT)
             .expect("monotonic clock");
         app.update();
         let controls = app.world().resource::<Controls>();
@@ -1943,8 +2090,8 @@ mod tests {
                     .pending
                     .as_mut()
                     .expect("pending resize")
-                    .resize_started = Instant::now()
-                    .checked_sub(RESIZE_TIMEOUT)
+                    .presentation_started = Instant::now()
+                    .checked_sub(PRESENTATION_TIMEOUT)
                     .expect("monotonic clock");
             }
             app.update();
@@ -2199,7 +2346,7 @@ mod tests {
             ),
             "campaign startup must wait for explicit capture admission"
         );
-        let mut admission = b"{\"version\":2,\"campaign_id\":\"00000000-0000-0000-0000-000000000001\",\"phase\":\"capture_ready\"}\n".to_vec();
+        let mut admission = b"{\"version\":3,\"campaign_id\":\"00000000-0000-0000-0000-000000000001\",\"phase\":\"capture_ready\"}\n".to_vec();
         admission.extend(frame(""));
         peer.write_all(&admission)
             .expect("the fixture sink accepts the authored bytes");
@@ -2261,7 +2408,7 @@ mod tests {
     fn pending(session: &ObserverSession, client: &OrganizerClient, action: Action) -> Pending {
         Pending {
             input: Input {
-                version: 2,
+                version: 3,
                 sequence: 1,
                 campaign_id: session.campaign.as_uuid().to_string(),
                 scope_epoch: session.runtime_scope().map(|s| s.epoch),
@@ -2280,8 +2427,9 @@ mod tests {
             world_hash: session.world_hash.clone(),
             capture_state: None,
             expected_evidence: None,
+            amount_revision: 0,
             resize_armed: false,
-            resize_started: Instant::now(),
+            presentation_started: Instant::now(),
         }
     }
 
@@ -2516,6 +2664,175 @@ mod tests {
                 assert_eq!(reply["event"], "refused", "{scenario}: {reply}");
             }
         }
+    }
+
+    #[test]
+    fn qualification_amount_keys_require_focused_ordinary_editor_and_report_real_readback() {
+        let (mut app, _window) = super::ui::tests::allocation_opening();
+        app.init_resource::<OpeningPresentation>()
+            .add_message::<ContinueWarning>();
+        let (socket, _peer) = UnixStream::pair().expect("local test peer");
+        let (incoming, receiver) = mpsc::channel();
+        let (outgoing, output) = mpsc::sync_channel(4);
+        install(
+            &mut app,
+            Transport {
+                incoming: Mutex::new(receiver),
+                outgoing,
+                socket,
+                capture_dir: None,
+            },
+        );
+        let mut sequence = 0;
+        let mut send = |app: &mut App, action: Value| {
+            sequence += 1;
+            let session = app.world().resource::<ObserverSession>();
+            let record = json!({"version":3,"sequence":sequence,"campaign_id":session.campaign.as_uuid().to_string(),
+                "scope_epoch":session.runtime_scope().map(|scope|scope.epoch),"expected_tick":session.durable_tick,
+                "expected_generation":session.generation,"action":action});
+            let line = format!("{record}\n");
+            let input = read_input(&mut line.as_bytes())
+                .expect("valid wire")
+                .expect("one action");
+            println!("Qualification input {record}");
+            incoming
+                .send(Incoming::Input(input))
+                .expect("bounded action");
+            for _ in 0..6 {
+                app.update();
+                if let Ok(raw) = output.try_recv() {
+                    let value =
+                        serde_json::from_slice::<Value>(&raw).expect("actual producer frame");
+                    println!(
+                        "Qualification frame {}",
+                        serde_json::to_string(&value).expect("JSON")
+                    );
+                    return value;
+                }
+            }
+            panic!("ordinary handler did not acknowledge {action:?}");
+        };
+        assert_eq!(
+            send(&mut app, json!({"amount_key":{"character":"1"}}))["event"],
+            "refused"
+        );
+        assert_eq!(
+            send(&mut app, json!("inspect_practices"))["event"],
+            "applied"
+        );
+        assert_eq!(
+            send(&mut app, json!("choose_collect"))["state"]["choice"],
+            "collect"
+        );
+        let focus = send(&mut app, json!({"focus_amount":"contribution"}));
+        assert_eq!(focus["state"]["focused_amount"], "contribution");
+        assert_eq!(focus["state"]["amount_text"], "280");
+        let edit = send(&mut app, json!({"amount_key":"backspace"}));
+        assert_eq!(edit["event"], "applied", "{edit}");
+        assert_eq!(
+            edit["state"]["collection_allocation"]["collection"]["target_cash_micros"],
+            "28000000"
+        );
+        let bad = send(&mut app, json!({"amount_key":{"character":"-"}}));
+        assert_eq!(bad["state"]["amount_text"], "28-");
+        assert!(bad["state"]["allocation_error"].is_string());
+        assert!(bad["state"]["reviewed_command"].is_null() && bad["state"]["commitment"].is_null());
+    }
+
+    #[test]
+    fn qualification_status_authenticates_the_reviewed_and_accepted_original() {
+        use babylon_persistence::runtime_session::OrganizerSnapshot;
+        use babylon_practice_contract::{OrganizerConfig, OrganizerState};
+        use bevy::ecs::system::RunSystemOnce;
+        let recorded: Value = serde_json::from_str(include_str!(
+            "../../../babylon-persistence/tests/fixtures/food_only_no_payer_v18.json"
+        ))
+        .expect("producer capture");
+        let snapshot: OrganizerSnapshot =
+            serde_json::from_value(recorded["snapshot"].clone()).expect("actual status");
+        let config: OrganizerConfig =
+            serde_json::from_value(recorded["config"].clone()).expect("actual authority");
+        let law: OrganizerState =
+            serde_json::from_value(recorded["state"].clone()).expect("actual starting state");
+        let campaign = Uuid::from_bytes(config.campaign_id);
+        let mut session = ObserverSession::new(
+            babylon_persistence::identity::CampaignId::from_uuid(campaign),
+        );
+        session.connected_fixture();
+        session.ready(0, None);
+        session.organizer_enabled = true;
+        assert!(session.installed(&session.context()));
+        let mut client = OrganizerClient::default();
+        client.admitted(campaign);
+        client.queue(&mut session, RequestKind::Status, None);
+        let request = client.pending.as_ref().expect("status sent").id;
+        client
+            .status(request, snapshot, &mut session)
+            .expect("admitted evidence");
+        client.draft.as_mut().expect("draft").choice = OrganizerChoice::LocalAid;
+        let command = client
+            .make_command(&session, OrganizerChoice::LocalAid)
+            .expect("captured food-only mandate");
+        let ruling = babylon_practice_contract::preview_organizer(&config, &law, &command)
+            .expect("authoritative preview");
+        client.queue(&mut session, RequestKind::Preview, Some(command.clone()));
+        let id = client.pending.as_ref().expect("preview sent").id;
+        client
+            .previewed(id, ruling, &mut session)
+            .expect("matched preview");
+        let mut app = App::new();
+        app.insert_resource(client)
+            .insert_resource(session)
+            .insert_resource(PrimaryView::Organizer)
+            .init_resource::<ObserverUiState>()
+            .init_resource::<OpeningPresentation>();
+        let frame = |app: &mut App, sequence| {
+            let raw = app
+                .world_mut()
+                .run_system_once(move |s: Situation| {
+                    let mut controls = Controls::default();
+                    controls.respond(Some(sequence), "observed", None, &s);
+                    controls.reply.expect("status response")
+                })
+                .expect("control state");
+            let value: Value = serde_json::from_slice(&raw).expect("control frame");
+            println!(
+                "Qualification status {}",
+                serde_json::to_string(&value).expect("frame")
+            );
+            value
+        };
+        let reviewed = frame(&mut app, 1);
+        assert_eq!(
+            reviewed["state"]["reviewed_command"],
+            serde_json::to_value(&command).expect("command")
+        );
+        assert_eq!(
+            reviewed["state"]["preview"]["allocation"],
+            reviewed["state"]["reviewed_command"]["allocation"]
+        );
+        assert!(reviewed["state"]["commitment"].is_null());
+        let accepted = babylon_practice_contract::admit_organizer(&config, &law, &command)
+            .expect("authoritative admission");
+        app.world_mut()
+            .resource_scope(|world, mut client: Mut<OrganizerClient>| {
+                let mut session = world.resource_mut::<ObserverSession>();
+                client.queue(&mut session, RequestKind::Submit, Some(command));
+                let id = client.pending.as_ref().expect("submission sent").id;
+                client
+                    .accepted(id, accepted.clone(), &mut session)
+                    .expect("matched admission");
+            });
+        let admitted = frame(&mut app, 2);
+        assert_eq!(
+            admitted["state"]["commitment"],
+            serde_json::to_value(accepted).expect("accepted original")
+        );
+        assert_eq!(
+            admitted["state"]["commitment"]["command"],
+            reviewed["state"]["reviewed_command"]
+        );
+        assert!(admitted["state"]["reviewed_command"].is_null());
     }
 
     #[test]
@@ -2945,17 +3262,17 @@ mod tests {
     }
 
     fn frame(extra: &str) -> Vec<u8> {
-        format!("{{\"version\":2,\"sequence\":1,\"campaign_id\":\"00000000-0000-0000-0000-000000000342\",\"scope_epoch\":null,\"expected_tick\":0,\"expected_generation\":0,\"action\":\"status\"{extra}}}\n").into_bytes()
+        format!("{{\"version\":3,\"sequence\":1,\"campaign_id\":\"00000000-0000-0000-0000-000000000342\",\"scope_epoch\":null,\"expected_tick\":0,\"expected_generation\":0,\"action\":\"status\"{extra}}}\n").into_bytes()
     }
 
     #[test]
     fn capture_startup_refuses_wrong_identity_old_frames_and_corruption() {
         let campaign = "00000000-0000-0000-0000-000000000001";
         let valid = format!(
-            "{{\"version\":2,\"campaign_id\":\"{campaign}\",\"phase\":\"capture_ready\"}}\n"
+            "{{\"version\":3,\"campaign_id\":\"{campaign}\",\"phase\":\"capture_ready\"}}\n"
         );
         for bytes in [
-            valid.replace("\"version\":2", "\"version\":1").into_bytes(),
+            valid.replace("\"version\":3", "\"version\":1").into_bytes(),
             valid
                 .replace(campaign, "00000000-0000-0000-0000-000000000002")
                 .into_bytes(),
@@ -2964,7 +3281,7 @@ mod tests {
                 .replace("\"phase\":", "\"unused\":true,\"phase\":")
                 .into_bytes(),
             valid
-                .replace("\"phase\":", "\"version\":2,\"phase\":")
+                .replace("\"phase\":", "\"version\":3,\"phase\":")
                 .into_bytes(),
             frame(""),
             valid.trim_end().as_bytes().to_vec(),
@@ -2994,7 +3311,7 @@ mod tests {
         for bytes in [
             String::from_utf8(frame(""))
                 .expect("the fixture bytes came from a UTF-8 string")
-                .replace("\"version\":2", "\"version\":1")
+                .replace("\"version\":3", "\"version\":1")
                 .into_bytes(),
             frame(",\"sequence\":2"),
             frame(",\"unused\":true"),

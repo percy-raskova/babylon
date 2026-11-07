@@ -6,12 +6,15 @@ use serde_json::Value;
 use crate::observer::Perspective;
 #[cfg(test)]
 use babylon_persistence::ArchiveEvidenceClass;
+mod amount_editor;
 mod draft;
 
+mod developments;
 mod editor;
 
 mod evidence;
 
+mod partner_copy;
 mod presentation;
 
 mod scene;
@@ -350,6 +353,7 @@ pub(crate) mod tests {
 
     #[test]
     fn real_independent_leg_status_seeds_draft_and_authenticated_review() {
+        use super::amount_editor::AmountField;
         use babylon_practice_contract::{OrganizerAllocation, OrganizerConfig, OrganizerState};
         for bytes in [
             include_str!("../../babylon-persistence/tests/fixtures/food_only_no_payer_v18.json"),
@@ -383,6 +387,13 @@ pub(crate) mod tests {
             let draft = client.draft.as_mut().expect("new draft from real status");
             assert_eq!(draft.aid_allocation, expected.command.allocation);
             draft.choice = expected.command.choice;
+            if let OrganizerAllocation::Aid { cash_micros: 3, .. } = expected.command.allocation {
+                assert_eq!(AmountField::Cash.text(&client), "0.000003");
+                assert!(
+                    super::amount_editor::allocation(&client).is_err(),
+                    "whole-dollar editor must not round a captured sub-dollar value"
+                );
+            }
             let command = client
                 .make_command(&session, client.choice())
                 .expect("independent selected leg");

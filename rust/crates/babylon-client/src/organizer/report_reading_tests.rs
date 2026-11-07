@@ -108,8 +108,8 @@ fn inquiry_dispatch_opens_its_exact_answer_beside_a_newer_automatic_report() {
         "{text}"
     );
     assert!(
-        text.contains(&"1f".repeat(32)) && text.contains(&"07".repeat(32)),
-        "exact report and inquiry citations remain reachable"
+        !text.contains(&"1f".repeat(32)) && !text.contains(&"07".repeat(32)),
+        "technical locators stay out of the report reading"
     );
     assert!(
         !text.contains("4,567"),

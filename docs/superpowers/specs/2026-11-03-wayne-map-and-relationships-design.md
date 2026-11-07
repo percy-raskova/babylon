@@ -464,3 +464,15 @@ The opening food assessment compares the pantry stock at capture with the food t
 A completed food report describes household consumption, unmet need, closing stock and ordinary purchases in the granted food unit. The essential service report names the granted household services and gives performed, satisfied, unmet, unused and expired units with actual settled and refunded cash.
 
 The completed time report deducts the final period's posted contributions once from the residual household hours. Better housing service can coexist with the same residual hours. These Derived reports cover only the named topics. Household materials and unrelated cash uses remain unknown. When a household buys goods with fungible cash, the receipts cannot identify which gift paid for them.
+
+### Choosing the amount
+
+The decision paper keeps the selected group in view. The player can enter a whole-dollar contribution target. The initial target is $280. Compare collection with the current routine. For aid, enter food parcels and whole dollars independently. The two destinations share the same basket.
+
+The household owns the pantry. Each parcel that actually leaves costs two household hours. The resources above the map distinguish the treasury, pledged organizer time and dated household time.
+
+A partner report can start a personal proposal and keep its citation. The player can change the amounts, review the terms and confirm the exact command. Advance resolves the next period. A new amount cancels earlier review. An invalid entry keeps the last valid saved basket and requires correction before review.
+
+The dispatch dates the cash transfer, physical delivery and first partner response separately. A partner can respond once to settled cash before freight arrives. The household can buy goods at the next opportunity after settlement. A shared report can tell the player what the household received or consumed. If food in transit can still prompt a response, the player can review a pause in routine work.
+
+A new support result or a first or changed shared shortfall can pause Play. A report with the same unmet quantity can carry a new date without interrupting Play. Reopening a campaign starts from the developments already on record. Independent national windowed qualification and human play remain pending.

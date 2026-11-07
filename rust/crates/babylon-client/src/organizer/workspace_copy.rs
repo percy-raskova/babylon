@@ -1,4 +1,5 @@
 //! Short card copy and dated navigation derived from the admitted view.
+use babylon_persistence::runtime_session::{OrganizerReport, OrganizerView};
 use std::fmt::Write as _;
 
 use super::presentation;
@@ -102,7 +103,50 @@ pub(super) fn availability(term: ChoiceAvailability) -> String {
     }
 }
 
+fn aid_card_terms(choice: &PracticeChoice) -> Option<String> {
+    use babylon_persistence::runtime_session::{
+        OrganizerAidTransportPreview, OrganizerAllocation, OrganizerGiftConsent,
+    };
+    let OrganizerAllocation::Aid {
+        food_quantity,
+        cash_micros,
+    } = choice.allocation
+    else {
+        return None;
+    };
+    let aid = choice.aid?;
+    let name = choice
+        .partner
+        .map_or("Partner attribution unavailable", |p| p.label);
+    let hours = aid
+        .food
+        .as_ref()
+        .and_then(|f| f.fulfillment_hours_per_unit.checked_mul(food_quantity));
+    let route = aid
+        .food
+        .as_ref()
+        .map_or("food terms unavailable", |f| match f.transport {
+            OrganizerAidTransportPreview::Local => "local handoff",
+            OrganizerAidTransportPreview::Routed { .. } => "freight · delay and loss possible",
+        });
+    let cash = if aid.cash_receiving_consent == OrganizerGiftConsent::Refuse {
+        "cash receiving refused"
+    } else {
+        "cash assessed at close"
+    };
+    let routine = if choice.routine == RoutineEffect::RemainsPaused {
+        "Routine stays paused."
+    } else {
+        "Displaces routine once."
+    };
+    Some(format!("{name} · {route}\n{food_quantity} parcels + {} · {cash}\nUp to {} fulfillment h · {} possible coordination h\n{routine}",crate::human_numbers::currency(cash_micros),hours.map_or_else(||"unknown".into(),|h|h.to_string()),aid.coordination_hours))
+}
+
 pub(super) fn terms(choice: &PracticeChoice) -> String {
+    use babylon_persistence::runtime_session::OrganizerAllocation;
+    if let Some(terms) = aid_card_terms(choice) {
+        return terms;
+    }
     let parties = match (choice.target, choice.partner) {
         (Some(target), Some(partner)) if partner.subject != Some(target.subject) => {
             format!("At {} · with {}", target.label, partner.label)
@@ -151,7 +195,11 @@ pub(super) fn terms(choice: &PracticeChoice) -> String {
             |row| {
                 format!(
                     "Voluntary gift up to {} currency after protected needs.",
-                    crate::human_numbers::currency(row.maximum_cash_micros)
+                    crate::human_numbers::currency(match choice.allocation {
+                        OrganizerAllocation::Collection { target_cash_micros } =>
+                            target_cash_micros,
+                        _ => row.maximum_cash_micros,
+                    })
                 )
             },
         ),
@@ -234,7 +282,13 @@ impl Bulletin {
         }
     }
 
-    fn rows(&mut self, session: &ObserverSession, period: u64, rows: &DispatchRows) {
+    fn rows(
+        &mut self,
+        session: &ObserverSession,
+        view: &OrganizerView,
+        period: u64,
+        rows: &DispatchRows,
+    ) {
         for row in &rows.practices {
             let receipt = row.receipt;
             if let Some(partner) = row
@@ -274,6 +328,13 @@ impl Bulletin {
         }
         for row in &rows.reports {
             let observation = row.observation;
+            if let OrganizerReport::Partner { facts, .. } = &observation.report {
+                if super::partner_copy::prior(view, observation, period, facts)
+                    .is_some_and(|(_, old)| old == facts)
+                {
+                    continue;
+                }
+            }
             let _ = writeln!(
                 self.copy,
                 "{} · report observed P{}, acquired P{}\n{} · {}\n{}",
@@ -309,6 +370,39 @@ impl Bulletin {
     }
 }
 
+fn arrival_warning(client: &OrganizerClient, period: u64) -> Option<String> {
+    use babylon_persistence::runtime_session::OrganizerAidTransportPreview;
+    let view = client.view.as_ref()?;
+    if view.period != period || !view.standing.authorized {
+        return None;
+    }
+    let pending = client.pending_aid.iter().find(|row| {
+        row.response.is_none()
+            && row.dispatch_period <= period
+            && row.dispatch_support.material_postings.dispatched_quantity > row.lost_quantity
+    })?;
+    let terms = client.aid.iter().find(|terms| {
+        terms.period == period
+            && terms.kind == pending.kind
+            && terms.mandate_id == pending.mandate_id
+            && terms.good_id == pending.good_id
+            && terms.unit_id == pending.unit_id
+    });
+    let earliest = terms.and_then(|terms| match &terms.food.as_ref()?.transport {
+        OrganizerAidTransportPreview::Routed { stages, .. } if !stages.is_empty() => stages
+            .iter()
+            .try_fold(pending.dispatch_period, |at, stage| {
+                at.checked_add(u64::from(stage.travel_periods))
+            }),
+        _ => None,
+    });
+    let window = earliest.map_or_else(
+        || "Arrival period unknown.".into(),
+        |at| format!("Earliest possible arrival P{at}. Delay or loss can change the outcome."),
+    );
+    Some(format!("Food is in transit from P{}. {window} Coordination on arrival can compete with routine hours. Open Direction / routine to review Pause.",pending.dispatch_period))
+}
+
 pub(super) fn bulletin(scope: &Scope) -> Bulletin {
     let Some(dispatch) = workspace::dispatch(&scope.client, scope.session.viewed_tick) else {
         return Bulletin {
@@ -326,6 +420,22 @@ pub(super) fn bulletin(scope: &Scope) -> Bulletin {
     };
     bulletin.copy = presentation::dispatch_practices(&dispatch);
     bulletin.copy.push('\n');
+    let support =
+        super::developments::current_support(&scope.client.aid_resolutions, dispatch.period);
+    if !support.is_empty() {
+        let _ = writeln!(bulletin.copy, "{support}");
+    }
+    if let Some(warning) = arrival_warning(&scope.client, dispatch.period) {
+        let _ = writeln!(bulletin.copy, "{warning}");
+        bulletin.link(
+            &scope.session,
+            dispatch.period,
+            "Review routine / Pause".into(),
+            Destination::Detail(DispatchDestination::Inspector(
+                OrganizerInspector::Direction,
+            )),
+        );
+    }
     if dispatch.coverage == DispatchCoverage::ArchiveRequired {
         bulletin.link(
             &scope.session,
@@ -334,7 +444,9 @@ pub(super) fn bulletin(scope: &Scope) -> Bulletin {
             Destination::Detail(dispatch.missing_receipts),
         );
     }
-    bulletin.rows(&scope.session, dispatch.period, &dispatch.current);
+    if let Some(view) = scope.client.view.as_ref() {
+        bulletin.rows(&scope.session, view, dispatch.period, &dispatch.current);
+    }
     bulletin.copy.truncate(bulletin.copy.trim_end().len());
     if !dispatch.history.practices.is_empty()
         || !dispatch.history.reports.is_empty()
@@ -348,4 +460,35 @@ pub(super) fn bulletin(scope: &Scope) -> Bulletin {
         );
     }
     bulletin
+}
+
+#[cfg(test)]
+mod arrival_tests {
+    use super::arrival_warning;
+    use super::OrganizerClient;
+    use babylon_persistence::runtime_session::OrganizerSnapshot;
+    #[test]
+    fn actual_pending_food_warns_on_its_original_route_only_while_a_response_can_occur() {
+        let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
+            "../../../babylon-persistence/tests/fixtures/national_organizer_pending_v18.json"
+        ))
+        .expect("captured dispatch");
+        let mut client = OrganizerClient {
+            view: Some(snapshot.view),
+            aid: snapshot.aid,
+            pending_aid: snapshot.pending_aid,
+            ..OrganizerClient::default()
+        };
+        let warning = arrival_warning(&client, 1).expect("open food with active routine");
+        assert!(
+            warning.contains("Earliest possible arrival P2") && warning.contains("Pause"),
+            "{warning}"
+        );
+        assert!(arrival_warning(&client, 0).is_none());
+        client.view.as_mut().expect("view").standing.authorized = false;
+        assert!(arrival_warning(&client, 1).is_none());
+        client.view.as_mut().expect("view").standing.authorized = true;
+        client.pending_aid[0].lost_quantity = 1;
+        assert!(arrival_warning(&client, 1).is_none());
+    }
 }

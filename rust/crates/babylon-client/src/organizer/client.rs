@@ -1,5 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
+use super::amount_editor::AmountEdits;
+use super::developments::Developments;
 use super::scene::{OrganizerScene, OrganizerSceneMode, OrganizerSubject};
 use super::{draft, evidence, presentation, ui};
 use babylon_persistence::runtime_session::OrganizerAllocation;
@@ -188,6 +190,8 @@ fn body_matches(snapshot: &OrganizerSnapshot, session: &ObserverSession) -> bool
 /// Cached lawful projection and local presentation. No authoritative state is owned here.
 #[derive(Resource, Default)]
 pub(crate) struct OrganizerClient {
+    pub(super) developments: Developments,
+    pub(super) amounts: AmountEdits,
     pub view: Option<OrganizerView>,
     pub(super) body: Option<OrganizerBodyDisclosure>,
     pub(super) body_scope: Option<OrganizerBodyScope>,
@@ -632,29 +636,22 @@ impl OrganizerClient {
             session.complete();
         }
         let new_city_pd_notice = self.new_city_pd_notice(&snapshot, &context);
+        let development = if context.observation.tick == context.durable_tick {
+            self.developments.install(
+                &snapshot.view,
+                &snapshot.collection_resolutions,
+                &snapshot.aid_resolutions,
+            )
+        } else {
+            None
+        };
         self.collection = snapshot.collection;
         self.city_pd_encounters = snapshot.city_pd_encounters;
         self.collection_resolutions = snapshot.collection_resolutions;
         self.aid = snapshot.aid;
         self.pending_aid = snapshot.pending_aid;
         self.aid_resolutions = snapshot.aid_resolutions;
-        if context.observation.tick == context.durable_tick {
-            self.body = Some(snapshot.body);
-            self.body_scope = Some(snapshot.body_scope);
-        } else {
-            self.body = Some(OrganizerBodyDisclosure::Unavailable);
-            self.body_scope = Some(OrganizerBodyScope {
-                period: context.observation.tick,
-                source: None,
-                ..snapshot.body_scope
-            });
-        }
-        self.body_context = Some(context.observation);
-        self.body_durable_tick = Some(context.durable_tick);
-        self.body_runtime_scope = Some(context.scope);
-        self.body_content_hash = context.content_hash;
-        self.body_world_hash = context.world_hash;
-        self.body_foundation_digest = context.foundation_digest;
+        self.install_body(context, snapshot.body, snapshot.body_scope);
         self.view = Some(snapshot.view);
         self.commitment = snapshot.pending;
         self.status_due = false;
@@ -663,10 +660,42 @@ impl OrganizerClient {
         // new developments, pending operations and actionable failures.
         if new_city_pd_notice {
             self.pause_for_city_pd_notice(session);
+            if let Some(line) = development {
+                self.message.push_str(" · ");
+                self.message.push_str(&line);
+            }
+        } else if let Some(line) = development {
+            session.pause_playback();
+            self.message = format!("P{} dispatch · {line}", session.durable_tick);
         } else if self.draft_writable {
             self.message.clear();
         }
         Ok(StatusDisposition::Installed)
+    }
+
+    fn install_body(
+        &mut self,
+        context: StatusContext,
+        body: OrganizerBodyDisclosure,
+        scope: OrganizerBodyScope,
+    ) {
+        if context.observation.tick == context.durable_tick {
+            self.body = Some(body);
+            self.body_scope = Some(scope);
+        } else {
+            self.body = Some(OrganizerBodyDisclosure::Unavailable);
+            self.body_scope = Some(OrganizerBodyScope {
+                period: context.observation.tick,
+                source: None,
+                ..scope
+            });
+        }
+        self.body_context = Some(context.observation);
+        self.body_durable_tick = Some(context.durable_tick);
+        self.body_runtime_scope = Some(context.scope);
+        self.body_content_hash = context.content_hash;
+        self.body_world_hash = context.world_hash;
+        self.body_foundation_digest = context.foundation_digest;
     }
 
     fn initialize_draft(&mut self, campaign: Uuid, snapshot: &OrganizerSnapshot) {

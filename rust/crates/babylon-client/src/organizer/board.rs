@@ -348,6 +348,7 @@ fn deck(root: &mut ChildSpawnerCommands) {
             let review = ui::button(bar, "Review choice", OrganizerAction::Review);
             bar.commands().entity(review).insert(PaperAction);
         });
+        super::amount_editor::spawn(deck);
         deck.spawn((
             ChoicePair,
             Node {

@@ -11,6 +11,7 @@ use crate::organizer_runtime::OrganizerSnapshot;
 use crate::qualification_audit::aid::Accepted;
 use crate::qualification_audit::aid::Audit;
 use crate::runtime_session::RuntimeSessionErrorCode;
+use crate::CommittedTickReceipt;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::CashTransferPurpose;
@@ -21,13 +22,18 @@ use babylon_material_circuit::{
     AccountId, AidOutcome, CircuitAccounting, FinalDemandPrincipalId, GoodId, MoneyLocation,
     MoneyTransferPurpose, OrganizationAccountId, OutboundOrderId,
 };
+use babylon_material_circuit::{HouseholdTimeAccounting, HouseholdTimeBook, HouseholdTimeReceipt};
 use babylon_practice_contract::OrderedPracticeActionBatch;
-use babylon_practice_contract::OrganizerObservation;
 use babylon_practice_contract::OrganizerReceipt;
+use babylon_practice_contract::{
+    OrganizerAidBinding, OrganizerConfig, OrganizerObservation, OrganizerPartnerFacts,
+    OrganizerPartnerPolicy, OrganizerPartnerResponse, OrganizerServiceReport,
+};
 use babylon_practice_contract::{
     OrganizerAidKind, OrganizerAllocation, OrganizerChoice, OrganizerCommand, OrganizerCommitment,
     OrganizerOutcome,
 };
+use babylon_tick::material_replay::IdentifiedMaterialTick;
 use babylon_tick::material_world::MaterialReceiptHandle;
 use babylon_tick::material_world::MaterialTickReceipts;
 use babylon_tick::replay_session::ReplayCommitDisposition;
@@ -43,7 +49,7 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::env;
 use std::error::Error;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::OpenOptionsExt;
@@ -97,6 +103,68 @@ fn same<T: PartialEq + Debug>(observed: &T, expected: &T, field: &str) -> Result
 fn debug_error(error: impl Debug) -> Box<dyn Error> {
     format!("{error:?}").into()
 }
+#[derive(Debug)]
+struct ObservationError {
+    operation: String,
+    cause: Box<dyn Error>,
+}
+impl Display for ObservationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.write_str(&self.operation)
+    }
+}
+impl Error for ObservationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(self.cause.as_ref())
+    }
+}
+fn at(operation: impl Into<String>, cause: impl Into<Box<dyn Error>>) -> Box<dyn Error> {
+    Box::new(ObservationError {
+        operation: operation.into(),
+        cause: cause.into(),
+    })
+}
+fn failure_detail(mut error: &(dyn Error + 'static)) -> String {
+    let mut detail = Vec::new();
+    loop {
+        detail.push(error.to_string());
+        if let Some(server) = error
+            .downcast_ref::<postgres::Error>()
+            .and_then(postgres::Error::as_db_error)
+        {
+            detail.push(format!(
+                "SQLSTATE {}: {}",
+                server.code().code(),
+                server.message()
+            ));
+            break;
+        }
+        let next = match error.downcast_ref::<MaterialRuntimeError>() {
+            Some(
+                MaterialRuntimeError::Database(e)
+                | MaterialRuntimeError::DatabaseLockRefused(e)
+                | MaterialRuntimeError::DatabaseStatementCanceled(e),
+            ) => Some(e as &dyn Error),
+            _ => error.source(),
+        };
+        let Some(next) = next else { break };
+        error = next;
+    }
+    detail.join(": ")
+}
+#[test]
+fn malformed_sql_target_retains_the_real_driver_cause() {
+    let invalid = Config::from_str("port=invalid").expect_err("malformed port");
+    let cause = invalid
+        .source()
+        .expect("driver provides its parse cause")
+        .to_string();
+    let error = at("read bootstrap port", invalid);
+    let detail = failure_detail(error.as_ref());
+    assert!(detail.contains("read bootstrap port"));
+    assert!(detail.contains(&cause), "missing {cause} in {detail}");
+}
+
 fn hex(bytes: &[u8]) -> String {
     crate::michigan_economy::digest_hex(bytes)
 }
@@ -473,10 +541,14 @@ fn unexpected_panic_preserves_reached_stage_and_divergence() {
     let fixture = base.join("synthetic");
     fs::write(&fixture, b"synthetic failure evidence only").expect("synthetic input");
     let reference = file_identity(&fixture, "synthetic").expect("synthetic identity");
+    let input = reference.clone();
     let worker = base.clone();
     let outcome = std::thread::spawn(move || {
         let mut journal = Journal::new(worker, reference);
         journal.begin("bootstrap").expect("attempt recorded");
+        journal
+            .facts(&json!({"input_observed":input}))
+            .expect("earlier observed identity recorded");
         panic!("synthetic panic before the first SQL connection");
     })
     .join();
@@ -491,25 +563,49 @@ fn unexpected_panic_preserves_reached_stage_and_divergence() {
         serde_json::from_value(divergence["previous"].clone()).expect("reached ref");
     assert_eq!(previous.path, "stage-01-bootstrap-reached.json");
     verify_ref(&base, &previous).expect("durable reached record");
+    let reached: Value =
+        serde_json::from_slice(&fs::read(base.join(previous.path)).expect("read reached stage"))
+            .expect("JSON");
+    let expected = serde_json::to_vec(
+        &json!({"input_observed":file_identity(&fixture,"synthetic").expect("input")}),
+    )
+    .expect("JSON");
+    let recorded: Vec<Artifact> =
+        serde_json::from_value(reached["artifacts"].clone()).expect("reached artifacts");
+    let observation = recorded
+        .iter()
+        .find(|a| a.sha256 == hash(&expected))
+        .expect("earlier observation survived later panic");
+    assert_eq!(
+        fs::read(base.join(&observation.path)).expect("observed bytes"),
+        expected
+    );
     assert!(!base.join("in-test-seal-v1.json").exists());
     fs::remove_dir_all(base).expect("remove only this freshly created synthetic test directory");
 }
 fn db_identity(sql: &mut impl GenericClient, name: &str) -> Result<Db> {
-    let r = sql.query_one(
-        "SELECT datname::text,oid,datdba FROM pg_catalog.pg_database WHERE datname=$1",
-        &[&name],
-    )?;
+    let r = sql
+        .query_one(
+            "SELECT datname::text,oid,datdba FROM pg_catalog.pg_database WHERE datname=$1",
+            &[&name],
+        )
+        .map_err(|e| at(format!("pg_database identity for {name}"), e))?;
     Ok(Db {
         name: r.try_get(0)?,
         oid: r.try_get(1)?,
         owner_oid: r.try_get(2)?,
     })
 }
-fn sql_identity(sql: &mut Client, fx: &Fixture, db: &Db) -> Result<Value> {
+fn sql_identity(j: &mut Journal, sql: &mut Client, fx: &Fixture, db: &Db) -> Result<Value> {
     let r=sql.query_one("SELECT session_user::text,current_user::text,current_database()::text,current_setting('babylon.disposable_runtime'),current_setting('data_directory'),(pg_control_system()).system_identifier::text,(SELECT oid FROM pg_roles WHERE rolname=session_user),inet_server_port()", &[])?;
+
+    let value = json!({"session_user":r.try_get::<_,String>(0)?,"current_user":r.try_get::<_,String>(1)?,"database":r.try_get::<_,String>(2)?,"canary":r.try_get::<_,String>(3)?,"data_directory":r.try_get::<_,String>(4)?,"cluster":r.try_get::<_,String>(5)?,"role_oid":r.try_get::<_,u32>(6)?,"server_port":r.try_get::<_,i32>(7)?});
+    j.facts(&json!({"connected_session":value}))?;
     let found = db_identity(sql, &db.name)?;
-    let value = json!({"session_user":r.try_get::<_,String>(0)?,"current_user":r.try_get::<_,String>(1)?,"database":r.try_get::<_,String>(2)?,"canary":r.try_get::<_,String>(3)?,"data_directory":r.try_get::<_,String>(4)?,"cluster":r.try_get::<_,String>(5)?,"role_oid":r.try_get::<_,u32>(6)?,"server_port":r.try_get::<_,i32>(7)?,"identity":found});
-    let expected = json!({"session_user":fx.login,"current_user":fx.login,"database":db.name,"canary":fx.canary,"data_directory":fx.data_directory,"cluster":fx.cluster,"role_oid":fx.role_oid,"server_port":fx.container_port,"identity":db});
+    j.facts(&json!({"connected_database":found}))?;
+    let value = json!({"session":value,"identity":found});
+    let expected = json!({"session_user":fx.login,"current_user":fx.login,"database":db.name,"canary":fx.canary,"data_directory":fx.data_directory,"cluster":fx.cluster,"role_oid":fx.role_oid,"server_port":fx.container_port});
+    let expected = json!({"session":expected,"identity":db});
     same(&value, &expected, "connected SQL identity")?;
     Ok(value)
 }
@@ -553,7 +649,13 @@ fn package_rows(
             "receipt_storage_bytes",
             "lookup_delta_bytes",
         ] {
-            let reference = journal.blob(package.try_get::<_, &[u8]>(column)?)?;
+            let reference = journal
+                .blob(
+                    package
+                        .try_get::<_, &[u8]>(column)
+                        .map_err(|e| at(format!("read {column} at {}", period["period"]), e))?,
+                )
+                .map_err(|e| at(format!("save {column} at {}", period["period"]), e))?;
             period[column] = serde_json::to_value(reference)?;
         }
         periods.push(period);
@@ -590,12 +692,20 @@ fn durable(journal: &mut Journal, client: &mut Client, campaign: CampaignId) -> 
         ("babylon_state.checkpoint_manifest","resolve_tick,completeness_tag,manifest_sha256,manifest_bytes","resolve_tick"),
         ("babylon_state.checkpoint_section_v1","resolve_tick,section_tag,ordinal,source_tag,decoded_length,decoded_sha256,inline_section_bytes","resolve_tick,section_tag,ordinal"),
     ] {
-        let exported=table_export(journal,&mut tx,campaign,name,columns,keys)?;
+        let exported=table_export(journal,&mut tx,campaign,name,columns,keys).map_err(|e| at(format!("export {name} for {}",campaign.as_uuid()),e))?;
         tables.insert(name.into(),serde_json::to_value(exported)?);
     }
     tables.insert(
         "material_tick_v3".into(),
-        Value::Array(package_rows(journal, &mut tx, campaign)?),
+        Value::Array(package_rows(journal, &mut tx, campaign).map_err(|e| {
+            at(
+                format!(
+                    "export material_tick_v3 packages for {}",
+                    campaign.as_uuid()
+                ),
+                e,
+            )
+        })?),
     );
     tx.commit()?;
     journal.facts(&json!({"campaign":campaign.as_uuid().to_string(),"tables":tables}))
@@ -628,7 +738,8 @@ fn snapshot(
         envelope: runtime.tail_envelope_digest().map(|d| hex(&d)),
         register,
         organizer: j.facts(&serde_json::to_value(state)?)?,
-        durable: durable(j, sql, campaign)?,
+        durable: durable(j, sql, campaign)
+            .map_err(|e| at("read repeatable durable snapshot", e))?,
     };
     j.facts(&serde_json::to_value(&snapshot)?)?;
     Ok(snapshot)
@@ -690,23 +801,67 @@ fn admission(
     expected: Option<&OrganizerCommitment>,
 ) -> Result<OrganizerCommitment> {
     let first = rt.submit_organizer_command(command);
-    let retry = rt.submit_organizer_command(command);
-    j.facts(&json!({"command":command,"first":first,"exact_retry":retry}))?;
-    let rows=sql.query("SELECT command_bytes,commitment_bytes,commitment_sha256,consumed_period,resolves_period,nonce FROM babylon_state.organizer_command_v1 WHERE campaign_id=$1 AND (nonce=$2 OR resolves_period=$3) ORDER BY nonce",&[campaign.as_uuid(),&&command.nonce[..],&i64::try_from(command.expected_period+1)?])?;
-    let mut stored = Vec::new();
-    for row in &rows {
-        stored.push(json!({"command":j.blob(&row.try_get::<_,Vec<u8>>(0)?)?,"commitment":j.blob(&row.try_get::<_,Vec<u8>>(1)?)?,"id":hex(&row.try_get::<_,Vec<u8>>(2)?),"consumed":row.try_get::<_,Option<i64>>(3)?,"resolves":row.try_get::<_,i64>(4)?,"nonce":hex(&row.try_get::<_,Vec<u8>>(5)?)}));
-    }
-    j.facts(&json!({"stored":stored}))?;
+    j.facts(&json!({"command":command,"first":first}))?;
     let first = first.map_err(debug_error)?;
+    same(&first.command, command, "returned original command")?;
+    same(
+        &first.resolves_period,
+        &(command.expected_period + 1),
+        "returned resolution period",
+    )?;
+    if let Some(original) = expected {
+        same(&first, original, "persisted original")?;
+    }
+    let before = stored_admission(j, rt, sql, campaign, &first, consumed).map_err(|e| {
+        at(
+            format!(
+                "inspect first original organizer_command_v1 nonce {}",
+                hex(&command.nonce)
+            ),
+            e,
+        )
+    })?;
+    let retry = rt.submit_organizer_command(command);
+    j.facts(&json!({"exact_retry":retry}))?;
     same(
         &retry.map_err(debug_error)?,
         &first,
         "exact retry commitment",
     )?;
-    if let Some(original) = expected {
-        same(&first, original, "persisted original")?;
+    let after = stored_admission(j, rt, sql, campaign, &first, consumed).map_err(|e| {
+        at(
+            format!(
+                "inspect retried organizer_command_v1 nonce {}",
+                hex(&command.nonce)
+            ),
+            e,
+        )
+    })?;
+    same(
+        &after,
+        &before,
+        "exact retry preserved original and pending state",
+    )?;
+    Ok(first)
+}
+fn stored_admission(
+    j: &mut Journal,
+    rt: &DurableMaterialRuntime,
+    sql: &mut Client,
+    campaign: CampaignId,
+    first: &OrganizerCommitment,
+    consumed: Option<i64>,
+) -> Result<Value> {
+    let command = &first.command;
+    let rows=sql.query("SELECT command_bytes,commitment_bytes,commitment_sha256,consumed_period,resolves_period,nonce FROM babylon_state.organizer_command_v1 WHERE campaign_id=$1 AND (nonce=$2 OR resolves_period=$3) ORDER BY nonce",&[campaign.as_uuid(),&&command.nonce[..],&i64::try_from(first.resolves_period)?]).map_err(|e| at(format!("read organizer_command_v1 original nonce {}",hex(&command.nonce)),e))?;
+    let mut stored = Vec::new();
+    for row in &rows {
+        stored.push(json!({"command":j.blob(&row.try_get::<_,Vec<u8>>(0)?)?,"commitment":j.blob(&row.try_get::<_,Vec<u8>>(1)?)?,"id":hex(&row.try_get::<_,Vec<u8>>(2)?),"consumed":row.try_get::<_,Option<i64>>(3)?,"resolves":row.try_get::<_,i64>(4)?,"nonce":hex(&row.try_get::<_,Vec<u8>>(5)?)}));
     }
+    j.facts(&json!({"stored":stored}))?;
+    let pending = rt.organizer_snapshot().map_err(debug_error)?.pending;
+    let evidence = json!({"stored":stored,"pending":pending});
+    j.facts(&evidence)?;
     let [row] = rows.as_slice() else {
         return Err(format!("original has {} rows", rows.len()).into());
     };
@@ -717,7 +872,7 @@ fn admission(
     )?;
     same(
         &row.try_get::<_, Vec<u8>>(1)?,
-        &serde_json::to_vec(&first)?,
+        &serde_json::to_vec(first)?,
         "commitment bytes",
     )?;
     same(
@@ -730,7 +885,22 @@ fn admission(
         &consumed,
         "consumed period",
     )?;
-    Ok(first)
+    same(
+        &row.try_get::<_, i64>(4)?,
+        &i64::try_from(first.resolves_period)?,
+        "stored resolution period",
+    )?;
+    same(
+        &row.try_get::<_, Vec<u8>>(5)?,
+        &command.nonce.to_vec(),
+        "stored original nonce",
+    )?;
+    same(
+        &pending.as_ref(),
+        &consumed.is_none().then_some(first),
+        "pending original",
+    )?;
+    Ok(evidence)
 }
 fn conflict(
     j: &mut Journal,
@@ -762,6 +932,7 @@ fn open_pending(
     drop(old);
     let rt = DurableMaterialRuntime::open(&case.config, case.campaign, case.digest)?;
     let reopened = snapshot(j, &rt, &mut case.sql, case.campaign)?;
+    same(&reopened, before, "fresh pending reopen")?;
     let current = rt.organizer_snapshot().map_err(debug_error)?;
     let actual = j.blob(rt.next_action_batch()?.canonical_bytes())?;
     admission(
@@ -775,7 +946,6 @@ fn open_pending(
     )?;
     let after_retry = snapshot(j, &rt, &mut case.sql, case.campaign)?;
     j.reached(&json!({"before":before,"reopened":reopened,"after_retry":after_retry,"batch":actual,"expected_batch":batch,"pending":current.pending}))?;
-    same(&reopened, before, "fresh pending reopen")?;
     same(
         &after_retry,
         before,
@@ -810,8 +980,9 @@ impl PeriodReader {
     ) -> Result<MaterialTickReceipts> {
         let identity = rt.tail().ok_or("missing committed identity")?;
         let tick = identity.resolve_tick();
-        let row=sql.query_one("SELECT identity_bytes,receipt_storage_bytes,lookup_delta_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1 AND resolve_tick=$2",&[campaign.as_uuid(),&i64::try_from(tick)?])?;
+        let row=sql.query_one("SELECT identity_bytes,receipt_storage_bytes,lookup_delta_bytes FROM babylon_state.material_tick_v3 WHERE campaign_id=$1 AND resolve_tick=$2",&[campaign.as_uuid(),&i64::try_from(tick)?]).map_err(|e| at(format!("read material_tick_v3 receipts for tick {tick}"),e))?;
         let id: Vec<u8> = row.try_get(0)?;
+        j.facts(&json!({"stored_tick_identity":hex(&id),"period":tick}))?;
         same(
             &id.as_slice(),
             &identity.canonical_bytes(),
@@ -899,16 +1070,6 @@ fn collection(
     };
     let payer = AccountId::Household(gift.donor);
     let receiver = AccountId::Organization(gift.recipient);
-    let refunds = rows
-        .money_transfers
-        .iter()
-        .filter(|r| {
-            matches!(
-                r.purpose,
-                MoneyTransferPurpose::PurchaseRefund(OutboundOrderId::Service(_))
-            ) && r.credit.location == MoneyLocation::Cash(payer)
-        })
-        .collect::<Vec<_>>();
     let transferred = rows
         .money_transfers
         .iter()
@@ -918,7 +1079,7 @@ fn collection(
                 && r.purpose == MoneyTransferPurpose::Cash(CashTransferPurpose::MutualAid)
         })
         .collect::<Vec<_>>();
-    j.facts(&json!({"collection":format!("{gift:?}"),"funded_transfer":format!("{transferred:?}"),"protected_refunds":format!("{refunds:?}"),"balance_micros":treasury(rt)?.to_string()}))?;
+    j.facts(&json!({"collection":format!("{gift:?}"),"funded_transfer":format!("{transferred:?}"),"balance_micros":treasury(rt)?.to_string()}))?;
     same(
         &(
             gift.original_commitment_id,
@@ -949,20 +1110,113 @@ fn collection(
         &(-CASH, CASH),
         "gift debits and credits",
     )?;
-    let [refund] = refunds.as_slice() else {
-        return Err("one protected service refund required".into());
-    };
-    same(
-        &(
-            refund.debit.delta.micro_units(),
-            refund.credit.delta.micro_units(),
-        ),
-        &(-75_000_000, 75_000_000),
-        "P1 service refund",
-    )?;
+    protected_refund(j, rt, rows, gift.donor)?;
     same(&treasury(rt)?, &1_451_000_000, "P1 organization treasury")
 }
+fn protected_refund(
+    j: &mut Journal,
+    rt: &DurableMaterialRuntime,
+    rows: &MaterialTickReceipts,
+    donor: FinalDemandPrincipalId,
+) -> Result<()> {
+    let payer = AccountId::Household(donor);
+    let (_, local) = local_authority(rt)?;
+    let commodity = local
+        .report_sharing
+        .essential_services
+        .iter()
+        .find(|c| c.good_id == good("utility").as_bytes())
+        .ok_or("missing captured utility commodity")?;
+    let utility = one(
+        rows.service_performance.iter().filter(|r| {
+            r.period == 1
+                && r.buyer == payer
+                && r.good_id.as_bytes() == commodity.good_id
+                && r.unit_id.as_bytes() == commodity.unit_id
+        }),
+        "P1 donor utility order",
+    )?;
+    let need = one(
+        rows.household_services.iter().filter(|r| {
+            r.period == 1
+                && r.principal_id == donor
+                && r.good_id == utility.good_id
+                && r.unit_id == utility.unit_id
+        }),
+        "P1 donor utility need",
+    )?;
+    j.facts(&json!({"protected_utility":format!("{utility:?}"),"donor_need":format!("{need:?}")}))?;
+    let order = OutboundOrderId::Service(utility.order_id);
+    let payments=rows.money_transfers.iter().filter(|row| matches!(row.purpose,
+        MoneyTransferPurpose::PurchaseReservation(id) | MoneyTransferPurpose::DeliverySettlement(id) | MoneyTransferPurpose::PurchaseRefund(id) if id==order
+    )).collect::<Vec<_>>();
+    j.facts(
+        &json!({"utility_order":format!("{order:?}"),"signed_postings":format!("{payments:?}")}),
+    )?;
+    let (settled, refunded) = service_payments(rows, utility)?;
+    same(
+        &(
+            utility.requested_quantity,
+            utility.admitted_quantity,
+            utility.performed_quantity,
+            utility.used_quantity,
+            utility.expired_quantity,
+            utility.unit_price.micro_units(),
+        ),
+        &(8, 8, 7, 7, 1, 75_000_000),
+        "P1 donor utility order quantities and accepted price",
+    )?;
+    same(
+        &(
+            need.required_quantity,
+            need.performed_quantity,
+            need.satisfied_quantity,
+            need.unmet_quantity,
+        ),
+        &(8, 7, 7, 1),
+        "P1 utility requirement and partial performance",
+    )?;
+    same(
+        &(settled, refunded),
+        &(525_000_000, 75_000_000),
+        "P1 donor utility order settlement and protected refund",
+    )
+}
+fn one<T>(mut rows: impl Iterator<Item = T>, name: &str) -> Result<T> {
+    let row = rows.next().ok_or_else(|| format!("missing {name}"))?;
+    check(rows.next().is_none(), &format!("duplicate {name}"))?;
+    Ok(row)
+}
+fn local_authority(
+    rt: &DurableMaterialRuntime,
+) -> Result<(&OrganizerConfig, &OrganizerAidBinding)> {
+    let config = rt
+        .session()
+        .material()
+        .organizer_config()
+        .ok_or("missing organizer config")?;
+    let local = one(
+        config
+            .aid_bindings
+            .iter()
+            .filter(|b| b.kind == OrganizerAidKind::Local),
+        "local aid authority",
+    )?;
+    Ok((config, local))
+}
+fn time_book(rt: &DurableMaterialRuntime) -> Result<&HouseholdTimeBook> {
+    let CircuitAccounting::Monetary(economy) = &rt.session().material().state().accounting else {
+        return Err("missing monetary register".into());
+    };
+    let HouseholdTimeAccounting::Modeled(book) = &economy.household_time else {
+        return Err("missing private household time ledger".into());
+    };
+    Ok(book)
+}
 fn response(rt: &DurableMaterialRuntime, cmd: &OrganizerCommitment) -> Result<OrganizerReceipt> {
+    use OrganizerOutcome::{AidPracticeCompleted, AidPracticeUncompleted, InsufficientTime};
+    use OrganizerPartnerPolicy::{Participate, Refuse};
+    use OrganizerPartnerResponse::{Participated, Refused, UnableToParticipate};
     let snapshot = rt.organizer_snapshot().map_err(debug_error)?;
     let mut matching = snapshot
         .aid_resolutions
@@ -989,16 +1243,159 @@ fn response(rt: &DurableMaterialRuntime, cmd: &OrganizerCommitment) -> Result<Or
         &(2, Some(cmd.commitment_id)),
         "first response original and date",
     )?;
+    let (_, local) = local_authority(rt)?;
+    same(
+        &result.pending.response.as_ref(),
+        &Some(response),
+        "recorded first adjudication",
+    )?;
+    same(
+        &(
+            response.actor_id,
+            response.choice,
+            response.partner_actor_id,
+            result.pending.mandate_id,
+        ),
+        &(
+            cmd.command.actor_id,
+            cmd.command.choice,
+            Some(local.partner.actor_id),
+            local.mandate_id,
+        ),
+        "original practice/partner authority",
+    )?;
+    let observed = (
+        local.partner.policy,
+        response.partner_response,
+        response.outcome,
+    );
     check(
         matches!(
-            response.outcome,
-            OrganizerOutcome::AidPracticeCompleted
-                | OrganizerOutcome::AidPracticeUncompleted
-                | OrganizerOutcome::InsufficientTime
+            observed,
+            (Participate, Participated, AidPracticeCompleted)
+                | (
+                    Participate,
+                    UnableToParticipate,
+                    AidPracticeUncompleted | InsufficientTime
+                )
+                | (Refuse, Refused, AidPracticeUncompleted | InsufficientTime)
+                | (
+                    OrganizerPartnerPolicy::NoResponse,
+                    OrganizerPartnerResponse::NoResponse,
+                    AidPracticeUncompleted | InsufficientTime
+                )
         ),
-        "positive settlement needs adjudicated partner decision",
+        &format!("positive cash first partner policy/decision/outcome: {observed:?}"),
     )?;
     Ok(response.clone())
+}
+#[derive(Serialize)]
+struct OriginalDebit {
+    use_id: [u8; 32],
+    actor: u64,
+    contributor: u64,
+    hours: u64,
+}
+fn original_debits(
+    j: &mut Journal,
+    rt: &DurableMaterialRuntime,
+    first: &OrganizerReceipt,
+) -> Result<Vec<OriginalDebit>> {
+    let (config, local) = local_authority(rt)?;
+    let book = time_book(rt)?;
+    let entries = rt
+        .session()
+        .material()
+        .organizer_journal()
+        .ok_or("missing private organizer journal")?;
+    let period = one(
+        entries.periods.iter().filter(|p| p.period == 2),
+        "P2 private journal",
+    )?;
+    let original = one(
+        period
+            .aid_receipts
+            .iter()
+            .filter(|r| r.practice.receipt_id == first.receipt_id),
+        "P2 private original response",
+    )?;
+    same(
+        &original.authorization.response.as_ref(),
+        &Some(&original.practice),
+        "private adjudication",
+    )?;
+    same(
+        &original.practice.commitment_id,
+        &first.commitment_id,
+        "private original commitment",
+    )?;
+    let mut debits = Vec::new();
+    for actor in [first.actor_id, local.partner.actor_id] {
+        for participant in &config.participants {
+            let contributor = participant.contributor_id;
+            let use_id = babylon_practice_contract::household_contribution_use_id(
+                &first.receipt_id,
+                actor,
+                contributor,
+            );
+            let declared = original
+                .practice
+                .time_use
+                .iter()
+                .filter(|r| r.actor_id == actor && r.contributor_id == contributor)
+                .collect::<Vec<_>>();
+            let actual = book
+                .contributions
+                .iter()
+                .filter(|r| r.contribution.use_id == use_id)
+                .collect::<Vec<_>>();
+            j.facts(&json!({"p2_receipt":first.receipt_id,"original_use":use_id,"actor":actor,"contributor":contributor,"declared":declared,"private_actual":format!("{actual:?}")}))?;
+            let hours = match (declared.as_slice(), actual.as_slice()) {
+                ([], []) => 0,
+                ([expected], [row]) => {
+                    same(
+                        &(
+                            row.period,
+                            row.contribution.actor_id,
+                            row.contribution.contributor_id,
+                            row.contribution.hours,
+                        ),
+                        &(2, actor, contributor, expected.hours),
+                        "P2 original debit",
+                    )?;
+                    check(expected.hours > 0, "zero-hour debit row")?;
+                    row.contribution.hours
+                }
+                _ => return Err("missing, duplicate or undeclared P2 coordination debit".into()),
+            };
+            debits.push(OriginalDebit {
+                use_id,
+                actor,
+                contributor,
+                hours,
+            });
+        }
+    }
+    j.facts(&json!({"original_response":first.receipt_id,"p2_debits":debits}))?;
+    Ok(debits)
+}
+fn no_repeated_debit(
+    j: &mut Journal,
+    rt: &DurableMaterialRuntime,
+    debits: &[OriginalDebit],
+) -> Result<()> {
+    let book = time_book(rt)?;
+    let ids = debits.iter().map(|d| d.use_id).collect::<BTreeSet<_>>();
+    let repeated = book
+        .contributions
+        .iter()
+        .filter(|r| ids.contains(&r.contribution.use_id))
+        .collect::<Vec<_>>();
+    j.facts(&json!({"p2_original_debits":debits,"p3_private_ledger":format!("{:?}",book.contributions),"repeated":format!("{repeated:?}")}))?;
+    check(
+        repeated.is_empty(),
+        "P3 charged a P2 original coordination use",
+    )
 }
 fn settlement(
     j: &mut Journal,
@@ -1081,14 +1478,7 @@ fn purchases(
     rt: &DurableMaterialRuntime,
     rows: &MaterialTickReceipts,
 ) -> Result<()> {
-    let register = rt.session().material();
-    let local = register
-        .organizer_config()
-        .ok_or("missing organizer")?
-        .aid_bindings
-        .iter()
-        .find(|b| b.kind == OrganizerAidKind::Local)
-        .ok_or("missing local binding")?;
+    let (config, local) = local_authority(rt)?;
     let recipient = FinalDemandPrincipalId::from_bytes(local.recipient_principal_id);
     let buyer = AccountId::Household(recipient);
     let demand = rows
@@ -1137,10 +1527,10 @@ fn purchases(
         .iter()
         .find(|r| r.good_id == good("materials"))
         .ok_or("missing manufactured supplies")?;
-    let food = demand
-        .iter()
-        .find(|r| r.good_id == good("food"))
-        .ok_or("missing food order")?;
+    let food = one(
+        demand.iter().copied().filter(|r| r.good_id == good("food")),
+        "P3 recipient food order",
+    )?;
     let use_goods = use_rows
         .iter()
         .find(|r| r.good_id == supply.good_id && r.unit_id == supply.unit_id)
@@ -1156,20 +1546,35 @@ fn purchases(
         &(0, 4),
         "P3 food remains unmet",
     )?;
-    let utility = services
-        .iter()
-        .find(|r| r.good_id == good("utility"))
-        .ok_or("missing utility service")?;
-    let (settle, refund) = utility_purchase(rows, buyer_cash, utility)?;
-    disclosed_purchases(
-        reports,
-        snapshot.view.actor_id,
-        food,
-        use_food,
-        utility,
-        settle,
-        refund,
-    )
+    let grant = one(
+        local
+            .report_sharing
+            .essential_services
+            .iter()
+            .filter(|c| c.good_id == good("utility").as_bytes()),
+        "P3 utility grant",
+    )?;
+    let utility = one(
+        services.iter().copied().filter(|r| {
+            r.period == 3
+                && r.good_id.as_bytes() == grant.good_id
+                && r.unit_id.as_bytes() == grant.unit_id
+        }),
+        "P3 granted utility purchase",
+    )?;
+    let (settle, refund) = service_payments(rows, utility)?;
+    same(
+        &(
+            utility.admitted_quantity,
+            utility.performed_quantity,
+            settle,
+            refund,
+        ),
+        &(3, 1, 75_000_000, 150_000_000),
+        "P3 utility service and refund",
+    )?;
+    let facts = private_reports(j, rows, local, time_book(rt)?, food, use_food)?;
+    disclosed_purchases(&reports, config, local, facts)
 }
 fn manufactured_purchase(
     rows: &MaterialTickReceipts,
@@ -1213,111 +1618,288 @@ fn manufactured_purchase(
     )?;
     Ok(())
 }
-fn utility_purchase(
+fn payment_for_units(
     rows: &MaterialTickReceipts,
-    buyer_cash: MoneyLocation,
+    purpose: MoneyTransferPurpose,
+    from: MoneyLocation,
+    to: MoneyLocation,
+    quantity: u64,
+    price: i128,
+) -> Result<i128> {
+    let amount = i128::from(quantity)
+        .checked_mul(price)
+        .ok_or("unit payment overflow")?;
+    if amount == 0 {
+        check(
+            !rows.money_transfers.iter().any(|r| r.purpose == purpose),
+            "unexpected payment on zero order leg",
+        )?;
+    } else {
+        same(
+            &paid(rows, purpose, from, to)?,
+            &amount,
+            "signed order payment and price times quantity",
+        )?;
+    }
+    Ok(amount)
+}
+fn service_payments(
+    rows: &MaterialTickReceipts,
     utility: &ServicePerformanceReceipt,
 ) -> Result<(i128, i128)> {
     let order = OutboundOrderId::Service(utility.order_id);
     let reserve = MoneyLocation::PurchaseReserve(order);
     let provider = MoneyLocation::Cash(AccountId::Site(utility.provider_site_id));
-    let settle = paid(
+    let buyer = MoneyLocation::Cash(utility.buyer);
+    let price = utility.unit_price.micro_units();
+    check(price > 0, "expected positive service unit price")?;
+    let reserved = payment_for_units(
+        rows,
+        MoneyTransferPurpose::PurchaseReservation(order),
+        buyer,
+        reserve,
+        utility.admitted_quantity,
+        price,
+    )?;
+    let settled = payment_for_units(
         rows,
         MoneyTransferPurpose::DeliverySettlement(order),
         reserve,
         provider,
+        utility.performed_quantity,
+        price,
     )?;
-    let refund = paid(
+    let refunded = payment_for_units(
         rows,
         MoneyTransferPurpose::PurchaseRefund(order),
         reserve,
-        buyer_cash,
-    )?;
-    let reserved = paid(
-        rows,
-        MoneyTransferPurpose::PurchaseReservation(order),
-        buyer_cash,
-        reserve,
+        buyer,
+        utility.expired_quantity,
+        price,
     )?;
     same(
         &reserved,
-        &settle
-            .checked_add(refund)
-            .ok_or("service payment overflow")?,
-        "P3 utility principal",
+        &settled
+            .checked_add(refunded)
+            .ok_or("service principal overflow")?,
+        "order reservation settled and refunded",
     )?;
+    Ok((settled, refunded))
+}
+fn disclosed_services(
+    j: &mut Journal,
+    rows: &MaterialTickReceipts,
+    local: &OrganizerAidBinding,
+    recipient: FinalDemandPrincipalId,
+) -> Result<Vec<OrganizerServiceReport>> {
+    let mut services = Vec::new();
+    for commodity in &local.report_sharing.essential_services {
+        let need = one(
+            rows.household_services.iter().filter(|r| {
+                r.period == 3
+                    && r.principal_id == recipient
+                    && r.good_id.as_bytes() == commodity.good_id
+                    && r.unit_id.as_bytes() == commodity.unit_id
+            }),
+            "P3 scoped household service",
+        )?;
+        let used = rows
+            .service_performance
+            .iter()
+            .filter(|r| {
+                r.period == 3
+                    && r.buyer == AccountId::Household(recipient)
+                    && r.good_id == need.good_id
+                    && r.unit_id == need.unit_id
+            })
+            .collect::<Vec<_>>();
+        let mut performed = 0u64;
+        let mut expired = 0u64;
+        let mut settled = 0i128;
+        let mut refunded = 0i128;
+        for r in &used {
+            let (s, f) = service_payments(rows, r)?;
+            performed = performed
+                .checked_add(r.performed_quantity)
+                .ok_or("performed service overflow")?;
+            expired = expired
+                .checked_add(r.expired_quantity)
+                .ok_or("service expiry overflow")?;
+            settled = settled
+                .checked_add(s)
+                .ok_or("service settlement overflow")?;
+            refunded = refunded.checked_add(f).ok_or("service refund overflow")?;
+        }
+        j.facts(&json!({"grant":commodity,"private_need":format!("{need:?}"),"order_performance":format!("{used:?}"),"settled":settled.to_string(),"refunded":refunded.to_string()}))?;
+        same(
+            &performed,
+            &need.performed_quantity,
+            "P3 service units received",
+        )?;
+        services.push(OrganizerServiceReport {
+            commodity: commodity.clone(),
+            required: need.required_quantity,
+            performed,
+            satisfied: need.satisfied_quantity,
+            unmet: need.unmet_quantity,
+            unused: need.unused_quantity,
+            expired,
+            settled_micros: settled,
+            refunded_micros: refunded,
+        });
+    }
+    Ok(services)
+}
+fn private_reports(
+    j: &mut Journal,
+    rows: &MaterialTickReceipts,
+    local: &OrganizerAidBinding,
+    book: &HouseholdTimeBook,
+    food: &HouseholdDemandReceipt,
+    consumed: &HouseholdConsumptionReceipt,
+) -> Result<Vec<OrganizerPartnerFacts>> {
+    let scope = &local.report_sharing;
+    let recipient = FinalDemandPrincipalId::from_bytes(local.recipient_principal_id);
+    let commodity = one(scope.food.iter(), "captured food scope")?;
     same(
         &(
-            utility.admitted_quantity,
-            utility.performed_quantity,
-            settle,
-            refund,
+            food.period,
+            consumed.period,
+            food.good_id.as_bytes(),
+            food.unit_id.as_bytes(),
         ),
-        &(3, 1, 75_000_000, 150_000_000),
-        "P3 utility service and refund",
+        &(3, 3, commodity.good_id, commodity.unit_id),
+        "P3 scoped food order and use",
     )?;
-    Ok((settle, refund))
-}
-
-fn disclosed_purchases(
-    reports: Vec<&OrganizerObservation>,
-    actor: u64,
-    food: &HouseholdDemandReceipt,
-    use_food: &HouseholdConsumptionReceipt,
-    utility: &ServicePerformanceReceipt,
-    settle: i128,
-    refund: i128,
-) -> Result<()> {
-    let mut food_report = false;
-    let mut utility_report = false;
-    for observed in reports {
-        check(
-            observed.acquired_period == 3 && observed.actor_id == actor,
-            "report period or observer mismatch",
-        )?;
-        if let babylon_practice_contract::OrganizerReport::Partner { facts, .. } = &observed.report
-        {
-            match facts {
-                babylon_practice_contract::OrganizerPartnerFacts::FoodProvision {
-                    commodity,
-                    purchased,
-                    unmet,
-                    ..
-                } if commodity.good_id == food.good_id.as_bytes() => {
-                    same(
-                        &(*purchased, *unmet),
-                        &(food.fulfilled_quantity, use_food.unmet_quantity),
-                        "P3 lawful food disclosure",
-                    )?;
-                    food_report = true;
-                }
-                babylon_practice_contract::OrganizerPartnerFacts::EssentialServices {
-                    services,
-                } => {
-                    if let Some(service) = services
-                        .iter()
-                        .find(|r| r.commodity.good_id == utility.good_id.as_bytes())
-                    {
-                        same(
-                            &(
-                                service.performed,
-                                service.settled_micros,
-                                service.refunded_micros,
-                            ),
-                            &(utility.performed_quantity, settle, refund),
-                            "P3 lawful utility disclosure",
-                        )?;
-                        utility_report = true;
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
+    let handoffs = rows
+        .local_fulfillments
+        .iter()
+        .filter(|r| {
+            r.demand_principal_id == recipient
+                && r.good_id == food.good_id
+                && r.unit_id == food.unit_id
+        })
+        .collect::<Vec<_>>();
+    j.facts(&json!({"food_order":format!("{:?}",food.order_id),"actual_food_handoffs":format!("{handoffs:?}")}))?;
     check(
-        food_report && utility_report,
-        "missing actual partner food/service report",
-    )
+        handoffs.is_empty() && food.fulfilled_quantity == 0,
+        "P3 unmet food had an actual purchase or handoff",
+    )?;
+    let order = OutboundOrderId::LocalFinalDemand(food.order_id);
+    let food_settlement = payment_for_units(
+        rows,
+        MoneyTransferPurpose::DeliverySettlement(order),
+        MoneyLocation::PurchaseReserve(order),
+        MoneyLocation::Cash(AccountId::Site(food.retailer_site_id)),
+        food.fulfilled_quantity,
+        food.unit_price.micro_units(),
+    )?;
+    let food_facts = OrganizerPartnerFacts::FoodProvision {
+        commodity: commodity.clone(),
+        required: consumed.required_quantity,
+        consumed: consumed.consumed_quantity,
+        unmet: consumed.unmet_quantity,
+        closing: consumed.closing_quantity,
+        purchased: food.fulfilled_quantity,
+        settled_micros: food_settlement,
+    };
+    let services = disclosed_services(j, rows, local, recipient)?;
+    let labor_unit = *one(
+        scope.participation_time.iter(),
+        "captured participation-time scope",
+    )?;
+    let matches = |r: &&HouseholdTimeReceipt| {
+        r.period == 3 && r.principal_id == recipient && r.labor_unit_id.as_bytes() == labor_unit
+    };
+    let time = one(
+        book.receipts.iter().filter(matches),
+        "private P3 recipient time ledger",
+    )?;
+    same(
+        time,
+        one(
+            rows.household_time.iter().filter(matches),
+            "P3 committed recipient time receipt",
+        )?,
+        "committed and register time receipt",
+    )?;
+    let contributions = book
+        .contributions
+        .iter()
+        .filter(|r| r.period == 3 && r.contribution.principal_id == recipient)
+        .collect::<Vec<_>>();
+    j.facts(&json!({"recipient_principal":local.recipient_principal_id,"labor_unit":labor_unit,"private_time":format!("{time:?}"),"private_contributions":format!("{contributions:?}")}))?;
+    let contributed = contributions
+        .iter()
+        .try_fold(0u64, |h, r| h.checked_add(r.contribution.hours))
+        .ok_or("contributed hour overflow")?;
+    let remaining = time
+        .contribution_available_hours
+        .checked_sub(contributed)
+        .ok_or("contributions exceed time")?;
+    let time_facts = OrganizerPartnerFacts::ParticipationTime {
+        labor_unit,
+        attended: time.attended_hours,
+        protected: time.protected_hours,
+        unpaid: time.unpaid_allocated_hours,
+        contributed,
+        remaining,
+    };
+    Ok(vec![
+        food_facts,
+        OrganizerPartnerFacts::EssentialServices { services },
+        time_facts,
+    ])
+}
+fn disclosed_purchases(
+    reports: &[&OrganizerObservation],
+    config: &OrganizerConfig,
+    local: &OrganizerAidBinding,
+    facts: Vec<OrganizerPartnerFacts>,
+) -> Result<()> {
+    same(&reports.len(), &3, "three granted P3 partner reports")?;
+    for expected in facts {
+        let observed = babylon_practice_contract::partner_observation(
+            config,
+            local.partner.actor_id,
+            3,
+            3,
+            expected,
+        )
+        .map_err(debug_error)?;
+        let actual = one(
+            reports
+                .iter()
+                .copied()
+                .filter(|r| r.observation_id == observed.observation_id),
+            "P3 observation bound to actual private facts and captured grant",
+        )?;
+        same(
+            &(
+                actual.actor_id,
+                actual.subject_id,
+                actual.source_actor_id,
+                actual.observed_period,
+                actual.acquired_period,
+                actual.receipt_id,
+            ),
+            &(
+                config.controlled_actor_id,
+                local.partner.actor_id,
+                local.partner.actor_id,
+                3,
+                3,
+                None,
+            ),
+            "authorized P3 observer, partner source and dates",
+        )?;
+        same(
+            actual,
+            &observed,
+            "P3 reader, subject, source, granted facts, observation ID and dates",
+        )?;
+    }
+    Ok(())
 }
 
 struct Case {
@@ -1328,6 +1910,19 @@ struct Case {
     reader: PeriodReader,
     audit: Audit,
 }
+fn bootstrap(j: &mut Journal, fx: &Fixture, base: &Config) -> Result<(Client, Db)> {
+    j.begin("bootstrap")?;
+    let mut admin = base
+        .connect(NoTls)
+        .map_err(|e| at("connect test/postgres bootstrap", e))?;
+    let actual = sql_identity(j, &mut admin, fx, &fx.bootstrap)
+        .map_err(|e| at("authenticate bootstrap session", e))?;
+    j.facts(&actual)?;
+    let template = db_identity(&mut admin, &fx.template.name)?;
+    j.reached(&json!({"bootstrap":actual,"template":template}))?;
+    same(&template, &fx.template, "frozen template")?;
+    Ok((admin, template))
+}
 fn create_campaign(
     j: &mut Journal,
     fx: &Fixture,
@@ -1335,36 +1930,45 @@ fn create_campaign(
     campaign: CampaignId,
 ) -> Result<(Case, DurableMaterialRuntime)> {
     let fixture = j.authority.clone();
-    j.begin("bootstrap")?;
-    let mut admin = base.connect(NoTls)?;
-    let actual = sql_identity(&mut admin, fx, &fx.bootstrap)?;
-    let template = db_identity(&mut admin, &fx.template.name)?;
-    j.reached(&json!({"bootstrap":actual,"template":template}))?;
-    same(&template, &fx.template, "frozen template")?;
+    let (mut admin, template) = bootstrap(j, fx, base)?;
     j.begin("clone")?;
     let database = TestDatabase::retained_allocation(base);
-    same(
-        &db_identity(&mut admin, &template.name)?,
-        &template,
-        "template at clone creation",
-    )?;
-    let exists = admin.query_opt(
-        "SELECT oid FROM pg_catalog.pg_database WHERE datname=$1",
-        &[&database.name],
-    )?;
+    let before = db_identity(&mut admin, &template.name)?;
+    j.facts(&json!({"template_before_create":before}))?;
+    same(&before, &template, "template at clone creation")?;
+    let exists = admin
+        .query_opt(
+            "SELECT oid FROM pg_catalog.pg_database WHERE datname=$1",
+            &[&database.name],
+        )
+        .map_err(|e| at("check intended clone name in pg_database", e))?;
     check(exists.is_none(), "intended clone name already exists")?;
     let claim=j.record("sql-clone-claim-v1.json",&json!({"tag":"sql-clone-claim-v1","fixture":fixture,"pid":std::process::id(),"clone_name":database.name,"template":template,"owner_oid":fx.role_oid,"campaign":fx.campaign}))?;
     j.authority = claim.clone();
-    database.create_clone(&mut admin, &template.name)?;
+    j.facts(&json!({"claimed":claim}))?;
+    database
+        .create_clone(&mut admin, &template.name)
+        .map_err(|e| {
+            at(
+                format!(
+                    "create retained clone {} from {}",
+                    database.name, template.name
+                ),
+                e,
+            )
+        })?;
+    j.facts(&json!({"created":database.name,"claim":claim}))?;
     let cloned = db_identity(&mut admin, &database.name)?;
-    same(
-        &db_identity(&mut admin, &template.name)?,
-        &template,
-        "template after clone creation",
-    )?;
+    j.facts(&json!({"created_database_identity":cloned}))?;
+    let after = db_identity(&mut admin, &template.name)?;
+    j.facts(&json!({"template_after_create":after}))?;
+    same(&after, &template, "template after clone creation")?;
     let config = database.config(base);
-    let mut sql = config.connect(NoTls)?;
-    let observed = sql_identity(&mut sql, fx, &cloned)?;
+    let mut sql = config
+        .connect(NoTls)
+        .map_err(|e| at("connect retained allocation clone", e))?;
+    let observed = sql_identity(j, &mut sql, fx, &cloned)
+        .map_err(|e| at("authenticate retained clone session", e))?;
     let clone_identity=j.record("sql-clone-identity-v1.json",&json!({"tag":"sql-clone-identity-v1","claim":claim,"clone":cloned,"template":template,"canary":fx.canary,"cluster":fx.cluster}))?;
     j.authority = clone_identity.clone();
     j.reached(&observed)?;
@@ -1376,7 +1980,7 @@ fn create_campaign(
     j.begin("schema")?;
     let schema = super::session::verify_runtime_schema(&config);
     j.reached(&json!({"schema":schema.as_ref().map(|_|"verified").map_err(|e|format!("{e:?}"))}))?;
-    schema?;
+    schema.map_err(|e| at("verify retained runtime schema", e))?;
     j.begin("foundation")?;
     let content = CapturedEconomicCatalog::capture_national_campaign(
         economic_catalog::national_catalog_input(),
@@ -1389,8 +1993,10 @@ fn create_campaign(
     )?;
     let digest = foundation.digest();
     let graph_sha = hash(foundation.graph_foundation.canonical_bytes());
-    let runtime = DurableMaterialRuntime::create(&config, campaign, foundation)?;
-    let found=sql.query_one("SELECT m.preset_id,m.content_sha256,m.foundation_sha256,g.foundation_sha256,c.replay_session_id,c.rng_seed FROM babylon_state.material_campaign_foundation_v3 m JOIN babylon_state.campaign_foundation g USING(campaign_id) JOIN babylon_state.campaign c USING(campaign_id) WHERE m.campaign_id=$1",&[campaign.as_uuid()])?;
+    j.facts(&json!({"captured_content":content_sha,"captured_foundation":hex(&digest),"captured_graph":graph_sha}))?;
+    let runtime = DurableMaterialRuntime::create(&config, campaign, foundation)
+        .map_err(|e| at("create captured national foundation", e))?;
+    let found=sql.query_one("SELECT m.preset_id,m.content_sha256,m.foundation_sha256,g.foundation_sha256,c.replay_session_id,c.rng_seed FROM babylon_state.material_campaign_foundation_v3 m JOIN babylon_state.campaign_foundation g USING(campaign_id) JOIN babylon_state.campaign c USING(campaign_id) WHERE m.campaign_id=$1",&[campaign.as_uuid()]).map_err(|e| at("read material and graph foundation and campaign",e))?;
     let observed = json!({"preset":found.try_get::<_,String>(0)?,"content_sha256":hex(&found.try_get::<_,Vec<u8>>(1)?),"foundation_sha256":hex(&found.try_get::<_,Vec<u8>>(2)?),"graph_foundation_sha256":hex(&found.try_get::<_,Vec<u8>>(3)?),"session":found.try_get::<_,String>(4)?,"seed":found.try_get::<_,i64>(5)?});
     let expected = json!({"preset":fx.preset,"content_sha256":content_sha,"foundation_sha256":hex(&digest),"graph_foundation_sha256":graph_sha,"session":fx.session,"seed":fx.seed});
     j.facts(&json!({"observed_foundation":observed,"captured_foundation":expected}))?;
@@ -1417,6 +2023,23 @@ fn create_campaign(
     ))
 }
 
+fn advance(
+    j: &mut Journal,
+    runtime: &mut DurableMaterialRuntime,
+    actions: &OrderedPracticeActionBatch,
+) -> Result<(IdentifiedMaterialTick, ReplayCommitDisposition)> {
+    let marker = runtime
+        .advance_and_commit(&mut CollectingSink::default(), actions)
+        .map_err(|e| at("advance and commit prepared action batch", e))?;
+    let disposition = runtime
+        .diagnostic_receipt()
+        .map(CommittedTickReceipt::commit_disposition);
+    j.facts(&json!({"returned_marker":hex(marker.canonical_bytes()),"disposition":disposition.map(|d| format!("{d:?}"))}))?;
+    Ok((
+        marker,
+        disposition.ok_or("missing returned commit disposition")?,
+    ))
+}
 fn collect_close(
     j: &mut Journal,
     case: &mut Case,
@@ -1466,7 +2089,7 @@ fn collect_close(
     j.begin("p1_close")?;
     let actions = runtime.next_action_batch()?;
     j.blob(actions.canonical_bytes())?;
-    runtime.advance_and_commit(&mut CollectingSink::default(), &actions)?;
+    advance(j, &mut runtime, &actions)?;
     let rows = case.reader.receipts(j, &runtime, &mut case.sql, campaign)?;
     let p1 = snapshot(j, &runtime, &mut case.sql, campaign)?;
     let collections = format!("{:?}", rows.collections);
@@ -1590,7 +2213,10 @@ fn marker_rollback(j: &mut Journal, case: &mut Case, aid: PendingAid) -> Result<
     let message = server.map(DbError::message);
     let raw = json!({"result":format!("{failed:?}"),"sqlstate":code,"server_message":message,"runtime_code":mapped,"fault_consumed":consumed,"sink_events":failed_sink.events.len()});
     j.facts(&raw)?;
-    case.sql = case.config.connect(NoTls)?;
+    case.sql = case
+        .config
+        .connect(NoTls)
+        .map_err(|e| at("reconnect for independent rollback observation", e))?;
     let rolled = snapshot(j, &runtime, &mut case.sql, campaign)?;
     let candidate=case.sql.query_one(
         "SELECT (SELECT count(*) FROM babylon_state.tick_commit WHERE campaign_id=$1 AND resolve_tick=2),
@@ -1599,7 +2225,7 @@ fn marker_rollback(j: &mut Journal, case: &mut Case, aid: PendingAid) -> Result<
          (SELECT count(*) FROM babylon_state.organizer_observation_v1 WHERE campaign_id=$1 AND acquired_period=2),
          (SELECT count(*) FROM babylon_meta.archive_knowledge_grant_v1 WHERE campaign_id=$1 AND granted_tick=2),
          (SELECT count(*) FROM babylon_state.archive_dirty_receipt_v1 WHERE campaign_id=$1 AND resolve_tick=2)",
-        &[campaign.as_uuid()])?;
+        &[campaign.as_uuid()]).map_err(|e| at("count P2 marker, material, receipt, observation, grant and dirty rows after fault",e))?;
     let counts = (0..6)
         .map(|k| candidate.try_get::<_, i64>(k))
         .collect::<StdResult<Vec<_>, _>>()?;
@@ -1638,6 +2264,7 @@ struct CompletedAid {
     runtime: DurableMaterialRuntime,
     aided: OrganizerCommitment,
     first: OrganizerReceipt,
+    debits: Vec<OriginalDebit>,
 }
 fn reconcile_cash(
     j: &mut Journal,
@@ -1659,35 +2286,28 @@ fn reconcile_cash(
             .is_none(),
         "other fault armed",
     )?;
-    let identity = runtime.advance_and_commit(&mut CollectingSink::default(), &actions)?;
-    let disposition = runtime
-        .diagnostic_receipt()
-        .ok_or("missing ambiguous receipt")?
-        .commit_disposition();
+    let (identity, disposition) = advance(j, &mut runtime, &actions)?;
     let p2 = snapshot(j, &runtime, &mut case.sql, campaign)?;
     let rows = case.reader.receipts(j, &runtime, &mut case.sql, campaign)?;
     let aid_receipts = format!("{:?}", rows.aid);
-    let settlement_result = settlement(j, &runtime, &rows, &aided);
-    let audit_result = audit_period(j, &mut case.audit, &runtime, campaign, rows);
-    j.reached(&json!({"disposition":format!("{disposition:?}"),"identity":hex(identity.canonical_bytes()),"p2":p2,"aid":aid_receipts}))?;
+    j.facts(&json!({"p2":p2,"aid":aid_receipts}))?;
+    settlement(j, &runtime, &rows, &aided)?;
+    audit_period(j, &mut case.audit, &runtime, campaign, rows)?;
+    let first = response(&runtime, &aided)?;
+    let response_bytes = serde_json::to_vec(&first)?;
+    let debits = original_debits(j, &runtime, &first)?;
+    j.reached(&json!({"disposition":format!("{disposition:?}"),"identity":hex(identity.canonical_bytes()),"p2":p2,"first_response":first,"original_debits":debits}))?;
     same(
         &disposition,
         &ReplayCommitDisposition::ReconciledAfterAmbiguousCommit,
         "P2 ambiguous success",
     )?;
-    settlement_result?;
-    audit_result?;
-    let first = response(&runtime, &aided)?;
-    let response_bytes = serde_json::to_vec(&first)?;
     j.begin("p2_stale_retry")?;
-    let retried = stale.advance_and_commit(&mut CollectingSink::default(), &actions)?;
+    let (retried, stale_disposition) = advance(j, &mut stale, &actions)?;
     let stale_snapshot = snapshot(j, &stale, &mut case.sql, campaign)?;
-    j.reached(&json!({"identity":hex(retried.canonical_bytes()),"disposition":format!("{:?}",stale.diagnostic_receipt().ok_or("missing stale receipt")?.commit_disposition()),"snapshot":stale_snapshot,"first_response":first}))?;
+    j.reached(&json!({"identity":hex(retried.canonical_bytes()),"disposition":format!("{stale_disposition:?}"),"snapshot":stale_snapshot,"first_response":first}))?;
     same(
-        &stale
-            .diagnostic_receipt()
-            .ok_or("missing stale retry disposition")?
-            .commit_disposition(),
+        &stale_disposition,
         &ReplayCommitDisposition::ReconciledAfterAmbiguousCommit,
         "stale retry disposition",
     )?;
@@ -1698,6 +2318,7 @@ fn reconcile_cash(
     drop(runtime);
     runtime = DurableMaterialRuntime::open(&case.config, campaign, case.digest)?;
     let reopened = snapshot(j, &runtime, &mut case.sql, campaign)?;
+    same(&reopened, &p2, "completed open")?;
     admission(
         j,
         &runtime,
@@ -1718,7 +2339,6 @@ fn reconcile_cash(
     )?;
     let after_retries = snapshot(j, &runtime, &mut case.sql, campaign)?;
     j.reached(&json!({"p2":p2,"reopened":reopened,"after_retries":after_retries,"response":response(&runtime,&aided)?}))?;
-    same(&reopened, &p2, "completed open")?;
     same(&after_retries, &p2, "completed exact retries")?;
     same(
         &serde_json::to_vec(&response(&runtime, &aided)?)?,
@@ -1729,6 +2349,7 @@ fn reconcile_cash(
         runtime,
         aided,
         first,
+        debits,
     })
 }
 fn ordinary_purchases(j: &mut Journal, case: &mut Case, completed: CompletedAid) -> Result<()> {
@@ -1736,17 +2357,19 @@ fn ordinary_purchases(j: &mut Journal, case: &mut Case, completed: CompletedAid)
         mut runtime,
         aided,
         first,
+        debits,
     } = completed;
     let campaign = case.campaign;
     let response_bytes = serde_json::to_vec(&first)?;
     j.begin("p3_purchase")?;
     let ordinary = runtime.next_action_batch()?;
     j.blob(ordinary.canonical_bytes())?;
-    let identity = runtime.advance_and_commit(&mut CollectingSink::default(), &ordinary)?;
+    let (identity, _) = advance(j, &mut runtime, &ordinary)?;
     let terminal = j.blob(identity.canonical_bytes())?;
     let rows = case.reader.receipts(j, &runtime, &mut case.sql, campaign)?;
     let p3 = snapshot(j, &runtime, &mut case.sql, campaign)?;
     j.facts(&json!({"terminal":p3,"identity":terminal,"earlier_response":first}))?;
+    no_repeated_debit(j, &runtime, &debits)?;
     let purchases_result = purchases(j, &runtime, &rows);
     let audit_result = audit_period(j, &mut case.audit, &runtime, campaign, rows);
     let retained = response(&runtime, &aided)?;
@@ -1779,7 +2402,7 @@ fn national_collection_and_local_cash_survive_sql_retries() {
         Fixture::load().expect("authenticated SQL fixture before any connection");
     let mut journal = Journal::new(fixture.evidence.clone(), reference);
     if let Err(error) = run(&mut journal, &fixture, &base, campaign) {
-        let export = journal.diverged(&error.to_string());
+        let export = journal.diverged(&failure_detail(error.as_ref()));
         drop(journal);
         panic!("SQL allocation witness failed: {error}; first-divergence export: {export:?}");
     }

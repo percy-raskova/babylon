@@ -1,4 +1,4 @@
-//! Lossless storage of the one current complete V19 receipt format.
+//! Lossless storage of the one current complete V20 receipt format.
 //! Canonical identities/hashes remain the authoritative evidence; this is a storage codec.
 mod amount;
 

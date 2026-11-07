@@ -178,7 +178,7 @@ impl MaterialBaseInputs<'_> {
         }
     }
     fn aid_inputs(&self) -> Result<Vec<AidResolveInput>, MaterialBaseError> {
-        use babylon_practice_contract::{OrganizerAidKind, OrganizerChoice};
+        use babylon_practice_contract::{OrganizerAidKind, OrganizerAllocation, OrganizerChoice};
         let Some(accepted) = self.commitment else {
             return Ok(Vec::new());
         };
@@ -226,14 +226,47 @@ impl MaterialBaseInputs<'_> {
         {
             return Err(MaterialBaseError::AidMandateMismatch);
         }
-        // The capture bounds the request; the material owner determines actual fulfillment.
+        let binding = config
+            .aid_bindings
+            .iter()
+            .find(|row| row.kind == gift.kind)
+            .ok_or(MaterialBaseError::AidMandateMismatch)?;
+        let OrganizerAllocation::Aid {
+            food_quantity,
+            cash_micros,
+        } = accepted.command.allocation
+        else {
+            return Err(MaterialBaseError::AidMandateMismatch);
+        };
+        if binding.maximum_food_quantity != mandate.maximum_quantity
+            || binding.maximum_cash_micros != mandate.maximum_cash.micro_units()
+            || binding.initial_food_quantity != mandate.initial_quantity
+            || binding.initial_cash_micros != mandate.initial_cash.micro_units()
+            || matches!(
+                binding.receiving_consent,
+                babylon_practice_contract::OrganizerGiftConsent::Accept
+            ) != matches!(
+                mandate.food_receiving,
+                babylon_material_circuit::AidReceiving::Accept
+            )
+            || matches!(
+                binding.cash_receiving_consent,
+                babylon_practice_contract::OrganizerGiftConsent::Accept
+            ) != matches!(
+                mandate.cash_receiving,
+                babylon_material_circuit::AidReceiving::Accept
+            )
+        {
+            return Err(MaterialBaseError::AidMandateMismatch);
+        }
         Ok(vec![AidResolveInput {
             mandate_id: mandate.id,
             source_hash: mandate.source_hash,
             admitted_period: accepted.command.expected_period,
             donor_actor: gift.donor_actor_id,
             recipient_actor: gift.recipient_actor_id,
-            quantity: mandate.maximum_quantity,
+            quantity: food_quantity,
+            cash: babylon_kernel::currency::Currency::from_micro_units(cash_micros),
         }])
     }
     pub(crate) fn prepare(

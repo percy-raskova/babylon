@@ -411,10 +411,10 @@ impl OrganizerClient {
         };
         self.view.as_ref().is_some_and(|view| {
             view.aid_options.iter().any(|option| {
-                option.kind == preview.kind
-                    && option.receiving_consent == OrganizerGiftConsent::Accept
+                option.kind == preview.kind && option.receiving_consent == preview.receiving_consent
             })
-        }) && preview.receiving_consent == OrganizerGiftConsent::Accept
+        }) && (preview.receiving_consent == OrganizerGiftConsent::Accept
+            || preview.cash_receiving_consent == OrganizerGiftConsent::Accept)
             && !self.pending_aid.iter().any(|row| row.kind == preview.kind)
     }
 
@@ -427,6 +427,15 @@ impl OrganizerClient {
         let allocation = if choice == OrganizerChoice::Collect {
             let allocation = self.draft.as_ref()?.collection_allocation;
             if !matches!(allocation, OrganizerAllocation::Collection { .. }) {
+                return None;
+            }
+            allocation
+        } else if matches!(
+            choice,
+            OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+        ) {
+            let allocation = self.draft.as_ref()?.aid_allocation;
+            if !matches!(allocation, OrganizerAllocation::Aid { .. }) {
                 return None;
             }
             allocation
@@ -659,7 +668,21 @@ impl OrganizerClient {
                         target_cash_micros: terms.initial_cash_micros,
                     }
                 });
-        match draft::load(campaign, snapshot.view.workplace_id, initial_collection) {
+        let initial_aid = snapshot
+            .aid
+            .first()
+            .map_or(OrganizerAllocation::None, |terms| {
+                OrganizerAllocation::Aid {
+                    food_quantity: terms.initial_food_quantity,
+                    cash_micros: terms.initial_cash_micros,
+                }
+            });
+        match draft::load(
+            campaign,
+            snapshot.view.workplace_id,
+            initial_collection,
+            initial_aid,
+        ) {
             Ok(value) => {
                 self.draft = Some(value);
                 self.draft_writable = true;
@@ -669,6 +692,7 @@ impl OrganizerClient {
                 self.draft = Some(OrganizerDraft::new(
                     snapshot.view.workplace_id,
                     initial_collection,
+                    initial_aid,
                 ));
                 self.draft_writable = false;
             }

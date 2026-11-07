@@ -260,13 +260,14 @@ fn validate_aid(aid: &GameAidPolicy) -> Result<(), Error> {
         || actors.into_iter().collect::<BTreeSet<_>>().len() != 3
         || contributors.into_iter().collect::<BTreeSet<_>>().len() != 3
         || aid.organization_opening_cash_micros <= 0
-        || aid.gift_cash_micros_per_unit <= 0
+        || aid.maximum_cash_micros <= 0
+        || aid.maximum_cash_micros > 1_450_000_000
+        || aid.initial_cash_micros < 0
+        || aid.initial_cash_micros > aid.maximum_cash_micros
+        || aid.initial_food_quantity > aid.maximum_quantity
+        || (aid.initial_food_quantity == 0 && aid.initial_cash_micros == 0)
         || aid.fulfillment_hours_per_unit == 0
         || !(1..=4).contains(&aid.maximum_quantity)
-        || aid
-            .gift_cash_micros_per_unit
-            .checked_mul(i128::from(aid.maximum_quantity))
-            .is_none()
     {
         return Err(Error::Shape);
     }

@@ -14,19 +14,20 @@ pub use crate::organizer_runtime::{
 };
 
 pub use babylon_practice_contract::{
-    OrganizerAgreement, OrganizerAidKind, OrganizerAidMaterialPostings, OrganizerAidOption,
-    OrganizerAidSupportStatus, OrganizerAllocation, OrganizerChoice, OrganizerCollectionOutcome,
-    OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment, OrganizerGiftConsent,
-    OrganizerInquiry, OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse,
-    OrganizerPauseReason, OrganizerPosition, OrganizerPreview, OrganizerReceipt, OrganizerRefusal,
-    OrganizerReport, OrganizerStandingWork, OrganizerView,
+    OrganizerAgreement, OrganizerAidCashStatus, OrganizerAidKind, OrganizerAidMaterialPostings,
+    OrganizerAidOption, OrganizerAidSupport, OrganizerAidSupportStatus, OrganizerAllocation,
+    OrganizerChoice, OrganizerCollectionOutcome, OrganizerCollectionResolution, OrganizerCommand,
+    OrganizerCommitment, OrganizerGiftConsent, OrganizerInquiry, OrganizerObservation,
+    OrganizerOutcome, OrganizerPartnerResponse, OrganizerPauseReason, OrganizerPosition,
+    OrganizerPreview, OrganizerReceipt, OrganizerRefusal, OrganizerReport, OrganizerStandingWork,
+    OrganizerView,
 };
 
 pub use crate::material_runtime::MaterialAdvanceStage as RuntimeAdvanceStage;
 use babylon_kernel::clock::CampaignDuration;
 use uuid::Uuid;
 
-pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 14;
+pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 15;
 pub const RUNTIME_SESSION_MAX_LINE_BYTES: usize = 131_072;
 
 /// A lifecycle incarnation, distinct even when the same campaign is reopened.
@@ -334,7 +335,7 @@ mod selection_tests {
 
 #[test]
 fn advance_progress_current_wire_is_closed_and_versioned() {
-    assert_eq!(RUNTIME_SESSION_PROTOCOL_VERSION, 14);
+    assert_eq!(RUNTIME_SESSION_PROTOCOL_VERSION, 15);
     assert!(
         serde_json::from_value::<RuntimeSessionTail>(serde_json::json!({
             "resolve_tick": 0, "tick_content_hash": null

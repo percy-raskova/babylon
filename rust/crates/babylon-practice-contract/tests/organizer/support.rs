@@ -105,6 +105,14 @@ pub(crate) fn command(
                     .expect("captured collection terms")
                     .maximum_cash_micros,
             }
+        } else if matches!(
+            choice,
+            OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+        ) {
+            OrganizerAllocation::Aid {
+                food_quantity: 4,
+                cash_micros: 0,
+            }
         } else {
             OrganizerAllocation::None
         },
@@ -2212,13 +2220,13 @@ pub(crate) fn selected_allocation_epoch_refuses_previous_captures_and_roundtrips
     let captured = config();
     let opening = babylon_practice_contract::initial_organizer_state(&captured)
         .expect("the authored config admits an opening organizer state");
-    assert_eq!(ORGANIZER_SCHEMA_VERSION, 9);
+    assert_eq!(ORGANIZER_SCHEMA_VERSION, 10);
     let config_bytes = babylon_practice_contract::encode_organizer_config(&captured)
         .expect("the fixture value encodes to its canonical bytes");
     let state_bytes = babylon_practice_contract::encode_organizer_state(&opening)
         .expect("the fixture value encodes to its canonical bytes");
-    assert!(config_bytes.starts_with(b"babylon.organizer-config.v8\0"));
-    assert!(state_bytes.starts_with(b"babylon.organizer-state.v7\0"));
+    assert!(config_bytes.starts_with(b"babylon.organizer-config.v9\0"));
+    assert!(state_bytes.starts_with(b"babylon.organizer-state.v8\0"));
     assert_eq!(
         babylon_practice_contract::decode_organizer_config(&config_bytes)
             .expect("the canonical bytes decode into the declared type"),
@@ -2230,14 +2238,14 @@ pub(crate) fn selected_allocation_epoch_refuses_previous_captures_and_roundtrips
         opening
     );
     let mut previous_config = captured.clone();
-    previous_config.schema_version = 8;
+    previous_config.schema_version = 9;
     let mut previous_state = opening.clone();
-    previous_state.schema_version = 8;
-    let mut previous_config_bytes = b"babylon.organizer-config.v7\0".to_vec();
+    previous_state.schema_version = 9;
+    let mut previous_config_bytes = b"babylon.organizer-config.v8\0".to_vec();
     previous_config_bytes.extend(
         serde_json::to_vec(&previous_config).expect("the value serializes to canonical JSON bytes"),
     );
-    let mut previous_state_bytes = b"babylon.organizer-state.v6\0".to_vec();
+    let mut previous_state_bytes = b"babylon.organizer-state.v7\0".to_vec();
     previous_state_bytes.extend(
         serde_json::to_vec(&previous_state).expect("the value serializes to canonical JSON bytes"),
     );

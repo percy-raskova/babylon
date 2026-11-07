@@ -6,7 +6,9 @@ use crate::national_economy::{NationalAidCapture, NationalGamePolicy, NATIONAL_S
 
 use babylon_graph::stable_element::StableElementKey;
 use babylon_kernel::content_digest;
+use babylon_material_circuit::AidReceiving;
 use babylon_practice_contract::OrganizerCollectionMandate;
+use babylon_practice_contract::OrganizerGiftConsent;
 use babylon_practice_contract::{
     OrganizerAidBinding, OrganizerAidKind, OrganizerConfig, OrganizerContribution,
     OrganizerHouseholdBinding, OrganizerParticipant, OrganizerPartner, OrganizerTimeBindingMode,
@@ -243,6 +245,14 @@ fn aid_bindings(
                 } else {
                     d.remote_receiving_consent
                 },
+                cash_receiving_consent: match mandate.cash_receiving {
+                    AidReceiving::Accept => OrganizerGiftConsent::Accept,
+                    AidReceiving::Refuse => OrganizerGiftConsent::Refuse,
+                },
+                maximum_food_quantity: mandate.maximum_quantity,
+                maximum_cash_micros: mandate.maximum_cash.micro_units(),
+                initial_food_quantity: mandate.initial_quantity,
+                initial_cash_micros: mandate.initial_cash.micro_units(),
                 partner: ordinary_partner(
                     child.actor,
                     if local {

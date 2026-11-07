@@ -49,6 +49,32 @@ use bevy::prelude::*;
 
 #[cfg(test)]
 pub(crate) mod tests {
+    pub(crate) fn aid_dispatch_fixture() -> babylon_persistence::runtime_session::OrganizerAidSupport
+    {
+        use babylon_persistence::runtime_session::{
+            OrganizerAidCashStatus, OrganizerAidMaterialPostings, OrganizerAidSupport,
+            OrganizerAidSupportStatus,
+        };
+        OrganizerAidSupport {
+            original_commitment_id: [11; 32],
+            material_commitment_id: [12; 32],
+            mandate_id: [13; 32],
+            source_hash: [16; 32],
+            dispatch_period: 3,
+            period: 3,
+            recipient_principal_id: [17; 32],
+            good_id: [14; 32],
+            unit_id: [15; 32],
+            status: OrganizerAidSupportStatus::AwaitingDelivery,
+            cash_status: OrganizerAidCashStatus::Granted,
+            material_postings: OrganizerAidMaterialPostings {
+                dispatched_quantity: 4,
+                fulfillment_hours: 8,
+                payer_cash_granted_micros: 12,
+                lost_quantity: 0,
+            },
+        }
+    }
     use super::*;
     use babylon_persistence::identity::CampaignId;
     use babylon_persistence::runtime_session::OrganizerAidKind;
@@ -116,6 +142,7 @@ pub(crate) mod tests {
                     babylon_practice_contract::OrganizerAllocation::Collection {
                         target_cash_micros: 400_000,
                     },
+                    babylon_persistence::runtime_session::OrganizerAllocation::None,
                 )),
                 view: Some(view),
                 ..default()
@@ -227,6 +254,97 @@ pub(crate) mod tests {
             .expect("matching authenticated preview");
         assert_eq!(client.reviewed_command, Some(command));
         assert!(client.commitment.is_none());
+    }
+
+    #[test]
+    fn admitted_aid_terms_seed_a_new_draft_and_its_exact_reviewed_command() {
+        use babylon_practice_contract::OrganizerAllocation;
+        let (_, _, _, mut snapshot) = status_fixture();
+        let campaign = Uuid::new_v4();
+        let mut session = ObserverSession::new(CampaignId::from_uuid(campaign));
+        session.connected_fixture();
+        session.ready(3, None);
+        assert!(session.installed(&session.context()));
+        session.organizer_enabled = true;
+        snapshot.body_scope.campaign_id = *campaign.as_bytes();
+        snapshot.city_pd_encounters.clear();
+        let mut terms = aid_fixture();
+        terms.initial_food_quantity = 1;
+        terms.initial_cash_micros = 0;
+        snapshot.aid = vec![terms];
+        let mut client = OrganizerClient {
+            campaign: Some(campaign),
+            ..default()
+        };
+        client.queue(&mut session, RequestKind::Status, None);
+        let request = client.pending.as_ref().expect("status request").id;
+        assert_eq!(
+            client.status(request, snapshot, &mut session),
+            Ok(StatusDisposition::Installed)
+        );
+        assert!(
+            client.draft_writable,
+            "a missing draft initializes normally"
+        );
+        let allocation = OrganizerAllocation::Aid {
+            food_quantity: 1,
+            cash_micros: 0,
+        };
+        let draft = client
+            .draft
+            .as_mut()
+            .expect("new draft from admitted terms");
+        assert_eq!(draft.aid_allocation, allocation);
+        draft.choice = OrganizerChoice::LocalAid;
+        let command = client
+            .make_command(&session, client.choice())
+            .expect("selected command");
+        assert_eq!(command.allocation, allocation);
+        client.queue(&mut session, RequestKind::Preview, Some(command.clone()));
+        let request = client.pending.as_ref().expect("preview request").id;
+        client
+            .previewed(
+                request,
+                OrganizerPreview {
+                    choice: OrganizerChoice::LocalAid,
+                    allocation,
+                    current_period: 3,
+                    resolves_period: 4,
+                    available_hours: 16,
+                    required_hours: 2,
+                    replaces_standing_work: true,
+                    refusal: None,
+                    observations: vec![],
+                },
+                &mut session,
+            )
+            .expect("matching authenticated preview");
+        assert_eq!(client.reviewed_command, Some(command));
+        assert!(client.commitment.is_none());
+        let selected = OrganizerAllocation::Aid {
+            food_quantity: 0,
+            cash_micros: 123_000_000,
+        };
+        client.draft.as_mut().expect("draft").aid_allocation = selected;
+        let selected_command = client
+            .make_command(&session, OrganizerChoice::LocalAid)
+            .expect("selected cash-only command");
+        assert_eq!(selected_command.allocation, selected);
+        client.queue(&mut session, RequestKind::Preview, Some(selected_command));
+        let request = client.pending.as_ref().expect("preview request").id;
+        let stale = OrganizerPreview {
+            choice: OrganizerChoice::LocalAid,
+            allocation,
+            current_period: 3,
+            resolves_period: 4,
+            available_hours: 16,
+            required_hours: 2,
+            replaces_standing_work: true,
+            refusal: None,
+            observations: vec![],
+        };
+        assert!(client.previewed(request, stale, &mut session).is_err());
+        assert!(client.reviewed_command.is_none());
     }
 
     #[test]
@@ -576,6 +694,11 @@ pub(crate) mod tests {
 
     fn aid_fixture() -> OrganizerMaterialAidPreview {
         OrganizerMaterialAidPreview {
+            initial_food_quantity: 1,
+            initial_cash_micros: 0,
+            cash_receiving_consent:
+                babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
+
             kind: OrganizerAidKind::Local,
             mandate_id: [4; 32],
             period: 3,
@@ -587,7 +710,7 @@ pub(crate) mod tests {
             own_need: 4,
             grams_per_unit: 1000,
             payer_cash: 120,
-            gift_cash_per_unit: 10,
+            maximum_cash_micros: 10,
             ordinary_offer: None,
             maximum_quantity: 8,
             labor_unit_id: [9; 32],
@@ -622,9 +745,37 @@ pub(crate) mod tests {
         assert!(!client.choice_available(OrganizerChoice::LocalAid));
         client.aid[0].period = 3;
         client.aid[0].receiving_consent = OrganizerGiftConsent::Refuse;
-        assert!(!client.choice_available(OrganizerChoice::LocalAid));
+        assert!(
+            !client.choice_available(OrganizerChoice::LocalAid),
+            "mismatched authenticated receiving terms refuse"
+        );
+        client.view.as_mut().expect("view").aid_options[0].receiving_consent =
+            OrganizerGiftConsent::Refuse;
+        assert!(
+            client.choice_available(OrganizerChoice::LocalAid),
+            "explicit cash acceptance survives food refusal"
+        );
+        client.aid[0].cash_receiving_consent = OrganizerGiftConsent::Refuse;
+        assert!(
+            !client.choice_available(OrganizerChoice::LocalAid),
+            "neither leg has receiving permission"
+        );
         client.aid[0].receiving_consent = OrganizerGiftConsent::Accept;
+        client.view.as_mut().expect("view").aid_options[0].receiving_consent =
+            OrganizerGiftConsent::Accept;
+        assert!(
+            client.choice_available(OrganizerChoice::LocalAid),
+            "food acceptance survives cash refusal"
+        );
         client.pending_aid.push(OrganizerAidPending {
+            allocation: babylon_persistence::runtime_session::OrganizerAllocation::Aid {
+                food_quantity: 4,
+                cash_micros: 18,
+            },
+            dispatch_support: crate::organizer::tests::aid_dispatch_fixture(),
+            response: None,
+            lost_quantity: 0,
+
             kind: client.aid[0].kind,
             original_commitment_id: [10; 32],
             material_commitment_id: [11; 32],

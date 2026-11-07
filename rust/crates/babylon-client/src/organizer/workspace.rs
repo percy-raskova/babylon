@@ -1042,6 +1042,11 @@ mod tests {
             receiving_consent: OrganizerGiftConsent::Accept,
         });
         client.aid.push(OrganizerMaterialAidPreview {
+            initial_food_quantity: 1,
+            initial_cash_micros: 0,
+            cash_receiving_consent:
+                babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
+
             kind: OrganizerAidKind::Local,
             mandate_id: [4; 32],
             period: 3,
@@ -1053,7 +1058,7 @@ mod tests {
             own_need: 4,
             grams_per_unit: 1000,
             payer_cash: 120,
-            gift_cash_per_unit: 10,
+            maximum_cash_micros: 10,
             ordinary_offer: None,
             maximum_quantity: 8,
             labor_unit_id: [9; 32],
@@ -1108,6 +1113,14 @@ mod tests {
         );
         assert_eq!(aid.availability, ChoiceAvailability::Reviewable);
         client.pending_aid.push(OrganizerAidPending {
+            allocation: babylon_persistence::runtime_session::OrganizerAllocation::Aid {
+                food_quantity: 4,
+                cash_micros: 18,
+            },
+            dispatch_support: crate::organizer::tests::aid_dispatch_fixture(),
+            response: None,
+            lost_quantity: 0,
+
             kind: OrganizerAidKind::Local,
             original_commitment_id: [10; 32],
             material_commitment_id: [11; 32],

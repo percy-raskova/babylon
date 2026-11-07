@@ -4,17 +4,24 @@ use super::{aid, freight, households};
 use crate::organizer_aid_fixture as fixture;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_material_circuit::AidOutcome;
+use babylon_practice_contract::OrganizerAllocation;
 use babylon_practice_contract::{OrganizerAidKind, OrganizerChoice};
 
 #[test]
 fn aid_household_projection_accepts_real_local_grant() {
-    assert_aid_projection(false);
+    assert_aid_projection(false, 6);
+    assert_aid_projection(false, 0);
 }
 #[test]
 fn aid_household_projection_accepts_real_routed_dispatch_and_arrival() {
-    assert_aid_projection(true);
+    assert_aid_projection(true, 6);
+    assert_aid_projection(true, 0);
 }
-fn assert_aid_projection(routed: bool) {
+#[allow(
+    clippy::too_many_lines,
+    reason = "one two-period projection control retains food-only and cash-positive custody corruption assertions"
+)]
+fn assert_aid_projection(routed: bool, cash_micros: i128) {
     let mut config = fixture::config();
     let choice = if routed {
         config.aid_bindings[0].kind = OrganizerAidKind::Remote;
@@ -29,7 +36,14 @@ fn assert_aid_projection(routed: bool) {
         false,
         routed,
     );
-    let accepted = fixture::commitment(&session, choice);
+    let accepted = fixture::commitment_with_allocation(
+        &session,
+        choice,
+        OrganizerAllocation::Aid {
+            food_quantity: 2,
+            cash_micros,
+        },
+    );
     let mut sink = CollectingSink::default();
     for period in 1..=2 {
         let prior = session.material().state().clone();
@@ -100,7 +114,18 @@ fn assert_aid_projection(routed: bool) {
                 .quantity
                 .checked_add(1)
                 .expect("the fixture arithmetic stays in range");
-            for corrupted in [missing, duplicate, changed] {
+            // Complete household projection reconciles food even when no cash moved.
+            assert_eq!(
+                households::completed_balances(session.catalog(), &prior, current, &missing).err(),
+                Some(ProductionProjectionError::State)
+            );
+            if cash_micros > 0 || routed {
+                assert_eq!(
+                    aid::join(session.catalog(), &prior, current, &missing).err(),
+                    Some(ProductionProjectionError::State)
+                );
+            }
+            for corrupted in [duplicate, changed] {
                 assert_eq!(
                     aid::join(session.catalog(), &prior, current, &corrupted).err(),
                     Some(ProductionProjectionError::State)

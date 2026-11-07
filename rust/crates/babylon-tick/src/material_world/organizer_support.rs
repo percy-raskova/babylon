@@ -1,17 +1,15 @@
-//! Narrow support facts from the authenticated detached material close.
+//! Join original gift authority to independent material legs and their actual postings.
 use super::MaterialWorldError;
-use babylon_material_circuit::AidFreightLot;
 use babylon_material_circuit::{
-    AccountId, AidMandate, AidOutcome, AidReceipt, CircuitAccounting, MaterialCatalog,
-    MaterialCircuitState, MaterialCircuitTransition, MoneyLocation, MoneyTransferPurpose,
-    MoneyTransferReceipt, OrderId,
+    AccountId, AidFreightLot, AidMandate, AidOutcome, AidReceipt, CashTransferPurpose,
+    CircuitAccounting, MaterialCatalog, MaterialCircuitState, MaterialCircuitTransition,
+    MoneyLocation, MoneyTransferPurpose, OrderId,
 };
 use babylon_practice_contract::{
-    OrganizerAidCommitment, OrganizerAidMaterialPostings, OrganizerAidSupport,
-    OrganizerAidSupportStatus, OrganizerChoice, OrganizerCommitment, OrganizerConfig,
-    OrganizerState,
+    OrganizerAidCashStatus, OrganizerAidCommitment, OrganizerAidMaterialPostings,
+    OrganizerAidSupport, OrganizerAidSupportStatus, OrganizerAllocation, OrganizerChoice,
+    OrganizerCommitment, OrganizerConfig, OrganizerState,
 };
-use std::collections::BTreeSet;
 
 pub(super) fn facts(
     catalog: &MaterialCatalog,
@@ -21,16 +19,11 @@ pub(super) fn facts(
     opening: &MaterialCircuitState,
     transition: &MaterialCircuitTransition,
 ) -> Result<Vec<OrganizerAidSupport>, MaterialWorldError> {
-    let mut result = Vec::with_capacity(2);
+    let mut result = Vec::new();
     for pending in &organizer.pending_aid {
         babylon_practice_contract::validate_organizer_aid_commitment(config, &pending.gift)?;
-        let row = support(
-            catalog,
-            &pending.gift,
-            pending.dispatch_period,
-            opening,
-            transition,
-        )?;
+        let mut row = support(catalog, &pending.gift, opening, transition)?;
+        row.cash_status = pending.dispatch_support.cash_status;
         if row.material_commitment_id != pending.material_commitment_id
             || row.good_id != pending.good_id
             || row.unit_id != pending.unit_id
@@ -47,35 +40,116 @@ pub(super) fn facts(
     }) {
         let gift =
             babylon_practice_contract::organizer_aid_commitment(config, organizer, accepted)?;
-        result.push(support(
-            catalog,
-            &gift,
-            accepted.resolves_period,
-            opening,
-            transition,
-        )?);
+        result.push(support(catalog, &gift, opening, transition)?);
     }
     result.sort_by_key(|row| row.original_commitment_id);
     Ok(result)
 }
 
-#[allow(
-    clippy::too_many_lines,
-    reason = "one aid reducer keeps every mandate receipt and transfer in a single ordered pass"
-)]
 fn support(
     catalog: &MaterialCatalog,
     gift: &OrganizerAidCommitment,
-    dispatch_period: u64,
     opening: &MaterialCircuitState,
     transition: &MaterialCircuitTransition,
 ) -> Result<OrganizerAidSupport, MaterialWorldError> {
-    let CircuitAccounting::Monetary(prior) = &opening.accounting else {
+    let (CircuitAccounting::Monetary(prior), CircuitAccounting::Monetary(closing)) =
+        (&opening.accounting, &transition.state.accounting)
+    else {
         return Err(MaterialWorldError::Wire);
     };
-    let CircuitAccounting::Monetary(closing) = &transition.state.accounting else {
+    let mandate = captured_mandate(catalog, gift, opening.period)?;
+    let dispatch_period = gift.commitment.resolves_period;
+    let OrganizerAllocation::Aid {
+        food_quantity,
+        cash_micros,
+    } = gift.commitment.command.allocation
+    else {
         return Err(MaterialWorldError::Wire);
     };
+    let id = babylon_material_circuit::aid_commitment_id(mandate.id, dispatch_period);
+    let prior_quantity = freight_quantity(&prior.aid.freight, id)?;
+    let surviving = freight_quantity(&closing.aid.freight, id)?;
+    let rows: Vec<&AidReceipt> = transition
+        .aid
+        .iter()
+        .filter(|row| row.commitment_id == id)
+        .collect();
+    for row in &rows {
+        row.validate_against(mandate)?;
+        if row.period != opening.period || row.dispatch_period != dispatch_period {
+            return Err(MaterialWorldError::Wire);
+        }
+    }
+    let current = dispatch_period == opening.period;
+    check_requests(&rows, current, food_quantity, cash_micros)?;
+    if !current && prior_quantity == 0 {
+        return Err(MaterialWorldError::Wire);
+    }
+    let quantity = |outcome| {
+        rows.iter()
+            .filter(|r| r.outcome == outcome)
+            .try_fold(0_u64, |sum, row| sum.checked_add(row.quantity))
+            .ok_or(MaterialWorldError::Arithmetic)
+    };
+    let granted = quantity(AidOutcome::Granted)?;
+    let lost = quantity(AidOutcome::Lost)?;
+    let dispatched = quantity(AidOutcome::Dispatched)?
+        .checked_add(if current { granted } else { 0 })
+        .ok_or(MaterialWorldError::Arithmetic)?;
+    if current {
+        let ended = quantity(AidOutcome::Unshipped)?
+            .checked_add(quantity(AidOutcome::FoodReceivingRefused)?)
+            .ok_or(MaterialWorldError::Arithmetic)?;
+        if dispatched.checked_add(ended) != Some(food_quantity) {
+            return Err(MaterialWorldError::Wire);
+        }
+    } else if granted
+        .checked_add(lost)
+        .and_then(|q| q.checked_add(surviving))
+        != Some(prior_quantity)
+    {
+        return Err(MaterialWorldError::Wire);
+    }
+    let status = food_status(
+        mandate,
+        transition,
+        opening.period,
+        food_quantity,
+        surviving,
+        granted,
+        quantity(AidOutcome::FoodReceivingRefused)?,
+    )?;
+    let (cash_status, cash) = cash_support(mandate, &rows, transition, current, cash_micros)?;
+    let fulfillment_hours = rows
+        .iter()
+        .try_fold(0_u64, |sum, row| sum.checked_add(row.contribution_hours))
+        .ok_or(MaterialWorldError::Arithmetic)?;
+    Ok(OrganizerAidSupport {
+        original_commitment_id: gift.commitment.commitment_id,
+        material_commitment_id: id.as_bytes(),
+        mandate_id: mandate.id,
+        source_hash: mandate.source_hash,
+        dispatch_period,
+        period: opening.period,
+        recipient_principal_id: mandate.recipient.as_bytes(),
+        good_id: mandate.good_id.as_bytes(),
+        unit_id: mandate.unit_id.as_bytes(),
+        status,
+        cash_status,
+        material_postings: OrganizerAidMaterialPostings {
+            dispatched_quantity: dispatched,
+            fulfillment_hours,
+            payer_cash_granted_micros: cash,
+            lost_quantity: lost,
+        },
+    })
+}
+
+fn captured_mandate<'a>(
+    catalog: &'a MaterialCatalog,
+    gift: &OrganizerAidCommitment,
+    period: u64,
+) -> Result<&'a AidMandate, MaterialWorldError> {
     let mandate = catalog
         .aid_mandates
         .iter()
@@ -87,76 +161,69 @@ fn support(
         || mandate.donor_contributor_id != gift.donor_contributor_id
         || mandate.donor.as_bytes() != gift.donor_principal_id
         || mandate.recipient.as_bytes() != gift.recipient_principal_id
-        || dispatch_period > opening.period
+        || gift.commitment.resolves_period > period
     {
         return Err(MaterialWorldError::Wire);
     }
-    let material_id = babylon_material_circuit::aid_commitment_id(mandate.id, dispatch_period);
-    let matches_lot = |row: &&AidFreightLot| row.commitment_id == material_id;
-    let prior_lots = prior
-        .aid
-        .freight
+    Ok(mandate)
+}
+
+fn freight_quantity(lots: &[AidFreightLot], id: OrderId) -> Result<u64, MaterialWorldError> {
+    lots.iter()
+        .filter(|row| row.commitment_id == id)
+        .try_fold(0_u64, |sum, row| sum.checked_add(row.quantity))
+        .ok_or(MaterialWorldError::Arithmetic)
+}
+
+fn check_requests(
+    rows: &[&AidReceipt],
+    current: bool,
+    food_quantity: u64,
+    cash_micros: i128,
+) -> Result<(), MaterialWorldError> {
+    let requested: Vec<_> = rows
         .iter()
-        .filter(matches_lot)
-        .collect::<Vec<_>>();
-    let surviving = closing
-        .aid
-        .freight
+        .filter(|r| r.outcome == AidOutcome::Requested)
+        .collect();
+    let cash_requested: Vec<_> = rows
         .iter()
-        .filter(matches_lot)
-        .collect::<Vec<_>>();
-    for row in prior_lots.iter().chain(&surviving) {
-        if row.mandate_id != mandate.id
-            || row.dispatch_period != dispatch_period
-            || row.donor != mandate.donor
-            || row.recipient != mandate.recipient
-            || row.good_id != mandate.good_id
-            || row.unit_id != mandate.unit_id
-            || row.quantity == 0
-        {
-            return Err(MaterialWorldError::Wire);
-        }
-    }
-    let mut granted = 0_u64;
-    let mut lost = 0_u64;
-    let mut requested = false;
-    for row in transition
-        .aid
-        .iter()
-        .filter(|row| row.commitment_id == material_id)
+        .filter(|r| r.outcome == AidOutcome::CashRequested)
+        .collect();
+    if requested.len() != usize::from(current && food_quantity > 0)
+        || requested
+            .first()
+            .is_some_and(|r| r.quantity != food_quantity)
+        || cash_requested.len() != usize::from(current && cash_micros > 0)
+        || cash_requested
+            .first()
+            .is_some_and(|r| r.cash_amount.micro_units() != cash_micros)
     {
-        row.validate_against(mandate)?;
-        if row.period != opening.period || row.dispatch_period != dispatch_period {
-            return Err(MaterialWorldError::Wire);
-        }
-        match row.outcome {
-            AidOutcome::Granted => {
-                granted = granted
-                    .checked_add(row.quantity)
-                    .ok_or(MaterialWorldError::Arithmetic)?;
-            }
-            AidOutcome::Lost => {
-                lost = lost
-                    .checked_add(row.quantity)
-                    .ok_or(MaterialWorldError::Arithmetic)?;
-            }
-            AidOutcome::Requested => requested = true,
-            AidOutcome::Dispatched | AidOutcome::Unshipped => {}
-        }
-    }
-    let current = dispatch_period == opening.period;
-    if current != requested || (!current && prior_lots.is_empty()) {
         return Err(MaterialWorldError::Wire);
     }
-    let status = if granted > 0 {
-        if !surviving.is_empty() {
+    Ok(())
+}
+fn food_status(
+    mandate: &AidMandate,
+    transition: &MaterialCircuitTransition,
+    period: u64,
+    food_quantity: u64,
+    surviving: u64,
+    granted: u64,
+    refused: u64,
+) -> Result<OrganizerAidSupportStatus, MaterialWorldError> {
+    let status = if food_quantity == 0 {
+        OrganizerAidSupportStatus::NotRequested
+    } else if surviving > 0 {
+        if granted != 0 {
             return Err(MaterialWorldError::Wire);
         }
+        OrganizerAidSupportStatus::AwaitingDelivery
+    } else if granted > 0 {
         let consumed = transition
             .household_consumption
             .iter()
             .filter(|row| {
-                row.period == opening.period
+                row.period == period
                     && row.principal_id == mandate.recipient
                     && row.good_id == mandate.good_id
                     && row.unit_id == mandate.unit_id
@@ -167,299 +234,63 @@ fn support(
             granted_quantity: granted,
             consumed_quantity: consumed,
         }
-    } else if !surviving.is_empty() {
-        OrganizerAidSupportStatus::AwaitingDelivery
-    } else if current || lost > 0 {
-        OrganizerAidSupportStatus::TerminalFailure
+    } else if refused > 0 {
+        OrganizerAidSupportStatus::ReceivingRefused
     } else {
-        // Absence of a grant is not evidence that a prior obligation disappeared.
-        return Err(MaterialWorldError::Wire);
+        OrganizerAidSupportStatus::TerminalFailure
     };
-    Ok(OrganizerAidSupport {
-        original_commitment_id: gift.commitment.commitment_id,
-        material_commitment_id: material_id.as_bytes(),
-        mandate_id: mandate.id,
-        source_hash: mandate.source_hash,
-        dispatch_period,
-        period: opening.period,
-        recipient_principal_id: mandate.recipient.as_bytes(),
-        good_id: mandate.good_id.as_bytes(),
-        unit_id: mandate.unit_id.as_bytes(),
-        status,
-        material_postings: actual_postings(
-            mandate,
-            material_id,
-            dispatch_period,
-            opening.period,
-            &transition.aid,
-            &transition.money_transfers,
-        )?,
-    })
+    Ok(status)
 }
-
-// The detached material close remains the accounting authority. Select only the
-// admitted command's receipts and transfers; do not derive costs from balances.
-#[allow(
-    clippy::too_many_lines,
-    reason = "one posting selection keeps the admitted command's receipts and transfers in one ordered pass"
-)]
-fn actual_postings(
+fn cash_support(
     mandate: &AidMandate,
-    id: OrderId,
-    dispatch_period: u64,
-    period: u64,
-    aid: &[AidReceipt],
-    money_transfers: &[MoneyTransferReceipt],
-) -> Result<OrganizerAidMaterialPostings, MaterialWorldError> {
-    let mut postings = OrganizerAidMaterialPostings {
-        dispatched_quantity: 0,
-        fulfillment_hours: 0,
-        payer_cash_reserved_micros: 0,
-        payer_cash_granted_micros: 0,
-        payer_cash_refunded_micros: 0,
+    rows: &[&AidReceipt],
+    transition: &MaterialCircuitTransition,
+    current: bool,
+    cash_micros: i128,
+) -> Result<(OrganizerAidCashStatus, i128), MaterialWorldError> {
+    let cash_rows: Vec<_> = rows
+        .iter()
+        .filter(|r| {
+            matches!(
+                r.outcome,
+                AidOutcome::CashGranted
+                    | AidOutcome::CashUnfunded
+                    | AidOutcome::CashReceivingRefused
+            )
+        })
+        .collect();
+    if cash_rows.len() != usize::from(current && cash_micros > 0) {
+        return Err(MaterialWorldError::Wire);
+    }
+    let (cash_status, cash) = match cash_rows.first() {
+        Some(row) => (
+            match row.outcome {
+                AidOutcome::CashGranted => OrganizerAidCashStatus::Granted,
+                AidOutcome::CashUnfunded => OrganizerAidCashStatus::Unfunded,
+                AidOutcome::CashReceivingRefused => OrganizerAidCashStatus::ReceivingRefused,
+                _ => return Err(MaterialWorldError::Wire),
+            },
+            row.cash_amount.micro_units(),
+        ),
+        None => (OrganizerAidCashStatus::NotRequested, 0),
     };
-    let current = dispatch_period == period;
-    let mut expected_grant = 0_i128;
-    let mut expected_refund = 0_i128;
-    let mut expected_reservation = 0_i128;
-    let mut requested = None;
-    let mut outcomes = BTreeSet::new();
-    for row in aid.iter().filter(|row| row.commitment_id == id) {
-        row.validate_against(mandate)?;
-        if row.period != period
-            || row.dispatch_period != dispatch_period
-            || !outcomes.insert(row.outcome as u8)
-        {
-            return Err(MaterialWorldError::Wire);
-        }
-        let cash = row.cash_amount.micro_units();
-        match row.outcome {
-            AidOutcome::Requested => requested = Some(row.quantity),
-            AidOutcome::Granted => {
-                expected_grant = expected_grant
-                    .checked_add(cash)
-                    .ok_or(MaterialWorldError::Arithmetic)?;
-            }
-            AidOutcome::Lost | AidOutcome::Unshipped => {
-                expected_refund = expected_refund
-                    .checked_add(cash)
-                    .ok_or(MaterialWorldError::Arithmetic)?;
-            }
-            AidOutcome::Dispatched => {}
-        }
-        if current && row.outcome != AidOutcome::Requested {
-            expected_reservation = expected_reservation
-                .checked_add(cash)
-                .ok_or(MaterialWorldError::Arithmetic)?;
-        }
-        if row.outcome == AidOutcome::Dispatched || (current && row.outcome == AidOutcome::Granted)
-        {
-            postings.dispatched_quantity = postings
-                .dispatched_quantity
-                .checked_add(row.quantity)
-                .ok_or(MaterialWorldError::Arithmetic)?;
-            postings.fulfillment_hours = postings
-                .fulfillment_hours
-                .checked_add(row.contribution_hours)
-                .ok_or(MaterialWorldError::Arithmetic)?;
-        }
-    }
-    let mut movements = BTreeSet::new();
-    for row in money_transfers {
-        let (tag, debit, credit, sum) = match row.purpose {
-            MoneyTransferPurpose::AidReservation(command) if command == id => {
-                if !current {
-                    return Err(MaterialWorldError::Wire);
-                }
-                (
-                    0,
-                    MoneyLocation::Cash(mandate.payer),
-                    MoneyLocation::AidReserve(id),
-                    &mut postings.payer_cash_reserved_micros,
-                )
-            }
-            MoneyTransferPurpose::AidGrant(command) if command == id => (
-                1,
-                MoneyLocation::AidReserve(id),
-                MoneyLocation::Cash(AccountId::Household(mandate.recipient)),
-                &mut postings.payer_cash_granted_micros,
-            ),
-            MoneyTransferPurpose::AidRefund(command) if command == id => (
-                2,
-                MoneyLocation::AidReserve(id),
-                MoneyLocation::Cash(mandate.payer),
-                &mut postings.payer_cash_refunded_micros,
-            ),
-            _ => continue,
-        };
-        let amount = row.credit.delta.micro_units();
-        if !movements.insert(tag)
-            || amount <= 0
-            || row.debit.location != debit
-            || row.credit.location != credit
-            || row.debit.delta.micro_units()
-                != amount.checked_neg().ok_or(MaterialWorldError::Arithmetic)?
-        {
-            return Err(MaterialWorldError::Wire);
-        }
-        *sum = sum
-            .checked_add(amount)
-            .ok_or(MaterialWorldError::Arithmetic)?;
-    }
-    if postings.payer_cash_granted_micros != expected_grant
-        || postings.payer_cash_refunded_micros != expected_refund
-        || postings.payer_cash_reserved_micros != expected_reservation
+    let transfers: Vec<_> = transition
+        .money_transfers
+        .iter()
+        .filter(|row| {
+            row.purpose == MoneyTransferPurpose::Cash(CashTransferPurpose::MutualAid)
+                && row.debit.location == MoneyLocation::Cash(mandate.payer)
+                && row.credit.location
+                    == MoneyLocation::Cash(AccountId::Household(mandate.recipient))
+        })
+        .collect();
+    if current
+        && (transfers.len() != usize::from(cash > 0)
+            || transfers.first().is_some_and(|row| {
+                row.credit.delta.micro_units() != cash || row.debit.delta.micro_units() != -cash
+            }))
     {
         return Err(MaterialWorldError::Wire);
     }
-    if current {
-        let price = mandate.cash_per_unit.micro_units();
-        let reserved = postings.payer_cash_reserved_micros;
-        if price <= 0
-            || reserved % price != 0
-            || u64::try_from(reserved / price).map_err(|_| MaterialWorldError::Arithmetic)?
-                > requested.ok_or(MaterialWorldError::Wire)?
-        {
-            return Err(MaterialWorldError::Wire);
-        }
-    } else if postings.dispatched_quantity != 0
-        || postings.fulfillment_hours != 0
-        || postings.payer_cash_reserved_micros != 0
-    {
-        return Err(MaterialWorldError::Wire);
-    }
-    Ok(postings)
-}
-
-#[cfg(test)]
-mod posting_tests {
-    use super::*;
-    use babylon_kernel::currency::Currency;
-    use babylon_material_circuit::{
-        AidTransport, FinalDemandPrincipalId, GoodId, MoneyPosting, OrganizationAccountId, UnitId,
-    };
-
-    fn local() -> (AidMandate, Vec<AidReceipt>, Vec<MoneyTransferReceipt>) {
-        let mandate = AidMandate {
-            id: [1; 32],
-            source_hash: [2; 32],
-            donor_actor: 101,
-            donor_contributor_id: 201,
-            recipient_actor: 120,
-            payer: AccountId::Organization(OrganizationAccountId::from_bytes([3; 32])),
-            donor: FinalDemandPrincipalId::from_bytes([4; 32]),
-            recipient: FinalDemandPrincipalId::from_bytes([5; 32]),
-            good_id: GoodId::from_bytes([6; 32]),
-            unit_id: UnitId::from_bytes([7; 32]),
-            labor_unit_id: UnitId::from_bytes([8; 32]),
-            hours_per_unit: 2,
-            maximum_quantity: 9,
-            cash_per_unit: Currency::from_micro_units(3),
-            transport: AidTransport::Local,
-        };
-        let id = babylon_material_circuit::aid_commitment_id(mandate.id, 1);
-        let request = AidReceipt {
-            commitment_id: id,
-            mandate_id: mandate.id,
-            period: 1,
-            dispatch_period: 1,
-            transport: mandate.transport,
-            payer: mandate.payer,
-            donor: mandate.donor,
-            recipient: mandate.recipient,
-            good_id: mandate.good_id,
-            unit_id: mandate.unit_id,
-            outcome: AidOutcome::Requested,
-            quantity: 2,
-            carrying_amount: Currency::from_micro_units(0),
-            cash_amount: Currency::from_micro_units(0),
-            contribution_hours: 0,
-        };
-        let mut grant = request.clone();
-        grant.outcome = AidOutcome::Granted;
-        grant.cash_amount = Currency::from_micro_units(6);
-        grant.contribution_hours = 4;
-        let transfer = |purpose, debit, credit| MoneyTransferReceipt {
-            purpose,
-            debit: MoneyPosting {
-                location: debit,
-                delta: Currency::from_micro_units(-6),
-            },
-            credit: MoneyPosting {
-                location: credit,
-                delta: Currency::from_micro_units(6),
-            },
-        };
-        let transfers = vec![
-            transfer(
-                MoneyTransferPurpose::AidReservation(id),
-                MoneyLocation::Cash(mandate.payer),
-                MoneyLocation::AidReserve(id),
-            ),
-            transfer(
-                MoneyTransferPurpose::AidGrant(id),
-                MoneyLocation::AidReserve(id),
-                MoneyLocation::Cash(AccountId::Household(mandate.recipient)),
-            ),
-        ];
-        (mandate, vec![request, grant], transfers)
-    }
-
-    #[test]
-    fn exact_owned_postings_reject_damaged_duplicate_and_unmatched_material_evidence() {
-        let (mandate, aid, transfers) = local();
-        let id = aid[0].commitment_id;
-        let actual = actual_postings(&mandate, id, 1, 1, &aid, &transfers)
-            .expect("the fixture call `actual_postings` succeeds for the authored inputs");
-        assert_eq!(actual.dispatched_quantity, 2); // Captured maximum is nine.
-        assert_eq!(actual.fulfillment_hours, 4);
-        assert_eq!(actual.payer_cash_reserved_micros, 6);
-        assert_eq!(actual.payer_cash_granted_micros, 6);
-        assert_eq!(actual.payer_cash_refunded_micros, 0);
-        for defect in 0..7 {
-            let mut rows = transfers.clone();
-            match defect {
-                0 => {
-                    rows[0].debit.location =
-                        MoneyLocation::Cash(AccountId::Household(mandate.donor));
-                }
-                1 => {
-                    rows[1].credit.location =
-                        MoneyLocation::Cash(AccountId::Household(mandate.donor));
-                }
-                2 => rows[1].debit.delta = Currency::from_micro_units(6),
-                3 => rows.push(rows[0].clone()),
-                4 => rows.push(rows[1].clone()),
-                5 => {
-                    rows.pop();
-                }
-                _ => rows[1].credit.delta = Currency::from_micro_units(3),
-            }
-            assert!(actual_postings(&mandate, id, 1, 1, &aid, &rows).is_err());
-        }
-        let mut duplicate = aid.clone();
-        duplicate.push(aid[1].clone());
-        assert!(actual_postings(&mandate, id, 1, 1, &duplicate, &transfers).is_err());
-        let mut wrong_period = aid.clone();
-        wrong_period[1].period = 2;
-        assert!(actual_postings(&mandate, id, 1, 1, &wrong_period, &transfers).is_err());
-        let mut unrelated = transfers.clone();
-        unrelated.push(MoneyTransferReceipt {
-            purpose: MoneyTransferPurpose::AidGrant(OrderId::from_bytes([99; 32])),
-            debit: transfers[1].debit.clone(),
-            credit: transfers[1].credit.clone(),
-        });
-        assert_eq!(
-            actual_postings(&mandate, id, 1, 1, &aid, &unrelated)
-                .expect("the fixture call `actual_postings` succeeds for the authored inputs"),
-            actual
-        );
-        let empty = actual_postings(&mandate, id, 1, 1, &aid[..1], &[])
-            .expect("the fixture call `actual_postings` succeeds for the authored inputs");
-        assert_eq!(empty.dispatched_quantity, 0);
-        assert_eq!(empty.fulfillment_hours, 0);
-        assert_eq!(empty.payer_cash_reserved_micros, 0);
-        assert_eq!(empty.payer_cash_granted_micros, 0);
-        assert_eq!(empty.payer_cash_refunded_micros, 0);
-    }
+    Ok((cash_status, cash))
 }

@@ -369,7 +369,6 @@ fn incoming_gifts(money: &[MoneyTransferReceipt], donor: FinalDemandPrincipalId)
             matches!(
                 row.purpose,
                 MoneyTransferPurpose::Cash(CashTransferPurpose::MutualAid)
-                    | MoneyTransferPurpose::AidGrant(_)
             ) && row.credit.location == MoneyLocation::Cash(AccountId::Household(donor))
         })
         .try_fold(0_i128, |sum, row| {

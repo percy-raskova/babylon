@@ -867,7 +867,7 @@ def _smoke_transcript_children(
     *,
     refused: bool = False,
     economic_report: dict[str, object] | None = None,
-    protocol_version: int | float = 13,
+    protocol_version: int | float = 15,
     progress_rows: list[dict[str, Any]] | None = None,
     progress_before_ready: bool = False,
     ready_changes: dict[str, object] | None = None,
@@ -1200,7 +1200,7 @@ def test_national_smoke_refuses_numeric_hash_evidence(
 def test_installation_check_admits_current_protocol_and_exact_progress_stream(
     monkeypatch, tmp_path, capsys
 ):
-    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=13)
+    _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=15)
     assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 0
     for index in (1, 2):
         requests = [
@@ -1208,7 +1208,7 @@ def test_installation_check_admits_current_protocol_and_exact_progress_stream(
             for line in (tmp_path / f"requests-{index}.jsonl").read_text().splitlines()
         ]
         assert all(
-            type(row["protocol_version"]) is int and row["protocol_version"] == 13
+            type(row["protocol_version"]) is int and row["protocol_version"] == 15
             for row in requests
         )
         assert requests[0]["scope"] == {"epoch": 0, "campaign_id": None}
@@ -1315,13 +1315,13 @@ def test_lifecycle_requires_committed_world_hash(monkeypatch, tmp_path, world_ha
         )
 
 
-@pytest.mark.parametrize("version", [5, 6, 7, 8, 9, 10, 11, 12, 12.0, 13.0, 14])
+@pytest.mark.parametrize("version", [5, 6, 7, 8, 9, 10, 11, 12, 12.0, 13, 13.0, 14, 15.0, 16])
 def test_installation_check_refuses_unsupported_or_untyped_version(
     monkeypatch, tmp_path, capsys, version
 ):
     _smoke_transcript_children(monkeypatch, tmp_path, protocol_version=version)
     assert launcher.main(["--smoke", "--no-build", "--preset", "standard"]) == 1
-    assert "requires runtime session protocol 13" in capsys.readouterr().err
+    assert "requires runtime session protocol 15" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

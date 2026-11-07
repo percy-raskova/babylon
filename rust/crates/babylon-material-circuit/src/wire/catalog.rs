@@ -8,9 +8,9 @@ use crate::{
 };
 
 /// Canonical domain for one immutable material catalog.
-pub const MATERIAL_CATALOG_DOMAIN_BYTES: &[u8] = b"babylon.material-catalog.v1";
+pub const MATERIAL_CATALOG_DOMAIN_BYTES: &[u8] = b"babylon.material-catalog.v2";
 
-pub(super) const CATALOG_SCHEMA_VERSION: u16 = 1;
+pub(super) const CATALOG_SCHEMA_VERSION: u16 = 2;
 
 fn append_commitment(out: &mut Vec<u8>, row: &HouseholdTimeCommitment) {
     out.push(row.basis as u8);
@@ -35,7 +35,10 @@ pub(super) fn append_mandates(
         b.extend_from_slice(&r.labor_unit_id.as_bytes());
         b.extend_from_slice(&r.hours_per_unit.to_be_bytes());
         b.extend_from_slice(&r.maximum_quantity.to_be_bytes());
-        b.extend_from_slice(&r.cash_per_unit.micro_units().to_be_bytes());
+        b.extend_from_slice(&r.maximum_cash.micro_units().to_be_bytes());
+        b.extend_from_slice(&r.initial_quantity.to_be_bytes());
+        b.extend_from_slice(&r.initial_cash.micro_units().to_be_bytes());
+        b.extend_from_slice(&[r.food_receiving as u8, r.cash_receiving as u8]);
         match r.transport {
             AidTransport::Local => b.push(1),
             AidTransport::Routed {

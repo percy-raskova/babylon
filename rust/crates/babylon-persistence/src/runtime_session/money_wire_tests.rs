@@ -60,6 +60,10 @@ fn reply(payer: i128, gift: i128, price: i128) -> RuntimeSessionResponse {
             pending: None,
             duration: CampaignDuration::Continuous,
             aid: vec![OrganizerMaterialAidPreview {
+                initial_food_quantity: 1,
+                initial_cash_micros: 0,
+                cash_receiving_consent: OrganizerGiftConsent::Accept,
+
                 kind: OrganizerAidKind::Local,
                 mandate_id: [1; 32],
                 period: 0,
@@ -76,7 +80,7 @@ fn reply(payer: i128, gift: i128, price: i128) -> RuntimeSessionResponse {
                     unit_price: price,
                 }),
                 maximum_quantity: 3,
-                gift_cash_per_unit: gift,
+                maximum_cash_micros: gift,
                 labor_unit_id: [7; 32],
                 fulfillment_hours_per_unit: 1,
                 coordination_hours: 1,
@@ -110,7 +114,7 @@ fn tagged_organizer_money_roundtrips_exact_full_i128() {
             serde_json::from_slice(&encoded).expect("the authored bytes match the declared schema");
         let aid = &wire["snapshot"]["aid"][0];
         assert_eq!(aid["payer_cash"], payer.to_string());
-        assert_eq!(aid["gift_cash_per_unit"], gift.to_string());
+        assert_eq!(aid["maximum_cash_micros"], gift.to_string());
         assert_eq!(aid["ordinary_offer"]["unit_price"], price.to_string());
     }
 }
@@ -130,8 +134,8 @@ fn organizer_body_fields_are_required_in_current_wire_and_fixtures() {
         );
     }
     for bytes in [
-        include_str!("../../tests/fixtures/national_organizer_opening_v14.json"),
-        include_str!("../../tests/fixtures/national_organizer_pending_v14.json"),
+        include_str!("../../tests/fixtures/national_organizer_opening_v15.json"),
+        include_str!("../../tests/fixtures/national_organizer_pending_v15.json"),
     ] {
         let snapshot: OrganizerSnapshot =
             serde_json::from_str(bytes).expect("current fixture is complete");
@@ -166,7 +170,7 @@ fn tagged_organizer_money_refuses_noncanonical_numeric_and_overflow_values() {
         serde_json::json!("-170141183460469231731687303715884105729"),
         serde_json::json!("99999999999999999999999999999999999999999"),
     ];
-    for field in ["payer_cash", "gift_cash_per_unit", "unit_price"] {
+    for field in ["payer_cash", "maximum_cash_micros", "unit_price"] {
         for value in &bad {
             let mut changed = valid.clone();
             let aid = &mut changed["snapshot"]["aid"][0];

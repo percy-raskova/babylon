@@ -255,6 +255,8 @@ impl Bulletin {
                 let moved =
                     crate::observer_ui::grouped(row.support.material_postings.dispatched_quantity);
                 let status = match row.support.status {
+                    OrganizerAidSupportStatus::NotRequested => "no food selected".into(),
+                    OrganizerAidSupportStatus::ReceivingRefused => "food receiving refused".into(),
                     OrganizerAidSupportStatus::AwaitingDelivery => "awaiting delivery".into(),
                     OrganizerAidSupportStatus::TerminalFailure => "support failed".into(),
                     OrganizerAidSupportStatus::Granted {

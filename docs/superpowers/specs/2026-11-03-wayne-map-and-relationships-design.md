@@ -34,16 +34,26 @@ part of a selected leg. The rest ends without retry. Food moves physically.
 Cash settles at the existing following-period support close, after ordinary
 order admission, and can support ordinary purchasing in the next period.
 
-The first positive received cash or consumed food permits one independent
-response under existing political and actual-time constraints.
+The first positive received cash or actually consumed food delivery permits
+one independent response under existing political and actual-time constraints.
 Later arrivals do not retry it. Aid that delivers no support ends with an
 explicit no-support result and no coordination cost. Giving and receiving
 do not grant reporting rights, participation or membership.
 
-The internal Task 1A slice supplies required allocation identity, selected
-collection, captured initial targets and saved draft/command construction.
-Independent aid legs and response state remain Task 1B work. The editor and
-native acceptance remain later work. This stage is not a public release.
+The current food check joins an original delivery to positive household
+consumption of the same good in that close. It does not assign consumed units
+to individual gifts. Old stock or overlapping deliveries can share
+that household consumption fact. Fresh review must assess whether this meets
+the approved intent for actually consumed food before acceptance.
+
+The backend supplies required allocation identity, selected collection,
+independent aid legs, captured initial targets and saved draft/command
+construction. Original requests, dispatch facts and the first response remain
+available through delayed delivery and restart. Normal-national collection
+remains blocked by actual protected needs, including a funded utility order
+that received seven of eight units. A separate national repair must prove
+a lawful funded path before the editor, topic report grants and native
+acceptance proceed. This stage is not a public release.
 
 The geographic world is the persistent home. The player must see where the
 collective can act, understand a known partner's relationship and concern, and

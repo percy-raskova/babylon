@@ -122,7 +122,7 @@ fn round2_paid_canonical() -> Vec<u8> {
 }
 
 fn round2_family(bytes: &[u8], target: usize) -> (usize, usize, usize) {
-    let mut position = b"babylon.material-tick-receipts.v19\0".len() + 12;
+    let mut position = b"babylon.material-tick-receipts.v20\0".len() + 12;
     for (index, width) in material_world::RECEIPT_ROW_BYTES.iter().enumerate() {
         assert_eq!(usize::from(bytes[position]), index + 1);
         let count = u64::from_be_bytes(

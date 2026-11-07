@@ -19,7 +19,7 @@ use std::result::Result as StdResult;
 
 pub(crate) const DOMAIN: &[u8] = b"BabylonReceiptStorageV3\0";
 
-pub(crate) const CANONICAL_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v19\0";
+pub(crate) const CANONICAL_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v20\0";
 
 pub(crate) const MAX_RECEIPT_STORAGE_BYTES: usize =
     MAX_MATERIAL_TICK_RECEIPT_BYTES + DOMAIN.len() + 88 + RECEIPT_FAMILY_COUNT * 59;
@@ -321,7 +321,7 @@ pub(crate) fn encode(admitted: &AdmittedReceipts<'_>, lookup: &mut TypedLookup) 
     if cursor.take(CANONICAL_DOMAIN.len())? != CANONICAL_DOMAIN {
         return Err(Error::Domain);
     }
-    if cursor.take(4)? != 19_u32.to_be_bytes() {
+    if cursor.take(4)? != 20_u32.to_be_bytes() {
         return Err(Error::Domain);
     }
     let tick = cursor.u64()?;
@@ -471,7 +471,7 @@ pub(crate) fn restore_canonical(encoded: &[u8], lookup: &TypedLookup) -> Result<
     } = decode_header(&mut cursor, lookup)?;
     let mut out = buffer(length)?;
     out.extend_from_slice(CANONICAL_DOMAIN);
-    out.extend_from_slice(&19_u32.to_be_bytes());
+    out.extend_from_slice(&20_u32.to_be_bytes());
     out.extend_from_slice(&tick.to_be_bytes());
     for (index, &canonical_width) in RECEIPT_ROW_BYTES.iter().enumerate() {
         let tag = u8::try_from(index + 1).map_err(|_| Error::Family)?;
@@ -561,7 +561,7 @@ mod tests {
 
     fn empty_receipts() -> Vec<u8> {
         let mut bytes = CANONICAL_DOMAIN.to_vec();
-        bytes.extend_from_slice(&19_u32.to_be_bytes());
+        bytes.extend_from_slice(&20_u32.to_be_bytes());
         bytes.extend_from_slice(&1_u64.to_be_bytes());
         for tag in 1..=37 {
             bytes.push(tag);
@@ -570,9 +570,9 @@ mod tests {
         bytes
     }
     #[test]
-    fn v19_unsubstantiated_agency_expense_and_old_version_are_refused() {
-        let mut canonical = b"babylon.material-tick-receipts.v19\0".to_vec();
-        canonical.extend_from_slice(&19_u32.to_be_bytes());
+    fn v20_unsubstantiated_agency_expense_and_old_version_are_refused() {
+        let mut canonical = b"babylon.material-tick-receipts.v20\0".to_vec();
+        canonical.extend_from_slice(&20_u32.to_be_bytes());
         canonical.extend_from_slice(&1_u64.to_be_bytes());
         let mut income_row = vec![3];
         income_row.extend_from_slice(&[9; 32]);
@@ -595,9 +595,9 @@ mod tests {
         let mut lookup = TypedLookup::default();
         assert!(encode_raw(&canonical, &mut lookup).is_err());
         assert_eq!(lookup.entries().len(), 0);
-        let domain = b"babylon.material-tick-receipts.v18\0";
+        let domain = b"babylon.material-tick-receipts.v19\0";
         canonical[..domain.len()].copy_from_slice(domain);
-        canonical[domain.len()..domain.len() + 4].copy_from_slice(&18_u32.to_be_bytes());
+        canonical[domain.len()..domain.len() + 4].copy_from_slice(&19_u32.to_be_bytes());
         assert!(encode_raw(&canonical, &mut lookup).is_err());
         assert_eq!(lookup.entries().len(), 0);
     }
@@ -681,7 +681,7 @@ mod tests {
         row.push(if routed { 2 } else { 3 });
         row.extend_from_slice(&2_u64.to_be_bytes());
         row.extend_from_slice(&7_i128.to_be_bytes());
-        row.extend_from_slice(&10_i128.to_be_bytes());
+        row.extend_from_slice(&0_i128.to_be_bytes());
         row.extend_from_slice(&4_u64.to_be_bytes());
         assert_eq!(row.len(), 387);
         row
@@ -790,7 +790,7 @@ mod tests {
 
     fn amount_receipts(amounts: &[i128]) -> Vec<u8> {
         let mut bytes = CANONICAL_DOMAIN.to_vec();
-        bytes.extend_from_slice(&19_u32.to_be_bytes());
+        bytes.extend_from_slice(&20_u32.to_be_bytes());
         bytes.extend_from_slice(&7_u64.to_be_bytes());
         for tag in 1..=37 {
             bytes.push(tag);
@@ -801,12 +801,12 @@ mod tests {
             }
             for (index, amount) in amounts.iter().enumerate() {
                 let purpose =
-                    u8::try_from(index % 10 + 1).expect("the fixture value fits the target range");
+                    u8::try_from(index % 7 + 1).expect("the fixture value fits the target range");
                 let (subtype, id, reserve_tag) = match purpose {
                     1..=3 => (1, [19; 32], 2),
                     4..=6 => (0, [20; 32], 3),
                     7 => (7, [0; 32], 0),
-                    _ => (0, [21; 32], 4),
+                    _ => unreachable!("bounded seven current purposes"),
                 };
                 bytes.extend_from_slice(&[purpose, subtype]);
                 bytes.extend_from_slice(&id);
@@ -818,7 +818,7 @@ mod tests {
                 reserve.extend_from_slice(&id);
                 let (from, to) = if purpose == 7 {
                     (cash, recipient)
-                } else if matches!(purpose, 1 | 4 | 8) {
+                } else if matches!(purpose, 1 | 4) {
                     (cash, reserve)
                 } else {
                     (reserve, recipient)

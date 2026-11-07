@@ -138,6 +138,7 @@ fn organizer(refuses_remote: bool) -> OrganizerConfig {
     controlled.commitments[0].hours = 2;
     cfg.contact_hours = 2;
     cfg.aid_bindings[0].coordination_hours = 2;
+    cfg.aid_bindings[0].maximum_food_quantity = 1;
     let mut participant = cfg
         .participants
         .iter()

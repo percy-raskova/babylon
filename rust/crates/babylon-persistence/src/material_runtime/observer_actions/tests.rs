@@ -4,6 +4,8 @@ use crate::organizer_aid_fixture as fixture;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_kernel::content_digest;
 use babylon_kernel::replay::ReplaySessionId;
+use babylon_practice_contract::OrganizerAllocation;
+use babylon_practice_contract::PracticeId;
 use babylon_practice_contract::{
     InputAuthorityId, OrganizerAidKind, OrganizerChoice, OrganizerInquiry, ProposalNonce,
 };
@@ -262,7 +264,14 @@ fn observer_checked_action_identity_nonce_and_authority_refuse() {
         .organizer_state()
         .expect("the fixture register carries organizer state");
     let identity = session.graph_session().session_identity();
-    let commitment = fixture::commitment(&session, OrganizerChoice::LocalAid);
+    let commitment = fixture::commitment_with_allocation(
+        &session,
+        OrganizerChoice::LocalAid,
+        OrganizerAllocation::Aid {
+            food_quantity: 0,
+            cash_micros: 5,
+        },
+    );
     let batch = babylon_practice_contract::organizer_action_batch(
         config,
         prior,
@@ -399,41 +408,63 @@ fn assert_mixed_batch(
 ) {
     let intents = cursor::parse(identity, tick, bytes)
         .expect("the authored literal parses as the declared type");
-    let controlled = |intent: &PracticeIntent| {
-        intent.actor_org_id.to_bytes() == config.controlled_actor_id.to_be_bytes()
-    };
-    assert!(intents.iter().filter(|row| controlled(row)).count() >= 2);
-    assert!(intents.iter().any(|row| !controlled(row)));
-    let without_partner: Vec<_> = intents
+    assert_eq!(
+        intents.len(),
+        2,
+        "only the fresh inquiry and its independent partner response are consumed"
+    );
+    let controlled = intents
         .iter()
-        .filter(|row| controlled(row))
-        .cloned()
-        .collect();
-    assert!(reconstruct(
-        config,
-        prior,
-        current,
-        journal,
-        identity,
-        tick,
-        &encoded(identity, tick, &without_partner)
-    )
-    .is_err());
-    // Keep fresh intent but omit the controlled delayed intent. No date-only match.
-    let mut without_delayed = intents;
-    let delayed = without_delayed
+        .find(|row| row.actor_org_id.to_bytes() == config.controlled_actor_id.to_be_bytes())
+        .expect("fresh controlled inquiry");
+    assert_eq!(controlled.proposal_nonce.as_bytes(), [8; 16]);
+    assert!(
+        intents
+            .iter()
+            .all(|row| row.practice_id != PracticeId::MutualAid),
+        "later food creates no retimed Aid input"
+    );
+    let partner = intents
         .iter()
-        .position(|row| controlled(row) && row.proposal_nonce.as_bytes() != [8; 16])
-        .expect("the fixture sequence holds the addressed position");
-    without_delayed.remove(delayed);
-    assert!(reconstruct(
-        config,
-        prior,
-        current,
-        journal,
-        identity,
-        tick,
-        &encoded(identity, tick, &without_delayed)
-    )
-    .is_err());
+        .find(|row| row.actor_org_id != controlled.actor_org_id)
+        .expect("fresh inquiry response");
+    assert_eq!(
+        partner.actor_org_id.to_bytes(),
+        config.workplace_partner.actor_id.to_be_bytes()
+    );
+    assert_eq!(
+        partner.input_authority_id.as_bytes(),
+        config.workplace_partner.authority_id
+    );
+    assert_ne!(partner.proposal_nonce, controlled.proposal_nonce);
+    let mut injected = intents.clone();
+    let mut replayed = controlled.clone();
+    replayed.proposal_nonce = ProposalNonce::from_bytes([7; 16]);
+    injected.push(replayed);
+    assert!(
+        reconstruct(
+            config,
+            prior,
+            current,
+            journal,
+            identity,
+            tick,
+            &encoded(identity, tick, &injected)
+        )
+        .is_err(),
+        "an extra retimed input is refused"
+    );
+    assert!(
+        reconstruct(
+            config,
+            prior,
+            current,
+            journal,
+            identity,
+            tick,
+            &encoded(identity, tick, &[])
+        )
+        .is_err(),
+        "the fresh inquiry remains required"
+    );
 }

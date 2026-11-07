@@ -11,6 +11,7 @@ use babylon_graph::stable_element::StableElementKey;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_kernel::geography::CountyGeoid;
+use babylon_practice_contract::OrganizerGiftConsent;
 
 use crate::national_economy;
 use crate::national_economy::NationalGamePolicy;
@@ -18,8 +19,8 @@ use crate::national_resident_allocation::AllocationError;
 use crate::national_transport::CargoClass;
 use babylon_kernel::content_digest;
 use babylon_material_circuit::{
-    AccountId, AidMandate, AidTransport, CashAccount, FinalDemandPrincipalId, InstitutionLocation,
-    OrganizationAccountId, StaffingMemberBinding, StaffingMemberId,
+    AccountId, AidMandate, AidReceiving, AidTransport, CashAccount, FinalDemandPrincipalId,
+    InstitutionLocation, OrganizationAccountId, StaffingMemberBinding, StaffingMemberId,
 };
 
 /// All child margins subtract from an exact captured nonowner budget.
@@ -164,7 +165,19 @@ pub(super) fn prepare(
             labor_unit_id: builder.labor_unit,
             hours_per_unit: policy.fulfillment_hours_per_unit,
             maximum_quantity: policy.maximum_quantity,
-            cash_per_unit: Currency::from_micro_units(policy.gift_cash_micros_per_unit),
+            maximum_cash: Currency::from_micro_units(policy.maximum_cash_micros),
+            initial_quantity: policy.initial_food_quantity,
+            initial_cash: Currency::from_micro_units(policy.initial_cash_micros),
+            food_receiving: receiving(if transport == AidTransport::Local {
+                builder.policy.organizer.local_receiving_consent
+            } else {
+                builder.policy.organizer.remote_receiving_consent
+            }),
+            cash_receiving: receiving(if transport == AidTransport::Local {
+                policy.local_cash_receiving_consent
+            } else {
+                policy.remote_cash_receiving_consent
+            }),
             transport,
         });
     }
@@ -452,6 +465,13 @@ pub(super) fn fund(builder: &mut Builder<'_>) -> Result<()> {
             location: donor.location,
         });
     Ok(())
+}
+
+fn receiving(consent: OrganizerGiftConsent) -> AidReceiving {
+    match consent {
+        OrganizerGiftConsent::Accept => AidReceiving::Accept,
+        OrganizerGiftConsent::Refuse => AidReceiving::Refuse,
+    }
 }
 
 #[cfg(test)]

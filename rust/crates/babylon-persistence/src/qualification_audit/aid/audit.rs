@@ -80,6 +80,7 @@ impl Accepted {
             || command.resource_digest != before.view.resource_digest
             || command.expected_period != before.view.period
             || admission.choice != command.choice
+            || admission.allocation != command.allocation
             || admission.current_period != command.expected_period
             || admission.resolves_period != commitment.resolves_period
             || admission.available_hours != before.view.available_hours
@@ -98,8 +99,19 @@ impl Accepted {
             before.view.aid_options.iter().filter(|r| r.kind == kind),
             Refusal::OriginalOffer,
         )?;
+        let babylon_practice_contract::OrganizerAllocation::Aid {
+            food_quantity,
+            cash_micros,
+        } = command.allocation
+        else {
+            return Err(Refusal::Admission);
+        };
         if material.period != command.expected_period
-            || material.receiving_consent != OrganizerGiftConsent::Accept
+            || food_quantity > material.maximum_quantity
+            || cash_micros > material.maximum_cash_micros
+            || !((food_quantity > 0 && material.receiving_consent == OrganizerGiftConsent::Accept)
+                || (cash_micros > 0
+                    && material.cash_receiving_consent == OrganizerGiftConsent::Accept))
             || option.receiving_consent != material.receiving_consent
             || material.coordination_hours == 0
             || option.coordination_hours != material.coordination_hours
@@ -180,13 +192,16 @@ pub(in crate::qualification_audit) fn terms<'a>(
         || binding.recipient_principal_id != mandate.recipient.as_bytes()
         || mandate.donor_actor != command.actor_id
         || mandate.recipient_actor != binding.partner.actor_id
-        || binding.receiving_consent != OrganizerGiftConsent::Accept
+        || binding.receiving_consent != p.receiving_consent
+        || binding.cash_receiving_consent != p.cash_receiving_consent
+        || p.initial_food_quantity != mandate.initial_quantity
+        || p.initial_cash_micros != mandate.initial_cash.micro_units()
         || p.donor_id != mandate.donor.as_bytes()
         || p.recipient_id != mandate.recipient.as_bytes()
         || p.good_id != mandate.good_id.as_bytes()
         || p.unit_id != mandate.unit_id.as_bytes()
         || p.labor_unit_id != mandate.labor_unit_id.as_bytes()
-        || p.gift_cash_per_unit != mandate.cash_per_unit.micro_units()
+        || p.maximum_cash_micros != mandate.maximum_cash.micro_units()
         || p.fulfillment_hours_per_unit != mandate.hours_per_unit
         || p.maximum_quantity != mandate.maximum_quantity
         || p.coordination_hours != binding.coordination_hours
@@ -395,8 +410,10 @@ impl Audit {
             let accepted = self.commands.get(&original).ok_or(Refusal::OriginalOffer)?;
             let terms = terms(accepted, config, &catalog.aid_mandates)?;
             let fact = practice::read(admitted, resolution, &terms)?;
-            if resolution.practice.outcome != OrganizerOutcome::AidAwaitingSupport
-                && !candidate.terminal_practices.insert(original)
+            if !matches!(
+                resolution.practice.outcome,
+                OrganizerOutcome::AidAwaitingSupport | OrganizerOutcome::AidResponseRetained
+            ) && !candidate.terminal_practices.insert(original)
             {
                 return Err(Refusal::Duplicate);
             }
@@ -491,6 +508,21 @@ pub(in crate::qualification_audit) fn check_material(
     tick: u64,
 ) -> Result<bool> {
     let m = terms.mandate;
+    let babylon_practice_contract::OrganizerAllocation::Aid {
+        food_quantity,
+        cash_micros,
+    } = terms.accepted.commitment.command.allocation
+    else {
+        return Err(Refusal::Admission);
+    };
+    if row.quantity > food_quantity
+        || row.cash_amount.micro_units() > cash_micros
+        || (row.outcome == AidOutcome::Requested && row.quantity != food_quantity)
+        || (row.outcome == AidOutcome::CashRequested
+            && row.cash_amount.micro_units() != cash_micros)
+    {
+        return Err(Refusal::Quantity);
+    }
     if row.commitment_id
         != babylon_material_circuit::aid_commitment_id(
             m.id,
@@ -502,29 +534,17 @@ pub(in crate::qualification_audit) fn check_material(
         || row.unit_id != m.unit_id
         || row.payer != m.payer
         || row.period != tick
-        || row.quantity == 0
         || row.quantity > m.maximum_quantity
     {
         return Err(Refusal::Capture);
     }
     let uses_time = row.outcome == AidOutcome::Dispatched
         || (row.outcome == AidOutcome::Granted && row.dispatch_period == tick);
-    let expected_cash = i128::from(row.quantity)
-        .checked_mul(m.cash_per_unit.micro_units())
-        .ok_or(Refusal::Overflow)?;
+    row.validate_against(m).map_err(|_| Refusal::Capture)?;
     let expected_hours = row
         .quantity
         .checked_mul(m.hours_per_unit)
         .ok_or(Refusal::Overflow)?;
-    if row.cash_amount.micro_units()
-        != if row.outcome == AidOutcome::Requested {
-            0
-        } else {
-            expected_cash
-        }
-    {
-        return Err(Refusal::Cash);
-    }
     if row.contribution_hours != if uses_time { expected_hours } else { 0 } {
         return Err(Refusal::Time);
     }

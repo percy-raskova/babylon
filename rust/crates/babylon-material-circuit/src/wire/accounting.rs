@@ -137,7 +137,7 @@ pub(super) fn append(
     super::valuation::append(output, &economy.costs)?;
     super::financial::append(output, &economy.financial)?;
     super::household_time::append(output, &economy.household_time)?;
-    super::aid::append(output, &economy.aid, &snapshot.aid)?;
+    super::aid::append(output, &economy.aid)?;
     Ok(())
 }
 
@@ -231,13 +231,12 @@ pub(super) fn decode(cursor: &mut Cursor<'_>) -> Result<CircuitAccounting, Mater
     let costs = super::valuation::decode(cursor)?;
     let financial = super::financial::decode(cursor)?;
     let household_time = super::household_time::decode(cursor)?;
-    let (aid, aid_cash) = super::aid::decode(cursor)?;
+    let aid = super::aid::decode(cursor)?;
     Ok(CircuitAccounting::Monetary(Box::new(MonetaryCircuit {
         book: MonetaryBook::from_snapshot(MonetaryBookSnapshot {
             accounts,
             purchases,
             shifts,
-            aid: aid_cash,
         })?,
         employment,
         member_labor,

@@ -404,7 +404,7 @@ fn aid_review_terms(client: &OrganizerClient, choice: OrganizerChoice) -> String
         OrganizerGiftConsent::Refuse => "refused; gift unavailable",
     };
     let surplus = terms.donor_stock.saturating_sub(terms.own_need);
-    format!("Recipient: {}\nGift request: up to {} food units ({} grams each); protected surplus: {} units. Actual fulfillment may be lower.\nGift transfer: {} currency per unit (not a sale); organization cash: {} currency. Fulfillment: {} household hours per dispatched unit.\nReceiving consent: {consent}.", recipient.partner_label, crate::observer_ui::grouped(terms.maximum_quantity), crate::observer_ui::grouped(terms.grams_per_unit), crate::observer_ui::grouped(surplus), crate::human_numbers::currency(terms.gift_cash_per_unit), crate::human_numbers::currency(terms.payer_cash), crate::observer_ui::grouped(terms.fulfillment_hours_per_unit))
+    format!("Recipient: {}\nGift request: up to {} food units ({} grams each); protected surplus: {} units. Actual fulfillment may be lower.\nIndependent cash cap: {} currency; organization cash: {} currency. Fulfillment: {} household hours per dispatched unit.\nReceiving consent: {consent}.", recipient.partner_label, crate::observer_ui::grouped(terms.maximum_quantity), crate::observer_ui::grouped(terms.grams_per_unit), crate::observer_ui::grouped(surplus), crate::human_numbers::currency(terms.maximum_cash_micros), crate::human_numbers::currency(terms.payer_cash), crate::observer_ui::grouped(terms.fulfillment_hours_per_unit))
 }
 
 fn collection_review_terms(client: &OrganizerClient) -> String {
@@ -421,8 +421,8 @@ fn collection_review_terms(client: &OrganizerClient) -> String {
 fn aid_terms(preview: &OrganizerMaterialAidPreview) -> String {
     let surplus = preview.donor_stock.saturating_sub(preview.own_need);
     let mut text = format!(
-        "Current pantry: {} units; own food need: {}; protected surplus: {}.\nOrganization cash: {} currency. Gift transfer: {} currency per food unit, separate from any sale.\nCaptured maximum/request: {} food units ({} grams per unit); actual fulfillment may be lower.\nFulfillment: {} household hours per dispatched unit; later coordination: {} hours. These compete with other work.\n",
-        crate::observer_ui::grouped(preview.donor_stock), crate::observer_ui::grouped(preview.own_need), crate::observer_ui::grouped(surplus), crate::human_numbers::currency(preview.payer_cash), crate::human_numbers::currency(preview.gift_cash_per_unit),
+        "Current pantry: {} units; own food need: {}; protected surplus: {}.\nOrganization cash: {} currency. Independent cash cap: {} currency, separate from food.\nCaptured food maximum: {} food units ({} grams per unit); actual fulfillment may be lower.\nFulfillment: {} household hours per dispatched unit; later coordination: {} hours. These compete with other work.\n",
+        crate::observer_ui::grouped(preview.donor_stock), crate::observer_ui::grouped(preview.own_need), crate::observer_ui::grouped(surplus), crate::human_numbers::currency(preview.payer_cash), crate::human_numbers::currency(preview.maximum_cash_micros),
         crate::observer_ui::grouped(preview.maximum_quantity), crate::observer_ui::grouped(preview.grams_per_unit), crate::observer_ui::grouped(preview.fulfillment_hours_per_unit), crate::observer_ui::grouped(preview.coordination_hours)
     );
     append_aid_constraints(&mut text, preview);
@@ -501,8 +501,12 @@ fn aid_history(client: &OrganizerClient, period: u64) -> String {
             row.practice.period
         );
         match row.support.status {
+            OrganizerAidSupportStatus::NotRequested => text.push_str("No food selected.\n"),
             OrganizerAidSupportStatus::AwaitingDelivery => {
                 text.push_str("Surviving freight remains pending.\n");
+            }
+            OrganizerAidSupportStatus::ReceivingRefused => {
+                text.push_str("Food receiving was refused; cash settles independently.\n");
             }
             OrganizerAidSupportStatus::TerminalFailure => {
                 text.push_str("Terminal support failure; no grant and no surviving delivery.\n");
@@ -522,10 +526,8 @@ fn aid_history(client: &OrganizerClient, period: u64) -> String {
         );
         let _ = writeln!(
             text,
-            "Aid payer cash: reserved {}; gift paid {}; refunded {} currency. These are distinct movements, not repeated expenses.",
-            crate::human_numbers::currency(postings.payer_cash_reserved_micros),
-            crate::human_numbers::currency(postings.payer_cash_granted_micros),
-            crate::human_numbers::currency(postings.payer_cash_refunded_micros)
+            "Aid payer cash: gift paid {} currency.",
+            crate::human_numbers::currency(postings.payer_cash_granted_micros)
         );
         let _ = writeln!(text, "Independent outcome: {}; partner {}; coordination {} hours. A declined practice never revokes a delivered gift.", outcome(row.practice.outcome), response(row.practice.partner_response), crate::observer_ui::grouped(row.practice.hours_spent));
     }
@@ -991,7 +993,8 @@ pub(super) fn outcome(value: OrganizerOutcome) -> &'static str {
         OrganizerOutcome::ContactUncompleted => "Contact attempt uncompleted",
         OrganizerOutcome::AidScheduled => "Support committed; awaiting material resolution",
         OrganizerOutcome::AidAwaitingSupport => "Support remains in transit",
-        OrganizerOutcome::AidNotProvisioned => "Support did not provide current consumption",
+        OrganizerOutcome::NoQualifyingSupport => "No qualifying cash or consumed food",
+        OrganizerOutcome::AidResponseRetained => "Earlier coordination response retained",
         OrganizerOutcome::AidPracticeCompleted => {
             "Mutual-aid practice completed; delivery has separate evidence"
         }
@@ -1269,8 +1272,8 @@ mod tests {
     }
 
     use babylon_persistence::runtime_session::{
-        OrganizerAgreement, OrganizerAidKind, OrganizerAidOption, OrganizerCommand,
-        OrganizerCommitment, OrganizerGiftConsent, OrganizerStandingWork,
+        OrganizerAgreement, OrganizerAidCashStatus, OrganizerAidKind, OrganizerAidOption,
+        OrganizerCommand, OrganizerCommitment, OrganizerGiftConsent, OrganizerStandingWork,
     };
 
     #[test]
@@ -1317,6 +1320,14 @@ mod tests {
             view: Some(view()),
             inspector: OrganizerInspector::Receipts,
             pending_aid: vec![OrganizerAidPending {
+                allocation: babylon_persistence::runtime_session::OrganizerAllocation::Aid {
+                    food_quantity: 4,
+                    cash_micros: 18,
+                },
+                dispatch_support: crate::organizer::tests::aid_dispatch_fixture(),
+                response: None,
+                lost_quantity: 0,
+
                 kind: OrganizerAidKind::Remote,
                 original_commitment_id: [11; 32],
                 material_commitment_id: [12; 32],
@@ -1355,6 +1366,14 @@ mod tests {
         view.period = 3;
         let row = OrganizerAidResolution {
             pending: OrganizerAidPending {
+                allocation: babylon_persistence::runtime_session::OrganizerAllocation::Aid {
+                    food_quantity: 4,
+                    cash_micros: 18,
+                },
+                dispatch_support: crate::organizer::tests::aid_dispatch_fixture(),
+                response: None,
+                lost_quantity: 0,
+
                 kind: OrganizerAidKind::Local,
                 original_commitment_id: [11; 32],
                 material_commitment_id: [12; 32],
@@ -1365,6 +1384,7 @@ mod tests {
                 unit_id: [15; 32],
             },
             support: OrganizerAidSupport {
+                cash_status: OrganizerAidCashStatus::Granted,
                 original_commitment_id: [11; 32],
                 material_commitment_id: [12; 32],
                 mandate_id: [13; 32],
@@ -1381,9 +1401,8 @@ mod tests {
                 material_postings: OrganizerAidMaterialPostings {
                     dispatched_quantity: 4,
                     fulfillment_hours: 8,
-                    payer_cash_reserved_micros: 18,
                     payer_cash_granted_micros: 12,
-                    payer_cash_refunded_micros: 6,
+                    lost_quantity: 0,
                 },
             },
             practice: OrganizerReceipt {
@@ -1427,6 +1446,16 @@ mod tests {
             .actor_id;
         let row = &mut client.aid_resolutions[0];
         row.pending.kind = OrganizerAidKind::Remote;
+        row.pending.allocation = babylon_persistence::runtime_session::OrganizerAllocation::Aid {
+            food_quantity: 4,
+            cash_micros: 0,
+        };
+        row.support.cash_status = OrganizerAidCashStatus::NotRequested;
+        row.pending.dispatch_support.cash_status = OrganizerAidCashStatus::NotRequested;
+        row.pending
+            .dispatch_support
+            .material_postings
+            .payer_cash_granted_micros = 0;
         row.practice.choice = OrganizerChoice::RemoteAid;
         row.support.period = 5;
         row.practice.period = 5;
@@ -1446,9 +1475,8 @@ mod tests {
         row.support.material_postings = OrganizerAidMaterialPostings {
             dispatched_quantity: 0,
             fulfillment_hours: 0,
-            payer_cash_reserved_micros: 0,
-            payer_cash_granted_micros: 9,
-            payer_cash_refunded_micros: 3,
+            payer_cash_granted_micros: 0,
+            lost_quantity: 0,
         };
         client
             .view
@@ -1475,11 +1503,11 @@ mod tests {
         assert!(local.contains("Aggregate consumption is not attribution to donated units or proof of additional time"), "{local}");
         assert!(local.contains("Actual material postings in period 3: dispatched food 4 units; donor household fulfillment 8 hours."), "{local}");
         assert!(
-            local.contains("Aid payer cash: reserved $0.000018; gift paid $0.000012; refunded $0.000006 currency."),
+            local.contains("Aid payer cash: gift paid $0.000012 currency."),
             "{local}"
         );
         assert!(
-            local.contains("These are distinct movements, not repeated expenses."),
+            !local.contains("reserved") && !local.contains("refunded"),
             "{local}"
         );
         assert!(
@@ -1519,9 +1547,7 @@ mod tests {
             "{dispatched}"
         );
         assert!(
-            dispatched.contains(
-                "Aid payer cash: reserved $0.000018; gift paid $0.00; refunded $0.000006 currency."
-            ),
+            dispatched.contains("Aid payer cash: gift paid $0.00 currency."),
             "{dispatched}"
         );
         assert!(dispatched.contains("coordination 0 hours"), "{dispatched}");
@@ -1529,7 +1555,7 @@ mod tests {
     }
 
     #[test]
-    fn routed_aid_arrival_history_settles_cash_without_new_dispatch_fulfillment_or_reservation() {
+    fn routed_food_only_arrival_history_has_no_cash_or_new_dispatch_fulfillment() {
         let client = aid_arrival_client();
         let (_, arrival) = inspector(&client, 5);
         assert!(
@@ -1538,9 +1564,7 @@ mod tests {
         );
         assert!(arrival.contains("Actual material postings in period 5: dispatched food 0 units; donor household fulfillment 0 hours."), "{arrival}");
         assert!(
-            arrival.contains(
-                "Aid payer cash: reserved $0.00; gift paid $0.000009; refunded $0.000003 currency."
-            ),
+            arrival.contains("Aid payer cash: gift paid $0.00 currency."),
             "{arrival}"
         );
         assert!(
@@ -1593,6 +1617,10 @@ mod tests {
             OrganizerAidTransportPreview, OrganizerMaterialAidPreview,
         };
         OrganizerMaterialAidPreview {
+            initial_food_quantity: 1,
+            initial_cash_micros: 0,
+            cash_receiving_consent:
+                babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
             kind: babylon_persistence::runtime_session::OrganizerAidKind::Remote,
             mandate_id: [1; 32],
             period: 0,
@@ -1609,7 +1637,7 @@ mod tests {
                 unit_price: 25,
             }),
             maximum_quantity: 8,
-            gift_cash_per_unit: 10,
+            maximum_cash_micros: 10,
             labor_unit_id: [7; 32],
             fulfillment_hours_per_unit: 2,
             coordination_hours: 3,
@@ -1658,7 +1686,7 @@ mod tests {
         let preview = aid_preview();
         let text = aid_terms(&preview);
         assert!(text.contains("protected surplus: 8"));
-        assert!(text.contains("Gift transfer: $0.00001"));
+        assert!(text.contains("Independent cash cap: $0.00001 currency, separate from food"));
         assert!(text.contains("food price: $0.000025"));
         assert!(text.contains("No closed household time receipt"));
         assert!(text.contains("Earliest possible arrival: period 3; not a delivery guarantee"));
@@ -1810,6 +1838,14 @@ mod tests {
         let mut remote = aid_preview();
         remote.period = period;
         let pending = OrganizerAidPending {
+            allocation: babylon_persistence::runtime_session::OrganizerAllocation::Aid {
+                food_quantity: 4,
+                cash_micros: 18,
+            },
+            dispatch_support: crate::organizer::tests::aid_dispatch_fixture(),
+            response: None,
+            lost_quantity: 0,
+
             kind: remote.kind,
             original_commitment_id: [11; 32],
             material_commitment_id: [12; 32],

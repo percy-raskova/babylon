@@ -29,8 +29,8 @@ envelope:
     - {tag: 4, name: choice_receipt, codec: existing_choice_receipt_rows_v1}
     - {tag: 5, name: graph_full_checkpoint, codec: existing_nine_checkpoint_sections_v1}
     - {tag: 6, name: archive_dirty_receipt, count: 1, hash: combined_material_tick_content_v3}
-    - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v5_bytes}
-    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v19_bytes}
+    - {tag: 7, name: complete_material_register, count: 1, key: empty, payload: exact_material_world_register_v7_bytes}
+    - {tag: 8, name: material_receipts, count: 1, key: empty, payload: exact_material_tick_receipts_v20_bytes}
   family_frame: u8_tag_then_u64_big_endian_count
   row_frame: u32_big_endian_key_length_then_key_then_u32_big_endian_payload_length_then_payload
   ordering: Existing six families preserve strict canonical key order; singular added families cannot reorder.
@@ -43,12 +43,12 @@ envelope:
     graph_full_checkpoint: 67108864
     archive_dirty_receipt: 67108864
   graph_maximum_basis: Designed_headroom_for_measured_national_graph_batch_85346543_bytes
-  maximum_complete_bytes: 2344472112
-  maximum_complete_basis: register_1000000000_plus_graph_134217728_plus_five_component_families_67108864_each_plus_derived_receipts_874709881_plus_framing_183
+  maximum_complete_bytes: 2395196976
+  maximum_complete_basis: register_1000000000_plus_graph_134217728_plus_five_component_families_67108864_each_plus_derived_receipts_925434745_plus_framing_183
 receipts:
-  version: 19
-  domain: "babylon.material-tick-receipts.v19\0"
-  header: u32_big_endian_version_19_then_u64_big_endian_positive_resolve_tick
+  version: 20
+  domain: "babylon.material-tick-receipts.v20\0"
+  header: u32_big_endian_version_20_then_u64_big_endian_positive_resolve_tick
   family_frame: u8_tag_then_u64_big_endian_count
   family_count: 37
   identities: exact_32_bytes
@@ -62,8 +62,8 @@ receipts:
   money_location:
     width: 34
     fields: [location_tag, subtype_tag, identity]
-    tags: {cash: 1, purchase_reserve: 2, payroll_reserve: 3, aid_reserve: 4}
-    subtype: Cash uses account_tag; purchase uses outbound_order_tag; payroll and aid use zero.
+    tags: {cash: 1, purchase_reserve: 2, payroll_reserve: 3}
+    subtype: Cash uses account_tag; purchase uses outbound_order_tag; payroll uses zero.
   money_purpose:
     width: 34
     fields: [purpose_tag, subtype_tag, identity]
@@ -75,10 +75,7 @@ receipts:
       wage_payment: 5
       shift_cancellation: 6
       cash: 7
-      aid_reservation: 8
-      aid_grant: 9
-      aid_refund: 10
-    subtype: Purchases use outbound_order_tag; shifts and aid use zero; cash uses cash_purpose_tag.
+    subtype: Purchases use outbound_order_tag; shifts use zero; cash uses cash_purpose_tag.
     cash_purpose_tag:
       tax: 1
       public_transfer: 2
@@ -393,12 +390,13 @@ receipts:
     authenticate the shared contribution use and actual material state before publication or recovery.
   aid_transport_tag: {local: 1, routed: 2}
   aid_local_padding: Local transport requires exactly 96 zero bytes for route and endpoint IDs.
-  aid_outcome_tag: {requested: 1, dispatched: 2, granted: 3, lost: 4, unshipped: 5}
-  aid_row_limit: 327680
-  aid_row_limit_basis: MAX_AID_RECEIPTS_PER_PERIOD equals five times MAX_MATERIAL_CIRCUIT_ROWS.
-  complete_receipt_maximum_bytes: 874709881
-  complete_receipt_maximum_basis: Derived existing family bounds, Income521 and Aid387 times 327680, Collection317
-    times one, AgencyPaid192 times one, plus complete framing.
+  aid_outcome_tag: {requested: 1, dispatched: 2, granted: 3, lost: 4, unshipped: 5, cash_requested: 6,
+                    cash_granted: 7, cash_unfunded: 8, cash_receiving_refused: 9, food_receiving_refused: 10}
+  aid_row_limit: 458752
+  aid_row_limit_basis: Five fresh independent leg rows per mandate plus two arrival/loss rows per due lot.
+  complete_receipt_maximum_bytes: 925434745
+  complete_receipt_maximum_basis: Derived existing family bounds, Income521 times 327680, Aid387 times 458752,
+    Collection317 times one, AgencyPaid192 times one, plus complete framing.
   compensation_tag: {wage: 1, working_owner: 2, unpaid_family: 3}
   ordering:
     families: Tags 1 through 37 appear exactly once in declared order, including empty families.
@@ -433,7 +431,9 @@ receipts:
     - Aid local route padding is zero; transport, payer and outcome tags are closed and quantity is positive.
     - Aid period equals resolve tick; dispatch period is positive and no later than resolve tick.
     - Captured mandate joins authenticate source, actor, payer, households, native units and outcome terms.
-    - Aid reservation moves payer cash to one reserve; grant releases to recipient; refund returns to payer.
+    - Independent Aid cash moves directly from payer to recipient once at original dispatch via Cash(MutualAid).
+    - Separate cash-request and terminal cash-result rows retain requested versus actual amounts;
+      food loss never reverses cash.
     - Gift income and expense remain independent signed-i128 inputs to exact income and retained-earnings equations.
     - Household time belongs to resolve_tick and its exact hour partitions have no free hours beside unresolved
       priority claims.
@@ -566,7 +566,7 @@ receipts:
   maximum_member_and_wage_accrual_rows: 131072
   maximum_procurement_rows: 262144
   maximum_income_account_rows: 131072
-  maximum_aid_rows: 327680 # Five closed outcomes times 65536 material rows.
+  maximum_aid_rows: 458752 # Five fresh leg rows plus two due-lot rows times 65536.
   maximum_collection_rows: 1 # One original authenticated collection ruling per period.
   maximum_agency_paid_rows: 1 # One selected agency shift per period.
   maximum_tax_rows: 131072 # One per captured payer account.
@@ -577,7 +577,7 @@ receipts:
     Independent Designed close ceiling retained at 3M + 16N. The original sum does not cover
     every simultaneously maximal admitted family after named policy limits grow. A valid
     opening does not promise that every possible close fits this or the complete-byte ceiling.
-  maximum_complete_bytes: 874709881
+  maximum_complete_bytes: 925434745
   maximum_complete_basis: closed_37_family_row_limits_times_codec_widths_plus_framing_380
 persistence:
   material_rows: babylon_state.material_tick_v3
@@ -626,6 +626,6 @@ persistence:
   material_campaign: Cannot receive a graph-only V2 marker.
 related_contracts:
   - contracts/material_circuit_v4.yaml
-  - contracts/material_world_register_v5.yaml
+  - contracts/material_world_register_v7.yaml
   - contracts/nominal_material_world_v3.yaml
   - contracts/material_campaign_foundation_v3.yaml

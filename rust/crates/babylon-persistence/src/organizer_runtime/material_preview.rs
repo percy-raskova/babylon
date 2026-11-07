@@ -9,6 +9,7 @@ use babylon_material_circuit::UnitId;
 use babylon_material_circuit::{
     AidTransport, CircuitAccounting, HouseholdTimeAccounting, MaterialCatalog, MaterialCircuitState,
 };
+use babylon_practice_contract::OrganizerAllocation;
 use babylon_practice_contract::{
     OrganizerAidKind, OrganizerAidSupport, OrganizerConfig, OrganizerGiftConsent,
     OrganizerPendingAidPractice, OrganizerPeriodJournalEntries, OrganizerReceipt,
@@ -33,7 +34,11 @@ pub struct OrganizerMaterialAidPreview {
     pub ordinary_offer: Option<OrganizerAidOrdinaryOffer>,
     pub maximum_quantity: u64,
     #[serde(with = "decimal_i128")]
-    pub gift_cash_per_unit: i128,
+    pub maximum_cash_micros: i128,
+    pub initial_food_quantity: u64,
+    #[serde(with = "decimal_i128")]
+    pub initial_cash_micros: i128,
+    pub cash_receiving_consent: OrganizerGiftConsent,
     pub labor_unit_id: [u8; 32],
     pub fulfillment_hours_per_unit: u64,
     pub coordination_hours: u64,
@@ -94,6 +99,10 @@ pub struct OrganizerAidPending {
     pub dispatch_period: u64,
     pub good_id: [u8; 32],
     pub unit_id: [u8; 32],
+    pub allocation: OrganizerAllocation,
+    pub dispatch_support: OrganizerAidSupport,
+    pub response: Option<OrganizerReceipt>,
+    pub lost_quantity: u64,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -107,6 +116,10 @@ fn refused() -> RuntimeSessionErrorCode {
 }
 pub(super) fn pending(row: &OrganizerPendingAidPractice) -> OrganizerAidPending {
     OrganizerAidPending {
+        allocation: row.gift.commitment.command.allocation,
+        dispatch_support: row.dispatch_support.clone(),
+        response: row.response.clone(),
+        lost_quantity: row.lost_quantity,
         kind: row.gift.kind,
         original_commitment_id: row.gift.commitment.commitment_id,
         material_commitment_id: row.material_commitment_id,
@@ -193,7 +206,10 @@ pub(super) fn projections(
                 .micro_units(),
             ordinary_offer,
             maximum_quantity: mandate.maximum_quantity,
-            gift_cash_per_unit: mandate.cash_per_unit.micro_units(),
+            maximum_cash_micros: mandate.maximum_cash.micro_units(),
+            initial_food_quantity: mandate.initial_quantity,
+            initial_cash_micros: mandate.initial_cash.micro_units(),
+            cash_receiving_consent: binding.cash_receiving_consent,
             labor_unit_id: mandate.labor_unit_id.as_bytes(),
             fulfillment_hours_per_unit: mandate.hours_per_unit,
             coordination_hours: binding.coordination_hours,

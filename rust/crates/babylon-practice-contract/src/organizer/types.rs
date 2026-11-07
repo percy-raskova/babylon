@@ -13,7 +13,7 @@ use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
 /// Current organizer representation. Older representations are unsupported.
-pub const ORGANIZER_SCHEMA_VERSION: u16 = 9;
+pub const ORGANIZER_SCHEMA_VERSION: u16 = 10;
 
 /// Whole organizer-hours are Designed participant time commitments, not jobs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,6 +125,11 @@ pub enum OrganizerChoice {
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum OrganizerAllocation {
     None,
+    Aid {
+        food_quantity: u64,
+        #[serde(with = "super::nonnegative_decimal_i128")]
+        cash_micros: i128,
+    },
     Collection {
         #[serde(with = "super::nonnegative_decimal_i128")]
         target_cash_micros: i128,
@@ -137,7 +142,18 @@ impl OrganizerAllocation {
             (OrganizerChoice::Collect, Self::Collection { target_cash_micros }) => {
                 target_cash_micros > 0
             }
-            (OrganizerChoice::Collect, Self::None) | (_, Self::Collection { .. }) => false,
+            (
+                OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid,
+                Self::Aid {
+                    food_quantity,
+                    cash_micros,
+                },
+            ) => cash_micros >= 0 && (food_quantity > 0 || cash_micros > 0),
+            (
+                OrganizerChoice::Collect | OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid,
+                Self::None,
+            )
+            | (_, Self::Collection { .. } | Self::Aid { .. }) => false,
             (_, Self::None) => true,
         }
     }
@@ -294,7 +310,8 @@ pub enum OrganizerOutcome {
     CollectionRefused,
     AidScheduled,
     AidAwaitingSupport,
-    AidNotProvisioned,
+    NoQualifyingSupport,
+    AidResponseRetained,
     AidPracticeCompleted,
     AidPracticeUncompleted,
     InsufficientTime,

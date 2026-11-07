@@ -4,18 +4,32 @@ use crate::runtime_session::OrganizerSnapshot;
 
 use babylon_material_circuit::{
     AccountId, AidOutcome, AidReceipt, FinalDemandPrincipalId, HouseholdContributionReceipt,
-    HouseholdTimeReceipt, MoneyLocation, MoneyTransferPurpose,
+    HouseholdTimeReceipt,
 };
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::{BTreeMap, BTreeSet};
 
-type Movement = (MoneyLocation, MoneyLocation, i128);
-type Movements = BTreeMap<(u8, [u8; 32]), Movement>;
-
 pub(super) fn check_period(receipts: &MaterialTickReceipts) -> Result<()> {
-    check_cash(receipts)?;
+    crate::production_projection::aid::validate_cash_custody(receipts)
+        .map_err(|_| Refusal::Cash)?;
     let mut gifts = BTreeMap::<AccountId, (i128, i128)>::new();
     let mut losses = BTreeMap::<AccountId, i128>::new();
+    for row in &receipts.collections {
+        if row.collected.micro_units() > 0 {
+            gift(
+                &mut gifts,
+                AccountId::Household(row.donor),
+                row.collected.micro_units(),
+                0,
+            )?;
+            gift(
+                &mut gifts,
+                AccountId::Organization(row.recipient),
+                0,
+                row.collected.micro_units(),
+            )?;
+        }
+    }
     for row in &receipts.aid {
         let carrying = row.carrying_amount.micro_units();
         if carrying < 0
@@ -30,6 +44,16 @@ pub(super) fn check_period(receipts: &MaterialTickReceipts) -> Result<()> {
                 carrying,
             )?;
         }
+        if row.outcome == AidOutcome::CashGranted {
+            gift(&mut gifts, row.payer, row.cash_amount.micro_units(), 0)?;
+            gift(
+                &mut gifts,
+                AccountId::Household(row.recipient),
+                0,
+                row.cash_amount.micro_units(),
+            )?;
+            continue;
+        }
         if row.outcome != AidOutcome::Granted {
             continue;
         }
@@ -42,27 +66,7 @@ pub(super) fn check_period(receipts: &MaterialTickReceipts) -> Result<()> {
             0,
             carrying.checked_add(money).ok_or(Refusal::Overflow)?,
         )?;
-        let consumption = super::one(
-            receipts.household_consumption.iter().filter(|c| {
-                c.principal_id == row.recipient
-                    && c.good_id == row.good_id
-                    && c.unit_id == row.unit_id
-            }),
-            Refusal::Consumption,
-        )?;
-        if consumption.period != receipts.resolve_tick
-            || consumption
-                .consumed_quantity
-                .checked_add(consumption.unmet_quantity)
-                != Some(consumption.required_quantity)
-            || consumption
-                .consumed_quantity
-                .checked_add(consumption.closing_quantity)
-                != Some(consumption.available_quantity)
-            || consumption.available_quantity < row.quantity
-        {
-            return Err(Refusal::Consumption);
-        }
+        check_consumption(receipts, row)?;
     }
     for (account, (expense, income)) in gifts {
         let row = super::one(
@@ -89,6 +93,29 @@ pub(super) fn check_period(receipts: &MaterialTickReceipts) -> Result<()> {
     }
     Ok(())
 }
+fn check_consumption(receipts: &MaterialTickReceipts, row: &AidReceipt) -> Result<()> {
+    let consumption = super::one(
+        receipts.household_consumption.iter().filter(|c| {
+            c.principal_id == row.recipient && c.good_id == row.good_id && c.unit_id == row.unit_id
+        }),
+        Refusal::Consumption,
+    )?;
+    if consumption.period != receipts.resolve_tick
+        || consumption
+            .consumed_quantity
+            .checked_add(consumption.unmet_quantity)
+            != Some(consumption.required_quantity)
+        || consumption
+            .consumed_quantity
+            .checked_add(consumption.closing_quantity)
+            != Some(consumption.available_quantity)
+        || consumption.available_quantity < row.quantity
+    {
+        return Err(Refusal::Consumption);
+    }
+    Ok(())
+}
+
 fn gift(
     map: &mut BTreeMap<AccountId, (i128, i128)>,
     account: AccountId,
@@ -98,88 +125,6 @@ fn gift(
     let row = map.entry(account).or_default();
     super::cash(&mut row.0, expense)?;
     super::cash(&mut row.1, income)
-}
-fn movement(
-    map: &mut Movements,
-    key: (u8, [u8; 32]),
-    debit: MoneyLocation,
-    credit: MoneyLocation,
-    amount: i128,
-) -> Result<()> {
-    if amount < 0 {
-        return Err(Refusal::Cash);
-    }
-    let entry = map.entry(key).or_insert((debit, credit, 0));
-    if (entry.0, entry.1) != (debit, credit) {
-        return Err(Refusal::Cash);
-    }
-    super::cash(&mut entry.2, amount)
-}
-fn check_cash(receipts: &MaterialTickReceipts) -> Result<()> {
-    let mut expected = Movements::new();
-    for row in &receipts.aid {
-        let id = row.commitment_id;
-        let amount = row.cash_amount.micro_units();
-        if row.period == row.dispatch_period
-            && matches!(
-                row.outcome,
-                AidOutcome::Dispatched | AidOutcome::Granted | AidOutcome::Unshipped
-            )
-        {
-            movement(
-                &mut expected,
-                (1, id.as_bytes()),
-                MoneyLocation::Cash(row.payer),
-                MoneyLocation::AidReserve(id),
-                amount,
-            )?;
-        }
-        match row.outcome {
-            AidOutcome::Granted => movement(
-                &mut expected,
-                (2, id.as_bytes()),
-                MoneyLocation::AidReserve(id),
-                MoneyLocation::Cash(AccountId::Household(row.recipient)),
-                amount,
-            )?,
-            AidOutcome::Lost | AidOutcome::Unshipped => movement(
-                &mut expected,
-                (3, id.as_bytes()),
-                MoneyLocation::AidReserve(id),
-                MoneyLocation::Cash(row.payer),
-                amount,
-            )?,
-            _ => {}
-        }
-    }
-    // A zero-cash in-kind gift need not invent a zero-valued cash transfer.
-    expected.retain(|_, row| row.2 != 0);
-    let mut actual = Movements::new();
-    for row in &receipts.money_transfers {
-        let key = match row.purpose {
-            MoneyTransferPurpose::AidReservation(id) => (1, id.as_bytes()),
-            MoneyTransferPurpose::AidGrant(id) => (2, id.as_bytes()),
-            MoneyTransferPurpose::AidRefund(id) => (3, id.as_bytes()),
-            _ => continue,
-        };
-        let amount = row.credit.delta.micro_units();
-        if amount <= 0
-            || row.debit.delta.micro_units() != amount.checked_neg().ok_or(Refusal::Overflow)?
-        {
-            return Err(Refusal::Cash);
-        }
-        movement(
-            &mut actual,
-            key,
-            row.debit.location,
-            row.credit.location,
-            amount,
-        )?;
-    }
-    if actual != expected {
-        return Err(Refusal::Cash);
-    }
-    Ok(())
 }
 
 pub(super) fn remaining(

@@ -13,6 +13,7 @@ use babylon_kernel::tick_content_hash::RefDigest;
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::AidBook;
 use babylon_material_circuit::AidMandate;
+use babylon_material_circuit::AidReceiving;
 use babylon_material_circuit::AidTransport;
 use babylon_material_circuit::AttendancePlan;
 use babylon_material_circuit::CapacityReservations;
@@ -644,7 +645,11 @@ pub(crate) fn mandate(routed: bool) -> AidMandate {
         labor_unit_id: hours(),
         hours_per_unit: 2,
         maximum_quantity: 2,
-        cash_per_unit: money(3),
+        maximum_cash: money(1_450_000_000),
+        initial_quantity: 1,
+        initial_cash: money(0),
+        food_receiving: AidReceiving::Accept,
+        cash_receiving: AidReceiving::Accept,
         transport: if routed {
             AidTransport::Routed {
                 route_id: route(2),
@@ -720,6 +725,11 @@ pub(crate) fn config() -> OrganizerConfig {
             recipient_principal_id: recipient().as_bytes(),
             social_class_target: [97; 32],
             receiving_consent: OrganizerGiftConsent::Accept,
+            cash_receiving_consent: OrganizerGiftConsent::Accept,
+            maximum_food_quantity: 2,
+            maximum_cash_micros: 1_450_000_000,
+            initial_food_quantity: 1,
+            initial_cash_micros: 0,
             partner: OrganizerPartner {
                 actor_id: 120,
                 authority_id: [20; 16],
@@ -874,6 +884,25 @@ pub(crate) fn commitment(session: &Session, choice: OrganizerChoice) -> Organize
                         .expect("captured collection terms")
                         .maximum_cash_micros,
                 }
+            } else if matches!(
+                choice,
+                OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+            ) {
+                OrganizerAllocation::Aid {
+                    food_quantity: config
+                        .aid_bindings
+                        .iter()
+                        .find(|row| {
+                            matches!(
+                                (choice, row.kind),
+                                (OrganizerChoice::LocalAid, OrganizerAidKind::Local)
+                                    | (OrganizerChoice::RemoteAid, OrganizerAidKind::Remote)
+                            )
+                        })
+                        .expect("selected binding")
+                        .maximum_food_quantity,
+                    cash_micros: 6,
+                }
             } else {
                 OrganizerAllocation::None
             },
@@ -889,6 +918,27 @@ pub(crate) fn commitment(session: &Session, choice: OrganizerChoice) -> Organize
         },
     )
     .expect("the fixture admits the organizer actor")
+}
+
+pub(crate) fn commitment_with_allocation(
+    session: &Session,
+    choice: OrganizerChoice,
+    allocation: OrganizerAllocation,
+) -> OrganizerCommitment {
+    let mut command = commitment(session, choice).command;
+    command.allocation = allocation;
+    babylon_practice_contract::admit_organizer(
+        session
+            .material()
+            .organizer_config()
+            .expect("captured config"),
+        session
+            .material()
+            .organizer_state()
+            .expect("captured state"),
+        &command,
+    )
+    .expect("explicit selected allocation is admitted")
 }
 
 pub(crate) fn prepare(session: &Session, accepted: Option<&OrganizerCommitment>) -> Candidate {

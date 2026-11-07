@@ -17,11 +17,28 @@ pub(super) fn read(
     terms: &Terms<'_>,
 ) -> Result<Value> {
     let consumed = identity(resolution, terms, admitted.receipts.resolve_tick)?;
+    requested_legs(admitted, resolution)?;
     support(admitted, resolution)?;
     let practice = &resolution.practice;
     let recipient = terms.binding.partner.actor_id;
     match practice.outcome {
-        OrganizerOutcome::AidAwaitingSupport | OrganizerOutcome::AidNotProvisioned => {
+        OrganizerOutcome::AidResponseRetained => {
+            let original = resolution
+                .pending
+                .response
+                .as_ref()
+                .ok_or(Refusal::Practice)?;
+            if original.period >= practice.period
+                || original.commitment_id != practice.commitment_id
+                || practice.hours_spent != 0
+                || !practice.time_use.is_empty()
+                || practice.partner_actor_id.is_some()
+                || practice.partner_response != OrganizerPartnerResponse::NotRequested
+            {
+                return Err(Refusal::Practice);
+            }
+        }
+        OrganizerOutcome::AidAwaitingSupport | OrganizerOutcome::NoQualifyingSupport => {
             if consumed
                 || !practice.time_use.is_empty()
                 || practice.partner_response != OrganizerPartnerResponse::NotRequested
@@ -56,7 +73,10 @@ pub(super) fn read(
         }
         _ => return Err(Refusal::Practice),
     }
-    if consumed && practice.partner_actor_id != Some(recipient) {
+    if consumed
+        && practice.outcome != OrganizerOutcome::AidResponseRetained
+        && practice.partner_actor_id != Some(recipient)
+    {
         return Err(Refusal::Practice);
     }
     let recipient_hours = debits(admitted, resolution, terms)?;
@@ -72,7 +92,8 @@ fn identity(resolution: &OrganizerAidResolution, terms: &Terms<'_>, tick: u64) -
     let material =
         babylon_material_circuit::aid_commitment_id(terms.mandate.id, accepted.resolves_period)
             .as_bytes();
-    if p.original_commitment_id != accepted.commitment_id
+    if p.allocation != accepted.command.allocation
+        || p.original_commitment_id != accepted.commitment_id
         || p.mandate_id != terms.mandate.id
         || p.kind != terms.binding.kind
         || p.admitted_period != accepted.command.expected_period
@@ -97,9 +118,68 @@ fn identity(resolution: &OrganizerAidResolution, terms: &Terms<'_>, tick: u64) -
     {
         return Err(Refusal::Identity);
     }
-    Ok(
-        matches!(s.status, OrganizerAidSupportStatus::Granted { consumed_quantity, .. } if consumed_quantity > 0),
-    )
+    Ok(s.material_postings.payer_cash_granted_micros > 0
+        || matches!(s.status, OrganizerAidSupportStatus::Granted { consumed_quantity, .. } if consumed_quantity > 0))
+}
+fn requested_legs(
+    admitted: &CommittedMaterialReceipts,
+    resolution: &OrganizerAidResolution,
+) -> Result<()> {
+    use babylon_practice_contract::OrganizerAllocation;
+    let pending = &resolution.pending;
+    let OrganizerAllocation::Aid {
+        food_quantity,
+        cash_micros,
+    } = pending.allocation
+    else {
+        return Err(Refusal::Support);
+    };
+    let rows: Vec<_> = admitted
+        .receipts
+        .aid
+        .iter()
+        .filter(|row| row.commitment_id.as_bytes() == pending.material_commitment_id)
+        .collect();
+    let current = pending.dispatch_period == admitted.receipts.resolve_tick;
+    let requests: Vec<_> = rows
+        .iter()
+        .filter(|row| row.outcome == AidOutcome::Requested)
+        .collect();
+    let cash: Vec<_> = rows
+        .iter()
+        .filter(|row| row.outcome == AidOutcome::CashRequested)
+        .collect();
+    if requests.len() != usize::from(current && food_quantity > 0)
+        || requests
+            .first()
+            .is_some_and(|row| row.quantity != food_quantity)
+        || cash.len() != usize::from(current && cash_micros > 0)
+        || cash
+            .first()
+            .is_some_and(|row| row.cash_amount.micro_units() != cash_micros)
+    {
+        return Err(Refusal::Support);
+    }
+    if current {
+        let mut ended = 0;
+        let mut cash_results = 0;
+        for row in rows {
+            match row.outcome {
+                AidOutcome::Dispatched
+                | AidOutcome::Granted
+                | AidOutcome::Unshipped
+                | AidOutcome::FoodReceivingRefused => super::add(&mut ended, row.quantity)?,
+                AidOutcome::CashGranted
+                | AidOutcome::CashUnfunded
+                | AidOutcome::CashReceivingRefused => cash_results += 1,
+                AidOutcome::Requested | AidOutcome::CashRequested | AidOutcome::Lost => {}
+            }
+        }
+        if ended != food_quantity || cash_results != usize::from(cash_micros > 0) {
+            return Err(Refusal::Support);
+        }
+    }
+    Ok(())
 }
 fn support(
     admitted: &CommittedMaterialReceipts,
@@ -109,9 +189,8 @@ fn support(
     let mut granted = 0;
     let mut dispatched = 0;
     let mut hours = 0;
-    let mut reserved_cash = 0;
     let mut granted_cash = 0;
-    let mut refunded_cash = 0;
+    let mut lost = 0;
     for r in admitted
         .receipts
         .aid
@@ -120,18 +199,12 @@ fn support(
     {
         if r.outcome == AidOutcome::Granted {
             super::add(&mut granted, r.quantity)?;
+        }
+        if r.outcome == AidOutcome::CashGranted {
             super::cash(&mut granted_cash, r.cash_amount.micro_units())?;
         }
-        if r.period == r.dispatch_period
-            && matches!(
-                r.outcome,
-                AidOutcome::Dispatched | AidOutcome::Granted | AidOutcome::Unshipped
-            )
-        {
-            super::cash(&mut reserved_cash, r.cash_amount.micro_units())?;
-        }
-        if matches!(r.outcome, AidOutcome::Lost | AidOutcome::Unshipped) {
-            super::cash(&mut refunded_cash, r.cash_amount.micro_units())?;
+        if r.outcome == AidOutcome::Lost {
+            super::add(&mut lost, r.quantity)?;
         }
         if r.outcome == AidOutcome::Dispatched
             || (r.outcome == AidOutcome::Granted && r.period == r.dispatch_period)
@@ -144,16 +217,10 @@ fn support(
     if (
         p.dispatched_quantity,
         p.fulfillment_hours,
-        p.payer_cash_reserved_micros,
         p.payer_cash_granted_micros,
-        p.payer_cash_refunded_micros,
-    ) != (
-        dispatched,
-        hours,
-        reserved_cash,
-        granted_cash,
-        refunded_cash,
-    ) {
+        p.lost_quantity,
+    ) != (dispatched, hours, granted_cash, lost)
+    {
         return Err(Refusal::Support);
     }
     if let OrganizerAidSupportStatus::Granted {

@@ -7,12 +7,12 @@ meta:
   scope: Captured Wayne collective, two independent partners, and one workplace
 
 encoding:
-  runtime_session_protocol_version: 14
+  runtime_session_protocol_version: 15
   outer: exact_ASCII_domain_then_NUL_then_canonical_UTF8_JSON
-  version: config_and_state_schema_version_9_where_present
-  current_domains: {config: "babylon.organizer-config.v8\0", state: "babylon.organizer-state.v7\0",
-                    receipt: "babylon.organizer-receipt.v2\0", commitment: "babylon.organizer-commitment.v2\0",
-                    period_entries: "babylon.organizer-period-entries.v2\0", journal: "babylon.organizer-journal.v2\0"}
+  version: config_and_state_schema_version_10_where_present
+  current_domains: {config: "babylon.organizer-config.v9\0", state: "babylon.organizer-state.v8\0",
+                    receipt: "babylon.organizer-receipt.v2\0", commitment: "babylon.organizer-commitment.v3\0",
+                    period_entries: "babylon.organizer-period-entries.v3\0", journal: "babylon.organizer-journal.v3\0"}
   field_order: Rust_declared_struct_field_order
   numbers: whole_unsigned_integers_and_strict_nonnegative_i128_decimal_cash_strings
   byte_arrays: fixed_length_JSON_unsigned_integer_arrays
@@ -51,15 +51,15 @@ admission:
     - resource_contract_digest
     - stable_submission_nonce
     - typed_choice_and_inquiry_question
-    - required_typed_allocation_None_or_Collection_target_cash_micros
+    - required_typed_allocation_None_or_Collection_target_cash_micros_or_Aid_food_quantity_and_cash_micros
   durable: accepted_commitment_persisted_before_acknowledgement
   retry: exact_nonce_and_bytes_return_original_commitment
   conflict: changed_bytes_for_existing_nonce_refuse
   period: at_most_one_accepted_commitment_per_organization
   effect: no_time_advance_or_material_mutation
   immutable: accepted_commitment_cannot_be_revised
-  allocation: Collect_requires_positive_target_within_captured_cap_other_current_practices_require_None
-  draft: schema_3_required_collection_allocation_initial_from_captured_policy_no_command_authority
+  allocation: Collect_requires_positive_target_Aid_requires_food_and_cash_within_captured_caps_other_practices_require_None
+  draft: schema_4_required_collection_and_aid_allocations_initials_from_captured_policy_no_command_authority
   failure: failed_tick_leaves_pending_commitment_available_for_retry
 
 causal_order:
@@ -118,8 +118,26 @@ knowledge:
   projection: player_preview_and_inspector_use_only_lawfully_acquired_observations
   collection_history: exact_amount_outcome_and_commitment_for_controlled_actor_recent_eight_receipts
 
+independent_aid:
+  selection: food_u64_and_nonnegative_i128_cash_micros_at_least_one_positive
+  national_terms: food_0_to_4_initial_1_cash_0_to_1450000000_initial_0
+  capture: exact_material_mandate_caps_initials_source_and_independent_receiving_terms
+  action_parameters: food_key_4_kind_3_u64_BE_cash_key_5_kind_2_i128_BE
+  cash: one_original_dispatch_attempt_after_ordinary_order_admission
+  cash_actual: min_requested_lawful_available_payer_cash_with_transfer_and_gift_cost_postings
+  cash_remainder: terminal_no_reserve_refund_retry_or_substitution
+  food: protected_surplus_real_fulfillment_time_physical_freight_loss_arrival_and_consumption
+  response: first_positive_settled_cash_or_consumed_food_one_independent_attempt
+  retained: original_command_dispatch_support_cash_result_response_receipt_and_cumulative_food_loss
+  response_outcomes: success_refusal_no_response_or_insufficient_time_never_retried
+  no_support: all_legs_terminal_without_qualifying_support_NoQualifyingSupport
+  later_food: no_second_cash_transfer_response_time_charge_or_consumed_action_input
+  ordinary_purchasing: cash_from_P_plus_1_can_fund_P_plus_2_no_rerun_or_immediate_time_release
+  current_material: catalog_schema_2_state_schema_22_receipt_v20
+  receiving: no_inferred_participation_or_report_access
+
 replay_successor:
-  material_register: material_world_register_v5
+  material_register: material_world_register_v7
   action_inputs: existing_ordered_practice_batch_binds_all_accepted_commands_including_zero_hour_controls
   tick_payload_layout: 2
   action_outcome_section_tag: 4

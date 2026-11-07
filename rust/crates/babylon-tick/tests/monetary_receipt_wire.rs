@@ -2,7 +2,7 @@
 use babylon_tick::material_world;
 use babylon_tick::material_world::MaterialWorldError;
 
-const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v19\0";
+const DOMAIN: &[u8] = b"babylon.material-tick-receipts.v20\0";
 
 fn tagged(tag: u8, subtag: u8, id: u8) -> Vec<u8> {
     let mut bytes = vec![tag, subtag];
@@ -80,7 +80,7 @@ fn member(labor: &[u8]) -> Vec<u8> {
 fn envelope(transfers: &[Vec<u8>], wages: &[Vec<u8>], labor: &[Vec<u8>]) -> Vec<u8> {
     let members: Vec<_> = labor.iter().map(|r| member(r)).collect();
     let mut bytes = DOMAIN.to_vec();
-    bytes.extend_from_slice(&19_u32.to_be_bytes());
+    bytes.extend_from_slice(&20_u32.to_be_bytes());
     bytes.extend_from_slice(&7_u64.to_be_bytes());
     for tag in 1..=37 {
         let rows = match tag {
@@ -247,9 +247,7 @@ fn all_money_purposes_keep_account_and_reserve_namespaces_distinct() {
         movement(tagged(4, 0, 4), tagged(1, 1, 1), tagged(3, 0, 4)),
         movement(tagged(5, 0, 4), tagged(3, 0, 4), tagged(1, 2, 2)),
         movement(tagged(6, 0, 4), tagged(3, 0, 4), tagged(1, 1, 1)),
-        movement(tagged(8, 0, 5), tagged(1, 2, 2), tagged(4, 0, 5)),
-        movement(tagged(9, 0, 5), tagged(4, 0, 5), tagged(1, 2, 3)),
-        movement(tagged(10, 0, 5), tagged(4, 0, 5), tagged(1, 2, 2)),
+        movement(tagged(7, 7, 0), tagged(1, 3, 2), tagged(1, 2, 3)),
     ];
     assert!(material_world::decode_material_receipts(&envelope(&rows, &[], &[])).is_ok());
     for purpose in [3, 6, 7] {
@@ -308,36 +306,33 @@ fn transfer_family_uses_derived_movement_bound_instead_of_state_row_bound() {
 }
 
 #[test]
-fn aid_postings_refuse_wrong_subtypes_reserves_ids_and_direction() {
-    for tag in [8, 9, 10] {
-        let cash = tagged(1, 2, 2);
-        let reserve = tagged(4, 0, 5);
-        let (debit, credit) = if tag == 8 {
-            (cash, reserve)
-        } else {
-            (reserve, cash)
-        };
-        let row = movement(tagged(tag, 0, 5), debit, credit);
-        assert!(material_world::decode_material_receipts(&envelope(
-            std::slice::from_ref(&row),
-            &[],
-            &[]
-        ))
-        .is_ok());
-        let reserve = if tag == 8 { 84 } else { 34 };
-        for (offset, value) in [(1, 1), (reserve, 2), (reserve + 1, 1), (reserve + 2, 6)] {
-            let mut changed = row.clone();
-            changed[offset] = value;
-            assert_eq!(
-                material_world::decode_material_receipts(&envelope(&[changed], &[], &[])),
-                Err(MaterialWorldError::Wire)
-            );
-        }
-        let mut reversed = row.clone();
-        reversed[34..68].copy_from_slice(&row[84..118]);
-        reversed[84..118].copy_from_slice(&row[34..68]);
+fn mutual_aid_cash_postings_refuse_reserve_endpoints_bad_identity_and_signed_direction() {
+    let row = movement(tagged(7, 7, 0), tagged(1, 3, 2), tagged(1, 2, 3));
+    assert!(material_world::decode_material_receipts(&envelope(
+        std::slice::from_ref(&row),
+        &[],
+        &[]
+    ))
+    .is_ok());
+    for (offset, value) in [(1, 0), (2, 1), (34, 4), (84, 2)] {
+        let mut changed = row.clone();
+        changed[offset] = value;
         assert_eq!(
-            material_world::decode_material_receipts(&envelope(&[reversed], &[], &[])),
+            material_world::decode_material_receipts(&envelope(&[changed], &[], &[])),
+            Err(MaterialWorldError::Wire)
+        );
+    }
+    let mut reversed = row;
+    reversed[68..84].copy_from_slice(&12_i128.to_be_bytes());
+    reversed[118..134].copy_from_slice(&(-12_i128).to_be_bytes());
+    assert_eq!(
+        material_world::decode_material_receipts(&envelope(&[reversed], &[], &[])),
+        Err(MaterialWorldError::Wire)
+    );
+    for tag in [8, 9, 10] {
+        let retired = movement(tagged(tag, 0, 5), tagged(4, 0, 5), tagged(1, 2, 3));
+        assert_eq!(
+            material_world::decode_material_receipts(&envelope(&[retired], &[], &[])),
             Err(MaterialWorldError::Wire)
         );
     }

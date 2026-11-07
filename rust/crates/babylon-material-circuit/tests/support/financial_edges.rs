@@ -135,8 +135,8 @@ fn financial_state_wire_refuses_old_schema_noncanonical_claims_and_truncation() 
         Err(MaterialCircuitError::WireVersion)
     );
     // Seven counted financial tables; three 39-byte locations and two 73-byte claims,
-    // followed by the finite capacity tag and two empty service counts.
-    let locations = bytes.len() - 9 - (7 * 4 + 3 * 39 + 2 * 73) + 4;
+    // followed by the unmodeled household-time tag and empty Aid freight count.
+    let locations = bytes.len() - 5 - (7 * 4 + 3 * 39 + 2 * 73) + 4;
     let ownership = locations + 3 * 39 + 4;
     for (start, width) in [(locations, 39), (ownership, 73)] {
         let mut reversed = bytes.clone();

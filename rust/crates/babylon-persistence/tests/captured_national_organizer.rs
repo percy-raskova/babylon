@@ -236,6 +236,10 @@ fn assert_no_opponent_route(playable: &CapturedEconomicCatalog, campaign: Campai
         .any(|row| row == b"city-pd-observe"));
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one captured national input control retains authority, allocation and action-identity assertions together"
+)]
 fn assert_admitted_inputs(
     initial: &MaterialWorldRegister,
     campaign: CampaignId,
@@ -274,6 +278,14 @@ fn assert_admitted_inputs(
                     .as_ref()
                     .expect("captured collection")
                     .initial_cash_micros,
+            }
+        } else if matches!(
+            choice,
+            OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+        ) {
+            OrganizerAllocation::Aid {
+                food_quantity: 1,
+                cash_micros: 0,
             }
         } else {
             OrganizerAllocation::None

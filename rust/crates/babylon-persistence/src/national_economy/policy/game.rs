@@ -296,7 +296,11 @@ pub struct GameAidPolicy {
     pub local_recipient_contributor_id: u64,
     pub remote_recipient_contributor_id: u64,
     pub organization_opening_cash_micros: i128,
-    pub gift_cash_micros_per_unit: i128,
+    pub maximum_cash_micros: i128,
+    pub initial_food_quantity: u64,
+    pub initial_cash_micros: i128,
+    pub local_cash_receiving_consent: OrganizerGiftConsent,
+    pub remote_cash_receiving_consent: OrganizerGiftConsent,
     pub fulfillment_hours_per_unit: u64,
     pub maximum_quantity: u64,
 }

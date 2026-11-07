@@ -5,6 +5,7 @@ use crate::runtime_session::RuntimeSessionErrorCode;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_material_circuit::{CircuitAccounting, HouseholdTimeAccounting};
 use babylon_practice_contract::OrganizerAidKind;
+use babylon_practice_contract::OrganizerAllocation;
 use babylon_practice_contract::{OrganizerChoice, OrganizerOutcome};
 
 #[test]
@@ -18,7 +19,14 @@ fn remote_projection_preserves_admission_dispatch_and_resolution_dates() {
         false,
         true,
     );
-    let accepted = fixture::commitment(&session, OrganizerChoice::RemoteAid);
+    let accepted = fixture::commitment_with_allocation(
+        &session,
+        OrganizerChoice::RemoteAid,
+        OrganizerAllocation::Aid {
+            food_quantity: 2,
+            cash_micros: 0,
+        },
+    );
     assert_eq!(accepted.command.expected_period, 0);
     assert_eq!(accepted.resolves_period, 1);
     let first = fixture::prepare(&session, Some(&accepted));
@@ -67,7 +75,10 @@ fn remote_projection_preserves_admission_dispatch_and_resolution_dates() {
         .expect("the fixture register carries organizer journal entries");
     let returned = super::resolutions(entries);
     assert_eq!(returned.len(), 1);
-    assert_eq!(returned[0].pending, projected);
+    assert_eq!(projected.response, None);
+    let mut completed = projected;
+    completed.response = Some(returned[0].practice.clone());
+    assert_eq!(returned[0].pending, completed);
     assert_eq!(returned[0].support.period, 2);
     assert_eq!(returned[0].practice.period, 2);
     assert_eq!(
@@ -111,7 +122,14 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
         1
     )
     .is_err());
-    let accepted = fixture::commitment(&session, OrganizerChoice::RemoteAid);
+    let accepted = fixture::commitment_with_allocation(
+        &session,
+        OrganizerChoice::RemoteAid,
+        OrganizerAllocation::Aid {
+            food_quantity: 2,
+            cash_micros: 0,
+        },
+    );
     let first = fixture::prepare(&session, Some(&accepted));
     let mut sink = CollectingSink::default();
     fixture::commit(&mut session, &mut sink, first);

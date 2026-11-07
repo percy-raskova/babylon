@@ -306,6 +306,24 @@ impl Session {
                         .expect("captured collection")
                         .initial_cash_micros,
                 }
+            } else if matches!(
+                choice,
+                OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+            ) {
+                let kind = if choice == OrganizerChoice::LocalAid {
+                    OrganizerAidKind::Local
+                } else {
+                    OrganizerAidKind::Remote
+                };
+                let terms = snapshot
+                    .aid
+                    .iter()
+                    .find(|row| row.kind == kind)
+                    .expect("captured selected Aid terms");
+                OrganizerAllocation::Aid {
+                    food_quantity: terms.initial_food_quantity,
+                    cash_micros: terms.initial_cash_micros,
+                }
             } else {
                 OrganizerAllocation::None
             },
@@ -773,8 +791,14 @@ fn verify_offer(snapshot: &OrganizerSnapshot, kind: OrganizerAidKind) {
     assert_eq!(preview.receiving_consent, OrganizerGiftConsent::Accept);
     assert_ne!(preview.donor_id, preview.recipient_id);
     assert_eq!(preview.maximum_quantity, 4);
-    assert_eq!(preview.gift_cash_per_unit, 100_000);
-    match (&preview.transport, kind) {
+    assert_eq!(preview.maximum_cash_micros, 1_450_000_000);
+    assert_eq!(preview.initial_food_quantity, 1);
+    assert_eq!(preview.initial_cash_micros, 0);
+    assert_eq!(preview.cash_receiving_consent, OrganizerGiftConsent::Accept);
+    verify_offer_transport(&preview.transport, kind);
+}
+fn verify_offer_transport(transport: &OrganizerAidTransportPreview, kind: OrganizerAidKind) {
+    match (transport, kind) {
         (OrganizerAidTransportPreview::Local, OrganizerAidKind::Local) => {}
         (OrganizerAidTransportPreview::Routed { stages, .. }, OrganizerAidKind::Remote) => {
             assert_eq!(stages.len(), 1);
@@ -785,6 +809,7 @@ fn verify_offer(snapshot: &OrganizerSnapshot, kind: OrganizerAidKind) {
         _ => panic!("exact local/remote actual transport required"),
     }
 }
+
 fn positive(snapshot: &OrganizerSnapshot, commitment: Option<&OrganizerCommitment>) -> bool {
     let Some(commitment) = commitment else {
         return false;

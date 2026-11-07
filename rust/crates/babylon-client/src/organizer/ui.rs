@@ -3103,6 +3103,14 @@ pub(crate) mod tests {
         {
             let mut client = app.world_mut().resource_mut::<OrganizerClient>();
             client.pending_aid.push(OrganizerAidPending {
+                allocation: babylon_persistence::runtime_session::OrganizerAllocation::Aid {
+                    food_quantity: 4,
+                    cash_micros: 18,
+                },
+                dispatch_support: crate::organizer::tests::aid_dispatch_fixture(),
+                response: None,
+                lost_quantity: 0,
+
                 kind: OrganizerAidKind::Remote,
                 original_commitment_id: [11; 32],
                 material_commitment_id: [12; 32],
@@ -3348,7 +3356,7 @@ pub(crate) mod tests {
         if let Some(view) = client.view.as_mut() {
             let national: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v14.json"
+                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v15.json"
             )))
             .expect("captured national opening");
             if viewport.x > 1400 {
@@ -4447,6 +4455,7 @@ pub(crate) mod tests {
         session.phase = SessionPhase::Ready;
         session.organizer_enabled = true;
         let draft = OrganizerDraft {
+            aid_allocation: OrganizerAllocation::None,
             collection_allocation: OrganizerAllocation::None,
             workplace_id: 91,
             choice: OrganizerChoice::Reinforce,
@@ -6137,6 +6146,11 @@ pub(crate) mod tests {
                 receiving_consent: OrganizerGiftConsent::Accept,
             });
             client.aid.push(OrganizerMaterialAidPreview {
+                initial_food_quantity: 1,
+                initial_cash_micros: 0,
+                cash_receiving_consent:
+                    babylon_persistence::runtime_session::OrganizerGiftConsent::Accept,
+
                 kind,
                 mandate_id: [1; 32],
                 period: 3,
@@ -6150,7 +6164,7 @@ pub(crate) mod tests {
                 payer_cash: 120,
                 ordinary_offer: None,
                 maximum_quantity: 8,
-                gift_cash_per_unit: 10,
+                maximum_cash_micros: 10,
                 labor_unit_id: [6; 32],
                 fulfillment_hours_per_unit: 2,
                 coordination_hours: 3,
@@ -6175,6 +6189,11 @@ pub(crate) mod tests {
                     }
                 },
             });
+            client.draft.as_mut().expect("draft").aid_allocation =
+                babylon_persistence::runtime_session::OrganizerAllocation::Aid {
+                    food_quantity: 1,
+                    cash_micros: 0,
+                };
         }
         app
     }
@@ -6260,7 +6279,7 @@ pub(crate) mod tests {
                 for term in [
                     label,
                     "8 food units",
-                    "0.00001 currency per unit",
+                    "Independent cash cap: $0.00001 currency",
                     "0.00012 currency",
                     "2 household hours",
                     "3 hours",

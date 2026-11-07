@@ -40,7 +40,7 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 
 fn collection_receipt_row(bytes: &[u8]) -> usize {
-    let mut position = b"babylon.material-tick-receipts.v19\0".len() + 12;
+    let mut position = b"babylon.material-tick-receipts.v20\0".len() + 12;
     for (index, width) in material_world::RECEIPT_ROW_BYTES.iter().enumerate() {
         assert_eq!(usize::from(bytes[position]), index + 1);
         let count = u64::from_be_bytes(
@@ -110,7 +110,6 @@ fn fulfilled_gift_uses_real_time_before_later_coordination() {
         2,
         4,
         6,
-        6,
         0,
     );
     assert_eq!(receipt.outcome, OrganizerOutcome::InsufficientTime);
@@ -163,7 +162,7 @@ fn captured_promises_cannot_replace_zero_actual_household_time() {
             .expect("the fixture sequence is non-empty")
             .practice
             .outcome,
-        OrganizerOutcome::AidNotProvisioned
+        OrganizerOutcome::InsufficientTime
     );
     let CircuitAccounting::Monetary(economy) = &session.material().state().accounting else {
         unreachable!()
@@ -183,7 +182,6 @@ fn captured_promises_cannot_replace_zero_actual_household_time() {
         0,
         6,
         0,
-        6,
     );
     assert_eq!(book.contributions.len(), 0);
     assert_eq!(
@@ -232,7 +230,6 @@ fn recipient_practice_refusal_does_not_revoke_granted_food() {
             .support,
         2,
         4,
-        6,
         6,
         0,
     );
@@ -317,7 +314,6 @@ fn delivered_consumed_support_funds_only_actual_independent_coordination() {
             .support,
         2,
         4,
-        6,
         6,
         0,
     );
@@ -447,6 +443,127 @@ fn failed_gift_tick_publishes_nothing_and_exact_retry_preserves_receipt_identity
 #[test]
 #[allow(
     clippy::too_many_lines,
+    reason = "one paired full-checkpoint replay checks original cash, delayed food and exactly one retained response"
+)]
+fn remote_cash_response_survives_checkpoint_without_second_gift_or_attempt() {
+    let mut cfg = organizer_aid_fixture::config();
+    cfg.aid_bindings[0].kind = OrganizerAidKind::Remote;
+    cfg.aid_bindings[0].coordination_hours = 1;
+    let make_session = || {
+        organizer_aid_fixture::authored_session(
+            michigan_dynamic_hex_foundation::michigan_dynamic_hex_foundation()
+                .expect("the Michigan hex foundation builds"),
+            cfg.clone(),
+            false,
+            true,
+        )
+    };
+    let mut session = make_session();
+    let accepted = organizer_aid_fixture::commitment_with_allocation(
+        &session,
+        OrganizerChoice::RemoteAid,
+        babylon_practice_contract::OrganizerAllocation::Aid {
+            food_quantity: 1,
+            cash_micros: 6,
+        },
+    );
+    let first = organizer_aid_fixture::prepare(&session, Some(&accepted));
+    let receipt = material_world::decode_material_receipts(first.material().receipt_bytes())
+        .expect("actual dispatch receipts");
+    assert_eq!(
+        receipt
+            .aid
+            .iter()
+            .filter(|row| row.outcome == AidOutcome::CashGranted)
+            .map(|row| row.cash_amount.micro_units())
+            .collect::<Vec<_>>(),
+        [6]
+    );
+    assert!(receipt
+        .aid
+        .iter()
+        .any(|row| row.outcome == AidOutcome::Dispatched && row.quantity == 1));
+    let pending = &first
+        .material()
+        .register()
+        .organizer_state()
+        .expect("organizer")
+        .pending_aid[0];
+    let original_response = pending
+        .response
+        .clone()
+        .expect("cash qualifies in dispatch close");
+    assert_eq!(original_response.period, 1);
+    assert_eq!(
+        original_response.commitment_id,
+        Some(accepted.commitment_id)
+    );
+    assert_eq!(
+        original_response.outcome,
+        OrganizerOutcome::AidPracticeCompleted
+    );
+    assert_eq!(original_response.hours_spent, 1);
+    let mut restored = make_session();
+    restored
+        .restore_full_checkpoint(
+            first.graph_report().result_stable_graph(),
+            first.graph_report().material_state_rows(),
+            first.graph_report().result_registers().canonical_bytes(),
+            MaterialWorldRegister::decode_external(
+                session.catalog(),
+                first.material().register().canonical_bytes().to_vec(),
+            )
+            .expect("cold pending register"),
+        )
+        .expect("cold checkpoint");
+    let mut sink = CollectingSink::default();
+    organizer_aid_fixture::commit(&mut session, &mut sink, first);
+    let second = organizer_aid_fixture::prepare(&session, None);
+    let recovered_second = organizer_aid_fixture::prepare(&restored, None);
+    assert_eq!(second.identity(), recovered_second.identity());
+    let receipt = material_world::decode_material_receipts(second.material().receipt_bytes())
+        .expect("actual arrival receipts");
+    assert!(receipt
+        .aid
+        .iter()
+        .any(|row| row.outcome == AidOutcome::Granted && row.quantity == 1));
+    assert!(receipt.aid.iter().all(|row| !matches!(
+        row.outcome,
+        AidOutcome::CashRequested
+            | AidOutcome::CashGranted
+            | AidOutcome::CashUnfunded
+            | AidOutcome::CashReceivingRefused
+    )));
+    let resolution = &second.material().register().history().aid_receipts[0];
+    assert_eq!(resolution.authorization.response, Some(original_response));
+    assert_eq!(
+        resolution.practice.outcome,
+        OrganizerOutcome::AidResponseRetained
+    );
+    assert_eq!(resolution.practice.hours_spent, 0);
+    assert_eq!(resolution.practice.time_use.len(), 0);
+    assert_eq!(
+        second
+            .material()
+            .register()
+            .organizer_state()
+            .expect("organizer")
+            .pending_aid
+            .len(),
+        0
+    );
+    organizer_aid_fixture::commit(&mut session, &mut sink, second);
+    let reopened = MaterialWorldRegister::decode_external(
+        session.catalog(),
+        session.material().canonical_bytes().to_vec(),
+    )
+    .expect("cold terminal register");
+    assert_eq!(reopened, *session.material());
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
     reason = "`remote_support_keeps_original_authorization_until_arrival_without_another_command` keeps one authored boundary's fixture and assertions together"
 )]
 fn remote_support_keeps_original_authorization_until_arrival_without_another_command() {
@@ -460,7 +577,14 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
         false,
         true,
     );
-    let accepted = organizer_aid_fixture::commitment(&session, OrganizerChoice::RemoteAid);
+    let accepted = organizer_aid_fixture::commitment_with_allocation(
+        &session,
+        OrganizerChoice::RemoteAid,
+        babylon_practice_contract::OrganizerAllocation::Aid {
+            food_quantity: 2,
+            cash_micros: 0,
+        },
+    );
     let first = organizer_aid_fixture::prepare(&session, Some(&accepted));
     let first_receipts =
         babylon_tick::material_world::decode_material_receipts(first.material().receipt_bytes())
@@ -485,7 +609,7 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
         .organizer_state()
         .expect("the fixture register carries organizer state");
     let waiting_entries = saved.history();
-    assert_actual_aid_postings(&waiting_entries.aid_receipts[0].support, 2, 4, 6, 0, 0);
+    assert_actual_aid_postings(&waiting_entries.aid_receipts[0].support, 2, 4, 0, 0);
     assert_eq!(waiting.pending_aid.len(), 1);
     assert_eq!(waiting.pending_aid[0].gift.commitment, accepted);
     assert_eq!(
@@ -517,7 +641,7 @@ fn remote_support_keeps_original_authorization_until_arrival_without_another_com
         .aid_receipts
         .last()
         .expect("the fixture sequence is non-empty");
-    assert_actual_aid_postings(&resolution.support, 0, 0, 0, 6, 0);
+    assert_actual_aid_postings(&resolution.support, 0, 0, 0, 0);
     assert_eq!(resolution.authorization.gift.commitment, accepted);
     assert_eq!(resolution.authorization.dispatch_period, 1);
     assert_eq!(resolution.practice.period, 2);
@@ -654,9 +778,8 @@ fn assert_actual_aid_postings(
     support: &OrganizerAidSupport,
     dispatched: u64,
     hours: u64,
-    reserved: i128,
     granted: i128,
-    refunded: i128,
+    lost: u64,
 ) {
     let wire = serde_json::to_value(support).expect("the value serializes to JSON");
     assert_eq!(
@@ -664,9 +787,8 @@ fn assert_actual_aid_postings(
         serde_json::json!({
             "dispatched_quantity": dispatched,
             "fulfillment_hours": hours,
-            "payer_cash_reserved_micros": reserved.to_string(),
             "payer_cash_granted_micros": granted.to_string(),
-            "payer_cash_refunded_micros": refunded.to_string()
+            "lost_quantity": lost
         })
     );
 }
@@ -898,7 +1020,7 @@ fn actual_collection_wire_refuses_changed_posting_hours_use_and_previous_schema(
         );
     }
     let mut old = bytes.to_vec();
-    let domain = b"babylon.material-tick-receipts.v19\0".len();
+    let domain = b"babylon.material-tick-receipts.v20\0".len();
     old[domain - 2] = b'6';
     old[domain..domain + 4].copy_from_slice(&16_u32.to_be_bytes());
     assert!(babylon_tick::material_world::decode_material_receipts(&old).is_err());
@@ -1103,12 +1225,23 @@ fn original_collection_funds_only_separately_authorized_later_aid() {
         .aid
         .iter()
         .any(|row| row.outcome == AidOutcome::Granted
-            && row.cash_amount.micro_units() == 6
+            && row.cash_amount.micro_units() == 0
             && row.quantity == 2));
-    assert!(!counterfactual
+    assert!(actual
         .aid
         .iter()
-        .any(|row| row.outcome == AidOutcome::Granted));
+        .any(|row| row.outcome == AidOutcome::CashGranted
+            && row.cash_amount.micro_units() == 6
+            && row.quantity == 0));
+    assert!(counterfactual
+        .aid
+        .iter()
+        .any(|row| row.outcome == AidOutcome::CashUnfunded && row.cash_amount.micro_units() == 0));
+    // Food is independent of the severed organization cash contribution.
+    assert!(counterfactual
+        .aid
+        .iter()
+        .any(|row| row.outcome == AidOutcome::Granted && row.quantity == 2));
     assert!(actual
         .household_consumption
         .iter()
@@ -1668,12 +1801,14 @@ fn external_register_reopen_adopts_authenticated_bytes_and_rejects_wire_changes(
         std::ptr::eq(owned.canonical_bytes().as_ptr(), allocation),
         "owned admission must retain the exact authenticated input allocation"
     );
-    let domain = b"babylon.material-world-register.v6\0".len();
-    let mut old_v5 = canonical.to_vec();
-    old_v5[domain - 2] = b'5';
-    old_v5[domain..domain + 4].copy_from_slice(&5_u32.to_be_bytes());
-    MaterialWorldRegister::decode_external(&catalog, old_v5)
-        .expect_err("old v5 register must be refused before admission");
+    let domain = b"babylon.material-world-register.v7\0".len();
+    for (tag, version) in [(b'5', 5_u32), (b'6', 6_u32)] {
+        let mut previous = canonical.to_vec();
+        previous[domain - 2] = tag;
+        previous[domain..domain + 4].copy_from_slice(&version.to_be_bytes());
+        MaterialWorldRegister::decode_external(&catalog, previous)
+            .expect_err("prior register must be refused before admission");
+    }
     for offset in [0, domain, domain + 11, domain + 19, canonical.len() - 1] {
         let mut invalid = canonical.to_vec();
         invalid[offset] ^= 1;
@@ -1977,7 +2112,21 @@ fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
     let mut original = Vec::new();
     let mut actual_grants = BTreeSet::new();
     for &choice in schedule {
-        let accepted = organizer_aid_fixture::commitment(&session, choice);
+        let accepted = if matches!(
+            choice,
+            OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+        ) {
+            organizer_aid_fixture::commitment_with_allocation(
+                &session,
+                choice,
+                babylon_practice_contract::OrganizerAllocation::Aid {
+                    food_quantity: 1,
+                    cash_micros: 0,
+                },
+            )
+        } else {
+            organizer_aid_fixture::commitment(&session, choice)
+        };
         if matches!(
             choice,
             OrganizerChoice::RemoteAid | OrganizerChoice::LocalAid
@@ -1990,7 +2139,7 @@ fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
         for grant in rows.aid.iter().filter(|r| r.outcome == AidOutcome::Granted) {
             assert_eq!(
                 (grant.quantity, grant.cash_amount),
-                (1, organizer_aid_fixture::money(3))
+                (1, organizer_aid_fixture::money(0))
             );
             let consumed = rows
                 .household_consumption
@@ -2010,14 +2159,14 @@ fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
                 .iter()
                 .filter(|r| {
                     r.purpose
-                        == babylon_material_circuit::MoneyTransferPurpose::AidGrant(
-                            grant.commitment_id,
+                        == babylon_material_circuit::MoneyTransferPurpose::Cash(
+                            babylon_material_circuit::CashTransferPurpose::MutualAid,
                         )
                 })
                 .map(|r| {
                     assert_eq!(
                         r.debit.location,
-                        babylon_material_circuit::MoneyLocation::AidReserve(grant.commitment_id)
+                        babylon_material_circuit::MoneyLocation::Cash(grant.payer)
                     );
                     assert_eq!(
                         r.credit.location,
@@ -2033,7 +2182,7 @@ fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
                 })
                 .try_fold(0_i128, i128::checked_add)
                 .expect("the fixture input satisfies the fallible conversion");
-            assert_eq!(posted, 3);
+            assert_eq!(posted, 0);
             actual_grants.insert(grant.commitment_id.as_bytes());
         }
         organizer_aid_fixture::commit(&mut session, &mut sink, candidate);
@@ -2067,12 +2216,12 @@ fn run_dual_aid_schedule(separated: bool, refuses_remote: bool) {
             }
         ));
         assert!(actual_grants.contains(&row.support.material_commitment_id));
-        // Remote terminal support describes arrival: dispatch/time/reservation were
+        // Remote terminal support describes arrival: dispatch/time were
         // charged in the preceding period, never again on delivery.
         if row.authorization.gift.kind == OrganizerAidKind::Remote {
-            assert_actual_aid_postings(&row.support, 0, 0, 0, 3, 0);
+            assert_actual_aid_postings(&row.support, 0, 0, 0, 0);
         } else {
-            assert_actual_aid_postings(&row.support, 1, 2, 3, 3, 0);
+            assert_actual_aid_postings(&row.support, 1, 2, 0, 0);
         }
         assert_dual_aid_practice_time(row);
     }

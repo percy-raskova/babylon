@@ -359,7 +359,11 @@ donor_contributor_id = 2616301
 local_recipient_contributor_id = 2616302
 remote_recipient_contributor_id = 1703101
 organization_opening_cash_micros = 1000000
-gift_cash_micros_per_unit = 100000
+maximum_cash_micros = 1450000000
+initial_food_quantity = 1
+initial_cash_micros = 0
+local_cash_receiving_consent = "accept"
+remote_cash_receiving_consent = "accept"
 fulfillment_hours_per_unit = 2
 maximum_quantity = 4
 

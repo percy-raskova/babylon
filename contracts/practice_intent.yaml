@@ -133,7 +133,7 @@ parameter_contract:
         values: {reinforce: 1, hold: 2, pause_standing: 3, resume_standing: 4, saved_standing_contact: 5}
     saved_standing_contact_origin: engine_derived_only_no_player_choice
     MUTUAL_AID:
-      empty: captured_fixed_aid_or_independent_partner_response
+      empty: independent_partner_response
       collection:
         exact_count: 1
         key: 3
@@ -142,6 +142,12 @@ parameter_contract:
         value_encoding: signed_i128_big_endian_cash_micros
         range: strictly_positive
         admission: exact_selected_target_at_or_below_captured_collection_cap
+      aid:
+        exact_count: 2
+        food: {key: 4, value_kind: 3, value_length: 8, value_encoding: unsigned_u64_big_endian}
+        cash: {key: 5, value_kind: 2, value_length: 16, value_encoding: signed_i128_big_endian_cash_micros}
+        range: nonnegative_legs_with_at_least_one_positive
+        admission: exact_selected_legs_at_or_below_captured_material_mandate_caps
     other_practices: empty_only
   refusal: intent_parameter_unsupported
   rationale: >-

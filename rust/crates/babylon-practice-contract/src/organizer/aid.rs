@@ -35,7 +35,8 @@ pub enum OrganizerGiftConsent {
     Refuse,
 }
 
-/// Identities only. Material host owns quantities, stock, money, routes and fulfillment time.
+/// Captured identities, allocation bounds and independent receiving terms.
+/// The material host owns actual stock, money, routes and fulfillment time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OrganizerAidBinding {
@@ -48,6 +49,13 @@ pub struct OrganizerAidBinding {
     pub recipient_principal_id: [u8; 32],
     pub social_class_target: [u8; 32],
     pub receiving_consent: OrganizerGiftConsent,
+    pub cash_receiving_consent: OrganizerGiftConsent,
+    pub maximum_food_quantity: u64,
+    #[serde(with = "nonnegative_decimal_i128")]
+    pub maximum_cash_micros: i128,
+    pub initial_food_quantity: u64,
+    #[serde(with = "nonnegative_decimal_i128")]
+    pub initial_cash_micros: i128,
     pub partner: OrganizerPartner,
     /// Coordination practice after material close; not quantity fulfillment labor.
     pub coordination_hours: u64,
@@ -111,6 +119,12 @@ pub(super) fn validate_aid_bindings(config: &OrganizerConfig) -> Result<(), Orga
             || !mandates.insert(row.mandate_id)
             || row.social_class_target == [0; 32]
             || row.coordination_hours == 0
+            || row.maximum_food_quantity == 0
+            || row.maximum_cash_micros <= 0
+            || row.initial_food_quantity > row.maximum_food_quantity
+            || row.initial_cash_micros < 0
+            || row.initial_cash_micros > row.maximum_cash_micros
+            || (row.initial_food_quantity == 0 && row.initial_cash_micros == 0)
             || row.donor_principal_id == row.recipient_principal_id
             || !bindings.iter().any(|b| {
                 b.contributor_id == row.donor_contributor_id
@@ -133,10 +147,19 @@ fn gift_commitment(
 ) -> Result<OrganizerAidCommitment, OrganizerError> {
     let row = aid_binding(config, commitment.command.choice)
         .ok_or(OrganizerError::Refused(OrganizerRefusal::AidUnavailable))?;
-    if row.receiving_consent != OrganizerGiftConsent::Accept {
-        return Err(OrganizerError::Refused(
-            OrganizerRefusal::AidReceivingRefused,
-        ));
+    let super::OrganizerAllocation::Aid {
+        food_quantity,
+        cash_micros,
+    } = commitment.command.allocation
+    else {
+        return Err(OrganizerError::InvalidCommitment);
+    };
+    if food_quantity > row.maximum_food_quantity
+        || cash_micros < 0
+        || cash_micros > row.maximum_cash_micros
+        || (food_quantity == 0 && cash_micros == 0)
+    {
+        return Err(OrganizerError::InvalidCommitment);
     }
     Ok(OrganizerAidCommitment {
         commitment: commitment.clone(),
@@ -154,7 +177,7 @@ fn gift_commitment(
 /// Authenticate an accepted next-period gift before material close. No actual stock,
 /// cash or finite-time availability is inferred; those remain host admission.
 /// # Errors
-/// Refuses wrong/current bindings or captured receiving refusal.
+/// Refuses changed current bindings or an invalid selected allocation.
 pub fn organizer_aid_commitment(
     config: &OrganizerConfig,
     opening: &OrganizerState,
@@ -167,7 +190,7 @@ pub fn organizer_aid_commitment(
 }
 /// Validate immutable exact-retry identity after its original period has resolved.
 /// # Errors
-/// Refuses changed capture, source, actors, identity or receiving consent.
+/// Refuses changed capture, source, actors, identity or selected allocation.
 pub fn validate_organizer_aid_commitment(
     config: &OrganizerConfig,
     gift: &OrganizerAidCommitment,
@@ -208,13 +231,17 @@ pub fn admit_organizer_aid_pending(
     Ok(gift)
 }
 
-/// Designed gate: delivered support and positive same-period recipient consumption,
-/// not proof that donated units caused marginal consumption or additional time.
+/// Food-leg evidence: delivery and aggregate same-period recipient consumption.
+/// Cash qualifies independently; these totals do not attribute marginal consumption or time to a gift.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum OrganizerAidSupportStatus {
+    /// No food was selected; the cash leg remains independently adjudicated.
+    NotRequested,
     /// Some authenticated freight for this original commitment still survives.
     AwaitingDelivery,
+    /// The selected food leg was refused by its captured receiving terms.
+    ReceivingRefused,
     /// No grant and no surviving freight; includes unshipped or total loss.
     TerminalFailure,
     Granted {
@@ -231,13 +258,20 @@ pub struct OrganizerAidMaterialPostings {
     /// Actual food and donor household time in this support period, not the mandate maximum.
     pub dispatched_quantity: u64,
     pub fulfillment_hours: u64,
-    /// Exact payer movements, separately from household time and later coordination.
-    #[serde(with = "nonnegative_decimal_i128")]
-    pub payer_cash_reserved_micros: i128,
+    /// One exact cash transfer at original dispatch, independent of food.
     #[serde(with = "nonnegative_decimal_i128")]
     pub payer_cash_granted_micros: i128,
-    #[serde(with = "nonnegative_decimal_i128")]
-    pub payer_cash_refunded_micros: i128,
+    pub lost_quantity: u64,
+}
+
+/// Terminal result of the sole dispatch-time cash attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum OrganizerAidCashStatus {
+    NotRequested,
+    Granted,
+    Unfunded,
+    ReceivingRefused,
 }
 
 /// Host joins actual material receipts, consumption and surviving freight before
@@ -255,6 +289,7 @@ pub struct OrganizerAidSupport {
     pub good_id: [u8; 32],
     pub unit_id: [u8; 32],
     pub status: OrganizerAidSupportStatus,
+    pub cash_status: OrganizerAidCashStatus,
     pub material_postings: OrganizerAidMaterialPostings,
 }
 
@@ -281,6 +316,11 @@ pub struct OrganizerPendingAidPractice {
     pub good_id: [u8; 32],
     pub unit_id: [u8; 32],
     pub partner_authorization: OrganizerAidPartnerAuthorization,
+    /// Original dispatch evidence remains available even beyond the bounded journal window.
+    pub dispatch_support: OrganizerAidSupport,
+    /// First qualifying response, including refusal or insufficient time; never rerolled.
+    pub response: Option<OrganizerReceipt>,
+    pub lost_quantity: u64,
 }
 
 /// Separate from ordinary once-per-period practice receipts. Original admission
@@ -334,8 +374,33 @@ pub(super) fn validate_pending_shape(
         || auth.content_digest != pending.gift.commitment.command.content_digest
         || auth.resource_digest != pending.gift.commitment.command.resource_digest
         || auth.target == [0; 32]
+        || pending.dispatch_support.original_commitment_id != pending.gift.commitment.commitment_id
+        || pending.dispatch_support.period != pending.dispatch_period
+        || pending.dispatch_support.dispatch_period != pending.dispatch_period
+        || pending.dispatch_support.material_commitment_id != pending.material_commitment_id
+        || pending.lost_quantity
+            > pending
+                .dispatch_support
+                .material_postings
+                .dispatched_quantity
+        || pending.response.as_ref().is_some_and(|response| {
+            response.commitment_id != Some(pending.gift.commitment.commitment_id)
+                || response.actor_id != pending.gift.donor_actor_id
+                || response.choice != pending.gift.commitment.command.choice
+                || response.period < pending.dispatch_period
+                || !matches!(
+                    response.outcome,
+                    OrganizerOutcome::AidPracticeCompleted
+                        | OrganizerOutcome::AidPracticeUncompleted
+                        | OrganizerOutcome::InsufficientTime
+                )
+        })
     {
         return Err(OrganizerError::AidSupportMismatch);
+    }
+    validate_support(pending, &pending.dispatch_support, pending.dispatch_period)?;
+    if let Some(response) = &pending.response {
+        super::contract::validate_organizer_receipt(response)?;
     }
     Ok(())
 }
@@ -346,7 +411,22 @@ pub(super) fn validate_pending(
 ) -> Result<(), OrganizerError> {
     validate_pending_shape(pending)?;
     validate_organizer_aid_commitment(config, &pending.gift)?;
-    if partner_authorization(config, &pending.gift)? != pending.partner_authorization {
+    let binding = aid_binding(config, pending.gift.commitment.command.choice)
+        .ok_or(OrganizerError::AidSupportMismatch)?;
+    if (binding.receiving_consent == OrganizerGiftConsent::Refuse
+        && pending
+            .dispatch_support
+            .material_postings
+            .dispatched_quantity
+            > 0)
+        || (binding.cash_receiving_consent == OrganizerGiftConsent::Refuse
+            && pending
+                .dispatch_support
+                .material_postings
+                .payer_cash_granted_micros
+                > 0)
+        || partner_authorization(config, &pending.gift)? != pending.partner_authorization
+    {
         return Err(OrganizerError::AidSupportMismatch);
     }
     Ok(())
@@ -359,24 +439,34 @@ pub(super) fn validate_support(
 ) -> Result<(), OrganizerError> {
     let postings = &support.material_postings;
     let current = support.period == support.dispatch_period;
-    let settled = postings
-        .payer_cash_granted_micros
-        .checked_add(postings.payer_cash_refunded_micros)
-        .ok_or(OrganizerError::AidSupportMismatch)?;
-    if postings.payer_cash_reserved_micros < 0
+    let super::OrganizerAllocation::Aid {
+        food_quantity,
+        cash_micros,
+    } = pending.gift.commitment.command.allocation
+    else {
+        return Err(OrganizerError::AidSupportMismatch);
+    };
+    if (food_quantity == 0) != (support.status == OrganizerAidSupportStatus::NotRequested)
+        || (support.status == OrganizerAidSupportStatus::ReceivingRefused
+            && (!current || postings.dispatched_quantity != 0 || postings.lost_quantity != 0))
         || postings.payer_cash_granted_micros < 0
-        || postings.payer_cash_refunded_micros < 0
-        || (current && settled > postings.payer_cash_reserved_micros)
+        || postings.payer_cash_granted_micros > cash_micros
         || (!current
             && (postings.dispatched_quantity != 0
                 || postings.fulfillment_hours != 0
-                || postings.payer_cash_reserved_micros != 0))
+                || postings.payer_cash_granted_micros != 0))
         || (postings.dispatched_quantity == 0 && postings.fulfillment_hours != 0)
-        || (!matches!(support.status, OrganizerAidSupportStatus::Granted { .. })
-            && postings.payer_cash_granted_micros != 0)
+        || postings.dispatched_quantity > food_quantity
+        || (!current && support.cash_status != pending.dispatch_support.cash_status)
+        || (!current
+            && matches!(support.status, OrganizerAidSupportStatus::Granted { granted_quantity, .. } if granted_quantity > pending.dispatch_support.material_postings.dispatched_quantity))
+        || postings.lost_quantity > food_quantity
+        || (current
+            && (support.cash_status == OrganizerAidCashStatus::Granted)
+                != (postings.payer_cash_granted_micros > 0))
+        || (cash_micros == 0) != (support.cash_status == OrganizerAidCashStatus::NotRequested)
         || (pending.gift.kind == OrganizerAidKind::Local
-            && matches!(support.status, OrganizerAidSupportStatus::Granted { granted_quantity, .. }
-                if postings.dispatched_quantity != granted_quantity))
+            && matches!(support.status, OrganizerAidSupportStatus::Granted { granted_quantity, .. } if postings.dispatched_quantity != granted_quantity))
     {
         return Err(OrganizerError::AidSupportMismatch);
     }
@@ -418,6 +508,9 @@ pub(super) fn pending_from_support(
     let gift = organizer_aid_commitment(config, opening, accepted)?;
     let pending = OrganizerPendingAidPractice {
         partner_authorization: partner_authorization(config, &gift)?,
+        dispatch_support: support.clone(),
+        response: None,
+        lost_quantity: 0,
         gift,
         material_commitment_id: support.material_commitment_id,
         dispatch_period: accepted.resolves_period,
@@ -520,25 +613,44 @@ pub(super) fn validate_resolution_shape(
         ),
     )?;
     let outcome = row.practice.outcome;
-    let allowed = match row.support.status {
-        OrganizerAidSupportStatus::AwaitingDelivery => {
-            outcome == OrganizerOutcome::AidAwaitingSupport
-        }
-        OrganizerAidSupportStatus::TerminalFailure => {
-            outcome == OrganizerOutcome::AidNotProvisioned
-        }
-        OrganizerAidSupportStatus::Granted {
-            consumed_quantity: 0,
-            ..
-        } => outcome == OrganizerOutcome::AidNotProvisioned,
-        OrganizerAidSupportStatus::Granted { .. } => matches!(
+    let qualifies = row.support.material_postings.payer_cash_granted_micros > 0
+        || matches!(row.support.status, OrganizerAidSupportStatus::Granted { consumed_quantity, .. } if consumed_quantity > 0);
+    let allowed = if row
+        .authorization
+        .response
+        .as_ref()
+        .is_some_and(|response| response.period < row.practice.period)
+    {
+        outcome == OrganizerOutcome::AidResponseRetained
+    } else if qualifies {
+        matches!(
             outcome,
             OrganizerOutcome::AidPracticeCompleted
                 | OrganizerOutcome::AidPracticeUncompleted
                 | OrganizerOutcome::InsufficientTime
-        ),
+        )
+    } else if row.support.status == OrganizerAidSupportStatus::AwaitingDelivery {
+        outcome == OrganizerOutcome::AidAwaitingSupport
+    } else {
+        outcome == OrganizerOutcome::NoQualifyingSupport
     };
-    if row.practice.receipt_id != expected
+    if (qualifies && row.authorization.response.is_none())
+        || (row
+            .authorization
+            .dispatch_support
+            .material_postings
+            .payer_cash_granted_micros
+            > 0
+            && row
+                .authorization
+                .response
+                .as_ref()
+                .is_none_or(|response| response.period != row.authorization.dispatch_period))
+        || row.authorization.response.as_ref().is_some_and(|response| {
+            response.period > row.practice.period
+                || (response.period == row.practice.period && response != &row.practice)
+        })
+        || row.practice.receipt_id != expected
         || row.practice.commitment_id != Some(row.authorization.gift.commitment.commitment_id)
         || row.practice.choice != row.authorization.gift.commitment.command.choice
         || row.practice.actor_id != row.authorization.gift.donor_actor_id
@@ -595,6 +707,19 @@ pub(super) fn validate_aid_state(state: &OrganizerState) -> Result<(), Organizer
     for pending in &state.pending_aid {
         validate_pending_shape(pending)?;
         if pending.dispatch_period > state.period
+            || (pending
+                .dispatch_support
+                .material_postings
+                .payer_cash_granted_micros
+                > 0
+                && pending
+                    .response
+                    .as_ref()
+                    .is_none_or(|response| response.period != pending.dispatch_period))
+            || pending
+                .response
+                .as_ref()
+                .is_some_and(|response| response.period > state.period)
             || !active_kinds.insert(pending.gift.kind)
             || previous_kind.is_some_and(|kind| kind >= pending.gift.kind)
         {
@@ -724,7 +849,7 @@ pub(super) fn validate_completed_aid(
         if !entries.aid_receipts.iter().any(|row| {
             row.authorization == *pending
                 && row.practice.period == state.period
-                && row.practice.outcome == OrganizerOutcome::AidAwaitingSupport
+                && row.support.status == OrganizerAidSupportStatus::AwaitingDelivery
         }) {
             return Err(OrganizerError::InvalidState);
         }
@@ -754,11 +879,18 @@ pub(super) fn validate_aid_window(
             }
             last_key = Some(key);
             let id = row.authorization.gift.commitment.commitment_id;
-            let terminal = row.practice.outcome != OrganizerOutcome::AidAwaitingSupport;
+            let terminal = row.support.status != OrganizerAidSupportStatus::AwaitingDelivery;
             if let Some((previous_period, was_terminal, authorization)) = histories.get(&id) {
                 if *was_terminal
                     || previous_period.checked_add(1) != Some(row.practice.period)
-                    || *authorization != &row.authorization
+                    || authorization.gift != row.authorization.gift
+                    || authorization.material_commitment_id
+                        != row.authorization.material_commitment_id
+                    || authorization.dispatch_support != row.authorization.dispatch_support
+                    || authorization.response.as_ref().is_some_and(|response| {
+                        row.authorization.response.as_ref() != Some(response)
+                    })
+                    || authorization.lost_quantity > row.authorization.lost_quantity
                 {
                     return Err(OrganizerError::InvalidState);
                 }

@@ -111,11 +111,11 @@ use std::fmt::Result as FmtResult;
 use std::ops::Deref;
 use std::sync::Arc;
 
-pub(crate) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v6\0";
+pub(crate) const REGISTER_DOMAIN: &[u8] = b"babylon.material-world-register.v7\0";
 
 pub(crate) const NOMINAL_DOMAIN: &[u8] = b"babylon.nominal-material-world.v3\0";
 
-pub(crate) const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v19\0";
+pub(crate) const RECEIPT_DOMAIN: &[u8] = b"babylon.material-tick-receipts.v20\0";
 
 /// Designed 1 GB operational headroom explicitly authorized by the Director.
 /// This standalone ceiling does not enlarge surrounding foundation or receipt bounds.
@@ -395,7 +395,7 @@ impl MaterialWorldRegister {
             .ok_or(MaterialWorldError::Arithmetic)?;
         let mut bytes = bounded_bytes(length, MAX_MATERIAL_WORLD_REGISTER_BYTES)?;
         bytes.extend_from_slice(REGISTER_DOMAIN);
-        bytes.extend_from_slice(&6_u32.to_be_bytes());
+        bytes.extend_from_slice(&7_u32.to_be_bytes());
         bytes.extend_from_slice(&completed_tick.to_be_bytes());
         bytes.extend_from_slice(
             &u64::try_from(state_bytes.len())
@@ -612,7 +612,7 @@ impl MaterialWorldRegister {
             return Err(MaterialWorldError::Wire);
         }
         let start = REGISTER_DOMAIN.len();
-        if bytes[start..start + 4] != 6_u32.to_be_bytes() {
+        if bytes[start..start + 4] != 7_u32.to_be_bytes() {
             return Err(MaterialWorldError::Wire);
         }
         let tick = u64::from_be_bytes(
@@ -1092,7 +1092,7 @@ pub fn decode_material_organizer_evidence(
         return Err(MaterialWorldError::Wire);
     }
     let start = REGISTER_DOMAIN.len();
-    if bytes[start..start + 4] != 6_u32.to_be_bytes() {
+    if bytes[start..start + 4] != 7_u32.to_be_bytes() {
         return Err(MaterialWorldError::Wire);
     }
     let tick = u64::from_be_bytes(
@@ -1147,7 +1147,7 @@ pub fn decode_city_pd_attempt_evidence(
     if bytes.len() < header
         || bytes.len() > MAX_MATERIAL_WORLD_REGISTER_BYTES
         || !bytes.starts_with(REGISTER_DOMAIN)
-        || bytes[REGISTER_DOMAIN.len()..REGISTER_DOMAIN.len() + 4] != 6_u32.to_be_bytes()
+        || bytes[REGISTER_DOMAIN.len()..REGISTER_DOMAIN.len() + 4] != 7_u32.to_be_bytes()
     {
         return Err(MaterialWorldError::Wire);
     }
@@ -1659,7 +1659,7 @@ pub fn encode_material_receipts(
     )?;
     let mut bytes = bounded_bytes(length, MAX_MATERIAL_TICK_RECEIPT_BYTES)?;
     bytes.extend_from_slice(RECEIPT_DOMAIN);
-    bytes.extend_from_slice(&19_u32.to_be_bytes());
+    bytes.extend_from_slice(&20_u32.to_be_bytes());
     bytes.extend_from_slice(&tick.to_be_bytes());
     for (tag, (count, _)) in families.iter().enumerate() {
         bytes.push(u8::try_from(tag + 1).map_err(|_| MaterialWorldError::Arithmetic)?);
@@ -1678,7 +1678,7 @@ pub fn encode_material_receipts(
     Ok(bytes)
 }
 
-/// Typed material evidence decoded only from an exact committed V19 receipt family.
+/// Typed material evidence decoded only from an exact committed V20 receipt family.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialTickReceipts {
     pub agency_paid: Vec<AgencyPaidReceipt>,
@@ -1777,7 +1777,7 @@ pub fn decode_material_receipts(bytes: &[u8]) -> Result<MaterialTickReceipts, Ma
         bytes,
         position: RECEIPT_DOMAIN.len(),
     };
-    if cursor.take::<4>()? != 19_u32.to_be_bytes() {
+    if cursor.take::<4>()? != 20_u32.to_be_bytes() {
         return Err(MaterialWorldError::Wire);
     }
     let resolve_tick = cursor.u64()?;

@@ -225,14 +225,14 @@ pub(super) fn resolve_kind(kind: Kind, row: &[u8]) -> Result<Option<K>> {
         },
         Kind::Account(offset) => account(*row.get(offset).ok_or(Error::Truncated)?)?,
         Kind::Purpose => match row.first().copied().ok_or(Error::Truncated)? {
-            1..=3 | 8..=10 => K::Order,
+            1..=3 => K::Order,
             4..=6 => K::Shift,
             7 => return Ok(None),
             _ => return Err(Error::IdentityTag),
         },
         Kind::Location(offset) => match *row.get(offset).ok_or(Error::Truncated)? {
             1 => account(*row.get(offset + 1).ok_or(Error::Truncated)?)?,
-            2 | 4 => K::Order,
+            2 => K::Order,
             3 => K::Shift,
             _ => return Err(Error::IdentityTag),
         },

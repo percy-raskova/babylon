@@ -222,8 +222,8 @@ fn material_wire_refuses_invalid_locations_and_the_previous_state_format() {
     }
     let mut previous = bytes;
     let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
-    assert_eq!(&previous[version..version + 2], &21_u16.to_be_bytes());
-    for unsupported in [14_u16, 15, 16, 17, 18, 19, 20] {
+    assert_eq!(&previous[version..version + 2], &22_u16.to_be_bytes());
+    for unsupported in [14_u16, 15, 16, 17, 18, 19, 20, 21] {
         previous[version..version + 2].copy_from_slice(&unsupported.to_be_bytes());
         assert_eq!(
             babylon_material_circuit::decode_material_circuit_state(&catalog, &previous),

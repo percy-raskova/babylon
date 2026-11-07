@@ -41,29 +41,46 @@ ADR293_wayne_resource_allocations:
     political pledges and actual household time. No gift grants participation,
     knowledge rights, membership or released time by itself.
   implementation_stage: |
-    Task 1A is an internal compiling collection slice. OrganizerAllocation has
-    None and Collection { target_cash_micros } only. Existing fixed aid still
-    uses None and retains its current real behavior until Task 1B adds the
-    complete independent Aid variant and material/response lifecycle. No
-    interim public release, campaign creation or native acceptance is claimed.
-    Task 3 owns the allocation editor; 1A supplies its saved draft/command seam.
+    Task 1A supplies complete selected collection. Task 1B adds required Aid
+    { food_quantity, cash_micros }, independent material settlement and one
+    retained response. Food freight remains physical; AidCashReserve and linked
+    cash-per-unit reserve/grant/refund paths are removed. Captured mandate terms
+    seed the personal draft and authenticate the selected command and preview.
+    A normal-national funded path remains blocked by actual donor protection
+    refusals. Task 1C must diagnose and repair that path before reports, the
+    amount editor or native acceptance proceed. Task 2 owns topic-specific need
+    reports and Task 3 owns the amount editor. No native campaign acceptance or
+    live PostgreSQL proof is claimed here.
+    The current food qualifier joins delivery to same-close household consumption
+    of the same good, without allocating consumed units to each original gift.
+    Fresh review must assess this attribution limit against the approved intent.
   current_contract: |
-    Organizer schema 9, config domain v8, state v7, commitment v2, journal and
-    period-entry domains v2; runtime protocol 14 and personal draft schema 3.
-    Missing allocation/initial target and unsupported older formats refuse;
-    preserved old artifacts receive no fallback, migration or inferred amount.
-    The Collection MUTUAL_AID control has exactly one PracticeParameter:
-    key 3, kind 2, length 16, strictly positive signed i128 big-endian micros.
-    Existing practice-intent v2 framing is unchanged. Other practice parameter
-    combinations remain rejected; fixed aid retains an empty parameter list.
-    Exact retained collection resolution and its original commitment recover
-    the selected target on restart. The configured cap is never a replacement.
+    Organizer schema 10, config domain v9, state v8, commitment v3, journal and
+    period-entry domains v3; receipt domain v2, runtime protocol 15, personal
+    draft schema 4. Material catalog schema 2/domain v2, circuit state schema
+    22, world register v7 and tick receipts v20 are the only current formats.
+    Missing allocations/initial terms and unsupported old formats refuse.
+    Collection MUTUAL_AID has exactly key 3, kind 2, length 16, positive signed
+    i128 big-endian micros. Aid MUTUAL_AID has exactly key 4, kind 3, length 8,
+    u64 big-endian food and key 5, kind 2, length 16, i128 big-endian cash.
+    Existing practice-intent v2 framing remains. Original retained commitments
+    recover selected values on restart, never current caps or retimed input.
   verification: |
     Required-allocation and mismatched-choice RED/GREEN, cap and canonical-money
     bounds, target-sensitive command and consumed-action identity, exact original
     restart joins, real collection/accounting/time controls, protected refusals,
-    partial terminal remainder, failed publication and replay. The complete aid
-    requirements need their own material, response and restart evidence in 1B.
+    partial terminal remainder, failed publication and replay. Independent Aid
+    controls cover unselected-leg wiring, receiving refusal, cash surviving food
+    loss, retained response across delayed arrival and cold checkpoints, and
+    actual cash followed by ordinary later purchase in a finite Designed economy.
+    The latter is mechanism evidence, not a successful normal-national campaign.
+    A separate national witness ruled out detached-fixture contamination and
+    identified a funded utility order shortfall: 8 admitted, 7 performed, 1
+    refunded, with all provider output allocated against excess admitted demand.
+    Ten consecutive normal collection periods found no lawful funding window;
+    source diagnosis and playable acceptance remain open under Task 1C.
+    Eight economic hash pins changed only through current catalog/state framing;
+    reversing that framing exactly reproduces all eight prior hashes.
   related:
     - ADR262_native_organizer_practice
     - ADR275_material_gifts_and_delayed_practice

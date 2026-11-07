@@ -30,7 +30,6 @@ use crate::AidReceipt;
 use crate::AidTransport;
 use crate::FinalDemandPrincipalId;
 use crate::GoodId;
-use crate::MoneyTransferReceipt;
 use crate::OrderId;
 use crate::OrderRow;
 use crate::ServiceOrder;
@@ -707,7 +706,6 @@ pub(in crate::transition) fn dispatch_orders(
         costs,
         AidDispatch {
             prepared: &PreparedAid::empty(),
-            money: &mut Vec::new(),
             receipts: &mut Vec::new(),
         },
     )
@@ -715,7 +713,6 @@ pub(in crate::transition) fn dispatch_orders(
 
 pub(in crate::transition) struct AidDispatch<'a> {
     pub prepared: &'a PreparedAid,
-    pub money: &'a mut Vec<MoneyTransferReceipt>,
     pub receipts: &'a mut Vec<AidReceipt>,
 }
 
@@ -730,7 +727,6 @@ pub(in crate::transition) fn dispatch_orders_with_aid(
 ) -> Result<OutboundReceipts, MaterialCircuitError> {
     let AidDispatch {
         prepared: aid,
-        money,
         receipts: aid_receipts,
     } = aid;
     let routes = super::super::supplier_routes(catalog);
@@ -766,7 +762,6 @@ pub(in crate::transition) fn dispatch_orders_with_aid(
         aid,
         &allocations[orders.len()..],
         costs,
-        money,
         aid_receipts,
     )?;
     Ok(OutboundReceipts {
@@ -879,7 +874,6 @@ pub(in crate::transition) fn apply_aid_dispatches(
     aid: &PreparedAid,
     allocations: &[u64],
     costs: &mut CostClose,
-    money: &mut Vec<MoneyTransferReceipt>,
     receipts: &mut Vec<AidReceipt>,
 ) -> Result<(), MaterialCircuitError> {
     for ((mandate, id, reserved_quantity), quantity) in aid.orders.iter().zip(allocations) {
@@ -887,10 +881,6 @@ pub(in crate::transition) fn apply_aid_dispatches(
             .checked_sub(*quantity)
             .ok_or(MaterialCircuitError::Arithmetic)?;
         if unshipped > 0 {
-            let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting else {
-                return Err(MaterialCircuitError::AidInvariant);
-            };
-            money.push(economy.book.resolve_aid(*id, unshipped, true)?);
             receipts.push(crate::aid::receipt(
                 mandate,
                 *id,
@@ -899,7 +889,7 @@ pub(in crate::transition) fn apply_aid_dispatches(
                 crate::aid::AidFlow {
                     quantity: unshipped,
                     carrying: Currency::from_micro_units(0),
-                    cash: crate::aid::cash_amount(unshipped, mandate)?,
+                    cash: Currency::from_micro_units(0),
                     hours: 0,
                 },
             ));
@@ -914,21 +904,8 @@ pub(in crate::transition) fn apply_aid_dispatches(
                 *id,
                 *quantity,
                 costs,
-                money,
                 receipts,
             )?;
-        }
-        let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting else {
-            return Err(MaterialCircuitError::AidInvariant);
-        };
-        if economy
-            .book
-            .aid_reserve(*id)?
-            .reserved_amount()?
-            .micro_units()
-            == 0
-        {
-            economy.book.retire_aid(*id)?;
         }
     }
     Ok(())
@@ -940,24 +917,19 @@ pub(in crate::transition) fn apply_one_aid_dispatch(
     id: OrderId,
     quantity: u64,
     costs: &mut CostClose,
-    money: &mut Vec<MoneyTransferReceipt>,
     receipts: &mut Vec<AidReceipt>,
 ) -> Result<(), MaterialCircuitError> {
     let MaterialContext { catalog, state } = context;
     let available = crate::aid::take_household_stock(state, mandate, quantity)?;
     let lot_id = crate::aid::aid_lot_id(id);
-    let cash = crate::aid::cash_amount(quantity, mandate)?;
+    let cash = Currency::from_micro_units(0);
     let hours = quantity
         .checked_mul(mandate.hours_per_unit)
         .ok_or(MaterialCircuitError::Arithmetic)?;
     match mandate.transport {
         AidTransport::Local => {
-            let carrying = costs.local_aid(mandate, available, quantity, cash)?;
+            let carrying = costs.local_aid(mandate, available, quantity)?;
             crate::aid::grant_household_stock(state, mandate, quantity)?;
-            let crate::CircuitAccounting::Monetary(economy) = &mut state.accounting else {
-                return Err(MaterialCircuitError::AidInvariant);
-            };
-            money.push(economy.book.resolve_aid(id, quantity, false)?);
             receipts.push(crate::aid::receipt(
                 mandate,
                 id,

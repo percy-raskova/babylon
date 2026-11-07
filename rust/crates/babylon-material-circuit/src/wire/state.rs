@@ -29,12 +29,12 @@ pub const MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES: &[u8] = b"babylon.material-circui
 
 /// SHA-256 of the current language-neutral material circuit contract source.
 pub const MATERIAL_CIRCUIT_SOURCE_SHA256: [u8; 32] = [
-    69, 46, 32, 180, 200, 146, 10, 121, 77, 45, 41, 185, 171, 36, 114, 87, 4, 229, 126, 84, 148,
-    96, 130, 54, 178, 68, 1, 7, 164, 96, 29, 143,
+    13, 175, 158, 220, 33, 48, 108, 187, 64, 74, 80, 103, 31, 60, 161, 216, 82, 7, 239, 153, 240,
+    70, 49, 113, 129, 253, 247, 46, 7, 229, 238, 210,
 ];
 
 /// Published schema version of one canonical material-circuit state frame.
-pub const MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION: u16 = 21;
+pub const MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION: u16 = 22;
 
 pub(crate) const SCHEMA_VERSION: u16 = MATERIAL_CIRCUIT_STATE_SCHEMA_VERSION;
 

@@ -589,12 +589,11 @@ def _extents(witness: PhysicalWitness, members: dict[str, Member]) -> None:
 def _pgss_source(witness: PhysicalWitness) -> None:
     config = witness.physical["pgss"]
     before = witness.members.get(PGSS_RUNNING)
-    root = witness.physical["container_root"]
     if (
         config != {"preload": "pg_stat_statements", "save": "on", "version": "1.11"}
         or before is None
         or (before.kind, before.mode, before.uid, before.gid)
-        != ("file", 0o600, root["uid"], root["gid"])
+        != ("file", 0o600, witness.physical["server_uid"], witness.physical["server_gid"])
         or PGSS_STOPPED in witness.members
     ):
         raise Refusal(
@@ -743,7 +742,14 @@ def archive_manifest(stream: BinaryIO, witness: PhysicalWitness) -> tuple[dict[s
                 raise Refusal("archive and independent stable member inventory differ: " + path)
             if actual is None:
                 continue
-            expected = Member("file", 0o600, root["uid"], root["gid"], None, None)
+            expected = Member(
+                "file",
+                0o600,
+                witness.physical["server_uid"],
+                witness.physical["server_gid"],
+                None,
+                None,
+            )
         if (
             actual.kind != expected.kind
             or actual.mode != expected.mode

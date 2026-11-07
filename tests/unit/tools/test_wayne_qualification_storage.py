@@ -12,7 +12,12 @@ def test_three_media_profiles_require_the_exact_run_and_horizon() -> None:
         ("smoke-01", "national_storage", "2", "smoke-01"),
         ("walk-01", "national_storage", "10", "walk-01"),
     ):
-        evidence = storage.RUN_PARENT / leaf / "evidence"
+        lane = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop")
+        evidence = lane / "qualification-02" / leaf / "evidence"
+        with pytest.raises(storage.StorageRefusal):
+            storage.profile_run(
+                profile, focus, periods, lane / "qualification-01" / leaf / "evidence"
+            )
         assert storage.profile_run(profile, focus, periods, evidence) == evidence.parent
         with pytest.raises(storage.StorageRefusal):
             storage.profile_run(profile, focus, periods, evidence / "..")
@@ -229,6 +234,164 @@ def test_peer_bind_even_on_same_device_refuses_ancestry():
         storage.check_media_mount(media, [media, child])
 
 
+# Discriminating fields copied from the failed qualification-01 observation.
+PID1_STATUS = "Name:\tpostgres\nPid:\t1\nUid:\t70\t70\t70\t70\nGid:\t70\t70\t70\t70"
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "process_uid",
+        "process_gid",
+        "account_uid",
+        "account_gid",
+        "malformed_account",
+        "malformed_status",
+        "duplicate_gid",
+        "non_postgres",
+        "directory_uid",
+        "host_gid",
+        "mode",
+        "inode",
+        "mapping",
+        "matching_directory_wrong_account",
+    ],
+)
+def test_physical_observation_binds_process_account_and_private_directory(
+    tmp_path, monkeypatch, fault
+):
+    from contextlib import nullcontext
+    from unittest.mock import MagicMock
+
+    run = tmp_path / "sql-01"
+    directory = storage.PrivateEvidence(run / "evidence")
+    directory.path.mkdir(parents=True, mode=0o700)
+    image, cid, canary = "sha256:" + "a" * 64, "b" * 64, "c" * 32
+    host = {"major": 253, "minor": 5, "inode": 104470194, "uid": 70, "gid": 1000, "mode": 0o700}
+    stat = "64773 104470194 70 1000 700"
+    status = PID1_STATUS
+    accounts = {"-u": b"70\n", "-g": b"70\n"}
+    if fault in ("process_uid", "process_gid"):
+        field = "Uid:" if fault == "process_uid" else "Gid:"
+        status = status.replace(field + "\t70" * 4, field + "\t71" * 4)
+    elif fault in ("account_uid", "account_gid", "malformed_account"):
+        accounts["-u" if fault == "account_uid" else "-g"] = (
+            b"70\n70\n" if fault == "malformed_account" else b"71\n"
+        )
+    elif fault == "matching_directory_wrong_account":
+        host["gid"] = 70
+        stat = stat.replace(" 1000 ", " 70 ")
+        accounts["-g"] = b"71\n"
+    elif fault == "malformed_status":
+        status = status.replace("Uid:" + "\t70" * 4, "Uid:" + "\t70" * 3)
+    elif fault == "duplicate_gid":
+        status += "\nGid:\t70\t70\t70\t70"
+    elif fault == "non_postgres":
+        status = status.replace("postgres", "sh")
+    elif fault == "directory_uid":
+        host["uid"] = 71
+        stat = stat.replace(" 70 ", " 71 ")
+    elif fault == "mode":
+        host["mode"] = 0o750
+        stat = stat.replace(" 700", " 750")
+    elif fault == "host_gid":
+        host["gid"] = 70
+    elif fault == "inode":
+        host["inode"] += 1
+
+    monkeypatch.setattr(storage, "pinned_ancestry", lambda _run: nullcontext([]))
+    monkeypatch.setattr(
+        storage,
+        "_media_creation",
+        lambda *_: {
+            "daemon": "local",
+            "image": {"id": image},
+            "creator": {"uid": 1000, "gid": 1000},
+            "ancestry": [],
+        },
+    )
+    monkeypatch.setattr(
+        storage,
+        "_one_docker",
+        lambda *_: {
+            "Name": "/selected",
+            "State": {"Status": "running", "Running": True, "Pid": 1349614},
+        },
+    )
+    mounts = {"mounts": [], "port_request": {}}
+    monkeypatch.setattr(storage, "container_mounts", lambda *_: mounts)
+    directory.publish_json(
+        "media-container-created.json",
+        {
+            "container": cid,
+            "canary": canary,
+            "daemon": "local",
+            "image": image,
+            **mounts,
+        },
+    )
+    monkeypatch.setattr(storage, "_assigned_port", lambda *_: 49157)
+    monkeypatch.setattr(storage, "_host_identity", lambda _: host)
+    monkeypatch.setattr(
+        Path,
+        "read_text",
+        lambda path: (
+            "0 200000 65536" if fault == "mapping" and path.name == "gid_map" else "0 0 4294967295"
+        ),
+    )
+
+    def output(args):
+        assert args[:3] == ["docker", "exec", cid]
+        return {
+            ("cat", "/proc/1/status"): status,
+            ("stat", "-c", "%d %i %u %g %a", storage.PGDATA): stat,
+        }[tuple(args[3:])]
+
+    def raw(args):
+        assert args[:3] == ["docker", "exec", cid]
+        return {
+            ("id", "-u", "postgres"): accounts["-u"],
+            ("id", "-g", "postgres"): accounts["-g"],
+            ("cat", storage.PGDATA + "/PG_VERSION"): b"17\n",
+            ("cat", storage.PGDATA + "/.babylon-postgres-lineage-v1"): (
+                storage.LINEAGE + "\n"
+            ).encode(),
+        }[tuple(args[3:])]
+
+    monkeypatch.setattr(storage, "exact_output", output)
+    monkeypatch.setattr(storage, "_exec_bytes", raw)
+    conn = MagicMock()
+    conn.execute.return_value.fetchone.return_value = (
+        "test",
+        "test",
+        "template1",
+        canary,
+        storage.PGDATA,
+        "170011",
+        "501",
+        "UTF8",
+        "b",
+        "C.UTF-8",
+    )
+    conn.execute.return_value.fetchall.return_value = [
+        ("postgis", "3.5.7", "3.5.7"),
+        ("vector", "0.8.5", "0.8.5"),
+        ("h3", "4.5.0", None),
+        ("h3_postgis", "4.5.0", None),
+    ]
+    monkeypatch.setattr(storage, "physical_session", lambda *_: nullcontext(conn))
+
+    if fault:
+        with pytest.raises(storage.StorageRefusal):
+            storage.physical_observation(directory, tmp_path, cid, canary, image)
+        return
+    result = storage.physical_observation(directory, tmp_path, cid, canary, image)
+    assert (result["server_uid"], result["server_gid"]) == (70, 70)
+    assert result["host"] == result["container_root"] == host
+    assert result["creator"] == {"uid": 1000, "gid": 1000}
+
+
 def test_physical_repeat_reuses_only_admitted_template1_connection(monkeypatch):
     from types import SimpleNamespace
 
@@ -286,6 +449,8 @@ def test_same_names_different_native_oids_refuse_owner_reauthentication(tmp_path
     "fault",
     [
         None,
+        "process_group",
+        "ack_warning",
         "image_signal",
         "container_signal",
         "pid",
@@ -308,7 +473,7 @@ def test_held_slot_stop_requires_exact_fast_configuration_and_current_clean_stop
     run = tmp_path / "walk-01"
     evidence = storage.PrivateEvidence(run / "evidence")
     evidence.path.mkdir(parents=True, mode=0o700)
-    pg = {"inode": 32}
+    pg = {"inode": 32, "uid": 70, "gid": 1000}
     physical = {
         "container": cid,
         "image": {"id": image},
@@ -317,8 +482,8 @@ def test_held_slot_stop_requires_exact_fast_configuration_and_current_clean_stop
         "pid": 303,
         "mounts": [],
         "port_request": {},
-        "server_uid": 23,
-        "server_gid": 24,
+        "server_uid": 70,
+        "server_gid": 70,
     }
     evidence.publish_json("physical.json", physical)
     monkeypatch.setattr(storage, "pinned_ancestry", lambda _path: nullcontext([]))
@@ -361,13 +526,24 @@ def test_held_slot_stop_requires_exact_fast_configuration_and_current_clean_stop
         nonlocal stopped
         records.append(args)
         if "stop" in args:
-            assert args == ["docker", "stop", "--time", "-1", cid]
+            assert kw == {"timeout": 180}
+            assert args in (
+                ["docker", "stop", "--time", "-1", cid],
+                ["docker", "stop", "--timeout", "-1", cid],
+            )
             if fault == "timeout":
                 raise subprocess.TimeoutExpired(args, 90)
             stopped = True
+            if "--time" in args or fault == "ack_warning":
+                return f"Flag --time has been deprecated, use --timeout instead\n{cid}"
             return cid
+        assert args[:5] == ["docker", "exec", "--user", "70:70", cid]
         if args[-1] == "/proc/1/status":
-            return "Name:\tpostgres\nPid:\t1\nUid:\t23 23 23 23\nGid:\t24 24 24 24"
+            return (
+                PID1_STATUS.replace("Gid:" + "\t70" * 4, "Gid:" + "\t1000" * 4)
+                if fault == "process_group"
+                else PID1_STATUS
+            )
         if args[-1] == "/proc/1/exe":
             return "/sbin/sleep" if fault == "pid" else "/usr/local/bin/postgres"
         if args[-1] == "postgres":
@@ -395,13 +571,56 @@ def test_held_slot_stop_requires_exact_fast_configuration_and_current_clean_stop
     if fault is None:
         storage.stop_checked(evidence, cid, fenced_image=image)
         assert evidence.reference("native-fenced-stop-v1.json")
+        attempt = storage.strict_json_bytes(
+            evidence.read_reference(evidence.reference("native-fenced-stop-attempt-v1.json"))
+        )
+        assert (attempt["uid"], attempt["gid"], attempt["host"]) == (70, 70, pg)
     else:
         with pytest.raises((storage.StorageRefusal, subprocess.TimeoutExpired)):
             storage.stop_checked(evidence, cid, fenced_image=image)
         assert not (evidence.path / "native-fenced-stop-v1.json").exists()
     stops = [args for args in records if "stop" in args]
-    assert len(stops) == (0 if fault in ("image_signal", "container_signal", "pid") else 1)
+    assert len(stops) == (
+        0 if fault in ("image_signal", "container_signal", "pid", "process_group") else 1
+    )
     assert not any("rm" in args or "kill" in args for args in records)
+
+
+@pytest.mark.parametrize("warning_on_current_option", [False, True])
+def test_sql_stop_uses_current_timeout_option_and_exact_acknowledgment(
+    tmp_path, monkeypatch, warning_on_current_option
+):
+    from types import SimpleNamespace
+
+    cid = "cb6d7be499d440fa5dbb5fd047f658bc3cea64abdcf70863c8ef0c60362c4048"
+    directory = storage.PrivateEvidence(tmp_path)
+
+    def ack(args, *, timeout):
+        assert timeout == 75
+        assert args[:2] == ["docker", "stop"] and args[3:] == ["60", cid]
+        if args[2] == "--time" or warning_on_current_option:
+            return f"Flag --time has been deprecated, use --timeout instead\n{cid}"
+        assert args[2] == "--timeout"
+        return cid
+
+    monkeypatch.setattr(storage, "exact_output", ack)
+    monkeypatch.setattr(
+        storage,
+        "_one_docker",
+        lambda *_: {"State": {"Status": "exited", "ExitCode": 0, "OOMKilled": False}},
+    )
+    monkeypatch.setattr(
+        storage.subprocess,
+        "run",
+        lambda *_a, **_kw: SimpleNamespace(stdout=b"database system is shut down", stderr=b""),
+    )
+    if warning_on_current_option:
+        with pytest.raises(storage.StorageRefusal, match="full container ID"):
+            storage.stop_checked(directory, cid)
+        assert not (tmp_path / "clean-shutdown.log").exists()
+    else:
+        storage.stop_checked(directory, cid)
+        assert directory.reference("clean-shutdown.log")
 
 
 def test_sql_supervisor_refuses_inherited_manifest_acl_before_consuming_run(tmp_path):

@@ -66,6 +66,8 @@ def fixture() -> tuple[dict[str, bytes | None], backup.PhysicalWitness]:
         for name, content in payloads.items()
     }
     physical = {
+        "server_uid": 71,
+        "server_gid": 73,
         "uid_map": "0 100000 65536",
         "gid_map": "0 200000 65536",
         "container_root": {"mode": 0o700, "uid": 71, "gid": 73},
@@ -96,11 +98,12 @@ def archive(
     uid: int = 71,
     gid: int = 73,
     extra: tarfile.TarInfo | None = None,
+    owners: dict[str, tuple[int, int]] | None = None,
 ) -> None:
     with tarfile.open(path, "x:") as output:
         for name, content in payloads.items():
             member = tarfile.TarInfo("./" + name)
-            member.uid, member.gid = uid, gid
+            member.uid, member.gid = (owners or {}).get(name, (uid, gid))
             member.mode = 0o700 if content is None else 0o600
             member.type = tarfile.DIRTYPE if content is None else tarfile.REGTYPE
             member.size = len(content or b"")
@@ -123,6 +126,49 @@ def test_independent_members_prove_bind_and_numeric_translation(
     assert translation == namespace
     assert members[RELATION].sha256 == hashlib.sha256(files[RELATION] or b"").hexdigest()
     assert members[RELATION].size == 8192
+
+
+@pytest.mark.parametrize("host_namespace", [False, True])
+@pytest.mark.parametrize("fault", [None, "running", "root", "new_member", "existing_member"])
+def test_backup_distinguishes_server_root_and_existing_member_ownership(
+    tmp_path: Path, host_namespace: bool, fault: str | None
+) -> None:
+    from dataclasses import replace
+
+    files, witness = fixture()
+    witness.physical.update(server_uid=70, server_gid=70)
+    witness.physical["container_root"].update(uid=70, gid=1000)
+    witness.physical["host"].update(uid=100070, gid=201000)
+    witness.members[backup.PGSS_RUNNING] = replace(
+        witness.members[backup.PGSS_RUNNING], uid=70, gid=1000 if fault == "running" else 70
+    )
+    # Remaining pre-stop files carry their own individually witnessed identities.
+    files["."] = None
+    owners = {
+        ".": (70, 70 if fault == "root" else 1000),
+        backup.PGSS_STOPPED: (70, 1000 if fault == "new_member" else 70),
+    }
+    if fault == "existing_member":
+        owners[RELATION] = (70, 70)
+    uid_shift, gid_shift = (100000, 200000) if host_namespace else (0, 0)
+    path = tmp_path / "copy.tar"
+    archive(
+        path,
+        files,
+        uid=uid_shift + 71,
+        gid=gid_shift + 73,
+        owners={name: (uid_shift + uid, gid_shift + gid) for name, (uid, gid) in owners.items()},
+    )
+    with path.open("rb") as stream:
+        if fault:
+            with pytest.raises(backup.Refusal):
+                backup.archive_manifest(stream, witness)
+        else:
+            members, mode = backup.archive_manifest(stream, witness)
+            assert mode == ("host" if host_namespace else "container")
+            assert members["."].gid == gid_shift + 1000
+            assert members[backup.PGSS_STOPPED].gid == gid_shift + 70
+            assert members[RELATION].gid == gid_shift + 73
 
 
 @pytest.mark.parametrize(

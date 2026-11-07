@@ -24,7 +24,7 @@ from psycopg import sql
 from pydantic import BaseModel, ConfigDict, Field
 from tools.devtools.national_storage_qualification import selected_policy, strict_json_bytes
 
-RUN_PARENT = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-01")
+RUN_PARENT = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-02")
 MEDIA = Path("/media/user/data")
 PGDATA: Literal["/var/lib/postgresql/data"] = "/var/lib/postgresql/data"
 TEST_NAME = (
@@ -1018,6 +1018,30 @@ def physical_session(
         yield supplied
 
 
+def _postgres_pid1_credentials(status: str) -> tuple[int, int]:
+    fields: dict[str, list[str]] = {}
+    for line in status.splitlines():
+        key, _, value = line.partition(":")
+        if key in ("Name", "Pid", "Uid", "Gid"):
+            if key in fields:
+                raise StorageRefusal("duplicate PostgreSQL PID 1 status field")
+            fields[key] = value.split()
+    if fields.get("Name") != ["postgres"] or fields.get("Pid") != ["1"]:
+        raise StorageRefusal("container PID 1 is not postgres")
+    # The entrypoint switches to the postgres account for all four Linux IDs
+    # (real, effective, saved and filesystem) before starting the server.
+    for key in ("Uid", "Gid"):
+        ids = fields.get(key, [])
+        if (
+            len(ids) != 4
+            or len(set(ids)) != 1
+            or not re.fullmatch(r"[1-9][0-9]{0,9}", ids[1])
+            or int(ids[1]) >= 2**32 - 1
+        ):
+            raise StorageRefusal("invalid PostgreSQL PID 1 credentials")
+    return int(fields["Uid"][1]), int(fields["Gid"][1])
+
+
 def physical_observation(
     directory: PrivateEvidence,
     root: Path,
@@ -1073,15 +1097,16 @@ def physical_observation(
         ):
             raise StorageRefusal("actual host/container PGDATA or mapped owner differs")
         process = exact_output([*inside, "cat", "/proc/1/status"])
-        owner = re.search(r"^Uid:\s+[0-9]+\s+([0-9]+)\s", process, re.MULTILINE)
-        group = re.search(r"^Gid:\s+[0-9]+\s+([0-9]+)\s", process, re.MULTILINE)
+        server_uid, server_gid = _postgres_pid1_credentials(process)
+        # The pinned entrypoint changes PGDATA's owner and preserves its original group.
         if (
-            not owner
-            or not group
-            or (int(owner[1]), int(group[1])) != (uid, gid)
-            or not re.search(r"^Name:\s+postgres$", process, re.MULTILINE)
+            server_uid != uid
+            or _exec_bytes([*inside, "id", "-u", "postgres"]) != f"{server_uid}\n".encode()
+            or _exec_bytes([*inside, "id", "-g", "postgres"]) != f"{server_gid}\n".encode()
         ):
-            raise StorageRefusal("actual PostgreSQL server identity differs from bound owner")
+            raise StorageRefusal(
+                "PostgreSQL process differs from the postgres account or PGDATA owner"
+            )
         lineage = _exec_bytes([*inside, "cat", PGDATA + "/.babylon-postgres-lineage-v1"])
         major = _exec_bytes([*inside, "cat", PGDATA + "/PG_VERSION"])
         if lineage != (LINEAGE + "\n").encode() or major != b"17\n":
@@ -1145,8 +1170,8 @@ def physical_observation(
             "pg_version": major.decode(),
             "extensions": [list(entry) for entry in extensions],
             "sql": list(row),
-            "server_uid": uid,
-            "server_gid": gid,
+            "server_uid": server_uid,
+            "server_gid": server_gid,
             "pid": pid,
         }
 
@@ -1714,10 +1739,7 @@ def _fenced_stop(directory: PrivateEvidence, cid: str, image: str) -> None:
         executable = exact_output([*inside, "readlink", "/proc/1/exe"])
         postgres = exact_output([*inside, "which", "postgres"])
         if (
-            not re.search(r"^Name:\s+postgres$", status, re.MULTILINE)
-            or not re.search(r"^Pid:\s+1$", status, re.MULTILINE)
-            or not re.search(rf"^Uid:\s+{uid}\s+{uid}\s", status, re.MULTILINE)
-            or not re.search(rf"^Gid:\s+{gid}\s+{gid}\s", status, re.MULTILINE)
+            _postgres_pid1_credentials(status) != (uid, gid)
             or executable != postgres
             or not Path(postgres).is_absolute()
             or Path(postgres).name != "postgres"
@@ -1741,7 +1763,7 @@ def _fenced_stop(directory: PrivateEvidence, cid: str, image: str) -> None:
                 "host": physical["host"],
             },
         )
-        if exact_output(["docker", "stop", "--time", "-1", cid], timeout=180) != cid:
+        if exact_output(["docker", "stop", "--timeout", "-1", cid], timeout=180) != cid:
             raise StorageRefusal("fenced shutdown was not acknowledged by the selected container")
         after = _one_docker("container", cid)
         final = after["State"]
@@ -1811,7 +1833,7 @@ def stop_checked(directory: PrivateEvidence, cid: str, *, fenced_image: str | No
         return
 
     since = datetime.now(UTC).isoformat()
-    if exact_output(["docker", "stop", "--time", "60", cid], timeout=75) != cid:
+    if exact_output(["docker", "stop", "--timeout", "60", cid], timeout=75) != cid:
         raise StorageRefusal("Docker did not stop the selected full container ID")
     state = _one_docker("container", cid)["State"]
     logs = subprocess.run(

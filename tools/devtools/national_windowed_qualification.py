@@ -46,6 +46,7 @@ UnitAction = Literal[
     "draft_from_report",
     "archive_report",
     "status",
+    "arm_one_play_advance",
     "play",
     "pause",
     "speed",
@@ -178,7 +179,7 @@ Campaign = Annotated[StrictStr, AfterValidator(_canonical_campaign)]
 
 
 class ControlVersion(FrozenRecord):
-    version: Literal[3]
+    version: Literal[4]
 
     @field_validator("version", mode="before")
     @classmethod
@@ -412,7 +413,110 @@ class Preview(SelectedAllocation):
     observations: tuple[Observation, ...]
 
 
+class Standing(FrozenRecord):
+    partner_actor_id: Nonnegative
+    authorized: StrictBool
+    paused_reason: (
+        Literal["explicit", "insufficient_committed_time", "insufficient_available_time"] | None
+    )
+
+    @model_validator(mode="after")
+    def authorized_status(self) -> Self:
+        if self.authorized != (self.paused_reason is None):
+            raise ValueError("standing authorization disagrees with its installed pause reason")
+        return self
+
+
+class PendingFreight(FrozenRecord):
+    original_commitment_id: Bytes32
+    material_commitment_id: Bytes32
+    mandate_id: Bytes32
+    dispatch_period: Positive
+    first_response_receipt_id: Bytes32 | None
+
+
+class ResponseHistory(FrozenRecord):
+    original_commitment_id: Bytes32
+    period: Positive
+    practice_receipt_id: Bytes32
+    first_response_receipt_id: Bytes32 | None
+
+
+class InstalledOrganizer(FrozenRecord):
+    period: Nonnegative
+    actor_id: Nonnegative
+    authority_id: Bytes16
+    content_digest: Bytes32
+    resource_digest: Bytes32
+    standing: Standing
+    available_hours: Nonnegative
+    contact_hours: Nonnegative
+    hold_reviewable: StrictBool
+    pause_reviewable: StrictBool
+    resume_reviewable: StrictBool
+    pending_freight: Annotated[tuple[PendingFreight, ...], Field(max_length=32)]
+    aid_response_history: Annotated[tuple[ResponseHistory, ...], Field(max_length=32)]
+
+    @model_validator(mode="after")
+    def unique_authority(self) -> Self:
+        if len({r.original_commitment_id for r in self.pending_freight}) != len(
+            self.pending_freight
+        ) or len({r.practice_receipt_id for r in self.aid_response_history}) != len(
+            self.aid_response_history
+        ):
+            raise ValueError("installed organizer repeated an original or receipt")
+        return self
+
+
+class PlayInterlock(FrozenRecord):
+    phase: Literal["armed", "paused_after_enqueue"]
+    arm_sequence: Positive
+    play_sequence: Positive | None
+    campaign_id: Campaign
+    scope_epoch: Nonnegative
+    start_tick: Nonnegative
+    start_generation: Nonnegative
+    target_tick: Positive
+    request_id: Positive | None
+    pending_at_pause: StrictBool
+    playing_after_pause: StrictBool | None
+
+    def arm_identity(self) -> tuple[str, int, int, int, int, int]:
+        return (
+            self.campaign_id,
+            self.scope_epoch,
+            self.arm_sequence,
+            self.start_tick,
+            self.start_generation,
+            self.target_tick,
+        )
+
+    @model_validator(mode="after")
+    def exact_enqueue(self) -> Self:
+        if self.target_tick != self.start_tick + 1:
+            raise ValueError("play interlock must bind exactly one subsequent period")
+        if self.phase == "armed":
+            if (
+                self.request_id is not None
+                or self.play_sequence is not None
+                or self.pending_at_pause
+                or self.playing_after_pause is not None
+            ):
+                raise ValueError("armed playback cannot claim a completed enqueue")
+        elif (
+            self.play_sequence is None
+            or self.play_sequence <= self.arm_sequence
+            or self.request_id is None
+            or not self.pending_at_pause
+            or self.playing_after_pause is not False
+        ):
+            raise ValueError("one-close playback lacks its actual paused pending enqueue")
+        return self
+
+
 class ControlState(FrozenRecord):
+    installed_organizer: InstalledOrganizer | None
+    play_interlock: PlayInterlock | None
     campaign_id: Campaign
     scope_epoch: Nonnegative | None
     durable_tick: Nonnegative
@@ -561,6 +665,7 @@ class ControlChannel:
         initial_tick: int,
         *,
         check_capture: Callable[[], None] | None = None,
+        on_observed: Callable[[ControlState], None] | None = None,
     ) -> None:
         if str(UUID(campaign)) != campaign or UUID(campaign).int == 0:
             raise ControlRefusal("native control campaign must be a nonzero canonical UUID")
@@ -570,6 +675,8 @@ class ControlChannel:
         self.campaign = campaign
         self.initial_tick = initial_tick
         self.state: ControlState | None = None
+        self.last_response: ControlResponse | None = None
+        self.response_bytes = bytearray()
         self.records: list[ActionObservation] = []
         self._review_witness: ControlState | None = None
         self.sequence = 0
@@ -580,27 +687,32 @@ class ControlChannel:
         self._playback_admitted = False
         self._settling_tick: int | None = None
         self._check_capture = check_capture
+        self._on_observed = on_observed
 
     def close(self) -> None:
         self.closed = True
         self.connection.close()
 
     def _receive(self, deadline: float) -> ControlResponse:
-        raw = bytearray()
+        raw = self.response_bytes
         while b"\n" not in raw:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise ControlRefusal("native control response deadline exceeded")
-            self.connection.settimeout(remaining)
+            if self._check_capture is not None:
+                self._check_capture()
+            self.connection.settimeout(min(remaining, 0.25) if self._check_capture else remaining)
             try:
                 part = self.connection.recv(OUTPUT_BYTES + 1 - len(raw))
             except TimeoutError:
+                if self._check_capture is not None and time.monotonic() < deadline:
+                    continue
                 raise ControlRefusal("native control response deadline exceeded") from None
+            raw.extend(part)
             if time.monotonic() > deadline:
                 raise ControlRefusal("native control response deadline exceeded")
             if not part:
                 raise ControlRefusal("native control response ended before a complete frame")
-            raw.extend(part)
             if len(raw) > OUTPUT_BYTES:
                 raise ControlRefusal("native control response exceeds its byte bound")
         if raw[-1:] != b"\n" or raw.count(b"\n") != 1:
@@ -642,7 +754,44 @@ class ControlChannel:
         elif self.scope_epoch is not None and current.scope_epoch != self.scope_epoch:
             raise ControlRefusal("native control runtime scope changed")
         prior = self.state
-        starts_playback = action == "play" and event == "applied" and current.playing
+        lock = current.play_interlock
+        old_lock = prior.play_interlock if prior is not None else None
+        if (
+            action == "arm_one_play_advance"
+            and event == "applied"
+            and (
+                lock is None
+                or prior is None
+                or lock.phase != "armed"
+                or lock.arm_sequence != self.sequence
+                or (lock.campaign_id, lock.scope_epoch, lock.start_tick, lock.start_generation)
+                != (prior.campaign_id, prior.scope_epoch, prior.durable_tick, prior.generation)
+                or lock.play_sequence is not None
+                or prior.playing
+                or prior.advance_pending
+            )
+        ):
+            raise ControlRefusal("arm acknowledgement differs from its exact installed scope")
+        if (
+            action == "play"
+            and old_lock is not None
+            and old_lock.phase == "armed"
+            and (
+                lock is None
+                or lock.arm_identity() != old_lock.arm_identity()
+                or lock.phase == "paused_after_enqueue"
+                and lock.play_sequence != self.sequence
+            )
+        ):
+            raise ControlRefusal("ordinary Play lost its exact arm and sequence")
+        synchronous = (
+            lock is not None
+            and lock.phase == "paused_after_enqueue"
+            and lock.play_sequence == self.sequence
+        )
+        starts_playback = (
+            action == "play" and event == "applied" and (current.playing or synchronous)
+        )
         automatic = action in {"status", "play", "pause"} and (
             self._playback_admitted or starts_playback or self._settling_tick is not None
         )
@@ -684,12 +833,17 @@ class ControlChannel:
             self._playback_admitted = True
         if not current.playing:
             if self._playback_admitted:
-                self._settling_tick = current.durable_tick + int(current.advance_pending)
+                self._settling_tick = (
+                    lock.target_tick
+                    if lock is not None and lock.phase == "paused_after_enqueue"
+                    else current.durable_tick + int(current.advance_pending)
+                )
             self._playback_admitted = False
             if (
                 not current.advance_pending
                 and not current.organizer_pending
                 and not current.organizer_status_due
+                and (self._settling_tick is None or current.durable_tick >= self._settling_tick)
             ):
                 self._settling_tick = None
         if current.phase in {"Ready", "Complete"}:
@@ -717,7 +871,7 @@ class ControlChannel:
         prior = self.state
         try:
             request = ControlInput(
-                version=3,
+                version=4,
                 sequence=self.sequence + 1,
                 campaign_id=self.campaign,
                 scope_epoch=prior.scope_epoch if prior else None,
@@ -732,12 +886,17 @@ class ControlChannel:
         if len(frame) > INPUT_BYTES:
             raise ControlRefusal("native control input exceeds its byte bound")
         self.sequence = request.sequence
+        self.last_response = None
+        self.response_bytes.clear()
         try:
             self.connection.settimeout(max(0.001, deadline - time.monotonic()))
             self.connection.sendall(frame)
             reply = self._receive(deadline)
+            self.last_response = reply
             if reply.sequence != self.sequence:
                 raise ControlRefusal("native control response sequence differs")
+            if self._on_observed is not None:
+                self._on_observed(reply.state)
             self._bind(reply.state, action, reply.event)
             if not self.records or action != "status" or reply.state != self.records[-1].state:
                 self.records.append(
@@ -853,7 +1012,15 @@ class ControlChannel:
         if choice is not None and reply.state.choice != choice:
             self.close()
             raise ControlRefusal("native handler applied a different choice")
-        if action in ("play", "pause") and reply.state.playing != (action == "play"):
+        bounded_play = (
+            action == "play"
+            and reply.state.play_interlock is not None
+            and reply.state.play_interlock.phase == "paused_after_enqueue"
+            and reply.state.play_interlock.play_sequence == self.sequence
+        )
+        if action in ("play", "pause") and reply.state.playing != (
+            action == "play" and not bounded_play
+        ):
             self.close()
             raise ControlRefusal("native playback acknowledgment has the wrong scheduling state")
         if action == "review":
@@ -897,7 +1064,7 @@ def write_observations(
 ) -> None:
     """Atomic evidence of local actions; never a named qualification result."""
     payload = ControlsEvidence(
-        version=3,
+        version=4,
         status=status,
         campaign=channel.campaign,
         initial_tick=channel.initial_tick,
@@ -1099,8 +1266,10 @@ def drive_pair(
     on_recovery: Callable[[ControlState], None],
     choices: tuple[PlannedChoice, ...] = (),
     on_installed: Callable[[ControlChannel, Path, ControlState], None] | None = None,
-    play_last_close: bool = False,
+    play_penultimate_close: bool = False,
     on_opened: Callable[[ControlState], None] | None = None,
+    on_observed: Callable[[ControlState], None] | None = None,
+    cold_deadline: float | None = None,
     capture_lifecycle: Callable[
         [subprocess.Popen[bytes], subprocess.Popen[bytes]],
         AbstractContextManager[CaptureMonitor | None],
@@ -1135,9 +1304,19 @@ def drive_pair(
             listener.bind(str(endpoint))
             endpoint.chmod(0o600)
             listener.listen(1)
-            listener.settimeout(operation_timeout)
+
+            def opening_timeout() -> float:
+                if cold_deadline is None:
+                    return operation_timeout
+                remaining = cold_deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ControlRefusal("process-cold installation deadline exceeded")
+                return min(operation_timeout, remaining)
+
+            listener.settimeout(opening_timeout())
 
             def controlled(client: subprocess.Popen[bytes], capture: CaptureMonitor | None) -> None:
+                listener.settimeout(opening_timeout())
                 connection, _address = listener.accept()
                 _pid, uid, _gid = struct.unpack(
                     "3i",
@@ -1157,7 +1336,7 @@ def drive_pair(
                     # authenticated sample before yielding to this driver.
                     connection.sendall(
                         StartupAdmission(
-                            version=3,
+                            version=4,
                             campaign_id=str(initial_target.campaign),
                             phase="capture_ready",
                         )
@@ -1170,6 +1349,7 @@ def drive_pair(
                         str(initial_target.campaign),
                         initial_tick,
                         check_capture=capture.check if capture is not None else None,
+                        on_observed=on_observed,
                     )
                 except BaseException:
                     connection.close()
@@ -1177,8 +1357,8 @@ def drive_pair(
                 result: Literal["incomplete", "completed"] = "incomplete"
                 failure: BaseException | None = None
                 try:
-                    current = wait_ready(channel, operation_timeout, organizer=False)
-                    opening_deadline = time.monotonic() + operation_timeout
+                    current = wait_ready(channel, opening_timeout(), organizer=False)
+                    opening_deadline = time.monotonic() + opening_timeout()
                     while current.splash_visible or current.menu_open:
                         remaining = opening_deadline - time.monotonic()
                         if remaining <= 0:
@@ -1195,8 +1375,8 @@ def drive_pair(
                         if time.monotonic() > opening_deadline:
                             raise ControlRefusal("native opening navigation deadline exceeded")
                     if current.primary_view != "Organizer":
-                        channel.perform("open_organizer", operation_timeout)
-                    current = wait_ready(channel, operation_timeout, organizer=True)
+                        channel.perform("open_organizer", opening_timeout())
+                    current = wait_ready(channel, opening_timeout(), organizer=True)
                     if on_opened is not None:
                         on_opened(current)
                     on_boundary(current)
@@ -1206,24 +1386,47 @@ def drive_pair(
                         if planned := schedule.get(current.durable_tick + 1):
                             submit_choice(channel, planned, operation_timeout)
                         before = current.durable_tick
-                        if play_last_close and offset + 1 == periods:
+                        if play_penultimate_close and offset + 2 == periods:
+                            arm = channel.perform(
+                                "arm_one_play_advance", operation_timeout
+                            ).play_interlock
+                            if arm is None or arm.phase != "armed" or arm.start_tick != before:
+                                raise ControlRefusal("ordinary Play lacks its one-close interlock")
                             channel.perform("play", operation_timeout)
+                            play_sequence = channel.sequence
                             deadline = time.monotonic() + operation_timeout
-                            while (
-                                channel.state is not None and channel.state.durable_tick == before
-                            ):
-                                remaining = deadline - time.monotonic()
-                                if remaining <= 0:
-                                    raise ControlRefusal(
-                                        "ordinary Play did not install the requested final period"
-                                    )
-                                channel.observe(remaining)
+                            while True:
+                                observed = channel.state
+                                if observed is None:
+                                    raise ControlRefusal("lost the admitted playback state")
+                                witness = observed.play_interlock
                                 if (
-                                    channel.state is not None
-                                    and channel.state.durable_tick == before
+                                    witness is None
+                                    or witness.arm_identity() != arm.arm_identity()
+                                    or observed.durable_tick > arm.target_tick
                                 ):
-                                    time.sleep(min(POLL_SECONDS, remaining))
-                            channel.perform("pause", max(0.001, deadline - time.monotonic()))
+                                    raise ControlRefusal(
+                                        "ordinary Play lost its specific one-close interlock"
+                                    )
+                                if (
+                                    witness.phase == "paused_after_enqueue"
+                                    and witness.play_sequence == play_sequence
+                                ):
+                                    break
+                                remaining = deadline - time.monotonic()
+                                if remaining <= 0 or not observed.playing:
+                                    raise ControlRefusal(
+                                        "ordinary Play stopped without its admitted enqueue"
+                                    )
+                                time.sleep(min(POLL_SECONDS, remaining))
+                                channel.observe(max(0.001, deadline - time.monotonic()))
+                            paused = channel.perform(
+                                "pause", max(0.001, deadline - time.monotonic())
+                            )
+                            if paused.play_interlock != witness:
+                                raise ControlRefusal(
+                                    "ordinary Pause changed its frozen request receipt"
+                                )
                         else:
                             channel.perform("step", operation_timeout)
                         current = wait_ready(channel, operation_timeout, organizer=True)

@@ -24,6 +24,8 @@ def state(tick: int = 0) -> dict[str, Any]:
     return {
         "campaign_id": CAMPAIGN,
         "scope_epoch": 7,
+        "installed_organizer": None,
+        "play_interlock": None,
         "durable_tick": tick,
         "viewed_tick": tick,
         "generation": 1,
@@ -113,7 +115,7 @@ def response(sequence: int, event: str = "observed", **changes: Any) -> bytes:
     fields.update(changes)
     return (
         json.dumps(
-            {"version": 3, "sequence": sequence, "event": event, "reason": None, "state": fields}
+            {"version": 4, "sequence": sequence, "event": event, "reason": None, "state": fields}
         ).encode()
         + b"\n"
     )
@@ -227,7 +229,7 @@ def test_capture_refusal_preserves_specific_reason_and_trace() -> None:
             peer.sendall(
                 json.dumps(
                     {
-                        "version": 3,
+                        "version": 4,
                         "sequence": request["sequence"],
                         "event": "refused",
                         "reason": "capture_image_invalid",
@@ -340,7 +342,7 @@ def test_new_choice_reviews_confirms_and_checks_exact_readback(
                 peer.sendall(
                     json.dumps(
                         {
-                            "version": 3,
+                            "version": 4,
                             "sequence": len(requested),
                             "event": event,
                             "reason": None,
@@ -399,7 +401,7 @@ def test_transport_preserves_fragmented_frames_and_exact_preconditions() -> None
         worker.join(2)
     assert not worker.is_alive()
     assert requests[0] == {
-        "version": 3,
+        "version": 4,
         "sequence": 1,
         "campaign_id": CAMPAIGN,
         "scope_epoch": None,
@@ -527,9 +529,9 @@ def test_reopen_refuses_changed_or_incomplete_restored_identity(changes: dict[st
     "raw",
     [
         response(2),
-        response(1).replace(b'"version": 3', b'"version": 1'),
-        response(1).replace(b'"version": 3', b'"version": true'),
-        response(1).replace(b'"version": 3', b'"version": 3, "version": 3'),
+        response(1).replace(b'"version": 4', b'"version": 1'),
+        response(1).replace(b'"version": 4', b'"version": true'),
+        response(1).replace(b'"version": 4', b'"version": 4, "version": 4'),
         response(1, campaign_id="b4fcf361-af16-489f-83a6-3d9815a73844"),
         response(1, durable_tick=True),
         response(1, foundation_sha256="A" * 64),
@@ -720,13 +722,13 @@ def test_driver_uses_actual_owned_children_and_private_socket(tmp_path: Path) ->
         f"state={state()!r}\n"
         "with connection,connection.makefile('rb') as source:\n"
         "    admission=json.loads(source.readline())\n"
-        f"    assert admission=={{'version':3,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
+        f"    assert admission=={{'version':4,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
         f"    __import__('pathlib').Path({str(tmp_path / 'startup-admitted')!r}).write_text('admitted')\n"
         "    for line in source:\n"
         "        request=json.loads(line)\n"
         "        quitting=request['action']=='quit'\n"
         "        state['quit_requested']=quitting\n"
-        "        reply={'version':3,'sequence':request['sequence'],'event':'quit_requested' if quitting else 'observed','reason':None,'state':state}\n"
+        "        reply={'version':4,'sequence':request['sequence'],'event':'quit_requested' if quitting else 'observed','reason':None,'state':state}\n"
         "        connection.sendall(json.dumps(reply).encode()+b'\\n')\n"
         "        if quitting: break\n"
     )
@@ -833,7 +835,7 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
         f"state={state()!r}\nadmissions={admissions!r}\n"
         "with connection,connection.makefile('rb') as source:\n"
         "    admission=json.loads(source.readline())\n"
-        f"    assert admission=={{'version':3,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
+        f"    assert admission=={{'version':4,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
         "    for line in source:\n"
         "        request=json.loads(line); action=request['action']; event='applied'\n"
         "        if action=='status': event='observed'\n"
@@ -854,7 +856,7 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
         "        elif action=='reopen':\n"
         "            state['scope_epoch']+=1; state['generation']+=3; event='reopened_and_installed'\n"
         "        elif action=='quit': state['quit_requested']=True; event='quit_requested'\n"
-        "        reply={'version':3,'sequence':request['sequence'],'event':event,'reason':None,'state':state}\n"
+        "        reply={'version':4,'sequence':request['sequence'],'event':event,'reason':None,'state':state}\n"
         "        connection.sendall(json.dumps(reply).encode()+b'\\n')\n"
         "        if action=='quit': break\n"
     )
@@ -963,7 +965,7 @@ def test_standing_choice_uses_the_acknowledged_inspector_state(
                 peer.sendall(
                     json.dumps(
                         {
-                            "version": 3,
+                            "version": 4,
                             "sequence": request["sequence"],
                             "event": event,
                             "reason": reason,
@@ -1436,7 +1438,7 @@ def test_editor_refuses_a_mutation_that_preserves_the_review() -> None:
                 peer.sendall(
                     json.dumps(
                         {
-                            "version": 3,
+                            "version": 4,
                             "sequence": request["sequence"],
                             "event": "applied",
                             "reason": None,
@@ -1485,3 +1487,58 @@ def test_observed_unavailable_offer_never_arms_confirmation(
     with pytest.raises(windowed.ControlRefusal, match="current review"):
         channel.perform("confirm", 1)
     assert channel.sequence == 2
+
+
+@pytest.mark.parametrize("raced_tick", [8, 9])
+def test_delayed_one_play_acknowledgement_preserves_authenticated_pending(raced_tick):
+    start = state(8)
+    arm = {
+        "phase": "armed",
+        "arm_sequence": 2,
+        "play_sequence": None,
+        "campaign_id": CAMPAIGN,
+        "scope_epoch": 7,
+        "start_tick": 8,
+        "start_generation": 1,
+        "target_tick": 9,
+        "request_id": None,
+        "pending_at_pause": False,
+        "playing_after_pause": None,
+    }
+    stopped = {
+        **arm,
+        "phase": "paused_after_enqueue",
+        "play_sequence": 3,
+        "request_id": 41,
+        "pending_at_pause": True,
+        "playing_after_pause": False,
+    }
+    frames = [
+        (1, "observed", start),
+        (2, "applied", {**start, "play_interlock": arm}),
+        (3, "applied", {**state(raced_tick), "play_interlock": stopped}),
+        (4, "applied", {**state(9), "play_interlock": stopped}),
+    ]
+    left, right = socket.socketpair()
+    with left, right:
+        channel = windowed.ControlChannel(left, CAMPAIGN, 8)
+        for seq, event, body in frames:
+            right.sendall(
+                (
+                    json.dumps(
+                        {
+                            "version": 4,
+                            "sequence": seq,
+                            "event": event,
+                            "reason": None,
+                            "state": {"installed_organizer": None, "play_interlock": None, **body},
+                        }
+                    )
+                    + "\n"
+                ).encode()
+            )
+            if seq == 1:
+                channel.observe(1)
+            else:
+                channel.perform(("arm_one_play_advance", "play", "pause")[seq - 2], 1)
+        assert channel.state.play_interlock.request_id == 41

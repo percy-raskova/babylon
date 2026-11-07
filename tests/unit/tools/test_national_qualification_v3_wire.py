@@ -12,17 +12,40 @@ from tools.devtools import national_windowed_qualification as wire
 
 # Unedited production-reader and status frames emitted by the Rust client at
 # e9cdc0037c4ea71b6a34410447c9ca8f5d61f8d8, task-3/qualification-v3-wire-*.jsonl.
-FRAMES = Path(__file__).resolve().parents[2] / "fixtures" / "national_qualification_v3"
-DIGESTS = {
+FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
+V3_DIGESTS = {
     "requests": "15f002f469e1a2a18732a7302f399707647e19938a65af418905670746ece0b0",
     "responses": "d1cc08f8c4fab93b2d5e7b78e5cade0bf295a5e43cd72ee19deb7816eac0a797",
     "reviewed-accepted": "4edb5a91f6255a2bb6707a883cedd62a765dff7db1dbf725d8e624770209824c",
 }
 
 
+@pytest.mark.parametrize("kind", sorted(V3_DIGESTS))
+def test_preserved_rust_v3_capture_refused_by_current_envelope(kind: str) -> None:
+    data = (
+        FIXTURES / "national_qualification_v3" / f"qualification-v3-wire-{kind}.jsonl"
+    ).read_bytes()
+    assert hashlib.sha256(data).hexdigest() == V3_DIGESTS[kind]
+    model = wire.ControlInput if kind == "requests" else wire.ControlResponse
+    for frame in data.splitlines():
+        assert json.loads(frame)["version"] == 3
+        with pytest.raises(ValidationError):
+            model.model_validate_json(frame)
+
+
+# Exact production frames emitted by the Rust qualification tests, without re-encoding.
+V4_DIGESTS = {
+    "requests": "1b33ae2fdfa07b9ca1b55bcb8094b4884fc94a7241171868f0019af562f1278b",
+    "responses": "88fb0701cd499389bc2c87296aab28611d77e345f1d84b2bbad1b2466dc4ae80",
+    "reviewed-accepted": "ab703c4e22db2d35fcf6537c45d47281ddabe4218e98a454d2a24525d18bcf4a",
+}
+
+
 def frames(kind: str) -> list[bytes]:
-    data = (FRAMES / f"qualification-v3-wire-{kind}.jsonl").read_bytes()
-    assert hashlib.sha256(data).hexdigest() == DIGESTS[kind]
+    data = (
+        FIXTURES / "national_qualification_v4" / f"qualification-v4-wire-{kind}.jsonl"
+    ).read_bytes()
+    assert hashlib.sha256(data).hexdigest() == V4_DIGESTS[kind]
     return data.splitlines()
 
 
@@ -71,6 +94,8 @@ def test_rust_observed_statuses_preserve_the_reviewed_and_accepted_original() ->
         "allocation_error",
         "collection_allocation",
         "aid_allocation",
+        "installed_organizer",
+        "play_interlock",
     ],
 )
 def test_absent_editor_field_is_not_null(key: str) -> None:
@@ -82,7 +107,7 @@ def test_absent_editor_field_is_not_null(key: str) -> None:
         wire.ControlResponse.model_validate(data)
 
 
-@pytest.mark.parametrize("bad", [2, True, "3", 3.0])
+@pytest.mark.parametrize("bad", [2, 3, True, "4", 4.0])
 def test_every_control_envelope_requires_exact_version(bad: object) -> None:
     request = json.loads(frames("requests")[0])
     response = json.loads(frames("responses")[0])
@@ -189,7 +214,7 @@ def test_oversize_refusal_sentinel_is_never_a_numbered_control_result() -> None:
     with pytest.raises(ValidationError):
         wire.ControlResponse.model_validate(
             {
-                "version": 3,
+                "version": 4,
                 "sequence": None,
                 "event": "refused",
                 "reason": "control_response_not_bounded",

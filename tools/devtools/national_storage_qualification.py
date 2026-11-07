@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import re
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
@@ -41,12 +42,32 @@ HashRow = tuple[Nonnegative, str, str, str, str]
 ByteColumn = tuple[Nonnegative, Nonnegative, Nonnegative, tuple[str | None, ...]]
 
 
+RELEASED_WAYNE_POLICY_SHA256 = "2f7a92f6e464e38c22f884300381da8386087d8cc3c3b771c604061504c1574b"
+
+
+def selected_policy(path: Path) -> None:
+    if hashlib.sha256(path.read_bytes()).hexdigest() != RELEASED_WAYNE_POLICY_SHA256:
+        raise ValueError("selected Wayne native profile requires the released v6 policy bytes")
+
+
 class FrozenRecord(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 Positive = Annotated[StrictInt, Field(gt=0, le=2**63 - 1)]
 Quantity = Annotated[StrictInt, Field(ge=0, le=2**64 - 1)]
+
+
+DigestBytes = Annotated[
+    tuple[Annotated[StrictInt, Field(ge=0, le=255)], ...], Field(min_length=32, max_length=32)
+]
+
+
+class TimePosting(FrozenRecord):
+    use_id: DigestBytes
+    actor_id: Quantity
+    contributor_id: Quantity
+    hours: Annotated[StrictInt, Field(gt=0, le=2**64 - 1)]
 
 
 class AidPracticeEvidence(FrozenRecord):
@@ -58,6 +79,12 @@ class AidPracticeEvidence(FrozenRecord):
     mandate: Annotated[
         tuple[Annotated[StrictInt, Field(ge=0, le=255)], ...], Field(min_length=32, max_length=32)
     ]
+    material_commitment_id: DigestBytes
+    practice_receipt_id: DigestBytes
+    first_response_receipt_id: DigestBytes | None
+    first_response_receipt_sha256: DigestBytes | None
+    absent_contribution_use_ids: tuple[DigestBytes, ...]
+    contribution_postings: tuple[TimePosting, ...]
     dispatch_period: Positive
     period: Positive
     qualifying_received_support: StrictBool
@@ -84,6 +111,18 @@ class AidPracticeEvidence(FrozenRecord):
 
     @model_validator(mode="after")
     def actual_close_facts(self) -> AidPracticeEvidence:
+        posted = tuple(row.use_id for row in self.contribution_postings)
+        absent = self.absent_contribution_use_ids
+        if (
+            (self.first_response_receipt_id is None) != (self.first_response_receipt_sha256 is None)
+            or (self.first_response_receipt_id is None) != (self.first_response_period is None)
+            or posted != tuple(sorted(set(posted)))
+            or absent != tuple(sorted(set(absent)))
+            or set(posted).intersection(absent)
+        ):
+            raise ValueError(
+                "response identity or positive/absent time postings differ from their exact roster"
+            )
         cash = int(self.cash_received_micros)
         food = self.food_consumed_quantity > 0
         if (
@@ -2256,6 +2295,11 @@ def main() -> int:
     p.add_argument("--qualify-focused", action="store_true")
     a = p.parse_args()
     try:
+        if a.qualify_wayne_walk or os.environ.get("BABYLON_WAYNE_PROFILE") in (
+            "smoke-01",
+            "walk-01",
+        ):
+            selected_policy(a.policy)
         policy_bytes = a.policy.read_bytes()
         policy_sha256 = hashlib.sha256(policy_bytes).hexdigest()
         policy = Policy.model_validate(strict_json_bytes(policy_bytes))

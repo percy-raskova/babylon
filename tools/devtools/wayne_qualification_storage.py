@@ -22,7 +22,7 @@ from uuid import UUID, uuid4
 import psycopg
 from psycopg import sql
 from pydantic import BaseModel, ConfigDict, Field
-from tools.devtools.national_storage_qualification import strict_json_bytes
+from tools.devtools.national_storage_qualification import selected_policy, strict_json_bytes
 
 RUN_PARENT = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-01")
 MEDIA = Path("/media/user/data")
@@ -240,11 +240,11 @@ def _can_replace(parent: os.stat_result, rows: list[tuple[int, int, int]], child
         raise StorageRefusal("public can replace media directory entries")
     # Group permissions combine across matching owning/named groups. Enumerate
     # only on hosts with local account authority, never infer remote NSS rosters.
-    groups = {
-        (parent.st_gid if tag == 4 else who): perm & group_mask
-        for tag, perm, who in rows
-        if tag in {4, 8}
-    }
+    groups: dict[int, int] = {}
+    for tag, perm, who in rows:
+        if tag in (4, 8):
+            gid = parent.st_gid if tag == 4 else who
+            groups[gid] = groups.get(gid, 0) | (perm & group_mask)
     users = {who: perm & group_mask for tag, perm, who in rows if tag == 2}
     if any(uid not in trusted and perm & 3 == 3 for uid, perm in users.items()):
         raise StorageRefusal("an ACL user can replace media directory entries")
@@ -270,6 +270,7 @@ def _can_replace(parent: os.stat_result, rows: list[tuple[int, int, int]], child
 
 
 class DirectoryPin(Record):
+    mount_id: int
     path: str
     major: int
     minor: int
@@ -281,9 +282,19 @@ class DirectoryPin(Record):
     default_acl: list[list[int]]
 
 
+def _mount_id(fd: int) -> int:
+    mount = re.search(
+        r"^mnt_id:\s+(\d+)$", Path(f"/proc/self/fdinfo/{fd}").read_text(), re.MULTILINE
+    )
+    if mount is None:
+        raise StorageRefusal("could not verify component mount identity")
+    return int(mount[1])
+
+
 def _directory_pin(fd: int, path: Path) -> DirectoryPin:
     info = os.fstat(fd)
     return DirectoryPin(
+        mount_id=_mount_id(fd),
         path=str(path),
         major=os.major(info.st_dev),
         minor=os.minor(info.st_dev),
@@ -294,6 +305,15 @@ def _directory_pin(fd: int, path: Path) -> DirectoryPin:
         access_acl=[list(row) for row in _acl(fd, "system.posix_acl_access")],
         default_acl=[list(row) for row in _acl(fd, "system.posix_acl_default")],
     )
+
+
+def check_media_mount(media: DirectoryPin, pins: list[DirectoryPin]) -> None:
+    if any(
+        (pin.major, pin.minor, pin.mount_id) != (media.major, media.minor, media.mount_id)
+        for pin in pins
+        if Path(pin.path).is_relative_to(media.path)
+    ):
+        raise StorageRefusal("unexpected nested mount under the media drive")
 
 
 @contextmanager
@@ -315,12 +335,7 @@ def pinned_ancestry(directory: Path) -> Iterator[list[DirectoryPin]]:
         if not MEDIA.is_mount() or not directory.is_relative_to(MEDIA):
             raise StorageRefusal("Wayne qualification requires the actual mounted media drive")
         media = next(pin for pin in pins if pin.path == str(MEDIA))
-        if any(
-            (pin.major, pin.minor) != (media.major, media.minor)
-            for pin in pins
-            if Path(pin.path).is_relative_to(MEDIA)
-        ):
-            raise StorageRefusal("unexpected nested filesystem under the media drive")
+        check_media_mount(media, pins)
         yield pins
 
 
@@ -707,6 +722,15 @@ def reserve_run(profile: str, focus: str, periods: str, evidence: Path, root: Pa
         for key in os.environ
     ):
         raise StorageRefusal("Wayne admission has an inherited SQL or target override")
+    context = None
+    if profile != "sql-01":
+        selected_policy(
+            Path(
+                os.environ.get("BABYLON_STORAGE_POLICY_PATH")
+                or root / "contracts/national_storage_qualification_v6.json"
+            )
+        )
+        context = actual_host_context()
     _daemon_endpoint()
     _image(os.environ["BABYLON_POSTGRES_IMAGE_ID"])
     if exact_output(["git", "-C", str(root), "status", "--porcelain"]):
@@ -776,10 +800,39 @@ def reserve_run(profile: str, focus: str, periods: str, evidence: Path, root: Pa
                 "daemon": _daemon(),
                 "image": _image(os.environ["BABYLON_POSTGRES_IMAGE_ID"]),
             }
-            PrivateEvidence(evidence).publish_json("media-creation.json", declaration)
+            selected = PrivateEvidence(evidence)
+            selected.publish_json("media-creation.json", declaration)
+            selected.publish("source-head", (head + "\n").encode())
+            if context is not None:
+                selected.publish_json("host-native-admission.json", context.model_dump())
+
+
+def released_head(directory: PrivateEvidence, root: Path) -> str:
+    packet = strict_json_bytes(directory.read_reference(directory.reference("media-creation.json")))
+    current = exact_output(["git", "-C", str(root), "rev-parse", "HEAD"])
+    if (
+        not isinstance(packet, dict)
+        or packet.get("source_head") != current
+        or re.fullmatch(r"[0-9a-f]{40}", current) is None
+        or exact_output(["git", "-C", str(root), "status", "--porcelain"])
+    ):
+        raise StorageRefusal("released HEAD differs from the current clean source")
+    parent = PrivateEvidence(RUN_PARENT)
+    reference = parent.reference(f"{directory.path.parent.name}-capacity.json")
+    reservation = read_typed(parent, reference, DiskReservation)
+    if (
+        reservation.source_head != current
+        or packet.get("reservation") != reference.model_dump()
+        or packet.get("capacity") != reservation.model_dump()
+        or reservation.profile != directory.path.parent.name
+        or directory.read_reference(directory.reference("source-head")) != (current + "\n").encode()
+    ):
+        raise StorageRefusal("released HEAD or the original capacity reservation changed")
+    return current
 
 
 def _media_creation(directory: PrivateEvidence, pins: list[DirectoryPin]) -> dict[str, Any]:
+    released_head(directory, MEDIA_CHECKOUT)
     ref = directory.reference("media-creation.json")
     data = strict_json_bytes(directory.read_reference(ref))
     if not isinstance(data, dict) or data.get("ancestry") != _pin_json(pins):
@@ -789,7 +842,14 @@ def _media_creation(directory: PrivateEvidence, pins: list[DirectoryPin]) -> dic
     ):
         raise StorageRefusal("creator proof differs from the current daemon/image")
     creator = data["creator"]
-    current = _host_identity(directory.path.parent / "pgdata")
+    data_path = directory.path.parent / "pgdata"
+    fd = os.open(data_path, os.O_PATH | os.O_NOFOLLOW | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        if _mount_id(fd) != pins[-1].mount_id:
+            raise StorageRefusal("PGDATA has an unexpected nested mount")
+    finally:
+        os.close(fd)
+    current = _host_identity(data_path)
     if any(current[field] != creator[field] for field in ("major", "minor", "inode", "mode")):
         raise StorageRefusal("PGDATA is no longer the same private directory")
     return data
@@ -915,8 +975,35 @@ def native_wal_senders(observed: tuple[object, ...] | None) -> int:
     return int(observed[0])
 
 
+@contextmanager
+def physical_session(
+    port: int, supplied: psycopg.Connection[Any] | None
+) -> Iterator[psycopg.Connection[Any]]:
+    if supplied is None:
+        with _connect(port, "template1") as connection:
+            yield connection
+    else:
+        info = supplied.info
+        if (info.host, info.port, info.dbname, info.user) != (
+            "127.0.0.1",
+            port,
+            "template1",
+            "test",
+        ):
+            raise StorageRefusal(
+                "maintenance connection is not the selected loopback template1 login"
+            )
+        yield supplied
+
+
 def physical_observation(
-    directory: PrivateEvidence, root: Path, cid: str, canary: str, image: str
+    directory: PrivateEvidence,
+    root: Path,
+    cid: str,
+    canary: str,
+    image: str,
+    *,
+    physical_connection: psycopg.Connection[Any] | None = None,
 ) -> dict[str, object]:
     run = directory.path.parent
     with pinned_ancestry(run) as pins:
@@ -978,16 +1065,12 @@ def physical_observation(
         if lineage != (LINEAGE + "\n").encode() or major != b"17\n":
             raise StorageRefusal("actual cluster version or lineage marker differs")
         native_settings: dict[str, int] = {}
-        with psycopg.connect(
-            host="127.0.0.1",
-            port=port,
-            user="test",
-            password="test",  # noqa: S106 - fixed bootstrap LOGIN on the authenticated disposable loopback cluster
-            dbname="template1",
-            connect_timeout=5,
-            sslmode="disable",
-        ) as conn:
+        with physical_session(port, physical_connection) as conn:
             if run.name in ("smoke-01", "walk-01"):
+                slots = conn.execute("SELECT current_setting('max_connections')").fetchone()
+                if slots != ("50",):
+                    raise StorageRefusal("native backup requires the released 50 connection slots")
+                native_settings["max_connections"] = int(slots[0])
                 native_settings["max_wal_senders"] = native_wal_senders(
                     conn.execute("SELECT current_setting('max_wal_senders')").fetchone()
                 )
@@ -1108,6 +1191,7 @@ def _build_test(directory: PrivateEvidence, root: Path) -> Reference:
         raise StorageRefusal(
             "Cargo did not select one checkout-local persistence lib test executable"
         )
+    source_unchanged(root, directory.path)
     archived = _archive_file(directory, candidates[0], "ignored-test", executable=True)
     listed = subprocess.run(
         [str(directory.path / archived.path), TEST_NAME, "--ignored", "--exact", "--list"],
@@ -1148,9 +1232,17 @@ def _connect(port: int, dbname: str = "postgres") -> psycopg.Connection[Any]:
 
 
 def _current_physical(
-    directory: PrivateEvidence, root: Path, cid: str, canary: str, image: str
+    directory: PrivateEvidence,
+    root: Path,
+    cid: str,
+    canary: str,
+    image: str,
+    *,
+    physical_connection: psycopg.Connection[Any] | None = None,
 ) -> dict[str, Any]:
-    current = physical_observation(directory, root, cid, canary, image)
+    current = physical_observation(
+        directory, root, cid, canary, image, physical_connection=physical_connection
+    )
     captured = strict_json_bytes(directory.read_reference(directory.reference("physical.json")))
     if not isinstance(captured, dict) or captured != current:
         raise StorageRefusal("physical SQL or daemon identity changed from its frozen evidence")
@@ -1185,7 +1277,7 @@ def _sql_fixture(
         checkout=str(root),
         run=str(directory.path.parent),
         evidence=str(directory.path),
-        source_head=exact_output(["git", "-C", str(root), "rev-parse", "HEAD"]),
+        source_head=released_head(directory, root),
         source=source,
         inputs=inputs,
         policy=policy,
@@ -1263,6 +1355,7 @@ def _zero_sessions(conn: psycopg.Connection[Any]) -> None:
 def run_sql_witness(
     directory: PrivateEvidence, root: Path, cid: str, canary: str, image: str
 ) -> None:
+    source_unchanged(root, directory.path)
     executable = _build_test(directory, root)
     fixture, fixture_ref = _sql_fixture(directory, root, cid, canary, image, executable)
     directory.verify(executable)
@@ -1335,8 +1428,148 @@ def run_sql_witness(
     remove_stopped(directory, root, cid, canary, image)
 
 
-def stop_checked(directory: PrivateEvidence, cid: str) -> None:
+def _fenced_stop(directory: PrivateEvidence, cid: str, image: str) -> None:
+    """A verified fast shutdown keeps the caller's ordinary connection slots occupied."""
     from datetime import UTC, datetime
+
+    run = directory.path.parent
+    if (
+        run.name not in ("smoke-01", "walk-01")
+        or directory.path != RUN_PARENT / run.name / "evidence"
+    ):
+        raise StorageRefusal("fenced shutdown requires an owned selected native run")
+    physical = strict_json_bytes(directory.read_reference(directory.reference("physical.json")))
+    if (
+        not isinstance(physical, dict)
+        or physical.get("container") != cid
+        or physical["image"]["id"] != image
+        or re.fullmatch("[0-9a-f]{64}", cid) is None
+        or re.fullmatch("sha256:[0-9a-f]{64}", image) is None
+    ):
+        raise StorageRefusal("fenced shutdown differs from the admitted image or container")
+    with pinned_ancestry(run) as pins:
+        creation = _media_creation(directory, pins)
+        before = _one_docker("container", cid)
+        actual_image = _one_docker("image", image)
+        bind = container_mounts(before, MEDIA_CHECKOUT, run, physical["label"], cid, image)
+        state = before["State"]
+        if (
+            actual_image["Id"] != image
+            or creation["image"]["id"] != image
+            or before["Id"] != cid
+            or before["Image"] != image
+            or before["Config"].get("StopSignal") != "SIGINT"
+            or actual_image["Config"].get("StopSignal") != "SIGINT"
+            or state["Status"] != "running"
+            or state["Running"] is not True
+            or state["Pid"] != physical["pid"]
+            or bind != {"mounts": physical["mounts"], "port_request": physical["port_request"]}
+            or _host_identity(run / "pgdata") != physical["host"]
+        ):
+            raise StorageRefusal(
+                "fenced shutdown needs the exact running bind and image with configured SIGINT"
+            )
+        uid, gid = physical["server_uid"], physical["server_gid"]
+        inside = ["docker", "exec", "--user", f"{uid}:{gid}", cid]
+        status = exact_output([*inside, "cat", "/proc/1/status"])
+        executable = exact_output([*inside, "readlink", "/proc/1/exe"])
+        postgres = exact_output([*inside, "which", "postgres"])
+        if (
+            not re.search(r"^Name:\s+postgres$", status, re.MULTILINE)
+            or not re.search(r"^Pid:\s+1$", status, re.MULTILINE)
+            or not re.search(rf"^Uid:\s+{uid}\s+{uid}\s", status, re.MULTILINE)
+            or not re.search(rf"^Gid:\s+{gid}\s+{gid}\s", status, re.MULTILINE)
+            or executable != postgres
+            or not Path(postgres).is_absolute()
+            or Path(postgres).name != "postgres"
+        ):
+            raise StorageRefusal("fenced shutdown requires the actual admitted PostgreSQL PID 1")
+        since = datetime.now(UTC)
+        attempt = directory.publish_json(
+            "native-fenced-stop-attempt-v1.json",
+            {
+                "container": cid,
+                "image": image,
+                "host_pid": state["Pid"],
+                "container_pid": 1,
+                "executable": executable,
+                "uid": uid,
+                "gid": gid,
+                "stop_signal": before["Config"]["StopSignal"],
+                "image_stop_signal": actual_image["Config"]["StopSignal"],
+                "since": since.isoformat(),
+                "bind": bind,
+                "host": physical["host"],
+            },
+        )
+        if exact_output(["docker", "stop", "--time", "-1", cid], timeout=180) != cid:
+            raise StorageRefusal("fenced shutdown was not acknowledged by the selected container")
+        after = _one_docker("container", cid)
+        final = after["State"]
+        if (
+            after["Id"] != cid
+            or after["Image"] != image
+            or final["Status"] != "exited"
+            or final["Running"] is not False
+            or final["ExitCode"] != 0
+            or final["OOMKilled"] is not False
+            or final["Pid"] != 0
+            or container_mounts(after, MEDIA_CHECKOUT, run, physical["label"], cid, image) != bind
+            or _host_identity(run / "pgdata") != physical["host"]
+        ):
+            raise StorageRefusal("fenced shutdown changed the bind or did not exit cleanly")
+        finished = datetime.fromisoformat(final["FinishedAt"])
+        logs = subprocess.run(
+            ["docker", "logs", "--timestamps", "--since", since.isoformat(), cid],
+            capture_output=True,
+            timeout=15,
+            check=True,
+        )
+        data = logs.stdout + logs.stderr
+        raw = directory.publish("clean-shutdown.log", data)
+        events = []
+        for line in data.decode("utf-8", "strict").splitlines():
+            match = re.fullmatch(
+                r"(\S+) .*?\[1\]\s+LOG:\s+(received fast shutdown request|database system is shut down)",
+                line,
+            )
+            if match:
+                stamp = datetime.fromisoformat(match[1])
+                if stamp.tzinfo is None or not since <= stamp <= finished:
+                    raise StorageRefusal(
+                        "PostgreSQL shutdown log occurs outside the actual stop interval"
+                    )
+                events.append((stamp, match[2]))
+        if [entry[1] for entry in events] != [
+            "received fast shutdown request",
+            "database system is shut down",
+        ] or events[1][0] < events[0][0]:
+            raise StorageRefusal(
+                "fenced shutdown lacks ordered fresh PostgreSQL PID 1 fast and clean log records"
+            )
+        directory.publish_json(
+            "native-fenced-stop-v1.json",
+            {
+                "attempt": attempt.model_dump(),
+                "log": raw.model_dump(),
+                "fast": events[0][0].isoformat(),
+                "clean": events[1][0].isoformat(),
+                "finished": finished.isoformat(),
+                "container": cid,
+                "image": image,
+                "host": physical["host"],
+                "exit_code": final["ExitCode"],
+                "oom_killed": final["OOMKilled"],
+            },
+        )
+
+
+def stop_checked(directory: PrivateEvidence, cid: str, *, fenced_image: str | None = None) -> None:
+    from datetime import UTC, datetime
+
+    if fenced_image is not None:
+        _fenced_stop(directory, cid, fenced_image)
+        return
 
     since = datetime.now(UTC).isoformat()
     if exact_output(["docker", "stop", "--time", "60", cid], timeout=75) != cid:
@@ -1384,28 +1617,46 @@ def remove_stopped(
 
 
 class HostContext(Record):
-    tag: Literal["wayne-host-process-context-v1"]
+    tag: Literal["wayne-host-process-context-v2"]
+    mount_namespace: str
+    init_start_ticks: int
+    init_comm: Literal["systemd"]
     boot_id: str
     pid_namespace: str
     proc_mount_id: int
     operator_uid: int
 
 
-def process_guard(directory: PrivateEvidence, *, capture: bool = True) -> None:
-    """The approved host is the only authority for negative process observations."""
-    from tools.devtools.national_game_memory import parse_start_time
-
-    parent = PrivateEvidence(RUN_PARENT)
-    witness = read_typed(parent, parent.reference("host-process-context.json"), HostContext)
+def host_proc_mount(mountinfo: str) -> tuple[list[str], list[str]]:
     proc_mount = []
-    for line in Path("/proc/self/mountinfo").read_text().splitlines():
+    for line in mountinfo.splitlines():
         before, after = line.split(" - ", 1)
         fields = before.split()
-        if fields[4] == "/proc":
+        mountpoint = fields[4]
+        if (
+            re.match(r"/proc/(?:[0-9]+|self|thread-self)(?:/|$)", mountpoint)
+            or mountpoint != "/proc"
+            and Path("/proc/sys/kernel/random/boot_id").is_relative_to(mountpoint)
+            and mountpoint.startswith("/proc/")
+        ):
+            raise StorageRefusal("proc submount obscures a process or host identity")
+        if mountpoint == "/proc":
             proc_mount.append((fields, after.split()))
     if len(proc_mount) != 1:
         raise StorageRefusal("host /proc mount is not unique")
-    fields, detail = proc_mount[0]
+    return proc_mount[0]
+
+
+def actual_host_context() -> HostContext:
+    """Authenticate the external actual-host observation before enumerating candidates."""
+    from tools.devtools.national_game_memory import parse_start_time
+
+    parent = PrivateEvidence(RUN_PARENT)
+    ref = parent.reference("host-process-context.json")
+    if ref.sha256 != os.environ.get("BABYLON_WAYNE_HOST_CONTEXT_SHA256"):
+        raise StorageRefusal("host view lacks the externally released context digest")
+    witness = read_typed(parent, ref, HostContext)
+    fields, detail = host_proc_mount(Path("/proc/self/mountinfo").read_text())
     if (
         detail[0] != "proc"
         or fields[3] != "/"
@@ -1414,9 +1665,13 @@ def process_guard(directory: PrivateEvidence, *, capture: bool = True) -> None:
             option.startswith("hidepid=") and option not in ("hidepid=0", "hidepid=off")
             for option in fields[5].split(",") + detail[2].split(",")
         )
+        or "subset=pid" in fields[5].split(",") + detail[2].split(",")
+        or os.readlink("/proc/self/ns/mnt") != witness.mount_namespace
+        or Path("/proc/1").stat().st_uid != 0
+        or Path("/proc/1/comm").read_text().strip() != witness.init_comm
+        or parse_start_time(Path("/proc/1/stat").read_bytes(), 1) != witness.init_start_ticks
         or os.geteuid() != witness.operator_uid
         or os.readlink("/proc/self/ns/pid") != witness.pid_namespace
-        or os.readlink("/proc/1/ns/pid") != witness.pid_namespace
         or Path("/proc/sys/kernel/random/boot_id").read_text().strip() != witness.boot_id
     ):
         raise StorageRefusal("this process table does not prove absence on the released host")
@@ -1441,21 +1696,57 @@ def process_guard(directory: PrivateEvidence, *, capture: bool = True) -> None:
                 raise StorageRefusal(
                     "candidate process executable could not be identified"
                 ) from None
-    if capture:
-        directory.publish_json("host-native-admission.json", witness.model_dump())
-    elif (
+    return witness
+
+
+def process_guard(directory: PrivateEvidence) -> None:
+    if (
         read_typed(directory, directory.reference("host-native-admission.json"), HostContext)
-        != witness
+        != actual_host_context()
     ):
         raise StorageRefusal("native admission host context changed")
 
 
+def native_roles(
+    port: int, canary: str, *, physical_connection: psycopg.Connection[Any] | None = None
+) -> dict[str, int]:
+    names = ["national_" + role + "_" + canary[:12] for role in ("writer", "reader", "observer")]
+    with physical_session(port, physical_connection) as connection:
+        rows = connection.execute(
+            "SELECT rolname,oid FROM pg_catalog.pg_roles WHERE rolname=ANY(%s)", (names,)
+        ).fetchall()
+    values = dict(rows)
+    if (
+        set(values) != set(names)
+        or len(set(values.values())) != 3
+        or any(type(oid) is not int or oid <= 0 for oid in values.values())
+    ):
+        raise StorageRefusal("native role OID roster is incomplete")
+    return values
+
+
 def owner_lines(
-    directory: PrivateEvidence, root: Path, canary: str, cid: str, image: str, database_oid: str
+    directory: PrivateEvidence,
+    root: Path,
+    canary: str,
+    cid: str,
+    image: str,
+    database_oid: str,
+    *,
+    physical_connection: psycopg.Connection[Any] | None = None,
 ) -> str:
     if re.fullmatch("[1-9][0-9]*", database_oid) is None:
         raise StorageRefusal("native owner requires a complete database OID")
-    physical = _current_physical(directory, root, cid, canary, image)
+    physical = _current_physical(
+        directory, root, cid, canary, image, physical_connection=physical_connection
+    )
+    expected_roles = strict_json_bytes(
+        directory.read_reference(directory.reference("native-role-oids.json"))
+    )
+    if expected_roles != native_roles(
+        physical["port"], canary, physical_connection=physical_connection
+    ):
+        raise StorageRefusal("native role OID changed after admission")
     host = physical["host"]
     creator = physical["creator"]
     run = directory.path.parent
@@ -1533,7 +1824,7 @@ def held_native_lock(root: Path) -> Path:
 
 
 def source_unchanged(root: Path, evidence: Path) -> None:
-    head = exact_output(["git", "-C", str(root), "rev-parse", "HEAD"])
+    head = released_head(PrivateEvidence(evidence), root)
     expected = (evidence / "source-head").read_text().strip()
     if head != expected or exact_output(["git", "-C", str(root), "status", "--porcelain"]):
         raise StorageRefusal("released checkout changed after admission")
@@ -1557,7 +1848,13 @@ def source_unchanged(root: Path, evidence: Path) -> None:
     )
 
 
-def reauthenticate_native_owner(root: Path, evidence: Path, owner: tuple[str, ...]) -> None:
+def reauthenticate_native_owner(
+    root: Path,
+    evidence: Path,
+    owner: tuple[str, ...],
+    *,
+    physical_connection: psycopg.Connection[Any] | None = None,
+) -> None:
     if (
         len(owner) != 21
         or owner[0] != "national-storage-runner-media-v2"
@@ -1574,12 +1871,21 @@ def reauthenticate_native_owner(root: Path, evidence: Path, owner: tuple[str, ..
     if (
         live.read_reference(live.reference("active")) != expected
         or directory.read_reference(directory.reference("ownership")) != expected
-        or owner_lines(directory, root, owner[2], owner[4], owner[6], owner[9]) != "\n".join(owner)
+        or owner_lines(
+            directory,
+            root,
+            owner[2],
+            owner[4],
+            owner[6],
+            owner[9],
+            physical_connection=physical_connection,
+        )
+        != "\n".join(owner)
     ):
         raise StorageRefusal(
             "active lease, frozen native owner or actual physical ownership differs"
         )
-    process_guard(directory, capture=False)
+    process_guard(directory)
     source_unchanged(root, evidence)
     roster = strict_json_bytes(
         directory.read_reference(directory.reference("normal-binaries.json"))
@@ -1605,7 +1911,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "operation",
-        choices=("reserve", "create", "physical", "verify", "owner", "sql", "pin-binaries"),
+        choices=(
+            "reserve",
+            "released-head",
+            "create",
+            "physical",
+            "verify",
+            "owner",
+            "sql",
+            "pin-binaries",
+            "pin-roles",
+        ),
     )
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
@@ -1625,8 +1941,8 @@ def main() -> int:
         image = os.environ["BABYLON_POSTGRES_IMAGE_ID"]
         if args.operation == "reserve":
             reserve_run(args.profile, args.focus, args.periods, args.evidence, args.root)
-            if args.profile != "sql-01":
-                process_guard(directory)
+        elif args.operation == "released-head":
+            print(released_head(directory, args.root))
         elif args.operation == "create":
             print(create_and_start(directory, args.root, args.canary, image))
         else:
@@ -1639,6 +1955,15 @@ def main() -> int:
                 )
             elif args.operation == "verify":
                 _current_physical(directory, args.root, args.container, args.canary, image)
+            elif args.operation == "pin-roles":
+                if args.profile == "sql-01":
+                    raise StorageRefusal("SQL fixture cannot freeze native roles")
+                physical = _current_physical(
+                    directory, args.root, args.container, args.canary, image
+                )
+                directory.publish_json(
+                    "native-role-oids.json", native_roles(physical["port"], args.canary)
+                )
             elif args.operation == "pin-binaries":
                 if args.profile == "sql-01":
                     raise StorageRefusal("SQL fixture cannot admit native executables")

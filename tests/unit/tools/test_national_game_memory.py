@@ -1743,3 +1743,26 @@ def test_fixed_cold_pair_retains_its_actual_period_separately(
         result = json.loads((tmp_path / "segment-memory.json").read_bytes())
         assert result["period"] == fixed and result["scope"] == "fixed_period_cold_native_pair"
         assert {r["campaign_age_ticks"] for r in result["samples"]} == {fixed}
+
+
+@pytest.mark.parametrize("over", ["rss", "gap"])
+def test_measured_overrun_preserves_sample_and_stops_producer(
+    tmp_path, owned_children, monkeypatch, over
+):
+    capture = capture_runner(tmp_path, owned_children)
+    capture._stop_on_budget = True
+    batch = synthetic_batch(1, 0)
+    sample = batch.sample
+    if over == "rss":
+        process = sample.processes[0].model_copy(update={"rss_bytes": 10_000_000_001})
+        sample = sample.model_copy(update={"processes": (process,)})
+    capture._started_ns = sample.monotonic_ns - (5_000_000_001 if over == "gap" else 0)
+    monkeypatch.setattr(
+        memory,
+        "collect_running_game",
+        lambda *_a, **_kw: batch.model_copy(update={"sample": sample}),
+    )
+    with pytest.raises(memory.CaptureRefusal, match="memory"):
+        capture._capture_locked(None)
+    assert (tmp_path / "memory-samples/00000001.json").is_file()
+    assert not (tmp_path / "combined-memory.json").exists()

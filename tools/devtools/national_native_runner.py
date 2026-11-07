@@ -15,14 +15,15 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID
 
 import psycopg
 from psycopg.conninfo import conninfo_to_dict
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StrictInt, StrictStr
 from tools import run_observer_session as launcher
 from tools.devtools import national_game_memory as memory
 from tools.devtools.national_native_evidence import (
@@ -48,18 +49,23 @@ from tools.devtools.national_storage_qualification import (
     PlayableReport,
     Policy,
     Snapshot,
+    selected_policy,
     strict_json_bytes,
 )
 from tools.devtools.national_windowed_qualification import (
     POLL_SECONDS,
     AidAllocation,
     AidAmounts,
+    Bytes32,
+    Choice,
     CollectionAllocation,
     CollectionAmount,
     Command,
     Commitment,
     ControlChannel,
     ControlState,
+    FrozenRecord,
+    Nonnegative,
     Observation,
     PlannedChoice,
     SelectAidPartner,
@@ -168,7 +174,10 @@ class NativeRun:
             if len(fields) != 11 or fields[0] != "national-storage-runner-v1":
                 raise NativeRunRefusal("anonymous national runner requires its original ownership")
         else:
-            from tools.devtools.wayne_qualification_storage import profile_run
+            from tools.devtools.wayne_qualification_storage import profile_run, released_head
+
+            selected_policy(directory / "policy.json")
+            released_head(PrivateEvidence(directory), root)
 
             run = profile_run(self.wayne_profile, "national_storage", str(self.periods), directory)
             if (
@@ -224,6 +233,9 @@ class NativeRun:
         self.recoveries: list[tuple[str, RecoveryRecord]] = []
         self.snapshots: list[Snapshot] = []
         self.stage = "admitting_supervisor"
+        self.failed_pair: Reference | None = None
+        self.segment: str | None = None
+        self.pair_identity: list[tuple[int, int, str]] = []
         self.operation_lock = threading.RLock()
         self.verify_live()
         self.verify_credentials(fields[2], fields[7], fields[8])
@@ -586,6 +598,7 @@ class NativeRun:
             operation_timeout=30,
             operation_lock=self.operation_lock,
             cold_segment_period=fixed_period,
+            stop_on_budget=bool(self.wayne_profile),
         )
         return self._capture
 
@@ -667,6 +680,35 @@ class NativeRun:
             raise NativeRunRefusal("native committed boundary has incomplete authenticated Archive")
         return boundary
 
+    def check_budget(
+        self,
+        stage: str,
+        elapsed_ns: int,
+        maximum_seconds: int,
+        state: ControlState,
+        *,
+        strict: bool = False,
+    ) -> None:
+        if not getattr(self, "wayne_profile", None):
+            return
+        ceiling = maximum_seconds * 1_000_000_000
+        if elapsed_ns > ceiling or strict and elapsed_ns == ceiling:
+            self.stage = stage
+            publish(
+                self.directory / "first-budget-divergence.json",
+                {
+                    "status": "incomplete",
+                    "stage": stage,
+                    "elapsed_ns": elapsed_ns,
+                    "ceiling_ns": ceiling,
+                    "strict": strict,
+                    "state": state.model_dump(mode="json"),
+                    "processes": getattr(self, "pair_identity", []),
+                    "segment": getattr(self, "segment", None),
+                },
+            )
+            raise NativeRunRefusal(f"{stage} exceeded its released timing budget")
+
     def on_boundary(self, state: ControlState) -> None:
         self.verify_sources()
         if state.campaign_id != self.campaign or state.foundation_sha256 is None:
@@ -675,6 +717,13 @@ class NativeRun:
         if (record.tick, record.tick_content_hash) != (state.durable_tick, state.tick_content_hash):
             raise NativeRunRefusal(
                 "native material publication differs from its installed UI boundary"
+            )
+        if getattr(self, "wayne_profile", None):
+            self.check_budget(
+                "production-read",
+                record.production_read_elapsed_ns,
+                self.policy.maximum_production_read_seconds,
+                state,
             )
         if not record.tick:
             if record.opening is None or self.opening is not None:
@@ -709,7 +758,30 @@ class NativeRun:
             raise NativeRunRefusal("native committed facts omit or duplicate a requested period")
         advance = read_record(self.directory / f"advance-{record.tick}.json", AdvanceRecord)
         self.progress(record.tick, "committed", advance.model_dump(mode="json"))
+        if getattr(self, "wayne_profile", None):
+            self.check_budget(
+                "advance",
+                advance.advance_elapsed_ns,
+                self.policy.maximum_advance_p95_seconds,
+                state,
+            )
+            self.check_budget(
+                "archive-catchup",
+                advance.archive_elapsed_ns,
+                self.policy.maximum_archive_catchup_seconds,
+                state,
+            )
         archive = self.archive(record)
+        if getattr(self, "wayne_profile", None):
+            archive_record = read_record(
+                self.directory / f"archive-{record.tick}.json", ArchiveRecord
+            )
+            self.check_budget(
+                "archive-read",
+                archive_record.archive_read_elapsed_ns,
+                self.policy.maximum_archive_catchup_seconds,
+                state,
+            )
         self.progress(record.tick, "archive", archive.model_dump(mode="json"))
         self.progress(record.tick, "accounting", record.aid.model_dump(mode="json"))
         snapshot = self.snapshot(f"tick-{record.tick:02}")
@@ -755,6 +827,20 @@ class NativeRun:
     def on_recovery(self, state: ControlState) -> None:
         name = f"recovery-{state.durable_tick}-{state.scope_epoch}.json"
         recovery = read_record(self.directory / name, RecoveryRecord)
+        if getattr(self, "wayne_profile", None):
+            self.check_budget(
+                "checkpoint-reopen",
+                recovery.cold_reopen_elapsed_ns,
+                self.policy.maximum_cold_open_seconds,
+                state,
+                strict=True,
+            )
+            self.check_budget(
+                "restored-production-read",
+                recovery.authenticated_read.production_read_elapsed_ns,
+                self.policy.maximum_production_read_seconds,
+                state,
+            )
         restored = self.snapshot(f"tick-{state.durable_tick:02}-reopened")
         original = self.snapshots[-1]
         if (
@@ -801,9 +887,7 @@ class NativeRun:
         }
         remote, local = "remote_aid" in consumed, "local_aid" in consumed
         audit = final.aid_summary.model_dump(mode="json")
-        audit["periods"] = [
-            aid.model_dump(mode="json", exclude={"version"}) for _facts, aid in audits
-        ]
+        audit["periods"] = [aid.model_dump(mode="json") for _facts, aid in audits]
         report = PlayableReport.model_validate(
             {
                 "version": 6,
@@ -996,6 +1080,21 @@ class NativeRun:
             if choice.period <= self.periods
         )
         self.stage = "windowed_new_play_recovery"
+        cold_start = time.monotonic_ns()
+        self.segment = "smoke" if self.wayne_profile else None
+
+        def started(runtime: subprocess.Popen[bytes], client: subprocess.Popen[bytes]) -> None:
+            if self.wayne_profile:
+                self.pair_identity = [
+                    (
+                        p.pid,
+                        memory.parse_start_time(Path(f"/proc/{p.pid}/stat").read_bytes(), p.pid),
+                        self.binaries[exe],
+                    )
+                    for p, exe in ((runtime, self.runtime), (client, self.client))
+                ]
+            self.verify_live()
+
         result = drive_pair(
             self.runtime,
             self.client,
@@ -1008,7 +1107,23 @@ class NativeRun:
             periods=self.periods,
             directory=self.directory,
             operation_timeout=self.timeout,
-            on_started=lambda _runtime, _client: self.verify_live(),
+            on_started=started,
+            cold_deadline=cold_start / 1e9 + self.policy.maximum_cold_open_seconds
+            if self.wayne_profile
+            else None,
+            on_opened=lambda state: self.check_budget(
+                "cold-smoke",
+                time.monotonic_ns() - cold_start,
+                self.policy.maximum_cold_open_seconds,
+                state,
+                strict=True,
+            ),
+            on_observed=lambda state: self.check_budget(
+                "smoke-wall",
+                time.monotonic_ns() - self.started,
+                self.policy.maximum_routine_smoke_seconds,
+                state,
+            ),
             on_boundary=self.on_boundary,
             on_recovery=self.on_recovery,
             choices=choices,
@@ -1064,6 +1179,18 @@ def retire_wayne(root: Path, evidence: Path, campaign: str, periods: int) -> Non
     (control / "active").unlink()
 
 
+class CitationDraft(FrozenRecord):
+    schema_version: Annotated[StrictInt, Field(alias="schema", ge=4, le=4)]
+    campaign: StrictStr
+    workplace: Nonnegative
+    choice: Choice
+    collection_allocation: Literal["none"] | CollectionAllocation
+    aid_allocation: Literal["none"] | AidAllocation
+    notes: StrictStr
+    references: Annotated[tuple[Bytes32, ...], Field(max_length=32)]
+    selected_reference: Bytes32 | None
+
+
 class WayneWalk:
     """Drive one bounded owned campaign through its normal process and UI boundaries."""
 
@@ -1081,14 +1208,19 @@ class WayneWalk:
         self.extra_collect_at: int | None = None
         self.initial_reports: dict[str, str] = {}
         self.process_start = 0
+        self.first_observed: ControlState | None = None
+        self.latest_observed: ControlState | None = None
         self.segment_capture: memory.RunningMemoryCapture | None = None
 
-    def draft(self) -> dict[str, Any]:
-        path = (
+    def draft_path(self) -> Path:
+        return (
             self.run.directory.parent
             / "xdg/state/babylon/organizer-drafts"
             / (self.run.campaign + ".json")
         )
+
+    def draft(self) -> dict[str, Any]:
+        path = self.draft_path()
         if not os.path.lexists(path):
             return {"sha256": None, "draft": None}
         if path.resolve(strict=True) != path:
@@ -1099,8 +1231,59 @@ class WayneWalk:
             raise NativeRunRefusal("owned draft is not an object")
         return {"sha256": hashlib.sha256(data).hexdigest(), "draft": draft}
 
+    def wait_citation(self, rid: str, timeout: float) -> None:
+        deadline = time.monotonic() + timeout
+        expected = tuple(bytes.fromhex(rid))
+        prior_sha: str | None = None
+        changed = 0
+        while True:
+            path = self.draft_path()
+            if os.path.lexists(path):
+                if path.resolve(strict=True) != path:
+                    raise NativeRunRefusal("owned campaign draft path is redirected")
+                raw = private_bytes(path, 64 * 1024)
+                digest = hashlib.sha256(raw).hexdigest()
+                if digest != prior_sha:
+                    self.evidence.publish(f"citation-prior-{changed:02}.json", raw)
+                    changed += 1
+                    prior_sha = digest
+                    if len(raw) <= 16_384:
+                        draft: CitationDraft | None
+                        try:
+                            draft = CitationDraft.model_validate(strict_json_bytes(raw))
+                        except ValueError:
+                            draft = None
+                        if (
+                            draft is not None
+                            and draft.campaign == self.run.campaign
+                            and expected in draft.references
+                            and len(set(draft.references)) == len(draft.references)
+                            and draft.selected_reference == expected
+                        ):
+                            return
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or changed >= 32:
+                self.evidence.publish_json(
+                    "citation-incomplete.json",
+                    {
+                        "campaign": self.run.campaign,
+                        "selected_reference": rid,
+                        "last_sha256": prior_sha,
+                        "versions": changed,
+                    },
+                )
+                raise NativeRunRefusal(
+                    "autosave deadline elapsed before the exact campaign citation was persisted"
+                )
+            time.sleep(min(remaining, 0.05))
+
     def facts(self, state: ControlState) -> dict[str, Any]:
         """Capture private SQL originals and material marker independently of UI."""
+        organizer = state.installed_organizer
+        if organizer is None or organizer.period != state.durable_tick:
+            raise NativeRunRefusal(
+                "dated report collection requires the current installed organizer"
+            )
         self.run.verify_live()
         self.run.verify_sources()
         with psycopg.connect(self.run.writer_dsn, connect_timeout=5) as connection:
@@ -1148,6 +1331,7 @@ class WayneWalk:
                     }
                 )
             receipts = []
+            receipt_bytes = {}
             for receipt_id, actor, period, payload in connection.execute(
                 """
                 SELECT receipt_id,actor_id,resolve_tick,receipt_bytes FROM babylon_state.organizer_receipt_v1
@@ -1166,13 +1350,14 @@ class WayneWalk:
                         "receipt identity differs from its committed SQL projection"
                     )
                 receipts.append(receipt)
+                receipt_bytes[bytes(receipt_id).hex()] = bytes(payload).hex()
             reports = {}
             for rid, actor, subject, observed, acquired, raw in connection.execute(
                 """
                 SELECT observation_id,actor_id,subject_id,observed_period,acquired_period,observation_bytes
-                FROM babylon_state.organizer_observation_v1 WHERE campaign_id=%s::uuid ORDER BY observation_id
+                FROM babylon_state.organizer_observation_v1 WHERE campaign_id=%s::uuid AND actor_id=%s ORDER BY observation_id
             """,
-                (self.run.campaign,),
+                (self.run.campaign, str(organizer.actor_id)),
             ):
                 report = Observation.model_validate(strict_json_bytes(bytes(raw)))
                 if (
@@ -1209,12 +1394,65 @@ class WayneWalk:
             "campaign_identity": list(foundation),
             "commands": commands,
             "receipts": receipts,
+            "receipt_bytes": receipt_bytes,
             "reports": reports,
             "grants": [list(row) for row in grants],
             "markers": [list(row) for row in markers],
             "world_hash": state.world_hash,
             "draft": self.draft(),
         }
+
+    def capture_frame(
+        self,
+        channel: ControlChannel,
+        socket_root: Path,
+        stage: str,
+        expected: ControlState,
+        width: int,
+        height: int,
+    ) -> tuple[ControlState, bytes]:
+        before = channel.sequence
+        try:
+            state = channel.perform("capture_frame", self.run.timeout)
+            path = socket_root / f"frame-{channel.sequence}.png"
+            raw = private_bytes(path, 32 * 1024 * 1024)
+            if state != expected or channel.records[-1].event != "frame_captured":
+                raise NativeRunRefusal("capture did not acknowledge the exact settled state")
+            verify_frame_png(raw, width, height)
+            return state, raw
+        except BaseException:
+            name = f"incomplete-{self.stage}-{stage}-seq{channel.sequence}"
+            original = None
+            length = None
+            path = socket_root / f"frame-{channel.sequence}.png"
+            if channel.sequence > before and os.path.lexists(path):
+                with PrivateEvidence(socket_root).file(path.name) as frame:
+                    length = os.fstat(frame.fileno()).st_size
+                    original = self.raw.publish(name + ".png", frame.read(32 * 1024 * 1024))
+            attempted = channel.sequence > before
+            response = (
+                self.raw.publish(name + "-response.bin", bytes(channel.response_bytes))
+                if attempted and channel.response_bytes
+                else None
+            )
+            self.raw.publish_json(
+                name + ".json",
+                {
+                    "status": "incomplete",
+                    "sequence": channel.sequence,
+                    "expected": expected.model_dump(mode="json"),
+                    "observed": channel.state.model_dump(mode="json") if channel.state else None,
+                    "acknowledgement": channel.last_response.model_dump(mode="json")
+                    if attempted and channel.last_response
+                    else None,
+                    "actual_response_bytes": response.model_dump() if response else None,
+                    "original_byte_length": length,
+                    "width": width,
+                    "height": height,
+                    "capture": original.model_dump() if original else None,
+                },
+            )
+            raise
 
     def frame(self, channel: ControlChannel, socket_root: Path, stage: str) -> None:
         anchor = channel.state
@@ -1246,11 +1484,7 @@ class WayneWalk:
                 # A layout action consumed any prior temporary Review witness.
                 # Review anew before capture; the final capture preserves this exact nonce for Confirm.
                 changed = channel.perform("review", self.run.timeout)
-            state = channel.perform("capture_frame", self.run.timeout)
-            if state != changed or channel.records[-1].event != "frame_captured":
-                raise NativeRunRefusal("capture did not acknowledge the exact settled state")
-            raw = private_bytes(socket_root / f"frame-{channel.sequence}.png", 32 * 1024 * 1024)
-            verify_frame_png(raw, width, height)
+            state, raw = self.capture_frame(channel, socket_root, stage, changed, width, height)
             name = f"{stage}-p{state.viewed_tick}-{width}x{height}-{scale}-seq{channel.sequence}"
             original = self.raw.publish(name + ".png", raw)
             self.raw.publish_json(
@@ -1287,6 +1521,31 @@ class WayneWalk:
         facts = self.facts(installed)
         rid = installed.selected_report_id
         report = facts["reports"].get(rid)
+        if stage == "cash-following-purchase" and report is not None:
+            wanted = {
+                key
+                for key, row in facts["reports"].items()
+                if row["actor_id"] == report["actor_id"]
+                and row["subject_id"] == report["subject_id"]
+                and row["observed_period"] == row["acquired_period"] == installed.viewed_tick
+                and row["report"]["kind"] == "partner"
+                and row["report"]["facts"]["basis"] == "food_provision"
+            }
+            seen: set[str] = set()
+            while wanted and rid not in wanted:
+                if (
+                    rid is None
+                    or rid in seen
+                    or report is None
+                    or report["observed_period"] < installed.viewed_tick
+                ):
+                    raise NativeRunRefusal(
+                        "dated food disclosure is absent from the ordinary scoped report list"
+                    )
+                seen.add(rid)
+                installed = channel.perform("next_evidence", self.run.timeout)
+                rid = installed.selected_report_id
+                report = facts["reports"].get(rid)
         if (
             installed.inspector != "Evidence"
             or rid is None
@@ -1301,14 +1560,13 @@ class WayneWalk:
         label = stage or f"{self.stage}-{kind}-report"
         self.frame(channel, socket_root, label)
         if cite:
+            path = self.draft_path()
+            if os.path.lexists(path):
+                if path.resolve(strict=True) != path:
+                    raise NativeRunRefusal("owned campaign draft path is redirected")
+                self.evidence.publish("citation-before-input.json", private_bytes(path, 64 * 1024))
             channel.perform("draft_from_report", self.run.timeout)
-            draft = self.draft()["draft"]
-            if (
-                not isinstance(draft, dict)
-                or list(bytes.fromhex(rid)) not in draft["references"]
-                or draft["selected_reference"] != list(bytes.fromhex(rid))
-            ):
-                raise NativeRunRefusal("the selected report was not cited in this campaign draft")
+            self.wait_citation(rid, min(10, self.run.timeout))
             self.first_report = rid
         else:
             channel.perform("close_inspector", self.run.timeout)
@@ -1352,12 +1610,20 @@ class WayneWalk:
         )
         return facts
 
+    def observed(self, state: ControlState) -> None:
+        if self.first_observed is None:
+            self.first_observed = state
+        self.latest_observed = state
+
     def cold_install(self, state: ControlState) -> None:
         elapsed = time.monotonic_ns() - self.process_start
-        if elapsed >= self.run.policy.maximum_cold_open_seconds * 1_000_000_000:
-            raise NativeRunRefusal(
-                "actual new process installation exceeded its cold opening budget"
-            )
+        self.run.check_budget(
+            "cold-" + self.stage,
+            elapsed,
+            self.run.policy.maximum_cold_open_seconds,
+            state,
+            strict=True,
+        )
         self.evidence.publish_json(
             "cold-installed-" + self.stage + ".json",
             {
@@ -1537,6 +1803,11 @@ class WayneWalk:
             self.saved = self.capture_stage(final, "completed-before-cold")
             self.run.functional_terminal(final)
 
+    def committed(self, state: ControlState) -> None:
+        self.run.on_boundary(state)
+        if state.durable_tick:
+            self.capture_stage(state, f"walk-p{state.durable_tick}-committed")
+
     def terminal_navigation(self, channel: ControlChannel, socket_root: Path) -> None:
         prior = channel.state
         if prior is None or prior.durable_tick <= 0:
@@ -1599,21 +1870,12 @@ class WayneWalk:
         reader: dict[str, str],
     ) -> None:
         self.stage = stage
+        self.run.stage = "cold-" + stage
+        self.run.segment = stage
+        self.run.pair_identity = []
+        self.first_observed = self.latest_observed = None
         main = stage == "walk"
         directory = self.run.directory if main else self.run.directory / ("segment-" + stage)
-        if not main:
-            directory.mkdir(mode=0o700)
-        if self.processes:
-            for pid, start, _ in self.processes[-2:]:
-                try:
-                    present = memory.parse_start_time(Path(f"/proc/{pid}/stat").read_bytes(), pid)
-                except FileNotFoundError:
-                    continue
-                if present == start:
-                    raise NativeRunRefusal(
-                        "previous owned runtime or client has not exited normally"
-                    )
-        self.segment_capture = self.run.capture(directory, fixed_period=None if main else tick)
 
         def started(runtime: subprocess.Popen[bytes], client: subprocess.Popen[bytes]) -> None:
             self.run.verify_live()
@@ -1633,15 +1895,70 @@ class WayneWalk:
                 if fresh in self.processes:
                     raise NativeRunRefusal("a process-cold segment reused its predecessor")
                 self.processes.append(fresh)
+                self.run.pair_identity.append(fresh)
 
-        reauthenticate_native_owner(self.run.root, self.run.directory, self.run.owner_fields)
-        if not main:
-            reader = {
-                key: value
-                for key, value in reader.items()
-                if not key.startswith("BABYLON_QUALIFICATION_")
-            }
         self.process_start = time.monotonic_ns()
+        try:
+            if not main:
+                directory.mkdir(mode=0o700)
+            if self.processes:
+                for pid, start, _ in self.processes[-2:]:
+                    try:
+                        present = memory.parse_start_time(
+                            Path(f"/proc/{pid}/stat").read_bytes(), pid
+                        )
+                    except FileNotFoundError:
+                        continue
+                    if present == start:
+                        raise NativeRunRefusal(
+                            "previous owned runtime or client has not exited normally"
+                        )
+            self.segment_capture = self.run.capture(directory, fixed_period=None if main else tick)
+            reauthenticate_native_owner(self.run.root, self.run.directory, self.run.owner_fields)
+            if not main:
+                reader = {
+                    key: value
+                    for key, value in reader.items()
+                    if not key.startswith("BABYLON_QUALIFICATION_")
+                }
+            self.drive_segment(tick, target, closes, writer, reader, directory, started, main)
+        except BaseException:
+            self.run.failed_pair = self.evidence.publish_json(
+                "pair-incomplete-" + stage + ".json",
+                {
+                    "segment": stage,
+                    "stage": self.run.stage,
+                    "expected_open_tick": tick,
+                    "elapsed_ns": time.monotonic_ns() - self.process_start,
+                    "attempted_processes": self.run.pair_identity,
+                    "first_observation": self.first_observed.model_dump(mode="json")
+                    if self.first_observed
+                    else None,
+                    "latest_observation": self.latest_observed.model_dump(mode="json")
+                    if self.latest_observed
+                    else None,
+                    "last_accepted_marker": [
+                        self.run.boundaries[-1].tick,
+                        self.run.boundaries[-1].tick_content_hash,
+                    ]
+                    if self.run.boundaries
+                    else None,
+                },
+            )
+            raise
+
+    def drive_segment(
+        self,
+        tick: int,
+        target: launcher.NewCampaignTarget | launcher.OpenCampaignTarget,
+        closes: int,
+        writer: dict[str, str],
+        reader: dict[str, str],
+        directory: Path,
+        started: Callable[[subprocess.Popen[bytes], subprocess.Popen[bytes]], None],
+        main: bool,
+    ) -> None:
+        assert self.segment_capture is not None
         result = drive_pair(
             self.run.runtime,
             self.run.client,
@@ -1655,11 +1972,13 @@ class WayneWalk:
             directory=directory,
             operation_timeout=self.run.timeout,
             on_started=started,
-            on_boundary=self.run.on_boundary if main else lambda _state: None,
+            on_boundary=self.committed if main else lambda _state: None,
             on_recovery=self.run.on_recovery if main else lambda _state: None,
             on_opened=self.cold_install,
+            on_observed=self.observed,
+            cold_deadline=self.process_start / 1e9 + self.run.policy.maximum_cold_open_seconds,
             on_installed=self.installed,
-            play_last_close=main,
+            play_penultimate_close=main,
             capture_lifecycle=self.segment_capture.lifecycle,
         )
         if result:
@@ -1695,7 +2014,8 @@ def main() -> int:
             publish(
                 run.directory / "native-run-incomplete.json",
                 NativeRunIncomplete(
-                    version=2,
+                    version=3,
+                    failed_pair=run.failed_pair,
                     status="incomplete",
                     last_recorded_stage=run.stage,
                     complete_boundary_records=len(run.boundaries),

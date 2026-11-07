@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
 from dataclasses import dataclass
 from io import BytesIO
@@ -25,6 +26,7 @@ from pydantic import (
     StrictBool,
     StrictInt,
     StrictStr,
+    TypeAdapter,
     field_validator,
     model_validator,
 )
@@ -37,6 +39,7 @@ from tools.devtools.national_storage_qualification import (
     FrozenRecord,
     NativeTimings,
     Nonnegative,
+    PlayableBoundary,
     PlayableReport,
     Policy,
     Positive,
@@ -59,7 +62,12 @@ from tools.devtools.national_windowed_qualification import (
     Commitment,
     ControlsEvidence,
     ControlState,
+    EssentialServices,
+    FoodProvision,
     Observation,
+    OpeningAssessment,
+    ParticipationTime,
+    PartnerReport,
     Preview,
     expected_event,
 )
@@ -87,7 +95,8 @@ class NativeFailureCause(NativeRecord):
 
 
 class NativeRunIncomplete(NativeRecord):
-    version: Literal[2]
+    version: Literal[3]
+    failed_pair: Reference | None
     status: Literal["incomplete"]
     last_recorded_stage: StrictStr
     complete_boundary_records: Nonnegative
@@ -154,7 +163,101 @@ class Opening(NativeRecord):
     material_register_bytes: Positive
 
 
+class PartnerSource(NativeRecord):
+    actor_id: U64
+    subject_id: U64
+    source_actor_id: U64
+    observed_period: U64
+    acquired_period: U64
+    observation_id: Bytes32
+    receipt_id: Bytes32 | None
+    mandate_id: Bytes32
+    source_hash: Bytes32
+    facts: Annotated[
+        OpeningAssessment | FoodProvision | EssentialServices | ParticipationTime,
+        Field(discriminator="basis"),
+    ]
+
+
+def validate_membership(
+    observation: Observation, receipts: list[dict[str, Any]], actor: int
+) -> None:
+    if (
+        observation.receipt_id is None
+        or observation.actor_id != actor
+        or len(
+            [
+                r
+                for r in receipts
+                if r["receipt_id"] == list(observation.receipt_id)
+                and r["actor_id"] == actor
+                and r["period"] == observation.acquired_period
+                and r["observation_ids"].count(list(observation.observation_id)) == 1
+            ]
+        )
+        != 1
+    ):
+        raise ValueError("dated report lacks its exact action receipt membership")
+
+
+def verify_partner_source(
+    row: PartnerSource,
+    observation: Observation,
+    *,
+    actor: int,
+    period: int,
+    source_hash: str,
+    grants: list[list[Any]],
+) -> None:
+    if (
+        not isinstance(observation.report, PartnerReport)
+        or row.receipt_id is not None
+        or row.actor_id != actor
+        or row.subject_id != row.source_actor_id
+        or row.observed_period != period
+        or row.acquired_period != period
+        or (period == 0) != isinstance(row.facts, OpeningAssessment)
+        or bytes(row.source_hash).hex() != source_hash
+        or not any(row.mandate_id)
+        or row.model_dump(exclude={"source_hash", "mandate_id", "facts"})
+        != observation.model_dump(exclude={"report"})
+        or row.facts != observation.report.facts
+    ):
+        raise ValueError(
+            "partner report differs from the controlled reader, dated recipient or authenticated source quantities"
+        )
+    key = bytes(row.observation_id).hex()
+    locator = f"source-actor/{row.source_actor_id}/observed-period/{row.observed_period}/acquired-period/{period}/observation/{key}/action-receipt/automatic-report"
+    expected = [
+        "organization",
+        str(row.subject_id),
+        "report-" + key,
+        period,
+        "derived-scoped-partner-report-v1",
+        locator,
+    ]
+    if grants.count(expected) != 1:
+        raise ValueError("dated partner report lacks its exact scoped Archive grant")
+
+
+def has_later_retained_leg(practices: tuple[AidPracticeEvidence, ...]) -> bool:
+    return any(
+        first.cash_received_period == first.period
+        and first.first_response_period == first.period
+        and later.period > first.period
+        and later.food_consumption_period == later.period
+        and later.qualifying_received_support
+        and later.outcome == "aid_response_retained"
+        and later.first_response_receipt_id == first.practice_receipt_id
+        and later.mandate == first.mandate
+        and later.material_commitment_id == first.material_commitment_id
+        for first in practices
+        for later in practices
+    )
+
+
 class NativeOpening(Opening):
+    partner_reports: tuple[PartnerSource, ...]
     graph_foundation_sha256: Sha256
     county_geoids: tuple[Annotated[StrictStr, Field(pattern=r"^[0-9]{5}$")], ...]
     county_roster_sha256: Sha256
@@ -187,7 +290,8 @@ class BoundaryFacts(Opening):
 
 
 class AidBoundary(NativeRecord):
-    version: Literal[2]
+    version: Literal[3]
+    partner_reports: tuple[PartnerSource, ...]
     period: Positive
     tick_content_hash: Sha256
     canonical_receipt_sha256: Sha256
@@ -228,7 +332,7 @@ class ArchiveRecord(NativeRecord):
 
 
 class MaterialRecord(NativeRecord):
-    version: Literal[4]
+    version: Literal[5]
     scope: Literal["authenticated_native_material_and_aid_facts_only"]
     runtime_epoch: U64
     observation_generation: U64
@@ -458,6 +562,7 @@ def _walk_trace(
     first_ready = False
     playing: ActionObservation | None = None
     settling = False
+    arm: ActionObservation | None = None
     steps: list[ActionObservation | ObservedPlayClose] = []
     reopens: list[ActionObservation] = []
     for action in controls.actions:
@@ -525,14 +630,43 @@ def _walk_trace(
                 or state.foundation_sha256 != controls.foundation_sha256
             ):
                 raise ValueError("walk trace scope or installed foundation changed")
+            if action.action == "arm_one_play_advance":
+                lock = state.play_interlock
+                if (
+                    arm is not None
+                    or lock is None
+                    or lock.phase != "armed"
+                    or lock.arm_sequence != action.sequence
+                    or (
+                        lock.campaign_id,
+                        lock.scope_epoch,
+                        lock.start_tick,
+                        lock.start_generation,
+                        lock.target_tick,
+                    )
+                    != (old.campaign_id, old.scope_epoch, 8, old.generation, 9)
+                    or old.durable_tick != 8
+                    or old.playing
+                    or old.advance_pending
+                ):
+                    raise ValueError("walk arm differs from the actual P8 scope and generation")
+                arm = action
             if action.action == "play":
+                lock = state.play_interlock
                 if (
                     playing is not None
                     or old.playing
                     or action.event != "applied"
-                    or not state.playing
+                    or arm is None
+                    or previous != arm
+                    or lock is None
+                    or arm.state.play_interlock is None
+                    or lock.arm_identity() != arm.state.play_interlock.arm_identity()
+                    or lock.phase == "paused_after_enqueue"
+                    and lock.play_sequence != action.sequence
+                    or (not state.playing and lock.phase != "paused_after_enqueue")
                 ):
-                    raise ValueError("walk Play is not a fresh ordinary admission")
+                    raise ValueError("walk Play is not a fresh armed ordinary admission")
                 playing = action
             if changed:
                 if changed != 1 or (
@@ -548,14 +682,24 @@ def _walk_trace(
             if state.playing and playing is None:
                 raise ValueError("walk playback began without its ordinary Play event")
             if action.action == "pause" and playing is not None:
-                if state.playing or state.durable_tick != playing.state.durable_tick + int(
-                    playing.state.durable_tick == 9
+                lock = state.play_interlock
+                if (
+                    state.playing
+                    or state.durable_tick not in (8, 9)
+                    or lock is None
+                    or lock.phase != "paused_after_enqueue"
+                    or lock.target_tick != 9
+                    or lock.play_sequence != playing.sequence
+                    or arm is None
+                    or arm.state.play_interlock is None
+                    or lock.arm_identity() != arm.state.play_interlock.arm_identity()
+                    or lock.scope_epoch != state.scope_epoch
                 ):
-                    raise ValueError("final Play did not pause at the tenth installed period")
+                    raise ValueError("ordinary Pause lacks the exact P9 pending-at-enqueue witness")
                 settling = True
             if (
                 settling
-                and state.durable_tick == 10
+                and state.durable_tick == 9
                 and not any(
                     (
                         state.playing,
@@ -565,8 +709,8 @@ def _walk_trace(
                         state.organizer_status_due,
                     )
                 )
-                and state.organizer_period == 10
-                and state.archive_verified_tick == 10
+                and state.organizer_period == 9
+                and state.archive_verified_tick == 9
             ):
                 if playing is None:
                     raise ValueError("final automatic close has no Play admission")
@@ -751,6 +895,8 @@ def evaluate_native(
     if (
         tuple(a.state.durable_tick for a in steps) != actual
         or tuple(a.state.durable_tick for a in reopens) != actual
+        or wayne_walk
+        and [a.state.durable_tick for a in steps if isinstance(a, ObservedPlayClose)] != [9]
     ):
         raise ValueError("native advance/reopen trace must cover exact committed material periods")
     if tuple(a.name for a in evidence.boundaries) != tuple(
@@ -858,6 +1004,22 @@ def evaluate_native(
             _artifact(directory, advance_artifact, MATERIAL_RECORD_BYTES)
         )
         request = (advance.runtime_scope.epoch, advance.request_id)
+        if isinstance(step, ObservedPlayClose):
+            lock = step.state.play_interlock
+            if (
+                lock is None
+                or lock.phase != "paused_after_enqueue"
+                or (lock.scope_epoch, lock.request_id, lock.start_tick, lock.target_tick)
+                != (
+                    advance.runtime_scope.epoch,
+                    advance.request_id,
+                    advance.expected_tail.resolve_tick,
+                    advance.committed_tail.resolve_tick,
+                )
+            ):
+                raise ValueError(
+                    "bounded Play does not match its actual enqueue request and committed tail"
+                )
         if (
             advance.runtime_scope
             != RuntimeScope(epoch=record.runtime_epoch, campaign_id=evidence.campaign)
@@ -967,7 +1129,7 @@ def evaluate_native(
             or step.state.tick_content_hash != facts.tick_content_hash
             or facts.economic.model_dump(mode="json") != boundary.economic.model_dump(mode="json")
             or facts.trade.model_dump(mode="json") != boundary.trade.model_dump(mode="json")
-            or record.aid.model_dump(mode="json", exclude={"version"}) != account
+            or record.aid.model_dump(mode="json") != account
             or production_times.get(tick.tick) != record.production_read_elapsed_ns
         ):
             raise ValueError(
@@ -1049,6 +1211,8 @@ def evaluate_native(
             and recovery.cold_reopen_elapsed_ns < policy.maximum_cold_open_seconds * 1_000_000_000
             and advance.advance_elapsed_ns <= policy.maximum_advance_p95_seconds * 1_000_000_000
             and advance.archive_elapsed_ns <= policy.maximum_archive_catchup_seconds * 1_000_000_000
+            and archive.archive_read_elapsed_ns
+            <= policy.maximum_archive_catchup_seconds * 1_000_000_000
         )
     if (
         final_summary.economic_summary != playable.independent_economic_accounting
@@ -1161,6 +1325,9 @@ def walk_response(
     original: tuple[int, ...],
     practices: tuple[AidPracticeEvidence, ...],
     sql_rows: list[dict[str, Any]],
+    *,
+    actor: int,
+    choice: str,
 ) -> dict[str, Any]:
     """Join one actual gift's dated material legs and political responses to committed rows."""
     practice_kinds = {
@@ -1186,6 +1353,10 @@ def walk_response(
         r = by_date[p.period]
         if (
             p.original_commitment != original
+            or r.actor_id != actor
+            or r.choice != choice
+            or p.practice_receipt_id != r.receipt_id
+            or r.standing_work
             or (r.outcome, r.partner_actor_id, r.partner_response)
             != (p.outcome, p.partner_actor, p.partner_response)
             or sum(item.hours for item in r.time_use if item.actor_id == p.partner_actor)
@@ -1194,6 +1365,24 @@ def walk_response(
             raise ValueError(
                 "recipient, response or finite recipient hours differ from committed practice"
             )
+        posted = [(v.actor_id, v.contributor_id, v.hours) for v in p.contribution_postings]
+        if sorted(posted) != sorted(
+            (v.actor_id, v.contributor_id, v.hours) for v in r.time_use
+        ) or len({v.use_id for v in p.contribution_postings}) != len(posted):
+            raise ValueError(
+                "recipient contribution postings differ from the dated practice receipt"
+            )
+        for posting in p.contribution_postings:
+            use = hashlib.sha256(
+                b"babylon.organizer-household-contribution.v1\0"
+                + bytes(r.receipt_id)
+                + posting.actor_id.to_bytes(8, "big")
+                + posting.contributor_id.to_bytes(8, "big")
+            ).digest()
+            if bytes(posting.use_id) != use:
+                raise ValueError(
+                    "recipient posting identity differs from the actual practice/contributor"
+                )
         if p.outcome in ("aid_response_retained", "aid_awaiting_support", "no_qualifying_support"):
             if (
                 r.time_use
@@ -1204,7 +1393,9 @@ def walk_response(
             ):
                 raise ValueError("retained or absent response charged new recipient time")
             if p.outcome == "aid_response_retained" and (
-                first is None or p.first_response_period != first.period
+                first is None
+                or p.first_response_period != first.period
+                or p.first_response_receipt_id != first.receipt_id
             ):
                 raise ValueError(
                     "retained response does not name its unique earlier first response"
@@ -1214,6 +1405,7 @@ def walk_response(
                 first is not None
                 or not p.qualifying_received_support
                 or p.first_response_period != p.period
+                or p.first_response_receipt_id != r.receipt_id
                 or p.partner_actor is None
             ):
                 raise ValueError("recipient response lacks its unique first qualifying support")
@@ -1366,8 +1558,31 @@ def _walk_checkpoint(
         left.facts != right.facts
         or left.monotonic_ns >= right.monotonic_ns
         or left.state.commitment != right.state.commitment
+        or left.state.installed_organizer is None
+        or left.state.installed_organizer != right.state.installed_organizer
     ):
         raise ValueError("restored draft, SQL, report or original differs across the checkpoint")
+    if controls[0] is controls[1]:
+        reopens = [
+            action
+            for action in controls[0].actions
+            if action.action == "reopen"
+            and action.event == "reopened_and_installed"
+            and left.monotonic_ns
+            <= action.started_monotonic_ns
+            <= action.completed_monotonic_ns
+            <= right.monotonic_ns
+        ]
+        if (
+            len(reopens) != 1
+            or left.state.scope_epoch is None
+            or right.state.scope_epoch != left.state.scope_epoch + 1
+            or right.state.generation <= left.state.generation
+            or reopens[0].state.scope_epoch != right.state.scope_epoch
+        ):
+            raise ValueError(
+                "checkpoint lacks the actual intervening installed reopen and new scope"
+            )
     for stage, trace in zip((left, right), controls, strict=True):
         s = stage.state
         if (
@@ -1376,6 +1591,12 @@ def _walk_checkpoint(
             or s.viewed_tick != period
             or s.foundation_sha256 != trace.foundation_sha256
             or s.playing
+            or s.organizer_pending
+            or s.organizer_status_due
+            or s.lifecycle_pending
+            or s.advance_pending
+            or s.installed_organizer is None
+            or s.installed_organizer.period != period
             or not any(
                 a.state == s and a.completed_monotonic_ns <= stage.monotonic_ns
                 for a in trace.actions
@@ -1539,11 +1760,33 @@ def _walk_originals(segments: dict[str, ControlsEvidence]) -> dict[tuple[int, ..
                     or ruling.refusal is not None
                     or command.allocation != ruling.allocation
                     or command.choice != ruling.choice
+                    or state.installed_organizer is None
+                    or (
+                        command.actor_id,
+                        command.authority_id,
+                        command.content_digest,
+                        command.resource_digest,
+                    )
+                    != (
+                        state.installed_organizer.actor_id,
+                        state.installed_organizer.authority_id,
+                        state.installed_organizer.content_digest,
+                        state.installed_organizer.resource_digest,
+                    )
                     or ruling.current_period != command.expected_period
                     or command.expected_period != state.durable_tick
                     or bytes(command.campaign_id) != UUID(controls.campaign).bytes
                 ):
                     raise ValueError("walk admitted review differs from its actual selection")
+                eligibility = {
+                    "hold": state.installed_organizer.hold_reviewable,
+                    "pause_standing": state.installed_organizer.pause_reviewable,
+                    "resume_standing": state.installed_organizer.resume_reviewable,
+                }
+                if isinstance(command.choice, str) and not eligibility.get(command.choice, True):
+                    raise ValueError(
+                        "ordinary review contradicts the current installed choice eligibility"
+                    )
                 review = state
             elif action.action == "confirm" and action.event == "acceptance_admitted":
                 original = state.commitment
@@ -1566,6 +1809,192 @@ def _walk_originals(segments: dict[str, ControlsEvidence]) -> dict[tuple[int, ..
             ):
                 review = None
     return all_commands
+
+
+def installed_walk_stages(
+    evidence: PrivateEvidence,
+    trace: ControlsEvidence,
+    boundaries: tuple[PlayableBoundary, ...],
+    actor: int,
+    authority: tuple[int, ...],
+) -> dict[int, WalkStage]:
+    stages = {}
+    for boundary in boundaries:
+        tick = boundary.tick
+        recovered = _walk_checkpoint(
+            evidence,
+            f"walk-p{tick}-committed",
+            f"walk-p{tick}-installed",
+            None,
+            tick,
+            (trace, trace),
+        )
+        view = recovered.state.installed_organizer
+        if (
+            view is None
+            or (view.actor_id, view.authority_id, view.period) != (actor, authority, tick)
+            or recovered.state.tick_content_hash != boundary.tick_content_hash
+        ):
+            raise ValueError("reopened marker differs from its controlled organizer authority")
+        stages[tick] = recovered
+    return stages
+
+
+def verify_contribution_history(boundaries: list[AidBoundary]) -> None:
+    seen: set[tuple[int, ...]] = set()
+    for boundary in boundaries:
+        for practice in boundary.independent_practices:
+            uses = {posting.use_id for posting in practice.contribution_postings}
+            uses.update(practice.absent_contribution_use_ids)
+            if seen.intersection(uses):
+                raise ValueError("dated positive or absent contribution identity was reused")
+            seen.update(uses)
+
+
+def verify_first_receipt_prefix(
+    stages: dict[int, WalkStage], first: dict[str, Any], digest: bytes
+) -> None:
+    key = bytes(first["receipt_id"]).hex()
+    for period, stage in stages.items():
+        if period < first["period"]:
+            continue
+        raw = bytes.fromhex(stage.facts["receipt_bytes"][key])
+        if (
+            hashlib.sha256(raw).digest() != digest
+            or strict_json_bytes(raw) != first
+            or [r for r in stage.facts["receipts"] if r["receipt_id"] == first["receipt_id"]]
+            != [first]
+        ):
+            raise ValueError("first response content changed under the same receipt identity")
+
+
+def verify_standing_period(stage: WalkStage, actor: int, paused: bool) -> None:
+    view = stage.state.installed_organizer
+    if view is None or view.actor_id != actor:
+        raise ValueError("standing directive lost its controlled actor")
+    if paused and (view.standing.authorized or view.standing.paused_reason != "explicit"):
+        raise ValueError("quiet standing routine resumed before its actor's explicit Resume")
+    if not paused and (
+        not view.standing.authorized
+        or view.standing.paused_reason is not None
+        or view.resume_reviewable
+    ):
+        raise ValueError("Resume outcome disagrees with the installed routine and eligibility")
+
+
+def verify_directives(
+    originals: list[Commitment],
+    stages: dict[int, WalkStage],
+    actor: int,
+    authority: tuple[int, ...],
+    missing: list[str],
+) -> None:
+    outcomes = {"pause_standing": "standing_paused", "resume_standing": "standing_resumed"}
+    directives = sorted(
+        (
+            (choice, c)
+            for c in originals
+            if isinstance(choice := c.command.choice, str) and choice in outcomes
+        ),
+        key=lambda item: item[1].resolves_period,
+    )
+    choices = [choice for choice, _ in directives]
+    if len(set(choices)) != len(choices):
+        raise ValueError("duplicate standing directive for the same actor")
+    if choices != ["pause_standing", "resume_standing"]:
+        missing.append("ordinary actor-bound Pause and Resume standing")
+    applied = {}
+    for choice, directive in directives:
+        stage = stages[directive.resolves_period]
+        matches = [
+            r
+            for r in stage.facts["receipts"]
+            if r["actor_id"] == actor
+            and r["period"] == directive.resolves_period
+            and r["commitment_id"] == list(directive.commitment_id)
+            and r["choice"] == choice
+            and r["standing_work"] is False
+        ]
+        if (
+            directive.command.actor_id != actor
+            or directive.command.authority_id != authority
+            or len(matches) != 1
+        ):
+            raise ValueError("standing directive lacks the receipt of its exact actor and original")
+        if matches[0]["outcome"] != outcomes[choice]:
+            missing.append(f"observed {choice} outcome {matches[0]['outcome']}")
+            continue
+        applied[choice] = directive.resolves_period
+        verify_standing_period(stage, actor, choice == "pause_standing")
+    if "pause_standing" in applied:
+        end = applied.get("resume_standing", max(stages) + 1)
+        if end <= applied["pause_standing"]:
+            raise ValueError("standing Resume precedes the actual Pause")
+        for tick in range(applied["pause_standing"], end):
+            verify_standing_period(stages[tick], actor, True)
+            if any(
+                r["period"] == tick
+                and r["actor_id"] == actor
+                and r["standing_work"]
+                and r["outcome"] != "no_authorized_practice"
+                for r in stages[tick].facts["receipts"]
+            ):
+                raise ValueError("standing work executed while the controlled actor had paused it")
+
+
+def verify_walk_disclosures(
+    opening: NativeOpening,
+    ordered: list[AidBoundary],
+    stages: dict[int, WalkStage],
+    actor: int,
+    source_digest: str,
+) -> tuple[dict[str, Any], dict[str, PartnerSource]]:
+    disclosed = {}
+    sources = {}
+    for period, rows in [
+        (0, opening.partner_reports),
+        *((b.period, b.partner_reports) for b in ordered),
+    ]:
+        stage = stages[period]
+        expected = {
+            key
+            for key, raw in stage.facts["reports"].items()
+            if raw["acquired_period"] == period and raw["report"]["kind"] == "partner"
+        }
+        if (
+            len(rows) != len(expected)
+            or tuple(r.observation_id for r in rows)
+            != tuple(sorted(r.observation_id for r in rows))
+            or {bytes(row.observation_id).hex() for row in rows} != expected
+        ):
+            raise ValueError(
+                "recipient source roster differs from the dated SQL partner observations"
+            )
+        for key, raw in stage.facts["reports"].items():
+            obs = Observation.model_validate(raw)
+            if bytes(obs.observation_id).hex() != key or obs.actor_id != actor:
+                raise ValueError(
+                    "dated report key or controlled reader differs from the SQL projection"
+                )
+            if obs.receipt_id is not None and obs.acquired_period == period:
+                validate_membership(obs, stage.facts["receipts"], actor)
+        for row in rows:
+            key = bytes(row.observation_id).hex()
+            observation = Observation.model_validate(stage.facts["reports"][key])
+            verify_partner_source(
+                row,
+                observation,
+                actor=actor,
+                period=period,
+                source_hash=source_digest,
+                grants=stage.facts["grants"],
+            )
+            disclosed[key] = observation.model_dump(mode="json")
+            sources[key] = row
+        for key, raw in disclosed.items():
+            if stage.facts["reports"].get(key) != raw:
+                raise ValueError("reopened SQL reports changed from original dated disclosure")
+    return disclosed, sources
 
 
 def evaluate_wayne_walk(
@@ -1685,39 +2114,37 @@ def evaluate_wayne_walk(
         raise ValueError(
             "history or Archive Return changed authoritative reports, receipts or the draft"
         )
-    reports = terminal.facts["reports"]
-    grants = terminal.facts["grants"]
-    disclosed = {}
-    for key, raw in reports.items():
-        report = Observation.model_validate(raw)
-        if report.report.kind != "partner":
-            continue
-        date = report.acquired_period
-        receipt = (
-            bytes(report.receipt_id).hex() if report.receipt_id is not None else "automatic-report"
-        )
-        locator = f"source-actor/{report.source_actor_id}/observed-period/{report.observed_period}/acquired-period/{date}/observation/{key}/action-receipt/{receipt}"
-        if (
-            key != bytes(report.observation_id).hex()
-            or report.observed_period > date
-            or date > 10
-            or [
-                "organization",
-                str(report.subject_id),
-                "report-" + key,
-                date,
-                "derived-scoped-partner-report-v1",
-                locator,
-            ]
-            not in grants
-        ):
-            raise ValueError("partner disclosure lacks its exact dated SQL evidence grant")
-        disclosed[key] = report.model_dump(mode="json")
+    actor = pending.state.commitment.command.actor_id
+    authority = pending.state.commitment.command.authority_id
+    stages = installed_walk_stages(
+        evidence, segments["walk"], material.boundaries, actor, authority
+    )
+    stages[0] = pending
+    if terminal.state.installed_organizer != stages[10].state.installed_organizer:
+        raise ValueError("completed cold Open changed the controlled organizer and standing state")
+    period_rows = material.independent_account_posting_audit.get("periods")
+    if not isinstance(period_rows, list):
+        raise ValueError("walk lacks its versioned independent aid boundaries")
+    ordered = [AidBoundary.model_validate(row) for row in period_rows]
+    verify_contribution_history(ordered)
+    initial = MaterialRecord.model_validate(_artifact(base, native.opening, MATERIAL_RECORD_BYTES))
+    if initial.opening is None:
+        raise ValueError("walk lacks its authenticated opening partner foundation")
+    inputs = evidence.read_reference(evidence.reference("inputs.sha256")).decode().splitlines()
+    source = [
+        m[1]
+        for line in inputs
+        if (m := re.fullmatch(r"([0-9a-f]{64})  content/scenarios/national/defines\.toml", line))
+    ]
+    if len(source) != 1:
+        raise ValueError("national run lacks the captured game policy for its recipient grants")
+    disclosed, sources = verify_walk_disclosures(initial.opening, ordered, stages, actor, source[0])
     for trace in segments.values():
         for a in trace.actions:
             s = a.state
             if (
-                a.action not in ("inspect_subject_evidence", "open_archive_evidence")
+                a.action
+                not in ("inspect_subject_evidence", "next_evidence", "open_archive_evidence")
                 or a.event == "refused"
             ):
                 continue
@@ -1737,14 +2164,8 @@ def evaluate_wayne_walk(
                 or raw["acquired_period"] > s.viewed_tick
             ):
                 raise ValueError("displayed report differs from its subject and period grant")
-    period_facts = material.independent_account_posting_audit.get("periods")
-    if (
-        not isinstance(period_facts, list)
-        or len(period_facts) != 10
-        or not all(isinstance(row, dict) for row in period_facts)
-    ):
+    if [b.period for b in ordered] != list(range(1, 11)):
         raise ValueError("ten actual aid boundaries required for the national walk")
-    ordered = [AidBoundary.model_validate({"version": 2, **period}) for period in period_facts]
     details = []
     missing = []
     expected_allocations = {
@@ -1773,7 +2194,13 @@ def evaluate_wayne_walk(
             for p in row.independent_practices
             if p.original_commitment == c.commitment_id
         )
-        proof = walk_response(c.commitment_id, practices, terminal.facts["receipts"])
+        proof = walk_response(
+            c.commitment_id,
+            practices,
+            terminal.facts["receipts"],
+            actor=c.command.actor_id,
+            choice=choice,
+        )
         proof["selection"] = label
         proof["material_legs"] = [
             {"period": b.period, **leg}
@@ -1792,6 +2219,8 @@ def evaluate_wayne_walk(
                 MATERIAL_RECORD_BYTES,
             )
         )
+        if len({p.material_commitment_id for p in practices}) > 1:
+            raise ValueError("material commitment identity changed across admitted original legs")
         origin = admitted.review.before
         offer = origin.get("aid")
         treasury = origin.get("collection")
@@ -1835,20 +2264,150 @@ def evaluate_wayne_walk(
             row["observed_utc"] = installed.utc.isoformat()
             row["observed_monotonic_ns"] = installed.monotonic_ns
         recipient = admitted_offers[0]["recipient_actor_id"]
+        mandate = TypeAdapter(Bytes32).validate_python(admitted_offers[0]["mandate_id"])
+        if any(
+            leg["mandate"] != list(mandate) or leg["dispatch_period"] != c.resolves_period
+            for leg in proof["material_legs"]
+        ):
+            raise ValueError("material leg differs from the actual offer mandate or dispatch")
+        if c.command.actor_id != actor or c.command.authority_id != authority:
+            raise ValueError("aid command names another actor or authority")
+        first = proof["first_response_receipt"]
+        if first is not None:
+            first_digests = {
+                p.first_response_receipt_sha256
+                for p in practices
+                if p.first_response_period is not None
+            }
+            if len(first_digests) != 1 or None in first_digests:
+                raise ValueError("full first response hash changed in the retained practice")
+            digest = next(d for d in first_digests if d is not None)
+            verify_first_receipt_prefix(stages, first, bytes(digest))
+            verify_first_receipt_prefix({10: terminal}, first, bytes(digest))
+        pending_periods = []
+        for p in practices:
+            stage = stages[p.period]
+            receipt_rows = stage.facts["receipts"]
+            current = [r for r in receipt_rows if r["receipt_id"] == list(p.practice_receipt_id)]
+            final = [
+                r
+                for r in terminal.facts["receipts"]
+                if r["receipt_id"] == list(p.practice_receipt_id)
+            ]
+            view = stage.state.installed_organizer
+            if (
+                p.mandate != mandate
+                or p.dispatch_period != c.resolves_period
+                or len(current) != 1
+                or current != final
+                or p.partner_actor not in (None, recipient)
+                or view is None
+            ):
+                raise ValueError(
+                    "dated receipt, admitted mandate or partner changed across close and restore"
+                )
+            history = [
+                h
+                for h in view.aid_response_history
+                if h.original_commitment_id == c.commitment_id and h.period == p.period
+            ]
+            if len(history) != 1 or (
+                history[0].practice_receipt_id,
+                history[0].first_response_receipt_id,
+            ) != (p.practice_receipt_id, p.first_response_receipt_id):
+                raise ValueError(
+                    "installed aid history differs from the dated practice and first response"
+                )
+        for period, stage in stages.items():
+            if stage.state.installed_organizer is None:
+                raise ValueError("installed recipient authority absent")
+            freight = [
+                f
+                for f in stage.state.installed_organizer.pending_freight
+                if f.original_commitment_id == c.commitment_id
+            ]
+            if not freight:
+                continue
+            current_first = (
+                tuple(first["receipt_id"])
+                if first is not None and first["period"] <= period
+                else None
+            )
+            if (
+                len(freight) != 1
+                or freight[0].mandate_id != mandate
+                or freight[0].dispatch_period != c.resolves_period
+                or freight[0].first_response_receipt_id != current_first
+                or not practices
+                or freight[0].material_commitment_id != practices[0].material_commitment_id
+            ):
+                raise ValueError(
+                    "in-transit receipt, first response or admitted freight differs after reopen"
+                )
+            pending_periods.append(period)
+        proof["in_transit_reopened_periods"] = pending_periods
+        if label == "remote-mixed" and has_later_retained_leg(practices):
+            if not pending_periods:
+                missing.append("installed in-transit mixed freight through actual reopen")
+            completed_view = terminal.state.installed_organizer
+            if (
+                completed_view is None
+                or first is None
+                or not any(
+                    h.original_commitment_id == c.commitment_id
+                    and h.first_response_receipt_id == tuple(first["receipt_id"])
+                    for h in completed_view.aid_response_history
+                )
+            ):
+                missing.append("completed process-cold installed mixed first response")
         proof["recipient_reports"] = [
             r
-            for r in disclosed.values()
+            for key, r in disclosed.items()
             if r["subject_id"] == recipient
-            and r["source_actor_id"] == recipient
-            and r["actor_id"] == c.command.actor_id
-            and c.command.expected_period <= r["acquired_period"]
+            and sources[key].mandate_id == mandate
+            and c.command.expected_period <= r["observed_period"]
         ]
-        if label == "local-cash" and not any(
-            r["observed_period"] == c.resolves_period + 1
-            and r["report"]["facts"]["basis"] in ("food_provision", "essential_services")
+        topics = {
+            r["report"]["facts"]["basis"]
             for r in proof["recipient_reports"]
-        ):
-            missing.append("following ordinary local recipient purchasing disclosure")
+            if r["observed_period"] >= c.resolves_period
+        }
+        if not {"food_provision", "essential_services", "participation_time"}.issubset(topics):
+            missing.append(label + " dated recipient food, services and time disclosures")
+        if label == "local-cash":
+            following = [
+                r
+                for r in proof["recipient_reports"]
+                if r["observed_period"] == c.resolves_period + 1
+            ]
+            food_rows = [r for r in following if r["report"]["facts"]["basis"] == "food_provision"]
+            service_rows = [
+                r for r in following if r["report"]["facts"]["basis"] == "essential_services"
+            ]
+            if food_rows and "cash-following-purchase" in frames:
+                allowed = {bytes(r["observation_id"]).hex() for r in food_rows}
+                for image in frames["cash-following-purchase"]:
+                    frame = WalkFrame.model_validate(
+                        _walk_scope(
+                            PrivateEvidence(base.parent / "raw"),
+                            Path(image).with_suffix(".json").name,
+                        )
+                    )
+                    if (
+                        frame.state.selected_report_id not in allowed
+                        or frame.state.selected_subject != f"AidPartner({recipient})"
+                        or frame.state.viewed_tick != c.resolves_period + 1
+                    ):
+                        raise ValueError(
+                            "following purchase frame does not display the actual dated recipient food report"
+                        )
+            if not food_rows or not service_rows:
+                missing.append(
+                    "following dated recipient food purchasing and service settlement disclosures"
+                )
+            proof["following_ordinary_purchasing"] = [
+                r["report"]["facts"] for r in food_rows + service_rows
+            ]
         if label == "local-food":
             collection = origin.get("collection_resolutions")
             if not isinstance(collection, list):
@@ -1878,11 +2437,7 @@ def evaluate_wayne_walk(
         details.append(proof)
         if proof["first_response_receipt"] is None:
             missing.append(label + " first recipient response")
-        if label == "remote-mixed" and (
-            not any(p.cash_received_period for p in practices)
-            or not any(p.food_consumption_period for p in practices)
-            or not proof["retained_without_second_debit"]
-        ):
+        if label == "remote-mixed" and not has_later_retained_leg(practices):
             missing.append("distinct remote material legs and retained first response")
         if label == "local-cash" and not any(p.cash_received_period for p in practices):
             missing.append("actual local cash transfer")
@@ -1908,33 +2463,7 @@ def evaluate_wayne_walk(
     ):
         basic.update(choice_label + "-" + s for s in ("selected", "reviewed", "confirmed"))
     missing.extend("raw frames " + stage for stage in sorted(basic - frames.keys()))
-    if not all(
-        any(r["report"]["facts"]["basis"] == kind for r in disclosed.values())
-        for kind in ("food_provision", "essential_services", "participation_time")
-    ):
-        missing.append("dated recipient food, services and time disclosures")
-    standing = {
-        c.command.choice: c.resolves_period
-        for c in originals.values()
-        if c.command.choice in ("pause_standing", "resume_standing")
-    }
-    start, finish = standing.get("pause_standing"), standing.get("resume_standing")
-    if start is None or finish is None or not start < finish:
-        missing.append("ordinary Pause and Resume standing")
-    else:
-        receipts = terminal.facts["receipts"]
-        if (
-            not any(r["period"] == start and r["outcome"] == "standing_paused" for r in receipts)
-            or not any(
-                r["period"] == finish and r["outcome"] == "standing_resumed" for r in receipts
-            )
-            or any(
-                r["standing_work"] and r["outcome"] != "no_authorized_practice"
-                for r in receipts
-                if start < r["period"] < finish
-            )
-        ):
-            missing.append("standing remained paused until the explicit Resume")
+    verify_directives(list(originals.values()), stages, actor, authority, missing)
     if not all(
         material.independent_account_posting_audit.get(key) == "passed"
         for key in (

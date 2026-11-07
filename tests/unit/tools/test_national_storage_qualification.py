@@ -1460,6 +1460,8 @@ def playable_evidence(count=2):
                     "period": n,
                     "tick_content_hash": h,
                     "canonical_receipt_sha256": h,
+                    "version": 3,
+                    "partner_reports": [],
                     "selected_aid": [
                         {
                             "original_commitment": commands[n - 1],
@@ -1472,6 +1474,19 @@ def playable_evidence(count=2):
                     "independent_practices": [
                         {
                             "original_commitment": commands[n - 1],
+                            "material_commitment_id": commands[n - 1],
+                            "practice_receipt_id": commands[n - 1],
+                            "first_response_receipt_id": commands[n - 1],
+                            "first_response_receipt_sha256": [91] * 32,
+                            "absent_contribution_use_ids": [],
+                            "contribution_postings": [
+                                {
+                                    "use_id": commands[n - 1],
+                                    "actor_id": 10,
+                                    "contributor_id": 1,
+                                    "hours": 1,
+                                }
+                            ],
                             "mandate": commands[n - 1],
                             "dispatch_period": n,
                             "qualifying_received_support": True,
@@ -2702,6 +2717,8 @@ def native_join_evidence(directory):
         return {
             "campaign_id": campaign,
             "scope_epoch": epoch,
+            "play_interlock": None,
+            "installed_organizer": None,
             "durable_tick": tick,
             "viewed_tick": tick,
             "generation": generation,
@@ -2802,7 +2819,7 @@ def native_join_evidence(directory):
         trade_summary = deepcopy(report["independent_trade_accounting"])
         trade_summary["periods"] = tick
         return {
-            "version": 4,
+            "version": 5,
             "scope": "authenticated_native_material_and_aid_facts_only",
             "runtime_epoch": epoch,
             "observation_generation": generation,
@@ -2824,6 +2841,7 @@ def native_join_evidence(directory):
     records["material-0.json"] = material(
         0,
         opening={
+            "partner_reports": [],
             "campaign": campaign,
             "foundation_sha256": h,
             "graph_foundation_sha256": "cd" * 32,
@@ -2890,7 +2908,7 @@ def native_join_evidence(directory):
             },
         }
         generation += 1
-        aid = {"version": 2, **report["independent_account_posting_audit"]["periods"][n - 1]}
+        aid = report["independent_account_posting_audit"]["periods"][n - 1]
         facts = {
             "version": 1,
             "campaign": campaign,
@@ -2989,7 +3007,7 @@ def native_join_evidence(directory):
         action("reopen", "reopened_and_installed", state(n))
     action("quit", "quit_requested", state(2, quit_requested=True))
     records["native-controls.json"] = {
-        "version": 3,
+        "version": 4,
         "status": "completed",
         "campaign": campaign,
         "initial_tick": 0,
@@ -3637,15 +3655,15 @@ def test_support_audit_requires_strict_actual_food_and_cash_dates(mutation):
         playable_result(report)
 
 
-def test_current_aid_boundary_requires_v2_and_explicit_food_facts():
+def test_current_aid_boundary_requires_v3_and_explicit_food_facts():
     from tools.devtools.national_native_evidence import AidBoundary
 
     period = playable_evidence()[0]["independent_account_posting_audit"]["periods"][0]
-    current = AidBoundary.model_validate({"version": 2, **period})
+    current = AidBoundary.model_validate(period)
     assert current.independent_practices[0].food_consumed_quantity == 1
-    for version in (1, 3, True, "2"):
+    for version in (1, 2, True, "3"):
         with pytest.raises(ValueError):
-            AidBoundary.model_validate({"version": version, **period})
+            AidBoundary.model_validate({**period, "version": version})
     for field in ("food_consumed", "cash_received_period", "first_response_period"):
         missing = current.model_dump(mode="json")
         missing["independent_practices"][0].pop(field)
@@ -3730,6 +3748,13 @@ def cash_only_producer_practice():
     assert practice["time_use"] == []
     return fixture, {
         "original_commitment": support["original_commitment_id"],
+        "material_commitment_id": support["material_commitment_id"],
+        "practice_receipt_id": practice["receipt_id"],
+        "first_response_receipt_id": practice["receipt_id"],
+        # Designed digest for this shape test. The live join hashes the SQL receipt bytes.
+        "first_response_receipt_sha256": [91] * 32,
+        "absent_contribution_use_ids": [],
+        "contribution_postings": [],
         "mandate": support["mandate_id"],
         "dispatch_period": support["dispatch_period"],
         "period": practice["period"],
@@ -3776,7 +3801,7 @@ def test_actual_cash_producer_inability_is_valid_incomplete_evidence():
     report["independent_finite_aid_practice"].update(
         completed_original_commands=[], terminal_original_commands=[command]
     )
-    parsed = AidBoundary.model_validate({"version": 2, **first}).independent_practices[0]
+    parsed = AidBoundary.model_validate(first).independent_practices[0]
     assert parsed.partner_response == "unable_to_participate"
     assert parsed.outcome == "insufficient_time"
     assert parsed.qualifying_received_support and parsed.cash_received_micros == "3"
@@ -3879,6 +3904,8 @@ def test_pending_support_has_no_first_response_date():
         partner_response="not_requested",
         partner_actor=None,
         first_response_period=None,
+        first_response_receipt_id=None,
+        first_response_receipt_sha256=None,
         qualifying_received_support=False,
         cash_received_micros="0",
         cash_received_period=None,

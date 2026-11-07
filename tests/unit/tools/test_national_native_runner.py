@@ -91,6 +91,7 @@ def test_main_retains_safe_failure_leaves_and_exact_incomplete_counts(
     run = SimpleNamespace(
         directory=tmp_path,
         stage="archive",
+        failed_pair=None,
         boundaries=[object()],
         recoveries=[],
         run=fail,
@@ -101,7 +102,8 @@ def test_main_retains_safe_failure_leaves_and_exact_incomplete_counts(
     data = (tmp_path / "native-run-incomplete.json").read_text()
     evidence = json.loads(data)
     assert evidence == {
-        "version": 2,
+        "version": 3,
+        "failed_pair": None,
         "status": "incomplete",
         "last_recorded_stage": "archive",
         "complete_boundary_records": 1,
@@ -116,12 +118,13 @@ def test_main_retains_safe_failure_leaves_and_exact_incomplete_counts(
     NativeRunIncomplete.model_validate(evidence)
 
 
-@pytest.mark.parametrize("version", [1, 3, "2", True])
+@pytest.mark.parametrize("version", [1, 2, "3", True])
 def test_failure_reader_refuses_unsupported_and_noninteger_versions(version):
     with pytest.raises(ValueError):
         NativeRunIncomplete.model_validate(
             {
                 "version": version,
+                "failed_pair": None,
                 "status": "incomplete",
                 "last_recorded_stage": "archive",
                 "complete_boundary_records": 0,
@@ -221,13 +224,29 @@ def test_native_opening_mismatch_cannot_bind_or_publish_the_capture(tmp_path, mo
 
 @pytest.mark.parametrize("change", ["duplicate", "later-debit", "invented-actor"])
 def test_walk_practice_requires_one_first_response_with_its_actual_recipient_hours(change):
+    import hashlib
+
     from tools.devtools import national_native_evidence as evidence
     from tools.devtools.national_storage_qualification import AidPracticeEvidence
 
     original = (1,) * 32
+    use = hashlib.sha256(
+        b"babylon.organizer-household-contribution.v1\0"
+        + bytes([3] * 32)
+        + (42).to_bytes(8, "big")
+        + (8).to_bytes(8, "big")
+    ).digest()
     first = AidPracticeEvidence.model_validate(
         {
             "original_commitment": original,
+            "material_commitment_id": [5] * 32,
+            "practice_receipt_id": [3] * 32,
+            "first_response_receipt_id": [3] * 32,
+            "first_response_receipt_sha256": [6] * 32,
+            "absent_contribution_use_ids": [[9] * 32],
+            "contribution_postings": [
+                {"use_id": list(use), "actor_id": 42, "contributor_id": 8, "hours": 2}
+            ],
             "mandate": [2] * 32,
             "dispatch_period": 3,
             "period": 3,
@@ -248,6 +267,9 @@ def test_walk_practice_requires_one_first_response_with_its_actual_recipient_hou
     retained = AidPracticeEvidence.model_validate(
         {
             **first.model_dump(),
+            "practice_receipt_id": [4] * 32,
+            "absent_contribution_use_ids": [[8] * 32],
+            "contribution_postings": [],
             "period": 4,
             "food_consumed": True,
             "food_consumed_quantity": 2,
@@ -280,7 +302,7 @@ def test_walk_practice_requires_one_first_response_with_its_actual_recipient_hou
         }
 
     rows = [receipt(3, first.outcome, 2), receipt(4, retained.outcome, 0)]
-    assert evidence.walk_response(original, (first, retained), rows)[
+    assert evidence.walk_response(original, (first, retained), rows, actor=1, choice="remote_aid")[
         "retained_without_second_debit"
     ] == [4]
     if change == "duplicate":
@@ -290,7 +312,7 @@ def test_walk_practice_requires_one_first_response_with_its_actual_recipient_hou
     else:
         rows[0]["partner_actor_id"] = 41
     with pytest.raises(ValueError, match="recipient|response"):
-        evidence.walk_response(original, (first, retained), rows)
+        evidence.walk_response(original, (first, retained), rows, actor=1, choice="remote_aid")
 
 
 def test_frame_header_and_original_extent_cannot_hide_truncated_png() -> None:
@@ -306,3 +328,417 @@ def test_frame_header_and_original_extent_cannot_hide_truncated_png() -> None:
         with pytest.raises(ValueError, match="PNG"):
             evidence.verify_frame_png(damaged, 1366, 768)
     evidence.verify_frame_png(raw, 1366, 768)
+
+
+def test_wait_uses_actual_campaign_citation_after_autosave(tmp_path, monkeypatch):
+    run = SimpleNamespace(directory=tmp_path / "evidence", campaign="c", timeout=2)
+    run.directory.mkdir(mode=0o700)
+    walk = runner.WayneWalk(run)
+    path = tmp_path / "xdg/state/babylon/organizer-drafts/c.json"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b'{"schema":4,"campaign":"other","references":[]}')
+    path.chmod(0o600)
+    prior = path.read_bytes()
+    ref = [12] * 32
+
+    def autosave(_seconds):
+        path.write_text(
+            json.dumps(
+                {
+                    "schema": 4,
+                    "campaign": "c",
+                    "workplace": 7,
+                    "choice": "hold",
+                    "notes": "",
+                    "collection_allocation": "none",
+                    "aid_allocation": "none",
+                    "references": [ref],
+                    "selected_reference": ref,
+                }
+            )
+        )
+
+    monkeypatch.setattr(runner.time, "sleep", autosave)
+    walk.wait_citation(bytes(ref).hex(), 1)
+    assert (run.directory / "citation-prior-00.json").read_bytes() == prior
+
+
+def test_over_budget_boundary_records_and_aborts_before_archive(tmp_path, monkeypatch):
+    run = object.__new__(runner.NativeRun)
+    run.directory = tmp_path
+    run.campaign = "c"
+    run.stage = "walk"
+    run._foundation = "f"
+    run.wayne_profile = "walk-01"
+    run.boundaries = []
+    run.started = 0
+    run.policy = SimpleNamespace(
+        maximum_production_read_seconds=180,
+        maximum_advance_p95_seconds=120,
+        maximum_archive_catchup_seconds=180,
+    )
+    run.verify_sources = lambda: None
+    state = SimpleNamespace(
+        campaign_id="c",
+        foundation_sha256="f",
+        durable_tick=1,
+        tick_content_hash="h",
+        model_dump=lambda **_kwargs: {"durable_tick": 1, "tick_content_hash": "h"},
+    )
+    material = SimpleNamespace(
+        tick=1, tick_content_hash="h", facts=object(), aid=object(), production_read_elapsed_ns=1
+    )
+    advance = SimpleNamespace(
+        advance_elapsed_ns=121_000_000_000,
+        archive_elapsed_ns=1,
+        model_dump=lambda **_kw: {"advance_elapsed_ns": 121_000_000_000},
+    )
+    monkeypatch.setattr(
+        runner, "read_record", lambda path, _t: advance if "advance-" in path.name else material
+    )
+    run.archive = lambda *_: pytest.fail("over-budget close advanced to Archive")
+    with pytest.raises(runner.NativeRunRefusal, match="advance"):
+        run.on_boundary(state)
+    failed = json.loads((tmp_path / "first-budget-divergence.json").read_bytes())
+    assert (failed["elapsed_ns"], failed["state"]["durable_tick"]) == (121_000_000_000, 1)
+
+
+def test_corrupt_frame_survives_temporary_socket_cleanup(tmp_path):
+    run = SimpleNamespace(directory=tmp_path / "evidence", campaign="c")
+    walk = runner.WayneWalk(run)
+    walk.raw.path.mkdir(mode=0o700)
+    socket = tmp_path / "frames"
+    socket.mkdir(mode=0o700)
+    (socket / "frame-7.png").write_bytes(b"broken")
+    (socket / "frame-7.png").chmod(0o600)
+    state = SimpleNamespace(model_dump=lambda **_kw: {"campaign_id": "c"})
+    channel = SimpleNamespace(
+        sequence=6,
+        records=[],
+        state=state,
+        last_response=None,
+        response_bytes=b"broken acknowledgement\n",
+    )
+
+    def captured(_action, _timeout):
+        channel.sequence = 7
+        channel.records.append(
+            SimpleNamespace(sequence=7, event="frame_captured", model_dump=lambda **_kw: {})
+        )
+        return state
+
+    channel.perform = captured
+    walk.run.timeout = 1
+    with pytest.raises(ValueError):
+        walk.capture_frame(channel, socket, "opening", state, 12, 8)
+    assert list(walk.raw.path.glob("*incomplete*.png"))[0].read_bytes() == b"broken"
+    assert list(walk.raw.path.glob("*-response.bin"))[0].read_bytes() == b"broken acknowledgement\n"
+
+
+@pytest.mark.parametrize(
+    "mutation", ["purchased", "settlement", "actor", "membership", "grant", "period"]
+)
+def test_dated_recipient_disclosure_matches_its_source_and_grant(mutation):
+    import copy
+
+    from tools.devtools import national_native_evidence as e
+
+    actor, subject = 10, 20
+    rid, obs = [3] * 32, [9] * 32
+    facts = {
+        "basis": "food_provision",
+        "commodity": {
+            "good_id": [7] * 32,
+            "unit_id": [6] * 32,
+            "label": "Food",
+            "unit_label": "units",
+        },
+        "required": 5,
+        "consumed": 2,
+        "unmet": 3,
+        "closing": 0,
+        "purchased": 2,
+        "settled_micros": "42",
+    }
+    source = {
+        "actor_id": actor,
+        "subject_id": subject,
+        "source_actor_id": subject,
+        "observed_period": 4,
+        "acquired_period": 4,
+        "observation_id": obs,
+        "receipt_id": None,
+    }
+    witness = e.PartnerSource.model_validate(
+        {**source, "source_hash": [8] * 32, "mandate_id": [5] * 32, "facts": facts}
+    )
+    data = {
+        **source,
+        "report": {"kind": "partner", "evidence_class": "Derived", "facts": copy.deepcopy(facts)},
+    }
+    key = bytes(obs).hex()
+    locator = f"source-actor/20/observed-period/4/acquired-period/4/observation/{key}/action-receipt/automatic-report"
+    grants = [
+        ["organization", "20", "report-" + key, 4, "derived-scoped-partner-report-v1", locator]
+    ]
+
+    def verify():
+        e.verify_partner_source(
+            witness,
+            runner.Observation.model_validate(data),
+            actor=actor,
+            period=4,
+            source_hash=bytes([8] * 32).hex(),
+            grants=grants,
+        )
+
+    verify()
+    if mutation == "purchased":
+        data["report"]["facts"]["purchased"] = 3
+    elif mutation == "settlement":
+        data["report"]["facts"]["settled_micros"] = "41"
+    elif mutation == "actor":
+        data["source_actor_id"] = 21
+    elif mutation == "membership":
+        data["receipt_id"] = rid
+    elif mutation == "period":
+        data["observed_period"] = 2
+    else:
+        grants[0][1] = "21"
+    with pytest.raises(ValueError, match="recipient|report"):
+        verify()
+
+
+def test_reopened_quiet_period_cannot_replace_first_recipient_receipt_under_same_id():
+    from tools.devtools import national_native_evidence as e
+
+    original = {
+        "receipt_id": [7] * 32,
+        "actor_id": 31,
+        "partner_response": "participated",
+        "time_use": [{"actor_id": 7, "contributor_id": 3, "hours": 2}],
+        "period": 3,
+    }
+    import hashlib
+
+    raw = json.dumps(original).encode()
+    digest = hashlib.sha256(raw).digest()
+    key = bytes(original["receipt_id"]).hex()
+    stages = {
+        p: SimpleNamespace(facts={"receipts": [original.copy()], "receipt_bytes": {key: raw.hex()}})
+        for p in (3, 4, 5)
+    }
+    e.verify_first_receipt_prefix(stages, original, digest)
+    stages[4].facts["receipts"][0] = {**original, "time_use": []}
+    with pytest.raises(ValueError, match="first response"):
+        e.verify_first_receipt_prefix(stages, original, digest)
+
+
+def test_quiet_active_routine_refuses_even_without_any_standing_work_receipt():
+    from tools.devtools import national_native_evidence as e
+
+    view = SimpleNamespace(
+        actor_id=7,
+        standing=SimpleNamespace(authorized=True, paused_reason=None),
+        resume_reviewable=False,
+    )
+    stage = SimpleNamespace(state=SimpleNamespace(installed_organizer=view), facts={"receipts": []})
+    with pytest.raises(ValueError, match="resumed"):
+        e.verify_standing_period(stage, 7, True)
+
+
+def test_nonqualifying_retained_practice_cannot_prove_separate_mixed_leg():
+    from tools.devtools import national_native_evidence as e
+
+    first = SimpleNamespace(
+        period=3,
+        cash_received_period=3,
+        food_consumption_period=3,
+        first_response_period=3,
+        practice_receipt_id=(3,) * 32,
+        first_response_receipt_id=(3,) * 32,
+        qualifying_received_support=True,
+        outcome="aid_practice_completed",
+        mandate=(1,) * 32,
+        material_commitment_id=(2,) * 32,
+    )
+    later = SimpleNamespace(
+        **{
+            **vars(first),
+            "period": 4,
+            "cash_received_period": None,
+            "food_consumption_period": None,
+            "outcome": "aid_response_retained",
+            "practice_receipt_id": (4,) * 32,
+            "qualifying_received_support": False,
+        }
+    )
+    assert not e.has_later_retained_leg((first, later))
+    later.food_consumption_period = 4
+    later.qualifying_received_support = True
+    assert e.has_later_retained_leg((first, later))
+    later.first_response_receipt_id = (8,) * 32
+    assert not e.has_later_retained_leg((first, later))
+
+
+def test_full_first_response_digest_binds_original_sql_bytes_across_every_later_marker():
+    import hashlib
+
+    from tools.devtools import national_native_evidence as e
+
+    first = {"receipt_id": [7] * 32, "period": 3, "actor_id": 41, "time_use": []}
+    raw = json.dumps(first, separators=(",", ":")).encode()
+    key = bytes(first["receipt_id"]).hex()
+    stages = {
+        p: SimpleNamespace(facts={"receipts": [first], "receipt_bytes": {key: raw.hex()}})
+        for p in (3, 4, 5)
+    }
+    e.verify_first_receipt_prefix(stages, first, hashlib.sha256(raw).digest())
+    stages[4].facts["receipt_bytes"][key] = json.dumps(first).encode().hex()
+    with pytest.raises(ValueError, match="first response"):
+        e.verify_first_receipt_prefix(stages, first, hashlib.sha256(raw).digest())
+
+
+@pytest.mark.parametrize("field", ["contribution_postings", "absent_contribution_use_ids"])
+def test_later_material_boundary_cannot_reissue_a_prior_positive_or_absent_use(field):
+    from tools.devtools import national_native_evidence as e
+
+    earlier = SimpleNamespace(
+        contribution_postings=[SimpleNamespace(use_id=(1,) * 32)],
+        absent_contribution_use_ids=[(2,) * 32],
+    )
+    later = SimpleNamespace(contribution_postings=[], absent_contribution_use_ids=[(3,) * 32])
+    boundaries = [
+        SimpleNamespace(independent_practices=[earlier]),
+        SimpleNamespace(independent_practices=[]),
+        SimpleNamespace(independent_practices=[later]),
+    ]
+    e.verify_contribution_history(boundaries)
+    setattr(
+        later,
+        field,
+        [SimpleNamespace(use_id=(2,) * 32)] if field == "contribution_postings" else [(1,) * 32],
+    )
+    with pytest.raises(ValueError, match="contribution"):
+        e.verify_contribution_history(boundaries)
+
+
+def test_action_observation_requires_exact_current_actor_receipt_membership():
+    from tools.devtools import national_native_evidence as e
+
+    obs = runner.Observation.model_validate(
+        {
+            "observation_id": [6] * 32,
+            "actor_id": 20,
+            "subject_id": 5,
+            "source_actor_id": 8,
+            "observed_period": 2,
+            "acquired_period": 3,
+            "receipt_id": [4] * 32,
+            "report": {
+                "kind": "maintenance",
+                "enabled_batches": 1,
+                "consumed_batches": 0,
+                "expired_batches": 0,
+            },
+        }
+    )
+    rows = [{"receipt_id": [4] * 32, "actor_id": 20, "period": 3, "observation_ids": [[6] * 32]}]
+    e.validate_membership(obs, rows, 20)
+    rows[0]["observation_ids"] = []
+    with pytest.raises(ValueError, match="membership"):
+        e.validate_membership(obs, rows, 20)
+
+
+def test_process_cold_failed_before_install_keeps_actual_segment_first_and_latest_marker(
+    tmp_path, monkeypatch
+):
+    run = SimpleNamespace(
+        root=tmp_path,
+        directory=tmp_path,
+        owner_fields=(),
+        capture=lambda *_args, **_kw: object(),
+        boundaries=[SimpleNamespace(tick=9, tick_content_hash="a" * 64)],
+    )
+    walk = runner.WayneWalk(run)
+    monkeypatch.setattr(runner, "reauthenticate_native_owner", lambda *_: None)
+    clock = iter((50, 70))
+    monkeypatch.setattr(runner.time, "monotonic_ns", lambda: next(clock))
+
+    def failed(*_):
+        run.pair_identity = [(101, 51, "b" * 64), (102, 53, "c" * 64)]
+        walk.first_observed = SimpleNamespace(model_dump=lambda **_kw: {"phase": "Opening"})
+        walk.latest_observed = SimpleNamespace(model_dump=lambda **_kw: {"phase": "Loading"})
+        raise runner.NativeRunRefusal("installation deadline")
+
+    walk.drive_segment = failed
+    with pytest.raises(runner.NativeRunRefusal, match="deadline"):
+        walk.pair("completed", None, 10, 0, {}, {})
+    failure = json.loads((tmp_path / "pair-incomplete-completed.json").read_bytes())
+    assert failure["elapsed_ns"] == 20 and failure["stage"] == "cold-completed"
+    assert failure["attempted_processes"] == [[101, 51, "b" * 64], [102, 53, "c" * 64]]
+    assert failure["first_observation"] == {"phase": "Opening"} and failure[
+        "latest_observation"
+    ] == {"phase": "Loading"}
+    assert failure["last_accepted_marker"] == [9, "a" * 64]
+    assert run.failed_pair.path == "pair-incomplete-completed.json"
+    assert not (tmp_path / "cold-installed-completed.json").exists()
+
+
+def test_missing_resume_preserves_quiet_authority_requirement_until_terminal():
+    from tools.devtools import national_native_evidence as e
+
+    actor, authority, cid = 14, (3,) * 16, (7,) * 32
+    command = SimpleNamespace(actor_id=actor, authority_id=authority, choice="pause_standing")
+    directive = SimpleNamespace(command=command, commitment_id=cid, resolves_period=4)
+    receipt = {
+        "actor_id": actor,
+        "period": 4,
+        "choice": "pause_standing",
+        "standing_work": False,
+        "outcome": "standing_paused",
+        "commitment_id": list(cid),
+    }
+
+    def stage(authorized):
+        standing = SimpleNamespace(
+            authorized=authorized, paused_reason=None if authorized else "explicit"
+        )
+        return SimpleNamespace(
+            state=SimpleNamespace(
+                installed_organizer=SimpleNamespace(actor_id=actor, standing=standing)
+            ),
+            facts={"receipts": [receipt]},
+        )
+
+    missing = []
+    e.verify_directives([directive], {4: stage(False), 5: stage(False)}, actor, authority, missing)
+    assert missing
+    with pytest.raises(ValueError, match="resumed"):
+        e.verify_directives([directive], {4: stage(False), 5: stage(True)}, actor, authority, [])
+
+
+def test_bool_citation_ids_do_not_authenticate_the_same_integer_byte(tmp_path):
+    run = SimpleNamespace(directory=tmp_path / "evidence", campaign="owned")
+    run.directory.mkdir(mode=0o700)
+    walk = runner.WayneWalk(run)
+    path = walk.draft_path()
+    path.parent.mkdir(parents=True)
+    raw = json.dumps(
+        {
+            "schema": 4,
+            "campaign": "owned",
+            "workplace": 7,
+            "choice": "hold",
+            "notes": "",
+            "collection_allocation": "none",
+            "aid_allocation": "none",
+            "references": [[True] * 32],
+            "selected_reference": [True] * 32,
+        }
+    ).encode()
+    path.write_bytes(raw)
+    path.chmod(0o600)
+    with pytest.raises(runner.NativeRunRefusal, match="exact campaign citation"):
+        walk.wait_citation("01" * 32, 0.001)
+    assert (run.directory / "citation-prior-00.json").read_bytes() == raw

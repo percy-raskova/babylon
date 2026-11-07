@@ -67,7 +67,7 @@ if [ -n "${BABYLON_WAYNE_PROFILE:-}" ] || [ "$LIVE_FOCUS" = organizer_allocation
   # shellcheck source=tools/postgres_national_lifecycle.sh disable=SC1091
   source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"
   case "$LIVE_FOCUS:${BABYLON_WAYNE_PROFILE:-}" in
-    organizer_allocation_atomic:sql-01) wayne_media reserve ;;
+    organizer_allocation_atomic:sql-01) umask 077; wayne_media reserve ;;
     national_storage:smoke-01 | national_storage:walk-01)
       [ "${BABYLON_NATIONAL_CAPTURE_MODE:-}" = playable-aid ] &&
         [ "${BABYLON_NATIONAL_STORAGE_QUALIFICATION:-}" = report-only ] &&
@@ -452,7 +452,7 @@ if [ "$status" -eq 0 ]; then
   case "$LIVE_FOCUS" in
     organizer_allocation_atomic)
       cd "$REPO_ROOT"
-      git rev-parse HEAD > "$BABYLON_STORAGE_REPORT_DIRECTORY/source-head"
+      wayne_media released-head >/dev/null || die "SQL release HEAD changed before input capture"
       national_reproducibility || die "SQL fixture source and input capture failed"
       wayne_media sql --container "$CONTAINER_ID" || status=$?
       ;;

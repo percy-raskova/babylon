@@ -1291,6 +1291,7 @@ class RunningMemoryCapture:
         operation_timeout: float,
         operation_lock: AbstractContextManager[object] | None = None,
         cold_segment_period: int | None = None,
+        stop_on_budget: bool = False,
     ) -> None:
         if cold_segment_period is not None and (
             type(cold_segment_period) is not int or cold_segment_period not in (0, 10)
@@ -1326,6 +1327,9 @@ class RunningMemoryCapture:
         self._client_sha = client_sha256
         self._postgres = postgres
         self._read_marker = read_marker
+        self._stop_on_budget = stop_on_budget
+        self._gap_ns = sample_gap_seconds * 1_000_000_000
+        self._maximum_bytes = policy.maximum_combined_running_game_memory_bytes
         self._gap = sample_gap_seconds / 2
         self._timeout = operation_timeout
         self._operation_lock = operation_lock if operation_lock is not None else nullcontext()
@@ -1414,8 +1418,28 @@ class RunningMemoryCapture:
             self._records / f"{batch.sample.sequence:08d}.json",
             batch.sample.model_dump(mode="json"),
         )
+        previous = self._samples[-1] if self._samples else None
+        previous_end = (
+            previous.monotonic_ns + previous.capture_duration_ns if previous else self._started_ns
+        )
         self._samples.append(batch.sample)
         self._progress()
+        self._check_measured_budget(
+            batch.sample.processes, batch.sample.monotonic_ns - previous_end
+        )
+
+    def _check_measured_budget(self, processes: tuple[MemoryProcess, ...], gap: int) -> None:
+        if self._stop_on_budget and (
+            gap > self._gap_ns
+            or sum(
+                process.rss_bytes + process.private_hugetlb_bytes + process.shared_hugetlb_bytes
+                for process in processes
+            )
+            > self._maximum_bytes
+        ):
+            raise CaptureRefusal(
+                "measured native memory or sampling gap exceeded the released budget"
+            )
 
     def _capture_periodic(self, native: OwnedNativePair) -> None:
         with self._operation_lock:
@@ -1440,6 +1464,16 @@ class RunningMemoryCapture:
                 self._boot = record.boot_id
                 self._unassigned_count += 1
                 self._progress()
+                previous = self._samples[-1] if self._samples else None
+                previous_end = (
+                    previous.monotonic_ns + previous.capture_duration_ns
+                    if previous
+                    else self._started_ns
+                )
+                self._check_measured_budget(
+                    record.processes,
+                    record.monotonic_ns + record.capture_duration_ns - previous_end,
+                )
 
     def _run(self, native: OwnedNativePair, signal_mask: set[signal.Signals]) -> None:
         try:
@@ -1541,6 +1575,10 @@ class RunningMemoryCapture:
         if self._foundation is None:
             raise CaptureRefusal("memory capture has no acknowledged campaign foundation")
         ended = time.monotonic_ns()
+        last = self._samples[-1]
+        self._check_measured_budget(
+            last.processes, ended - last.monotonic_ns - last.capture_duration_ns
+        )
         if self._cold_segment_period is not None:
             if any(row.campaign_age_ticks != self._cold_segment_period for row in self._samples):
                 raise CaptureRefusal("fixed cold segment included a different committed period")

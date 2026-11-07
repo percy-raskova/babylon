@@ -129,7 +129,11 @@ national_begin() {
   NATIONAL_DATABASE_OID=""
   national_record
   trap 'national_failure_summary "$?" || true' EXIT
-  git -C "$REPO_ROOT" rev-parse HEAD > "$BABYLON_STORAGE_REPORT_DIRECTORY/source-head"
+  if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+    wayne_media released-head >/dev/null || die "native source release changed"
+  else
+    git -C "$REPO_ROOT" rev-parse HEAD > "$BABYLON_STORAGE_REPORT_DIRECTORY/source-head"
+  fi
   cp -- "$BABYLON_STORAGE_SNAPSHOT_SCRIPT" "$BABYLON_STORAGE_REPORT_DIRECTORY/snapshot-source.py"
   cp -- "$(dirname -- "$BABYLON_STORAGE_SNAPSHOT_SCRIPT")/national_storage_relations.sql" "$BABYLON_STORAGE_REPORT_DIRECTORY/national_storage_relations.sql"
   cp -- "$REPO_ROOT/rust/crates/babylon-persistence/tests/national_storage_encoded_measurement.rs" "$BABYLON_STORAGE_REPORT_DIRECTORY/measurement-source.rs"
@@ -220,6 +224,9 @@ national_create_game() {
   national_sql "CREATE DATABASE $NATIONAL_DATABASE OWNER $NATIONAL_WRITER TEMPLATE template1;"
   NATIONAL_DATABASE_OID="$(national_sql "SELECT oid FROM pg_catalog.pg_database WHERE datname='$NATIONAL_DATABASE' AND datdba=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname='$NATIONAL_WRITER');")"
   [[ "$NATIONAL_DATABASE_OID" =~ ^[0-9]+$ ]] || die "national database identity was not proved"
+  if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+    wayne_media pin-roles --container "$CONTAINER_ID" || die "native role identity admission failed"
+  fi
   national_record
   export BABYLON_STORAGE_CANARY="$CANARY"
   export BABYLON_NATIONAL_STORAGE_WRITER_DSN="postgresql://$NATIONAL_WRITER:$CANARY@127.0.0.1:$PORT/$NATIONAL_DATABASE"
@@ -584,7 +591,7 @@ PY_NATIVE_ROSTER
     if [ "${BABYLON_WAYNE_PROFILE:-}" = walk-01 ]; then
       native_flags+=(--qualify-wayne-walk)
       local evidence="$BABYLON_STORAGE_REPORT_DIRECTORY"
-      local -a walk_inputs=("$evidence"/{pending-before-cold,pending-after-cold,mixed-pending-before-reopen,mixed-pending-after-reopen,completed-before-cold,completed-after-cold,before-history-archive-return,after-history-archive-return,walk-wall,functional-terminal,functional-terminal-reopened}.json "$evidence"/cold-installed-*.json "$evidence"/walk-p*-installed.json "$evidence"/segment-{opening,completed}/{native-controls,segment-memory,combined-memory-executables,combined-memory-tooling,policy}.json "$evidence"/segment-{opening,completed}/{ownership,combined-memory-source.sha256,combined-memory-sampler-source.py} "$evidence"/../raw/*.{json,png})
+      local -a walk_inputs=("$evidence"/{pending-before-cold,pending-after-cold,mixed-pending-before-reopen,mixed-pending-after-reopen,completed-before-cold,completed-after-cold,before-history-archive-return,after-history-archive-return,walk-wall,functional-terminal,functional-terminal-reopened}.json "$evidence"/cold-installed-*.json "$evidence"/walk-p*-{committed,installed}.json "$evidence"/segment-{opening,completed}/{native-controls,segment-memory,combined-memory-executables,combined-memory-tooling,policy}.json "$evidence"/segment-{opening,completed}/{ownership,combined-memory-source.sha256,combined-memory-sampler-source.py} "$evidence"/../raw/*.{json,png})
       for artifact in "${walk_inputs[@]}"; do
         [ -s "$artifact" ] && [ ! -L "$artifact" ] || return 1
       done
@@ -810,7 +817,7 @@ PY_BACKUP
   (cd "$REPO_ROOT" && sha256sum --check --status "$BABYLON_STORAGE_REPORT_DIRECTORY/native-combined-source.sha256") ||
     die "native combined source admission refused"
   # Record stays active after native exit; another Open rechecks zero sessions.
-  mise exec -- uv run --frozen python - "$REPO_ROOT" "$campaign" <<'PY_OPEN'
+  (cd "$REPO_ROOT" && mise exec -- uv run --frozen python - "$REPO_ROOT" "$campaign" <<'PY_OPEN'
 import hashlib,importlib.util,os,re,sys
 from pathlib import Path
 from uuid import UUID
@@ -834,6 +841,11 @@ for name,digest in rows.items():
     if hashlib.file_digest(open(name,'rb'),'sha256').hexdigest()!=digest:
         raise SystemExit('native executable admission refused')
 if environment.get('BABYLON_WAYNE_PROFILE') in ('smoke-01','walk-01'):
+    from tools.devtools.wayne_qualification_storage import PrivateEvidence, reauthenticate_native_owner
+    evidence=Path(environment['BABYLON_STORAGE_REPORT_DIRECTORY'])
+    store=PrivateEvidence(evidence)
+    owner=tuple(store.read_reference(store.reference('ownership')).decode().splitlines())
+    reauthenticate_native_owner(root,evidence,owner)
     for suffix in ('state','data','config','cache'):
         environment['XDG_'+suffix.upper()+'_HOME']=str(Path(environment['BABYLON_STORAGE_REPORT_DIRECTORY']).parent/'xdg'/suffix)
 credentials=launcher.ReaderCredentials(environment['BABYLON_OBSERVER_DSN'],environment['BABYLON_READER_DSN'])
@@ -841,4 +853,5 @@ writer,reader=launcher.child_environments(environment,credentials)
 raise SystemExit(launcher.run_pair(runtime,client,root,writer,reader,
     defines_path=launcher.DEFAULT_DEFINES,initial_target=launcher.OpenCampaignTarget(UUID(sys.argv[2]))))
 PY_OPEN
+  )
 }

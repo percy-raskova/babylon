@@ -10,8 +10,9 @@ import subprocess
 import tarfile
 import time
 from collections.abc import Iterator
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, closing, contextmanager
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, BinaryIO
 from uuid import UUID
@@ -908,6 +909,53 @@ def _cluster_stats(admin: Connection) -> ClusterStats:
     return ClusterStats(started, databases)
 
 
+def _stop_logging(conn: Connection) -> dict[str, str]:
+    prefix, locale, verbosity, destination, collector, minimum, zone = _one(
+        conn,
+        """
+        SELECT current_setting('log_line_prefix'),current_setting('lc_messages'),
+               current_setting('log_error_verbosity'),current_setting('log_destination'),current_setting('logging_collector'),
+               current_setting('log_min_messages'),current_setting('log_timezone')
+    """,
+    )
+    if (
+        prefix != "%m [%p] "
+        or locale not in ("C", "POSIX", "C.UTF-8", "C.utf8", "en_US.UTF-8", "en_US.utf8")
+        or (
+            verbosity not in ("default", "terse")
+            or destination != "stderr"
+            or collector != "off"
+            or minimum
+            not in (
+                "debug5",
+                "debug4",
+                "debug3",
+                "debug2",
+                "debug1",
+                "info",
+                "notice",
+                "warning",
+                "error",
+                "log",
+                "fatal",
+            )
+            or zone not in ("UTC", "Etc/UTC", "GMT", "Etc/GMT")
+        )
+    ):
+        raise Refusal(
+            "selected backend lacks a supported timestamped English PID-prefixed stderr log"
+        )
+    return {
+        "prefix": prefix,
+        "locale": locale,
+        "verbosity": verbosity,
+        "destination": destination,
+        "collector": collector,
+        "minimum": minimum,
+        "timezone": zone,
+    }
+
+
 class RestoreAdmission:
     """One admitted backend per closed verification-database window."""
 
@@ -1033,15 +1081,17 @@ class RestoreAdmission:
             raise Refusal(
                 "final fence requires the selected 50 ordinary slots and zero WAL senders"
             )
+        self.client_logging = {str(self.admin_backend.pid): _stop_logging(self.admin)}
         held: list[Backend] = []
         sockets = []
         with ExitStack() as stack:
             databases = [self.run.database, "template1"] + ["postgres"] * (NATIVE_CLIENT_SLOTS - 3)
             for db in databases:
-                conn = stack.enter_context(_conn(self.run, db))
+                conn = stack.enter_context(closing(_conn(self.run, db)))
                 own = _own_backend(conn, self.expected[db].oid, "test")
                 if _one(conn, "SELECT current_setting('idle_session_timeout')") != ("0",):
                     raise Refusal("a final fence session can time out while held")
+                self.client_logging[str(own.pid)] = _stop_logging(conn)
                 conn.execute("SELECT pg_stat_force_next_flush()")
                 self._admit("final-fence", own, db, None)
                 held.append(own)
@@ -1402,7 +1452,104 @@ def _probes(
     return results
 
 
-def _logical(run: Run, backup: Evidence, functional: dict[str, Any]) -> list[Reference]:
+@dataclass(frozen=True)
+class ClientActivity:
+    backend: Backend
+    state: str
+    no_transaction: bool
+    no_xid: bool
+    no_xmin: bool
+    backend_type: str
+
+
+@dataclass(frozen=True)
+class HeldSource:
+    gate: RestoreAdmission
+    source: Connection
+    maintenance: Connection
+    admitted: tuple[Backend, ...]
+    logical: tuple[Reference, ...]
+
+    def quiescence(self, backup: Evidence, stage: str) -> Reference:
+        admin, run = self.gate.admin, self.gate.run
+        expected = {
+            name: total for name, total in self.gate.expected.items() if name != run.verification
+        }
+        expected_clients = sorted((self.gate.admin_backend, *self.admitted), key=lambda b: b.pid)
+        stats = _cluster_stats(admin)
+        rows = admin.execute("""
+            SELECT pid,(extract(epoch FROM backend_start)*1000000)::bigint::text,datid,usename,host(client_addr),client_port,
+                   state,xact_start IS NULL,backend_xid IS NULL,backend_xmin IS NULL,backend_type
+            FROM pg_stat_activity WHERE datid IS NOT NULL OR backend_type IN ('client backend','walsender') ORDER BY pid
+        """).fetchall()
+        activity = [ClientActivity(Backend(*row[:6]), *row[6:]) for row in rows]
+        prepared, entering = _one(
+            admin,
+            """
+            SELECT (SELECT count(*) FROM pg_prepared_xacts),
+                   (SELECT count(*) FROM pg_locks WHERE locktype='object' AND classid='pg_catalog.pg_database'::regclass
+                    AND mode='RowExclusiveLock')
+        """,
+        )
+        record = backup.publish_json(
+            stage + "-quiescence.json",
+            {
+                "expected_stats": asdict(ClusterStats(self.gate.baseline.postmaster, expected)),
+                "actual_stats": asdict(stats),
+                "expected_clients": [asdict(b) for b in expected_clients],
+                "clients": [asdict(client) for client in activity],
+                "observer_pid": self.gate.admin_backend.pid,
+                "prepared_transactions": prepared,
+                "entering_backends": entering,
+                "client_logging": self.gate.client_logging,
+            },
+        )
+        backup.verify(record)
+        if (
+            len(expected_clients) != NATIVE_CLIENT_SLOTS
+            or len({b.pid for b in expected_clients}) != NATIVE_CLIENT_SLOTS
+            or [client.backend for client in activity] != expected_clients
+            or stats != ClusterStats(self.gate.baseline.postmaster, expected)
+            or set(self.gate.client_logging) != {str(b.pid) for b in expected_clients}
+            or prepared != 0
+            or entering != 0
+        ):
+            raise Refusal(
+                "physical observation lost its complete, continuously owned cluster census"
+            )
+        for client in activity:
+            # This autocommit observer is executing this census. Every other
+            # admitted socket must be idle outside a transaction, with no work.
+            if client.backend == self.gate.admin_backend:
+                if (
+                    client.state != "active"
+                    or not client.no_xid
+                    or client.backend_type != "client backend"
+                ):
+                    raise Refusal("physical census administrator has an unexpected transaction")
+            elif (
+                client.state != "idle"
+                or client.backend_type != "client backend"
+                or not (client.no_transaction and client.no_xid and client.no_xmin)
+            ):
+                raise Refusal("a held maintenance client is not idle before physical observation")
+        if _inventory(admin, run, admitted=self.admitted) != {
+            name: t.oid for name, t in expected.items()
+        }:
+            raise Refusal("normal database inventory changed during physical observation")
+        for conn in (admin, self.source, self.maintenance):
+            if (
+                not conn.autocommit
+                or conn.info.transaction_status != psycopg.pq.TransactionStatus.IDLE
+            ):
+                raise Refusal("maintenance transaction is incomplete at the physical boundary")
+        return record
+
+
+@contextmanager
+def _restored_source(
+    run: Run, backup: Evidence, functional: dict[str, Any]
+) -> Iterator[HeldSource]:
     docker = ["docker", "exec", run.container]
     with _conn(run, "postgres") as admin:
         initial = _inventory(admin, run)
@@ -1436,7 +1583,7 @@ def _logical(run: Run, backup: Evidence, functional: dict[str, Any]) -> list[Ref
     refs.extend((dump, globals_dump, listing))
     refs.extend(backup.reference(ref.path + ".stderr") for ref in (dump, globals_dump, listing))
     run.authenticate()
-    with _conn(run, "postgres") as admin:
+    with closing(_conn(run, "postgres")) as admin:
         if _inventory(admin, run) != initial:
             raise Refusal("cluster changed during logical dump")
         _restrict_writer(admin, run)
@@ -1529,20 +1676,19 @@ def _logical(run: Run, backup: Evidence, functional: dict[str, Any]) -> list[Ref
             admin.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(run.verification)))
             if _inventory(admin, run, admitted=admitted) != initial:
                 raise Refusal("normal cluster inventory differs after verification DB removal")
-    return refs
+            yield HeldSource(gate, source_conn, maintenance_conn, admitted, tuple(refs))
 
 
-def _physical_witness(run: Run, physical: dict[str, Any]) -> PhysicalWitness:
-    with _conn(run, run.database) as conn, ExitStack() as transactions:
-        if _one(
-            conn,
-            """SELECT session_user::text,current_user::text,current_database()::text,
-                current_setting('babylon.disposable_runtime',true),(pg_control_system()).system_identifier::text,
-                (SELECT oid::text FROM pg_database WHERE datname=current_database())""",
-        ) != ("test", "test", run.database, run.owner[2], physical["cluster"], run.owner[9]):
-            raise Refusal("source checkpoint requires the exact authenticated terminal database")
-        conn.execute("CHECKPOINT")
-        transactions.enter_context(conn.transaction())
+def _physical_witness(run: Run, physical: dict[str, Any], conn: Connection) -> PhysicalWitness:
+    if _one(
+        conn,
+        """SELECT session_user::text,current_user::text,current_database()::text,
+            current_setting('babylon.disposable_runtime',true),(pg_control_system()).system_identifier::text,
+            (SELECT oid::text FROM pg_database WHERE datname=current_database())""",
+    ) != ("test", "test", run.database, run.owner[2], physical["cluster"], run.owner[9]):
+        raise Refusal("source checkpoint requires the exact authenticated terminal database")
+    conn.execute("CHECKPOINT")
+    with conn.transaction():
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         (checkpoint,) = _one(conn, "SELECT (pg_control_checkpoint()).checkpoint_lsn::text")
         if not isinstance(checkpoint, str) or not re.fullmatch("[0-9A-F]+/[0-9A-F]+", checkpoint):
@@ -1774,6 +1920,91 @@ def _offline(
     return refs
 
 
+def _shutdown_evidence(
+    directory: Evidence,
+    backup: Evidence,
+    run: Run,
+    physical: dict[str, Any],
+    clients: tuple[Backend, ...],
+) -> tuple[Reference, Reference, Reference, Reference]:
+    attempt = directory.reference("native-fenced-stop-attempt-v1.json")
+    success = directory.reference("native-fenced-stop-v1.json")
+    log = directory.reference("clean-shutdown.log")
+    record = strict_json_bytes(directory.read_reference(success))
+    if (
+        not isinstance(record, dict)
+        or record.get("attempt") != attempt.model_dump()
+        or record.get("log") != log.model_dump()
+        or record.get("container") != run.container
+        or record.get("image") != run.owner[6]
+        or record.get("host") != physical["host"]
+        or type(record.get("exit_code")) is not int
+        or record["exit_code"] != 0
+        or record.get("oom_killed") is not False
+    ):
+        raise Refusal(
+            "fenced stop success differs from the selected container, bind or retained stop evidence"
+        )
+    start_record = strict_json_bytes(directory.read_reference(attempt))
+    if not isinstance(start_record, dict) or (
+        start_record.get("container"),
+        start_record.get("image"),
+    ) != (run.container, run.owner[6]):
+        raise Refusal("fenced stop attempt does not identify the source image and container")
+    since = datetime.fromisoformat(start_record["since"])
+    fast, clean, finished = (
+        datetime.fromisoformat(record[k]) for k in ("fast", "clean", "finished")
+    )
+    if (
+        any(stamp.tzinfo is None for stamp in (since, fast, clean, finished))
+        or not since <= fast <= clean <= finished
+    ):
+        raise Refusal("fenced shutdown timestamps do not delimit one stop attempt")
+    earliest_server_ms = since.replace(microsecond=since.microsecond // 1000 * 1000)
+    exits = []
+    for line in directory.read_reference(log).decode().splitlines():
+        if "terminating connection due to administrator command" not in line:
+            continue
+        match = re.fullmatch(
+            r"(\S+) (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) (?:UTC|GMT) \[([1-9]\d*)\] FATAL:\s+terminating connection due to administrator command",
+            line,
+        )
+        if not match:
+            raise Refusal("ordinary-client shutdown log differs from the observed prefix or locale")
+        exits.append(
+            (
+                int(match[3]),
+                datetime.fromisoformat(match[1]),
+                datetime.fromisoformat(match[2]).replace(tzinfo=UTC),
+            )
+        )
+    corroboration = backup.publish_json(
+        "fenced-client-exits.json",
+        {
+            "stop": success.model_dump(),
+            "expected": [asdict(b) for b in clients],
+            "exits": [
+                {"pid": pid, "docker_stamp": stamp.isoformat(), "server_stamp": server.isoformat()}
+                for pid, stamp, server in exits
+            ],
+        },
+    )
+    if (
+        any(
+            stamp.tzinfo is None
+            or not fast <= stamp <= clean
+            or not earliest_server_ms <= server <= finished
+            for _, stamp, server in exits
+        )
+        or sorted(pid for pid, _, _ in exits) != sorted(b.pid for b in clients)
+        or len(clients) != NATIVE_CLIENT_SLOTS
+    ):
+        raise Refusal(
+            "fresh fast shutdown did not account for every held ordinary client exactly once"
+        )
+    return attempt, success, log, corroboration
+
+
 def backup_and_retire(
     root: Path, evidence: Path, owner: tuple[str, ...], campaign: str, period: int
 ) -> None:
@@ -1788,18 +2019,31 @@ def backup_and_retire(
         functional.get("period"),
     ) != (campaign, period):
         raise Refusal("functional terminal receipt belongs to another campaign or period")
-    logical = _logical(run, backup, functional)
-    physical = run.authenticate()
-    witness = _physical_witness(run, physical)
-    witness_ref = backup.publish_json("pre-stop-physical.json", asdict(witness))
-    for item in [*logical, witness_ref]:
-        backup.verify(item)
-    directory.verify(functional_ref)
-    run.authenticate()
-    with _conn(run, "postgres") as admin:
-        _inventory(admin, run)
-    storage.stop_checked(directory, run.container)
-    shutdown = directory.reference("clean-shutdown.log")
+    with _restored_source(run, backup, functional) as held:
+        logical = list(held.logical)
+        physical = run.authenticate(physical_connection=held.maintenance)
+        before = terminal_snapshot(held.source, campaign, period)
+        logical.append(backup.publish_json("pre-checkpoint-terminal.json", before))
+        if before != functional:
+            raise Refusal("original terminal changed before its source checkpoint")
+        logical.append(held.quiescence(backup, "pre-checkpoint"))
+        witness = _physical_witness(run, physical, held.source)
+        witness_ref = backup.publish_json("pre-stop-physical.json", asdict(witness))
+        after = terminal_snapshot(held.source, campaign, period)
+        logical.append(backup.publish_json("post-physical-terminal.json", after))
+        if after != functional:
+            raise Refusal("source terminal changed during physical witness acquisition")
+        if run.authenticate(physical_connection=held.maintenance) != physical:
+            raise Refusal("physical source identity changed during witness acquisition")
+        for item in [*logical, witness_ref]:
+            backup.verify(item)
+        directory.verify(functional_ref)
+        logical.append(held.quiescence(backup, "pre-stop"))
+        storage.stop_checked(directory, run.container, fenced_image=owner[6])
+        attempt, fenced_stop, shutdown, exits = _shutdown_evidence(
+            directory, backup, run, physical, (held.gate.admin_backend, *held.admitted)
+        )
+        logical.append(exits)
     archives = _offline(run, backup, witness, witness_ref)
     retained = [*logical, witness_ref, *archives]
     seal = backup.publish_json(
@@ -1808,6 +2052,8 @@ def backup_and_retire(
             "owner": directory.reference("ownership").model_dump(),
             "functional": functional_ref.model_dump(),
             "shutdown": shutdown.model_dump(),
+            "fenced_stop": fenced_stop.model_dump(),
+            "stop_attempt": attempt.model_dump(),
             "retained": [ref.model_dump() for ref in retained],
         },
     )
@@ -1815,5 +2061,7 @@ def backup_and_retire(
         backup.verify(item)
     directory.verify(functional_ref)
     directory.verify(shutdown)
+    directory.verify(fenced_stop)
+    directory.verify(attempt)
     _stopped(run, witness)
     storage.remove_stopped(directory, root, run.container, owner[2], owner[6])

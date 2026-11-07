@@ -12,6 +12,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from psycopg.pq import TransactionStatus
 from tools.devtools import wayne_qualification_backup as backup
 from tools.devtools import wayne_qualification_storage as storage
 
@@ -222,15 +223,302 @@ def test_committed_material_checkpoint_and_world_chain_cannot_compare_equal_when
         backup._markers(rows, 2, foundation)
 
 
+def _physical_scan_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    source: MagicMock,
+    files: dict[str, bytes | None],
+    witness: backup.PhysicalWitness,
+    owner: tuple[str, ...],
+    events: list[str],
+    counts: dict[str, backup.SessionTotal],
+    fault: str,
+    receipts: Path,
+) -> dict[str, Any]:
+    physical = {
+        **witness.physical,
+        "container_root": {**witness.physical["container_root"], "major": 0, "minor": 1},
+        "lineage": LINEAGE.decode(),
+        "pg_version": "17\n",
+    }
+    name = next(iter(witness.relations))
+    monkeypatch.setattr(backup, "REQUIRED_ROWS", {name})
+    wal = files[WAL]
+    assert wal is not None
+
+    def sql_response(stmt: str, args: object = None) -> MagicMock:
+        cursor = MagicMock()
+        if stmt == "CHECKPOINT":
+            assert (
+                "released sockets" not in events
+                and (receipts / "pre-checkpoint-quiescence.json").is_file()
+            )
+            events.append("checkpoint-and-scan")
+        elif "current_user::text" in stmt:
+            cursor.fetchall.return_value = [
+                ("test", "test", owner[7], owner[2], str(SYSTEM), owner[9])
+            ]
+        elif "pg_control_checkpoint()" in stmt:
+            cursor.fetchall.return_value = [("0/100050",)]
+        elif "pg_tablespace" in stmt:
+            cursor.fetchall.return_value = [("pg_default",), ("pg_global",)]
+        elif "pg_walfile_name" in stmt:
+            cursor.fetchall.return_value = [(551, str(SYSTEM), SEGMENT, wal[:40])]
+        elif "pg_control_version" in stmt:
+            cursor.fetchall.return_value = [
+                (
+                    "170011",
+                    1700,
+                    202406281,
+                    8192,
+                    backup.RELSEG_BYTES,
+                    "pg_stat_statements",
+                    "on",
+                    "1.11",
+                )
+            ]
+        elif "WITH RECURSIVE" in stmt:
+            cursor.fetchall.return_value = [(2930, name, "r", 0, None, None, RELATION, 8192)]
+        elif "pg_read_binary_file" in stmt:
+            assert args == (RELATION, 0, 8192)
+            if fault == "finished-writer":
+                counts["postgres"] = backup.SessionTotal(1, 51, None)
+                events.append("writer-committed-and-exited")
+            cursor.fetchone.return_value = (files[RELATION],)
+        else:
+            assert stmt == "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+        return cursor
+
+    source.execute.side_effect = sql_response
+
+    def read_source(args: list[str], *, timeout: int = 0) -> bytes:
+        if "find" not in args:
+            result = files[args[-1].removeprefix("./")]
+            assert result is not None
+            return result
+        before = {"": None, **files, backup.PGSS_RUNNING: b"stat"}
+        del before[backup.PGSS_STOPPED]
+        parts = [
+            token.encode()
+            for path, content in before.items()
+            for token in (
+                path,
+                "d" if content is None else "f",
+                "700" if content is None else "600",
+                "71",
+                "73",
+                str(len(content or b"")),
+                "1",
+            )
+        ]
+        return b"\0".join(parts) + b"\0"
+
+    monkeypatch.setattr(storage, "_exec_bytes", read_source)
+    return physical
+
+
+def _retirement_stop_fixture(
+    target: backup.Evidence,
+    cid: str,
+    *,
+    fenced_image: str,
+    events: list[str],
+    owner: tuple[str, ...],
+    tmp_path: Path,
+    physical: dict[str, Any],
+    actual: list[backup.Backend],
+    fault: str,
+) -> None:
+    assert "held sockets" in events and "released sockets" not in events
+    assert fenced_image == owner[6] and (tmp_path / "backup/pre-stop-quiescence.json").is_file()
+    events.append("stop")
+    attempt = target.publish_json(
+        "native-fenced-stop-attempt-v1.json",
+        {
+            "container": cid,
+            "image": fenced_image,
+            "stop_signal": "SIGINT",
+            "since": "2026-11-07T11:00:01Z",
+        },
+    )
+    pids = [b.pid for b in actual]
+    if fault == "lost-before-stop":
+        pids.pop()
+    elif fault == "foreign-at-stop":
+        pids[-1] = 501
+    elif fault == "duplicate-at-stop":
+        pids.append(pids[-1])
+    stamp = "2026-11-07T11:00:00Z" if fault == "stale-stop" else "2026-11-07T11:00:02Z"
+    server = (
+        "2026-11-06 11:00:02.000" if fault == "stale-server-time" else "2026-11-07 11:00:02.000"
+    )
+    raw = target.publish(
+        "clean-shutdown.log",
+        "".join(
+            f"{stamp} {server} UTC [{pid}] FATAL:  terminating connection due to administrator command\n"
+            for pid in pids
+        ).encode(),
+    )
+    if fault != "missing-fenced-stop":
+        target.publish_json(
+            "native-fenced-stop-v1.json",
+            {
+                "container": cid,
+                "image": fenced_image,
+                "host": physical["host"],
+                "exit_code": 0,
+                "oom_killed": False,
+                "attempt": attempt.model_dump(),
+                "log": raw.model_dump(),
+                "fast": "2026-11-07T11:00:01Z",
+                "clean": "2026-11-07T11:00:03Z",
+                "finished": "2026-11-07T11:00:04Z",
+            },
+        )
+    if fault == "changed-log":
+        (target.path / "clean-shutdown.log").write_bytes(b"changed")
+
+
+def _held_retirement_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    events: list[str],
+    fault: str,
+    saved: dict[str, Any],
+    payloads: dict[str, bytes | None],
+    witness: backup.PhysicalWitness,
+) -> tuple[str, ...]:
+    from contextlib import contextmanager
+
+    admin, source, maintenance = MagicMock(), MagicMock(), MagicMock()
+    for conn in (admin, source, maintenance):
+        conn.autocommit = True
+        conn.info.transaction_status = TransactionStatus.IDLE
+    actual = [backup.Backend(n, str(n), 1, "test", "127.0.0.1", 39900 + n) for n in range(1, 51)]
+    gate = MagicMock()
+    gate.admin, gate.admin_backend = admin, actual[0]
+    gate.client_logging = {str(b.pid): {"prefix": "%m [%p] ", "locale": "C"} for b in actual}
+    gate.run.verification = "verify"
+    gate.baseline = backup.ClusterStats("100", {})
+    gate.expected = {
+        "postgres": backup.SessionTotal(1, 50, None),
+        "verify": backup.SessionTotal(22, 5, None),
+    }
+    counts = {"postgres": gate.expected["postgres"]}
+    cid = "a" * 64
+    owner = tuple({2: "b" * 32, 4: cid, 7: "national_src", 9: "551"}.get(i, "x") for i in range(21))
+    physical = _physical_scan_fixture(
+        monkeypatch, source, payloads, witness, owner, events, counts, fault, tmp_path / "backup"
+    )
+    monkeypatch.setattr(backup, "_cluster_stats", lambda _c: backup.ClusterStats("100", counts))
+    original_one = backup._one
+
+    def one(conn: Any, query: Any, args: tuple[object, ...] = ()) -> tuple[Any, ...]:
+        if conn is admin:
+            assert "pg_prepared_xacts" in query
+            return int(fault == "prepared"), 0
+        return original_one(conn, query, args)
+
+    monkeypatch.setattr(backup, "_one", one)
+
+    def activities() -> list[tuple[Any, ...]]:
+        from dataclasses import astuple
+
+        sessions = actual.copy()
+        if fault == "active-writer":
+            sessions[1] = backup.Backend(99, "200", 2, "national_writer", "127.0.0.1", 44444)
+        return [
+            (
+                *astuple(backend),
+                *(
+                    ("active", False, True, False, "client backend")
+                    if i == 0
+                    else ("idle in transaction", False, True, False, "client backend")
+                    if fault == "busy-owned" and i == 1
+                    else ("idle", True, True, True, "client backend")
+                ),
+            )
+            for i, backend in enumerate(sessions)
+        ]
+
+    admin.execute.return_value.fetchall.side_effect = activities
+
+    def authenticate(selected: backup.Run, *, physical_connection: object = None) -> dict[str, Any]:
+        if physical_connection is not None:
+            assert physical_connection is maintenance and "released sockets" not in events
+        events.append("auth")
+        return physical
+
+    monkeypatch.setattr(backup.Run, "authenticate", authenticate)
+
+    @contextmanager
+    def restored(_run: backup.Run, target: backup.Evidence, _state: dict[str, Any]) -> Any:
+        events.append("held sockets")
+        try:
+            yield backup.HeldSource(
+                gate,
+                source,
+                maintenance,
+                tuple(actual[1:]),
+                (target.publish("database.dump", b"dump"),),
+            )
+        finally:
+            events.append("released sockets")
+
+    monkeypatch.setattr(backup, "_restored_source", restored)
+    monkeypatch.setattr(backup, "_inventory", lambda *_args, **_kw: {"postgres": 1})
+
+    def snapshot(conn: object, _campaign: str, _period: int) -> dict[str, Any]:
+        assert conn is source and "released sockets" not in events
+        return (
+            {**saved, "marker": "changed"}
+            if fault == "changed-terminal" and "checkpoint-and-scan" in events
+            else saved
+        )
+
+    monkeypatch.setattr(backup, "terminal_snapshot", snapshot)
+    monkeypatch.setattr(
+        storage,
+        "stop_checked",
+        partial(
+            _retirement_stop_fixture,
+            events=events,
+            owner=owner,
+            tmp_path=tmp_path,
+            physical=physical,
+            actual=actual,
+            fault=fault,
+        ),
+    )
+    return owner
+
+
 @pytest.mark.parametrize(
-    "fault", ["none", "unrelated_copy", "second_changed", "bulk_copy_failed", "missing_seal"]
+    "fault",
+    [
+        "none",
+        "unrelated_copy",
+        "second_changed",
+        "bulk_copy_failed",
+        "missing_seal",
+        "active-writer",
+        "finished-writer",
+        "busy-owned",
+        "prepared",
+        "changed-terminal",
+        "missing-fenced-stop",
+        "lost-before-stop",
+        "foreign-at-stop",
+        "duplicate-at-stop",
+        "stale-stop",
+        "stale-server-time",
+        "changed-log",
+    ],
 )
 def test_retirement_needs_both_stopped_reads_and_reread_source_seals(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     fault: str,
 ) -> None:
-    from contextlib import nullcontext
 
     evidence = tmp_path / "evidence"
     evidence.mkdir(mode=0o700)
@@ -240,33 +528,16 @@ def test_retirement_needs_both_stopped_reads_and_reread_source_seals(
     directory.publish_json("functional-terminal.json", saved)
     directory.publish("ownership", b"owner\n")
     payloads, witness = fixture()
-    events = []
+    events: list[str] = []
 
-    def authenticate(selected: backup.Run) -> dict[str, Any]:
-        events.append("auth")
-        return {}
-
-    monkeypatch.setattr(backup.Run, "authenticate", authenticate)
-    monkeypatch.setattr(backup, "_physical_witness", lambda *_args: witness)
-    monkeypatch.setattr(backup, "_conn", lambda *_args: nullcontext(None))
-    monkeypatch.setattr(backup, "_inventory", lambda *_args: events.append("empty cluster"))
-    monkeypatch.setattr(
-        backup, "_logical", lambda _run, target, _state: [target.publish("database.dump", b"dump")]
-    )
-
-    def stop(target: backup.Evidence, cid: str) -> None:
-        events.append("stop")
-        target.publish("clean-shutdown.log", b"database system is shut down")
-
-    monkeypatch.setattr(storage, "stop_checked", stop)
+    owner = _held_retirement_fixture(tmp_path, monkeypatch, events, fault, saved, payloads, witness)
+    cid = owner[4]
     monkeypatch.setattr(backup, "_stopped", lambda *_args: events.append("stopped auth"))
     monkeypatch.setattr(storage, "remove_stopped", lambda *_args: events.append("remove"))
-    cid = "a" * 64
-    owner = tuple("x" if i != 4 else cid for i in range(21))
 
     def copy(target: backup.Evidence, name: str, args: list[str]) -> backup.Reference:
         assert args == ["docker", "cp", "-a", cid + ":/var/lib/postgresql/data/.", "-"]
-        assert "stop" in events
+        assert "stop" in events and "released sockets" in events
         events.append(name)
         if fault == "bulk_copy_failed":
             raise backup.Refusal("simulated archive transport failure")
@@ -284,8 +555,26 @@ def test_retirement_needs_both_stopped_reads_and_reread_source_seals(
 
     monkeypatch.setattr(backup, "_command", copy)
     if fault != "none":
-        with pytest.raises(backup.Refusal):
+        with pytest.raises(FileNotFoundError if fault == "missing-fenced-stop" else backup.Refusal):
             backup.backup_and_retire(tmp_path, evidence, owner, "campaign", 2)
+        if fault in ("active-writer", "busy-owned", "prepared"):
+            assert "checkpoint-and-scan" not in events
+            assert (tmp_path / "backup/pre-checkpoint-quiescence.json").is_file()
+        if fault in ("finished-writer", "changed-terminal"):
+            assert "stop" not in events
+            assert (tmp_path / "backup/post-physical-terminal.json").is_file()
+        if fault == "finished-writer":
+            assert (tmp_path / "backup/pre-stop-quiescence.json").is_file()
+        if fault in (
+            "lost-before-stop",
+            "foreign-at-stop",
+            "duplicate-at-stop",
+            "stale-stop",
+            "stale-server-time",
+            "changed-log",
+            "missing-fenced-stop",
+        ):
+            assert "stop" in events and "pgdata.tar.partial" not in events
         assert "remove" not in events
         assert (tmp_path / "backup/database.dump").exists()
     else:
@@ -418,11 +707,12 @@ def test_only_verified_restore_is_dropped_without_force(
     if fault == "foreign_session":
         gate.check_fence.side_effect = backup.Refusal("unaccounted session")
     if fault == "none":
-        backup._logical(run, target, state)
+        with backup._restored_source(run, target, state) as held:
+            assert held.source is source and held.maintenance is maintenance
         auth.assert_called_with(physical_connection=maintenance)
     else:
-        with pytest.raises(backup.Refusal):
-            backup._logical(run, target, state)
+        with pytest.raises(backup.Refusal), backup._restored_source(run, target, state):
+            pytest.fail("invalid restore reached physical handoff")
     calls = [
         call.args[0] if isinstance(call.args[0], str) else call.args[0].as_string()
         for call in db.execute.call_args_list
@@ -1019,6 +1309,16 @@ def _fence_query(
     closed_limit: list[int],
     fault: str,
 ) -> tuple[Any, ...]:
+    if "log_line_prefix" in stmt:
+        return (
+            "%p" if fault == "wrong-log-prefix" else "%m [%p] ",
+            "de_DE" if fault == "wrong-messages" else "C",
+            "default",
+            "stderr",
+            "off",
+            "warning",
+            "Etc/UTC",
+        )
     if "max_connections" in stmt:
         return 48 if fault == "wrong-capacity" else 50, 0, "0"
     if "pg_postmaster_start_time" in stmt:
@@ -1054,6 +1354,8 @@ def _fence_query(
         "replaced-slot",
         "can't-fill",
         "wrong-capacity",
+        "wrong-log-prefix",
+        "wrong-messages",
         "helper-extra",
         "changed-database",
     ],
@@ -1063,7 +1365,6 @@ def test_final_drop_requires_complete_live_slot_fence_and_cluster_counters(
     monkeypatch: pytest.MonkeyPatch,
     fault: str,
 ) -> None:
-    from contextlib import contextmanager
 
     owner = ["x"] * 21
     owner[2], owner[7], owner[8], owner[9], owner[20] = (
@@ -1099,7 +1400,6 @@ def test_final_drop_requires_complete_live_slot_fence_and_cluster_counters(
             ]
         return cursor
 
-    @contextmanager
     def connect(_run: backup.Run, database: str) -> Any:
         if len(received) == 30 and fault == "can't-fill":
             raise backup.Refusal("could not acquire a required client slot")
@@ -1112,12 +1412,14 @@ def test_final_drop_requires_complete_live_slot_fence_and_cluster_counters(
         totals[database] = backup.SessionTotal(row.oid, row.sessions + 1, row.reset)
         received.append((database, pid))
         live.append(actual)
-        try:
-            yield conn
-        finally:
+
+        def close() -> None:
             released.append(pid)
             if actual in live:
                 live.remove(actual)
+
+        conn.close.side_effect = close
+        return conn
 
     monkeypatch.setattr(
         backup,
@@ -1193,7 +1495,7 @@ def test_checkpoint_flush_requires_the_authenticated_original_before_block_occup
     ]
     monkeypatch.setattr(backup, "_one", lambda *_args: results.pop(0))
     with pytest.raises(backup.Refusal):
-        backup._physical_witness(run, {"cluster": "123"})
+        backup._physical_witness(run, {"cluster": "123"}, conn)
     statements = [c.args[0] for c in conn.execute.call_args_list]
     assert statements == (
         []

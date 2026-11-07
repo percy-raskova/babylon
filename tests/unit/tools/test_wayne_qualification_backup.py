@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import struct
+import subprocess
 import tarfile
 from functools import partial
 from pathlib import Path
@@ -269,6 +270,32 @@ def test_committed_material_checkpoint_and_world_chain_cannot_compare_equal_when
         backup._markers(rows, 2, foundation)
 
 
+def _read_physical_fixture(
+    files: dict[str, bytes | None], args: list[str], *, timeout: int = 0
+) -> bytes:
+    before = {".": None, **files, backup.PGSS_RUNNING: b"stat"}
+    del before[backup.PGSS_STOPPED]
+
+    if "find" in args:
+        if "-printf" in args:
+            raise subprocess.CalledProcessError(1, args, b"", b"find: unrecognized: -printf\n")
+        assert args[-4:] == ["find", ".", "-xdev", "-print0"]
+        return b"\0".join(("." if path == "." else "./" + path).encode() for path in before) + b"\0"
+    if "stat" in args:
+        assert args[5:9] == ["stat", "-c", "%f %a %u %g %s %d", "--"]
+        parts = []
+        for raw in args[9:]:
+            path = raw if raw == "." else raw.removeprefix("./")
+            content = before[path]
+            mode = 0o40700 if content is None else 0o100600
+            parts.append(f"{mode:x} {mode & 0o7777:o} 71 73 {len(content or b'')} 1\n")
+        return "".join(parts).encode()
+    assert args[5:7] == ["cat", "--"]
+    result = files[args[-1].removeprefix("./")]
+    assert result is not None
+    return result
+
+
 def _physical_scan_fixture(
     monkeypatch: pytest.MonkeyPatch,
     source: MagicMock,
@@ -336,29 +363,7 @@ def _physical_scan_fixture(
 
     source.execute.side_effect = sql_response
 
-    def read_source(args: list[str], *, timeout: int = 0) -> bytes:
-        if "find" not in args:
-            result = files[args[-1].removeprefix("./")]
-            assert result is not None
-            return result
-        before = {"": None, **files, backup.PGSS_RUNNING: b"stat"}
-        del before[backup.PGSS_STOPPED]
-        parts = [
-            token.encode()
-            for path, content in before.items()
-            for token in (
-                path,
-                "d" if content is None else "f",
-                "700" if content is None else "600",
-                "71",
-                "73",
-                str(len(content or b"")),
-                "1",
-            )
-        ]
-        return b"\0".join(parts) + b"\0"
-
-    monkeypatch.setattr(storage, "_exec_bytes", read_source)
+    monkeypatch.setattr(storage, "_exec_bytes", partial(_read_physical_fixture, files))
     return physical
 
 
@@ -1631,3 +1636,270 @@ def test_shared_database_owner_acl_and_settings_bind_the_same_target(database: s
     catalog = backup._catalog(conn, database)
     assert catalog["owner"] == "writer" and catalog["settings"] == [[None, "timezone=UTC"]]
     assert catalog["acl"] == [["writer", "reader", "CONNECT", False]] and not results
+
+
+def test_physical_inventory_uses_busybox_advertised_interfaces(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    files, witness = fixture()
+    source = MagicMock()
+    owner = tuple(
+        {2: "b" * 32, 4: "a" * 64, 7: "national_src", 9: "551"}.get(i, "x") for i in range(21)
+    )
+    receipts = tmp_path / "backup"
+    receipts.mkdir()
+    (receipts / "pre-checkpoint-quiescence.json").write_bytes(b"{}")
+    events: list[str] = []
+    physical = _physical_scan_fixture(
+        monkeypatch, source, files, witness, owner, events, {}, "none", receipts
+    )
+    run = backup.Run(tmp_path, tmp_path, owner, "campaign", 2)
+    result = backup._physical_witness(run, physical, source)
+    assert result.members[RELATION] == backup.Member("file", 0o600, 71, 73, 8192, None)
+    assert result.members["PG_VERSION"].sha256 == hashlib.sha256(b"17\n").hexdigest()
+    assert result.physical["source_checkpoint"] == "0/100050"
+    assert events == ["checkpoint-and-scan"]
+
+
+def _inventory_run(tmp_path: Path) -> backup.Run:
+    owner = tuple("a" * 64 if i == 4 else "x" for i in range(21))
+    return backup.Run(tmp_path, tmp_path, owner, "campaign", 2)
+
+
+def _inventory_authority() -> dict[str, Any]:
+    return {
+        "container_root": {"major": 253, "minor": 5, "mode": 0o700, "uid": 70, "gid": 1000},
+        "pg_version": "17\n",
+        "lineage": "reviewed lineage\n",
+    }
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        b"",
+        b"8180 600 70 70 3 64773",  # Unterminated numeric record.
+        b"8180 600 70 70 3 64773\n8180 600 70 70 3 64773\n",
+        b"8180 600 70 70 3\n",
+        b"8180\t600 70 70 3 64773\n",
+        b"8180 700 70 70 3 64773\n",  # Octal/raw permission disagreement.
+        b"8180 600 70 70 3 64774\n",  # Untraversed foreign mount/device.
+        b"a180 600 70 70 3 64773\n",  # Link; stat must not dereference it.
+        b"1180 600 70 70 3 64773\n",  # FIFO.
+        b"c180 600 70 70 3 64773\n",  # Socket.
+        b"2180 600 70 70 3 64773\n",  # Character device.
+        b"10000 0 70 70 3 64773\n",  # Raw mode overflow.
+        b"8180 600 -1 70 3 64773\n",
+        b"8180 600 4294967296 70 3 64773\n",
+        b"8180 600 70 4294967296 3 64773\n",
+        b"8180 600 70 70 -1 64773\n",
+        b"8180 600 70 70 9223372036854775808 64773\n",
+        b"8180 600 70 70 3 18446744073709551616\n",
+        b"8180 600 70 70 3 6e4\n",
+        b"8180 600 70 70 3 64773\r\n",
+        b"8180 600 70 70 3 64773\n./injected\n",
+    ],
+)
+def test_container_inventory_refuses_partial_or_unsafe_numeric_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record: bytes
+) -> None:
+    def acquire(args: list[str], *, timeout: int = 0) -> bytes:
+        if args[5:] == ["find", ".", "-xdev", "-print0"]:
+            return b".\0./ordinary\0"
+        assert args[5:9] == ["stat", "-c", "%f %a %u %g %s %d", "--"]
+        assert args[9:] == [".", "./ordinary"]
+        return b"41c0 700 70 1000 4096 64773\n" + record
+
+    monkeypatch.setattr(storage, "_exec_bytes", acquire)
+    with pytest.raises(backup.Refusal):
+        backup._container_members(_inventory_run(tmp_path), _inventory_authority())
+
+
+@pytest.mark.parametrize(
+    "names",
+    [
+        b"",
+        b".\0./missing-nul",
+        b"./missing-root\0",
+        b".\0.\0",
+        b".\0\0",
+        b".\0./duplicate\0./duplicate\0",
+        b".\0unprefixed\0",
+        b".\0/absolute\0",
+        b".\0././alias\0",
+        b".\0./a/../escape\0",
+        b".\0./a//alias\0",
+        b".\0./a/\0",
+        b".\0./.\0",
+        b".\0./pg_tblspc/external\0",
+        b".\0./invalid-utf8-\xff\0",
+    ],
+)
+def test_container_inventory_refuses_ambiguous_or_incomplete_nul_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, names: bytes
+) -> None:
+    def acquire(args: list[str], *, timeout: int = 0) -> bytes:
+        assert args[5:] == ["find", ".", "-xdev", "-print0"]
+        return names
+
+    monkeypatch.setattr(storage, "_exec_bytes", acquire)
+    with pytest.raises(backup.Refusal):
+        backup._container_members(_inventory_run(tmp_path), _inventory_authority())
+
+
+@pytest.mark.parametrize("utility", ["find", "stat", "cat"])
+def test_container_inventory_propagates_nonzero_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, utility: str
+) -> None:
+    def acquire(args: list[str], *, timeout: int = 0) -> bytes:
+        if args[5] == utility:
+            # Even apparently complete stdout cannot authorize success on a nonzero exit.
+            raise subprocess.CalledProcessError(
+                1, args, b"41c0 700 70 1000 4096 64773\n", b"failure"
+            )
+        if args[5] == "find":
+            return b".\0./PG_VERSION\0"
+        assert args[5] == "stat"
+        return b"41c0 700 70 1000 4096 64773\n8180 600 70 70 3 64773\n"
+
+    monkeypatch.setattr(storage, "_exec_bytes", acquire)
+    with pytest.raises(subprocess.CalledProcessError):
+        backup._container_members(_inventory_run(tmp_path), _inventory_authority())
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["membership-added", "membership-removed", "root-type", "root-mode", "root-uid", "root-gid"],
+)
+def test_container_inventory_refuses_membership_or_bound_root_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    passes = 0
+
+    def acquire(args: list[str], *, timeout: int = 0) -> bytes:
+        nonlocal passes
+        if args[5] == "find":
+            passes += 1
+            if passes == 2 and fault == "membership-added":
+                return b".\0./ordinary\0./new\0"
+            if passes == 2 and fault == "membership-removed":
+                return b".\0"
+            return b".\0./ordinary\0"
+        assert args[5] == "stat"
+        root = {
+            "root-type": b"81c0 700 70 1000 4096 64773\n",
+            "root-mode": b"41ed 755 70 1000 4096 64773\n",
+            "root-uid": b"41c0 700 71 1000 4096 64773\n",
+            "root-gid": b"41c0 700 70 70 4096 64773\n",
+        }.get(fault, b"41c0 700 70 1000 4096 64773\n")
+        return root + b"8180 600 70 70 3 64773\n"
+
+    monkeypatch.setattr(storage, "_exec_bytes", acquire)
+    with pytest.raises(backup.Refusal):
+        backup._container_members(_inventory_run(tmp_path), _inventory_authority())
+
+
+def test_container_inventory_keeps_nul_names_and_nonuniform_ids_across_bounded_batches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Long names force batching by encoded argv bytes even below a typical count limit.
+    names = [".", "./line\nbreak", "./-leading", "./tab\tquote'$(literal)", "./é"] + [
+        "./" + str(n) + "x" * 3900 for n in range(20)
+    ]
+    passes = 0
+    batches: list[list[str]] = []
+
+    def acquire(args: list[str], *, timeout: int = 0) -> bytes:
+        nonlocal passes
+        assert args[:5] == ["docker", "exec", "-w", storage.PGDATA, "a" * 64]
+        if args[5:] == ["find", ".", "-xdev", "-print0"]:
+            passes += 1
+            ordered = names if passes == 1 else list(reversed(names))
+            return b"\0".join(p.encode() for p in ordered) + b"\0"
+        assert args[5:9] == ["stat", "-c", "%f %a %u %g %s %d", "--"]
+        assert sum(len(arg.encode()) + 1 + 8 for arg in args) <= 32768
+        batches.append(args[9:])
+        return b"".join(
+            b"41c0 700 70 1000 4096 64773\n" if p == "." else b"8180 600 70 70 3 64773\n"
+            for p in args[9:]
+        )
+
+    monkeypatch.setattr(storage, "_exec_bytes", acquire)
+    members = backup._container_members(_inventory_run(tmp_path), _inventory_authority())
+    assert passes == 2 and len(batches) > 1
+    assert [path for batch in batches for path in batch] == names
+    assert "." not in members and len(members) == len(names) - 1
+    for name in ("line\nbreak", "-leading", "tab\tquote'$(literal)", "é"):
+        assert members[name] == backup.Member("file", 0o600, 70, 70, 3, None)
+
+
+@pytest.mark.parametrize("fault", [None, "symlink", "fifo", "stable-length", "lineage", "version"])
+def test_container_inventory_matches_real_portable_utilities_on_tiny_fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str | None
+) -> None:
+    import os
+    import stat
+
+    root = tmp_path / "tiny"
+    root.mkdir(mode=0o700)
+    (root / "PG_VERSION").write_bytes(b"17\n")
+    (root / ".babylon-postgres-lineage-v1").write_bytes(LINEAGE)
+    (root / "nested").mkdir(mode=0o750)
+    (root / "nested/-name\nwith\ttabs").write_bytes(b"payload")
+    (root / "-leading").write_bytes(b"x")
+    if fault == "symlink":
+        (root / "link").symlink_to("PG_VERSION")
+    elif fault == "fifo":
+        os.mkfifo(root / "pipe")
+    elif fault == "lineage":
+        (root / ".babylon-postgres-lineage-v1").write_bytes(b"foreign\n")
+    elif fault == "version":
+        (root / "PG_VERSION").write_bytes(b"18\n")
+    measured = root.stat()
+    physical = {
+        **_inventory_authority(),
+        "container_root": {
+            "major": os.major(measured.st_dev),
+            "minor": os.minor(measured.st_dev),
+            "uid": measured.st_uid,
+            "gid": measured.st_gid,
+            "mode": stat.S_IMODE(measured.st_mode),
+        },
+    }
+
+    def acquire(args: list[str], *, timeout: int = 15) -> bytes:
+        assert args[:5] == ["docker", "exec", "-w", storage.PGDATA, "a" * 64]
+        assert args[5] in {"find", "stat", "cat"}
+        # This subprocess only reads this test-owned tiny fixture, never host PGDATA.
+        result = subprocess.run(
+            args[5:], cwd=root, capture_output=True, check=True, timeout=timeout
+        ).stdout
+        if fault == "stable-length" and args[5] == "cat" and args[-1] == "./PG_VERSION":
+            return result + b"changed"
+        return result
+
+    monkeypatch.setattr(storage, "_exec_bytes", acquire)
+    if fault:
+        with pytest.raises(backup.Refusal):
+            backup._container_members(_inventory_run(tmp_path), physical)
+    else:
+        members = backup._container_members(_inventory_run(tmp_path), physical)
+        assert set(members) == {
+            "PG_VERSION",
+            ".babylon-postgres-lineage-v1",
+            "nested",
+            "nested/-name\nwith\ttabs",
+            "-leading",
+        }
+        for name, member in members.items():
+            value = (root / name).lstat()
+            assert (member.kind, member.mode, member.uid, member.gid, member.size) == (
+                "dir" if stat.S_ISDIR(value.st_mode) else "file",
+                stat.S_IMODE(value.st_mode),
+                value.st_uid,
+                value.st_gid,
+                value.st_size,
+            )
+        assert members["PG_VERSION"].sha256 == hashlib.sha256(b"17\n").hexdigest()
+        assert members[".babylon-postgres-lineage-v1"].sha256 == hashlib.sha256(LINEAGE).hexdigest()
+        assert members["nested/-name\nwith\ttabs"].sha256 is None

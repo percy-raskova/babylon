@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import stat
 import struct
 import subprocess
 import tarfile
@@ -1688,6 +1689,124 @@ def _restored_source(
             yield HeldSource(gate, source_conn, maintenance_conn, admitted, tuple(refs))
 
 
+def _container_paths(command: list[str]) -> dict[str, str]:
+    # GNU and BusyBox both default to physical traversal; neither follows links here.
+    raw = storage._exec_bytes([*command, "find", ".", "-xdev", "-print0"], timeout=120)
+    if not raw.endswith(b"\0"):
+        raise Refusal("container member inventory is truncated")
+    names: dict[str, str] = {}
+    for encoded in raw[:-1].split(b"\0"):
+        try:
+            original = encoded.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise Refusal("container member name is not UTF-8") from error
+        if original != "." and not original.startswith("./"):
+            raise Refusal("container member name is not relative to the exact traversal root")
+        path = _member_name(original)
+        if (
+            original != ("." if path == "." else "./" + path)
+            or os.fsencode(original) != encoded
+            or path in names
+            or path.startswith("pg_tblspc/")
+        ):
+            raise Refusal("PGDATA contains an ambiguous, duplicate or external tablespace name")
+        names[path] = original
+    if "." not in names:
+        raise Refusal("container member inventory is missing its traversal root")
+    return names
+
+
+def _container_members(run: Run, physical: dict[str, Any]) -> dict[str, Member]:
+    """Read container metadata and stable bytes without SQL or filesystem mutation."""
+    command = ["docker", "exec", "-w", storage.PGDATA, run.container]
+    names = _container_paths(command)
+    root = physical["container_root"]
+    device = os.makedev(root["major"], root["minor"])
+    # No filenames enter the line-oriented format. Each exact find operand remains
+    # one argv value, including embedded newlines, whitespace and leading dashes.
+    stat_command = [*command, "stat", "-c", "%f %a %u %g %s %d", "--"]
+    # Bound encoded strings, terminating NULs and 64-bit argv pointers well below
+    # Linux's minimum argument budget, including each individual operand.
+    limit = 32768
+    fixed = sum(len(os.fsencode(arg)) + 1 + 8 for arg in stat_command)
+    batches: list[list[str]] = []
+    batch: list[str] = []
+    used = fixed
+    for original in names.values():
+        length = len(os.fsencode(original)) + 1 + 8
+        if fixed + length > limit:
+            raise Refusal("container member name exceeds the bounded metadata argument budget")
+        if used + length > limit:
+            batches.append(batch)
+            batch, used = [], fixed
+        batch.append(original)
+        used += length
+    batches.append(batch)
+    members: dict[str, Member] = {}
+    for batch in batches:
+        raw = storage._exec_bytes([*stat_command, *batch], timeout=120)
+        rows = raw.split(b"\n")
+        if rows.pop() or len(rows) != len(batch):
+            raise Refusal("container numeric metadata is truncated or has extra records")
+        for original, row in zip(batch, rows, strict=True):
+            match = re.fullmatch(
+                rb"([0-9a-fA-F]{1,4}) ([0-7]{1,4}) ([0-9]{1,10}) ([0-9]{1,10}) ([0-9]{1,19}) ([0-9]{1,20})",
+                row,
+            )
+            if match is None:
+                raise Refusal("container numeric metadata is malformed or out of range")
+            raw_mode = int(match[1], 16)
+            mode = int(match[2], 8)
+            uid, gid, size, actual_device = (int(match[i]) for i in range(3, 7))
+            kind = stat.S_IFMT(raw_mode)
+            if (
+                kind not in (stat.S_IFDIR, stat.S_IFREG)
+                or stat.S_IMODE(raw_mode) != mode
+                or max(uid, gid) > 2**32 - 1
+                or size > 2**63 - 1
+                or actual_device > 2**64 - 1
+                or actual_device != device
+            ):
+                raise Refusal(
+                    "PGDATA contains a nested mount, link, special file or invalid metadata"
+                )
+            path = "." if original == "." else original[2:]
+            members[path] = Member(
+                "dir" if kind == stat.S_IFDIR else "file", mode, uid, gid, size, None
+            )
+    seen_root = members.pop(".")
+    if (seen_root.kind, seen_root.mode, seen_root.uid, seen_root.gid) != (
+        "dir",
+        root["mode"],
+        root["uid"],
+        root["gid"],
+    ):
+        raise Refusal("container traversal root differs from the independently bound PGDATA")
+    for path, member in members.items():
+        if path in STABLE_BYTES or path.endswith("/PG_VERSION"):
+            actual = storage._exec_bytes([*command, "cat", "--", names[path]])
+            if len(actual) != member.size:
+                raise Refusal("stable source file changed during physical attestation")
+            if (
+                path == "PG_VERSION"
+                and actual != physical["pg_version"].encode()
+                or path == ".babylon-postgres-lineage-v1"
+                and actual != physical["lineage"].encode()
+            ):
+                raise Refusal("running PGDATA differs from independent admitted lineage/version")
+            members[path] = Member(
+                member.kind,
+                member.mode,
+                member.uid,
+                member.gid,
+                member.size,
+                hashlib.sha256(actual).hexdigest(),
+            )
+    if _container_paths(command) != names:
+        raise Refusal("container member inventory changed during physical attestation")
+    return members
+
+
 def _physical_witness(run: Run, physical: dict[str, Any], conn: Connection) -> PhysicalWitness:
     if _one(
         conn,
@@ -1753,50 +1872,7 @@ def _physical_witness(run: Run, physical: dict[str, Any], conn: Connection) -> P
         relations, sizes = _terminal_relations(conn, oid)
         physical["relation_sizes"] = sizes
         physical["relation_page_occupancy"] = _source_pages(conn, sizes)
-    cmd = ["docker", "exec", "-w", storage.PGDATA, run.container]
-    # GNU find does not follow symlinks here. Its NUL-separated names are data.
-    raw = storage._exec_bytes(
-        [*cmd, "find", "-P", ".", "-xdev", "-printf", r"%P\0%y\0%m\0%U\0%G\0%s\0%D\0"], timeout=120
-    )
-    fields = raw.split(b"\0")
-    if fields.pop() or len(fields) % 7:
-        raise Refusal("container member inventory is truncated")
-    members: dict[str, Member] = {}
-    root = physical["container_root"]
-    for i in range(0, len(fields), 7):
-        raw_path, kind, mode, uid, gid, length, device = fields[i : i + 7]
-        path = _member_name(raw_path.decode() or ".")
-        if (
-            kind not in (b"f", b"d")
-            or path in members
-            or int(device) != os.makedev(root["major"], root["minor"])
-            or path.startswith("pg_tblspc/")
-        ):
-            raise Refusal("PGDATA contains a nested mount, link, special file or duplicate name")
-        sha = None
-        if path in STABLE_BYTES or path.endswith("/PG_VERSION"):
-            actual = storage._exec_bytes([*cmd, "cat", "--", "./" + path])
-            if len(actual) != int(length):
-                raise Refusal("stable source file changed during physical attestation")
-            if (
-                path == "PG_VERSION"
-                and actual != physical["pg_version"].encode()
-                or path == ".babylon-postgres-lineage-v1"
-                and actual != physical["lineage"].encode()
-            ):
-                raise Refusal("running PGDATA differs from independent admitted lineage/version")
-            sha = hashlib.sha256(actual).hexdigest()
-        members[path] = Member(
-            "dir" if kind == b"d" else "file", int(mode, 8), int(uid), int(gid), int(length), sha
-        )
-    seen_root = members.pop(".", None)
-    if seen_root is None or (seen_root.kind, seen_root.mode, seen_root.uid, seen_root.gid) != (
-        "dir",
-        root["mode"],
-        root["uid"],
-        root["gid"],
-    ):
-        raise Refusal("container traversal root differs from the independently bound PGDATA")
+    members = _container_members(run, physical)
     if not {
         "PG_VERSION",
         ".babylon-postgres-lineage-v1",

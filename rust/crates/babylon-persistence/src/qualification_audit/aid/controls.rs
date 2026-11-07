@@ -7,9 +7,9 @@ use crate::observer_reader::CommittedMaterialReceipts;
 use crate::organizer_aid_fixture as fixture;
 use crate::runtime_session::OrganizerSnapshot;
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_material_circuit::AidOutcome;
 use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::HouseholdTimeAccounting;
+use babylon_material_circuit::{AccountId, AidOutcome, MoneyTransferReceipt};
 use babylon_practice_contract::OrganizerAllocation;
 use babylon_practice_contract::{
     OrganizerAidKind, OrganizerChoice, OrganizerCommitment, OrganizerPreview,
@@ -798,4 +798,166 @@ fn later_close_without_a_resolution_rejects_previous_contribution_use() {
         Refusal::Time
     );
     assert_eq!(audit.report(), original);
+}
+
+fn unpaid_opening_order() -> (Session, Audit, MoneyTransferReceipt) {
+    use babylon_material_circuit::{
+        CashTransferPurpose, FinalDemandOrder, HistoricalCostBook, MaterialPurchase, OrderId,
+        OutboundOrderId,
+    };
+    use babylon_practice_contract::{OrganizerPartnerFacts, OrganizerReportCommodity};
+    let foundation = crate::michigan_dynamic_hex_foundation().expect("Michigan fixture");
+    let mut config = fixture::config();
+    let scope = OrganizerReportCommodity {
+        good_id: fixture::good(2).as_bytes(),
+        unit_id: fixture::units().as_bytes(),
+        label: "Food".into(),
+        unit_label: "unit".into(),
+    };
+    config.aid_bindings[0]
+        .report_sharing
+        .food
+        .push(scope.clone());
+    let opening = babylon_practice_contract::partner_observation(
+        &config,
+        config.aid_bindings[0].partner.actor_id,
+        0,
+        0,
+        OrganizerPartnerFacts::OpeningAssessment {
+            commodity: scope,
+            required: 1,
+            opening_stock: 0,
+        },
+    )
+    .expect("real canonical opening grant");
+    config.initial_observations.push(opening);
+    let seed = fixture::authored_session(foundation, config.clone(), false, false);
+    let mut state = seed.material().state().clone();
+    let seller = fixture::site(3);
+    let good = fixture::good(2);
+    let buyer = fixture::recipient();
+    state
+        .inventory
+        .retain(|r| !(r.site_id == seller && r.good_id == good));
+    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+        panic!("monetary state");
+    };
+    economy
+        .book
+        .transfer_cash(
+            seed.catalog().aid_mandates[0].payer,
+            AccountId::Household(buyer),
+            fixture::money(1),
+            CashTransferPurpose::MutualAid,
+        )
+        .expect("fund buyer from existing cash");
+    let mut stocks = economy.costs.snapshot().stocks;
+    stocks.retain(|r| !(r.owner == AccountId::Site(seller) && r.good_id == good));
+    economy.costs = HistoricalCostBook::open(&economy.book, stocks, vec![], vec![], vec![])
+        .expect("actual opening stock costs");
+    let id = OrderId::from_bytes([42; 32]);
+    let (state, _) = babylon_material_circuit::admit_material_purchase(
+        seed.catalog(),
+        &state,
+        MaterialPurchase::LocalFinalDemand(FinalDemandOrder {
+            order_id: id,
+            retailer_site_id: seller,
+            demand_principal_id: buyer,
+            good_id: good,
+            unit_id: fixture::units(),
+            ordered: 1,
+            fulfilled: 0,
+        }),
+        fixture::money(1),
+    )
+    .expect("ordinary finite order in escrow");
+    let CircuitAccounting::Monetary(economy) = &state.accounting else {
+        panic!("admitted monetary state");
+    };
+    let payment = economy
+        .book
+        .clone()
+        .settle_purchase(OutboundOrderId::LocalFinalDemand(id), 1)
+        .expect("correctly signed settlement in competing evidence")
+        .transfer;
+    let session = fixture::try_session(
+        foundation,
+        &format!(
+            "{}\n{}\n{}",
+            fixture::MATERIAL,
+            fixture::PRODUCTS,
+            fixture::PRACTICE
+        ),
+        fixture::Materials {
+            catalog: seed.catalog().clone().into_definition(),
+            state,
+        },
+        config,
+    )
+    .expect("organizer with outstanding order");
+    let mut audit = Audit::default();
+    audit
+        .open(session.catalog(), session.material(), &snapshot(&session))
+        .expect("capture funded order identity and price");
+    (session, audit, payment)
+}
+
+#[test]
+fn qualification_zero_food_rejects_signed_opening_order_settlement_without_handoff() {
+    use babylon_material_circuit::{MoneyLocation, MoneyTransferPurpose, OutboundOrderId};
+    let (mut session, mut audit, payment) = unpaid_opening_order();
+    let (actual, after) = advance(&mut session, None);
+    let MoneyTransferPurpose::DeliverySettlement(OutboundOrderId::LocalFinalDemand(id)) =
+        payment.purpose
+    else {
+        panic!("local retail settlement");
+    };
+    assert!(actual
+        .receipts
+        .household_demand
+        .iter()
+        .all(|d| d.order_id != id));
+    assert!(actual
+        .receipts
+        .local_fulfillments
+        .iter()
+        .all(|h| h.order_id != id));
+    assert_eq!(
+        payment.credit.location,
+        MoneyLocation::Cash(AccountId::Site(fixture::site(3)))
+    );
+    assert_eq!(
+        payment.debit.location,
+        MoneyLocation::PurchaseReserve(OutboundOrderId::LocalFinalDemand(id))
+    );
+    assert_eq!(payment.credit.delta.micro_units(), 1);
+    assert_eq!(payment.debit.delta.micro_units(), -1);
+    let before = audit.report();
+    let expected = audit
+        .clone()
+        .read(session.catalog(), &actual, session.material(), &after)
+        .expect("no handoff and no payment is a truthful zero");
+    let witness = serde_json::to_value(&expected.partner_reports).expect("disclosed facts");
+    assert_eq!(witness[0]["facts"]["basis"], "food_provision");
+    assert_eq!(witness[0]["facts"]["purchased"], 0);
+    assert_eq!(witness[0]["facts"]["settled_micros"], "0");
+    let mut damaged = actual.clone();
+    let mut receipts = (*actual.receipts).clone();
+    receipts.money_transfers.push(payment);
+    damaged.receipts = MaterialReceiptHandle::new(receipts);
+    assert!(
+        matches!(
+            audit.read(session.catalog(), &damaged, session.material(), &after),
+            Err(Refusal::ReportSettlement)
+        ),
+        "an outstanding funded order with a signed payment requires its actual handoff"
+    );
+    assert_eq!(audit.report(), before, "refusal preserves the opening fold");
+    let retry = audit
+        .read(session.catalog(), &actual, session.material(), &after)
+        .expect("real zero remains admissible");
+    assert_eq!(
+        serde_json::to_value(retry).expect("serialized retry"),
+        serde_json::to_value(expected).expect("serialized control")
+    );
 }

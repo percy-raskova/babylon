@@ -879,6 +879,25 @@ pub(crate) fn handle_commands(
             context.feedback.reject(reason, now);
             continue;
         }
+        if command == ObserverCommand::TogglePlay
+            && interlock.as_deref_mut().is_some_and(|lock| {
+                !lock.allows_toggle(
+                    message_id.id,
+                    &context.state,
+                    context.qualification.as_deref(),
+                )
+            })
+        {
+            if let Some(receipt) = qualification.as_deref_mut() {
+                receipt.observer_finished(
+                    message_id,
+                    false,
+                    context.state.pending_advance_request(),
+                    &context.state,
+                );
+            }
+            continue;
+        }
         context.feedback.message = None;
         let before = context.state.pending_advance_request();
         apply_command(command, &mut context);

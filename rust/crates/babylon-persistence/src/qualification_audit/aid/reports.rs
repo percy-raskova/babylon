@@ -397,8 +397,19 @@ fn food(
             )?,
         )?;
     }
-    let selected = |id: &OrderId| seen.contains(id) || orders.contains_key(id);
     let identity = (principal, row.good_id, row.unit_id);
+    // An outstanding funded order can lack a recurring demand row. Any
+    // settlement against its escrow still requires a matching handoff.
+    if opening.prices.iter().any(|(order, terms)| {
+        (terms.buyer, terms.good, terms.unit) == identity
+            && !seen.contains(order)
+            && payments
+                .rows
+                .contains_key(&(OutboundOrderId::LocalFinalDemand(*order), Leg::Settlement))
+    }) {
+        return Err(Refusal::ReportSettlement);
+    }
+    let selected = |id: &OrderId| seen.contains(id) || orders.contains_key(id);
     if receipts
         .local_fulfillments
         .iter()

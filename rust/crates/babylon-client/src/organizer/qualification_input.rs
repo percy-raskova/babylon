@@ -631,16 +631,7 @@ impl PlayInterlock {
         };
         if scope.campaign_id.as_deref() != Some(input.campaign_id.as_str())
             || self.witness.is_some()
-            || session.phase != SessionPhase::Ready
-            || session.playing
-            || session.advance_pending()
-            || session.lifecycle_pending()
-            || session.organizer_control_pending()
-            || session.viewed_tick != session.durable_tick
-            || session.quit_requested
-            || session
-                .duration
-                .is_some_and(|d| !d.can_advance(session.durable_tick))
+            || !Self::can_start(session)
         {
             return false;
         }
@@ -658,6 +649,35 @@ impl PlayInterlock {
             playing_after_pause: None,
         });
         true
+    }
+
+    fn can_start(session: &ObserverSession) -> bool {
+        session.phase == SessionPhase::Ready
+            && !session.playing
+            && !session.advance_pending()
+            && !session.lifecycle_pending()
+            && !session.organizer_control_pending()
+            && session.viewed_tick == session.durable_tick
+            && !session.quit_requested
+            && session
+                .duration
+                .is_none_or(|d| d.can_advance(session.durable_tick))
+    }
+
+    /// Check the privately tracked message before the ordinary handler can start playback.
+    pub(crate) fn allows_toggle(
+        &mut self,
+        id: usize,
+        session: &ObserverSession,
+        audit: Option<&NativeAudit>,
+    ) -> bool {
+        if !self.armed() || self.play.is_none_or(|(message, _)| message != id) {
+            return true;
+        }
+        self.invalid |= !Self::can_start(session)
+            || audit.is_some_and(|a| !a.can_arm_play(session))
+            || !self.witness.as_ref().is_some_and(|w| w.matches(session));
+        !self.invalid
     }
 
     fn visible(&self, session: &ObserverSession) -> Option<&PlayWitness> {
@@ -2993,12 +3013,13 @@ mod tests {
 
     fn amount_control_transport(
         app: &mut App,
+        capacity: usize,
     ) -> (UnixStream, Sender<Incoming>, Receiver<Vec<u8>>) {
         app.init_resource::<OpeningPresentation>()
             .add_message::<ContinueWarning>();
         let (socket, peer) = UnixStream::pair().expect("local test peer");
         let (incoming, receiver) = mpsc::channel();
-        let (outgoing, output) = mpsc::sync_channel(4);
+        let (outgoing, output) = mpsc::sync_channel(capacity);
         install(
             app,
             Transport {
@@ -3014,7 +3035,7 @@ mod tests {
     #[test]
     fn qualification_amount_keys_require_focused_ordinary_editor_and_report_real_readback() {
         let (mut app, _window) = super::ui::tests::allocation_opening();
-        let (_peer, incoming, output) = amount_control_transport(&mut app);
+        let (_peer, incoming, output) = amount_control_transport(&mut app, 4);
         let mut sequence = 0;
         let mut send = |app: &mut App, action: Value| {
             sequence += 1;
@@ -3116,7 +3137,7 @@ mod tests {
             app.update();
             app.update();
         }
-        let (_peer, sender, output) = amount_control_transport(&mut app);
+        let (_peer, sender, output) = amount_control_transport(&mut app, 4);
         let input = pending(
             app.world().resource::<ObserverSession>(),
             app.world().resource::<OrganizerClient>(),
@@ -3897,7 +3918,7 @@ mod tests {
         app.init_resource::<OrganizerClient>()
             .init_resource::<PrimaryView>()
             .add_message::<OrganizerAction>();
-        let (_peer, inputs, _outputs) = amount_control_transport(&mut app);
+        let (_peer, inputs, _outputs) = amount_control_transport(&mut app, 4);
         app.world_mut()
             .resource_mut::<Time>()
             .advance_by(Duration::from_secs(5));
@@ -4003,46 +4024,109 @@ mod tests {
         assert!(s.installed(&context));
     }
 
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum PlayAck {
+        Immediate,
+        Unread,
+        Backpressured,
+    }
+
+    impl PlayAck {
+        fn read(self, outputs: &Receiver<Vec<u8>>) -> Value {
+            let raw = outputs
+                .try_recv()
+                .expect("response delivered through ordinary outgoing queue");
+            if self == Self::Immediate {
+                println!(
+                    "Qualification interlock {}",
+                    std::str::from_utf8(&raw).expect("actual frame").trim_end()
+                );
+            }
+            serde_json::from_slice::<Value>(&raw).expect("actual frame")
+        }
+    }
+
+    fn enqueued_play(play: &Value, first: u64) -> &Value {
+        assert_eq!(play["sequence"], 2);
+        assert_eq!(play["event"], "applied");
+        let frozen = &play["state"]["play_interlock"];
+        assert_eq!(frozen["arm_sequence"], 1);
+        assert_eq!(frozen["play_sequence"], 2);
+        assert_eq!(frozen["request_id"], first);
+        assert_eq!(frozen["phase"], "paused_after_enqueue");
+        assert_eq!(frozen["pending_at_pause"], true);
+        assert_eq!(frozen["playing_after_pause"], false);
+        frozen
+    }
+
+    fn prepare_playback_at_eight(app: &mut App) {
+        crate::observer_io::tests::install_playback(app);
+        app.world_mut().resource_mut::<ObserverUiState>().menu_open = false;
+        {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.ready(8, Some(format!("{:064x}", 8)));
+            session.foundation_digest = Some("ac".repeat(32));
+            session.world_hash = Some(format!("{:064x}", 24));
+            session.archive_verified_tick = 8;
+            let context = session.context();
+            assert!(session.installed(&context));
+        }
+        app.init_resource::<OrganizerClient>()
+            .init_resource::<PrimaryView>()
+            .add_message::<OrganizerAction>();
+    }
+
+    #[test]
+    fn invalidated_private_play_refuses_before_two_user_toggles_can_be_undone() {
+        let (mut app, requests, _responses) = crate::observer_io::tests::quit_app();
+        prepare_playback_at_eight(&mut app);
+        let (_peer, inputs, _outputs) = amount_control_transport(&mut app, 4);
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(Duration::from_secs(10));
+        issue_playback_input(&mut app, &inputs, 1, "arm_one_play_advance");
+        app.world_mut().write_message(ObserverCommand::TogglePlay);
+        app.world_mut().write_message(ObserverCommand::TogglePlay);
+        issue_playback_input(&mut app, &inputs, 2, "play");
+        let reply = app
+            .world()
+            .resource::<Controls>()
+            .reply
+            .as_ref()
+            .expect("tracked Play ack");
+        let result: Value = serde_json::from_slice(reply).expect("ordinary handler response");
+        assert_eq!(result["reason"], "ordinary_handler_refused");
+        assert_eq!(result["event"], "refused");
+        assert!(result["state"]["play_interlock"].is_null());
+        for _ in 0..5 {
+            app.update();
+        }
+        assert!(!app.world().resource::<ObserverSession>().playing);
+        assert!(
+            requests.try_recv().is_err(),
+            "rejected private Play scheduled a request"
+        );
+        app.world_mut().write_message(ObserverCommand::TogglePlay);
+        app.update();
+        assert!(app.world().resource::<ObserverSession>().playing);
+        assert!(
+            requests.try_recv().is_ok(),
+            "the next untracked user Play remains usable"
+        );
+    }
+
     #[test]
     fn qualification_play_stops_on_its_own_enqueued_request_before_delayed_acknowledgment() {
         use babylon_persistence::runtime_session::RuntimeSessionRequest;
-        for wait_frames in [0, 5] {
+        for timing in [PlayAck::Immediate, PlayAck::Unread, PlayAck::Backpressured] {
             let (mut app, requests, responses) = crate::observer_io::tests::quit_app();
-            crate::observer_io::tests::install_playback(&mut app);
-            app.world_mut().resource_mut::<ObserverUiState>().menu_open = false;
-            {
-                let mut session = app.world_mut().resource_mut::<ObserverSession>();
-                session.ready(8, Some(format!("{:064x}", 8)));
-                session.foundation_digest = Some("ac".repeat(32));
-                session.world_hash = Some(format!("{:064x}", 24));
-                session.archive_verified_tick = 8;
-                let context = session.context();
-                assert!(session.installed(&context));
-            }
-            app.init_resource::<OrganizerClient>()
-                .init_resource::<PrimaryView>()
-                .add_message::<OrganizerAction>();
-            let (_peer, inputs, _outputs) = amount_control_transport(&mut app);
+            prepare_playback_at_eight(&mut app);
+            let (_peer, inputs, outputs) = amount_control_transport(&mut app, 1);
             app.world_mut()
                 .resource_mut::<Time>()
                 .advance_by(Duration::from_secs(10));
-            let ack = |app: &mut App| -> Value {
-                let raw = app
-                    .world_mut()
-                    .resource_mut::<Controls>()
-                    .reply
-                    .take()
-                    .expect("ack");
-                if wait_frames == 0 {
-                    println!(
-                        "Qualification interlock {}",
-                        std::str::from_utf8(&raw).expect("actual frame").trim_end()
-                    );
-                }
-                serde_json::from_slice(&raw).expect("actual frame")
-            };
+            let ack = || timing.read(&outputs);
             issue_playback_input(&mut app, &inputs, 1, "arm_one_play_advance");
-            assert_eq!(ack(&mut app)["state"]["play_interlock"]["phase"], "armed");
             issue_playback_input(&mut app, &inputs, 2, "play");
             let RuntimeSessionRequest::Advance {
                 request_id: first,
@@ -4053,22 +4137,43 @@ mod tests {
                 panic!("advance")
             };
             assert_eq!(expected_tail.resolve_tick, 8);
-            let reply = ack(&mut app);
-            assert_eq!(reply["event"], "applied");
-            let frozen = &reply["state"]["play_interlock"];
-            assert_eq!(frozen["request_id"], first);
-            assert_eq!(frozen["phase"], "paused_after_enqueue");
-            assert_eq!(frozen["pending_at_pause"], true);
-            assert_eq!(frozen["playing_after_pause"], false);
-            for _ in 0..wait_frames {
-                app.update();
+            let check_arm = || {
+                let arm = ack();
+                assert_eq!(arm["sequence"], 1);
+                assert_eq!(arm["state"]["play_interlock"]["phase"], "armed");
+            };
+            if timing != PlayAck::Backpressured {
+                check_arm();
+            }
+            app.update();
+            assert_eq!(
+                app.world().resource::<Controls>().reply.is_some(),
+                timing == PlayAck::Backpressured
+            );
+            let immediate = (timing == PlayAck::Immediate).then(ack);
+            if timing != PlayAck::Immediate {
+                for _ in 0..5 {
+                    app.update();
+                }
             }
             install_playback_response(&mut app, &responses, first, 9);
             for _ in 0..5 {
                 app.update();
             }
+            assert!(
+                requests.try_recv().is_err(),
+                "no further request while acknowledgment is unread"
+            );
+            if timing == PlayAck::Backpressured {
+                assert!(app.world().resource::<Controls>().reply.is_some());
+                check_arm();
+                app.update();
+            }
+            let play = immediate.unwrap_or_else(ack);
+            let frozen = enqueued_play(&play, first);
             issue_playback_input(&mut app, &inputs, 3, "pause");
-            assert_eq!(ack(&mut app)["state"]["play_interlock"], *frozen);
+            app.update();
+            assert_eq!(ack()["state"]["play_interlock"], *frozen);
             issue_playback_input(&mut app, &inputs, 4, "step");
             let RuntimeSessionRequest::Advance {
                 request_id: second,
@@ -4082,7 +4187,10 @@ mod tests {
             assert_eq!(expected_tail.resolve_tick, 9);
             install_playback_response(&mut app, &responses, second, 10);
             app.update();
-            assert_eq!(ack(&mut app)["event"], "committed_and_installed");
+            app.update();
+            let step = ack();
+            assert_eq!(step["event"], "committed_and_installed");
+            assert_eq!(step["state"]["play_interlock"], *frozen);
             for _ in 0..5 {
                 app.update();
             }
@@ -4092,9 +4200,11 @@ mod tests {
                 SessionPhase::Ready
             );
             issue_playback_input(&mut app, &inputs, 5, "arm_one_play_advance");
-            assert_eq!(ack(&mut app)["event"], "refused");
+            app.update();
+            assert_eq!(ack()["event"], "refused");
             issue_playback_input(&mut app, &inputs, 6, "play");
-            assert_eq!(ack(&mut app)["event"], "refused");
+            app.update();
+            assert_eq!(ack()["event"], "refused");
             assert!(
                 requests.try_recv().is_err(),
                 "consumed private Play cannot issue P11"

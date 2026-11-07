@@ -66,6 +66,15 @@ impl ServiceAdmissions {
             .iter()
             .map(|r| (r.order_id, PaymentLegs::default()))
             .collect::<BTreeMap<_, _>>();
+        // Removing each verified order below enforces uniqueness. Require every independently
+        // captured opening escrow to be present even if its entire close evidence is absent.
+        if self
+            .opening_reserves
+            .keys()
+            .any(|id| !legs.contains_key(id))
+        {
+            return Err(MaterialCircuitError::PurchaseInvariant);
+        }
         for movement in movements {
             record_leg(&mut legs, buyer, movement)?;
         }
@@ -221,7 +230,6 @@ impl PaymentLegs<'_> {
 #[derive(Default)]
 pub(super) struct HouseholdServiceFunding {
     admitted: u64,
-    partially_funded: bool,
     used: u64,
     performed: u64,
     refunded: i128,
@@ -229,7 +237,6 @@ pub(super) struct HouseholdServiceFunding {
 
 impl HouseholdServiceFunding {
     fn add(&mut self, row: &ServicePerformanceReceipt, refund: i128) -> Result<()> {
-        self.partially_funded |= row.admitted_quantity < row.requested_quantity;
         self.admitted = self
             .admitted
             .checked_add(row.admitted_quantity)
@@ -257,7 +264,7 @@ impl HouseholdServiceFunding {
         }
         Ok(if need.unmet_quantity == 0 {
             Some(0)
-        } else if self.partially_funded || self.admitted < need.required_quantity {
+        } else if self.admitted < need.required_quantity {
             None
         } else {
             Some(self.refunded)
@@ -358,6 +365,99 @@ mod tests {
         assert!(matches!(
             sources.reconcile(principal, 1, &[], &movements),
             Err(MaterialCircuitError::ServiceInvariant)
+        ));
+    }
+
+    #[test]
+    fn missing_complete_carried_family_cannot_release_its_refund() {
+        let principal = FinalDemandPrincipalId::from_bytes([3; 32]);
+        let buyer = AccountId::Household(principal);
+        let site = SiteId::from_bytes([9; 32]);
+        let seller = AccountId::Site(site);
+        let mut book = MonetaryBook::open(vec![
+            CashAccount {
+                id: buyer,
+                cash: Currency::from_micro_units(120),
+            },
+            CashAccount {
+                id: seller,
+                cash: Currency::from_micro_units(0),
+            },
+        ])
+        .expect("funded accounts");
+        let mut sources = ServiceAdmissions::default();
+        let mut actual = Vec::new();
+        let mut movements = Vec::new();
+        for (index, price) in [(1, 5), (2, 10)] {
+            let id = OrderId::from_bytes([index; 32]);
+            let order = OutboundOrderId::Service(id);
+            let price = Currency::from_micro_units(price);
+            let reserve = book
+                .reserve_purchase(
+                    PurchaseEscrow::new(order, buyer, seller, 8, price).expect("eight units"),
+                )
+                .expect("cash reservation");
+            if index == 1 {
+                sources.opening_reserves.insert(
+                    id,
+                    book.purchase(order)
+                        .expect("carried escrow")
+                        .reserved_amount()
+                        .expect("carried principal"),
+                );
+            } else {
+                movements.push(reserve);
+            }
+            let mut row = ServicePerformanceReceipt {
+                period: 1,
+                order_id: id,
+                provider_site_id: site,
+                buyer,
+                good_id: GoodId::from_bytes([5; 32]),
+                unit_id: UnitId::from_bytes([6; 32]),
+                requested_quantity: 8,
+                admitted_quantity: 8,
+                performed_quantity: 0,
+                used_quantity: 0,
+                unused_quantity: 0,
+                expired_quantity: 0,
+                unit_price: price,
+            };
+            sources.capture_requests(std::slice::from_ref(&row), Some(principal));
+            row.expired_quantity = 8;
+            actual.push(row);
+            movements.push(
+                book.refund_purchase(order, 8)
+                    .expect("paid units expire")
+                    .transfer,
+            );
+        }
+        let need = HouseholdServiceReceipt {
+            period: 1,
+            principal_id: principal,
+            good_id: actual[0].good_id,
+            unit_id: actual[0].unit_id,
+            required_quantity: 8,
+            performed_quantity: 0,
+            satisfied_quantity: 0,
+            unmet_quantity: 8,
+            unused_quantity: 0,
+        };
+        let funded = sources
+            .reconcile(principal, 1, &actual, &movements)
+            .expect("both orders reconciled");
+        assert_eq!(
+            funded[&(need.good_id, need.unit_id)]
+                .protected_refund(&need)
+                .expect("valid need"),
+            Some(120)
+        );
+        // The current order alone still covers all eight units; only the independently captured
+        // opening escrow identifies the missing admission, performance and refund family.
+        sources.orders.remove(0);
+        assert!(matches!(
+            sources.reconcile(principal, 1, &actual[1..], &movements[1..]),
+            Err(MaterialCircuitError::PurchaseInvariant)
         ));
     }
 }

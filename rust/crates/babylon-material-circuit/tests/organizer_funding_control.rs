@@ -32,7 +32,10 @@ use babylon_material_circuit::MaterialCircuitTransition;
 use babylon_material_circuit::MoneyLocation;
 use babylon_material_circuit::MoneyTransferPurpose;
 use babylon_material_circuit::OutboundOrderId;
-use babylon_material_circuit::{MaterialCatalog, MaterialPurchase, OrderId, ServiceOrder};
+use babylon_material_circuit::{
+    MaterialCatalog, MaterialPurchase, OrderId, PricePolicy, SellerOffer, ServiceConnection,
+    ServiceOrder,
+};
 #[path = "support/organizer_funding_control.rs"]
 mod control;
 
@@ -556,11 +559,15 @@ fn assert_protected_service_refusal(
 }
 
 fn assert_full_collection(completed: &MaterialCircuitTransition, result: &CollectionReceipt) {
-    let donor_income = income(completed, AccountId::Household(control::donor()));
-    let organization_income = income(completed, control::organization());
     assert_eq!(result.outcome, CollectionOutcome::Collected);
     assert_eq!(result.collected, control::money(COLLECTION));
     assert_eq!(result.performed_hours, 2);
+    assert_gift_postings(completed, result);
+}
+
+fn assert_gift_postings(completed: &MaterialCircuitTransition, result: &CollectionReceipt) {
+    let donor_income = income(completed, AccountId::Household(control::donor()));
+    let organization_income = income(completed, control::organization());
     let transfer = &completed.money_transfers[result
         .transfer_ordinal
         .expect("the fixture value `transfer_ordinal` is present before this read")
@@ -576,6 +583,10 @@ fn assert_full_collection(completed: &MaterialCircuitTransition, result: &Collec
     assert_eq!(
         transfer.credit.location,
         MoneyLocation::Cash(control::organization())
+    );
+    assert_eq!(
+        transfer.debit.delta.micro_units(),
+        -result.collected.micro_units()
     );
     assert_eq!(transfer.credit.delta, result.collected);
     assert_eq!(donor_income.statement.gift_expense, result.collected);
@@ -1000,4 +1011,201 @@ fn under_requested_essential_service_still_blocks_cash_and_hours() {
             )
         );
     }
+}
+
+fn prepaid_and_partly_admitted_opening() -> (MaterialCatalog, MaterialCircuitState) {
+    let (catalog, mut opening) = control::opening();
+    let donor = AccountId::Household(control::donor());
+    let (good_id, unit_id) = (control::good(6), control::unit(6));
+    let provider_a = control::site(EMPLOYER);
+    let provider_b = control::site(6);
+    // The dormant employer has no production capacity. It can accept a prepaid service order.
+    let mut definition = catalog.into_definition();
+    let output = definition
+        .process_outputs
+        .iter_mut()
+        .find(|r| r.site_id == provider_a)
+        .expect("dormant process");
+    output.good_id = good_id;
+    output.unit_id = unit_id;
+    let catalog = MaterialCatalog::try_new(definition).expect("two connected providers");
+    opening.service_connections.push(ServiceConnection {
+        provider_site_id: provider_a,
+        buyer: donor,
+        good_id,
+        unit_id,
+    });
+    let CircuitAccounting::Monetary(e) = &mut opening.accounting else {
+        panic!("monetary control")
+    };
+    let offers = &mut e.recurring.as_mut().expect("ordinary demand").offers;
+    offers
+        .iter_mut()
+        .find(|r| r.site_id == provider_b && r.good_id == good_id)
+        .expect("second provider's ordinary offer")
+        .unit_price = control::money(10_000_000_000);
+    offers.push(SellerOffer {
+        site_id: provider_a,
+        good_id,
+        unit_id,
+        unit_price: control::money(75_000_000),
+        pricing: PricePolicy::Fixed,
+    });
+    opening
+        .production_commitments
+        .retain(|r| r.site_id != provider_b);
+    let order_id = OrderId::from_bytes([37; 32]);
+    let (opening, prepaid) = babylon_material_circuit::admit_material_purchase(
+        &catalog,
+        &opening,
+        MaterialPurchase::Service(ServiceOrder {
+            order_id,
+            performance_period: 1,
+            provider_site_id: provider_a,
+            buyer: donor,
+            good_id,
+            unit_id,
+            quantity: 8,
+        }),
+        control::money(75_000_000),
+    )
+    .expect("eight units fully prepaid at the first provider");
+    assert_eq!(prepaid.debit.delta, control::money(-600_000_000));
+    (catalog, opening)
+}
+
+#[test]
+fn two_providers_fund_one_need_and_their_refunds_bind_the_partial_gift() {
+    let (catalog, opening) = prepaid_and_partly_admitted_opening();
+    let donor = AccountId::Household(control::donor());
+    let good_id = control::good(6);
+    let provider_a = control::site(EMPLOYER);
+    let provider_b = control::site(6);
+    let routine = control::close(&catalog, &opening, &[], &[]).expect("actual ordinary receipts");
+    let need = routine
+        .household_services
+        .iter()
+        .find(|r| r.principal_id == control::donor() && r.good_id == good_id)
+        .expect("household service need");
+    assert_eq!((need.required_quantity, need.unmet_quantity), (8, 8));
+    let mut refunds = 0;
+    for (provider, admitted, amount) in [
+        (provider_a, 8, 600_000_000),
+        (provider_b, 3, 30_000_000_000),
+    ] {
+        let row = routine
+            .service_performance
+            .iter()
+            .find(|r| r.buyer == donor && r.good_id == good_id && r.provider_site_id == provider)
+            .expect("provider-specific order");
+        assert_eq!(
+            (
+                row.requested_quantity,
+                row.admitted_quantity,
+                row.expired_quantity
+            ),
+            (8, admitted, admitted)
+        );
+        let id = OutboundOrderId::Service(row.order_id);
+        let reserve = routine
+            .money_transfers
+            .iter()
+            .find(|r| r.purpose == MoneyTransferPurpose::PurchaseReservation(id));
+        assert_eq!(
+            reserve.map(|r| r.credit.delta),
+            (provider == provider_b).then(|| control::money(amount))
+        );
+        let refund = routine
+            .money_transfers
+            .iter()
+            .find(|r| r.purpose == MoneyTransferPurpose::PurchaseRefund(id))
+            .expect("expired order refunded in full");
+        assert_eq!(
+            (
+                refund.debit.location,
+                refund.credit.location,
+                refund.credit.delta
+            ),
+            (
+                MoneyLocation::PurchaseReserve(id),
+                MoneyLocation::Cash(donor),
+                control::money(amount)
+            )
+        );
+        refunds += refund.credit.delta.micro_units();
+    }
+    let mut input = control::collection(1);
+    let floor = control::cash(&routine.state, donor) - refunds - 100_001;
+    input.protected_cash_floor = control::money(floor);
+    let closed = close_and_reexecute(&catalog, &opening, &[], &[input]);
+    let receipt = &closed.collections[0];
+    assert_eq!(
+        (receipt.outcome, receipt.collected, receipt.performed_hours),
+        (
+            CollectionOutcome::PartiallyCollected,
+            control::money(100_001),
+            2
+        )
+    );
+    assert_eq!(control::cash(&closed.state, donor), floor + refunds);
+    assert_eq!(
+        control::cash(&closed.state, control::organization())
+            - control::cash(&routine.state, control::organization()),
+        100_001
+    );
+    assert_eq!(
+        remaining(&routine.state, control::donor()) - remaining(&closed.state, control::donor()),
+        2
+    );
+    assert_gift_postings(&closed, receipt);
+}
+
+#[test]
+fn fully_satisfied_need_releases_the_expired_surplus_unit_refund() {
+    let (catalog, opening) = control::opening();
+    let donor = AccountId::Household(control::donor());
+    let order_id = OrderId::from_bytes([47; 32]);
+    let (opening, _) = babylon_material_circuit::admit_material_purchase(
+        &catalog,
+        &opening,
+        MaterialPurchase::Service(ServiceOrder {
+            order_id,
+            performance_period: 1,
+            provider_site_id: control::site(3),
+            buyer: donor,
+            good_id: control::good(3),
+            unit_id: control::unit(3),
+            quantity: 9,
+        }),
+        control::money(75_000_000),
+    )
+    .expect("nine prepaid units for an eight-unit need");
+    let ordinary = control::close(&catalog, &opening, &[], &[]).expect("ordinary service");
+    let need = ordinary
+        .household_services
+        .iter()
+        .find(|r| r.principal_id == control::donor() && r.good_id == control::good(3))
+        .expect("utility need");
+    assert_eq!(
+        (
+            need.required_quantity,
+            need.satisfied_quantity,
+            need.unmet_quantity
+        ),
+        (8, 8, 0)
+    );
+    let refund = ordinary
+        .money_transfers
+        .iter()
+        .find(|r| {
+            r.purpose == MoneyTransferPurpose::PurchaseRefund(OutboundOrderId::Service(order_id))
+        })
+        .expect("surplus unit expired");
+    assert_eq!(refund.credit.delta, control::money(75_000_000));
+    let mut input = control::collection(1);
+    let floor = control::cash(&ordinary.state, donor) - COLLECTION;
+    input.protected_cash_floor = control::money(floor);
+    let closed = control::close(&catalog, &opening, &[], &[input]).expect("eligible surplus");
+    assert_full_collection(&closed, &closed.collections[0]);
+    assert_eq!(control::cash(&closed.state, donor), floor);
 }

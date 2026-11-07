@@ -21,13 +21,14 @@ ADR293_wayne_resource_allocations:
     A partial gift records exact actual micros and still costs the existing
     two hours. Protected needs, due payments, floor and time remain binding.
     The uncollected remainder is terminal and never retries automatically.
-    Under the Director's Designed collection rule, a cash-funded essential
-    service can expire without blocking a gift of the remaining surplus.
-    Derive its protected amount from the actual current-close refund to that
-    household. Retain this cash alongside the floor and other protections.
+    Under the Director's Designed collection rule, aggregate paid units across
+    providers for the same household, essential service and unit. An unmet need
+    blocks a gift if paid units fall short of its requirement. If paid units
+    cover an unmet need, protect its actual current-close refunds alongside
+    the cash floor. A satisfied need adds no refund protection.
     Each order binds its admitted units, accepted price, reservation, performed
-    units, settlement and refund. A prior accepted order carries its own
-    opening reserve. A wholly or partly unfunded unmet need still blocks.
+    units, settlement and refund. Every due opening order must reconcile once
+    against its own carried reserve.
     The household retains its cash for ordinary later purchasing.
 
     The approved complete aid allocation independently selects food from zero

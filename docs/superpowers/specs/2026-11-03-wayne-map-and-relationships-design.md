@@ -30,9 +30,12 @@ scenario's existing defines file. Preserve the opening $1 treasury and real
 household endowments.
 
 At collection close, the household first covers current goods, its closing
-stocks and due payments. An unmet essential service blocks a gift if the
-household lacks full funding. A provider can deliver fewer units than the
-household paid for. The household keeps its refund and its protected cash floor.
+stocks and due payments. For each essential service, count the units the
+household paid for across its providers. Each due opening order must match
+its own payment and performance records exactly once. If an essential need
+remains unmet and the household paid for too few units, the gift stops.
+If paid units cover the need but service falls short, the
+household keeps the actual refunds for that need alongside its cash floor.
 
 Only the eligible surplus can fund a gift. Consent, pledged hours and actual
 available time still apply. This Designed rule uses a Derived refund from the

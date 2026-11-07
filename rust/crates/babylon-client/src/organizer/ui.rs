@@ -6492,7 +6492,7 @@ pub(crate) mod tests {
                 "2 shared material hours",
                 "consent: accepted",
                 "Protected consumption",
-                "keeps refunds for fully funded essential services",
+                "If a fully funded essential need remains unmet, the household keeps its refund",
                 "An unmet service without full funding blocks the gift",
                 "No cash or time is reserved",
                 "period 4",
@@ -6591,6 +6591,9 @@ pub(crate) mod tests {
             })
             .expect("the fixture yields the searched value");
         assert!(card.contains("up to $0.40 currency; 2 shared material hours"));
+        assert!(card.contains(
+            "If a fully funded essential need remains unmet, the household keeps its refund"
+        ));
         review_selected(&mut app);
         // Paint the reviewed model before inspecting the actual native text.
         app.update();

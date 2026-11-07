@@ -41,6 +41,7 @@ from tools.devtools.national_windowed_qualification import (
     Command,
     Commitment,
     ControlsEvidence,
+    Preview,
     expected_event,
 )
 
@@ -452,7 +453,11 @@ def _originals(
         identity = bytes(commitment.commitment_id).hex()
         if identity in posted:
             raise ValueError("material aid report repeats an original command")
-        posted[identity] = row
+        posted[identity] = (
+            commitment,
+            Preview.model_validate(row.get("preview")),
+            row.get("period"),
+        )
     if set(posted) != set(accepted):
         raise ValueError("native accepted aid differs from independent material accounting")
     for artifact in evidence.aid_originals:
@@ -461,6 +466,8 @@ def _originals(
         if identity not in accepted or artifact.name != "aid-" + identity + ".json":
             raise ValueError("native original aid file does not name its accepted commitment")
         review, confirm, commitment = accepted[identity]
+        posted_commitment, posted_preview, posted_period = posted[identity]
+        admission = Preview.model_validate(original.review.admission)
         command = commitment.command
         epoch = review.state.scope_epoch
         view = original.review.before.get("view")
@@ -470,6 +477,7 @@ def _originals(
             (original.policy_sha256, original.foundation_sha256)
             != (evidence.policy_sha256, evidence.foundation_sha256)
             or original.commitment != commitment
+            or posted_commitment != commitment
             or original.review.command != command
             or bytes(command.campaign_id) != UUID(evidence.campaign).bytes
             or command.expected_period != review.state.durable_tick
@@ -478,12 +486,13 @@ def _originals(
             or original.review.scope != RuntimeScope(epoch=epoch, campaign_id=evidence.campaign)
             or original.review.observation_generation != review.state.generation
             or review.state.preview is None
-            or original.review.admission != review.state.preview.model_dump(mode="json")
+            or admission != review.state.preview
             or view.get("period") != command.expected_period
-            or original.review.admission.get("refusal") is not None
+            or admission.refusal is not None
             or confirm.state.durable_tick != command.expected_period
-            or posted[identity].get("preview") != original.review.admission
-            or posted[identity].get("period") != commitment.resolves_period
+            or posted_preview != admission
+            or type(posted_period) is not int
+            or posted_period != commitment.resolves_period
         ):
             raise ValueError(
                 "native original aid custody differs from review, acceptance or posting"

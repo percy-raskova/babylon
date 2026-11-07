@@ -459,6 +459,18 @@ class ControlState(FrozenRecord):
     production_details_open: StrictBool
     production_reading: StrictStr | None
 
+    @property
+    def selected_allocation(self) -> Allocation | None:
+        if self.allocation_error is not None:
+            return None
+        if self.choice == "collect":
+            slot = self.collection_allocation
+            return slot if isinstance(slot, CollectionAllocation) else None
+        if self.choice in ("local_aid", "remote_aid"):
+            aid = self.aid_allocation
+            return aid if isinstance(aid, AidAllocation) else None
+        return "none"
+
     @field_validator("periods_per_second")
     @classmethod
     def supported_speed(cls, value: float) -> float:
@@ -546,6 +558,7 @@ class ControlChannel:
         self.initial_tick = initial_tick
         self.state: ControlState | None = None
         self.records: list[ActionObservation] = []
+        self._review_witness: ControlState | None = None
         self.sequence = 0
         self.foundation: str | None = None
         self.scope_epoch: int | None = None
@@ -623,6 +636,13 @@ class ControlChannel:
         if prior is not None and self.ready:
             if current.generation < prior.generation:
                 raise ControlRefusal("native control generation moved backward")
+            if action in ("review", "confirm") and (
+                current.generation != prior.generation
+                or current.viewed_tick != prior.viewed_tick
+                or current.viewed_tick != current.durable_tick
+                or current.phase != "Ready"
+            ):
+                raise ControlRefusal("native organizer review context changed")
             if current.perspective != prior.perspective:
                 raise ControlRefusal("native control perspective changed")
             if action == "step" and event == "committed_and_installed":
@@ -718,6 +738,13 @@ class ControlChannel:
                         state=reply.state,
                     )
                 )
+            if (
+                action != "status"
+                or reply.event != "observed"
+                or reply.reason is not None
+                or reply.state != self._review_witness
+            ):
+                self._review_witness = None
             self.state = reply.state
             return reply
         except (OSError, ControlRefusal) as error:
@@ -735,6 +762,14 @@ class ControlChannel:
 
     def perform(self, action: Action, timeout: float) -> ControlState:
         prior = self.state
+        if action == "review" and (
+            prior is None or prior.phase != "Ready" or prior.selected_allocation is None
+        ):
+            self.close()
+            raise ControlRefusal("native review requires a valid current selection")
+        if action == "confirm" and (self._review_witness is None or self._review_witness != prior):
+            self.close()
+            raise ControlRefusal("native confirmation requires this channel's current review")
         reply = self._exchange(action, timeout)
         if reply.event != expected_event(action) or reply.reason is not None:
             self.close()
@@ -773,29 +808,39 @@ class ControlChannel:
         if action in ("play", "pause") and reply.state.playing != (action == "play"):
             self.close()
             raise ControlRefusal("native playback acknowledgment has the wrong scheduling state")
-        if action == "review" and (
-            reply.state.reviewed_command is None
-            or reply.state.preview is None
-            or reply.state.preview.refusal is not None
-            or reply.state.choice != reply.state.reviewed_command.choice
-            or bytes(reply.state.reviewed_command.campaign_id) != UUID(self.campaign).bytes
-            or reply.state.reviewed_command.expected_period != reply.state.durable_tick
-            or reply.state.preview.choice != reply.state.reviewed_command.choice
-            or reply.state.preview.allocation != reply.state.reviewed_command.allocation
-            or reply.state.preview.current_period != reply.state.reviewed_command.expected_period
-        ):
-            self.close()
-            raise ControlRefusal("native preview lacks its reviewed command")
+        if action == "review":
+            command = reply.state.reviewed_command
+            preview = reply.state.preview
+            if (
+                prior is None
+                or command is None
+                or preview is None
+                or preview.refusal is not None
+                or prior.choice != command.choice
+                or prior.selected_allocation != command.allocation
+                or reply.state.choice != command.choice
+                or reply.state.selected_allocation != command.allocation
+                or bytes(command.campaign_id) != UUID(self.campaign).bytes
+                or command.expected_period != reply.state.durable_tick
+                or preview.choice != command.choice
+                or preview.allocation != command.allocation
+                or preview.current_period != command.expected_period
+                or preview.resolves_period != command.expected_period + 1
+            ):
+                self.close()
+                raise ControlRefusal("native preview differs from its selected original")
+            self._review_witness = reply.state
         if action == "confirm" and (
             prior is None
-            or prior.reviewed_command is None
             or prior.preview is None
+            or reply.state.reviewed_command is not None
+            or reply.state.preview is not None
             or reply.state.commitment is None
             or reply.state.commitment.resolves_period != prior.preview.resolves_period
             or reply.state.commitment.command != prior.reviewed_command
         ):
             self.close()
-            raise ControlRefusal("native acceptance has a different reviewed command")
+            raise ControlRefusal("native acceptance failed to consume its reviewed original")
         return reply.state
 
 

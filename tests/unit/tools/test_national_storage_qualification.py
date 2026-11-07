@@ -3900,3 +3900,51 @@ def test_fresh_response_requires_its_actual_containing_period(date):
     row["first_response_period"] = date
     with pytest.raises(ValueError):
         AidPracticeEvidence.model_validate(row)
+
+
+@pytest.mark.parametrize(
+    "fault", ["posted_amount", "original_preview_bool", "posted_preview_bool", "matching"]
+)
+def test_original_reconciliation_matches_strictly_typed_each_copy(
+    tmp_path: Path, fault: str
+) -> None:
+    import json
+
+    from tools.devtools.national_native_evidence import NativeRunEvidence, _originals
+    from tools.devtools.national_storage_qualification import PlayableReport
+    from tools.devtools.national_windowed_qualification import ControlsEvidence
+
+    manifest, report, *_unused, records = native_join_evidence(tmp_path)
+    controls = ControlsEvidence.model_validate(records["native-controls.json"])
+    entry = manifest["aid_originals"][0]
+    row = report["aid_periods"][0]
+    row["preview"] = deepcopy(row["preview"])
+    row["commitment"] = deepcopy(row["commitment"])
+    if fault == "posted_amount":
+        row["commitment"]["command"]["allocation"]["aid"]["food_quantity"] = 2
+    elif fault == "posted_preview_bool":
+        row["preview"]["allocation"]["aid"]["food_quantity"] = True
+    elif fault == "original_preview_bool":
+        original = json.loads((tmp_path / entry["name"]).read_bytes())
+        original["review"]["admission"]["allocation"]["aid"]["food_quantity"] = True
+        data = json.dumps(original).encode()
+        (tmp_path / entry["name"]).write_bytes(data)
+        entry["sha256"] = hashlib.sha256(data).hexdigest()
+    if fault == "matching":
+        assert (
+            _originals(
+                NativeRunEvidence.model_validate(manifest),
+                tmp_path,
+                controls,
+                PlayableReport.model_validate(report),
+            )
+            == 2
+        )
+    else:
+        with pytest.raises(ValueError):
+            _originals(
+                NativeRunEvidence.model_validate(manifest),
+                tmp_path,
+                controls,
+                PlayableReport.model_validate(report),
+            )

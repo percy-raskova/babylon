@@ -6,6 +6,7 @@ import json
 import socket
 import sys
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -334,6 +335,7 @@ def test_new_choice_reviews_confirms_and_checks_exact_readback(
                     event = "preview_admitted"
                 elif action == "confirm":
                     fields["commitment"] = commitment
+                    fields["reviewed_command"] = fields["preview"] = None
                     event = "acceptance_admitted"
                 peer.sendall(
                     json.dumps(
@@ -946,6 +948,7 @@ def test_standing_choice_uses_the_acknowledged_inspector_state(
                     event = "preview_admitted"
                 elif action == "confirm":
                     fields["commitment"] = commitment
+                    fields["reviewed_command"] = fields["preview"] = None
                     event = "acceptance_admitted"
                 else:
                     event, reason = "refused", "control_stale_or_unavailable"
@@ -1167,3 +1170,164 @@ def test_tagged_action_socket_encodes_exact_variant_and_records_it(
             assert channel.records[-1].action == action
     finally:
         channel.close()
+
+
+OrganizerChannel = tuple[windowed.ControlChannel, socket.socket]
+
+
+@pytest.fixture
+def organizer_channel() -> Iterator[OrganizerChannel]:
+    local, peer = socket.socketpair()
+    channel = windowed.ControlChannel(local, CAMPAIGN, 0)
+    with peer:
+        try:
+            yield channel, peer
+        finally:
+            channel.close()
+
+
+@pytest.mark.parametrize("choice", ["local_aid", "collect"])
+@pytest.mark.parametrize(
+    "fault", ["matching", "changed_amount", "changed_choice", "invalid_edit", "missing_slot"]
+)
+def test_review_matches_prior_applicable_selection(
+    organizer_channel: OrganizerChannel, choice: str, fault: str
+) -> None:
+    channel, peer = organizer_channel
+    # Both persisted slots exist independently of the selected practice.
+    selected = state()
+    selected.update(
+        choice=choice, collection_allocation={"collection": {"target_cash_micros": "280000000"}}
+    )
+    applicable = "collection_allocation" if choice == "collect" else "aid_allocation"
+    receipt_choice = "remote_aid" if fault == "changed_choice" else choice
+    command, preview, _ = admission_fields(receipt_choice, 0)
+    if receipt_choice == "collect":
+        allocation = {
+            "collection": {
+                "target_cash_micros": "290000000" if fault == "changed_amount" else "280000000"
+            }
+        }
+    else:
+        allocation = {
+            "aid": {"food_quantity": 2 if fault == "changed_amount" else 1, "cash_micros": "0"}
+        }
+    command["allocation"] = preview["allocation"] = allocation
+    receipt_slot = "collection_allocation" if receipt_choice == "collect" else "aid_allocation"
+    reviewed = {
+        **selected,
+        "choice": receipt_choice,
+        receipt_slot: allocation,
+        "reviewed_command": command,
+        "preview": preview,
+    }
+    if fault == "invalid_edit":
+        selected.update(
+            focused_amount="contribution" if choice == "collect" else "food",
+            amount_text="1-",
+            allocation_error="invalid quantity",
+        )
+    if fault == "missing_slot":
+        selected[applicable] = None
+    peer.sendall(response(1, **selected))
+    channel.observe(1)
+    peer.sendall(response(2, "preview_admitted", **reviewed))
+    if fault == "matching":
+        assert channel.perform("review", 1).reviewed_command == windowed.Command.model_validate(
+            command
+        )
+    else:
+        with pytest.raises(windowed.ControlRefusal):
+            channel.perform("review", 1)
+        assert channel.sequence == (1 if fault in ("invalid_edit", "missing_slot") else 2)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "status_only",
+        "changed_then_restored",
+        "generation",
+        "cleared_review",
+        "consumed",
+        "matching",
+    ],
+)
+def test_only_witnessed_unchanged_review_can_send_confirm(
+    organizer_channel: OrganizerChannel, fault: str
+) -> None:
+    channel, peer = organizer_channel
+    command, preview, commitment = admission_fields("local_aid", 0)
+    reviewed = {"choice": "local_aid", "reviewed_command": command, "preview": preview}
+    peer.sendall(response(1, **(reviewed if fault == "status_only" else {"choice": "local_aid"})))
+    channel.observe(1)
+    if fault != "status_only":
+        peer.sendall(response(2, "preview_admitted", **reviewed))
+        channel.perform("review", 1)
+    if fault == "changed_then_restored":
+        changed = {**reviewed, "aid_allocation": {"aid": {"food_quantity": 2, "cash_micros": "0"}}}
+        peer.sendall(response(3, **changed))
+        channel.observe(1)
+        peer.sendall(response(4, **reviewed))
+        channel.observe(1)
+    if fault == "generation":
+        peer.sendall(response(3, **reviewed, generation=2))
+        channel.observe(1)
+    if fault == "cleared_review":
+        peer.sendall(response(3, choice="local_aid"))
+        channel.observe(1)
+    if fault in ("matching", "consumed"):
+        peer.sendall(response(3, **reviewed))
+        channel.observe(1)
+        peer.sendall(response(4, "acceptance_admitted", choice="local_aid", commitment=commitment))
+        assert channel.perform("confirm", 1).commitment == windowed.Commitment.model_validate(
+            commitment
+        )
+        if fault == "matching":
+            return
+        peer.sendall(response(5, **reviewed))
+        channel.observe(1)
+    sequence = channel.sequence
+    with pytest.raises(windowed.ControlRefusal, match="requires this channel's current review"):
+        channel.perform("confirm", 1)
+    assert channel.sequence == sequence
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "uncleared_command",
+        "uncleared_preview",
+        "changed_nonce",
+        "changed_resolves_period",
+        "changed_generation",
+    ],
+)
+def test_witnessed_acceptance_must_clear_and_match_original(
+    organizer_channel: OrganizerChannel, fault: str
+) -> None:
+    channel, peer = organizer_channel
+    command, preview, commitment = admission_fields("local_aid", 0)
+    peer.sendall(response(1, choice="local_aid"))
+    channel.observe(1)
+    peer.sendall(
+        response(
+            2, "preview_admitted", choice="local_aid", reviewed_command=command, preview=preview
+        )
+    )
+    channel.perform("review", 1)
+    accepted = {"choice": "local_aid", "commitment": commitment}
+    if fault == "uncleared_command":
+        accepted["reviewed_command"] = command
+    elif fault == "uncleared_preview":
+        accepted["preview"] = preview
+    elif fault == "changed_nonce":
+        commitment["command"]["nonce"] = [98] * 16
+    elif fault == "changed_resolves_period":
+        commitment["resolves_period"] += 1
+    else:
+        accepted["generation"] = 2
+    peer.sendall(response(3, "acceptance_admitted", **accepted))
+    with pytest.raises(windowed.ControlRefusal):
+        channel.perform("confirm", 1)
+    assert channel.sequence == 3

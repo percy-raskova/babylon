@@ -68,7 +68,9 @@ class AidPracticeEvidence(FrozenRecord):
     cash_received_period: Positive | None
     first_response_period: Positive | None
     partner_actor: Quantity | None
-    partner_response: Literal["not_requested", "no_response", "refused", "participated"]
+    partner_response: Literal[
+        "not_requested", "no_response", "refused", "participated", "unable_to_participate"
+    ]
     outcome: Literal[
         "aid_awaiting_support",
         "no_qualifying_support",
@@ -100,6 +102,14 @@ class AidPracticeEvidence(FrozenRecord):
             )
         ):
             raise ValueError("aid support facts must retain actual receipt amounts and dates")
+        if self.outcome == "aid_response_retained":
+            if self.first_response_period is None or self.first_response_period >= self.period:
+                raise ValueError("retained aid response requires its strictly earlier first date")
+        elif self.outcome in ("aid_awaiting_support", "no_qualifying_support"):
+            if self.first_response_period is not None:
+                raise ValueError("aid without a response cannot claim a first response date")
+        elif self.first_response_period != self.period:
+            raise ValueError("first aid response must retain its actual containing period")
         return self
 
 
@@ -1695,6 +1705,7 @@ def evaluate_playable(
     )
     positive_commands: set[tuple[int, ...]] = set()
     consumed_commands: set[tuple[int, ...]] = set()
+    first_responses: dict[tuple[int, ...], AidPracticeEvidence] = {}
     for boundary, fact in zip(playable.boundaries, facts, strict=True):
         if (
             not isinstance(fact, dict)
@@ -1745,6 +1756,26 @@ def evaluate_playable(
             if evidence.period != boundary.tick:
                 raise ValueError("independent practice period differs from receipt")
             command = evidence.original_commitment
+            first_response = first_responses.get(command)
+            if evidence.outcome == "aid_response_retained":
+                if first_response is None:
+                    incomplete = True
+                elif (
+                    evidence.mandate,
+                    evidence.dispatch_period,
+                    evidence.first_response_period,
+                ) != (
+                    first_response.mandate,
+                    first_response.dispatch_period,
+                    first_response.period,
+                ):
+                    raise ValueError(
+                        "retained aid response differs from its witnessed first response"
+                    )
+            elif first_response is not None:
+                raise ValueError("an original aid response cannot be replaced or erased")
+            elif evidence.first_response_period is not None:
+                first_responses[command] = evidence
             food_matches = evidence.food_consumed and (
                 evidence.food_consumed_quantity <= delivered_this_period.get(command, 0)
             )

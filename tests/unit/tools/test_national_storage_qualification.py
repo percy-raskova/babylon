@@ -1610,13 +1610,13 @@ def test_actual_material_playable_admission_keeps_window_and_fun_unqualified():
     assert "fun remain unqualified" in result["scope"]
 
 
-def operational_aid_evidence():
+def operational_aid_evidence(count=2):
     """Designed protocol evidence for remote dispatch1, pause2, arrival2.
 
     These evaluator controls do not establish actual engine execution. The
     finite engine scheduler has its own material replay controls.
     """
-    report = playable_evidence()[0]
+    report = playable_evidence(count=count)[0]
     command = report["aid_periods"][0]["commitment"]["commitment_id"]
     report["aid_periods"] = report["aid_periods"][:1]
     report["local_consumed"] = False
@@ -3646,11 +3646,8 @@ def test_current_aid_boundary_requires_v2_and_explicit_food_facts():
             AidBoundary.model_validate(missing)
 
 
-@pytest.mark.parametrize("consumed_quantity", [0, 1])
-def test_retained_cash_response_uses_original_period_posting_not_arrival_period(consumed_quantity):
-    from copy import deepcopy
-
-    report = operational_aid_evidence()
+def retained_cash_evidence(consumed_quantity=1, count=2):
+    report = operational_aid_evidence(count=count)
     facts = report["independent_account_posting_audit"]["periods"]
     arrival = facts[1]["independent_practices"][0]
     first = deepcopy(arrival)
@@ -3687,8 +3684,212 @@ def test_retained_cash_response_uses_original_period_posting_not_arrival_period(
         recipient_debited_hours=0,
     )
     report["remote_consumed"] = consumed_quantity > 0
+    if count > 2:
+        facts[-1]["independent_practices"] = facts[1]["independent_practices"]
+        facts[-1]["selected_aid"] = facts[1]["selected_aid"]
+        facts[1]["independent_practices"] = []
+        facts[1]["selected_aid"] = []
+        arrival.update(period=count, food_consumption_period=count if consumed_quantity else None)
+    return report
+
+
+@pytest.mark.parametrize("consumed_quantity", [0, 1])
+def test_retained_cash_response_uses_original_period_posting_not_arrival_period(consumed_quantity):
+    report = retained_cash_evidence(consumed_quantity)
+    facts = report["independent_account_posting_audit"]["periods"]
+    first = facts[0]["independent_practices"][0]
+    arrival = facts[1]["independent_practices"][0]
     assert playable_result(report)["operational_smoke_status"] == "qualified"
     assert first["food_consumed"] is False and first["food_consumption_period"] is None
     assert arrival["cash_received_micros"] == "0" and arrival["cash_received_period"] is None
     facts[0]["selected_aid"].pop()
     assert playable_result(report)["operational_smoke_status"] == "incomplete"
+
+
+def cash_only_producer_practice():
+    """Map the committed Rust close with the same fields as qualification_audit/aid/practice.rs."""
+    import json
+
+    fixture = json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "rust/crates/babylon-persistence/tests/fixtures/cash_only_no_food_v16.json"
+        ).read_bytes()
+    )
+    resolution = fixture["resolutions"][0]
+    support, practice = resolution["support"], resolution["practice"]
+    assert support["status"] == "not_requested"
+    assert support["cash_status"] == "granted"
+    assert practice["time_use"] == []
+    return fixture, {
+        "original_commitment": support["original_commitment_id"],
+        "mandate": support["mandate_id"],
+        "dispatch_period": support["dispatch_period"],
+        "period": practice["period"],
+        "qualifying_received_support": int(
+            support["material_postings"]["payer_cash_granted_micros"]
+        )
+        > 0,
+        "food_consumed": False,
+        "food_consumed_quantity": 0,
+        "food_consumption_period": None,
+        "cash_received_micros": support["material_postings"]["payer_cash_granted_micros"],
+        "cash_received_period": support["period"],
+        "first_response_period": resolution["pending"]["response"]["period"],
+        "partner_actor": practice["partner_actor_id"],
+        "partner_response": practice["partner_response"],
+        "outcome": practice["outcome"],
+        "recipient_debited_hours": 0,
+        "finite_practice_completed": practice["outcome"] == "aid_practice_completed",
+    }
+
+
+def test_actual_cash_producer_inability_is_valid_incomplete_evidence():
+    from tools.devtools.national_native_evidence import AidBoundary
+
+    fixture, practice = cash_only_producer_practice()
+    report = operational_aid_evidence()
+    command = practice["original_commitment"]
+    report["aid_periods"][0]["commitment"] = fixture["accepted"]
+    audit = report["independent_account_posting_audit"]
+    first, later = audit["periods"]
+    first["independent_practices"] = [practice]
+    first["selected_aid"] = [
+        {
+            "original_commitment": command,
+            "mandate": practice["mandate"],
+            "dispatch_period": practice["dispatch_period"],
+            "outcome": "CashGranted",
+            "quantity": 0,
+            "cash_micros": practice["cash_received_micros"],
+        }
+    ]
+    later.update(selected_aid=[], independent_practices=[])
+    report["remote_consumed"] = False
+    report["independent_finite_aid_practice"].update(
+        completed_original_commands=[], terminal_original_commands=[command]
+    )
+    parsed = AidBoundary.model_validate({"version": 2, **first}).independent_practices[0]
+    assert parsed.partner_response == "unable_to_participate"
+    assert parsed.outcome == "insufficient_time"
+    assert parsed.qualifying_received_support and parsed.cash_received_micros == "3"
+    assert not parsed.food_consumed and parsed.food_consumption_period is None
+    assert not parsed.finite_practice_completed and parsed.recipient_debited_hours == 0
+    assert playable_result(report)["operational_smoke_status"] == "incomplete"
+
+
+@pytest.mark.parametrize("changed_date,count", [(None, 2), (2, 2), (2, 4)])
+def test_retained_response_cannot_erase_or_retime_first_attempt(changed_date, count):
+    report = retained_cash_evidence(count=count)
+    horizon_policy = configured(routine_smoke_periods=count)
+    assert (
+        playable_result(report, count=count, selected_policy=horizon_policy)[
+            "operational_smoke_status"
+        ]
+        == "qualified"
+    )
+    arrival = report["independent_account_posting_audit"]["periods"][-1]["independent_practices"][0]
+    arrival["first_response_period"] = changed_date
+    with pytest.raises(ValueError):
+        playable_result(report, count=count, selected_policy=horizon_policy)
+
+
+def test_retained_response_requires_a_witnessed_first_attempt():
+    report = retained_cash_evidence()
+    # Keep the old positive summary and cash posting: neither replaces the missing response.
+    report["independent_account_posting_audit"]["periods"][0]["independent_practices"] = []
+    assert playable_result(report)["operational_smoke_status"] == "incomplete"
+
+
+@pytest.mark.parametrize(
+    "response,outcome",
+    [
+        ("participated", "aid_practice_completed"),
+        ("refused", "aid_practice_uncompleted"),
+        ("no_response", "aid_practice_uncompleted"),
+        ("unable_to_participate", "insufficient_time"),
+    ],
+)
+def test_first_response_outcomes_survive_retention_and_cannot_be_retried(response, outcome):
+    from tools.devtools.national_storage_qualification import AidPracticeEvidence
+
+    report = retained_cash_evidence()
+    facts = report["independent_account_posting_audit"]["periods"]
+    first, retained = facts[0]["independent_practices"][0], facts[1]["independent_practices"][0]
+    completed = outcome == "aid_practice_completed"
+    first.update(
+        partner_response=response,
+        outcome=outcome,
+        finite_practice_completed=completed,
+        recipient_debited_hours=int(completed),
+    )
+    report["independent_finite_aid_practice"]["completed_original_commands"] = (
+        [first["original_commitment"]] if completed else []
+    )
+    # Frozen current evidence survives JSON round-trip without changing the first date/outcome.
+    parsed = AidPracticeEvidence.model_validate(first)
+    assert AidPracticeEvidence.model_validate_json(parsed.model_dump_json()) == parsed
+    retained_parsed = AidPracticeEvidence.model_validate(retained)
+    assert (
+        AidPracticeEvidence.model_validate_json(retained_parsed.model_dump_json())
+        == retained_parsed
+    )
+    assert retained_parsed.partner_response == "not_requested"
+    assert retained_parsed.recipient_debited_hours == 0
+    assert not retained_parsed.finite_practice_completed
+    assert playable_result(report)["operational_smoke_status"] == (
+        "qualified" if completed else "incomplete"
+    )
+    assert retained["first_response_period"] == parsed.period == 1
+    retained.update(
+        first_response_period=2,
+        outcome="aid_practice_completed",
+        finite_practice_completed=True,
+        partner_actor=first["partner_actor"],
+        partner_response="participated",
+        recipient_debited_hours=1,
+    )
+    with pytest.raises(ValueError):
+        playable_result(report)
+
+
+@pytest.mark.parametrize("response", ["unknown", "", None, True])
+def test_partner_response_vocabulary_stays_closed(response):
+    from tools.devtools.national_storage_qualification import AidPracticeEvidence
+
+    _, row = cash_only_producer_practice()
+    row["partner_response"] = response
+    with pytest.raises(ValueError):
+        AidPracticeEvidence.model_validate(row)
+
+
+def test_pending_support_has_no_first_response_date():
+    from tools.devtools.national_storage_qualification import AidPracticeEvidence
+
+    _, row = cash_only_producer_practice()
+    row.update(
+        outcome="aid_awaiting_support",
+        partner_response="not_requested",
+        partner_actor=None,
+        first_response_period=None,
+        qualifying_received_support=False,
+        cash_received_micros="0",
+        cash_received_period=None,
+    )
+    assert AidPracticeEvidence.model_validate(row).first_response_period is None
+    row["first_response_period"] = 1
+    with pytest.raises(ValueError):
+        AidPracticeEvidence.model_validate(row)
+
+
+@pytest.mark.parametrize("date", [None, 1])
+def test_fresh_response_requires_its_actual_containing_period(date):
+    from tools.devtools.national_storage_qualification import AidPracticeEvidence
+
+    row = operational_aid_evidence()["independent_account_posting_audit"]["periods"][1][
+        "independent_practices"
+    ][0]
+    assert row["period"] == row["first_response_period"] == 2
+    row["first_response_period"] = date
+    with pytest.raises(ValueError):
+        AidPracticeEvidence.model_validate(row)

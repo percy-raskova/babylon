@@ -1,7 +1,8 @@
 use super::{RuntimeSessionResponse, RuntimeSessionScope};
 use crate::organizer_runtime::{
-    OrganizerAidOrdinaryOffer, OrganizerAidTransportPreview, OrganizerBodyDisclosure,
-    OrganizerBodyScope, OrganizerCollectionPreview, OrganizerMaterialAidPreview, OrganizerSnapshot,
+    OrganizerAidFunding, OrganizerAidOrdinaryOffer, OrganizerAidTransportPreview,
+    OrganizerBodyDisclosure, OrganizerBodyScope, OrganizerCollectionPreview,
+    OrganizerMaterialAidPreview, OrganizerSnapshot,
 };
 use babylon_kernel::clock::CampaignDuration;
 use babylon_practice_contract::{
@@ -84,7 +85,7 @@ fn reply(payer: i128, gift: i128, price: i128) -> RuntimeSessionResponse {
                     time: None,
                     transport: OrganizerAidTransportPreview::Local,
                 }),
-                payer_cash: Some(payer),
+                funding: OrganizerAidFunding::Organization { cash_micros: payer },
                 maximum_quantity: 3,
                 maximum_cash_micros: gift,
                 coordination_hours: 1,
@@ -115,7 +116,10 @@ fn tagged_organizer_money_roundtrips_exact_full_i128() {
         let wire: Value =
             serde_json::from_slice(&encoded).expect("the authored bytes match the declared schema");
         let aid = &wire["snapshot"]["aid"][0];
-        assert_eq!(aid["payer_cash"], payer.to_string());
+        assert_eq!(
+            aid["funding"]["organization"]["cash_micros"],
+            payer.to_string()
+        );
         assert_eq!(aid["maximum_cash_micros"], gift.to_string());
         assert_eq!(
             aid["food"]["ordinary_offer"]["unit_price"],
@@ -139,8 +143,8 @@ fn organizer_body_fields_are_required_in_current_wire_and_fixtures() {
         );
     }
     for bytes in [
-        include_str!("../../tests/fixtures/national_organizer_opening_v18.json"),
-        include_str!("../../tests/fixtures/national_organizer_pending_v18.json"),
+        include_str!("../../tests/fixtures/national_organizer_opening_v19.json"),
+        include_str!("../../tests/fixtures/national_organizer_pending_v19.json"),
     ] {
         let snapshot: OrganizerSnapshot =
             serde_json::from_str(bytes).expect("current fixture is complete");
@@ -175,15 +179,14 @@ fn tagged_organizer_money_refuses_noncanonical_numeric_and_overflow_values() {
         serde_json::json!("-170141183460469231731687303715884105729"),
         serde_json::json!("99999999999999999999999999999999999999999"),
     ];
-    for field in ["payer_cash", "maximum_cash_micros", "unit_price"] {
+    for field in ["cash_micros", "maximum_cash_micros", "unit_price"] {
         for value in &bad {
-            if field == "payer_cash" && value.is_null() {
-                continue;
-            }
             let mut changed = valid.clone();
             let aid = &mut changed["snapshot"]["aid"][0];
             if field == "unit_price" {
                 aid["food"]["ordinary_offer"][field] = value.clone();
+            } else if field == "cash_micros" {
+                aid["funding"]["organization"][field] = value.clone();
             } else {
                 aid[field] = value.clone();
             }
@@ -272,11 +275,28 @@ fn collection_snapshot_requires_evidence_and_exact_cash_strings() {
 }
 
 #[test]
-fn unavailable_preview_legs_are_explicit_required_nulls() {
+fn unavailable_preview_legs_have_required_explicit_representations() {
     let valid = serde_json::to_value(reply(42, 3, 7)).expect("wire value");
-    for field in ["food", "payer_cash"] {
+    let mut legacy = valid.clone();
+    let offer = legacy["snapshot"]["aid"][0].as_object_mut().expect("offer");
+    offer.remove("funding");
+    offer.insert("payer_cash".into(), Value::from("42"));
+    assert!(serde_json::from_value::<RuntimeSessionResponse>(legacy).is_err());
+    for bad in [
+        Value::Null,
+        serde_json::json!({"mandated": {"cash_micros": "7"}}),
+        serde_json::json!({"organization": {}}),
+    ] {
+        let mut changed = valid.clone();
+        changed["snapshot"]["aid"][0]["funding"] = bad;
+        assert!(serde_json::from_value::<RuntimeSessionResponse>(changed).is_err());
+    }
+    for (field, absent) in [
+        ("food", Value::Null),
+        ("funding", Value::from("unavailable")),
+    ] {
         let mut unavailable = valid.clone();
-        unavailable["snapshot"]["aid"][0][field] = Value::Null;
+        unavailable["snapshot"]["aid"][0][field] = absent;
         let decoded: RuntimeSessionResponse =
             serde_json::from_value(unavailable.clone()).expect("explicit unavailable leg");
         assert_eq!(serde_json::to_value(decoded).expect("wire"), unavailable);

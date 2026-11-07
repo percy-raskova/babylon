@@ -967,3 +967,70 @@ def test_mixed_confirm_reopen_stops_before_p3_on_its_own_slow_receipt(tmp_path):
         failed["elapsed_ns"] == 181_000_000_000
         and failed["state"]["scope_epoch"] == after.scope_epoch
     )
+
+
+@pytest.mark.parametrize(
+    ("postings", "pending", "should_follow"),
+    [
+        ([(3, "Unshipped", 1), (3, "Dispatched", 1)], True, False),
+        ([(3, "Dispatched", 2), (4, "Lost", 1)], True, False),
+        ([(3, "Unshipped", 1), (3, "Dispatched", 1), (4, "Granted", 1)], False, True),
+        ([(3, "Dispatched", 2), (4, "Lost", 1), (4, "Lost", 1)], False, True),
+        ([(3, "FoodReceivingRefused", 2)], False, True),
+        ([(3, "Unshipped", 2)], False, True),
+        ([(3, "CashGranted", 0)], False, False),
+        ([(3, "Dispatched", 2), (4, "Lost", 1)], False, None),
+        ([(3, "Unshipped", 2)], True, None),
+    ],
+)
+def test_walk_cash_follow_up_waits_for_reconciled_mixed_food(
+    tmp_path, postings, pending, should_follow
+):
+    from tools.devtools.national_windowed_qualification import AidAllocation, AidAmounts
+
+    original = (1,) * 32
+    run = SimpleNamespace(
+        directory=tmp_path,
+        periods=10,
+        material=[
+            SimpleNamespace(
+                aid=SimpleNamespace(
+                    period=period,
+                    selected_aid=[
+                        {
+                            "original_commitment": list(original),
+                            "outcome": outcome,
+                            "quantity": quantity,
+                        }
+                        for at, outcome, quantity in postings
+                        if at == period
+                    ],
+                )
+            )
+            for period in (3, 4)
+        ],
+    )
+    walk = runner.WayneWalk(run)
+    walk.originals["remote-mixed"] = SimpleNamespace(
+        commitment_id=original,
+        resolves_period=3,
+        command=SimpleNamespace(
+            allocation=AidAllocation(aid=AidAmounts(food_quantity=2, cash_micros="280000000"))
+        ),
+    )
+    walk.capture_stage = lambda *_args: {}
+    proposals = []
+    walk.submit = lambda _channel, _root, choice, label, **_kwargs: proposals.append(
+        (choice.period, label)
+    )
+    held = [SimpleNamespace(original_commitment_id=original)] if pending else []
+    state = SimpleNamespace(
+        durable_tick=4, installed_organizer=SimpleNamespace(period=4, pending_freight=held)
+    )
+    if should_follow is None:
+        with pytest.raises(ValueError, match="installed mixed freight"):
+            walk.installed(None, tmp_path, state)
+        assert not proposals
+    else:
+        walk.installed(None, tmp_path, state)
+        assert proposals == ([(5, "local-cash")] if should_follow else [])

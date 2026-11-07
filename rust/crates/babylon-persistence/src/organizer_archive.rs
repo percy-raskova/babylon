@@ -1142,7 +1142,7 @@ mod projection_tests {
     fn scoped_archive_bounds_partner_revisions_and_retains_earlier_acquisition() {
         use crate::runtime_session::OrganizerSnapshot;
         let captured: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../tests/fixtures/national_organizer_pending_v18.json"
+            "../tests/fixtures/national_organizer_pending_v19.json"
         ))
         .expect("real national topics");
         let partner = &captured.view.aid_partners[0];

@@ -2307,7 +2307,7 @@ pub(crate) mod tests {
         use bevy::ecs::system::RunSystemOnce;
         let captured: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../babylon-persistence/tests/fixtures/national_organizer_pending_v18.json"
+            "/../babylon-persistence/tests/fixtures/national_organizer_pending_v19.json"
         )))
         .expect("actual pending national snapshot");
         let actor_id = captured.view.aid_partners[1].actor_id;

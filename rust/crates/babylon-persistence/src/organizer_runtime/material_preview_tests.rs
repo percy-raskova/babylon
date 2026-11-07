@@ -1,19 +1,19 @@
 //! Projection controls use the same real captured circuit/organizer fixture.
-use super::OrganizerAidResolution;
 use super::{remaining_time, OrganizerAidTime};
+use super::{OrganizerAidFunding, OrganizerAidResolution};
 use crate::organizer_aid_fixture as fixture;
-use crate::organizer_aid_fixture::Session;
+use crate::organizer_aid_fixture::{Materials, Session};
 use crate::runtime_session::OrganizerSnapshot;
 use crate::runtime_session::RuntimeSessionErrorCode;
 use babylon_bsl::structural_verbs::CollectingSink;
-use babylon_material_circuit::HistoricalCostBook;
 use babylon_material_circuit::MonetaryBook;
 use babylon_material_circuit::{CircuitAccounting, HouseholdTimeAccounting};
+use babylon_material_circuit::{CorridorId, HistoricalCostBook, LaborCompensation};
 use babylon_practice_contract::OrganizerAidKind;
 use babylon_practice_contract::OrganizerAllocation;
-use babylon_practice_contract::OrganizerCommitment;
 use babylon_practice_contract::OrganizerPeriodJournalEntries;
 use babylon_practice_contract::{OrganizerChoice, OrganizerOutcome};
+use babylon_practice_contract::{OrganizerCommitment, OrganizerConfig};
 use babylon_tick::material_world::MaterialWorldRegister;
 use serde_json::Value;
 
@@ -128,6 +128,8 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
     )
     .expect("the fixture call `projections` succeeds for the authored inputs");
     assert_eq!(opening.len(), 1);
+    // The authored organization pays real cash, but this actor has no collection mandate.
+    assert_eq!(opening[0].funding, OrganizerAidFunding::Mandated);
     assert_eq!(opening[0].period, 0);
     assert_eq!(opening[0].food.as_ref().expect("food offer").time, None);
     assert!(super::projections(
@@ -201,6 +203,208 @@ fn opening_time_is_unknown_then_projection_uses_actual_unspent_closed_time() {
     );
 }
 
+fn captured_aid_session(materials: Materials, config: OrganizerConfig) -> Session {
+    fixture::try_session(
+        crate::michigan_dynamic_hex_foundation().expect("foundation"),
+        &format!(
+            "{}\n{}\n{}",
+            fixture::MATERIAL,
+            fixture::PRODUCTS,
+            fixture::PRACTICE
+        ),
+        materials,
+        config,
+    )
+    .expect("supported independent aid legs")
+}
+
+#[test]
+fn routed_food_endpoint_must_match_the_installed_route_before_submission() {
+    check_food_wiring(OrganizerAidKind::Remote);
+}
+
+#[test]
+fn local_food_principals_must_share_a_location_before_submission() {
+    check_food_wiring(OrganizerAidKind::Local);
+}
+
+fn check_food_wiring(kind: OrganizerAidKind) {
+    use babylon_material_circuit::{AidTransport, LogisticsNodeId};
+    let routed = kind == OrganizerAidKind::Remote;
+    let mut materials = fixture::aid_opening(routed);
+    let mut config = fixture::config();
+    let choice = if routed {
+        config.aid_bindings[0].kind = OrganizerAidKind::Remote;
+        let AidTransport::Routed {
+            ref mut to_node_id, ..
+        } = materials.catalog.aid_mandates[0].transport
+        else {
+            panic!("actual routed capture");
+        };
+        *to_node_id = LogisticsNodeId::from_bytes([98; 32]);
+        OrganizerChoice::RemoteAid
+    } else {
+        let other_county = "county:26001".parse().expect("other county");
+        let mut merchant = materials.catalog.merchants[0].clone();
+        merchant.site_id = fixture::site(2);
+        merchant.location = other_county;
+        merchant.capacity_id = CorridorId::from_bytes([98; 32]);
+        let mut handling = materials.catalog.handling_coefficients[0].clone();
+        handling.site_id = merchant.site_id;
+        materials.catalog.merchants.push(merchant);
+        materials.catalog.handling_coefficients.push(handling);
+        let CircuitAccounting::Monetary(economy) = &mut materials.state.accounting else {
+            panic!("monetary fixture")
+        };
+        economy
+            .recurring
+            .as_mut()
+            .expect("recurring")
+            .household_purchases
+            .iter_mut()
+            .find(|p| p.principal_id == fixture::recipient())
+            .expect("receiving household's local retailer")
+            .retailer_site_id = fixture::site(2);
+        materials
+            .state
+            .final_demand_principals
+            .iter_mut()
+            .find(|p| p.id == fixture::recipient())
+            .expect("receiving principal")
+            .location = other_county;
+        OrganizerChoice::LocalAid
+    };
+    let session = captured_aid_session(materials, config);
+    let register = session.material();
+    let config = register.organizer_config().expect("captured configuration");
+    let positive = fixture::commitment_with_allocation(
+        &session,
+        choice,
+        OrganizerAllocation::Aid {
+            food_quantity: 1,
+            cash_micros: 0,
+        },
+    );
+    assert_eq!(
+        super::validate_selected(
+            session.catalog(),
+            register.state(),
+            config,
+            0,
+            &positive.command
+        ),
+        Err(RuntimeSessionErrorCode::OrganizerRefused),
+        "miswired {choice:?} selection must fail before insert"
+    );
+    assert!(cold_report_snapshot(&session).aid[0].food.is_none());
+    assert_eq!(settle_cash_only(&session, choice, 3), 3);
+}
+
+fn settle_cash_only(session: &Session, choice: OrganizerChoice, cash_micros: i128) -> i128 {
+    let register = session.material();
+    let cash = fixture::commitment_with_allocation(
+        session,
+        choice,
+        OrganizerAllocation::Aid {
+            food_quantity: 0,
+            cash_micros,
+        },
+    );
+    super::validate_selected(
+        session.catalog(),
+        register.state(),
+        register.organizer_config().expect("authorized donor"),
+        0,
+        &cash.command,
+    )
+    .expect("independent cash admission");
+    let close = fixture::prepare(session, Some(&cash));
+    let journal = close
+        .material()
+        .register()
+        .organizer_journal()
+        .expect("cash journal");
+    let rows = super::resolutions(journal.latest().expect("cash close"));
+    assert_eq!(rows.len(), 1, "one dated result for the original");
+    rows[0].support.material_postings.payer_cash_granted_micros
+}
+
+fn private_payer_session(available: i128) -> Session {
+    use babylon_material_circuit::AccountId;
+    let mut materials = fixture::aid_opening(false);
+    let CircuitAccounting::Monetary(economy) = &mut materials.state.accounting else {
+        panic!("monetary fixture")
+    };
+    let donor = AccountId::Household(fixture::household());
+    let mut book = economy.book.snapshot();
+    // Both openings have the same total private endowment. Ordinary wages would
+    // add cash before settlement, so the captured family labor is unpaid in both.
+    for terms in &mut economy.employment {
+        terms.compensation = LaborCompensation::UnpaidFamily;
+    }
+    materials.catalog.aid_mandates[0].initial_cash = fixture::money(3_000_000);
+    let mut config = fixture::config();
+    config.aid_bindings[0].initial_cash_micros = 3_000_000;
+    for row in &mut book.accounts {
+        if row.id == donor {
+            row.cash = fixture::money(available);
+        }
+        if row.id == AccountId::Site(fixture::site(2)) {
+            row.cash = fixture::money(row.cash.micro_units() + 7_000_000 - available);
+        }
+    }
+    economy.book = MonetaryBook::open(book.accounts).expect("conserved opening");
+    economy.costs = HistoricalCostBook::open(
+        &economy.book,
+        economy.costs.snapshot().stocks,
+        vec![],
+        vec![],
+        vec![],
+    )
+    .expect("opening cost book");
+    captured_aid_session(materials, config)
+}
+
+#[test]
+fn private_payer_balances_change_settlement_but_leave_the_opening_disclosure_identical() {
+    let settle = |available| {
+        let session = private_payer_session(available);
+        (
+            cold_report_snapshot(&session),
+            settle_cash_only(&session, OrganizerChoice::LocalAid, 3_000_000),
+            session.material().digest(),
+        )
+    };
+    let (low, partial, low_digest) = settle(1_000_000);
+    let (high, full, high_digest) = settle(7_000_000);
+    assert_eq!((partial, full), (1_000_000, 3_000_000));
+    assert_ne!(
+        low_digest, high_digest,
+        "the enclosing private material authority changes"
+    );
+    let (empty, no_cash, _) = settle(0);
+    assert_eq!(no_cash, 0);
+    assert_eq!(low, high, "gift authority cannot disclose private funding");
+    assert_eq!(
+        low, empty,
+        "an empty private payer can still attempt the bounded gift"
+    );
+    assert_eq!(low.aid[0].funding, OrganizerAidFunding::Mandated);
+    let session = private_payer_session(1_000_000);
+    let installed: Value = serde_json::from_str(include_str!(
+        "../../../babylon-client/tests/fixtures/wayne_private_funding_v19.json"
+    ))
+    .expect("paired public opening used by the ordinary client Review");
+    assert_eq!(
+        installed,
+        serde_json::json!({
+            "config": session.material().organizer_config(),
+            "state": session.material().organizer_state(),
+            "openings": [low, high],
+        })
+    );
+}
+
 fn independent_leg_session(cash_only: bool) -> Session {
     use babylon_material_circuit::{
         AccountId, AidTransport, LogisticsNodeId, OrganizationAccountId, RouteId,
@@ -226,18 +430,7 @@ fn independent_leg_session(cash_only: bool) -> Session {
         mandate.initial_cash = fixture::money(0);
         config.aid_bindings[0].initial_cash_micros = 0;
     }
-    fixture::try_session(
-        crate::michigan_dynamic_hex_foundation().expect("foundation"),
-        &format!(
-            "{}\n{}\n{}",
-            fixture::MATERIAL,
-            fixture::PRODUCTS,
-            fixture::PRACTICE
-        ),
-        materials,
-        config,
-    )
-    .expect("valid selected-leg capture")
+    captured_aid_session(materials, config)
 }
 
 #[test]
@@ -331,9 +524,9 @@ fn verify_independent_selected_terms(
 ) {
     let cash_only = accepted.command.choice == OrganizerChoice::RemoteAid;
     let expected: Value = serde_json::from_str(if cash_only {
-        include_str!("../../tests/fixtures/cash_only_no_food_v18.json")
+        include_str!("../../tests/fixtures/cash_only_no_food_v19.json")
     } else {
-        include_str!("../../tests/fixtures/food_only_no_payer_v18.json")
+        include_str!("../../tests/fixtures/food_only_no_payer_v19.json")
     })
     .expect("actual producer fixture");
     assert_eq!(
@@ -374,7 +567,14 @@ fn verify_independent_selected_terms(
         expected["preview"]
     );
     assert_eq!(snapshot.aid[0].food.is_none(), cash_only);
-    assert_eq!(snapshot.aid[0].payer_cash.is_none(), !cash_only);
+    assert_eq!(
+        snapshot.aid[0].funding,
+        if cash_only {
+            OrganizerAidFunding::Mandated
+        } else {
+            OrganizerAidFunding::Unavailable
+        }
+    );
     let mut missing_selected = accepted.command.clone();
     missing_selected.allocation = OrganizerAllocation::Aid {
         food_quantity: 1,

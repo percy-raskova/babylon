@@ -34,7 +34,7 @@ fn measured_resource_board(
         );
     let captured: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../babylon-persistence/tests/fixtures/national_organizer_opening_v18.json"
+        "/../babylon-persistence/tests/fixtures/national_organizer_opening_v19.json"
     )))
     .expect("captured national resources");
     {

@@ -648,6 +648,7 @@ mod tests {
     use super::super::RequestKind;
     use super::*;
     use crate::observer::Perspective;
+    use babylon_persistence::runtime_session::OrganizerAidFunding;
     use babylon_persistence::runtime_session::OrganizerAllocation;
     use babylon_persistence::runtime_session::{
         OrganizerAidOption, OrganizerAidPending, OrganizerAidTransportPreview, OrganizerOutcome,
@@ -758,7 +759,7 @@ mod tests {
     fn national_aid_compares_destinations_and_preserves_the_shared_basket() {
         use babylon_persistence::runtime_session::OrganizerSnapshot;
         let captured: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v18.json"
+            "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v19.json"
         ))
         .expect("released national opening snapshot");
         let (mut client, mut session) = super::super::tests::ready();
@@ -1128,7 +1129,7 @@ mod tests {
                     transport: OrganizerAidTransportPreview::Local,
                 },
             ),
-            payer_cash: Some(120),
+            funding: OrganizerAidFunding::Organization { cash_micros: 120 },
             maximum_cash_micros: 10,
             maximum_quantity: 8,
             coordination_hours: 3,

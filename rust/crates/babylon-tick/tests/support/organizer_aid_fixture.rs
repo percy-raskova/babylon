@@ -751,30 +751,22 @@ pub(crate) fn config() -> OrganizerConfig {
     }
 }
 
-fn staffing() -> StaffingComposition {
+fn staffing(catalog: &MaterialCatalog) -> StaffingComposition {
     StaffingComposition::try_new(
         [
-            (
-                1,
-                "consumers",
-                1,
-                StaffingWorkSource::Production(process(1)),
-            ),
-            (
-                2,
-                "maintainers",
-                2,
-                StaffingWorkSource::Production(process(2)),
-            ),
-            (
-                3,
-                "merchants",
-                1,
-                StaffingWorkSource::MerchantHandling(site(3)),
-            ),
+            (1, "consumers", 1, Some(process(1))),
+            (2, "maintainers", 2, Some(process(2))),
+            (3, "merchants", 1, None),
         ]
         .into_iter()
-        .map(|(id, name, persons, source)| {
+        .map(|(id, name, persons, production)| {
+            let mut sources: Vec<_> = production
+                .into_iter()
+                .map(StaffingWorkSource::Production)
+                .collect();
+            if catalog.merchants.iter().any(|m| m.site_id == site(id)) {
+                sources.push(StaffingWorkSource::MerchantHandling(site(id)));
+            }
             StaffingNodeBinding::try_new(
                 StableElementKey::Node {
                     scenario: "organizer/replay".into(),
@@ -786,7 +778,7 @@ fn staffing() -> StaffingComposition {
                     hours(),
                     persons,
                     StaffingPolicy::one_period(4).expect("the one-period fixture advances"),
-                    vec![source],
+                    sources,
                 )
                 .expect("the authored fixture satisfies the constructor invariants"),
                 vec![
@@ -854,13 +846,14 @@ pub(crate) fn try_session(
         .expect("the authored fixture satisfies the constructor invariants")
         .with_organizer(&catalog, config, state, OrganizerPeriodJournal::empty())
         .expect("the fixture builder accepts the authored options");
+    let staffing = staffing(&catalog);
     MaterialReplaySession::new(
         graph,
         material,
         catalog,
         content_digest::sha256_of(b"organizer-replay-fixture-foundation"),
         babylon_kernel::clock::CampaignDuration::Finite { final_period: 8 },
-        staffing(),
+        staffing,
     )
 }
 

@@ -1532,6 +1532,7 @@
           1
         ],
         "food": null,
+        "funding": "mandated",
         "good_id": [
           99,
           99,
@@ -1605,7 +1606,6 @@
         ],
         "maximum_cash_micros": "1450000000",
         "maximum_quantity": 2,
-        "payer_cash": "0",
         "period": 0,
         "receiving_consent": "accept",
         "recipient_actor_id": 120,

@@ -3,10 +3,10 @@ use babylon_persistence::runtime_session::OrganizerAidFoodPreview;
 
 use babylon_persistence::runtime_session::OrganizerAllocation;
 use babylon_persistence::runtime_session::{
-    OrganizerAidOption, OrganizerChoice, OrganizerCollectionOutcome, OrganizerCollectionResolution,
-    OrganizerCommitment, OrganizerGiftConsent, OrganizerInquiry, OrganizerMaterialAidPreview,
-    OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse, OrganizerPauseReason,
-    OrganizerPreview, OrganizerRefusal, OrganizerReport, OrganizerView,
+    OrganizerAidFunding, OrganizerAidOption, OrganizerChoice, OrganizerCollectionOutcome,
+    OrganizerCollectionResolution, OrganizerCommitment, OrganizerGiftConsent, OrganizerInquiry,
+    OrganizerMaterialAidPreview, OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse,
+    OrganizerPauseReason, OrganizerPreview, OrganizerRefusal, OrganizerReport, OrganizerView,
 };
 use std::fmt::Write as _;
 
@@ -438,7 +438,7 @@ fn aid_review_terms(client: &OrganizerClient, choice: OrganizerChoice) -> String
         || "Food delivery is unavailable.".into(),
         |food| format!("Food mandate ceiling: up to {} food units ({} grams each); protected surplus: {} units. Actual fulfillment may be lower.\nFulfillment: {} household hours per dispatched unit.", crate::observer_ui::grouped(terms.maximum_quantity), crate::observer_ui::grouped(food.grams_per_unit), crate::observer_ui::grouped(food.donor_stock.saturating_sub(food.own_need)), crate::observer_ui::grouped(food.fulfillment_hours_per_unit)),
     );
-    format!("Recipient: {}\n{food}\nIndependent cash cap: {} currency; organization cash: {}.\nReceiving consent: {consent}.", recipient.partner_label, crate::human_numbers::currency(terms.maximum_cash_micros), aid_cash_text(terms.payer_cash))
+    format!("Recipient: {}\n{food}\nIndependent cash cap: {} currency. {}.\nReceiving consent: {consent}.", recipient.partner_label, crate::human_numbers::currency(terms.maximum_cash_micros), aid_cash_text(terms.funding))
 }
 
 fn selected_aid(
@@ -465,11 +465,17 @@ fn selected_aid(
     format!("Selected: {food_quantity} food parcels and {}. Up to {} donor household hours if all selected parcels dispatch. Cash receiving: {}. At P{resolves} cash can settle after ordinary orders. The next ordinary purchase opportunity is {next}; purchases and prices are uncertain. Food travels separately. First positive cash or actually consumed food permits one independent response.",crate::human_numbers::currency(cash_micros),hours.map_or_else(||"unknown".into(),|h|h.to_string()),terms.map_or("unknown",|t|match t.cash_receiving_consent{OrganizerGiftConsent::Accept=>"accepted",OrganizerGiftConsent::Refuse=>"refused"}))
 }
 
-fn aid_cash_text(cash: Option<i128>) -> String {
-    cash.map_or_else(
-        || "unavailable".into(),
-        |value| format!("{} currency", crate::human_numbers::currency(value)),
-    )
+fn aid_cash_text(funding: OrganizerAidFunding) -> String {
+    match funding {
+        OrganizerAidFunding::Unavailable => "Cash funding unavailable".into(),
+        OrganizerAidFunding::Mandated => {
+            "Cash gift authorized. The payer balance is private".into()
+        }
+        OrganizerAidFunding::Organization { cash_micros } => format!(
+            "Organization cash: {} currency",
+            crate::human_numbers::currency(cash_micros)
+        ),
+    }
 }
 
 fn collection_review_terms(client: &OrganizerClient) -> String {
@@ -485,8 +491,8 @@ fn collection_review_terms(client: &OrganizerClient) -> String {
 
 fn aid_terms(preview: &OrganizerMaterialAidPreview) -> String {
     let mut text = format!(
-        "Organization cash: {}. Independent cash cap: {} currency, separate from food.\n",
-        aid_cash_text(preview.payer_cash),
+        "{}. Independent cash cap: {} currency, separate from food.\n",
+        aid_cash_text(preview.funding),
         crate::human_numbers::currency(preview.maximum_cash_micros)
     );
     if let Some(food) = &preview.food {
@@ -1916,7 +1922,7 @@ mod tests {
                     }],
                 },
             }),
-            payer_cash: Some(120),
+            funding: OrganizerAidFunding::Organization { cash_micros: 120 },
             maximum_quantity: 8,
             maximum_cash_micros: 10,
             coordination_hours: 3,

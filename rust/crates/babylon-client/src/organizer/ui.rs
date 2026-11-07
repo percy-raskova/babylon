@@ -1631,7 +1631,11 @@ fn draft_from_report(
     }
     close_inspector(client, focus);
     choose_approach(client, focus, now, choice);
-    client.message = "Report cited in your draft. Adjust the amounts before review.".into();
+    if client.message.is_empty() {
+        client.message = "Report cited in your draft. Adjust the amounts before review.".into();
+    } else {
+        client.message.insert_str(0, "Report cited in your draft. ");
+    }
     true
 }
 
@@ -3562,7 +3566,7 @@ pub(crate) mod tests {
         if let Some(view) = client.view.as_mut() {
             let national: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v18.json"
+                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v19.json"
             )))
             .expect("captured national opening");
             if viewport.x > 1400 {

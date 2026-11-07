@@ -448,7 +448,7 @@ impl OrganizerClient {
             };
             let offer = self.aid_preview(choice)?;
             if (food_quantity > 0 && offer.food.is_none())
-                || (cash_micros > 0 && offer.payer_cash.is_none())
+                || (cash_micros > 0 && !offer.funding.available())
             {
                 return None;
             }

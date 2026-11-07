@@ -5,7 +5,7 @@ use super::practice::History;
 use crate::identity::CampaignId;
 use crate::observer_reader::CommittedMaterialReceipts;
 use crate::organizer_aid_fixture as fixture;
-use crate::runtime_session::OrganizerSnapshot;
+use crate::runtime_session::{OrganizerAidFunding, OrganizerSnapshot};
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_material_circuit::CircuitAccounting;
 use babylon_material_circuit::HouseholdTimeAccounting;
@@ -270,7 +270,10 @@ fn changed_dynamic_original_offer_is_refused_before_admission() {
         let mut changed = before.clone();
         let row = &mut changed.aid[0];
         match change {
-            0 => *row.payer_cash.as_mut().expect("cash available") += 1,
+            0 => {
+                assert_eq!(row.funding, OrganizerAidFunding::Mandated);
+                row.funding = OrganizerAidFunding::Organization { cash_micros: 1 };
+            }
             1 => row.food.as_mut().expect("food available").donor_stock += 1,
             2 => {
                 row.food

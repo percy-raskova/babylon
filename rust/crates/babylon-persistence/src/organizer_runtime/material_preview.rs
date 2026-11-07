@@ -1,12 +1,12 @@
 //! Actor-safe material facts; no forecast of admission, delivered quantity or practice.
 use crate::runtime_session::RuntimeSessionErrorCode;
-use babylon_material_circuit::AidMandate;
 use babylon_material_circuit::CapacitySupply;
 use babylon_material_circuit::CorridorId;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::MonetaryError;
 use babylon_material_circuit::RecurringEconomy;
 use babylon_material_circuit::UnitId;
+use babylon_material_circuit::{AccountId, AidMandate, MaterialCircuitError};
 use babylon_material_circuit::{
     AidTransport, CircuitAccounting, HouseholdTimeAccounting, MaterialCatalog, MaterialCircuitState,
 };
@@ -33,8 +33,7 @@ pub struct OrganizerMaterialAidPreview {
     pub unit_id: [u8; 32],
     #[serde(deserialize_with = "required_food")]
     pub food: Option<OrganizerAidFoodPreview>,
-    #[serde(with = "optional_decimal_i128")]
-    pub payer_cash: Option<i128>,
+    pub funding: OrganizerAidFunding,
     pub maximum_quantity: u64,
     #[serde(with = "decimal_i128")]
     pub maximum_cash_micros: i128,
@@ -44,6 +43,26 @@ pub struct OrganizerMaterialAidPreview {
     pub cash_receiving_consent: OrganizerGiftConsent,
     pub coordination_hours: u64,
     pub receiving_consent: OrganizerGiftConsent,
+}
+
+/// Authority to attempt a cash gift and, for a controlled treasury, read its balance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum OrganizerAidFunding {
+    Unavailable,
+    Mandated,
+    Organization {
+        #[serde(with = "decimal_i128")]
+        cash_micros: i128,
+    },
+}
+
+impl OrganizerAidFunding {
+    /// Whether the original can attempt a positive cash gift.
+    #[must_use]
+    pub fn available(self) -> bool {
+        !matches!(self, Self::Unavailable)
+    }
 }
 
 /// Available physical food facts. Absence on the parent means that leg is unwired.
@@ -247,9 +266,16 @@ pub(super) fn projections(
             return Err(refused());
         }
         let food = food_projection(catalog, state, recurring, mandate, period)?;
-        let payer_cash = match economy.book.cash(mandate.payer) {
-            Ok(cash) => Some(cash.micro_units()),
-            Err(MonetaryError::UnknownAccount) => None,
+        let controlled = config.collection.as_ref().is_some_and(|collection| {
+            collection.actor_id == config.controlled_actor_id
+                && matches!(mandate.payer, AccountId::Organization(id) if id.as_bytes() == collection.organization_account_id)
+        });
+        let funding = match economy.book.cash(mandate.payer) {
+            Ok(cash) if controlled => OrganizerAidFunding::Organization {
+                cash_micros: cash.micro_units(),
+            },
+            Ok(_) => OrganizerAidFunding::Mandated,
+            Err(MonetaryError::UnknownAccount) => OrganizerAidFunding::Unavailable,
             Err(_) => return Err(refused()),
         };
         result.push(OrganizerMaterialAidPreview {
@@ -261,7 +287,7 @@ pub(super) fn projections(
             good_id: mandate.good_id.as_bytes(),
             unit_id: mandate.unit_id.as_bytes(),
             food,
-            payer_cash,
+            funding,
             maximum_quantity: mandate.maximum_quantity,
             maximum_cash_micros: mandate.maximum_cash.micro_units(),
             initial_food_quantity: mandate.initial_quantity,
@@ -298,7 +324,7 @@ pub(crate) fn validate_selected(
         .find(|row| row.kind == kind)
         .ok_or_else(refused)?;
     if (food_quantity > 0 && offer.food.is_none())
-        || (cash_micros > 0 && offer.payer_cash.is_none())
+        || (cash_micros > 0 && !offer.funding.available())
     {
         return Err(refused());
     }
@@ -319,29 +345,10 @@ fn food_projection(
     else {
         return Ok(None);
     };
-    for principal in [mandate.donor, mandate.recipient] {
-        if !recurring.household_stocks.iter().any(|row| {
-            (row.principal_id, row.good_id, row.unit_id)
-                == (principal, mandate.good_id, mandate.unit_id)
-        }) || !catalog.household_needs.iter().any(|row| {
-            (row.principal_id, row.good_id, row.unit_id)
-                == (principal, mandate.good_id, mandate.unit_id)
-        }) || !catalog
-            .household_time_policy
-            .iter()
-            .any(|row| row.principal_id == principal && row.labor_unit_id == mandate.labor_unit_id)
-        {
-            return Ok(None);
-        }
-    }
-    if let AidTransport::Routed { route_id, .. } = mandate.transport {
-        if !catalog
-            .route_stages
-            .iter()
-            .any(|row| row.route_id == route_id)
-        {
-            return Ok(None);
-        }
+    match babylon_material_circuit::validate_aid_food_wiring(catalog, state, mandate) {
+        Ok(()) => {}
+        Err(MaterialCircuitError::AidAuthority) => return Ok(None),
+        Err(_) => return Err(refused()),
     }
     let (donor_stock, own_need) = pantry_amounts(catalog, recurring, mandate)?;
     let ordinary_offer = recurring
@@ -606,29 +613,5 @@ pub(super) mod decimal_i128 {
             }
         }
         deserializer.deserialize_str(Decimal)
-    }
-}
-
-mod optional_decimal_i128 {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    #[derive(Serialize, Deserialize)]
-    struct Decimal(#[serde(with = "super::decimal_i128")] i128);
-
-    #[allow(
-        clippy::ref_option,
-        reason = "Serde field adapters receive a reference to the complete field"
-    )]
-    pub fn serialize<S: Serializer>(
-        value: &Option<i128>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        value.map(Decimal).serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Option<i128>, D::Error> {
-        Option::<Decimal>::deserialize(deserializer).map(|value| value.map(|amount| amount.0))
     }
 }

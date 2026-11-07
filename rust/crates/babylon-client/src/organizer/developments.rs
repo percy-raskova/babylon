@@ -282,11 +282,11 @@ mod tests {
     #[test]
     fn actual_national_cash_service_and_unchanged_food_notices_follow_their_own_dates() {
         let periods: Vec<Period> = serde_json::from_str(include_str!(
-            "../../tests/fixtures/wayne_public_developments_v18.json"
+            "../../tests/fixtures/wayne_public_developments_v19.json"
         ))
         .expect("funded national witness");
         let opening: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v18.json"
+            "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v19.json"
         ))
         .expect("national opening");
         let mut changes = Developments::default();

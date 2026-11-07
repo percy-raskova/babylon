@@ -247,7 +247,7 @@ mod tests {
     fn repaired_exact_captured_fraction_saves_unrelated_personal_notes_and_reference() {
         use babylon_persistence::runtime_session::OrganizerSnapshot;
         let capture: Value = serde_json::from_str(include_str!(
-            "../../../babylon-persistence/tests/fixtures/cash_only_no_food_v18.json"
+            "../../../babylon-persistence/tests/fixtures/cash_only_no_food_v19.json"
         ))
         .expect("cash-only producer capture");
         let snapshot: OrganizerSnapshot =

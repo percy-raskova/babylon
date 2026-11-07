@@ -222,7 +222,7 @@ pub(in crate::qualification_audit) fn terms<'a>(
     else {
         return Err(Refusal::Capture);
     };
-    if (food_quantity > 0 && p.food.is_none()) || (cash_micros > 0 && p.payer_cash.is_none()) {
+    if (food_quantity > 0 && p.food.is_none()) || (cash_micros > 0 && !p.funding.available()) {
         return Err(Refusal::Capture);
     }
     if let Some(food) = &p.food {

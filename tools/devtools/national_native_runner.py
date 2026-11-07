@@ -39,6 +39,7 @@ from tools.devtools.national_native_evidence import (
     NativeRunEvidence,
     NativeRunIncomplete,
     RecoveryRecord,
+    mixed_food_terminal,
     private_bytes,
     verify_frame_png,
     verify_mixed_recovery,
@@ -1831,17 +1832,7 @@ class WayneWalk:
         else:
             mixed = self.originals["remote-mixed"]
             material = [record.aid for record in self.run.material if record.aid is not None]
-            original = list(mixed.commitment_id)
-            freight = [
-                leg
-                for row in material
-                for leg in row.selected_aid
-                if leg["original_commitment"] == original
-            ]
-            terminal_food = any(
-                leg["outcome"] in ("Granted", "Lost", "Unshipped", "FoodReceivingRefused")
-                for leg in freight
-            )
+            terminal_food = mixed_food_terminal(state, material, mixed)
             if self.cash_at is None and terminal_food and tick <= self.run.periods - 2:
                 label = "local-cash" if self.extra_collect_at is None else "local-cash-retry"
                 refused = self.submit(

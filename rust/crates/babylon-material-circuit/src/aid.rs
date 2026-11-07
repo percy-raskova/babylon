@@ -255,7 +255,7 @@ pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) 
             .ok()
             .map(|i| &catalog.aid_mandates[i])
             .ok_or(MaterialCircuitError::AidAuthority)?;
-        validate_mandate(catalog, state, mandate)?;
+        validate_aid_food_wiring(catalog, state, mandate)?;
         let AidTransport::Routed { route_id, .. } = mandate.transport else {
             return Err(MaterialCircuitError::AidInvariant);
         };
@@ -298,7 +298,11 @@ pub(crate) fn validate(catalog: &MaterialCatalog, state: &MaterialCircuitState) 
     Ok(())
 }
 
-fn validate_mandate(
+/// Check the captured food leg before accepting or executing a positive selection.
+///
+/// # Errors
+/// Returns an authority error for unwired food and an invariant or arithmetic error for invalid terms.
+pub fn validate_aid_food_wiring(
     catalog: &MaterialCatalog,
     state: &MaterialCircuitState,
     mandate: &AidMandate,
@@ -432,7 +436,7 @@ pub(crate) fn prepare(
             .ok_or(MaterialCircuitError::AidAuthority)?;
         let id = mandate.authenticate(input, state.period)?;
         if input.quantity > 0 {
-            validate_mandate(catalog, state, mandate)?;
+            validate_aid_food_wiring(catalog, state, mandate)?;
         }
         if input.cash.micro_units() > 0 {
             settle_cash(

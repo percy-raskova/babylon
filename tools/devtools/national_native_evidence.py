@@ -1957,6 +1957,81 @@ def installed_walk_stages(
     return stages
 
 
+def remote_food_quantities(
+    legs: list[dict[str, Any]], period: int, dispatch: int
+) -> tuple[int, int]:
+    """Return surviving freight and parcels accounted for at the dispatch decision."""
+    dispatched = settled = undispatched = 0
+    for leg in legs:
+        if leg["period"] > period:
+            continue
+        outcome = leg["outcome"]
+        if outcome not in ("Dispatched", "Granted", "Lost", "Unshipped", "FoodReceivingRefused"):
+            continue
+        quantity = leg["quantity"]
+        if type(quantity) is not int or quantity <= 0 or leg["period"] < dispatch:
+            raise ValueError("invalid dated freight quantity or period")
+        if outcome in ("Granted", "Lost"):
+            settled += quantity
+        elif leg["period"] != dispatch:
+            raise ValueError("mixed food dispatch or refusal occurred after its authorized close")
+        elif outcome == "Dispatched":
+            dispatched += quantity
+        else:
+            undispatched += quantity
+    return dispatched - settled, dispatched + undispatched
+
+
+def mixed_food_terminal(
+    state: ControlState, boundaries: list[AidBoundary], mixed: Commitment
+) -> bool:
+    """Reconcile the selected parcels with dated material postings and the installed sender view."""
+    view = state.installed_organizer
+    allocation = mixed.command.allocation
+    if (
+        view is None
+        or view.period != state.durable_tick
+        or not isinstance(allocation, AidAllocation)
+    ):
+        raise ValueError("mixed food decision lacks its installed organizer or selected allocation")
+    requested = allocation.aid.food_quantity
+    if requested <= 0:
+        raise ValueError("mixed food decision lacks selected parcels")
+    legs = [
+        {**leg, "period": boundary.period}
+        for boundary in boundaries
+        for leg in boundary.selected_aid
+        if leg["original_commitment"] == list(mixed.commitment_id)
+    ]
+    outstanding, accounted = remote_food_quantities(legs, state.durable_tick, mixed.resolves_period)
+    pending = [
+        row for row in view.pending_freight if row.original_commitment_id == mixed.commitment_id
+    ]
+    if outstanding < 0 or accounted > requested or len(pending) != int(outstanding > 0):
+        raise ValueError("installed mixed freight disagrees with its dated material quantities")
+    return outstanding == 0 and accounted == requested
+
+
+def verify_mixed_follow_up(
+    trace: ControlsEvidence,
+    stages: dict[int, WalkStage],
+    boundaries: list[AidBoundary],
+    mixed: Commitment,
+) -> None:
+    for action in trace.actions:
+        state = action.state
+        allocation = state.aid_allocation
+        if (
+            action.action == "review"
+            and state.choice == "local_aid"
+            and isinstance(allocation, AidAllocation)
+            and allocation.aid.food_quantity == 0
+            and int(allocation.aid.cash_micros) > 0
+            and not mixed_food_terminal(stages[state.durable_tick].state, boundaries, mixed)
+        ):
+            raise ValueError("local cash follow-up preceded the reconciled remote food result")
+
+
 def verify_freight_reopens(
     stages: dict[int, WalkStage],
     legs: list[dict[str, Any]],
@@ -1968,16 +2043,9 @@ def verify_freight_reopens(
     *,
     remote: bool,
 ) -> list[int]:
-    outstanding = 0
     pending = []
     for period, stage in sorted(stages.items()):
-        if remote:
-            for leg in legs:
-                if leg["period"] == period and leg["outcome"] in ("Dispatched", "Granted", "Lost"):
-                    quantity = leg["quantity"]
-                    if type(quantity) is not int or quantity < 0:
-                        raise ValueError("invalid dated freight quantity")
-                    outstanding += quantity if leg["outcome"] == "Dispatched" else -quantity
+        outstanding = remote_food_quantities(legs, period, dispatch)[0] if remote else 0
         view = stage.state.installed_organizer
         if view is None:
             raise ValueError("installed recipient authority absent")
@@ -2366,7 +2434,7 @@ def evaluate_wayne_walk(
         )
         proof["selection"] = label
         proof["material_legs"] = [
-            {"period": b.period, **leg}
+            {**leg, "period": b.period}
             for b in ordered
             for leg in b.selected_aid
             if leg["original_commitment"] == list(c.commitment_id)
@@ -2480,6 +2548,8 @@ def evaluate_wayne_walk(
                 raise ValueError(
                     "installed aid history differs from the dated practice and first response"
                 )
+        if label == "remote-mixed":
+            verify_mixed_follow_up(segments["walk"], stages, ordered, c)
         pending_periods = verify_freight_reopens(
             stages,
             proof["material_legs"],

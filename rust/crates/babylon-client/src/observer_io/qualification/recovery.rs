@@ -334,6 +334,7 @@ impl NativeAudit {
 pub(super) mod tests {
     use super::super::tests::Directory;
     use super::super::{aid, Candidate};
+    use babylon_persistence::runtime_session::OrganizerAidFunding;
     use babylon_persistence::runtime_session::OrganizerAllocation;
 
     use super::super::tests;
@@ -346,7 +347,7 @@ pub(super) mod tests {
         let directory = Directory::new();
         let (mut audit, mut session) = tests::fixture(&directory);
         let status: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v18.json"
+            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v19.json"
         ))
         .expect("the authored JSON matches the declared schema");
         session.ready(0, None);
@@ -548,7 +549,10 @@ pub(super) mod tests {
             1
         );
         let mut wrong = status.clone();
-        *wrong.aid[0].payer_cash.as_mut().expect("cash account") += 1;
+        let OrganizerAidFunding::Organization { cash_micros } = &mut wrong.aid[0].funding else {
+            panic!("controlled treasury")
+        };
+        *cash_micros += 1;
         assert!(audit.status(&session, wrong).is_err());
         assert!(audit.awaiting_recovery_status());
         audit

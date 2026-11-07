@@ -7,7 +7,7 @@ meta:
   scope: Captured Wayne collective, two independent partners, and one workplace
 
 encoding:
-  runtime_session_protocol_version: 18
+  runtime_session_protocol_version: 19
   outer: exact_ASCII_domain_then_NUL_then_canonical_UTF8_JSON
   version: config_and_state_schema_version_12_where_present
   current_domains: {config: "babylon.organizer-config.v11\0", state: "babylon.organizer-state.v10\0",
@@ -132,7 +132,7 @@ independent_aid:
   food: protected_surplus_real_fulfillment_time_physical_freight_loss_arrival_and_consumption
   food_credit: min_actual_grant_and_shared_remaining_household_good_unit_period_consumption_in_original_identity_order
   household_consumption: separate_aggregate_not_parcel_lineage_or_marginal_causality
-  preview: required_nullable_food_facts_and_payer_cash_missing_selected_leg_refuses
+  preview: required_nullable_food_and_funding_authority_with_balance_only_for_controlled_treasury
   audit: boundary_v2_separate_qualifying_support_food_credit_cash_amount_and_actual_periods
   response: first_positive_settled_cash_or_consumed_food_one_independent_attempt
   retained: original_command_dispatch_support_cash_result_response_receipt_and_cumulative_food_loss

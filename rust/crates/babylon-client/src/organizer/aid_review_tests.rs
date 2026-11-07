@@ -3,8 +3,8 @@ use babylon_persistence::runtime_session::{
 };
 fn aid_review_fixture(kind: OrganizerAidKind, label: &str, active: bool) -> App {
     use babylon_persistence::runtime_session::{
-        OrganizerAidOption, OrganizerAidRouteStage, OrganizerAidTransportPreview,
-        OrganizerMaterialAidPreview,
+        OrganizerAidFunding, OrganizerAidOption, OrganizerAidRouteStage,
+        OrganizerAidTransportPreview, OrganizerMaterialAidPreview,
     };
     let (mut app, _) = admitted_scene_fixture();
     {
@@ -56,7 +56,7 @@ fn aid_review_fixture(kind: OrganizerAidKind, label: &str, active: bool) -> App 
                     }
                 },
             }),
-            payer_cash: Some(120),
+            funding: OrganizerAidFunding::Organization { cash_micros: 120 },
             maximum_quantity: 8,
             maximum_cash_micros: 10,
             coordination_hours: 3,
@@ -334,11 +334,9 @@ fn native_collection_card_is_reachable_and_history_navigation_cannot_act() {
     // Paint the reviewed model before inspecting the actual native text.
     app.update();
     assert!(confirmation_enabled(&app));
-    assert!(
-        painted_text(&mut app, false)
-            .to_lowercase()
-            .contains("protected consumption")
-    );
+    assert!(painted_text(&mut app, false)
+        .to_lowercase()
+        .contains("protected consumption"));
     inspect_period(&mut app, 2);
     app.update();
     assert!(!confirmation_enabled(&app));

@@ -2135,6 +2135,11 @@
           "time": null,
           "transport": "Local"
         },
+        "funding": {
+          "organization": {
+            "cash_micros": "1000000"
+          }
+        },
         "good_id": [
           180,
           182,
@@ -2208,7 +2213,6 @@
         ],
         "maximum_cash_micros": "1450000000",
         "maximum_quantity": 2,
-        "payer_cash": "1000000",
         "period": 0,
         "receiving_consent": "accept",
         "recipient_actor_id": 2616302,
@@ -2731,6 +2735,11 @@
             }
           }
         },
+        "funding": {
+          "organization": {
+            "cash_micros": "1000000"
+          }
+        },
         "good_id": [
           180,
           182,
@@ -2804,7 +2813,6 @@
         ],
         "maximum_cash_micros": "1450000000",
         "maximum_quantity": 4,
-        "payer_cash": "1000000",
         "period": 0,
         "receiving_consent": "accept",
         "recipient_actor_id": 1703101,

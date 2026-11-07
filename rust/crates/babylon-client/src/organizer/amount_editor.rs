@@ -139,7 +139,7 @@ pub(super) fn allocation(client: &OrganizerClient) -> Result<OrganizerAllocation
                     "Food terms are unavailable for this partner. Set food parcels to zero.".into(),
                 );
             }
-            if cash_micros > 0 && terms.payer_cash.is_none() {
+            if cash_micros > 0 && !terms.funding.available() {
                 return Err(
                     "No cash payer is available for this offer. Set the cash gift to zero.".into(),
                 );

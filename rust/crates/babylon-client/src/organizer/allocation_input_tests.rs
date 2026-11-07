@@ -1,7 +1,7 @@
 pub(crate) fn install_national_opening(app: &mut App) {
     use babylon_persistence::runtime_session::OrganizerSnapshot;
     let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
-        "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v18.json"
+        "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v19.json"
     ))
     .expect("national opening");
     install_captured_opening(app, snapshot);
@@ -71,12 +71,11 @@ fn allocation_keyboard_invalidates_review_and_confirms_only_the_edited_basket() 
     );
     typing_key(&mut app, window, KeyCode::Minus, "-");
     typing_key(&mut app, window, KeyCode::Digit3, "3");
-    assert!(
-        app.world()
-            .resource::<OrganizerClient>()
-            .message
-            .contains("whole number")
-    );
+    assert!(app
+        .world()
+        .resource::<OrganizerClient>()
+        .message
+        .contains("whole number"));
     ordinary(
         &mut app,
         OrganizerAction::Choose(OrganizerChoice::RemoteAid),
@@ -243,7 +242,13 @@ fn invalid_typing_while_preview_pending_never_restores_confirm() {
 
 #[test]
 fn report_proposal_keeps_known_subject_citation_and_personal_draft_without_a_command() {
-    let (mut app, _) = allocation_opening();
+    let (mut app, window) = allocation_opening();
+    ordinary(
+        &mut app,
+        OrganizerAction::Inspect(OrganizerInspector::Practices),
+    );
+    ordinary(&mut app, OrganizerAction::Choose(OrganizerChoice::LocalAid));
+    replace_digit(&mut app, window, AmountField::Food, "0");
     let partner = app
         .world()
         .resource::<OrganizerClient>()
@@ -276,6 +281,37 @@ fn report_proposal_keeps_known_subject_citation_and_personal_draft_without_a_com
         Some(OrganizerSubject::AidPartner(partner))
     );
     assert!(after.outbox.is_none() && after.preview.is_none() && after.commitment.is_none());
+    let reason = amount_editor::allocation(after).expect_err("retained zero basket");
+    assert!(
+        after.message.contains("Report cited") && after.message.contains(&reason),
+        "{}",
+        after.message
+    );
+    assert!(!enabled(
+        OrganizerAction::Review,
+        after,
+        app.world().resource::<ObserverSession>()
+    ));
+    replace_digit(&mut app, window, AmountField::Food, "2");
+    let corrected = app.world().resource::<OrganizerClient>();
+    assert!(!corrected.message.contains(&reason));
+    assert!(enabled(
+        OrganizerAction::Review,
+        corrected,
+        app.world().resource::<ObserverSession>()
+    ));
+    assert_eq!(
+        corrected
+            .draft
+            .as_ref()
+            .expect("corrected draft")
+            .selected_reference,
+        Some(id)
+    );
+    ordinary(&mut app, OrganizerAction::Review);
+    assert!(matches!(app.world().resource::<OrganizerClient>().outbox,
+        Some(RuntimeSessionRequest::PreviewOrganizer { ref command, .. })
+        if command.choice == OrganizerChoice::RemoteAid && command.allocation == OrganizerAllocation::Aid { food_quantity: 2, cash_micros: 0 }));
 }
 
 #[test]
@@ -365,8 +401,8 @@ fn single_leg_opening(capture: &str, choice: OrganizerChoice) -> (App, Entity) {
 }
 
 fn replace_digit(app: &mut App, window: Entity, field: AmountField, value: &str) {
-    use bevy::input::ButtonState;
     use bevy::input::keyboard::Key;
+    use bevy::input::ButtonState;
     ordinary(app, OrganizerAction::FocusAmount(field));
     for state in [ButtonState::Pressed, ButtonState::Released] {
         app.world_mut().write_message(KeyboardInput {
@@ -389,13 +425,13 @@ fn replace_digit(app: &mut App, window: Entity, field: AmountField, value: &str)
 fn repaired_positive_absent_leg_blocks_review_and_zero_unselected_leg_allows_it() {
     for (capture, choice, absent, reason) in [
         (
-            include_str!("../../../babylon-persistence/tests/fixtures/food_only_no_payer_v18.json"),
+            include_str!("../../../babylon-persistence/tests/fixtures/food_only_no_payer_v19.json"),
             OrganizerChoice::LocalAid,
             AmountField::Cash,
             "cash payer",
         ),
         (
-            include_str!("../../../babylon-persistence/tests/fixtures/cash_only_no_food_v18.json"),
+            include_str!("../../../babylon-persistence/tests/fixtures/cash_only_no_food_v19.json"),
             OrganizerChoice::RemoteAid,
             AmountField::Food,
             "food terms",
@@ -436,6 +472,104 @@ fn repaired_positive_absent_leg_blocks_review_and_zero_unselected_leg_allows_it(
     }
 }
 
+#[test]
+fn private_payers_review_the_same_basket_with_identical_terms_and_controls() {
+    use babylon_practice_contract::{OrganizerConfig, OrganizerState};
+    #[derive(serde::Deserialize)]
+    struct Pair {
+        config: OrganizerConfig,
+        state: OrganizerState,
+        openings: [OrganizerSnapshot; 2],
+    }
+    let pair: Pair = serde_json::from_str(include_str!(
+        "../../tests/fixtures/wayne_private_funding_v19.json"
+    ))
+    .expect("independently captured public openings");
+    let [low, high] = pair.openings.map(|opening| {
+        let (mut app, window, _, _) = focused_organizer(false);
+        install_captured_opening(&mut app, opening);
+        app.update();
+        ordinary(
+            &mut app,
+            OrganizerAction::Inspect(OrganizerInspector::Practices),
+        );
+        ordinary(&mut app, OrganizerAction::Choose(OrganizerChoice::LocalAid));
+        replace_digit(&mut app, window, AmountField::Food, "0");
+        let reviewable = enabled(
+            OrganizerAction::Review,
+            app.world().resource::<OrganizerClient>(),
+            app.world().resource::<ObserverSession>(),
+        );
+        assert!(reviewable);
+        ordinary(&mut app, OrganizerAction::Review);
+        app.world_mut()
+            .resource_scope(|world, mut client: Mut<OrganizerClient>| {
+                let Some(RuntimeSessionRequest::PreviewOrganizer {
+                    request_id,
+                    command,
+                    ..
+                }) = client.outbox.take()
+                else {
+                    panic!("ordinary player Review")
+                };
+                assert_eq!(
+                    command.allocation,
+                    OrganizerAllocation::Aid {
+                        food_quantity: 0,
+                        cash_micros: 3_000_000
+                    }
+                );
+                let ruling = babylon_practice_contract::preview_organizer(
+                    &pair.config,
+                    &pair.state,
+                    &command,
+                )
+                .expect("authenticated Review");
+                assert!(ruling.refusal.is_none());
+                client
+                    .previewed(
+                        request_id,
+                        ruling,
+                        &mut world.resource_mut::<ObserverSession>(),
+                    )
+                    .expect("matching Review reply");
+            });
+        app.update();
+        let review = painted_text(&mut app, false);
+        let detail = painted_text(&mut app, true);
+        let painted = format!("{review}\n{detail}");
+        assert!(
+            painted.contains("Selected: 0 food parcels and $3.00"),
+            "{painted}"
+        );
+        assert!(painted.contains("payer balance is private"), "{painted}");
+        assert!(confirmation_enabled(&app));
+        let world = app.world_mut();
+        let mut controls = world.query::<(&ActionButton, &Node, &UiGlobalTransform)>();
+        let mut buttons = controls
+            .iter(world)
+            .map(|(action, node, transform)| {
+                (
+                    format!("{:?}", action.0),
+                    node.clone(),
+                    transform.affine().to_cols_array(),
+                    enabled(
+                        action.0,
+                        world.resource::<OrganizerClient>(),
+                        world.resource::<ObserverSession>(),
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
+        buttons.sort_by(|a, b| a.0.cmp(&b.0));
+        assert!(controls
+            .iter(world)
+            .any(|(button, _, _)| button.0 == OrganizerAction::Confirm));
+        (review, detail, buttons, relationship_targets(&mut app))
+    });
+    assert_eq!(low, high);
+}
+
 fn two_cap_opening() -> (
     babylon_practice_contract::OrganizerConfig,
     OrganizerSnapshot,
@@ -450,7 +584,7 @@ fn two_cap_opening() -> (
         config: cfg,
         snapshot,
     } = serde_json::from_str(include_str!(
-        "../../tests/fixtures/wayne_two_cap_opening_v18.json"
+        "../../tests/fixtures/wayne_two_cap_opening_v19.json"
     ))
     .expect("opening captured from the admitted material register");
     for (kind, cap) in [(OrganizerAidKind::Local, 2), (OrganizerAidKind::Remote, 4)] {
@@ -524,11 +658,10 @@ fn repaired_recipient_switch_reconciles_valid_raw_basket_with_cards_and_original
     );
     let session = app.world().resource::<ObserverSession>();
     let pair = workspace::comparison(client, session).expect("live comparison");
-    assert!(
-        pair.alternatives
-            .iter()
-            .all(|card| card.allocation == basket)
-    );
+    assert!(pair
+        .alternatives
+        .iter()
+        .all(|card| card.allocation == basket));
     ordinary(&mut app, OrganizerAction::Review);
     let command = app
         .world_mut()

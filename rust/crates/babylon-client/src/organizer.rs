@@ -54,6 +54,7 @@ use bevy::prelude::*;
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use babylon_persistence::runtime_session::OrganizerAidFunding;
     pub(crate) fn aid_dispatch_fixture(
     ) -> babylon_persistence::runtime_session::OrganizerAidTransfer {
         use babylon_persistence::runtime_session::{
@@ -356,8 +357,8 @@ pub(crate) mod tests {
         use super::amount_editor::AmountField;
         use babylon_practice_contract::{OrganizerAllocation, OrganizerConfig, OrganizerState};
         for bytes in [
-            include_str!("../../babylon-persistence/tests/fixtures/food_only_no_payer_v18.json"),
-            include_str!("../../babylon-persistence/tests/fixtures/cash_only_no_food_v18.json"),
+            include_str!("../../babylon-persistence/tests/fixtures/food_only_no_payer_v19.json"),
+            include_str!("../../babylon-persistence/tests/fixtures/cash_only_no_food_v19.json"),
         ] {
             let capture: Value = serde_json::from_str(bytes).expect("producer capture");
             let snapshot: OrganizerSnapshot =
@@ -796,7 +797,7 @@ pub(crate) mod tests {
                     transport: OrganizerAidTransportPreview::Local,
                 },
             ),
-            payer_cash: Some(120),
+            funding: OrganizerAidFunding::Organization { cash_micros: 120 },
             maximum_cash_micros: 10,
             maximum_quantity: 8,
             coordination_hours: 3,

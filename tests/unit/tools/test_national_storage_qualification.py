@@ -3739,7 +3739,7 @@ def cash_only_producer_practice():
     fixture = json.loads(
         (
             Path(__file__).resolve().parents[3]
-            / "rust/crates/babylon-persistence/tests/fixtures/cash_only_no_food_v18.json"
+            / "rust/crates/babylon-persistence/tests/fixtures/cash_only_no_food_v19.json"
         ).read_bytes()
     )
     resolution = fixture["resolutions"][0]
@@ -4024,6 +4024,61 @@ def test_mixed_freight_reopen_must_match_the_actual_outstanding_quantity(
     else:
         with pytest.raises(ValueError, match="outstanding"):
             e.verify_freight_reopens(*args, remote=True)
+
+
+@pytest.mark.parametrize("review_tick", [4, 5, 6])
+def test_walk_evaluator_rejects_cash_review_until_the_last_parcel_settles(review_tick):
+    from types import SimpleNamespace
+
+    from tools.devtools import national_native_evidence as e
+    from tools.devtools.national_windowed_qualification import AidAllocation, AidAmounts
+
+    original = (7,) * 32
+
+    def basket(food, cash):
+        return AidAllocation(aid=AidAmounts(food_quantity=food, cash_micros=str(cash)))
+
+    mixed = SimpleNamespace(
+        commitment_id=original,
+        resolves_period=3,
+        command=SimpleNamespace(allocation=basket(2, 280000000)),
+    )
+    stages = {
+        period: SimpleNamespace(
+            state=SimpleNamespace(
+                durable_tick=period,
+                installed_organizer=SimpleNamespace(
+                    period=period,
+                    pending_freight=(
+                        [SimpleNamespace(original_commitment_id=original)] if period < 6 else []
+                    ),
+                ),
+            )
+        )
+        for period in (4, 5, 6)
+    }
+    rows = [
+        SimpleNamespace(
+            period=p,
+            selected_aid=[
+                {
+                    "original_commitment": list(original),
+                    "outcome": outcome,
+                    "quantity": q,
+                }
+            ],
+        )
+        for p, outcome, q in [(3, "Dispatched", 2), (4, "Lost", 1), (6, "Granted", 1)]
+    ]
+    state = SimpleNamespace(
+        durable_tick=review_tick, choice="local_aid", aid_allocation=basket(0, 1000000000)
+    )
+    trace = SimpleNamespace(actions=[SimpleNamespace(action="review", state=state)])
+    if review_tick == 6:
+        e.verify_mixed_follow_up(trace, stages, rows, mixed)
+    else:
+        with pytest.raises(ValueError, match="follow-up preceded"):
+            e.verify_mixed_follow_up(trace, stages, rows, mixed)
 
 
 @pytest.mark.parametrize("fault", ["none", "slow", "slow_read", "epoch", "marker"])

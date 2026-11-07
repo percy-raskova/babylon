@@ -1,7 +1,8 @@
 //! Original native witnesses, configured identities and refused evidence.
 use babylon_persistence::qualification_audit::aid::{Accepted, Audit, Refusal};
 use babylon_persistence::runtime_session::{
-    OrganizerAidKind, OrganizerChoice, OrganizerCommitment, OrganizerPreview, OrganizerSnapshot,
+    OrganizerAidFunding, OrganizerAidKind, OrganizerChoice, OrganizerCommitment, OrganizerPreview,
+    OrganizerSnapshot,
 };
 use babylon_practice_contract::OrganizerAllocation;
 
@@ -10,7 +11,7 @@ use sha2::{Digest, Sha256};
 
 fn witness() -> (OrganizerSnapshot, OrganizerPreview, OrganizerCommitment) {
     let mut before: OrganizerSnapshot =
-        serde_json::from_str(include_str!("fixtures/national_organizer_opening_v18.json"))
+        serde_json::from_str(include_str!("fixtures/national_organizer_opening_v19.json"))
             .expect("the authored JSON matches the declared schema");
     before.view.actor_id = 42;
     before.view.authority_id = [17; 16];
@@ -125,7 +126,10 @@ fn aid_witness_refuses_crossed_authority_refusal_and_conflicting_retry() {
     let mut audit = Audit::default();
     assert_eq!(audit.accept(accepted), Err(Refusal::OriginalOffer));
     let mut changed = before;
-    *changed.aid[0].payer_cash.as_mut().expect("captured payer") += 1;
+    let OrganizerAidFunding::Organization { cash_micros } = &mut changed.aid[0].funding else {
+        panic!("controlled treasury")
+    };
+    *cash_micros += 1;
     assert_eq!(
         audit.accept(
             Accepted::capture(&commitment, &preview, &changed)

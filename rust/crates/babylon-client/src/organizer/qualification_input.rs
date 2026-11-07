@@ -3266,7 +3266,7 @@ mod tests {
         use babylon_practice_contract::{OrganizerConfig, OrganizerState};
         use bevy::ecs::system::RunSystemOnce;
         let recorded: Value = serde_json::from_str(include_str!(
-            "../../../babylon-persistence/tests/fixtures/food_only_no_payer_v18.json"
+            "../../../babylon-persistence/tests/fixtures/food_only_no_payer_v19.json"
         ))
         .expect("producer capture");
         let snapshot: OrganizerSnapshot =

@@ -315,7 +315,7 @@ fn disclosed_partner_report_routes_to_that_organization_and_withholding_keeps_sc
     use babylon_persistence::runtime_session::OrganizerSnapshot;
     let captured: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../babylon-persistence/tests/fixtures/national_organizer_pending_v18.json"
+        "/../babylon-persistence/tests/fixtures/national_organizer_pending_v19.json"
     )))
     .expect("actual pending national disclosure");
     let actor = captured.view.aid_partners[1].actor_id;
@@ -372,7 +372,7 @@ fn partner_comparison_requires_a_prior_acquired_topic_for_the_same_reader() {
     };
     let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../babylon-persistence/tests/fixtures/national_organizer_pending_v18.json"
+        "/../babylon-persistence/tests/fixtures/national_organizer_pending_v19.json"
     )))
     .expect("actual national disclosure");
     let mut view = snapshot.view;
@@ -412,7 +412,7 @@ fn scoped_opening_dossier_selects_only_the_known_subject_and_world_names_its_sco
     use bevy::ecs::system::RunSystemOnce;
     let captured: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../babylon-persistence/tests/fixtures/national_organizer_opening_v18.json"
+        "/../babylon-persistence/tests/fixtures/national_organizer_opening_v19.json"
     )))
     .expect("actual opening disclosure");
     let partners = captured.view.aid_partners.clone();

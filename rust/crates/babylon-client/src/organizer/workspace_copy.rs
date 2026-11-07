@@ -470,7 +470,7 @@ mod arrival_tests {
     #[test]
     fn actual_pending_food_warns_on_its_original_route_only_while_a_response_can_occur() {
         let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../babylon-persistence/tests/fixtures/national_organizer_pending_v18.json"
+            "../../../babylon-persistence/tests/fixtures/national_organizer_pending_v19.json"
         ))
         .expect("captured dispatch");
         let mut client = OrganizerClient {

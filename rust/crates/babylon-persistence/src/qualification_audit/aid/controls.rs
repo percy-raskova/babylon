@@ -1,6 +1,7 @@
 //! Actual replay receipts exercise the observer fold, including non-Wayne terms.
 use super::audit;
 use super::audit::{Accepted, Audit, Refusal};
+use super::practice::History;
 use crate::identity::CampaignId;
 use crate::observer_reader::CommittedMaterialReceipts;
 use crate::organizer_aid_fixture as fixture;
@@ -17,6 +18,7 @@ use babylon_practice_contract::{OrganizerOutcome, OrganizerPartnerPolicy};
 use babylon_tick::material_world;
 use babylon_tick::material_world::MaterialReceiptHandle;
 use fixture::Session;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 fn snapshot(session: &Session) -> OrganizerSnapshot {
@@ -503,9 +505,32 @@ fn delayed_food_and_current_collection_reconcile_without_recounting_prior_cash()
             .cash_amount,
         fixture::money(3)
     );
-    audit
+    let first = audit
         .read(session.catalog(), &dispatch, session.material(), &after)
         .expect("cash-first audit");
+    let first_resolution = &session
+        .material()
+        .organizer_journal()
+        .expect("journal")
+        .latest()
+        .expect("cash close")
+        .aid_receipts[0];
+    let first_practice = first_resolution.practice.clone();
+    println!(
+        "Qualification mixed first receipt {}",
+        serde_json::to_string(&first_practice).expect("exact SQL-format bytes")
+    );
+    println!(
+        "Qualification mixed dispatch {}",
+        serde_json::to_string(&first).expect("actual aid boundary")
+    );
+    let digest: [u8; 32] =
+        Sha256::digest(serde_json::to_vec(&first_practice).expect("exact SQL receipt bytes"))
+            .into();
+    assert_eq!(
+        first.independent_practices[0]["first_response_receipt_sha256"],
+        serde_json::json!(digest)
+    );
     let collect = fixture::commitment(&session, OrganizerChoice::Collect);
     let (arrival, after) = advance(&mut session, Some(&collect));
     assert_eq!(arrival.receipts.collections[0].collected, fixture::money(2));
@@ -564,9 +589,52 @@ fn delayed_food_and_current_collection_reconcile_without_recounting_prior_cash()
             "current-period typed custody refuses corruption {corruption}"
         );
     }
-    audit
+    let later = audit
         .read(session.catalog(), &arrival, session.material(), &after)
         .expect("current collection and food only; prior cash is not repeated");
+    println!(
+        "Qualification mixed arrival {}",
+        serde_json::to_string(&later).expect("actual aid boundary")
+    );
+    assert_eq!(
+        later.independent_practices[0]["first_response_receipt_sha256"],
+        serde_json::json!(digest)
+    );
+    assert_eq!(
+        later.independent_practices[0]["first_response_receipt_id"],
+        serde_json::json!(first_practice.receipt_id)
+    );
+    let resolution = &session
+        .material()
+        .organizer_journal()
+        .expect("journal")
+        .latest()
+        .expect("later close")
+        .aid_receipts[0];
+    let mut history = History::default();
+    let mut first = resolution.clone();
+    first.practice = first_practice;
+    history
+        .response(&first, true)
+        .expect("actual initial response");
+    let mut changed = resolution.clone();
+    changed
+        .authorization
+        .response
+        .as_mut()
+        .expect("retained first")
+        .hours_spent += 1;
+    assert_eq!(
+        history.response(&changed, true),
+        Err(Refusal::Practice),
+        "retained ID with changed full contents"
+    );
+    assert_eq!(
+        history
+            .response(resolution, true)
+            .expect("real retained first"),
+        Some(digest)
+    );
     assert_eq!(audit.completed_practices.len(), 1);
 }
 
@@ -660,4 +728,74 @@ fn cash_only_qualifies_response_without_claiming_food_consumption() {
     assert_eq!(response["first_response_period"], 1);
     assert_eq!(response["qualifying_received_support"], true);
     assert_eq!(response["food_consumed"], false);
+}
+
+#[test]
+fn later_close_without_a_resolution_rejects_previous_contribution_use() {
+    let (mut session, mut audit, before, preview, commitment) =
+        start(false, false, OrganizerPartnerPolicy::Participate, 1);
+    audit
+        .accept(Accepted::capture(&commitment, &preview, &before).expect("original review"))
+        .expect("record submitted offer");
+    let (first, after) = advance(&mut session, Some(&commitment));
+    let recorded = audit
+        .read(session.catalog(), &first, session.material(), &after)
+        .expect("first actual close");
+    let mut old = first
+        .household_contributions
+        .iter()
+        .find(|posting| {
+            let resolution = &session
+                .material()
+                .organizer_journal()
+                .expect("journal")
+                .latest()
+                .expect("first close")
+                .aid_receipts[0];
+            resolution.practice.time_use.iter().any(|u| {
+                posting.contribution.use_id
+                    == babylon_practice_contract::household_contribution_use_id(
+                        &resolution.practice.receipt_id,
+                        u.actor_id,
+                        u.contributor_id,
+                    )
+            })
+        })
+        .expect("actual first practice posting")
+        .clone();
+    let original = audit.report();
+    let (mut next, after) = advance(&mut session, None);
+    assert_eq!(
+        session
+            .material()
+            .organizer_journal()
+            .expect("journal")
+            .latest()
+            .expect("next close")
+            .aid_receipts
+            .len(),
+        0
+    );
+    old.period = next.receipts.resolve_tick;
+    let mut zero = next.clone();
+    let mut undeclared = old.clone();
+    undeclared.contribution.use_id = serde_json::from_value(
+        recorded.independent_practices[0]["absent_contribution_use_ids"][0].clone(),
+    )
+    .expect("an original excluded alias");
+    zero.household_contributions.push(undeclared);
+    assert_eq!(
+        audit
+            .read(session.catalog(), &zero, session.material(), &after)
+            .expect_err("original zero obligation replayed"),
+        Refusal::Time
+    );
+    next.household_contributions.push(old);
+    assert_eq!(
+        audit
+            .read(session.catalog(), &next, session.material(), &after)
+            .expect_err("a repeated use ID must fail even without a new resolution"),
+        Refusal::Time
+    );
+    assert_eq!(audit.report(), original);
 }

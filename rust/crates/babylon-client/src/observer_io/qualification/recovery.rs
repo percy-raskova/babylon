@@ -468,7 +468,7 @@ pub(super) mod tests {
             identity: audit.boundary.clone().expect("the fixture value clones"),
             recovery: work.recovery,
             record: Record {
-                version: 4,
+                version: 5,
                 scope: "authenticated_native_material_and_aid_facts_only",
                 runtime_epoch: session
                     .runtime_scope()

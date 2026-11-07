@@ -18,7 +18,7 @@ use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode, WindowResized};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::amount_editor::AmountField;
@@ -30,6 +30,7 @@ use crate::atlas::CountyAtlas;
 use crate::map::SelectedCounty;
 use crate::observer::{ObservationContext, ObserverSession, SessionPhase};
 use crate::observer_controls::ControlAvailability;
+use crate::observer_io::qualification::NativeAudit;
 use crate::observer_io::{ObserverSet, RuntimePipe};
 use crate::observer_opening::MenuPage;
 use crate::observer_opening::{OpeningPresentation, OpeningStage};
@@ -43,7 +44,7 @@ use crate::production::{
 use crate::ui::dossier_card::{
     ArchiveEvidenceApplied, ArchiveEvidenceReceipt, OpenArchiveEvidence,
 };
-use babylon_persistence::runtime_session::OrganizerAidKind;
+use babylon_persistence::runtime_session::{OrganizerAidKind, OrganizerFoodDelivery};
 use babylon_persistence::runtime_session::{
     OrganizerChoice, OrganizerCommand, OrganizerInquiry, RuntimeSessionScope,
 };
@@ -59,6 +60,7 @@ use uuid::Uuid;
 // Designed bounds for instrumentation, independent of the captured game policy.
 const INPUT_BYTES: u64 = 4096;
 const OUTPUT_BYTES: usize = 32_768;
+const INSTALLED_ROSTER_LIMIT: usize = 32;
 const PRESENTATION_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Deserialize)]
@@ -88,7 +90,7 @@ fn read_startup(reader: &mut impl BufRead, campaign: &str) -> Result<(), &'stati
     }
     let admission: StartupAdmission =
         serde_json::from_slice(&bytes).map_err(|_| "capture_startup_frame_invalid")?;
-    if admission.version != 3 || admission.campaign_id != campaign {
+    if admission.version != 4 || admission.campaign_id != campaign {
         return Err("capture_startup_identity_invalid");
     }
     let StartupPhase::CaptureReady = admission.phase;
@@ -106,6 +108,7 @@ enum Action {
     DraftFromReport,
     ArchiveReport,
     Status,
+    ArmOnePlayAdvance,
     Play,
     Pause,
     Speed,
@@ -323,7 +326,7 @@ fn read_input(reader: &mut impl BufRead) -> Result<Option<Input>, &'static str> 
         return Err("control_frame_not_bounded");
     }
     let input: Input = serde_json::from_slice(&bytes).map_err(|_| "control_frame_invalid")?;
-    if input.version != 3 || input.sequence == 0 {
+    if input.version != 4 || input.sequence == 0 {
         return Err("control_version_or_sequence_invalid");
     }
     Ok(Some(input))
@@ -574,6 +577,187 @@ impl HandlerReceipt {
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+enum PlayPhase {
+    Armed,
+    PausedAfterEnqueue,
+}
+
+#[derive(Serialize)]
+struct PlayWitness {
+    phase: PlayPhase,
+    arm_sequence: u64,
+    play_sequence: Option<u64>,
+    campaign_id: String,
+    scope_epoch: u64,
+    start_tick: u64,
+    start_generation: u64,
+    target_tick: u64,
+    request_id: Option<u64>,
+    pending_at_pause: bool,
+    playing_after_pause: Option<bool>,
+}
+
+impl PlayWitness {
+    fn matches(&self, session: &ObserverSession) -> bool {
+        session.campaign.as_uuid().to_string() == self.campaign_id
+            && session.runtime_scope().is_some_and(|s| {
+                s.epoch == self.scope_epoch
+                    && s.campaign_id.as_deref() == Some(self.campaign_id.as_str())
+            })
+            && session.viewed_tick == self.start_tick
+            && session.durable_tick == self.start_tick
+            && session.generation == self.start_generation
+    }
+}
+
+/// Only the qualification socket installs this single-use request witness.
+#[derive(Resource, Default)]
+pub(crate) struct PlayInterlock {
+    witness: Option<PlayWitness>,
+    // Private Play's ordinary Bevy message and exact wire sequence.
+    play: Option<(usize, u64)>,
+    admitted: bool,
+    invalid: bool,
+}
+
+impl PlayInterlock {
+    fn arm(&mut self, input: &Input, session: &ObserverSession) -> bool {
+        let (Some(scope), Some(next)) =
+            (session.runtime_scope(), session.durable_tick.checked_add(1))
+        else {
+            return false;
+        };
+        if scope.campaign_id.as_deref() != Some(input.campaign_id.as_str())
+            || self.witness.is_some()
+            || session.phase != SessionPhase::Ready
+            || session.playing
+            || session.advance_pending()
+            || session.lifecycle_pending()
+            || session.organizer_control_pending()
+            || session.viewed_tick != session.durable_tick
+            || session.quit_requested
+            || session
+                .duration
+                .is_some_and(|d| !d.can_advance(session.durable_tick))
+        {
+            return false;
+        }
+        self.witness = Some(PlayWitness {
+            phase: PlayPhase::Armed,
+            arm_sequence: input.sequence,
+            play_sequence: None,
+            campaign_id: session.campaign.as_uuid().to_string(),
+            scope_epoch: scope.epoch,
+            start_tick: session.durable_tick,
+            start_generation: session.generation,
+            target_tick: next,
+            request_id: None,
+            pending_at_pause: false,
+            playing_after_pause: None,
+        });
+        true
+    }
+
+    fn visible(&self, session: &ObserverSession) -> Option<&PlayWitness> {
+        self.witness.as_ref().filter(|w| {
+            !matches!(w.phase, PlayPhase::Armed) || (!self.invalid && w.matches(session))
+        })
+    }
+
+    fn armed(&self) -> bool {
+        self.witness
+            .as_ref()
+            .is_some_and(|w| matches!(w.phase, PlayPhase::Armed))
+    }
+
+    pub(crate) fn toggle_handled(&mut self, id: usize, session: &ObserverSession) {
+        if self.armed() {
+            self.admitted = !self.invalid
+                && self.play.is_some_and(|(message, _)| message == id)
+                && session.playing
+                && self.witness.as_ref().is_some_and(|w| w.matches(session));
+            self.invalid |= !self.admitted;
+        }
+    }
+
+    pub(crate) fn allows_enqueue(&self, session: &ObserverSession) -> bool {
+        !self.admitted
+            || !self.armed()
+            || (!self.invalid && self.witness.as_ref().is_some_and(|w| w.matches(session)))
+    }
+
+    pub(crate) fn enqueued(&mut self, session: &mut ObserverSession, request: u64) {
+        if !self.armed() || !self.admitted {
+            return;
+        }
+        session.pause_playback();
+        let (Some(witness), Some((_, sequence))) = (&mut self.witness, self.play) else {
+            self.invalid = true;
+            return;
+        };
+        if self.invalid || session.pending_advance_request() != Some(request) {
+            self.invalid = true;
+            return;
+        }
+        witness.phase = PlayPhase::PausedAfterEnqueue;
+        witness.play_sequence = Some(sequence);
+        witness.request_id = Some(request);
+        witness.pending_at_pause = session.pending_advance_request() == Some(request);
+        witness.playing_after_pause = Some(session.playing);
+    }
+}
+
+fn installed_organizer(client: &OrganizerClient, session: &ObserverSession) -> Option<Value> {
+    let view = client.view.as_ref()?;
+    workspace::resources(client, session)?;
+    if client.status_due || client.status_refusal(session).is_some() || !session.organizer_enabled {
+        return None;
+    }
+    let pending_freight: Vec<_> = client
+        .pending_aid
+        .iter()
+        .filter(|r| r.dispatch_support.status == OrganizerFoodDelivery::AwaitingDelivery)
+        .map(|r| {
+            json!({
+                "original_commitment_id": r.original_commitment_id,
+                "material_commitment_id": r.material_commitment_id,
+                "mandate_id": r.mandate_id,
+                "dispatch_period": r.dispatch_period,
+                "first_response_receipt_id": r.response.as_ref().map(|p| p.receipt_id)
+            })
+        })
+        .collect();
+    let aid_response_history: Vec<_> = client
+        .aid_resolutions
+        .iter()
+        .map(|r| {
+            json!({
+                "original_commitment_id": r.pending.original_commitment_id,
+                "period": r.practice.period,
+                "practice_receipt_id": r.practice.receipt_id,
+                "first_response_receipt_id": r.pending.response.as_ref().map(|p| p.receipt_id)
+            })
+        })
+        .collect();
+    Some(json!({
+        "period": view.period,
+        "actor_id": view.actor_id,
+        "authority_id": view.authority_id,
+        "content_digest": view.content_digest,
+        "resource_digest": view.resource_digest,
+        "standing": view.standing,
+        "available_hours": view.available_hours,
+        "contact_hours": view.contact_hours,
+        "hold_reviewable": workspace::reviewable(client, session, OrganizerChoice::Hold),
+        "pause_reviewable": workspace::reviewable(client, session, OrganizerChoice::PauseStanding),
+        "resume_reviewable": workspace::reviewable(client, session, OrganizerChoice::ResumeStanding),
+        "pending_freight": pending_freight,
+        "aid_response_history": aid_response_history
+    }))
+}
+
 #[derive(Resource)]
 struct Controls {
     next_sequence: Option<u64>,
@@ -632,11 +816,11 @@ fn state(
 
 fn response(sequence: Option<u64>, event: &str, reason: Option<&str>, state: Value) -> Vec<u8> {
     let mut bytes = serde_json::to_vec(
-        &json!({"version":3,"sequence":sequence,"event":event,"reason":reason,"state":state}),
+        &json!({"version":4,"sequence":sequence,"event":event,"reason":reason,"state":state}),
     )
     .expect("control response contains only finite typed state");
-    if bytes.len() >= OUTPUT_BYTES {
-        bytes = br#"{"version":3,"sequence":null,"event":"refused","reason":"control_response_not_bounded"}"#.to_vec();
+    if state.is_null() || bytes.len() >= OUTPUT_BYTES {
+        bytes = br#"{"version":4,"sequence":null,"event":"refused","reason":"control_response_not_bounded"}"#.to_vec();
     }
     bytes.push(b'\n');
     bytes
@@ -695,6 +879,9 @@ fn available(
     }
     match action {
         Action::Status | Action::AmountKey(_) => true,
+        Action::ArmOnePlayAdvance => {
+            pipe && !ui.splash_visible && !ui.menu_open && !ui.comparison_open
+        }
         Action::OpenArchiveEvidence => {
             ui.archive_open
                 && !ui.splash_visible
@@ -813,6 +1000,8 @@ fn presentation_available(
 
 #[derive(bevy::ecs::system::SystemParam)]
 struct Situation<'w, 's> {
+    interlock: Option<ResMut<'w, PlayInterlock>>,
+    audit: Option<Res<'w, NativeAudit>>,
     amount_fields: Query<'w, 's, &'static AmountField>,
     focus: Option<Res<'w, bevy::input_focus::InputFocus>>,
     session: Res<'w, ObserverSession>,
@@ -863,6 +1052,18 @@ impl Situation<'_, '_> {
             )
     }
 
+    fn play_acknowledged(&self, pending: &Pending) -> bool {
+        self.interlock
+            .as_ref()
+            .and_then(|i| i.witness.as_ref())
+            .is_some_and(|w| {
+                w.play_sequence == Some(pending.input.sequence)
+                    && w.pending_at_pause
+                    && w.playing_after_pause == Some(false)
+                    && w.start_tick == pending.input.expected_tick
+                    && w.start_generation == pending.input.expected_generation
+            })
+    }
     fn state(&self) -> Value {
         let mut result = state(
             &self.session,
@@ -871,6 +1072,16 @@ impl Situation<'_, '_> {
             &self.opening,
             *self.view,
         );
+        if self.client.pending_aid.len() > INSTALLED_ROSTER_LIMIT
+            || self.client.aid_resolutions.len() > INSTALLED_ROSTER_LIMIT
+        {
+            return Value::Null;
+        }
+        result["installed_organizer"] = json!(installed_organizer(&self.client, &self.session));
+        result["play_interlock"] = json!(self
+            .interlock
+            .as_ref()
+            .and_then(|i| i.visible(&self.session)));
         result["focused_amount"] = json!(self.focused_amount());
         result["amount_text"] = json!(self.focused_amount().map(|field| field.text(&self.client)));
         result["allocation_error"] = json!(super::amount_editor::allocation(&self.client).err());
@@ -1164,6 +1375,57 @@ fn admitted_input(
     Some(input)
 }
 
+fn handle_play_interlock(
+    input: &Input,
+    situation: &mut Situation,
+    controls: &mut Controls,
+) -> bool {
+    if input.action == Action::ArmOnePlayAdvance {
+        let session = &situation.session;
+        let applied = situation.client.pending.is_none()
+            && !situation.client.status_due
+            && (!session.organizer_enabled
+                || workspace::resources(&situation.client, session).is_some())
+            && situation
+                .audit
+                .as_deref()
+                .is_none_or(|audit| audit.can_arm_play(session))
+            && situation
+                .interlock
+                .as_deref_mut()
+                .is_some_and(|i| i.arm(input, session));
+        let (event, reason) = if applied {
+            ("applied", None)
+        } else {
+            ("refused", Some("play_interlock_unavailable"))
+        };
+        controls.respond(Some(input.sequence), event, reason, situation);
+        return true;
+    }
+    if input.action == Action::Play
+        && situation.interlock.as_ref().is_some_and(|i| {
+            i.witness.is_some()
+                && (!i.armed()
+                    || i.invalid
+                    || i.play.is_some()
+                    || situation.session.playing
+                    || !i
+                        .witness
+                        .as_ref()
+                        .is_some_and(|w| w.matches(&situation.session)))
+        })
+    {
+        controls.respond(
+            Some(input.sequence),
+            "refused",
+            Some("play_interlock_unavailable"),
+            situation,
+        );
+        return true;
+    }
+    false
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "`dispatch` declares each Bevy parameter explicitly"
@@ -1172,7 +1434,7 @@ fn dispatch(
     transport: Res<Transport>,
     mut controls: ResMut<Controls>,
     mut receipt: ResMut<HandlerReceipt>,
-    situation: Situation,
+    mut situation: Situation,
     mut organizer: MessageWriter<OrganizerAction>,
     mut observer: MessageWriter<ObserverCommand>,
     mut production: MessageWriter<ProductionCommand>,
@@ -1186,6 +1448,9 @@ fn dispatch(
         return;
     };
     let sequence = input.sequence;
+    if handle_play_interlock(&input, &mut situation, &mut controls) {
+        return;
+    }
     receipt.tracked = None;
     receipt.handled = None;
     if let Some(action) = input
@@ -1253,10 +1518,15 @@ fn dispatch(
             | Action::Quit
             | Action::PreviousPeriod
             | Action::ReturnLive) => {
-                receipt.tracked = Some(Tracked::Observer(
-                    observer.write(observer_command(action)).id,
-                    action,
-                ));
+                let message = observer.write(observer_command(action)).id;
+                if action == Action::Play {
+                    if let Some(interlock) =
+                        situation.interlock.as_deref_mut().filter(|i| i.armed())
+                    {
+                        interlock.play = Some((message, sequence));
+                    }
+                }
+                receipt.tracked = Some(Tracked::Observer(message, action));
             }
             _ => unreachable!("available action has one existing handler"),
         }
@@ -1392,6 +1662,9 @@ fn outcome(pending: &Pending, s: &Situation) -> Option<Result<&'static str, &'st
             return Some(Err("control_context_lost"));
         }
         return (!s.session.playing).then_some(Ok("applied"));
+    }
+    if action == Action::Play && s.play_acknowledged(pending) {
+        return Some(Ok("applied"));
     }
     if action != Action::Step && s.session.context() != pending.context {
         return Some(Err("control_context_changed"));
@@ -1776,6 +2049,7 @@ pub(crate) fn install(app: &mut App, transport: Transport) {
         .add_message::<WindowResized>()
         .init_resource::<ArchiveEvidenceReceipt>()
         .init_resource::<Controls>()
+        .init_resource::<PlayInterlock>()
         .init_resource::<HandlerReceipt>()
         .add_systems(
             Update,
@@ -1808,7 +2082,9 @@ mod tests {
     use crate::ui::dossier_card::ActiveCountyDossier;
     use babylon_kernel::clock::CampaignDuration;
     use babylon_persistence::identity::CampaignId;
-    use babylon_persistence::runtime_session::OrganizerAllocation;
+    use babylon_persistence::runtime_session::{
+        OrganizerAllocation, OrganizerView, RuntimeSessionResponse, RuntimeSessionTail,
+    };
     use bevy::input_focus::InputFocus;
     use bevy::time::TimeUpdateStrategy;
     use fs::Permissions;
@@ -2394,7 +2670,7 @@ mod tests {
             ),
             "campaign startup must wait for explicit capture admission"
         );
-        let mut admission = b"{\"version\":3,\"campaign_id\":\"00000000-0000-0000-0000-000000000001\",\"phase\":\"capture_ready\"}\n".to_vec();
+        let mut admission = b"{\"version\":4,\"campaign_id\":\"00000000-0000-0000-0000-000000000001\",\"phase\":\"capture_ready\"}\n".to_vec();
         admission.extend(frame(""));
         peer.write_all(&admission)
             .expect("the fixture sink accepts the authored bytes");
@@ -2456,7 +2732,7 @@ mod tests {
     fn pending(session: &ObserverSession, client: &OrganizerClient, action: Action) -> Pending {
         Pending {
             input: Input {
-                version: 3,
+                version: 4,
                 sequence: 1,
                 campaign_id: session.campaign.as_uuid().to_string(),
                 scope_epoch: session.runtime_scope().map(|s| s.epoch),
@@ -2743,7 +3019,7 @@ mod tests {
         let mut send = |app: &mut App, action: Value| {
             sequence += 1;
             let session = app.world().resource::<ObserverSession>();
-            let record = json!({"version":3,"sequence":sequence,"campaign_id":session.campaign.as_uuid().to_string(),
+            let record = json!({"version":4,"sequence":sequence,"campaign_id":session.campaign.as_uuid().to_string(),
                 "scope_epoch":session.runtime_scope().map(|scope|scope.epoch),"expected_tick":session.durable_tick,
                 "expected_generation":session.generation,"action":action});
             let line = format!("{record}\n");
@@ -2761,7 +3037,9 @@ mod tests {
                         serde_json::from_slice::<Value>(&raw).expect("actual producer frame");
                     println!(
                         "Qualification frame {}",
-                        serde_json::to_string(&value).expect("JSON")
+                        std::str::from_utf8(&raw)
+                            .expect("UTF-8 response bytes")
+                            .trim_end_matches('\n')
                     );
                     return value;
                 }
@@ -2923,6 +3201,43 @@ mod tests {
     fn repaired_qualification_context_change_refuses_the_queued_key() {
         competing_amount_input(Interference::ChangedContext);
     }
+    fn status_frame(app: &mut App, sequence: u64) -> Value {
+        use bevy::ecs::system::RunSystemOnce;
+        let raw = app
+            .world_mut()
+            .run_system_once(move |s: Situation| {
+                let mut controls = Controls::default();
+                controls.respond(Some(sequence), "observed", None, &s);
+                controls.reply.expect("status response")
+            })
+            .expect("control state");
+        let value: Value = serde_json::from_slice(&raw).expect("control frame");
+        println!(
+            "Qualification status {}",
+            std::str::from_utf8(&raw)
+                .expect("UTF-8 status bytes")
+                .trim_end_matches('\n')
+        );
+        value
+    }
+
+    fn check_installed_status(reviewed: &Value, expected_view: &OrganizerView) {
+        let installed = &reviewed["state"]["installed_organizer"];
+        assert_eq!(installed["actor_id"], expected_view.actor_id);
+        assert_eq!(installed["authority_id"], json!(expected_view.authority_id));
+        assert_eq!(installed["standing"], json!(expected_view.standing));
+        assert_eq!(installed["available_hours"], expected_view.available_hours);
+        assert_eq!(installed["contact_hours"], expected_view.contact_hours);
+        assert_eq!(
+            installed["content_digest"],
+            json!(expected_view.content_digest)
+        );
+        assert_eq!(
+            installed["resource_digest"],
+            json!(expected_view.resource_digest)
+        );
+    }
+
     #[test]
     fn qualification_status_authenticates_the_reviewed_and_accepted_original() {
         use super::super::draft::OrganizerDraft;
@@ -2935,6 +3250,7 @@ mod tests {
         .expect("producer capture");
         let snapshot: OrganizerSnapshot =
             serde_json::from_value(recorded["snapshot"].clone()).expect("actual status");
+        let expected_view = snapshot.view.clone();
         let config: OrganizerConfig =
             serde_json::from_value(recorded["config"].clone()).expect("actual authority");
         let law: OrganizerState =
@@ -2973,23 +3289,8 @@ mod tests {
             .insert_resource(PrimaryView::Organizer)
             .init_resource::<ObserverUiState>()
             .init_resource::<OpeningPresentation>();
-        let frame = |app: &mut App, sequence| {
-            let raw = app
-                .world_mut()
-                .run_system_once(move |s: Situation| {
-                    let mut controls = Controls::default();
-                    controls.respond(Some(sequence), "observed", None, &s);
-                    controls.reply.expect("status response")
-                })
-                .expect("control state");
-            let value: Value = serde_json::from_slice(&raw).expect("control frame");
-            println!(
-                "Qualification status {}",
-                serde_json::to_string(&value).expect("frame")
-            );
-            value
-        };
-        let reviewed = frame(&mut app, 1);
+        let reviewed = status_frame(&mut app, 1);
+        check_installed_status(&reviewed, &expected_view);
         assert_eq!(
             reviewed["state"]["reviewed_command"],
             serde_json::to_value(&command).expect("command")
@@ -3010,7 +3311,7 @@ mod tests {
                     .accepted(id, accepted.clone(), &mut session)
                     .expect("matched admission");
             });
-        let admitted = frame(&mut app, 2);
+        let admitted = status_frame(&mut app, 2);
         assert_eq!(
             admitted["state"]["commitment"],
             serde_json::to_value(accepted).expect("accepted original")
@@ -3020,6 +3321,19 @@ mod tests {
             reviewed["state"]["reviewed_command"]
         );
         assert!(admitted["state"]["reviewed_command"].is_null());
+        for choice in ["hold_reviewable", "pause_reviewable", "resume_reviewable"] {
+            assert_eq!(
+                admitted["state"]["installed_organizer"][choice], false,
+                "an accepted original blocks review"
+            );
+        }
+        app.world_mut().resource_mut::<ObserverSession>().generation += 1;
+        assert!(
+            app.world_mut()
+                .run_system_once(|s: Situation| s.state()["installed_organizer"].is_null())
+                .expect("stale status read"),
+            "same tick with stale generation has no installed authority"
+        );
     }
 
     #[test]
@@ -3449,17 +3763,17 @@ mod tests {
     }
 
     fn frame(extra: &str) -> Vec<u8> {
-        format!("{{\"version\":3,\"sequence\":1,\"campaign_id\":\"00000000-0000-0000-0000-000000000342\",\"scope_epoch\":null,\"expected_tick\":0,\"expected_generation\":0,\"action\":\"status\"{extra}}}\n").into_bytes()
+        format!("{{\"version\":4,\"sequence\":1,\"campaign_id\":\"00000000-0000-0000-0000-000000000342\",\"scope_epoch\":null,\"expected_tick\":0,\"expected_generation\":0,\"action\":\"status\"{extra}}}\n").into_bytes()
     }
 
     #[test]
     fn capture_startup_refuses_wrong_identity_old_frames_and_corruption() {
         let campaign = "00000000-0000-0000-0000-000000000001";
         let valid = format!(
-            "{{\"version\":3,\"campaign_id\":\"{campaign}\",\"phase\":\"capture_ready\"}}\n"
+            "{{\"version\":4,\"campaign_id\":\"{campaign}\",\"phase\":\"capture_ready\"}}\n"
         );
         for bytes in [
-            valid.replace("\"version\":3", "\"version\":1").into_bytes(),
+            valid.replace("\"version\":4", "\"version\":1").into_bytes(),
             valid
                 .replace(campaign, "00000000-0000-0000-0000-000000000002")
                 .into_bytes(),
@@ -3468,7 +3782,7 @@ mod tests {
                 .replace("\"phase\":", "\"unused\":true,\"phase\":")
                 .into_bytes(),
             valid
-                .replace("\"phase\":", "\"version\":3,\"phase\":")
+                .replace("\"phase\":", "\"version\":4,\"phase\":")
                 .into_bytes(),
             frame(""),
             valid.trim_end().as_bytes().to_vec(),
@@ -3498,7 +3812,7 @@ mod tests {
         for bytes in [
             String::from_utf8(frame(""))
                 .expect("the fixture bytes came from a UTF-8 string")
-                .replace("\"version\":3", "\"version\":1")
+                .replace("\"version\":4", "\"version\":1")
                 .into_bytes(),
             frame(",\"sequence\":2"),
             frame(",\"unused\":true"),
@@ -3575,6 +3889,219 @@ mod tests {
         input.scope_epoch = Some(input.scope_epoch.expect("connected") + 1);
         assert!(!precondition(&input, &session));
     }
+    #[test]
+    fn stale_scope_and_failed_playback_enqueue_do_not_claim_a_pause() {
+        let (mut app, requests, _child) = crate::observer_io::tests::quit_app();
+        crate::observer_io::tests::install_playback(&mut app);
+        app.world_mut().resource_mut::<ObserverUiState>().menu_open = false;
+        app.init_resource::<OrganizerClient>()
+            .init_resource::<PrimaryView>()
+            .add_message::<OrganizerAction>();
+        let (_peer, inputs, _outputs) = amount_control_transport(&mut app);
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(Duration::from_secs(5));
+        let send = |app: &mut App, sequence, action: Action, stale: bool| {
+            let mut input = pending(
+                app.world().resource::<ObserverSession>(),
+                app.world().resource::<OrganizerClient>(),
+                action,
+            )
+            .input;
+            input.sequence = sequence;
+            if stale {
+                input.scope_epoch = input.scope_epoch.and_then(|epoch| epoch.checked_add(1));
+            }
+            inputs
+                .send(Incoming::Input(input))
+                .expect("control transport");
+            app.update();
+            let raw = app
+                .world_mut()
+                .resource_mut::<Controls>()
+                .reply
+                .take()
+                .expect("acknowledgement");
+            serde_json::from_slice::<Value>(&raw).expect("actual producer frame")
+        };
+        assert_eq!(
+            send(&mut app, 1, Action::ArmOnePlayAdvance, true)["event"],
+            "refused"
+        );
+        let armed = send(&mut app, 2, Action::ArmOnePlayAdvance, false);
+        assert_eq!(armed["event"], "applied");
+        assert_eq!(
+            send(&mut app, 3, Action::ArmOnePlayAdvance, false)["event"],
+            "refused"
+        );
+        assert_eq!(send(&mut app, 4, Action::Play, true)["event"], "refused");
+        drop(requests);
+        let failed = send(&mut app, 5, Action::Play, false);
+        assert_eq!(failed["event"], "refused");
+        assert_eq!(failed["state"]["phase"], "Failed");
+        assert_eq!(
+            failed["state"]["play_interlock"],
+            armed["state"]["play_interlock"]
+        );
+    }
+
+    fn issue_playback_input(app: &mut App, inputs: &Sender<Incoming>, sequence: u64, action: &str) {
+        let s = app.world().resource::<ObserverSession>();
+        let line = format!(
+            "{}\n",
+            json!({
+                "version":4,"sequence":sequence,"action":action,
+                "campaign_id":s.campaign.as_uuid().to_string(),
+                "scope_epoch":s.runtime_scope().map(|scope|scope.epoch),
+                "expected_tick":s.durable_tick,"expected_generation":s.generation
+            })
+        );
+        let input = read_input(&mut line.as_bytes())
+            .expect("current control codec")
+            .expect("input");
+        inputs
+            .send(Incoming::Input(input))
+            .expect("control transport");
+        app.update();
+    }
+
+    fn install_playback_response(
+        app: &mut App,
+        responses: &Sender<Result<RuntimeSessionResponse, String>>,
+        request: u64,
+        tick: u64,
+    ) {
+        let scope = app
+            .world()
+            .resource::<ObserverSession>()
+            .runtime_scope()
+            .expect("installed")
+            .clone();
+        responses
+            .send(Ok(RuntimeSessionResponse::Committed {
+                scope: scope.clone(),
+                request_id: request,
+                tail: RuntimeSessionTail {
+                    resolve_tick: tick,
+                    tick_content_hash: Some(format!("{tick:064x}")),
+                    world_hash: Some(format!("{:064x}", tick + 16)),
+                },
+            }))
+            .expect("ordinary child response channel");
+        responses
+            .send(Ok(RuntimeSessionResponse::ArchiveProgress {
+                request_id: None,
+                scope,
+                durable_tick: tick,
+                verified_tick: tick,
+            }))
+            .expect("ordinary Archive completion");
+        app.update();
+        let mut s = app.world_mut().resource_mut::<ObserverSession>();
+        assert_eq!(s.durable_tick, tick);
+        let context = s.context();
+        assert!(s.installed(&context));
+    }
+
+    #[test]
+    fn qualification_play_stops_on_its_own_enqueued_request_before_delayed_acknowledgment() {
+        use babylon_persistence::runtime_session::RuntimeSessionRequest;
+        for wait_frames in [0, 5] {
+            let (mut app, requests, responses) = crate::observer_io::tests::quit_app();
+            crate::observer_io::tests::install_playback(&mut app);
+            app.world_mut().resource_mut::<ObserverUiState>().menu_open = false;
+            {
+                let mut session = app.world_mut().resource_mut::<ObserverSession>();
+                session.ready(8, Some(format!("{:064x}", 8)));
+                session.foundation_digest = Some("ac".repeat(32));
+                session.world_hash = Some(format!("{:064x}", 24));
+                session.archive_verified_tick = 8;
+                let context = session.context();
+                assert!(session.installed(&context));
+            }
+            app.init_resource::<OrganizerClient>()
+                .init_resource::<PrimaryView>()
+                .add_message::<OrganizerAction>();
+            let (_peer, inputs, _outputs) = amount_control_transport(&mut app);
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(Duration::from_secs(10));
+            let ack = |app: &mut App| -> Value {
+                let raw = app
+                    .world_mut()
+                    .resource_mut::<Controls>()
+                    .reply
+                    .take()
+                    .expect("ack");
+                if wait_frames == 0 {
+                    println!(
+                        "Qualification interlock {}",
+                        std::str::from_utf8(&raw).expect("actual frame").trim_end()
+                    );
+                }
+                serde_json::from_slice(&raw).expect("actual frame")
+            };
+            issue_playback_input(&mut app, &inputs, 1, "arm_one_play_advance");
+            assert_eq!(ack(&mut app)["state"]["play_interlock"]["phase"], "armed");
+            issue_playback_input(&mut app, &inputs, 2, "play");
+            let RuntimeSessionRequest::Advance {
+                request_id: first,
+                expected_tail,
+                ..
+            } = requests.try_recv().expect("P9 enqueue")
+            else {
+                panic!("advance")
+            };
+            assert_eq!(expected_tail.resolve_tick, 8);
+            let reply = ack(&mut app);
+            assert_eq!(reply["event"], "applied");
+            let frozen = &reply["state"]["play_interlock"];
+            assert_eq!(frozen["request_id"], first);
+            assert_eq!(frozen["phase"], "paused_after_enqueue");
+            assert_eq!(frozen["pending_at_pause"], true);
+            assert_eq!(frozen["playing_after_pause"], false);
+            for _ in 0..wait_frames {
+                app.update();
+            }
+            install_playback_response(&mut app, &responses, first, 9);
+            for _ in 0..5 {
+                app.update();
+            }
+            issue_playback_input(&mut app, &inputs, 3, "pause");
+            assert_eq!(ack(&mut app)["state"]["play_interlock"], *frozen);
+            issue_playback_input(&mut app, &inputs, 4, "step");
+            let RuntimeSessionRequest::Advance {
+                request_id: second,
+                expected_tail,
+                ..
+            } = requests.try_recv().expect("P10 enqueue")
+            else {
+                panic!("advance")
+            };
+            assert_ne!(first, second);
+            assert_eq!(expected_tail.resolve_tick, 9);
+            install_playback_response(&mut app, &responses, second, 10);
+            app.update();
+            assert_eq!(ack(&mut app)["event"], "committed_and_installed");
+            for _ in 0..5 {
+                app.update();
+            }
+            assert!(requests.try_recv().is_err(), "no P11");
+            assert_eq!(
+                app.world().resource::<ObserverSession>().phase,
+                SessionPhase::Ready
+            );
+            issue_playback_input(&mut app, &inputs, 5, "arm_one_play_advance");
+            assert_eq!(ack(&mut app)["event"], "refused");
+            issue_playback_input(&mut app, &inputs, 6, "play");
+            assert_eq!(ack(&mut app)["event"], "refused");
+            assert!(
+                requests.try_recv().is_err(),
+                "consumed private Play cannot issue P11"
+            );
+        }
+    }
+
     #[test]
     fn playback_controls_use_ordinary_idempotent_handlers_during_pending_install() {
         let (mut app, requests) = crate::observer_io::tests::command_app();

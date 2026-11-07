@@ -79,6 +79,12 @@ impl Work {
                 self.custody
                     .open(&admission, register, &self.scope, self.duration)?;
                 Ok(Opening {
+                    partner_reports:
+                        babylon_persistence::qualification_audit::aid::opening_reports(
+                            admission.material_catalog(),
+                            register,
+                        )
+                        .map_err(|e| e.to_string())?,
                     campaign: snapshot.campaign_id.clone(),
                     foundation_sha256: snapshot.foundation_digest.clone(),
                     graph_foundation_sha256: super::hex(&foundations.graph_foundation_sha256),
@@ -94,7 +100,7 @@ impl Work {
         drop(reader);
         let binding = KnownBinding::from_snapshot(&snapshot);
         let mut record = Record {
-            version: 4,
+            version: 5,
             scope: "authenticated_native_material_and_aid_facts_only",
             runtime_epoch: self.scope.epoch,
             observation_generation: context.generation,
@@ -185,7 +191,7 @@ impl Work {
             self.duration,
         )?;
         let mut record = Record {
-            version: 4,
+            version: 5,
             scope: "authenticated_native_material_and_aid_facts_only",
             runtime_epoch: self.scope.epoch,
             observation_generation: context.generation,
@@ -285,7 +291,7 @@ impl Work {
             .verify_identity(&identity)?;
         drop(reader);
         let mut record = Record {
-            version: 4,
+            version: 5,
             scope: "authenticated_native_material_and_aid_facts_only",
             runtime_epoch: self.scope.epoch,
             observation_generation: context.generation,

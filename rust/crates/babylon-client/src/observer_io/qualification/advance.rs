@@ -124,6 +124,24 @@ impl Pending {
 }
 
 impl NativeAudit {
+    pub(crate) fn can_arm_play(&self, session: &ObserverSession) -> bool {
+        self.advance.is_none()
+            && self.recovery.is_none()
+            && self.configuration.policy.verify().is_ok()
+            && self.scope.as_ref().is_some_and(|bound| {
+                bound.campaign == session.campaign
+                    && session
+                        .runtime_scope()
+                        .is_some_and(|scope| scope.epoch == bound.epoch)
+            })
+            && session.durable_tick < self.configuration.policy.periods()
+            && self.boundary.as_ref().is_some_and(|source| {
+                source.agrees(session)
+                    && source.tick == session.archive_verified_tick
+                    && self.audit.as_ref().map(MaterialAudit::completed_tick) == Some(source.tick)
+            })
+    }
+
     pub(in crate::observer_io) fn prepare_advance(
         &self,
         session: &ObserverSession,

@@ -4,7 +4,7 @@
     reason = "the shared control includes other material scenarios"
 )]
 #[path = "../../../babylon-material-circuit/tests/support/organizer_funding_control.rs"]
-mod control;
+pub(crate) mod control;
 
 use super::storage;
 use super::storage::AdmittedReceipts;

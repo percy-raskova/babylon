@@ -1,6 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::{advance, aid, recovery};
+use babylon_persistence::qualification_audit::aid::PartnerReport;
 
 use crate::observer::{ObservationContext, ObserverSession, SessionPhase};
 
@@ -93,6 +94,7 @@ pub(in crate::observer_io) struct Record {
 
 #[derive(Serialize)]
 pub(in crate::observer_io) struct Opening {
+    pub(super) partner_reports: Vec<PartnerReport>,
     pub(super) campaign: String,
     pub(super) foundation_sha256: String,
     pub(super) graph_foundation_sha256: String,

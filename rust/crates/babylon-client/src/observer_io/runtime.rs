@@ -36,7 +36,7 @@ use crate::observer_opening::{MenuPage, OpeningPresentation, OpeningStage};
 use crate::observer_progress::OperationProgress;
 use crate::observer_ui::ProductionEvidenceOutcome;
 use crate::observer_ui::RoadLayer;
-use crate::organizer::qualification_input::HandlerReceipt;
+use crate::organizer::qualification_input::{HandlerReceipt, PlayInterlock};
 use crate::organizer::{OrganizerClient, StatusDisposition};
 use crate::production::PrimaryView;
 use crate::ui::dossier_card::{
@@ -309,10 +309,8 @@ pub(crate) fn send_advance(
     pipe: &RuntimePipe,
     state: &mut ObserverSession,
     qualification: Option<&mut NativeAudit>,
-) {
-    let Some(request_id) = state.begin_advance() else {
-        return;
-    };
+) -> Option<u64> {
+    let request_id = state.begin_advance()?;
     let request = RuntimeSessionRequest::Advance {
         protocol_version: RUNTIME_SESSION_PROTOCOL_VERSION,
         scope: state
@@ -334,7 +332,7 @@ pub(crate) fn send_advance(
         Ok(timing) => timing,
         Err(error) => {
             state.fail(error);
-            return;
+            return None;
         }
     };
     match pipe.requests.try_send(request) {
@@ -342,8 +340,12 @@ pub(crate) fn send_advance(
             if let (Some(audit), Some(timing)) = (qualification, timing) {
                 audit.advance_sent(timing);
             }
+            Some(request_id)
         }
-        Err(error) => state.fail(format!("Cannot request next period: {error}")),
+        Err(error) => {
+            state.fail(format!("Cannot request next period: {error}"));
+            None
+        }
     }
 }
 
@@ -834,6 +836,7 @@ pub(crate) struct CommandContext<'w> {
 pub(crate) fn handle_commands(
     mut commands: MessageReader<ObserverCommand>,
     mut context: CommandContext,
+    mut interlock: Option<ResMut<PlayInterlock>>,
     mut qualification: Option<ResMut<HandlerReceipt>>,
 ) {
     for (command, message_id) in commands.read_with_id() {
@@ -879,6 +882,11 @@ pub(crate) fn handle_commands(
         context.feedback.message = None;
         let before = context.state.pending_advance_request();
         apply_command(command, &mut context);
+        if command == ObserverCommand::TogglePlay {
+            if let Some(lock) = interlock.as_deref_mut() {
+                lock.toggle_handled(message_id.id, &context.state);
+            }
+        }
         if let Some(receipt) = qualification.as_deref_mut() {
             receipt.observer_finished(message_id, true, before, &context.state);
         }
@@ -927,7 +935,7 @@ pub(crate) fn apply_command(command: ObserverCommand, context: &mut CommandConte
         ObserverCommand::Step => {
             state.pause_playback();
             if let Some(pipe) = pipe {
-                send_advance(pipe, state, qualification.as_deref_mut());
+                let _ = send_advance(pipe, state, qualification.as_deref_mut());
             } else {
                 feedback.reject(
                     "No campaign connection. Reopen the campaign from Menu.",
@@ -1375,6 +1383,7 @@ pub(crate) fn playback(
     mut clock: ResMut<PlaybackClock>,
     mut state: ResMut<ObserverSession>,
     mut qualification: Option<ResMut<NativeAudit>>,
+    mut interlock: Option<ResMut<PlayInterlock>>,
 ) {
     if state.quit_requested {
         return;
@@ -1392,7 +1401,18 @@ pub(crate) fn playback(
         clock.elapsed += time.delta_secs_f64();
         if clock.elapsed >= state.periods_per_second.recip() {
             clock.elapsed = 0.0;
-            send_advance(&pipe, &mut state, qualification.as_deref_mut());
+            if interlock
+                .as_ref()
+                .is_some_and(|lock| !lock.allows_enqueue(&state))
+            {
+                state.pause_playback();
+                return;
+            }
+            if let Some(id) = send_advance(&pipe, &mut state, qualification.as_deref_mut()) {
+                if let Some(lock) = interlock.as_deref_mut() {
+                    lock.enqueued(&mut state, id);
+                }
+            }
         }
     } else {
         clock.elapsed = 0.0;

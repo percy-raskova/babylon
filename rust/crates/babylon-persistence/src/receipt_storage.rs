@@ -18,4 +18,4 @@ pub(crate) use storage::{
 };
 
 #[cfg(test)]
-mod agency_paid_tests;
+pub(crate) mod agency_paid_tests;

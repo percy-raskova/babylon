@@ -1,7 +1,9 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 use crate::runtime_session::OrganizerAidFoodPreview;
 
-use super::{postings, practice, MaterialWorldRegister};
+use super::practice::History;
+use super::reports::RetailOpening;
+use super::{postings, practice, MaterialWorldRegister, PartnerReport};
 
 use crate::observer_reader::CommittedMaterialReceipts;
 use crate::runtime_session::{OrganizerMaterialAidPreview, OrganizerSnapshot};
@@ -29,6 +31,12 @@ use std::fmt::Formatter;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     Admission,
+    ReportAuthority,
+    ReportOpening,
+    ReportGrant,
+    ReportRetail,
+    ReportService,
+    ReportSettlement,
     OriginalOffer,
     Duplicate,
     Period,
@@ -266,12 +274,14 @@ pub(in crate::qualification_audit) type Totals = BTreeMap<[u8; 32], (u64, i128, 
 #[derive(Default, Clone)]
 pub struct Audit {
     period: u64,
+    retail_opening: RetailOpening,
     commands: BTreeMap<[u8; 32], Accepted>,
     dispatched: Totals,
     settled: Totals,
     facts: Vec<Value>,
     pub(super) completed_practices: BTreeSet<[u8; 32]>,
     terminal_practices: BTreeSet<[u8; 32]>,
+    practice_history: History,
     completed_kinds: BTreeSet<OrganizerAidKind>,
     pub(super) opening: Option<([u8; 16], OrganizerSnapshot)>,
     campaign: Option<[u8; 16]>,
@@ -285,6 +295,7 @@ pub struct Boundary {
     pub canonical_receipt_sha256: String,
     pub selected_aid: Vec<Value>,
     pub independent_practices: Vec<Value>,
+    pub partner_reports: Vec<PartnerReport>,
 }
 
 /// A compact comparison disclosure from a register already authenticated by the
@@ -315,6 +326,9 @@ impl Audit {
         register: &MaterialWorldRegister,
         snapshot: &OrganizerSnapshot,
     ) -> Result<()> {
+        if register.catalog_digest() != catalog.catalog_digest() {
+            return Err(Refusal::Identity);
+        }
         if register.completed_tick() != self.period {
             return Err(Refusal::Period);
         }
@@ -335,6 +349,8 @@ impl Audit {
         {
             return Err(Refusal::Identity);
         }
+        let retail_opening = RetailOpening::capture(register)?;
+        self.retail_opening = retail_opening;
         self.campaign = Some(campaign);
         self.opening = Some((campaign, snapshot.clone()));
         Ok(())
@@ -405,6 +421,7 @@ impl Audit {
             return Err(Refusal::Capture);
         };
         let mut candidate = self.clone();
+        candidate.practice_history.check_close(admitted)?;
         postings::check_period(&admitted.receipts)?;
         let mut selected_aid = Vec::new();
         for row in &admitted.receipts.aid {
@@ -437,7 +454,12 @@ impl Audit {
             }
             let accepted = self.commands.get(&original).ok_or(Refusal::OriginalOffer)?;
             let terms = terms(accepted, config, &catalog.aid_mandates)?;
-            let fact = practice::read(admitted, resolution, &terms)?;
+            let fact = practice::read(
+                admitted,
+                resolution,
+                &terms,
+                &mut candidate.practice_history,
+            )?;
             if !matches!(
                 resolution.practice.outcome,
                 OrganizerOutcome::AidAwaitingSupport | OrganizerOutcome::AidResponseRetained
@@ -451,8 +473,15 @@ impl Audit {
             }
             independent_practices.push(fact);
         }
+        candidate.practice_history.check_pending(register)?;
         let fact = Boundary {
-            version: 2,
+            version: 3,
+            partner_reports: super::reports::closed(
+                catalog,
+                register,
+                admitted,
+                &self.retail_opening,
+            )?,
             period: tick,
             tick_content_hash: super::super::hex(admitted.identity.tick_content_hash().as_bytes()),
             canonical_receipt_sha256: super::super::hex(&admitted.identity.receipt_digest()),

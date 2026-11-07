@@ -1326,6 +1326,55 @@ def test_toast_payload_and_index_require_their_measured_extents(
                     backup.archive_manifest(stream, witness)
 
 
+@pytest.mark.parametrize("fault", ["none", "wrong-prefix", "locale-not-set", "set-denied"])
+def test_shutdown_logging_establishes_session_locale_before_reading_settings(fault: str) -> None:
+    # The selected PG17 cluster reports the inherited default as an empty string.
+    # Only a successful session SET supplies affirmative English-log evidence.
+    locale = "de_DE" if fault == "locale-not-set" else ""
+    conn = MagicMock()
+
+    def execute(statement: str, args: tuple[object, ...] = ()) -> MagicMock:
+        nonlocal locale
+        cursor = MagicMock()
+        if statement == "SET SESSION lc_messages = 'C'":
+            if fault == "set-denied":
+                raise backup.psycopg.errors.InsufficientPrivilege("permission denied")
+            if fault != "locale-not-set":
+                locale = "C"
+        else:
+            assert "current_setting('lc_messages')" in statement
+            cursor.fetchall.return_value = [
+                (
+                    "%p" if fault == "wrong-prefix" else "%m [%p] ",
+                    locale,
+                    "default",
+                    "stderr",
+                    "off",
+                    "warning",
+                    "GMT",
+                )
+            ]
+        return cursor
+
+    conn.execute.side_effect = execute
+    if fault == "set-denied":
+        with pytest.raises(backup.psycopg.errors.InsufficientPrivilege):
+            backup._stop_logging(conn)
+    elif fault != "none":
+        with pytest.raises(backup.Refusal):
+            backup._stop_logging(conn)
+    else:
+        assert backup._stop_logging(conn) == {
+            "prefix": "%m [%p] ",
+            "locale": "C",
+            "verbosity": "default",
+            "destination": "stderr",
+            "collector": "off",
+            "minimum": "warning",
+            "timezone": "GMT",
+        }
+
+
 def _change_held_fence(
     fault: str, live: list[backup.Backend], totals: dict[str, backup.SessionTotal]
 ) -> None:

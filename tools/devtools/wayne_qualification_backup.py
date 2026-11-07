@@ -916,6 +916,9 @@ def _cluster_stats(admin: Connection) -> ClusterStats:
 
 
 def _stop_logging(conn: Connection) -> dict[str, str]:
+    # These admitted privileged fence sessions must emit parseable shutdown logs.
+    # An empty inherited locale does not establish their message language.
+    conn.execute("SET SESSION lc_messages = 'C'")
     prefix, locale, verbosity, destination, collector, minimum, zone = _one(
         conn,
         """
@@ -926,7 +929,7 @@ def _stop_logging(conn: Connection) -> dict[str, str]:
     )
     if (
         prefix != "%m [%p] "
-        or locale not in ("C", "POSIX", "C.UTF-8", "C.utf8", "en_US.UTF-8", "en_US.utf8")
+        or locale != "C"
         or (
             verbosity not in ("default", "terse")
             or destination != "stderr"

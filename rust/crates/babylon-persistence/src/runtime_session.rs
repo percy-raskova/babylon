@@ -2,6 +2,9 @@
 
 mod backend;
 
+#[cfg(test)]
+pub(crate) use backend::advance_error;
+
 mod coordinator;
 
 mod input;

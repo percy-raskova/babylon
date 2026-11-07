@@ -33,10 +33,13 @@ use postgres::GenericClient;
 
 #[cfg(test)]
 mod live_tests {
+    use postgres::Error as PostgresError;
     #[path = "city_pd_atomic.rs"]
     mod city_pd_atomic;
     #[path = "material_open.rs"]
     mod material_open;
+    #[path = "organizer_allocation_atomic.rs"]
+    mod organizer_allocation_atomic;
     #[path = "territory_controls/controls.rs"]
     mod territory_controls;
     use super::super::postgres_catalog;
@@ -872,26 +875,46 @@ mod live_tests {
 
         fn create_from_template(base: &Config, template: &str, label: &str) -> Self {
             assert!(label.bytes().all(|byte| byte.is_ascii_lowercase()));
-            assert!(template
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'));
-            let name = format!("per281_runtime_{label}_{}", std::process::id());
-            let mut admin = base.clone();
-            admin.dbname("postgres");
-            let sql = format!("CREATE DATABASE \"{name}\" OWNER test TEMPLATE \"{template}\"");
-            admin
-                .connect(NoTls)
-                .expect("admin connection")
-                .batch_execute(&sql)
+            let mut database = Self::uncreated(base, label);
+            let mut admin = database.admin.connect(NoTls).expect("admin connection");
+            database
+                .create_clone(&mut admin, template)
                 .expect("runtime clone creation");
-            let database = Self {
-                name,
-                admin,
-                active: true,
-            };
+            database.active = true;
             session::verify_runtime_schema(&database.config(base))
                 .expect("current schema authority");
             database
+        }
+
+        fn uncreated(base: &Config, label: &str) -> Self {
+            let name = format!("per281_runtime_{label}_{}", std::process::id());
+            let mut admin = base.clone();
+            admin.dbname("postgres");
+            Self {
+                name,
+                admin,
+                active: false,
+            }
+        }
+
+        // The outer owner may retire this sole clone only after the test exits
+        // and seals its transcript. No in-test operation arms its destructor.
+        fn retained_allocation(base: &Config) -> Self {
+            Self::uncreated(base, "allocationatomic")
+        }
+
+        fn create_clone(
+            &self,
+            admin: &mut postgres::Client,
+            template: &str,
+        ) -> Result<(), PostgresError> {
+            assert!(template
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_'));
+            admin.batch_execute(&format!(
+                r#"CREATE DATABASE "{}" OWNER test TEMPLATE "{template}""#,
+                self.name
+            ))
         }
 
         fn cleanup(mut self) {
@@ -901,6 +924,9 @@ mod live_tests {
         }
 
         fn try_drop_database(&self) -> Result<(), ()> {
+            if !self.active {
+                return Err(());
+            }
             let sql = format!("DROP DATABASE IF EXISTS \"{}\" WITH (FORCE)", self.name);
             self.admin
                 .connect(NoTls)

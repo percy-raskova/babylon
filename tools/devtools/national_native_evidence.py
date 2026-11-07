@@ -37,18 +37,17 @@ from tools.devtools.national_storage_qualification import (
     verify_economic_summary,
 )
 from tools.devtools.national_windowed_qualification import (
-    EXPECTED,
     ActionObservation,
+    Command,
+    Commitment,
     ControlsEvidence,
+    expected_event,
 )
 
 # Designed framing bounds, not alternative economic or save-growth policy.
 MATERIAL_RECORD_BYTES = 4_194_304  # Matches the native record writer.
 CONTROLS_RECORD_BYTES = 134_217_728
 MANIFEST_BYTES = 1_048_576
-Byte = Annotated[StrictInt, Field(ge=0, le=255)]
-Bytes16 = Annotated[tuple[Byte, ...], Field(min_length=16, max_length=16)]
-Bytes32 = Annotated[tuple[Byte, ...], Field(min_length=32, max_length=32)]
 U64 = Annotated[StrictInt, Field(ge=0, le=2**64 - 1)]
 
 
@@ -254,23 +253,6 @@ class AdvanceRecord(NativeRecord):
     material_record_sha256: Sha256
 
 
-class Command(NativeRecord):
-    campaign_id: Bytes16
-    actor_id: U64
-    authority_id: Bytes16
-    expected_period: Nonnegative
-    content_digest: Bytes32
-    resource_digest: Bytes32
-    nonce: Bytes16
-    choice: Literal["local_aid", "remote_aid", "pause_standing", "resume_standing"]
-
-
-class Commitment(NativeRecord):
-    command: Command
-    resolves_period: Positive
-    commitment_id: Bytes32
-
-
 class Review(NativeRecord):
     observation_generation: U64
     scope: RuntimeScope
@@ -392,7 +374,7 @@ def _trace(
         # material action is admitted from that response.
         stale_poll = _stale_poll(action)
         if not stale_poll and (
-            action.event != EXPECTED.get(action.action, "applied") or action.reason is not None
+            action.event != expected_event(action.action) or action.reason is not None
         ):
             raise ValueError("native control trace contains a refused material action")
         if bound is not None:
@@ -453,9 +435,7 @@ def _originals(
             reviewed = action
         elif action.action == "confirm":
             commitment = Commitment.model_validate(action.state.commitment)
-            if reviewed is None or reviewed.state.reviewed_command != commitment.command.model_dump(
-                mode="json"
-            ):
+            if reviewed is None or reviewed.state.reviewed_command != commitment.command:
                 raise ValueError("native acceptance has no original matching review")
             if commitment.command.choice in {"local_aid", "remote_aid"}:
                 identity = bytes(commitment.commitment_id).hex()
@@ -497,7 +477,8 @@ def _originals(
             or original.tick_content_hash != review.state.tick_content_hash
             or original.review.scope != RuntimeScope(epoch=epoch, campaign_id=evidence.campaign)
             or original.review.observation_generation != review.state.generation
-            or original.review.admission != review.state.preview
+            or review.state.preview is None
+            or original.review.admission != review.state.preview.model_dump(mode="json")
             or view.get("period") != command.expected_period
             or original.review.admission.get("refusal") is not None
             or confirm.state.durable_tick != command.expected_period

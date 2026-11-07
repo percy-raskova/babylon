@@ -18,10 +18,11 @@ import time
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
-from typing import Annotated, Literal, Protocol
+from typing import Annotated, Literal, Protocol, Self
 from uuid import UUID
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -32,13 +33,18 @@ from pydantic import (
     StrictStr,
     ValidationError,
     field_validator,
+    model_validator,
 )
 from tools import run_observer_session as launcher
 
 Nonnegative = Annotated[StrictInt, Field(ge=0, le=2**64 - 1)]
 Positive = Annotated[StrictInt, Field(gt=0, le=2**64 - 1)]
 Sha256 = Annotated[StrictStr, Field(pattern=r"^[0-9a-f]{64}$")]
-Action = Literal[
+UnitAction = Literal[
+    "choose_collect",
+    "inspect_subject_evidence",
+    "draft_from_report",
+    "archive_report",
     "status",
     "play",
     "pause",
@@ -135,6 +141,67 @@ class FrozenRecord(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
+AmountField = Literal["contribution", "food", "cash"]
+
+
+class FocusAmount(FrozenRecord):
+    focus_amount: AmountField
+
+
+class SelectAidPartner(FrozenRecord):
+    select_aid_partner: Literal["local", "remote"]
+
+
+class CharacterKey(FrozenRecord):
+    character: Annotated[StrictStr, Field(min_length=1, max_length=1)]
+
+
+class AmountKey(FrozenRecord):
+    amount_key: Literal["home", "end", "delete", "backspace"] | CharacterKey
+
+
+Action = UnitAction | FocusAmount | SelectAidPartner | AmountKey
+
+
+def expected_event(action: Action) -> str:
+    return EXPECTED.get(action, "applied") if isinstance(action, str) else "applied"
+
+
+def _canonical_campaign(value: str) -> str:
+    campaign = UUID(value)
+    if campaign.int == 0 or str(campaign) != value:
+        raise ValueError("native campaign must be a canonical nonzero UUID")
+    return value
+
+
+Campaign = Annotated[StrictStr, AfterValidator(_canonical_campaign)]
+
+
+class ControlVersion(FrozenRecord):
+    version: Literal[3]
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def exact_version(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("native control version must be an exact integer")
+        return value
+
+
+class StartupAdmission(ControlVersion):
+    campaign_id: Campaign
+    phase: Literal["capture_ready"]
+
+
+class ControlInput(ControlVersion):
+    sequence: Positive
+    campaign_id: Campaign
+    scope_epoch: Nonnegative | None
+    expected_tick: Nonnegative
+    expected_generation: Nonnegative
+    action: Action
+
+
 class InquiryChoice(FrozenRecord):
     inquiry: Literal["work_lost", "maintenance_received"]
 
@@ -144,8 +211,209 @@ UnitChoice = Literal[
 ]
 
 
+Choice = UnitChoice | InquiryChoice
+Byte = Annotated[StrictInt, Field(ge=0, le=255)]
+Bytes16 = Annotated[tuple[Byte, ...], Field(min_length=16, max_length=16)]
+Bytes32 = Annotated[tuple[Byte, ...], Field(min_length=32, max_length=32)]
+
+
+def _bounded_micros(value: str) -> str:
+    if int(value) > 2**127 - 1:
+        raise ValueError("allocation cash exceeds i128")
+    return value
+
+
+Micros = Annotated[
+    StrictStr,
+    Field(pattern=r"^(0|[1-9][0-9]{0,38})$"),
+    AfterValidator(_bounded_micros),
+]
+
+
+class CollectionAmount(FrozenRecord):
+    target_cash_micros: Micros
+
+
+class CollectionAllocation(FrozenRecord):
+    collection: CollectionAmount
+
+
+class AidAmounts(FrozenRecord):
+    food_quantity: Nonnegative
+    cash_micros: Micros
+
+
+class AidAllocation(FrozenRecord):
+    aid: AidAmounts
+
+
+Allocation = Literal["none"] | CollectionAllocation | AidAllocation
+
+
+class SelectedAllocation(FrozenRecord):
+    choice: Choice
+    allocation: Allocation
+
+    @model_validator(mode="after")
+    def choice_matches_allocation(self) -> Self:
+        if self.choice == "collect":
+            valid = isinstance(self.allocation, CollectionAllocation) and (
+                self.allocation.collection.target_cash_micros != "0"
+            )
+        elif self.choice in ("local_aid", "remote_aid"):
+            valid = isinstance(self.allocation, AidAllocation) and (
+                self.allocation.aid.food_quantity > 0 or self.allocation.aid.cash_micros != "0"
+            )
+        else:
+            valid = self.allocation == "none"
+        if not valid:
+            raise ValueError("selected allocation cannot authorize this practice")
+        return self
+
+
+class Command(SelectedAllocation):
+    campaign_id: Bytes16
+    actor_id: Nonnegative
+    authority_id: Bytes16
+    expected_period: Nonnegative
+    content_digest: Bytes32
+    resource_digest: Bytes32
+    nonce: Bytes16
+
+
+class Commitment(FrozenRecord):
+    command: Command
+    resolves_period: Positive
+    commitment_id: Bytes32
+
+
+class ReportCommodity(FrozenRecord):
+    good_id: Bytes32
+    unit_id: Bytes32
+    label: StrictStr
+    unit_label: StrictStr
+
+
+class OpeningAssessment(FrozenRecord):
+    basis: Literal["opening_assessment"]
+    commodity: ReportCommodity
+    required: Nonnegative
+    opening_stock: Nonnegative
+
+
+class FoodProvision(FrozenRecord):
+    basis: Literal["food_provision"]
+    commodity: ReportCommodity
+    required: Nonnegative
+    consumed: Nonnegative
+    unmet: Nonnegative
+    closing: Nonnegative
+    purchased: Nonnegative
+    settled_micros: Micros
+
+
+class ServiceReport(FrozenRecord):
+    commodity: ReportCommodity
+    required: Nonnegative
+    performed: Nonnegative
+    satisfied: Nonnegative
+    unmet: Nonnegative
+    unused: Nonnegative
+    expired: Nonnegative
+    settled_micros: Micros
+    refunded_micros: Micros
+
+
+class EssentialServices(FrozenRecord):
+    basis: Literal["essential_services"]
+    services: tuple[ServiceReport, ...]
+
+
+class ParticipationTime(FrozenRecord):
+    basis: Literal["participation_time"]
+    labor_unit: Bytes32
+    attended: Nonnegative
+    protected: Nonnegative
+    unpaid: Nonnegative
+    contributed: Nonnegative
+    remaining: Nonnegative
+
+
+class PartnerReport(FrozenRecord):
+    kind: Literal["partner"]
+    evidence_class: Literal["Derived"]
+    facts: Annotated[
+        OpeningAssessment | FoodProvision | EssentialServices | ParticipationTime,
+        Field(discriminator="basis"),
+    ]
+
+
+class ReducedWorkReport(FrozenRecord):
+    kind: Literal["reduced_work"]
+    previous_labor_hours: Nonnegative
+    performed_labor_hours: Nonnegative
+
+
+class WorkReport(FrozenRecord):
+    kind: Literal["work"]
+    performed_labor_hours: Nonnegative
+    output_kg: Nonnegative
+    previous_labor_hours: Nonnegative | None
+    previous_output_kg: Nonnegative | None
+
+
+class MaintenanceReport(FrozenRecord):
+    kind: Literal["maintenance"]
+    enabled_batches: Nonnegative
+    consumed_batches: Nonnegative
+    expired_batches: Nonnegative
+
+
+class Observation(FrozenRecord):
+    observation_id: Bytes32
+    actor_id: Nonnegative
+    subject_id: Nonnegative
+    source_actor_id: Nonnegative
+    observed_period: Nonnegative
+    acquired_period: Nonnegative
+    receipt_id: Bytes32 | None
+    report: Annotated[
+        PartnerReport | ReducedWorkReport | WorkReport | MaintenanceReport,
+        Field(discriminator="kind"),
+    ]
+
+
+class Preview(SelectedAllocation):
+    current_period: Nonnegative
+    resolves_period: Nonnegative
+    available_hours: Nonnegative
+    required_hours: Nonnegative
+    replaces_standing_work: StrictBool
+    refusal: (
+        Literal[
+            "wrong_campaign",
+            "wrong_authority",
+            "stale_period",
+            "content_changed",
+            "resource_contract_changed",
+            "insufficient_committed_time",
+            "standing_work_paused",
+            "standing_work_already_active",
+            "invalid_command",
+            "collection_unavailable",
+            "collection_cash_refused",
+            "aid_unavailable",
+            "aid_receiving_refused",
+            "pending_aid_conflict",
+            "household_time_already_spent",
+        ]
+        | None
+    )
+    observations: tuple[Observation, ...]
+
+
 class ControlState(FrozenRecord):
-    campaign_id: StrictStr
+    campaign_id: Campaign
     scope_epoch: Nonnegative | None
     durable_tick: Nonnegative
     viewed_tick: Nonnegative
@@ -159,10 +427,15 @@ class ControlState(FrozenRecord):
     organizer_pending: StrictBool
     organizer_status_due: StrictBool
     organizer_period: Nonnegative | None
-    choice: UnitChoice | InquiryChoice
-    reviewed_command: dict[str, JsonValue] | None
-    preview: dict[str, JsonValue] | None
-    commitment: dict[str, JsonValue] | None
+    choice: Choice
+    reviewed_command: Command | None
+    preview: Preview | None
+    commitment: Commitment | None
+    focused_amount: AmountField | None
+    amount_text: StrictStr | None
+    allocation_error: StrictStr | None
+    collection_allocation: Literal["none"] | CollectionAllocation | None
+    aid_allocation: Literal["none"] | AidAllocation | None
     quit_requested: StrictBool
     splash_visible: StrictBool
     menu_open: StrictBool
@@ -194,19 +467,11 @@ class ControlState(FrozenRecord):
         return value
 
 
-class ControlResponse(FrozenRecord):
-    version: Literal[2]
+class ControlResponse(ControlVersion):
     sequence: Positive
     event: Event
     reason: StrictStr | None
     state: ControlState
-
-    @field_validator("version", mode="before")
-    @classmethod
-    def exact_version(cls, value: object) -> object:
-        if type(value) is not int:
-            raise ValueError("control version must be an exact integer")
-        return value
 
 
 class ActionObservation(FrozenRecord):
@@ -219,21 +484,13 @@ class ActionObservation(FrozenRecord):
     state: ControlState
 
 
-class ControlsEvidence(FrozenRecord):
-    version: Literal[2]
+class ControlsEvidence(ControlVersion):
     status: Literal["incomplete", "completed"]
     campaign: StrictStr
     initial_tick: Nonnegative
     foundation_sha256: Sha256 | None
     scope: Literal["native_ui_actions_only_not_accounting_or_memory_qualification"]
     actions: tuple[ActionObservation, ...]
-
-    @field_validator("version", mode="before")
-    @classmethod
-    def exact_version(cls, value: object) -> object:
-        if type(value) is not int:
-            raise ValueError("native controls evidence version must be an exact integer")
-        return value
 
 
 class PlannedChoice(FrozenRecord):
@@ -422,74 +679,26 @@ class ControlChannel:
             self._check_capture()
         if self.closed:
             raise ControlRefusal("native control channel is closed after refusal")
-        if action not in EXPECTED and action not in {
-            "play",
-            "pause",
-            "speed",
-            "world",
-            "observer_campaigns",
-            "circuit",
-            "flow",
-            "economy_network",
-            "manufacturing_sector",
-            "all_sectors",
-            "select_first_county_cohort",
-            "standard_interface",
-            "larger_interface",
-            "read_inquiry_report",
-            "continue_warning",
-            "continue_title",
-            "open_organizer",
-            "open_direction",
-            "inspect_practices",
-            "inspect_receipts",
-            "open_relationships",
-            "scene_places",
-            "scene_relationships",
-            "select_workplace_committee",
-            "select_neighborhood_group",
-            "inspect_evidence",
-            "next_evidence",
-            "previous_evidence",
-            "archive_workplace",
-            "archive_organization",
-            "open_archive_evidence",
-            "previous_period",
-            "return_live",
-            "resize1366x768",
-            "resize1920x1080",
-            "close_inspector",
-            "choose_remote_aid",
-            "choose_local_aid",
-            "choose_inquiry_work_lost",
-            "choose_inquiry_maintenance_received",
-            "choose_reinforce",
-            "choose_hold",
-            "choose_pause_standing",
-            "choose_resume_standing",
-        }:
-            raise ControlRefusal("unsupported native control action")
         started = time.monotonic_ns()
         deadline = time.monotonic() + _duration(timeout)
-        self.sequence += 1
         prior = self.state
-        frame = (
-            json.dumps(
-                {
-                    "version": 2,
-                    "sequence": self.sequence,
-                    "campaign_id": self.campaign,
-                    "scope_epoch": prior.scope_epoch if prior else None,
-                    "expected_tick": prior.durable_tick if prior else self.initial_tick,
-                    "expected_generation": prior.generation if prior else 0,
-                    "action": action,
-                },
-                allow_nan=False,
-            ).encode()
-            + b"\n"
-        )
+        try:
+            request = ControlInput(
+                version=3,
+                sequence=self.sequence + 1,
+                campaign_id=self.campaign,
+                scope_epoch=prior.scope_epoch if prior else None,
+                expected_tick=prior.durable_tick if prior else self.initial_tick,
+                expected_generation=prior.generation if prior else 0,
+                action=action,
+            )
+        except ValidationError as error:
+            raise ControlRefusal("unsupported native control input") from error
+        action = request.action
+        frame = request.model_dump_json().encode("utf-8") + b"\n"
         if len(frame) > INPUT_BYTES:
             raise ControlRefusal("native control input exceeds its byte bound")
+        self.sequence = request.sequence
         try:
             self.connection.settimeout(max(0.001, deadline - time.monotonic()))
             self.connection.sendall(frame)
@@ -527,7 +736,7 @@ class ControlChannel:
     def perform(self, action: Action, timeout: float) -> ControlState:
         prior = self.state
         reply = self._exchange(action, timeout)
-        if reply.event != EXPECTED.get(action, "applied") or reply.reason is not None:
+        if reply.event != expected_event(action) or reply.reason is not None:
             self.close()
             reason = f": {reply.reason}" if reply.reason is not None else ""
             raise ControlRefusal("ordinary native handler refused the requested action" + reason)
@@ -541,34 +750,49 @@ class ControlChannel:
         if action == "inspect_practices" and reply.state.inspector != "Practices":
             self.close()
             raise ControlRefusal("native practice list did not open")
-        choice = {
-            "choose_remote_aid": "remote_aid",
-            "choose_local_aid": "local_aid",
-            "choose_inquiry_work_lost": InquiryChoice(inquiry="work_lost"),
-            "choose_inquiry_maintenance_received": InquiryChoice(inquiry="maintenance_received"),
-            "choose_reinforce": "reinforce",
-            "choose_hold": "hold",
-            "choose_pause_standing": "pause_standing",
-            "choose_resume_standing": "resume_standing",
-        }.get(action)
+        choice = (
+            {
+                "choose_collect": "collect",
+                "choose_remote_aid": "remote_aid",
+                "choose_local_aid": "local_aid",
+                "choose_inquiry_work_lost": InquiryChoice(inquiry="work_lost"),
+                "choose_inquiry_maintenance_received": InquiryChoice(
+                    inquiry="maintenance_received"
+                ),
+                "choose_reinforce": "reinforce",
+                "choose_hold": "hold",
+                "choose_pause_standing": "pause_standing",
+                "choose_resume_standing": "resume_standing",
+            }.get(action)
+            if isinstance(action, str)
+            else None
+        )
         if choice is not None and reply.state.choice != choice:
             self.close()
             raise ControlRefusal("native handler applied a different choice")
-        if action in {"play", "pause"} and reply.state.playing != (action == "play"):
+        if action in ("play", "pause") and reply.state.playing != (action == "play"):
             self.close()
             raise ControlRefusal("native playback acknowledgment has the wrong scheduling state")
         if action == "review" and (
             reply.state.reviewed_command is None
             or reply.state.preview is None
-            or reply.state.preview.get("refusal") is not None
+            or reply.state.preview.refusal is not None
+            or reply.state.choice != reply.state.reviewed_command.choice
+            or bytes(reply.state.reviewed_command.campaign_id) != UUID(self.campaign).bytes
+            or reply.state.reviewed_command.expected_period != reply.state.durable_tick
+            or reply.state.preview.choice != reply.state.reviewed_command.choice
+            or reply.state.preview.allocation != reply.state.reviewed_command.allocation
+            or reply.state.preview.current_period != reply.state.reviewed_command.expected_period
         ):
             self.close()
             raise ControlRefusal("native preview lacks its reviewed command")
         if action == "confirm" and (
             prior is None
             or prior.reviewed_command is None
+            or prior.preview is None
             or reply.state.commitment is None
-            or reply.state.commitment.get("command") != prior.reviewed_command
+            or reply.state.commitment.resolves_period != prior.preview.resolves_period
+            or reply.state.commitment.command != prior.reviewed_command
         ):
             self.close()
             raise ControlRefusal("native acceptance has a different reviewed command")
@@ -580,7 +804,7 @@ def write_observations(
 ) -> None:
     """Atomic evidence of local actions; never a named qualification result."""
     payload = ControlsEvidence(
-        version=2,
+        version=3,
         status=status,
         campaign=channel.campaign,
         initial_tick=channel.initial_tick,
@@ -745,14 +969,13 @@ def drive_pair(
                     # pipe. The capture context has already finished its first
                     # authenticated sample before yielding to this driver.
                     connection.sendall(
-                        json.dumps(
-                            {
-                                "version": 2,
-                                "campaign_id": str(initial_target.campaign),
-                                "phase": "capture_ready",
-                            },
-                            separators=(",", ":"),
-                        ).encode("ascii")
+                        StartupAdmission(
+                            version=3,
+                            campaign_id=str(initial_target.campaign),
+                            phase="capture_ready",
+                        )
+                        .model_dump_json()
+                        .encode("ascii")
                         + b"\n"
                     )
                     channel = ControlChannel(

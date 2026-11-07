@@ -9,6 +9,7 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal, cast
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
@@ -35,6 +36,11 @@ def state(tick: int = 0) -> dict[str, Any]:
         "organizer_status_due": False,
         "organizer_period": tick,
         "choice": "remote_aid",
+        "focused_amount": None,
+        "amount_text": None,
+        "allocation_error": None,
+        "collection_allocation": "none",
+        "aid_allocation": {"aid": {"food_quantity": 1, "cash_micros": "0"}},
         "reviewed_command": None,
         "preview": None,
         "commitment": None,
@@ -63,12 +69,50 @@ def state(tick: int = 0) -> dict[str, Any]:
     }
 
 
+def admission_fields(
+    choice: str | dict[str, str],
+    period: int,
+    nonce: int = 42,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    # An explicit Designed command for the socket stand-ins. Frozen producer
+    # bytes below separately exercise the real Rust shapes.
+    allocation = (
+        {"aid": {"food_quantity": 1, "cash_micros": "0"}}
+        if choice in ("remote_aid", "local_aid")
+        else "none"
+    )
+    command = {
+        "choice": choice,
+        "allocation": allocation,
+        "nonce": [nonce] * 16,
+        "campaign_id": list(UUID(CAMPAIGN).bytes),
+        "authority_id": [2] * 16,
+        "actor_id": 101,
+        "expected_period": period,
+        "content_digest": [3] * 32,
+        "resource_digest": [4] * 32,
+    }
+    preview = {
+        "choice": choice,
+        "allocation": allocation,
+        "current_period": period,
+        "resolves_period": period + 1,
+        "available_hours": 4,
+        "required_hours": 2,
+        "replaces_standing_work": True,
+        "refusal": None,
+        "observations": [],
+    }
+    commitment = {"command": command, "commitment_id": [nonce] * 32, "resolves_period": period + 1}
+    return command, preview, commitment
+
+
 def response(sequence: int, event: str = "observed", **changes: Any) -> bytes:
     fields = state()
     fields.update(changes)
     return (
         json.dumps(
-            {"version": 2, "sequence": sequence, "event": event, "reason": None, "state": fields}
+            {"version": 3, "sequence": sequence, "event": event, "reason": None, "state": fields}
         ).encode()
         + b"\n"
     )
@@ -77,7 +121,7 @@ def response(sequence: int, event: str = "observed", **changes: Any) -> bytes:
 def test_operator_controls_have_a_distinct_completed_frame_event() -> None:
     from typing import get_args
 
-    actions = set(get_args(windowed.Action))
+    actions = set(get_args(windowed.UnitAction))
     assert {
         "inspect_practices",
         "inspect_receipts",
@@ -182,7 +226,7 @@ def test_capture_refusal_preserves_specific_reason_and_trace() -> None:
             peer.sendall(
                 json.dumps(
                     {
-                        "version": 2,
+                        "version": 3,
                         "sequence": request["sequence"],
                         "event": "refused",
                         "reason": "capture_image_invalid",
@@ -267,7 +311,7 @@ def test_new_choice_reviews_confirms_and_checks_exact_readback(
     parent, peer = socket.socketpair()
     channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
     fields = state()
-    command = {"choice": wire, "nonce": 42}
+    command, preview, commitment = admission_fields(wire, 0)
     requested: list[str] = []
 
     def reply() -> None:
@@ -286,15 +330,15 @@ def test_new_choice_reviews_confirms_and_checks_exact_readback(
                     fields["choice"] = "collect" if mismatched else wire
                 elif action == "review":
                     fields["reviewed_command"] = command
-                    fields["preview"] = {"refusal": None}
+                    fields["preview"] = preview
                     event = "preview_admitted"
                 elif action == "confirm":
-                    fields["commitment"] = {"command": command}
+                    fields["commitment"] = commitment
                     event = "acceptance_admitted"
                 peer.sendall(
                     json.dumps(
                         {
-                            "version": 2,
+                            "version": 3,
                             "sequence": len(requested),
                             "event": event,
                             "reason": None,
@@ -314,7 +358,10 @@ def test_new_choice_reviews_confirms_and_checks_exact_readback(
                 windowed.submit_choice(channel, planned, 1)
         else:
             windowed.submit_choice(channel, planned, 1)
-            assert channel.state is not None and channel.state.commitment == {"command": command}
+            assert (
+                channel.state is not None
+                and channel.state.commitment == windowed.Commitment.model_validate(commitment)
+            )
     finally:
         channel.close()
         worker.join(2)
@@ -348,7 +395,7 @@ def test_transport_preserves_fragmented_frames_and_exact_preconditions() -> None
         worker.join(2)
     assert not worker.is_alive()
     assert requests[0] == {
-        "version": 2,
+        "version": 3,
         "sequence": 1,
         "campaign_id": CAMPAIGN,
         "scope_epoch": None,
@@ -476,9 +523,9 @@ def test_reopen_refuses_changed_or_incomplete_restored_identity(changes: dict[st
     "raw",
     [
         response(2),
-        response(1).replace(b'"version": 2', b'"version": 1'),
-        response(1).replace(b'"version": 2', b'"version": true'),
-        response(1).replace(b'"version": 2', b'"version": 2, "version": 2'),
+        response(1).replace(b'"version": 3', b'"version": 1'),
+        response(1).replace(b'"version": 3', b'"version": true'),
+        response(1).replace(b'"version": 3', b'"version": 3, "version": 3'),
         response(1, campaign_id="b4fcf361-af16-489f-83a6-3d9815a73844"),
         response(1, durable_tick=True),
         response(1, foundation_sha256="A" * 64),
@@ -613,8 +660,11 @@ def test_changed_foundation_cannot_be_credited() -> None:
         (
             "confirm",
             "acceptance_admitted",
-            {"reviewed_command": {"nonce": "original"}},
-            {"commitment": {"command": {"nonce": "different"}}},
+            {
+                "reviewed_command": admission_fields("local_aid", 0)[0],
+                "preview": admission_fields("local_aid", 0)[1],
+            },
+            {"commitment": admission_fields("local_aid", 0, nonce=43)[2]},
         ),
     ],
 )
@@ -666,13 +716,13 @@ def test_driver_uses_actual_owned_children_and_private_socket(tmp_path: Path) ->
         f"state={state()!r}\n"
         "with connection,connection.makefile('rb') as source:\n"
         "    admission=json.loads(source.readline())\n"
-        f"    assert admission=={{'version':2,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
+        f"    assert admission=={{'version':3,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
         f"    __import__('pathlib').Path({str(tmp_path / 'startup-admitted')!r}).write_text('admitted')\n"
         "    for line in source:\n"
         "        request=json.loads(line)\n"
         "        quitting=request['action']=='quit'\n"
         "        state['quit_requested']=quitting\n"
-        "        reply={'version':2,'sequence':request['sequence'],'event':'quit_requested' if quitting else 'observed','reason':None,'state':state}\n"
+        "        reply={'version':3,'sequence':request['sequence'],'event':'quit_requested' if quitting else 'observed','reason':None,'state':state}\n"
         "        connection.sendall(json.dumps(reply).encode()+b'\\n')\n"
         "        if quitting: break\n"
     )
@@ -766,15 +816,20 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
     runtime = tmp_path / "runtime-standin"
     client = tmp_path / "client-standin"
     runtime.write_text(f"#!{sys.executable}\nimport sys\nsys.stdin.buffer.read()\n")
+    admissions = [
+        admission_fields("remote_aid", 0),
+        admission_fields("pause_standing", 1),
+        admission_fields("local_aid", 2),
+    ]
     client.write_text(
         f"#!{sys.executable}\n"
         "import json,socket,sys\n"
         "connection=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)\n"
         "connection.connect(sys.argv[sys.argv.index('--qualification-control')+1])\n"
-        f"state={state()!r}\n"
+        f"state={state()!r}\nadmissions={admissions!r}\n"
         "with connection,connection.makefile('rb') as source:\n"
         "    admission=json.loads(source.readline())\n"
-        f"    assert admission=={{'version':2,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
+        f"    assert admission=={{'version':3,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
         "    for line in source:\n"
         "        request=json.loads(line); action=request['action']; event='applied'\n"
         "        if action=='status': event='observed'\n"
@@ -784,10 +839,10 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
         "            assert state['inspector'] in ('Direction', 'Practices')\n"
         "            state['choice']=action.removeprefix('choose_'); state['inspector']='Closed'\n"
         "        elif action=='review':\n"
-        "            state['reviewed_command']={'nonce':request['sequence'],'choice':state['choice']}\n"
-        "            state['preview']={'refusal':None}; event='preview_admitted'\n"
+        "            state['reviewed_command'],state['preview'],accepted=admissions[state['durable_tick']]\n"
+        "            event='preview_admitted'\n"
         "        elif action=='confirm':\n"
-        "            state['commitment']={'command':state['reviewed_command']}; event='acceptance_admitted'\n"
+        "            state['commitment']=accepted; state['reviewed_command']=state['preview']=None; event='acceptance_admitted'\n"
         "        elif action=='step':\n"
         "            state['durable_tick']+=1; state['generation']+=1\n"
         "            state['viewed_tick']=state['organizer_period']=state['archive_verified_tick']=state['durable_tick']\n"
@@ -795,7 +850,7 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
         "        elif action=='reopen':\n"
         "            state['scope_epoch']+=1; state['generation']+=3; event='reopened_and_installed'\n"
         "        elif action=='quit': state['quit_requested']=True; event='quit_requested'\n"
-        "        reply={'version':2,'sequence':request['sequence'],'event':event,'reason':None,'state':state}\n"
+        "        reply={'version':3,'sequence':request['sequence'],'event':event,'reason':None,'state':state}\n"
         "        connection.sendall(json.dumps(reply).encode()+b'\\n')\n"
         "        if action=='quit': break\n"
     )
@@ -863,7 +918,7 @@ def test_standing_choice_uses_the_acknowledged_inspector_state(
     parent, peer = socket.socketpair()
     channel = windowed.ControlChannel(parent, CAMPAIGN, 1)
     fields = state(1)
-    command = {"choice": choice, "nonce": 42}
+    command, preview, commitment = admission_fields(choice, 1)
     requested: list[str] = []
 
     def reply() -> None:
@@ -887,17 +942,17 @@ def test_standing_choice_uses_the_acknowledged_inspector_state(
                         fields["inspector"] = "Closed"
                 elif action == "review":
                     fields["reviewed_command"] = command
-                    fields["preview"] = {"refusal": None}
+                    fields["preview"] = preview
                     event = "preview_admitted"
                 elif action == "confirm":
-                    fields["commitment"] = {"command": command}
+                    fields["commitment"] = commitment
                     event = "acceptance_admitted"
                 else:
                     event, reason = "refused", "control_stale_or_unavailable"
                 peer.sendall(
                     json.dumps(
                         {
-                            "version": 2,
+                            "version": 3,
                             "sequence": request["sequence"],
                             "event": event,
                             "reason": reason,
@@ -913,7 +968,7 @@ def test_standing_choice_uses_the_acknowledged_inspector_state(
         channel.observe(1)
         windowed.submit_choice(channel, windowed.PlannedChoice(period=2, choice=choice), 1)
         assert channel.state is not None
-        assert channel.state.commitment == {"command": command}
+        assert channel.state.commitment == windowed.Commitment.model_validate(commitment)
         assert all(record.event != "refused" for record in channel.records)
     finally:
         channel.close()
@@ -1084,3 +1139,31 @@ def test_stationary_inspection_cannot_credit_automatic_progress() -> None:
     finally:
         channel.close()
         peer.close()
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        windowed.FocusAmount(focus_amount="cash"),
+        windowed.AmountKey(amount_key="home"),
+        windowed.AmountKey(amount_key=windowed.CharacterKey(character="3")),
+        windowed.SelectAidPartner(select_aid_partner="remote"),
+    ],
+)
+def test_tagged_action_socket_encodes_exact_variant_and_records_it(
+    action: windowed.FocusAmount | windowed.AmountKey | windowed.SelectAidPartner,
+) -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+    try:
+        with peer, peer.makefile("rb") as reader:
+            with pytest.raises(windowed.ControlRefusal):
+                channel.perform(cast("windowed.Action", "unknown"), 1)
+            peer.sendall(response(1, event="applied"))
+            channel.perform(action, 1)
+            sent = json.loads(reader.readline())
+            assert sent["sequence"] == 1
+            assert sent["action"] == action.model_dump(mode="json")
+            assert channel.records[-1].action == action
+    finally:
+        channel.close()

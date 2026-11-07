@@ -2715,6 +2715,11 @@ def native_join_evidence(directory):
             "organizer_status_due": False,
             "organizer_period": tick,
             "choice": choice,
+            "focused_amount": None,
+            "amount_text": None,
+            "allocation_error": None,
+            "collection_allocation": "none",
+            "aid_allocation": {"aid": {"food_quantity": 1, "cash_micros": "0"}},
             "reviewed_command": None,
             "preview": None,
             "commitment": None,
@@ -2845,10 +2850,12 @@ def native_join_evidence(directory):
             "resource_digest": [2] * 32,
             "nonce": [n] * 16,
             "choice": choice,
+            "allocation": {"aid": {"food_quantity": 1, "cash_micros": "0"}},
         }
         commitment = {"command": command, "commitment_id": [n] * 32, "resolves_period": n}
         preview = {
             "choice": choice,
+            "allocation": command["allocation"],
             "current_period": n - 1,
             "resolves_period": n,
             "available_hours": 2,
@@ -2982,7 +2989,7 @@ def native_join_evidence(directory):
         action("reopen", "reopened_and_installed", state(n))
     action("quit", "quit_requested", state(2, quit_requested=True))
     records["native-controls.json"] = {
-        "version": 2,
+        "version": 3,
         "status": "completed",
         "campaign": campaign,
         "initial_tick": 0,

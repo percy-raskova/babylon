@@ -252,6 +252,7 @@ PID1_STATUS = "Name:\tpostgres\nPid:\t1\nUid:\t70\t70\t70\t70\nGid:\t70\t70\t70\
         "non_postgres",
         "directory_uid",
         "host_gid",
+        "changed_creator_group",
         "mode",
         "inode",
         "mapping",
@@ -269,6 +270,7 @@ def test_physical_observation_binds_process_account_and_private_directory(
     directory.path.mkdir(parents=True, mode=0o700)
     image, cid, canary = "sha256:" + "a" * 64, "b" * 64, "c" * 32
     host = {"major": 253, "minor": 5, "inode": 104470194, "uid": 70, "gid": 1000, "mode": 0o700}
+    creator_gid = 1000
     stat = "64773 104470194 70 1000 700"
     status = PID1_STATUS
     accounts = {"-u": b"70\n", "-g": b"70\n"}
@@ -280,6 +282,7 @@ def test_physical_observation_binds_process_account_and_private_directory(
             b"70\n70\n" if fault == "malformed_account" else b"71\n"
         )
     elif fault == "matching_directory_wrong_account":
+        creator_gid = 70
         host["gid"] = 70
         stat = stat.replace(" 1000 ", " 70 ")
         accounts["-g"] = b"71\n"
@@ -297,6 +300,9 @@ def test_physical_observation_binds_process_account_and_private_directory(
         stat = stat.replace(" 700", " 750")
     elif fault == "host_gid":
         host["gid"] = 70
+    elif fault == "changed_creator_group":
+        host["gid"] = 1001
+        stat = stat.replace(" 1000 ", " 1001 ")
     elif fault == "inode":
         host["inode"] += 1
 
@@ -307,7 +313,7 @@ def test_physical_observation_binds_process_account_and_private_directory(
         lambda *_: {
             "daemon": "local",
             "image": {"id": image},
-            "creator": {"uid": 1000, "gid": 1000},
+            "creator": {"uid": 1000, "gid": creator_gid},
             "ancestry": [],
         },
     )
@@ -390,6 +396,20 @@ def test_physical_observation_binds_process_account_and_private_directory(
     assert (result["server_uid"], result["server_gid"]) == (70, 70)
     assert result["host"] == result["container_root"] == host
     assert result["creator"] == {"uid": 1000, "gid": 1000}
+
+    # The creator and current host observe translated host IDs, while stat inside
+    # the container still observes its original directory group.
+    creator_gid = 201000
+    host["gid"] = 201000
+    monkeypatch.setattr(
+        Path,
+        "read_text",
+        lambda path: "0 200000 65536" if path.name == "gid_map" else "0 0 4294967295",
+    )
+    translated = storage.physical_observation(directory, tmp_path, cid, canary, image)
+    assert translated["creator"]["gid"] == translated["host"]["gid"] == 201000
+    assert translated["container_root"]["gid"] == 1000
+    assert translated["server_gid"] == 70
 
 
 def test_physical_repeat_reuses_only_admitted_template1_connection(monkeypatch):

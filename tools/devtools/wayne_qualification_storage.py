@@ -1096,9 +1096,11 @@ def physical_observation(
             or host["gid"] != _mapped(gid, gid_map)
         ):
             raise StorageRefusal("actual host/container PGDATA or mapped owner differs")
+        # The pinned entrypoint changes PGDATA's owner and preserves its original group.
+        if host["gid"] != created["creator"]["gid"]:
+            raise StorageRefusal("PGDATA host group changed since creation")
         process = exact_output([*inside, "cat", "/proc/1/status"])
         server_uid, server_gid = _postgres_pid1_credentials(process)
-        # The pinned entrypoint changes PGDATA's owner and preserves its original group.
         if (
             server_uid != uid
             or _exec_bytes([*inside, "id", "-u", "postgres"]) != f"{server_uid}\n".encode()

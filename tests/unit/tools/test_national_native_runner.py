@@ -433,6 +433,13 @@ def test_corrupt_frame_survives_temporary_socket_cleanup(tmp_path):
         walk.capture_frame(channel, socket, "opening", state, 12, 8)
     assert list(walk.raw.path.glob("*incomplete*.png"))[0].read_bytes() == b"broken"
     assert list(walk.raw.path.glob("*-response.bin"))[0].read_bytes() == b"broken acknowledgement\n"
+    # The writer completes during launcher shutdown after the immediate copy.
+    final = b"pixels written after immediate refusal"
+    (socket / "frame-7.png").write_bytes(final)
+    walk.retain_stopped_frame()
+    final_record = json.loads(next(walk.raw.path.glob("*-stopped.json")).read_bytes())
+    assert final_record["original_byte_length"] == len(final)
+    assert (walk.raw.path / final_record["capture"]["path"]).read_bytes() == final
 
 
 @pytest.mark.parametrize(
@@ -676,7 +683,7 @@ def test_process_cold_failed_before_install_keeps_actual_segment_first_and_lates
         walk.pair("completed", None, 10, 0, {}, {})
     failure = json.loads((tmp_path / "pair-incomplete-completed.json").read_bytes())
     assert failure["elapsed_ns"] == 20 and failure["stage"] == "cold-completed"
-    assert failure["attempted_processes"] == [[101, 51, "b" * 64], [102, 53, "c" * 64]]
+    assert failure["authenticated_processes"] == [[101, 51, "b" * 64], [102, 53, "c" * 64]]
     assert failure["first_observation"] == {"phase": "Opening"} and failure[
         "latest_observation"
     ] == {"phase": "Loading"}
@@ -742,3 +749,221 @@ def test_bool_citation_ids_do_not_authenticate_the_same_integer_byte(tmp_path):
     with pytest.raises(runner.NativeRunRefusal, match="exact campaign citation"):
         walk.wait_citation("01" * 32, 0.001)
     assert (run.directory / "citation-prior-00.json").read_bytes() == raw
+
+
+@pytest.mark.parametrize(
+    ("fault", "expected", "stage"),
+    [
+        ("second-spawn", [["runtime", 701]], "spawn-client"),
+        ("source", [["runtime", 701], ["client", 702]], "verify-sources"),
+    ],
+)
+def test_cold_failure_uses_actual_partial_spawn_roster(
+    tmp_path, monkeypatch, fault, expected, stage
+):
+    from uuid import UUID
+
+    from tools.devtools import national_windowed_qualification as w
+
+    run = SimpleNamespace(
+        root=tmp_path,
+        directory=tmp_path,
+        owner_fields=(),
+        runtime=tmp_path / "runtime",
+        client=tmp_path / "client",
+        timeout=1,
+        policy=SimpleNamespace(maximum_cold_open_seconds=180),
+        boundaries=[],
+        capture=lambda *_args, **_kwargs: SimpleNamespace(lifecycle=None),
+        verify_live=lambda: None,
+    )
+
+    def refuse():
+        raise runner.NativeRunRefusal("source witness refused")
+
+    run.verify_sources = refuse
+
+    class Child:
+        def __init__(self, args, **kw):
+            self.pid = 701 if args[0] == str(run.runtime) else 702
+            if self.pid == 702 and fault == "second-spawn":
+                raise OSError("second spawn")
+
+        def wait(self, timeout=None):
+            return 0
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(w.launcher.subprocess, "Popen", Child)
+    monkeypatch.setattr(runner, "reauthenticate_native_owner", lambda *_: None)
+    walk = runner.WayneWalk(run)
+    with pytest.raises((runner.NativeRunRefusal, w.launcher.ObserverLaunchError)):
+        walk.pair("opening", w.launcher.OpenCampaignTarget(UUID(int=13)), 0, 0, {}, {})
+    packet = json.loads((tmp_path / "pair-incomplete-opening.json").read_bytes())
+    assert packet["launch_stage"] == stage
+    assert packet["attempted_processes"] == expected
+    assert packet["authenticated_processes"] == []
+
+
+@pytest.mark.parametrize("initial", [None, b"", b"partial"])
+def test_launcher_retains_delayed_frame_only_after_held_children_stop(
+    tmp_path, monkeypatch, initial
+):
+    from uuid import UUID
+
+    from tools.devtools import national_windowed_qualification as w
+
+    run = SimpleNamespace(directory=tmp_path / "evidence", timeout=1)
+    run.directory.mkdir(mode=0o700)
+    walk = runner.WayneWalk(run)
+    walk.raw.path.mkdir(mode=0o700)
+    handles = []
+    frames = []
+    final = b"completed write during shutdown"
+
+    class Child:
+        def __init__(self, args, **kwargs):
+            self.pid = 101 + len(handles)
+            self.code = None
+            handles.append(self)
+            if "--qualification-control" in args:
+                frames.append(Path(args[-1]).parent / "frame-1.png")
+
+        def poll(self):
+            return self.code
+
+        def terminate(self):
+            if self.pid == 102:
+                frames[0].write_bytes(final)
+                frames[0].chmod(0o600)
+
+        def wait(self, timeout=None):
+            self.code = 0
+            return self.code
+
+    monkeypatch.setattr(w.launcher.subprocess, "Popen", Child)
+    state = SimpleNamespace(model_dump=lambda **_: {})
+    channel = SimpleNamespace(
+        sequence=0, state=state, records=[], last_response=None, response_bytes=b""
+    )
+
+    def capture(*args):
+        channel.sequence += 1
+        if initial is not None:
+            frames[0].write_bytes(initial)
+            frames[0].chmod(0o600)
+        raise w.ControlRefusal("sample failure")
+
+    channel.perform = capture
+
+    def started(*_handles):
+        walk.capture_frame(channel, frames[0].parent, "opening", state, 1366, 768)
+
+    def stopped():
+        assert all(h.poll() is not None for h in handles) and frames[0].parent.exists()
+        walk.retain_stopped_frame()
+
+    with pytest.raises(w.ControlRefusal, match="sample failure"):
+        w.drive_pair(
+            tmp_path / "runtime",
+            tmp_path / "client",
+            tmp_path,
+            {},
+            {},
+            defines_path=tmp_path / "d",
+            initial_target=w.launcher.OpenCampaignTarget(UUID(int=3)),
+            initial_tick=0,
+            periods=0,
+            directory=tmp_path,
+            operation_timeout=1,
+            on_started=started,
+            on_stopped=stopped,
+            on_boundary=lambda _: None,
+            on_recovery=lambda _: None,
+        )
+    assert not frames[0].parent.exists()
+    after = json.loads(next(walk.raw.path.glob("*-stopped.json")).read_bytes())
+    immediate = json.loads((walk.raw.path / after["immediate"]).read_bytes())
+    assert immediate["frame_state"] == (
+        "absent" if initial is None else "empty" if not initial else "partial_or_invalid_png"
+    )
+    if initial is not None:
+        assert (walk.raw.path / immediate["capture"]["path"]).read_bytes() == initial
+    assert after["original_byte_length"] == len(final)
+    assert (walk.raw.path / after["capture"]["path"]).read_bytes() == final
+
+
+def test_mixed_confirm_reopen_stops_before_p3_on_its_own_slow_receipt(tmp_path):
+    from tools.devtools import national_native_evidence as e
+    from tools.devtools.national_windowed_qualification import ControlState
+
+    from tests.unit.tools.test_national_storage_qualification import native_join_evidence, policy
+
+    _, _, _, _, _, _, records = native_join_evidence(tmp_path)
+    base = next(
+        a["state"]
+        for a in records["native-controls.json"]["actions"]
+        if a["action"] == "reopen" and a["state"]["durable_tick"] == 2
+    )
+    c = next(
+        a["state"]["commitment"]
+        for a in records["native-controls.json"]["actions"]
+        if a["action"] == "confirm"
+    )
+    c["resolves_period"] = 3
+    c["command"].update(
+        expected_period=2,
+        choice="remote_aid",
+        allocation={"aid": {"food_quantity": 2, "cash_micros": "280000000"}},
+    )
+    current = ControlState.model_validate({**base, "commitment": c})
+    after = ControlState.model_validate(
+        {
+            **current.model_dump(),
+            "scope_epoch": current.scope_epoch + 1,
+            "generation": current.generation + 1,
+        }
+    )
+    packet = records[f"recovery-2-{current.scope_epoch}.json"]
+    packet["cold_reopen_elapsed_ns"] = 181_000_000_000
+    packet["previous_scope"]["epoch"] = current.scope_epoch
+    packet["restored_scope"]["epoch"] = after.scope_epoch
+    packet["authenticated_read"]["runtime_epoch"] = after.scope_epoch
+    packet["authenticated_read"]["observation_generation"] = after.generation
+    run = object.__new__(runner.NativeRun)
+    run.directory, run.wayne_profile, run.policy, run.timeout = tmp_path, "walk-01", policy(), 900
+    run.policy_hash = "ab" * 32
+    run.material = [e.MaterialRecord.model_validate(records["material-2.json"])]
+    walk = runner.WayneWalk(run)
+    walk.evidence.publish_json(f"recovery-2-{after.scope_epoch}.json", packet)
+    walk.submit = lambda *_args, **_kwargs: None
+    events = []
+
+    def stage(state, label):
+        events.append(label)
+        return {}
+
+    walk.capture_stage = stage
+
+    def perform(action, timeout):
+        events.append(action)
+        return after
+
+    observation = SimpleNamespace(
+        action="reopen",
+        event="reopened_and_installed",
+        reason=None,
+        state=after,
+        started_monotonic_ns=1,
+        completed_monotonic_ns=190_000_000_001,
+    )
+    channel = SimpleNamespace(state=current, perform=perform, records=[observation])
+    with pytest.raises(runner.NativeRunRefusal, match="mixed-pending-reopen"):
+        walk.installed(channel, tmp_path, current)
+    assert events == ["walk-p2-installed", "mixed-pending-before-reopen", "reopen"]
+    failed = json.loads((tmp_path / "first-budget-divergence.json").read_bytes())
+    assert (
+        failed["elapsed_ns"] == 181_000_000_000
+        and failed["state"]["scope_epoch"] == after.scope_epoch
+    )

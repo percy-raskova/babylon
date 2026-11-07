@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Callable, Mapping
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager, ExitStack, nullcontext
 from pathlib import Path
 from typing import Annotated, Literal, Protocol, Self
 from uuid import UUID
@@ -655,6 +655,21 @@ def _duration(value: float) -> float:
     return value
 
 
+def remaining_control_time(
+    deadline: float,
+    wall_deadline: float | None,
+    on_wall_expired: Callable[[], None] | None,
+) -> float:
+    now = time.monotonic()
+    if wall_deadline is not None:
+        if wall_deadline <= now:
+            if on_wall_expired is not None:
+                on_wall_expired()
+            raise ControlRefusal("smoke wall deadline exceeded")
+        deadline = min(deadline, wall_deadline)
+    return deadline - now
+
+
 class ControlChannel:
     """Exactly one outstanding UI input on the explicitly admitted private socket."""
 
@@ -666,6 +681,8 @@ class ControlChannel:
         *,
         check_capture: Callable[[], None] | None = None,
         on_observed: Callable[[ControlState], None] | None = None,
+        wall_deadline: float | None = None,
+        on_wall_expired: Callable[[], None] | None = None,
     ) -> None:
         if str(UUID(campaign)) != campaign or UUID(campaign).int == 0:
             raise ControlRefusal("native control campaign must be a nonzero canonical UUID")
@@ -688,6 +705,8 @@ class ControlChannel:
         self._settling_tick: int | None = None
         self._check_capture = check_capture
         self._on_observed = on_observed
+        self._wall_deadline = wall_deadline
+        self._on_wall_expired = on_wall_expired
 
     def close(self) -> None:
         self.closed = True
@@ -696,20 +715,23 @@ class ControlChannel:
     def _receive(self, deadline: float) -> ControlResponse:
         raw = self.response_bytes
         while b"\n" not in raw:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise ControlRefusal("native control response deadline exceeded")
             if self._check_capture is not None:
                 self._check_capture()
+            remaining = remaining_control_time(deadline, self._wall_deadline, self._on_wall_expired)
+            if remaining <= 0:
+                raise ControlRefusal("native control response deadline exceeded")
             self.connection.settimeout(min(remaining, 0.25) if self._check_capture else remaining)
             try:
                 part = self.connection.recv(OUTPUT_BYTES + 1 - len(raw))
             except TimeoutError:
-                if self._check_capture is not None and time.monotonic() < deadline:
+                remaining = remaining_control_time(
+                    deadline, self._wall_deadline, self._on_wall_expired
+                )
+                if self._check_capture is not None and remaining > 0:
                     continue
                 raise ControlRefusal("native control response deadline exceeded") from None
             raw.extend(part)
-            if time.monotonic() > deadline:
+            if remaining_control_time(deadline, self._wall_deadline, self._on_wall_expired) < 0:
                 raise ControlRefusal("native control response deadline exceeded")
             if not part:
                 raise ControlRefusal("native control response ended before a complete frame")
@@ -885,12 +907,19 @@ class ControlChannel:
         frame = request.model_dump_json().encode("utf-8") + b"\n"
         if len(frame) > INPUT_BYTES:
             raise ControlRefusal("native control input exceeds its byte bound")
-        self.sequence = request.sequence
-        self.last_response = None
-        self.response_bytes.clear()
         try:
-            self.connection.settimeout(max(0.001, deadline - time.monotonic()))
-            self.connection.sendall(frame)
+            remaining = remaining_control_time(deadline, self._wall_deadline, self._on_wall_expired)
+            if remaining <= 0:
+                raise ControlRefusal("native control send deadline exceeded")
+            self.connection.settimeout(remaining)
+            self.sequence = request.sequence
+            self.last_response = None
+            self.response_bytes.clear()
+            try:
+                self.connection.sendall(frame)
+            except TimeoutError:
+                remaining_control_time(deadline, self._wall_deadline, self._on_wall_expired)
+                raise
             reply = self._receive(deadline)
             self.last_response = reply
             if reply.sequence != self.sequence:
@@ -1270,6 +1299,11 @@ def drive_pair(
     on_opened: Callable[[ControlState], None] | None = None,
     on_observed: Callable[[ControlState], None] | None = None,
     cold_deadline: float | None = None,
+    wall_deadline: float | None = None,
+    on_wall_expired: Callable[[], None] | None = None,
+    on_spawned: Callable[[Literal["runtime", "client"], subprocess.Popen[bytes]], None]
+    | None = None,
+    on_stopped: Callable[[], None] | None = None,
     capture_lifecycle: Callable[
         [subprocess.Popen[bytes], subprocess.Popen[bytes]],
         AbstractContextManager[CaptureMonitor | None],
@@ -1298,17 +1332,41 @@ def drive_pair(
         raise ControlRefusal("native choice schedule duplicates or exceeds the actual horizon")
     if not directory.is_dir() or directory.is_symlink():
         raise ControlRefusal("native drive requires its existing evidence directory")
-    with tempfile.TemporaryDirectory(prefix="babylon-q-", dir="/tmp") as name:
-        endpoint = Path(name) / "control.sock"
+    with ExitStack() as resources:
+        temporary = tempfile.TemporaryDirectory(prefix="babylon-q-", dir="/tmp", delete=False)
+        release_directory = True
+
+        def cleanup() -> None:
+            if release_directory:
+                temporary.cleanup()
+
+        def spawned(role: Literal["runtime", "client"], child: subprocess.Popen[bytes]) -> None:
+            nonlocal release_directory
+            if on_stopped is not None:
+                release_directory = False
+            if on_spawned is not None:
+                on_spawned(role, child)
+
+        def stopped() -> None:
+            nonlocal release_directory
+            if on_stopped is not None:
+                on_stopped()
+            release_directory = True
+
+        resources.callback(cleanup)
+        endpoint = Path(temporary.name) / "control.sock"
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
             listener.bind(str(endpoint))
             endpoint.chmod(0o600)
             listener.listen(1)
 
             def opening_timeout() -> float:
-                if cold_deadline is None:
+                if cold_deadline is None and wall_deadline is None:
                     return operation_timeout
-                remaining = cold_deadline - time.monotonic()
+                deadline = time.monotonic() + operation_timeout
+                if cold_deadline is not None:
+                    deadline = min(deadline, cold_deadline)
+                remaining = remaining_control_time(deadline, wall_deadline, on_wall_expired)
                 if remaining <= 0:
                     raise ControlRefusal("process-cold installation deadline exceeded")
                 return min(operation_timeout, remaining)
@@ -1317,7 +1375,11 @@ def drive_pair(
 
             def controlled(client: subprocess.Popen[bytes], capture: CaptureMonitor | None) -> None:
                 listener.settimeout(opening_timeout())
-                connection, _address = listener.accept()
+                try:
+                    connection, _address = listener.accept()
+                except TimeoutError:
+                    opening_timeout()
+                    raise
                 _pid, uid, _gid = struct.unpack(
                     "3i",
                     connection.getsockopt(
@@ -1330,7 +1392,7 @@ def drive_pair(
                 try:
                     if capture is not None:
                         capture.check()
-                    connection.settimeout(operation_timeout)
+                    connection.settimeout(opening_timeout())
                     # App construction waits here before connecting the runtime
                     # pipe. The capture context has already finished its first
                     # authenticated sample before yielding to this driver.
@@ -1350,7 +1412,13 @@ def drive_pair(
                         initial_tick,
                         check_capture=capture.check if capture is not None else None,
                         on_observed=on_observed,
+                        wall_deadline=wall_deadline,
+                        on_wall_expired=on_wall_expired,
                     )
+                except TimeoutError:
+                    connection.close()
+                    opening_timeout()
+                    raise
                 except BaseException:
                     connection.close()
                     raise
@@ -1478,4 +1546,6 @@ def drive_pair(
                 initial_target=initial_target,
                 qualification_control=endpoint,
                 on_started=started,
+                on_spawned=spawned if on_spawned is not None or on_stopped is not None else None,
+                on_stopped=stopped if on_stopped is not None else None,
             )

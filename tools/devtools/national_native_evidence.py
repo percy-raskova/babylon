@@ -14,6 +14,7 @@ import re
 import stat
 from dataclasses import dataclass
 from io import BytesIO
+from itertools import pairwise
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -433,6 +434,90 @@ class RecoveryRecord(NativeRecord):
     runtime_ready_elapsed_ns: U64
     cold_reopen_elapsed_ns: U64
     authenticated_read: MaterialRecord
+
+
+def verify_mixed_recovery(
+    before: ControlState,
+    action: ActionObservation,
+    boundary: MaterialRecord,
+    recovery: RecoveryRecord,
+    policy: Policy,
+    policy_sha256: str,
+) -> None:
+    after = action.state
+    facts = boundary.facts
+    restored = recovery.authenticated_read
+    source = recovery.source
+    marker = (
+        source.campaign,
+        source.foundation_sha256,
+        source.tick,
+        source.tick_content_hash,
+        source.nominal_world_hash,
+    )
+    if (
+        action.action != "reopen"
+        or action.event != "reopened_and_installed"
+        or action.reason is not None
+        or before.commitment is None
+        or before.commitment.command.choice != "remote_aid"
+        or before.commitment.resolves_period != 3
+        or not isinstance(before.commitment.command.allocation, AidAllocation)
+        or (
+            before.commitment.command.allocation.aid.food_quantity,
+            before.commitment.command.allocation.aid.cash_micros,
+        )
+        != (2, "280000000")
+        or before.commitment != after.commitment
+        or before.scope_epoch is None
+        or after.scope_epoch != before.scope_epoch + 1
+        or recovery.previous_scope
+        != RuntimeScope(epoch=before.scope_epoch, campaign_id=before.campaign_id)
+        or recovery.restored_scope
+        != RuntimeScope(epoch=after.scope_epoch, campaign_id=after.campaign_id)
+        or any(
+            (
+                state.campaign_id,
+                state.foundation_sha256,
+                state.durable_tick,
+                state.tick_content_hash,
+                state.world_hash,
+            )
+            != marker
+            for state in (before, after)
+        )
+        or not (source.tick == boundary.tick == restored.tick == 2)
+        or not (
+            source.tick_content_hash == restored.tick_content_hash == boundary.tick_content_hash
+        )
+        or facts is None
+        or source.model_dump(exclude={"duration"})
+        != facts.model_dump(include=set(RecoveryIdentity.model_fields) - {"duration"})
+        or (
+            isinstance(source.duration, FiniteDuration)
+            and source.tick > source.duration.final_period
+        )
+        or recovery.policy_sha256 != policy_sha256
+        or facts.policy_sha256 != policy_sha256
+        or restored.runtime_epoch != after.scope_epoch
+        or not before.generation < restored.observation_generation <= after.generation
+        or any(x is not None for x in (restored.opening, restored.facts, restored.aid))
+        or restored.economic_summary != boundary.economic_summary
+        or restored.trade_summary != boundary.trade_summary
+        or recovery.cold_reopen_elapsed_ns
+        < recovery.runtime_ready_elapsed_ns + restored.production_read_elapsed_ns
+        or recovery.cold_reopen_elapsed_ns
+        > action.completed_monotonic_ns - action.started_monotonic_ns
+    ):
+        raise ValueError(
+            "mixed pending recovery differs from its actual dated source or installed action"
+        )
+    if (
+        recovery.cold_reopen_elapsed_ns >= policy.maximum_cold_open_seconds * 1_000_000_000
+        or restored.production_read_elapsed_ns
+        > policy.maximum_production_read_seconds * 1_000_000_000
+    ):
+        raise ValueError("mixed pending recovery exceeded its reopen or production read budget")
 
 
 def private_bytes(path: Path, maximum: int) -> bytes:
@@ -907,9 +992,20 @@ def evaluate_native(
         raise ValueError("native timing roster differs from exact committed periods")
     if tuple(a.name for a in evidence.archives) != tuple(f"archive-{tick}.json" for tick in actual):
         raise ValueError("native Archive roster differs from exact committed periods")
-    if tuple(a.name for a in evidence.recoveries) != tuple(
+    ordinary_names = tuple(
         f"recovery-{a.state.durable_tick}-{a.state.scope_epoch}.json" for a in reopens
-    ):
+    )
+    mixed_actions = [
+        (prior.state, action)
+        for prior, action in pairwise(controls.actions)
+        if wayne_walk and action.action == "reopen" and action.state.commitment is not None
+    ]
+    if len(mixed_actions) != int(wayne_walk):
+        raise ValueError("mixed pending recovery requires exactly its separately observed reopen")
+    extra_names = tuple(
+        f"recovery-{a.state.durable_tick}-{a.state.scope_epoch}.json" for _, a in mixed_actions
+    )
+    if tuple(a.name for a in evidence.recoveries) != ordinary_names + extra_names:
         raise ValueError("native recovery roster differs from actual reopened epochs")
     initial = MaterialRecord.model_validate(
         _artifact(directory, evidence.opening, MATERIAL_RECORD_BYTES)
@@ -966,6 +1062,7 @@ def evaluate_native(
     final_practices = initial.aid_practices
     final_renewal = None
     final_summary = initial
+    mixed_measurement: dict[str, object] | None = None
     economic_prefix: list[EconomicBoundary] = []
     previous_hash = None
     previous_world_hash: str | None = None
@@ -985,7 +1082,7 @@ def evaluate_native(
         evidence.boundaries,
         evidence.advances,
         evidence.archives,
-        evidence.recoveries,
+        evidence.recoveries[: len(reopens)],
         steps,
         reopens,
         playable.boundaries,
@@ -1191,6 +1288,25 @@ def evaluate_native(
             raise ValueError(
                 "native checkpoint reopen differs from its original authenticated boundary"
             )
+        if mixed_actions and tick.tick == 2:
+            before, action = mixed_actions[0]
+            extra = evidence.recoveries[-1]
+            second = RecoveryRecord.model_validate(
+                _artifact(directory, extra, MATERIAL_RECORD_BYTES)
+            )
+            verify_mixed_recovery(before, action, record, second, policy, policy_sha256)
+            if second.previous_scope != recovery.restored_scope or second.source != recovery.source:
+                raise ValueError(
+                    "mixed pending recovery did not start from its preceding P2 restart"
+                )
+            mixed_measurement = {
+                "receipt": extra.model_dump(),
+                "epoch": second.restored_scope.epoch,
+                "tick": tick.tick,
+                "tick_content_hash": second.source.tick_content_hash,
+                "cold_reopen_elapsed_ns": second.cold_reopen_elapsed_ns,
+                "production_read_elapsed_ns": second.authenticated_read.production_read_elapsed_ns,
+            }
         final_practices = record.aid_practices
         final_summary = record
         final_renewal = facts.production_renewal
@@ -1286,6 +1402,7 @@ def evaluate_native(
         "actual_periods": len(ticks),
         "accepted_original_aid_commands": originals,
         "checkpoint_reopens": len(reopens),
+        **({"mixed_pending_recovery": mixed_measurement} if wayne_walk else {}),
         "native_advance_timing_receipts": len(evidence.advances),
         "advance_measurement": "client_enqueue_to_accepted_commit",
         "archive_measurement": "accepted_commit_to_accepted_archive_completion",
@@ -1840,6 +1957,52 @@ def installed_walk_stages(
     return stages
 
 
+def verify_freight_reopens(
+    stages: dict[int, WalkStage],
+    legs: list[dict[str, Any]],
+    original: tuple[int, ...],
+    mandate: tuple[int, ...],
+    dispatch: int,
+    material: tuple[int, ...] | None,
+    first: dict[str, Any] | None,
+    *,
+    remote: bool,
+) -> list[int]:
+    outstanding = 0
+    pending = []
+    for period, stage in sorted(stages.items()):
+        if remote:
+            for leg in legs:
+                if leg["period"] == period and leg["outcome"] in ("Dispatched", "Granted", "Lost"):
+                    quantity = leg["quantity"]
+                    if type(quantity) is not int or quantity < 0:
+                        raise ValueError("invalid dated freight quantity")
+                    outstanding += quantity if leg["outcome"] == "Dispatched" else -quantity
+        view = stage.state.installed_organizer
+        if view is None:
+            raise ValueError("installed recipient authority absent")
+        freight = [f for f in view.pending_freight if f.original_commitment_id == original]
+        if outstanding < 0 or len(freight) != int(outstanding > 0):
+            raise ValueError(
+                "installed pending freight differs from its outstanding dated material quantity"
+            )
+        if freight:
+            current_first = (
+                tuple(first["receipt_id"]) if first and first["period"] <= period else None
+            )
+            if (
+                freight[0].mandate_id,
+                freight[0].dispatch_period,
+                freight[0].first_response_receipt_id,
+                freight[0].material_commitment_id,
+            ) != (mandate, dispatch, current_first, material):
+                raise ValueError(
+                    "in-transit receipt, first response or admitted freight differs after reopen"
+                )
+            pending.append(period)
+    return pending
+
+
 def verify_contribution_history(boundaries: list[AidBoundary]) -> None:
     seen: set[tuple[int, ...]] = set()
     for boundary in boundaries:
@@ -2284,7 +2447,6 @@ def evaluate_wayne_walk(
             digest = next(d for d in first_digests if d is not None)
             verify_first_receipt_prefix(stages, first, bytes(digest))
             verify_first_receipt_prefix({10: terminal}, first, bytes(digest))
-        pending_periods = []
         for p in practices:
             stage = stages[p.period]
             receipt_rows = stage.facts["receipts"]
@@ -2318,33 +2480,16 @@ def evaluate_wayne_walk(
                 raise ValueError(
                     "installed aid history differs from the dated practice and first response"
                 )
-        for period, stage in stages.items():
-            if stage.state.installed_organizer is None:
-                raise ValueError("installed recipient authority absent")
-            freight = [
-                f
-                for f in stage.state.installed_organizer.pending_freight
-                if f.original_commitment_id == c.commitment_id
-            ]
-            if not freight:
-                continue
-            current_first = (
-                tuple(first["receipt_id"])
-                if first is not None and first["period"] <= period
-                else None
-            )
-            if (
-                len(freight) != 1
-                or freight[0].mandate_id != mandate
-                or freight[0].dispatch_period != c.resolves_period
-                or freight[0].first_response_receipt_id != current_first
-                or not practices
-                or freight[0].material_commitment_id != practices[0].material_commitment_id
-            ):
-                raise ValueError(
-                    "in-transit receipt, first response or admitted freight differs after reopen"
-                )
-            pending_periods.append(period)
+        pending_periods = verify_freight_reopens(
+            stages,
+            proof["material_legs"],
+            c.commitment_id,
+            mandate,
+            c.resolves_period,
+            practices[0].material_commitment_id if practices else None,
+            first,
+            remote=choice == "remote_aid",
+        )
         proof["in_transit_reopened_periods"] = pending_periods
         if label == "remote-mixed" and has_later_retained_leg(practices):
             if not pending_periods:
@@ -2512,6 +2657,7 @@ def evaluate_wayne_walk(
         ),
         "pending_process_cold": "collect",
         "pending_in_process": "remote_mixed",
+        "mixed_pending_recovery": native_result["mixed_pending_recovery"],
         "completed_process_cold_period": 10,
         "native_aid_timelines": details,
         "granted_recipient_reports": disclosed,

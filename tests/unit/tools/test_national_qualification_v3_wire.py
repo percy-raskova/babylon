@@ -37,7 +37,7 @@ def test_preserved_rust_v3_capture_refused_by_current_envelope(kind: str) -> Non
 V4_DIGESTS = {
     "requests": "1b33ae2fdfa07b9ca1b55bcb8094b4884fc94a7241171868f0019af562f1278b",
     "responses": "88fb0701cd499389bc2c87296aab28611d77e345f1d84b2bbad1b2466dc4ae80",
-    "reviewed-accepted": "ab703c4e22db2d35fcf6537c45d47281ddabe4218e98a454d2a24525d18bcf4a",
+    "reviewed-accepted": "b8273b549d416fd4edb239d4c253b870b35b1b50c43e556f0c65013814d76cd4",
 }
 
 

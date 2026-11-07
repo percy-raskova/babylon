@@ -3115,6 +3115,7 @@ def test_native_runner_assembles_the_actual_consuming_report_without_state_recon
     run.material = [MaterialRecord.model_validate(records[f"material-{i}.json"]) for i in (1, 2)]
     run.boundaries = [PlayableBoundary.model_validate(row) for row in report["boundaries"]]
     run.advances = [AdvanceRecord.model_validate(records[f"advance-{i}.json"]) for i in (1, 2)]
+    run.mixed_recovery = None
     run.recoveries = [
         (row["name"], RecoveryRecord.model_validate(records[row["name"]]))
         for row in manifest["recoveries"]
@@ -3975,3 +3976,103 @@ def test_original_reconciliation_matches_strictly_typed_each_copy(
                 controls,
                 PlayableReport.model_validate(report),
             )
+
+
+@pytest.mark.parametrize(
+    ("dispositions", "installed", "valid"),
+    [
+        ([(4, "Granted", 2)], {3}, True),
+        ([(4, "Granted", 2)], {5}, False),
+        ([(4, "Granted", 2)], {3, 5}, False),
+        ([(4, "Granted", 1), (6, "Lost", 1)], {3, 4, 5}, True),
+        ([(4, "Granted", 1)], set(range(3, 11)), True),
+    ],
+)
+def test_mixed_freight_reopen_must_match_the_actual_outstanding_quantity(
+    dispositions, installed, valid
+):
+    from types import SimpleNamespace
+
+    from tools.devtools import national_native_evidence as e
+    from tools.devtools.national_windowed_qualification import PendingFreight
+
+    original, mandate, material, receipt = [(x,) * 32 for x in range(1, 5)]
+    freight = PendingFreight(
+        original_commitment_id=original,
+        material_commitment_id=material,
+        mandate_id=mandate,
+        dispatch_period=3,
+        first_response_receipt_id=receipt,
+    )
+    stages = {
+        p: SimpleNamespace(
+            state=SimpleNamespace(
+                installed_organizer=SimpleNamespace(
+                    pending_freight=[freight] if p in installed else []
+                )
+            )
+        )
+        for p in range(1, 11)
+    }
+    legs = [
+        {"period": p, "outcome": outcome, "quantity": q}
+        for p, outcome, q in [(3, "Dispatched", 2), (3, "CashGranted", 0), *dispositions]
+    ]
+    args = stages, legs, original, mandate, 3, material, {"receipt_id": receipt, "period": 3}
+    if valid:
+        assert e.verify_freight_reopens(*args, remote=True) == sorted(installed)
+    else:
+        with pytest.raises(ValueError, match="outstanding"):
+            e.verify_freight_reopens(*args, remote=True)
+
+
+@pytest.mark.parametrize("fault", ["none", "slow", "slow_read", "epoch", "marker"])
+def test_extra_mixed_recovery_has_its_own_typed_marker_epoch_and_budget(tmp_path, fault):
+    from tools.devtools import national_native_evidence as e
+    from tools.devtools.national_windowed_qualification import ActionObservation, ControlState
+
+    _manifest, _report, _native, _memory, _opening, _ticks, records = native_join_evidence(tmp_path)
+    original = e.MaterialRecord.model_validate(records["material-2.json"])
+    ordinary = next(
+        a
+        for a in records["native-controls.json"]["actions"]
+        if a["action"] == "reopen" and a["state"]["durable_tick"] == 2
+    )
+    mixed = deepcopy(
+        next(
+            a["state"]["commitment"]
+            for a in records["native-controls.json"]["actions"]
+            if a["action"] == "confirm"
+            and a["state"]["commitment"]["command"]["choice"] == "remote_aid"
+        )
+    )
+    mixed["command"]["expected_period"] = 2
+    mixed["command"]["allocation"] = {"aid": {"food_quantity": 2, "cash_micros": "280000000"}}
+    mixed["resolves_period"] = 3
+    ordinary["state"]["commitment"] = mixed
+    prior = ControlState.model_validate(ordinary["state"])
+    new = deepcopy(ordinary)
+    new["state"]["scope_epoch"] += 1
+    new["state"]["generation"] += 1
+    new["completed_monotonic_ns"] += 190_000_000_000
+    action = ActionObservation.model_validate(new)
+    packet = deepcopy(records[f"recovery-2-{prior.scope_epoch}.json"])
+    packet["previous_scope"]["epoch"] = prior.scope_epoch
+    packet["restored_scope"]["epoch"] = action.state.scope_epoch
+    packet["authenticated_read"]["runtime_epoch"] = action.state.scope_epoch
+    packet["authenticated_read"]["observation_generation"] = action.state.generation
+    if fault == "slow":
+        packet["cold_reopen_elapsed_ns"] = 181_000_000_000
+    if fault == "slow_read":
+        packet["authenticated_read"]["production_read_elapsed_ns"] = 181_000_000_000
+        packet["cold_reopen_elapsed_ns"] = 182_000_000_000
+    if fault == "epoch":
+        packet["previous_scope"]["epoch"] -= 1
+    if fault == "marker":
+        packet["source"]["tick_content_hash"] = "ef" * 32
+    receipt = e.RecoveryRecord.model_validate(packet)
+    if fault == "none":
+        e.verify_mixed_recovery(prior, action, original, receipt, policy(), "ab" * 32)
+    else:
+        with pytest.raises(ValueError, match="mixed.*recovery"):
+            e.verify_mixed_recovery(prior, action, original, receipt, policy(), "ab" * 32)

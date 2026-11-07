@@ -1472,3 +1472,39 @@ def test_native_children_do_not_inherit_supervisor_credentials():
     assert client["BABYLON_QUALIFICATION_POLICY"] == "/qualified/policy.json"
     assert client["DISPLAY"] == ":0"
     assert environment["BABYLON_STORAGE_CANARY"] == "supervisor-secret"
+
+
+def test_partial_spawn_is_observed_before_second_spawn_failure_and_reaped(monkeypatch, tmp_path):
+    events = []
+
+    class Runtime:
+        pid = 313
+
+        def wait(self, timeout=None):
+            events.append("reaped")
+            return 0
+
+        def poll(self):
+            return 0
+
+    def spawn(args, **kwargs):
+        if args[0].endswith("runtime"):
+            return Runtime()
+        raise OSError("second child refused")
+
+    monkeypatch.setattr(launcher.subprocess, "Popen", spawn)
+    with pytest.raises(launcher.ObserverLaunchError, match="start"):
+        launcher.run_pair(
+            tmp_path / "runtime",
+            tmp_path / "client",
+            tmp_path,
+            {},
+            {},
+            defines_path=tmp_path / "d",
+            initial_target=launcher.OpenCampaignTarget(CAMPAIGN),
+            on_started=lambda *_: pytest.fail("partial pair admitted"),
+            qualification_control=tmp_path / "control.sock",
+            on_spawned=lambda role, child: events.append((role, child.pid)),
+            on_stopped=lambda: events.append("stopped"),
+        )
+    assert events == [("runtime", 313), "reaped", "stopped"]

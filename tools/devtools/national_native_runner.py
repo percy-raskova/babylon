@@ -41,6 +41,7 @@ from tools.devtools.national_native_evidence import (
     RecoveryRecord,
     private_bytes,
     verify_frame_png,
+    verify_mixed_recovery,
 )
 from tools.devtools.national_storage_qualification import (
     ArchiveBoundary,
@@ -231,6 +232,7 @@ class NativeRun:
         self.material: list[MaterialRecord] = []
         self.advances: list[AdvanceRecord] = []
         self.recoveries: list[tuple[str, RecoveryRecord]] = []
+        self.mixed_recovery: Artifact | None = None
         self.snapshots: list[Snapshot] = []
         self.stage = "admitting_supervisor"
         self.failed_pair: Reference | None = None
@@ -685,7 +687,7 @@ class NativeRun:
         stage: str,
         elapsed_ns: int,
         maximum_seconds: int,
-        state: ControlState,
+        state: ControlState | None,
         *,
         strict: bool = False,
     ) -> None:
@@ -702,7 +704,7 @@ class NativeRun:
                     "elapsed_ns": elapsed_ns,
                     "ceiling_ns": ceiling,
                     "strict": strict,
-                    "state": state.model_dump(mode="json"),
+                    "state": state.model_dump(mode="json") if state else None,
                     "processes": getattr(self, "pair_identity", []),
                     "segment": getattr(self, "segment", None),
                 },
@@ -1006,7 +1008,8 @@ class NativeRun:
                 "boundaries": [artifact(f"material-{i}.json") for i in range(1, self.periods + 1)],
                 "advances": [artifact(f"advance-{i}.json") for i in range(1, self.periods + 1)],
                 "archives": [artifact(f"archive-{i}.json") for i in range(1, self.periods + 1)],
-                "recoveries": [artifact(name) for name, _row in self.recoveries],
+                "recoveries": [artifact(name) for name, _row in self.recoveries]
+                + ([self.mixed_recovery.model_dump(mode="json")] if self.mixed_recovery else []),
                 "aid_originals": [artifact(path.name) for path, _row in originals],
             }
         )
@@ -1095,6 +1098,27 @@ class NativeRun:
                 ]
             self.verify_live()
 
+        latest_smoke: ControlState | None = None
+
+        def observed_smoke(state: ControlState) -> None:
+            nonlocal latest_smoke
+            latest_smoke = state
+            self.check_budget(
+                "smoke-wall",
+                time.monotonic_ns() - self.started,
+                self.policy.maximum_routine_smoke_seconds,
+                state,
+            )
+
+        def expired_smoke() -> None:
+            self.check_budget(
+                "smoke-wall",
+                time.monotonic_ns() - self.started,
+                self.policy.maximum_routine_smoke_seconds,
+                latest_smoke,
+                strict=True,
+            )
+
         result = drive_pair(
             self.runtime,
             self.client,
@@ -1118,12 +1142,11 @@ class NativeRun:
                 state,
                 strict=True,
             ),
-            on_observed=lambda state: self.check_budget(
-                "smoke-wall",
-                time.monotonic_ns() - self.started,
-                self.policy.maximum_routine_smoke_seconds,
-                state,
-            ),
+            on_observed=observed_smoke if self.wayne_profile == "smoke-01" else None,
+            wall_deadline=self.started / 1e9 + self.policy.maximum_routine_smoke_seconds
+            if self.wayne_profile == "smoke-01"
+            else None,
+            on_wall_expired=expired_smoke if self.wayne_profile == "smoke-01" else None,
             on_boundary=self.on_boundary,
             on_recovery=self.on_recovery,
             choices=choices,
@@ -1211,6 +1234,9 @@ class WayneWalk:
         self.first_observed: ControlState | None = None
         self.latest_observed: ControlState | None = None
         self.segment_capture: memory.RunningMemoryCapture | None = None
+        self.failed_frame: tuple[Path, str, int, int] | None = None
+        self.attempted: list[tuple[str, int]] = []
+        self.launch_stage = ""
 
     def draft_path(self) -> Path:
         return (
@@ -1402,6 +1428,44 @@ class WayneWalk:
             "draft": self.draft(),
         }
 
+    def observe_failed_frame(
+        self, path: Path, name: str, width: int, height: int
+    ) -> dict[str, object]:
+        limit = 32 * 1024 * 1024
+        try:
+            with PrivateEvidence(path.parent).file(path.name) as frame:
+                length = os.fstat(frame.fileno()).st_size
+                raw = frame.read(limit)
+        except FileNotFoundError:
+            return {"frame_state": "absent", "original_byte_length": None, "capture": None}
+        ref = self.raw.publish(name + ".png", raw)
+        if max(length, len(raw)) > limit:
+            status = "bounded_prefix"
+        elif not raw:
+            status = "empty"
+        else:
+            try:
+                verify_frame_png(raw, width, height)
+            except ValueError:
+                status = "partial_or_invalid_png"
+            else:
+                status = "complete_png"
+        return {"frame_state": status, "original_byte_length": length, "capture": ref.model_dump()}
+
+    def retain_stopped_frame(self) -> None:
+        if self.failed_frame is not None:
+            path, name, width, height = self.failed_frame
+            final = name + "-stopped"
+            self.raw.publish_json(
+                final + ".json",
+                {
+                    "sequence_file": path.name,
+                    "immediate": name + ".json",
+                    **self.observe_failed_frame(path, final, width, height),
+                },
+            )
+            self.failed_frame = None
+
     def capture_frame(
         self,
         channel: ControlChannel,
@@ -1422,14 +1486,16 @@ class WayneWalk:
             return state, raw
         except BaseException:
             name = f"incomplete-{self.stage}-{stage}-seq{channel.sequence}"
-            original = None
-            length = None
-            path = socket_root / f"frame-{channel.sequence}.png"
-            if channel.sequence > before and os.path.lexists(path):
-                with PrivateEvidence(socket_root).file(path.name) as frame:
-                    length = os.fstat(frame.fileno()).st_size
-                    original = self.raw.publish(name + ".png", frame.read(32 * 1024 * 1024))
             attempted = channel.sequence > before
+            path = socket_root / f"frame-{channel.sequence}.png"
+            observed: dict[str, object] = {
+                "frame_state": "unsent",
+                "original_byte_length": None,
+                "capture": None,
+            }
+            if attempted:
+                self.failed_frame = path, name, width, height
+                observed = self.observe_failed_frame(path, name, width, height)
             response = (
                 self.raw.publish(name + "-response.bin", bytes(channel.response_bytes))
                 if attempted and channel.response_bytes
@@ -1446,10 +1512,10 @@ class WayneWalk:
                     if attempted and channel.last_response
                     else None,
                     "actual_response_bytes": response.model_dump() if response else None,
-                    "original_byte_length": length,
+                    "requested_file": str(path) if attempted else None,
                     "width": width,
                     "height": height,
-                    "capture": original.model_dump() if original else None,
+                    **observed,
                 },
             )
             raise
@@ -1713,6 +1779,40 @@ class WayneWalk:
                 raise NativeRunRefusal("mixed pending acceptance is absent")
             before = self.capture_stage(current, "mixed-pending-before-reopen")
             after = channel.perform("reopen", self.run.timeout)
+            self.run.stage = "mixed-pending-recovery"
+            ref = self.evidence.reference(f"recovery-2-{after.scope_epoch}.json")
+            recovery = RecoveryRecord.model_validate(
+                strict_json_bytes(self.evidence.read_reference(ref, MATERIAL_RECORD_BYTES))
+            )
+            self.run.check_budget(
+                "mixed-pending-reopen",
+                recovery.cold_reopen_elapsed_ns,
+                self.run.policy.maximum_cold_open_seconds,
+                after,
+                strict=True,
+            )
+            self.run.check_budget(
+                "mixed-pending-production-read",
+                recovery.authenticated_read.production_read_elapsed_ns,
+                self.run.policy.maximum_production_read_seconds,
+                after,
+            )
+            verify_mixed_recovery(
+                current,
+                channel.records[-1],
+                self.run.material[-1],
+                recovery,
+                self.run.policy,
+                self.run.policy_hash,
+            )
+            if (
+                recovery.previous_scope != self.run.recoveries[-1][1].restored_scope
+                or recovery.source != self.run.recoveries[-1][1].source
+            ):
+                raise NativeRunRefusal(
+                    "mixed pending recovery differs from its preceding P2 restart"
+                )
+            self.run.mixed_recovery = Artifact(name=ref.path, sha256=ref.sha256)
             if (
                 after.commitment != current.commitment
                 or self.capture_stage(after, "mixed-pending-after-reopen") != before
@@ -1873,14 +1973,22 @@ class WayneWalk:
         self.run.stage = "cold-" + stage
         self.run.segment = stage
         self.run.pair_identity = []
+        self.attempted = []
+        self.launch_stage = "prepare-segment"
         self.first_observed = self.latest_observed = None
         main = stage == "walk"
         directory = self.run.directory if main else self.run.directory / ("segment-" + stage)
 
         def started(runtime: subprocess.Popen[bytes], client: subprocess.Popen[bytes]) -> None:
+            self.launch_stage = "verify-live-owner"
             self.run.verify_live()
+            self.launch_stage = "verify-sources"
             self.run.verify_sources()
-            for process, binary in ((runtime, self.run.runtime), (client, self.run.client)):
+            for role, process, binary in (
+                ("runtime", runtime, self.run.runtime),
+                ("client", client, self.run.client),
+            ):
+                self.launch_stage = "authenticate-" + role
                 proc = Path("/proc") / str(process.pid)
                 start = memory.parse_start_time((proc / "stat").read_bytes(), process.pid)
                 if (
@@ -1896,11 +2004,13 @@ class WayneWalk:
                     raise NativeRunRefusal("a process-cold segment reused its predecessor")
                 self.processes.append(fresh)
                 self.run.pair_identity.append(fresh)
+            self.launch_stage = "install-and-drive"
 
         self.process_start = time.monotonic_ns()
         try:
             if not main:
                 directory.mkdir(mode=0o700)
+            self.launch_stage = "verify-previous-exit"
             if self.processes:
                 for pid, start, _ in self.processes[-2:]:
                     try:
@@ -1913,7 +2023,9 @@ class WayneWalk:
                         raise NativeRunRefusal(
                             "previous owned runtime or client has not exited normally"
                         )
+            self.launch_stage = "prepare-memory-capture"
             self.segment_capture = self.run.capture(directory, fixed_period=None if main else tick)
+            self.launch_stage = "reauthenticate-native-owner"
             reauthenticate_native_owner(self.run.root, self.run.directory, self.run.owner_fields)
             if not main:
                 reader = {
@@ -1921,6 +2033,7 @@ class WayneWalk:
                     for key, value in reader.items()
                     if not key.startswith("BABYLON_QUALIFICATION_")
                 }
+            self.launch_stage = "spawn-runtime"
             self.drive_segment(tick, target, closes, writer, reader, directory, started, main)
         except BaseException:
             self.run.failed_pair = self.evidence.publish_json(
@@ -1930,7 +2043,9 @@ class WayneWalk:
                     "stage": self.run.stage,
                     "expected_open_tick": tick,
                     "elapsed_ns": time.monotonic_ns() - self.process_start,
-                    "attempted_processes": self.run.pair_identity,
+                    "launch_stage": self.launch_stage,
+                    "attempted_processes": self.attempted,
+                    "authenticated_processes": self.run.pair_identity,
                     "first_observation": self.first_observed.model_dump(mode="json")
                     if self.first_observed
                     else None,
@@ -1946,6 +2061,10 @@ class WayneWalk:
                 },
             )
             raise
+
+    def spawned(self, role: Literal["runtime", "client"], process: subprocess.Popen[bytes]) -> None:
+        self.attempted.append((role, process.pid))
+        self.launch_stage = "spawn-client" if role == "runtime" else "admit-pair"
 
     def drive_segment(
         self,
@@ -1972,6 +2091,8 @@ class WayneWalk:
             directory=directory,
             operation_timeout=self.run.timeout,
             on_started=started,
+            on_spawned=self.spawned,
+            on_stopped=self.retain_stopped_frame,
             on_boundary=self.committed if main else lambda _state: None,
             on_recovery=self.run.on_recovery if main else lambda _state: None,
             on_opened=self.cold_install,

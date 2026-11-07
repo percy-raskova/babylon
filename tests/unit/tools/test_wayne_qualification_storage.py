@@ -99,12 +99,28 @@ def test_physical_native_wal_sender_setting_requires_actual_exact_zero(actual):
             storage.native_wal_senders(actual)
 
 
-def test_sql_supervisor_mask_reaches_real_private_manifest_reader(tmp_path):
+def set_default_acl(path, group):
+    import os
+    import struct
+
+    entries = [(1, 7), (4, group), (32, 0)]
+    os.setxattr(
+        path,
+        "system.posix_acl_default",
+        struct.pack("<I", 2)
+        + b"".join(struct.pack("<HHI", tag, perm, 0xFFFFFFFF) for tag, perm in entries),
+    )
+
+
+@pytest.mark.parametrize("private_default", [False, True])
+def test_sql_supervisor_mask_reaches_real_private_manifest_reader(tmp_path, private_default):
     import os
     import subprocess
 
     repo = Path(__file__).resolve().parents[3]
     evidence = tmp_path / "evidence"
+    if private_default:
+        set_default_acl(tmp_path, 0)
     evidence.mkdir(mode=0o700)
     (tmp_path / "item").write_bytes(b"fixture")
     # BASH_ENV intercepts the first media call inside the ordinary supervisor.
@@ -386,3 +402,65 @@ def test_held_slot_stop_requires_exact_fast_configuration_and_current_clean_stop
     stops = [args for args in records if "stop" in args]
     assert len(stops) == (0 if fault in ("image_signal", "container_signal", "pid") else 1)
     assert not any("rm" in args or "kill" in args for args in records)
+
+
+def test_sql_supervisor_refuses_inherited_manifest_acl_before_consuming_run(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    parent = tmp_path / "runs"
+    parent.mkdir(mode=0o700)
+    set_default_acl(parent, 5)
+    # Demonstrate the actual shell mode, including inheritance through a private directory.
+    subprocess.run(
+        ["bash", "-c", 'umask 077; mkdir -m 700 "$1/child"; : > "$1/child/probe"', "sh", parent],
+        check=True,
+    )
+    assert (parent / "child/probe").stat().st_mode & 0o777 == 0o640
+    repo = Path(__file__).resolve().parents[3]
+    init = tmp_path / "init"
+    init.write_text(
+        'mise() { [[ " $* " == *" reserve "* ]] || return 97; "$TMP_PY" -c "$TMP_RESERVE"; }\n'
+    )
+    mock_reserve = """
+from contextlib import contextmanager
+from pathlib import Path
+import os
+from tools.devtools import wayne_qualification_storage as s
+parent = Path(os.environ["TMP_RUNS"])
+s.RUN_PARENT = parent
+root = Path.cwd()
+s.MEDIA_CHECKOUT = root
+s._daemon_endpoint = lambda: None
+s._image = lambda _: None
+s.exact_output = lambda args: ""
+@contextmanager
+def pins(path):
+    fd = os.open(path, s.DIR_FLAGS)
+    try: yield [s._directory_pin(fd, path)]
+    finally: os.close(fd)
+s.pinned_ancestry = pins
+s.reserve_run("sql-01", "organizer_allocation_atomic", "", parent / "sql-01/evidence", root)
+"""
+    result = subprocess.run(
+        ["bash", str(repo / "tools/run_rust_postgres.sh")],
+        env={
+            **{
+                k: v
+                for k, v in os.environ.items()
+                if not (k.startswith("PG") or k.endswith("_DSN") or k == "CARGO_TARGET_DIR")
+            },
+            "BASH_ENV": str(init),
+            "TMP_PY": sys.executable,
+            "TMP_RUNS": str(parent),
+            "TMP_RESERVE": mock_reserve,
+            "BABYLON_POSTGRES_IMAGE_ID": "sha256:" + "a" * 64,
+            "BABYLON_WAYNE_PROFILE": "sql-01",
+            "BABYLON_STORAGE_REPORT_DIRECTORY": str(parent / "sql-01/evidence"),
+            "BABYLON_POSTGRES_LIVE_FOCUS": "organizer_allocation_atomic",
+        },
+        capture_output=True,
+    )
+    assert result.returncode != 0 and b"inherited default ACL" in result.stderr, result.stderr
+    assert not (parent / "sql-01").exists()

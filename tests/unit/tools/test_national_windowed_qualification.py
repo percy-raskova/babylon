@@ -1542,3 +1542,31 @@ def test_delayed_one_play_acknowledgement_preserves_authenticated_pending(raced_
             else:
                 channel.perform(("arm_one_play_advance", "play", "pause")[seq - 2], 1)
         assert channel.state.play_interlock.request_id == 41
+
+
+@pytest.mark.parametrize("crossing", ["between_requests", "while_waiting"])
+def test_smoke_clock_bounds_next_send_and_outstanding_reply(crossing, monkeypatch):
+    import time
+
+    stream, peer = socket.socketpair()
+    try:
+        deadline = time.monotonic() + 0.1
+        channel = windowed.ControlChannel(stream, CAMPAIGN, 0, wall_deadline=deadline)
+        peer.sendall(response(1, "observed", **state()))
+        installed = channel.observe(2)
+        assert json.loads(peer.recv(4096))["sequence"] == 1
+        if crossing == "between_requests":
+            monkeypatch.setattr(windowed.time, "monotonic", lambda: deadline + 1)
+        with pytest.raises(windowed.ControlRefusal, match="smoke wall"):
+            channel.observe(2)
+        assert channel.state == installed
+        peer.setblocking(False)
+        remaining = peer.recv(4096)
+        assert (
+            remaining == b""
+            if crossing == "between_requests"
+            else json.loads(remaining)["sequence"] == 2
+        )
+    finally:
+        stream.close()
+        peer.close()

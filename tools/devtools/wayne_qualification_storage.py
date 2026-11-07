@@ -744,6 +744,13 @@ def reserve_run(profile: str, focus: str, periods: str, evidence: Path, root: Pa
     with pinned_ancestry(RUN_PARENT) as parent_pins:
         if parent_pins[-1].uid != os.geteuid() or parent_pins[-1].mode != 0o700:
             raise StorageRefusal("Wayne run parent must be private and operator owned")
+        # Shell redirection requests 0666. Linux uses an inherited default ACL
+        # in place of the umask and encodes its mask in the file's group bits.
+        default = {tag: perm for tag, perm, _ in parent_pins[-1].default_acl}
+        if default and (default.get(16, default[4]) & 6 or default[32] & 6 or default[1] != 7):
+            raise StorageRefusal(
+                "inherited default ACL cannot create private readable shell evidence"
+            )
         reservations = PrivateEvidence(RUN_PARENT)
         reservation_ref = reservations.reference(f"{profile}-capacity.json")
         reservation = read_typed(reservations, reservation_ref, DiskReservation)

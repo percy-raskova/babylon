@@ -464,3 +464,168 @@ s.reserve_run("sql-01", "organizer_allocation_atomic", "", parent / "sql-01/evid
     )
     assert result.returncode != 0 and b"inherited default ACL" in result.stderr, result.stderr
     assert not (parent / "sql-01").exists()
+
+
+def test_governed_sql_archive_uses_a_fresh_private_build_destination(tmp_path, monkeypatch):
+    import subprocess
+
+    evidence = storage.PrivateEvidence(tmp_path)
+    monkeypatch.setattr(storage, "_pinned_archive_tools", lambda: None, raising=False)
+
+    def failed_build(args, **kwargs):
+        assert args[1:3] == ["nextest", "archive"]
+        assert "--lib" in args and "--locked" in args and "--cargo-message-format=json" in args
+        archive = Path(args[args.index("--archive-file") + 1])
+        assert archive.parent.parent == tmp_path
+        assert archive.parent.stat().st_mode & 0o777 == 0o700
+        assert not archive.exists()
+        archive.write_bytes(b"incomplete")
+        return subprocess.CompletedProcess(
+            args, 1, b'{"reason":"build-finished","success":false}', b"failed"
+        )
+
+    monkeypatch.setattr(storage.subprocess, "run", failed_build)
+    with pytest.raises(subprocess.CalledProcessError):
+        storage._build_test(evidence, tmp_path)
+    assert not (tmp_path / "ignored-tests.tar.zst").exists()
+    assert (tmp_path / "ignored-build.stderr").read_bytes() == b"failed"
+    assert not (tmp_path / "ignored-test").exists()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "valid",
+        "duplicate-compiler",
+        "wrong-package",
+        "missing-binary",
+        "two-binaries",
+        "archive-escape",
+        "compiler-escape",
+        "list-disagrees",
+        "wrong-platform",
+        "list-build-directory",
+    ],
+)
+def test_sql_archive_matches_only_the_compiled_lib_under_its_normalized_target(tmp_path, change):
+    import copy
+    import json
+
+    rust = tmp_path / "rust"
+    crate = rust / "crates/babylon-persistence"
+    build = tmp_path / "disposable/build"
+    target = rust / "target"
+    suffix = Path("debug/deps/babylon_persistence-0123456789abcdef")
+    package = "path+" + crate.as_uri() + "#0.1.0"
+    manifest = str(crate / "Cargo.toml")
+    cargo = {
+        "workspace_root": str(rust),
+        "target_directory": str(target),
+        "build_directory": str(build),
+        "packages": [{"name": "babylon-persistence", "id": package, "manifest_path": manifest}],
+        "workspace_members": [package],
+    }
+    artifact = {
+        "reason": "compiler-artifact",
+        "package_id": package,
+        "manifest_path": manifest,
+        "target": {
+            "name": "babylon_persistence",
+            "kind": ["lib"],
+            "src_path": str(crate / "src/lib.rs"),
+        },
+        "profile": {"test": True},
+        "executable": str(build / suffix),
+        "filenames": [str(build / suffix)],
+    }
+    binary = {
+        "binary-id": "babylon-persistence",
+        "binary-name": "babylon_persistence",
+        "kind": "lib",
+        "package-id": package,
+        "build-platform": "target",
+        "binary-path": str(target / suffix),
+    }
+    binaries = {"babylon-persistence": binary}
+    archive = {"rust-build-meta": {"target-directory": str(target)}, "rust-binaries": binaries}
+    listed = copy.deepcopy(archive)
+    listed["rust-build-meta"]["build-directory"] = str(target)
+    if change == "list-build-directory":
+        listed["rust-build-meta"]["build-directory"] = str(build)
+    if change == "wrong-package":
+        artifact["package_id"] = "different-crate"
+    if change == "missing-binary":
+        binaries.clear()
+    if change == "two-binaries":
+        binaries["second"] = binary
+    if change == "archive-escape":
+        binary["binary-path"] = str(target / ".." / suffix)
+    if change == "compiler-escape":
+        artifact["executable"] = str(build / ".." / suffix)
+        artifact["filenames"] = [artifact["executable"]]
+    if change == "list-disagrees":
+        listed["rust-binaries"]["babylon-persistence"]["binary-path"] = str(build / suffix)
+    if change == "wrong-platform":
+        binary["build-platform"] = "host"
+    compiler = (json.dumps(artifact) + "\n").encode() * (2 if change == "duplicate-compiler" else 1)
+    if change == "valid":
+        assert storage._sql_archive_member(tmp_path, compiler, cargo, archive, listed) == str(
+            Path("target") / suffix
+        )
+        assert not build.exists()
+    else:
+        with pytest.raises(storage.StorageRefusal):
+            storage._sql_archive_member(tmp_path, compiler, cargo, archive, listed)
+
+
+@pytest.mark.parametrize(
+    "change", ["valid", "symlink", "hardlink", "parent-link", "non-executable", "directory"]
+)
+def test_sql_archive_extraction_pins_unique_regular_member_below_private_parents(tmp_path, change):
+    import os
+
+    private = storage.PrivateEvidence(tmp_path)
+    (tmp_path / "target").mkdir(mode=0o700)
+    destination = tmp_path / "target/lib-test"
+    original = tmp_path / "actual"
+    original.write_bytes(b"extracted fixture bytes")
+    original.chmod(0o755)
+    if change == "symlink":
+        destination.symlink_to(original)
+    elif change == "hardlink":
+        os.link(original, destination)
+    elif change == "directory":
+        destination.mkdir(mode=0o700)
+    else:
+        original.rename(destination)
+    if change == "non-executable":
+        destination.chmod(0o600)
+    if change == "parent-link":
+        (tmp_path / "target").rename(tmp_path / "elsewhere")
+        (tmp_path / "target").symlink_to(tmp_path / "elsewhere", target_is_directory=True)
+    if change == "valid":
+        ref = private.extracted_member("target/lib-test", executable=True)
+        assert private.read_reference(ref) == b"extracted fixture bytes"
+        assert destination.stat().st_mode & 0o777 == 0o700
+    else:
+        with pytest.raises((storage.StorageRefusal, OSError)):
+            private.extracted_member("target/lib-test", executable=True)
+
+
+def test_sql_archive_publication_preserves_existing_evidence_and_rejects_aliases(tmp_path):
+    import os
+
+    directory = storage.PrivateEvidence(tmp_path)
+    staging = storage.PrivateEvidence(tmp_path / "staging")
+    staging.path.mkdir(mode=0o700)
+    staged = staging.publish(storage.ARCHIVE_NAME, b"completed archive control")
+    alias = staging.path / "alias"
+    os.link(staging.path / staged.path, alias)
+    with pytest.raises(storage.StorageRefusal, match="hard link"):
+        storage._publish_test_archive(directory, staging)
+    alias.unlink()
+    existing = directory.publish(storage.ARCHIVE_NAME, b"earlier evidence")
+    with pytest.raises(FileExistsError):
+        storage._publish_test_archive(directory, staging)
+    directory.verify(existing)
+    staging.verify(staged)

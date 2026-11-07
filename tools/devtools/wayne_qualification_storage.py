@@ -145,7 +145,7 @@ class PrivateEvidence:
         self.path = path
 
     @contextmanager
-    def file(self, name: str) -> Iterator[BinaryIO]:
+    def _owned_file(self, name: str) -> Iterator[BinaryIO]:
         parts = _path_components(name)
         with ExitStack() as stack:
             directory = os.open(self.path, DIR_FLAGS)
@@ -158,13 +158,28 @@ class PrivateEvidence:
             fd = os.open(parts[-1], FILE_FLAGS, dir_fd=directory)
             stream = stack.enter_context(os.fdopen(fd, "rb"))
             info = os.fstat(fd)
-            if (
-                not stat.S_ISREG(info.st_mode)
-                or info.st_uid != os.geteuid()
-                or stat.S_IMODE(info.st_mode) & 0o077
-            ):
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid():
                 raise StorageRefusal("referenced evidence must be a private owned regular file")
             yield stream
+
+    @contextmanager
+    def file(self, name: str) -> Iterator[BinaryIO]:
+        with self._owned_file(name) as stream:
+            if os.fstat(stream.fileno()).st_mode & 0o077:
+                raise StorageRefusal("referenced evidence must be a private owned regular file")
+            yield stream
+
+    def extracted_member(self, name: str, *, executable: bool = False) -> Reference:
+        """Seal the selected file inside nextest's fresh, private extraction tree."""
+        with self._owned_file(name) as stream:
+            fd = stream.fileno()
+            info = os.fstat(fd)
+            if info.st_nlink != 1 or (executable and not info.st_mode & stat.S_IXUSR):
+                raise StorageRefusal("extracted nextest member has unexpected links or mode")
+            # tar may restore group/other bits inside the new 0700 extraction tree.
+            os.fchmod(fd, 0o700 if executable else 0o600)
+            os.fsync(fd)
+            return _receipt(stream, name)
 
     def reference(self, name: str) -> Reference:
         with self.file(name) as source:
@@ -1162,44 +1177,261 @@ def _archive_file(
     return expected
 
 
+ARCHIVE_NAME = "ignored-tests.tar.zst"
+SQL_PACKAGE = "babylon-persistence"
+SQL_LIB = "babylon_persistence"
+CARGO_DISPATCH = Path("/home/user/.local/share/codex-rust-host/bin/cargo")
+NEXTEST = Path("/home/user/.cargo/bin/cargo-nextest")
+
+
+def _pinned_archive_tools() -> dict[str, str]:
+    """The operator uses the same installed plugin for archive creation and reuse."""
+    installed = CARGO_DISPATCH.parent.parent / "v13/cargo"
+    if CARGO_DISPATCH.resolve(strict=True) != installed:
+        raise StorageRefusal("governed Cargo dispatcher differs from installed v13")
+    tools = {
+        installed: "daed14c184f307fbe93a643e0886f1cc2015184e16e619bd9badd7a029f9c504",
+        installed.with_name(
+            "policy.sh"
+        ): "6d92ebafa2b03bbcb6492c1db958846090ee64ee30bdd239fd6c4e1e5b933080",
+        NEXTEST: "1281390452db2ecc1c1a70f2d335004bec1f7ee5986ea4d26919bf2de614c8c6",
+    }
+    for path, digest in tools.items():
+        with os.fdopen(os.open(path, FILE_FLAGS), "rb") as source:
+            info = os.fstat(source.fileno())
+            if not stat.S_ISREG(info.st_mode) or _receipt(source, str(path)).sha256 != digest:
+                raise StorageRefusal(f"SQL archive tool identity differs: {path}")
+    if Path(os.environ.get("CARGO_HOME", Path.home() / ".cargo")) != NEXTEST.parent.parent:
+        raise StorageRefusal("Cargo plugin discovery requires the pinned Cargo home")
+    return {str(path): digest for path, digest in tools.items()}
+
+
+def _publish_test_archive(directory: PrivateEvidence, staging: PrivateEvidence) -> Reference:
+    # nextest can overwrite a destination. Only link its successful, fsynced output
+    # from this run's freshly created staging directory into the final namespace.
+    with staging.file(ARCHIVE_NAME) as stream:
+        if os.fstat(stream.fileno()).st_nlink != 1:
+            raise StorageRefusal("staged nextest archive has another hard link")
+        os.fchmod(stream.fileno(), 0o400)
+        os.fsync(stream.fileno())
+        reference = _receipt(stream, ARCHIVE_NAME)
+        if not reference.bytes:
+            raise StorageRefusal("empty nextest archive")
+        os.link(staging.path / ARCHIVE_NAME, directory.path / ARCHIVE_NAME, follow_symlinks=False)
+        parent = os.open(directory.path, DIR_FLAGS)
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
+        directory.verify(reference)
+        (staging.path / ARCHIVE_NAME).unlink()
+    return reference
+
+
+def _sql_archive_member(
+    root: Path,
+    compiler: bytes,
+    cargo: dict[str, Any],
+    archive: dict[str, Any],
+    listed: dict[str, Any],
+) -> str:
+    rust = root / "rust"
+    manifest = str(rust / "crates" / SQL_PACKAGE / "Cargo.toml")
+    target = str(rust / "target")
+    if cargo.get("workspace_root") != str(rust) or cargo.get("target_directory") != target:
+        raise StorageRefusal("archived Cargo workspace or target directory differs")
+    packages = [
+        p for p in cargo["packages"] if p["name"] == SQL_PACKAGE and p["manifest_path"] == manifest
+    ]
+    if len(packages) != 1 or packages[0]["id"] not in cargo["workspace_members"]:
+        raise StorageRefusal("archived Cargo package is not the checkout persistence crate")
+    artifacts = []
+    for line in compiler.splitlines():
+        row = strict_json_bytes(line)
+        if (
+            isinstance(row, dict)
+            and row.get("reason") == "compiler-artifact"
+            and row["profile"]["test"] is True
+            and row["executable"] is not None
+        ):
+            artifacts.append(row)
+    if len(artifacts) != 1:
+        raise StorageRefusal("expected exactly one compiled test executable")
+    row = artifacts[0]
+    if (
+        row["package_id"] != packages[0]["id"]
+        or row["manifest_path"] != manifest
+        or row["target"]["name"] != SQL_LIB
+        or row["target"]["kind"] != ["lib"]
+        or row["target"]["src_path"] != str(Path(manifest).parent / "src/lib.rs")
+        or row["executable"] not in row["filenames"]
+    ):
+        raise StorageRefusal("compiled test executable does not identify the persistence lib")
+    # Cargo's original build directory is metadata only. Never open anything under it.
+    build = cargo["build_directory"]
+    filename = Path(row["executable"]).name
+    suffix = Path("debug/deps") / filename
+    if (
+        not isinstance(build, str)
+        or not Path(build).is_absolute()
+        or ".." in Path(build).parts
+        or build != str(Path(build))
+        or not re.fullmatch(r"babylon_persistence-[0-9a-f]{16}", filename)
+        or row["executable"] != str(Path(build) / suffix)
+    ):
+        raise StorageRefusal("compiler executable differs from the expected build-directory member")
+    expected = {
+        "binary-id": SQL_PACKAGE,
+        "binary-name": SQL_LIB,
+        "kind": "lib",
+        "package-id": row["package_id"],
+        "build-platform": "target",
+        "binary-path": str(rust / "target" / suffix),
+    }
+    # 0.9.143 omits the separate build directory in archive metadata. Its
+    # binaries-only listing materializes the normalized target as the build directory.
+    if (
+        "build-directory" in archive["rust-build-meta"]
+        or listed["rust-build-meta"].get("build-directory") != target
+    ):
+        raise StorageRefusal("nextest archive and list disagree on normalized build directory")
+    for metadata in (archive, listed):
+        build_meta = metadata["rust-build-meta"]
+        if build_meta["target-directory"] != target or metadata["rust-binaries"] != {
+            SQL_PACKAGE: expected
+        }:
+            raise StorageRefusal("nextest binary identity or normalized target path differs")
+    return str(Path("target") / suffix)
+
+
+def _nextest_output(
+    directory: PrivateEvidence,
+    root: Path,
+    command: list[str],
+    stdout_name: str,
+    stderr_name: str,
+    *,
+    timeout: int,
+    env: dict[str, str] | None = None,
+) -> tuple[Reference, bytes]:
+    try:
+        result = subprocess.run(
+            command,
+            cwd=root / "rust",
+            env=env,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+            umask=0o077,
+        )
+    except subprocess.TimeoutExpired as error:
+        directory.publish(stdout_name, error.stdout or b"")
+        directory.publish(stderr_name, error.stderr or b"")
+        raise
+    stdout = directory.publish(stdout_name, result.stdout)
+    directory.publish(stderr_name, result.stderr)
+    result.check_returncode()
+    return stdout, result.stdout
+
+
 def _build_test(directory: PrivateEvidence, root: Path) -> Reference:
-    log = subprocess.run(
+    tool_ref = directory.publish_json("ignored-archive-tools.json", _pinned_archive_tools())
+    staging = PrivateEvidence(directory.path / "ignored-build-staging")
+    staging.path.mkdir(mode=0o700)
+    compiler_ref, compiler = _nextest_output(
+        directory,
+        root,
         [
-            "cargo",
-            "test",
+            str(CARGO_DISPATCH),
+            "nextest",
+            "archive",
             "-p",
-            "babylon-persistence",
+            SQL_PACKAGE,
             "--lib",
             "--locked",
-            "--no-run",
-            "--message-format=json-render-diagnostics",
+            "--cargo-message-format=json",
+            "--archive-file",
+            str(staging.path / ARCHIVE_NAME),
         ],
-        cwd=root / "rust",
-        capture_output=True,
+        "ignored-build.jsonl",
+        "ignored-build.stderr",
+        env={
+            **os.environ,
+            "PATH": os.pathsep.join(
+                (str(CARGO_DISPATCH.parent), str(NEXTEST.parent), os.environ["PATH"])
+            ),
+        },
         timeout=900,
-        check=False,
     )
-    directory.publish("ignored-build.jsonl", log.stdout)
-    directory.publish("ignored-build.stderr", log.stderr)
-    log.check_returncode()
-    candidates = []
-    for line in log.stdout.splitlines():
-        entry = strict_json_bytes(line)
-        if (
-            isinstance(entry, dict)
-            and entry.get("reason") == "compiler-artifact"
-            and entry["target"]["name"] == "babylon_persistence"
-            and "lib" in entry["target"]["kind"]
-            and entry["profile"]["test"] is True
-            and entry["executable"] is not None
-        ):
-            candidates.append(Path(entry["executable"]))
-    if len(candidates) != 1 or candidates[0].parent != root / "rust/target/debug/deps":
-        raise StorageRefusal(
-            "Cargo did not select one checkout-local persistence lib test executable"
-        )
+    archive = _publish_test_archive(directory, staging)
     source_unchanged(root, directory.path)
-    archived = _archive_file(directory, candidates[0], "ignored-test", executable=True)
+    extracted = PrivateEvidence(directory.path / "ignored-extracted")
+    extracted.path.mkdir(mode=0o700)
+    _pinned_archive_tools()
+    directory.verify(archive)
+    sealed = (directory.path / archive.path).lstat()
+    list_ref, list_bytes = _nextest_output(
+        directory,
+        root,
+        [
+            str(NEXTEST),
+            "nextest",
+            "list",
+            "--archive-file",
+            str(directory.path / archive.path),
+            "--extract-to",
+            str(extracted.path),
+            "--list-type",
+            "binaries-only",
+            "--message-format=json",
+        ],
+        "ignored-binaries.json",
+        "ignored-extract.stderr",
+        timeout=120,
+    )
+    after = (directory.path / archive.path).lstat()
+    if (sealed.st_dev, sealed.st_ino, sealed.st_ctime_ns) != (
+        after.st_dev,
+        after.st_ino,
+        after.st_ctime_ns,
+    ):
+        raise StorageRefusal("nextest archive changed during extraction")
+    directory.verify(archive)
+
+    def metadata(name: str) -> tuple[Reference, dict[str, Any]]:
+        ref = directory.extracted_member(
+            f"{extracted.path.name}/target/nextest/{name}-metadata.json"
+        )
+        raw = strict_json_bytes(directory.read_reference(ref))
+        if not isinstance(raw, dict):
+            raise StorageRefusal(f"expected nextest {name} metadata object")
+        return ref, raw
+
+    cargo_ref, cargo = metadata("cargo")
+    binaries_ref, binaries = metadata("binaries")
+    listing = strict_json_bytes(list_bytes)
+    if not isinstance(listing, dict):
+        raise StorageRefusal("expected nextest binary list object")
+    member = _sql_archive_member(root, compiler, cargo, binaries, listing)
+    selected = directory.extracted_member(f"{extracted.path.name}/{member}", executable=True)
+    archived = _archive_file(
+        directory, directory.path / selected.path, "ignored-test", executable=True
+    )
+    if (archived.bytes, archived.sha256) != (selected.bytes, selected.sha256):
+        raise StorageRefusal("extracted nextest member changed before custody transfer")
+    directory.publish_json(
+        "ignored-archive-custody.json",
+        {
+            "tools": tool_ref.model_dump(),
+            "archive": archive.model_dump(),
+            "compiler": compiler_ref.model_dump(),
+            "cargo_metadata": cargo_ref.model_dump(),
+            "binaries_metadata": binaries_ref.model_dump(),
+            "binary_list": list_ref.model_dump(),
+            "member": selected.model_dump(),
+            "executable": archived.model_dump(),
+        },
+    )
     listed = subprocess.run(
         [str(directory.path / archived.path), TEST_NAME, "--ignored", "--exact", "--list"],
         cwd=root / "rust",

@@ -271,11 +271,7 @@ fn world_earned_report_summary_opens_the_ordinary_evidence_reader_and_hides_stal
         world
             .query::<(Entity, &Text)>()
             .iter(world)
-            .find_map(|(entity, text)| {
-                text.0
-                    .starts_with("Earned workplace reports")
-                    .then_some(entity)
-            })
+            .find_map(|(entity, text)| text.0.starts_with("Earned reports").then_some(entity))
             .expect("actual World development text reads earned organizer knowledge")
     };
     let text = &app.world().get::<Text>(summary).expect("World summary").0;
@@ -306,4 +302,104 @@ fn world_earned_report_summary_opens_the_ordinary_evidence_reader_and_hides_stal
         !text.contains("67,890") && !text.contains("4,567"),
         "current knowledge cannot leak to historical World: {text}"
     );
+}
+
+#[derive(Resource, Default)]
+struct Requested(Option<u64>);
+
+#[test]
+fn disclosed_partner_report_routes_to_that_organization_and_withholding_keeps_scene_nodes() {
+    use crate::organizer::scene::{OrganizerScene, OrganizerSubject};
+    use crate::organizer::ui::{OrganizerArchiveRequested, OrganizerArchiveTarget};
+    use babylon_persistence::runtime_session::OrganizerSnapshot;
+    let captured: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../babylon-persistence/tests/fixtures/national_organizer_pending_v18.json"
+    )))
+    .expect("actual pending national disclosure");
+    let actor = captured.view.aid_partners[1].actor_id;
+    let mut report = captured
+        .view
+        .observations
+        .iter()
+        .find(|r| r.subject_id == actor && r.observed_period == 1)
+        .expect("real shared report")
+        .clone();
+    let scene = OrganizerScene::from_disclosure(&captured.view, &captured.body);
+    let mut withheld = captured.view.clone();
+    withheld.observations.retain(|r| r.subject_id != actor);
+    withheld.total_observation_count =
+        u32::try_from(withheld.observations.len()).expect("bounded observations");
+    let private = OrganizerScene::from_disclosure(&withheld, &captured.body);
+    assert_eq!(scene, private);
+    assert_eq!(
+        scene
+            .nodes
+            .iter()
+            .filter(|n| n.subject == OrganizerSubject::AidPartner(actor))
+            .count(),
+        1
+    );
+    let (mut app, _) = tests::admitted_scene_fixture();
+    app.init_resource::<Requested>().add_observer(
+        |event: On<OrganizerArchiveRequested>, mut request: ResMut<Requested>| {
+            if let OrganizerArchiveTarget::PartnerOrganization(id) = event.target {
+                request.0 = Some(id);
+            }
+        },
+    );
+    {
+        let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+        let view = client.view.as_mut().expect("admitted identity");
+        report.actor_id = view.actor_id;
+        view.aid_partners = captured.view.aid_partners;
+        view.observations.push(report.clone());
+        assert!(client.lawful_evidence(report.observation_id, 0).is_none());
+        assert!(client.open_evidence_report(report.observation_id, 3));
+        client.inspector = OrganizerInspector::Evidence;
+    }
+    app.world_mut()
+        .write_message(OrganizerAction::ArchiveReport);
+    settle(&mut app);
+    assert_eq!(app.world().resource::<Requested>().0, Some(actor));
+}
+
+#[test]
+fn partner_comparison_requires_a_prior_acquired_topic_for_the_same_reader() {
+    use babylon_persistence::runtime_session::{
+        OrganizerPartnerFacts, OrganizerReport, OrganizerSnapshot,
+    };
+    let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../babylon-persistence/tests/fixtures/national_organizer_pending_v18.json"
+    )))
+    .expect("actual national disclosure");
+    let mut view = snapshot.view;
+    let prior = view
+        .observations
+        .iter()
+        .find(|r| {
+            matches!(
+                r.report,
+                OrganizerReport::Partner {
+                    facts: OrganizerPartnerFacts::FoodProvision { .. },
+                    ..
+                }
+            )
+        })
+        .expect("first completed food report")
+        .clone();
+    assert!(super::presentation::observation(&view, &prior, 1)
+        .contains("Earlier comparable report unknown"));
+    let mut current = prior.clone();
+    current.observed_period = 2;
+    current.acquired_period = 2;
+    let detail = |view: &_| super::presentation::observation(view, &current, 2);
+    view.observations = vec![prior.clone()];
+    assert!(detail(&view).contains("Earlier shared report P1"));
+    view.observations[0].acquired_period = 3;
+    assert!(detail(&view).contains("Earlier comparable report unknown"));
+    view.observations[0] = prior;
+    view.observations[0].actor_id += 1;
+    assert!(detail(&view).contains("Earlier comparable report unknown"));
 }

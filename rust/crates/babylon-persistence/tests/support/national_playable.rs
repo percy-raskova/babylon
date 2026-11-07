@@ -11,6 +11,7 @@ use babylon_persistence::runtime_session::{
     RUNTIME_SESSION_PROTOCOL_VERSION,
 };
 use babylon_practice_contract::OrganizerAllocation;
+use babylon_practice_contract::OrganizerPeriodJournalEntries;
 
 use postgres::{Config, NoTls};
 use std::fs::OpenOptions;
@@ -816,7 +817,7 @@ fn verify_offer_transport(transport: &OrganizerAidTransportPreview, kind: Organi
 }
 
 fn positive(
-    entries: &babylon_practice_contract::OrganizerPeriodJournalEntries,
+    entries: &OrganizerPeriodJournalEntries,
     commitment: Option<&OrganizerCommitment>,
 ) -> bool {
     let Some(commitment) = commitment else {
@@ -1377,33 +1378,16 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
         );
         continuations.push(serde_json::json!({"period":tick,"tail":session.tail,
             "organizer_snapshot_sha256":snapshot_digest(&after),"latest_marker":hashes.last(),"nominal_world_hash":world}));
-        let current_entries = accounting
-            .production_cursor
-            .as_ref()
-            .and_then(ObserverMaterialCursor::current_register)
-            .and_then(|register| register.organizer_journal())
-            .and_then(|journal| journal.latest())
-            .expect("authenticated current organizer receipt journal");
-        assert_eq!(current_entries.period, tick);
-        if let Some((commitment, preview)) = admission.filter(|_| aid_admission) {
-            evidence.push(PeriodEvidence {
-                period: tick,
-                positive_consequence: positive(current_entries, commitment.as_ref()),
-                commitment,
-                preview,
-                offered_material: before.aid,
-                pending_aid: after.pending_aid.clone(),
-                resolutions: after.aid_resolutions.clone(),
-            });
-        }
-        remote |= positive(
-            current_entries,
-            evidence.first().and_then(|e| e.commitment.as_ref()),
+        let (remote_now, local_now) = record_aid_evidence(
+            &accounting,
+            tick,
+            admission.filter(|_| aid_admission),
+            before,
+            &after,
+            &mut evidence,
         );
-        local |= positive(
-            current_entries,
-            evidence.get(1).and_then(|e| e.commitment.as_ref()),
-        );
+        remote |= remote_now;
+        local |= local_now;
     }
     session.stop();
     write_report(
@@ -1421,6 +1405,49 @@ pub(super) fn qualify(config: &Config, campaign: CampaignId, periods: u64, run_s
         archive_catchups,
         production_reads,
     );
+}
+
+fn record_aid_evidence(
+    accounting: &QualificationAccounting,
+    tick: u64,
+    admission: Option<(Option<OrganizerCommitment>, OrganizerPreview)>,
+    before: OrganizerSnapshot,
+    after: &OrganizerSnapshot,
+    evidence: &mut Vec<PeriodEvidence>,
+) -> (bool, bool) {
+    let current_entries = accounting
+        .production_cursor
+        .as_ref()
+        .and_then(ObserverMaterialCursor::current_register)
+        .and_then(|register| register.organizer_journal())
+        .and_then(|journal| journal.latest())
+        .expect("authenticated current organizer receipt journal");
+    assert_eq!(current_entries.period, tick);
+    if let Some((commitment, preview)) = admission {
+        evidence.push(PeriodEvidence {
+            period: tick,
+            positive_consequence: positive(current_entries, commitment.as_ref()),
+            commitment,
+            preview,
+            offered_material: before.aid,
+            pending_aid: after.pending_aid.clone(),
+            resolutions: after
+                .aid_resolutions
+                .iter()
+                .filter(|r| r.practice.period == tick)
+                .cloned()
+                .collect(),
+        });
+    }
+    let remote = positive(
+        current_entries,
+        evidence.first().and_then(|e| e.commitment.as_ref()),
+    );
+    let local = positive(
+        current_entries,
+        evidence.get(1).and_then(|e| e.commitment.as_ref()),
+    );
+    (remote, local)
 }
 
 fn write_progress(

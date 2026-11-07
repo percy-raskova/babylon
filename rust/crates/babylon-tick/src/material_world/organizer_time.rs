@@ -14,7 +14,7 @@ use babylon_practice_contract::{
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-fn book(state: &MaterialCircuitState) -> Result<&HouseholdTimeBook, MaterialWorldError> {
+pub(super) fn book(state: &MaterialCircuitState) -> Result<&HouseholdTimeBook, MaterialWorldError> {
     let CircuitAccounting::Monetary(economy) = &state.accounting else {
         return Err(MaterialWorldError::Organizer(
             OrganizerError::TimeBindingMismatch,

@@ -160,3 +160,45 @@ fn household_service_performance_relaxes_only_its_actual_unmet_time_burden() {
         18
     );
 }
+
+/// A completed local service can meet a household-period housing requirement
+/// while the gross and residual household-hour partitions stay identical.
+#[test]
+fn housing_service_improvement_without_a_captured_housing_burden_adds_no_hours() {
+    let close = |input| {
+        let (catalog, opening) = time_service_opening(input);
+        let mut definition = catalog.into_definition();
+        assert!(definition
+            .commodities
+            .iter()
+            .any(|c| c.good_id == crate::good(2)
+                && matches!(
+                    c.kind,
+                    babylon_material_circuit::CommodityKind::PeriodService {
+                        stage: babylon_material_circuit::ServiceStage::LocalServiceProvision
+                    }
+                )));
+        definition.household_time_policy[0].unmet_burdens.clear();
+        let catalog =
+            MaterialCatalog::try_new(definition).expect("no hourly charge for unmet housing");
+        babylon_material_circuit::advance_material_circuit(&catalog, &opening)
+            .expect("ordinary service settlement and household clock")
+    };
+    let interrupted = close(0);
+    let supplied = close(1);
+    assert_eq!(
+        (
+            interrupted.household_services[0].satisfied_quantity,
+            supplied.household_services[0].satisfied_quantity
+        ),
+        (0, 1)
+    );
+    assert_eq!(
+        (
+            interrupted.household_services[0].unmet_quantity,
+            supplied.household_services[0].unmet_quantity
+        ),
+        (1, 0)
+    );
+    assert_eq!(supplied.household_time, interrupted.household_time);
+}

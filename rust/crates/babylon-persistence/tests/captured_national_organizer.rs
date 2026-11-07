@@ -6,6 +6,7 @@ use babylon_material_circuit::AccountId;
 use babylon_material_circuit::OrganizationAccountId;
 use babylon_material_circuit::PublicAccountId;
 use babylon_practice_contract::OrganizerAllocation;
+use babylon_practice_contract::OrganizerState;
 
 use babylon_persistence::economic_catalog::{
     CapturedEconomicCatalog, NationalOpponent, SourceArtifactKind as Kind,
@@ -269,7 +270,7 @@ fn assert_admitted_inputs(
         .organizer_journal()
         .expect("the fixture register carries organizer journal");
     assert!(journal.periods.is_empty() && state.pending_aid.is_empty());
-    assert!(state.contact_products.is_empty() && state.learned_authority_index.is_empty());
+    assert_opening_knowledge(config, state);
     let command = |choice, nonce| OrganizerCommand {
         allocation: if choice == OrganizerChoice::Collect {
             OrganizerAllocation::Collection {
@@ -350,6 +351,24 @@ fn assert_admitted_inputs(
         Err(OrganizerError::Refused(OrganizerRefusal::ContentChanged))
     );
     config.clone()
+}
+
+fn assert_opening_knowledge(config: &OrganizerConfig, state: &OrganizerState) {
+    assert_eq!(state.contact_products.len(), 0);
+    assert_eq!(state.learned_authority_index.len(), 2);
+    assert_eq!(config.initial_observations.len(), 2);
+    for row in &state.learned_authority_index {
+        let observed = row.observation(config.controlled_actor_id);
+        assert!(config.initial_observations.contains(&observed));
+        assert_eq!((row.observed_period, row.acquired_period), (0, 0));
+        assert!(matches!(
+            row.report,
+            babylon_practice_contract::OrganizerReport::Partner {
+                facts: babylon_practice_contract::OrganizerPartnerFacts::OpeningAssessment { .. },
+                ..
+            }
+        ));
+    }
 }
 
 fn assert_native_bindings(

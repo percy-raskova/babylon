@@ -9,6 +9,7 @@ use babylon_persistence::ArchiveEvidenceClass;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum OrganizerSubject {
     Collective(u64),
+    AidPartner(u64),
     Contributor(u64),
     WorkplaceCommittee(u64),
     NeighborhoodGroup(u64),
@@ -32,6 +33,7 @@ impl SceneNode {
     pub fn caption(&self) -> String {
         let kind = match self.subject {
             OrganizerSubject::Collective(_) => "Collective",
+            OrganizerSubject::AidPartner(_) => "Aid partner",
             OrganizerSubject::Contributor(_) => "Contributor",
             OrganizerSubject::WorkplaceCommittee(_) => "Workplace committee",
             OrganizerSubject::NeighborhoodGroup(_) => "Neighborhood group",
@@ -114,6 +116,10 @@ fn subjects(view: &OrganizerView) -> Vec<SceneNode> {
             label: view.workplace_label.clone(),
         },
     ];
+    nodes.extend(view.aid_partners.iter().map(|p| SceneNode {
+        subject: OrganizerSubject::AidPartner(p.actor_id),
+        label: p.label.clone(),
+    }));
     let positions = ordered_positions(view);
     nodes.extend(positions.iter().map(|position| SceneNode {
         subject: OrganizerSubject::Contributor(position.contributor_id),
@@ -262,6 +268,7 @@ mod tests {
             total_receipt_count: 0,
             receipts: vec![],
             positions: vec![],
+            aid_partners: vec![],
             aid_options: vec![],
         }
     }

@@ -380,7 +380,7 @@ mod tests {
         OrganizerPreview,
     ) {
         let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
-            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v17.json"
+            "../../../../babylon-persistence/tests/fixtures/national_organizer_opening_v18.json"
         ))
         .expect("the authored JSON matches the declared schema");
         let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(1)));

@@ -6,6 +6,8 @@
 mod aid;
 
 mod collection;
+mod partner_reports;
+pub use partner_reports::*;
 
 mod contract;
 

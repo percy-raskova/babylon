@@ -17,16 +17,17 @@ pub use babylon_practice_contract::{
     OrganizerAgreement, OrganizerAidCashStatus, OrganizerAidKind, OrganizerAidMaterialPostings,
     OrganizerAidOption, OrganizerAllocation, OrganizerChoice, OrganizerCollectionOutcome,
     OrganizerCollectionResolution, OrganizerCommand, OrganizerCommitment, OrganizerGiftConsent,
-    OrganizerInquiry, OrganizerObservation, OrganizerOutcome, OrganizerPartnerResponse,
-    OrganizerPauseReason, OrganizerPosition, OrganizerPreview, OrganizerReceipt, OrganizerRefusal,
-    OrganizerReport, OrganizerStandingWork, OrganizerView,
+    OrganizerInquiry, OrganizerKnownAidPartner, OrganizerObservation, OrganizerOutcome,
+    OrganizerPartnerFacts, OrganizerPartnerResponse, OrganizerPauseReason, OrganizerPosition,
+    OrganizerPreview, OrganizerReceipt, OrganizerRefusal, OrganizerReport, OrganizerReportBasis,
+    OrganizerReportCommodity, OrganizerServiceReport, OrganizerStandingWork, OrganizerView,
 };
 
 pub use crate::material_runtime::MaterialAdvanceStage as RuntimeAdvanceStage;
 use babylon_kernel::clock::CampaignDuration;
 use uuid::Uuid;
 
-pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 17;
+pub const RUNTIME_SESSION_PROTOCOL_VERSION: u16 = 18;
 pub const RUNTIME_SESSION_MAX_LINE_BYTES: usize = 131_072;
 
 /// A lifecycle incarnation, distinct even when the same campaign is reopened.
@@ -334,7 +335,7 @@ mod selection_tests {
 
 #[test]
 fn advance_progress_current_wire_is_closed_and_versioned() {
-    assert_eq!(RUNTIME_SESSION_PROTOCOL_VERSION, 17);
+    assert_eq!(RUNTIME_SESSION_PROTOCOL_VERSION, 18);
     assert!(
         serde_json::from_value::<RuntimeSessionTail>(serde_json::json!({
             "resolve_tick": 0, "tick_content_hash": null

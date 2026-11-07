@@ -142,11 +142,7 @@ pub(crate) fn aid_snapshot_matches(
             .map(material_preview::pending)
             .collect::<Vec<_>>()
             == snapshot.pending_aid
-        && journal
-            .latest()
-            .map(material_preview::resolutions)
-            .unwrap_or_default()
-            == snapshot.aid_resolutions)
+        && aid_history(journal, &expected_view) == snapshot.aid_resolutions)
 }
 
 /// Audit a response against an already authenticated register. Live admission
@@ -200,10 +196,7 @@ pub(crate) fn captured_organizer_snapshot(
             .iter()
             .map(material_preview::pending)
             .collect(),
-        aid_resolutions: journal
-            .latest()
-            .map(material_preview::resolutions)
-            .unwrap_or_default(),
+        aid_resolutions: aid_history(journal, &view),
         collection: collection_preview::projection(register.state(), config, state.period)?,
         collection_resolutions: collection_history(journal, &view),
         view,
@@ -355,6 +348,41 @@ fn project_body(
         contributors,
         evidence_class: ArchiveEvidenceClass::Designed,
     }))
+}
+
+fn aid_history(
+    journal: &OrganizerPeriodJournal,
+    view: &OrganizerView,
+) -> Vec<super::material_preview::OrganizerAidResolution> {
+    let retained: BTreeSet<_> = view
+        .receipts
+        .iter()
+        .filter(|r| r.actor_id == view.actor_id && r.period <= view.period)
+        .map(|r| r.receipt_id)
+        .collect();
+    let original: BTreeSet<_> = journal
+        .periods
+        .iter()
+        .flat_map(|p| &p.aid_receipts)
+        .filter(|r| retained.contains(&r.practice.receipt_id))
+        .map(|r| r.authorization.gift.commitment.commitment_id)
+        .collect();
+    journal
+        .periods
+        .iter()
+        .filter(|p| p.period <= view.period)
+        .flat_map(material_preview::resolutions)
+        .filter(|r| {
+            r.practice.actor_id == view.actor_id
+                && original.contains(&r.pending.original_commitment_id)
+                && (retained.contains(&r.practice.receipt_id)
+                    || r.practice.period == r.pending.dispatch_period
+                    || r.pending
+                        .response
+                        .as_ref()
+                        .is_some_and(|response| response.receipt_id == r.practice.receipt_id))
+        })
+        .collect()
 }
 
 // Collection amounts and outcomes follow the actor's retained practice

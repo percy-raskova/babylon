@@ -395,3 +395,15 @@ workplace_policy = "participate"
 neighborhood_policy = "participate"
 local_policy = "participate"
 remote_policy = "participate"
+
+[organizer.local_report_sharing]
+evidence_class = "Designed"
+food = ["food"]
+essential_services = ["utility", "housing", "household_services", "public_provision"]
+participation_time = true
+
+[organizer.remote_report_sharing]
+evidence_class = "Designed"
+food = ["food"]
+essential_services = ["utility", "housing", "household_services", "public_provision"]
+participation_time = true

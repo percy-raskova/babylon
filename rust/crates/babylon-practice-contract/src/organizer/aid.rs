@@ -12,6 +12,7 @@ use super::OrganizerPeriodJournal;
 use super::OrganizerPeriodJournalEntries;
 use super::OrganizerReceipt;
 use super::OrganizerRefusal;
+use super::OrganizerReportSharing;
 use super::OrganizerState;
 use super::OrganizerTimeBindingMode;
 use serde::{Deserialize, Serialize};
@@ -40,6 +41,7 @@ pub enum OrganizerGiftConsent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OrganizerAidBinding {
+    pub report_sharing: OrganizerReportSharing,
     pub kind: OrganizerAidKind,
     pub mandate_id: [u8; 32],
     pub source_hash: [u8; 32],
@@ -68,6 +70,15 @@ pub struct OrganizerAidOption {
     pub partner_label: String,
     pub coordination_hours: u64,
     pub receiving_consent: OrganizerGiftConsent,
+}
+
+/// A disclosed actor remains known while a freight leg is pending or reports are withheld.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrganizerKnownAidPartner {
+    pub kind: OrganizerAidKind,
+    pub actor_id: u64,
+    pub label: String,
 }
 
 /// Pre-material commitment. Receiving a gift does not authorize later partner practice.
@@ -113,7 +124,8 @@ pub(super) fn validate_aid_bindings(config: &OrganizerConfig) -> Result<(), Orga
     let mut prior = None;
     let mut mandates = BTreeSet::new();
     for row in &config.aid_bindings {
-        if prior.is_some_and(|kind| kind >= row.kind)
+        if !row.report_sharing.valid()
+            || prior.is_some_and(|kind| kind >= row.kind)
             || row.mandate_id == [0; 32]
             || row.source_hash == [0; 32]
             || !mandates.insert(row.mandate_id)

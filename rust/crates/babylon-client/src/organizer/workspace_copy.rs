@@ -43,17 +43,17 @@ pub(crate) fn resource_masthead(client: &OrganizerClient, session: &ObserverSess
     format!("P{}{endpoint} committed · Collective cash {cash} · Organizer-hours pledged {}\nShared household time {shared} · Neighborhood {routine}", means.period, crate::observer_ui::grouped(means.organizer_hours))
 }
 
-/// Current earned workplace knowledge for World; broad production remains undisclosed.
+/// Current earned subject knowledge for World; broad production remains undisclosed.
 pub(crate) fn world_reports(client: &OrganizerClient, session: &ObserverSession) -> Option<String> {
     workspace::resources(client, session)?;
     let view = client.view.as_ref()?;
-    let mut text = String::from("Earned workplace reports · open Evidence to read");
+    let mut text = String::from("Earned reports · open Evidence to read");
     let mut reports: Vec<_> = view
         .observations
         .iter()
         .filter(|item| {
             item.actor_id == view.actor_id
-                && item.subject_id == view.workplace_id
+                && view.knows_report_subject(item)
                 && item.observed_period <= session.viewed_tick
                 && item.acquired_period <= session.viewed_tick
         })
@@ -66,7 +66,7 @@ pub(crate) fn world_reports(client: &OrganizerClient, session: &ObserverSession)
         )
     });
     if reports.is_empty() {
-        text.push_str("\nNo acquired workplace report is available here. Open Cited workplace Archive for retained evidence.");
+        text.push_str("\nNo acquired report is available here. Open the known subject in the Archive for earlier evidence.");
     }
     for item in reports.iter().rev().take(2) {
         let _ = write!(

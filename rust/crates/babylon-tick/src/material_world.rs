@@ -30,6 +30,7 @@ mod monetary_receipt;
 
 pub(crate) mod organizer_collection;
 
+mod organizer_reports;
 mod organizer_support;
 
 mod organizer_time;

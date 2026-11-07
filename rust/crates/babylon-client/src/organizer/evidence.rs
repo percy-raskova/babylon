@@ -30,7 +30,7 @@ impl OrganizerClient {
         view.observations.iter().find(|item| {
             item.observation_id == id
                 && item.actor_id == view.actor_id
-                && item.subject_id == view.workplace_id
+                && view.knows_report_subject(item)
                 && item.observed_period <= period
                 && item.acquired_period <= period
         })
@@ -51,7 +51,7 @@ impl OrganizerClient {
             .iter()
             .filter(|item| {
                 item.actor_id == view.actor_id
-                    && item.subject_id == view.workplace_id
+                    && view.knows_report_subject(item)
                     && item.observed_period <= period
                     && item.acquired_period <= period
             })

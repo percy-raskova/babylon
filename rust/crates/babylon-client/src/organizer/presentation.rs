@@ -102,11 +102,11 @@ pub(super) fn partner(view: &OrganizerView, actor: u64) -> &str {
     } else if actor == view.actor_id {
         &view.organization_label
     } else if let Some(option) = view
-        .aid_options
+        .aid_partners
         .iter()
-        .find(|option| option.partner_actor_id == actor)
+        .find(|option| option.actor_id == actor)
     {
-        &option.partner_label
+        &option.label
     } else {
         "An attributed participant"
     }
@@ -114,6 +114,7 @@ pub(super) fn partner(view: &OrganizerView, actor: u64) -> &str {
 
 pub(super) fn report(value: &OrganizerReport) -> String {
     match value {
+        OrganizerReport::Partner { facts, .. } => facts.detail(),
         OrganizerReport::ReducedWork { previous_labor_hours, performed_labor_hours } => format!(
             "Less work was performed: {} labor-hours, compared with {} in the previous period.", crate::observer_ui::grouped(*performed_labor_hours), crate::observer_ui::grouped(*previous_labor_hours)
         ),
@@ -131,6 +132,7 @@ pub(super) fn report(value: &OrganizerReport) -> String {
 
 pub(super) fn report_kind(value: &OrganizerReport) -> &'static str {
     match value {
+        OrganizerReport::Partner { facts, .. } => facts.title(),
         OrganizerReport::Work { .. } => "Work and output",
         OrganizerReport::ReducedWork { .. } => "Reduced work",
         OrganizerReport::Maintenance { .. } => "Maintenance received",
@@ -138,7 +140,9 @@ pub(super) fn report_kind(value: &OrganizerReport) -> &'static str {
 }
 
 pub(super) fn report_origin(item: &OrganizerObservation) -> &'static str {
-    if item.receipt_id.is_some() {
+    if matches!(item.report, OrganizerReport::Partner { .. }) {
+        "Shared partner report · derived from captured material evidence"
+    } else if item.receipt_id.is_some() {
         "Requested inquiry"
     } else if item.observed_period == 0 && item.acquired_period == 0 {
         "Captured initial report · period 0"
@@ -163,14 +167,50 @@ pub(super) fn observation(
     current_period: u64,
 ) -> String {
     let mut text = format!(
-        "{}\n\nSource: {}\nObserved period {} · Received period {}\n{}\nWorkplace: {}",
+        "{}\n\nSource: {}\nObserved period {} · Received period {}\n{}\nSubject: {}",
         report(&item.report),
         partner(view, item.source_actor_id),
         item.observed_period,
         item.acquired_period,
         report_origin(item),
-        view.workplace_label,
+        if matches!(item.report, OrganizerReport::Partner { .. }) {
+            partner(view, item.subject_id)
+        } else {
+            &view.workplace_label
+        },
     );
+    if let OrganizerReport::Partner { facts, .. } = &item.report {
+        let prior = view
+            .observations
+            .iter()
+            .filter(|r| {
+                r.actor_id == view.actor_id
+                    && r.subject_id == item.subject_id
+                    && r.source_actor_id == item.source_actor_id
+                    && r.observed_period < item.observed_period
+                    && r.acquired_period <= current_period
+            })
+            .filter_map(|r| match &r.report {
+                OrganizerReport::Partner {
+                    facts: previous, ..
+                } if std::mem::discriminant(previous) == std::mem::discriminant(facts) => {
+                    Some((r, previous))
+                }
+                _ => None,
+            })
+            .max_by_key(|(r, _)| (r.observed_period, r.acquired_period));
+        if let Some((r, previous)) = prior {
+            let _ = write!(
+                text,
+                "\nEarlier shared report P{}. {}",
+                r.observed_period,
+                previous.detail()
+            );
+        } else {
+            text.push_str("\nEarlier comparable report unknown.");
+        }
+        text.push_str("\nShared topics cover the named requirements only. Other purchases and the uses of any particular gift remain unknown.");
+    }
     if item.observed_period < current_period {
         text.push_str("\nHISTORICAL REPORT · These facts describe the earlier observed period.");
     }
@@ -186,7 +226,7 @@ pub(super) fn situation(view: &OrganizerView, period: u64) -> String {
         .iter()
         .filter(|item| {
             item.actor_id == view.actor_id
-                && item.subject_id == view.workplace_id
+                && view.knows_report_subject(item)
                 && item.acquired_period <= period
                 && item.observed_period <= period
         })
@@ -516,6 +556,16 @@ fn aid_history(client: &OrganizerClient, period: u64) -> String {
             row.pending.dispatch_period,
             row.practice.period
         );
+        if let OrganizerAllocation::Aid {
+            food_quantity,
+            cash_micros,
+        } = row.pending.allocation
+        {
+            let _ = writeln!(
+                text,
+                "Original request {food_quantity} food units and {cash_micros} cash micros."
+            );
+        }
         match row.support.status {
             OrganizerFoodDelivery::NotRequested => text.push_str("No food selected.\n"),
             OrganizerFoodDelivery::AwaitingDelivery => {
@@ -1046,7 +1096,7 @@ fn evidence_inspector(
     let id = client.selected_evidence_id(period);
     let item = id.and_then(|id| client.lawful_evidence(id, period));
     let title = item.map_or_else(
-        || "Workplace evidence".into(),
+        || "Acquired reports".into(),
         |item| {
             let ids = client.evidence_ids(period);
             let index = ids
@@ -1058,22 +1108,24 @@ fn evidence_inspector(
     );
     let mut text = item.map_or_else(|| {
         if id.is_some() && saved {
-            "This reference is unavailable in this inspected view. Open Cited workplace Archive to review earned reports, or select another reference. It remains in the current draft and grants no additional access.".into()
+            "This reference is unavailable in this inspected view. Open Report Archive to browse at this period, or select another saved reference. The draft keeps the reference.".into()
         } else if id.is_some() {
-            "The selected report is unavailable in this inspected view. Open Cited workplace Archive to review earned reports, or select another report.".into()
+            "The selected report is unavailable in this inspected view. Select another report or open Archive from a known subject.".into()
         } else if saved {
-            "No saved references. Open Workplace evidence and keep a report in the draft.".into()
+            "No saved references. Open Evidence and keep a report in the draft.".into()
         } else if period != view.period {
-            "Open Cited workplace Archive to inspect earned reports at this period.".into()
+            "Select a known subject to browse its Archive at this period.".into()
         } else {
-            "No acquired workplace report is available at this period.".into()
+            "No acquired report is available at this period.".into()
         }
     }, |item| observation(view, item, period));
-    text.push_str("\n\nREPORT SCOPE\nWorkplace reports do not establish aid delivery, household consumption or independent participation. Provider-private accounts remain undisclosed.");
+    if item.is_none_or(|r| !matches!(r.report, OrganizerReport::Partner { .. })) {
+        text.push_str("\n\nREPORT SCOPE\nWorkplace reports do not establish aid delivery, household consumption or independent participation. Provider-private accounts remain undisclosed.");
+    }
     if period == view.period {
-        let _ = write!(text, "\n{} recent and latest report(s) shown; {} acquired through committed period {}. Older reports remain in Cited workplace Archive.", view.observations.len(), view.total_observation_count, view.period);
+        let _ = write!(text, "\n{} recent and latest report(s) shown; {} acquired through committed period {}. Earlier reports remain in the Archive for their subject.", view.observations.len(), view.total_observation_count, view.period);
     } else {
-        text.push_str("\nThe as-of total is unavailable. Open Cited workplace Archive for earned reports at the inspected period.");
+        text.push_str("\nThe as-of total is unavailable. Each known subject has its own Archive at the inspected period.");
     }
     if saved {
         text.push_str("\n\nCURRENT PERSONAL DRAFT · saved references are present-day notebook context, not a historical reconstruction.");
@@ -2151,6 +2203,7 @@ mod tests {
             total_receipt_count: 0,
             receipts: vec![],
             positions: vec![],
+            aid_partners: vec![],
             aid_options: vec![],
         }
     }

@@ -16,7 +16,6 @@ use super::OrganizerPosition;
 use super::OrganizerPreview;
 use super::OrganizerReceipt;
 use super::OrganizerRefusal;
-use super::OrganizerReport;
 use super::OrganizerStandingWork;
 use super::OrganizerState;
 use super::OrganizerTimeBindingMode;
@@ -203,8 +202,7 @@ pub fn validate_organizer_config(config: &OrganizerConfig) -> Result<(), Organiz
     let mut observations = BTreeSet::new();
     for observation in &config.initial_observations {
         if observation.actor_id != config.controlled_actor_id
-            || observation.subject_id != config.workplace_id
-            || observation.source_actor_id != config.workplace_partner.actor_id
+            || !super::partner_reports::allowed(config, observation)
             || observation.observed_period != 0
             || observation.acquired_period != 0
             || observation.receipt_id.is_some()
@@ -368,8 +366,7 @@ pub fn validate_organizer_period_entries(
     let mut observation_ids = BTreeSet::new();
     for observation in &entries.observations {
         if observation.actor_id != config.controlled_actor_id
-            || observation.subject_id != config.workplace_id
-            || observation.source_actor_id != config.workplace_partner.actor_id
+            || !super::partner_reports::allowed(config, observation)
             || observation.observed_period > observation.acquired_period
             || observation.acquired_period != entries.period
             || !observation_ids.insert(observation.observation_id)
@@ -514,8 +511,7 @@ pub fn validate_organizer_pair(
                 || !partner_ids.contains(&row.partner_actor_id)
         })
         || state.learned_authority_index.iter().any(|row| {
-            row.subject_id != config.workplace_id
-                || row.source_actor_id != config.workplace_partner.actor_id
+            !super::partner_reports::allowed(config, &row.observation(config.controlled_actor_id))
         })
         || state
             .last_workplace_facts
@@ -540,7 +536,7 @@ pub fn validate_organizer_pair(
 /// serialization fails or exceeds the encoded ceiling.
 pub fn encode_organizer_config(config: &OrganizerConfig) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_config(config)?;
-    canonical(b"babylon.organizer-config.v10", config)
+    canonical(b"babylon.organizer-config.v11", config)
 }
 
 /// Decode a canonical config and refuse anything that would not re-encode.
@@ -551,7 +547,7 @@ pub fn encode_organizer_config(config: &OrganizerConfig) -> Result<Vec<u8>, Orga
 /// [`OrganizerError::Codec`] for a foreign domain frame or non-canonical body,
 /// and the validation faults [`validate_organizer_config`] reports.
 pub fn decode_organizer_config(bytes: &[u8]) -> Result<OrganizerConfig, OrganizerError> {
-    let value = decode(b"babylon.organizer-config.v10", bytes)?;
+    let value = decode(b"babylon.organizer-config.v11", bytes)?;
     validate_organizer_config(&value)?;
     Ok(value)
 }
@@ -567,7 +563,7 @@ pub fn decode_organizer_config(bytes: &[u8]) -> Result<OrganizerConfig, Organize
 /// exceeds the encoded ceiling.
 pub fn encode_organizer_state(state: &OrganizerState) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_state(state)?;
-    canonical(b"babylon.organizer-state.v9", state)
+    canonical(b"babylon.organizer-state.v10", state)
 }
 
 /// Decode a canonical state and refuse anything that would not re-encode.
@@ -578,7 +574,7 @@ pub fn encode_organizer_state(state: &OrganizerState) -> Result<Vec<u8>, Organiz
 /// [`OrganizerError::Codec`] for a foreign domain frame or non-canonical body,
 /// and the validation faults [`validate_organizer_state`] reports.
 pub fn decode_organizer_state(bytes: &[u8]) -> Result<OrganizerState, OrganizerError> {
-    let value = decode(b"babylon.organizer-state.v9", bytes)?;
+    let value = decode(b"babylon.organizer-state.v10", bytes)?;
     validate_organizer_state(&value)?;
     Ok(value)
 }
@@ -595,7 +591,7 @@ pub fn encode_organizer_period_entries(
     entries: &OrganizerPeriodJournalEntries,
 ) -> Result<Vec<u8>, OrganizerError> {
     validate_organizer_period_entries(config, entries)?;
-    canonical(b"babylon.organizer-period-entries.v4", entries)
+    canonical(b"babylon.organizer-period-entries.v5", entries)
 }
 
 /// Decode one canonical period of evidence.
@@ -608,7 +604,7 @@ pub fn decode_organizer_period_entries(
     config: &OrganizerConfig,
     bytes: &[u8],
 ) -> Result<OrganizerPeriodJournalEntries, OrganizerError> {
-    let value = decode(b"babylon.organizer-period-entries.v4", bytes)?;
+    let value = decode(b"babylon.organizer-period-entries.v5", bytes)?;
     validate_organizer_period_entries(config, &value)?;
     Ok(value)
 }
@@ -631,7 +627,7 @@ pub fn encode_organizer_journal(
         prior = Some(entries.period);
         validate_organizer_period_entries(config, entries)?;
     }
-    canonical(b"babylon.organizer-journal.v4", journal)
+    canonical(b"babylon.organizer-journal.v5", journal)
 }
 
 /// Decode a canonical retained evidence window.
@@ -644,7 +640,7 @@ pub fn decode_organizer_journal(
     config: &OrganizerConfig,
     bytes: &[u8],
 ) -> Result<OrganizerPeriodJournal, OrganizerError> {
-    let value: OrganizerPeriodJournal = decode(b"babylon.organizer-journal.v4", bytes)?;
+    let value: OrganizerPeriodJournal = decode(b"babylon.organizer-journal.v5", bytes)?;
     let mut prior = None;
     for entries in &value.periods {
         if prior.is_some_and(|period| period >= entries.period) {
@@ -1008,28 +1004,26 @@ pub fn organizer_view(
         u32::try_from(observations.len()).map_err(|_| OrganizerError::Arithmetic)?;
     observations.sort_by_key(|row| (row.acquired_period, row.observed_period, row.observation_id));
     // Preserve the latest materially distinct report even when it predates the recent window.
-    let mut latest = BTreeMap::new();
-    for row in &observations {
-        let kind = match row.report {
-            OrganizerReport::Work { .. } => 0_u8,
-            OrganizerReport::ReducedWork { .. } => 1,
-            OrganizerReport::Maintenance { .. } => 2,
-        };
-        let key = (row.subject_id, row.source_actor_id, kind);
-        let candidate = (row.observed_period, row.acquired_period, row.observation_id);
-        if latest.get(&key).is_none_or(|old: &&OrganizerObservation| {
-            candidate > (old.observed_period, old.acquired_period, old.observation_id)
-        }) {
-            latest.insert(key, *row);
-        }
-    }
     let mut selected: BTreeSet<_> = observations
         .iter()
         .rev()
         .take(ORGANIZER_RECENT_OBSERVATIONS)
-        .map(|row| row.observation_id)
+        .map(|r| r.observation_id)
         .collect();
-    selected.extend(latest.values().map(|row| row.observation_id));
+    let mut topics = BTreeMap::new();
+    for row in observations.iter().rev() {
+        let key = (row.subject_id, row.source_actor_id, row.report.kind_index());
+        let count = topics.entry(key).or_insert(0);
+        let limit = if matches!(row.report, super::OrganizerReport::Partner { .. }) {
+            2
+        } else {
+            1
+        };
+        if *count < limit {
+            selected.insert(row.observation_id);
+            *count += 1;
+        }
+    }
     for row in &state.learned_authority_index {
         selected.insert(row.observation_id);
     }
@@ -1085,6 +1079,15 @@ pub fn organizer_view(
         total_receipt_count,
         receipts,
         positions,
+        aid_partners: config
+            .aid_bindings
+            .iter()
+            .map(|b| super::OrganizerKnownAidPartner {
+                kind: b.kind,
+                actor_id: b.partner.actor_id,
+                label: b.partner.label.clone(),
+            })
+            .collect(),
         aid_options: config
             .aid_bindings
             .iter()

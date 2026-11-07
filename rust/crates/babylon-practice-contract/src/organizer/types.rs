@@ -1,5 +1,8 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
+use super::OrganizerKnownAidPartner;
+use super::OrganizerPartnerFacts;
+use super::OrganizerReportBasis;
 use super::{
     OrganizerAidBinding, OrganizerAidOption, OrganizerAidResolutionReceipt, OrganizerAidSupport,
     OrganizerCollectionFact, OrganizerCollectionMandate, OrganizerCollectionResolution,
@@ -13,7 +16,7 @@ use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
 /// Current organizer representation. Older representations are unsupported.
-pub const ORGANIZER_SCHEMA_VERSION: u16 = 11;
+pub const ORGANIZER_SCHEMA_VERSION: u16 = 12;
 
 /// Whole organizer-hours are Designed participant time commitments, not jobs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -259,6 +262,10 @@ pub struct OrganizerWorkplaceFacts {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum OrganizerReport {
+    Partner {
+        evidence_class: OrganizerReportBasis,
+        facts: OrganizerPartnerFacts,
+    },
     ReducedWork {
         previous_labor_hours: u64,
         performed_labor_hours: u64,
@@ -365,7 +372,14 @@ impl OrganizerLearnedAuthority {
     /// Stable report kind, used to deduplicate the current index.
     #[must_use]
     pub const fn report_kind(&self) -> u8 {
-        match self.report {
+        self.report.kind_index()
+    }
+}
+
+impl OrganizerReport {
+    pub(super) const fn kind_index(&self) -> u8 {
+        match self {
+            OrganizerReport::Partner { facts, .. } => facts.report_kind(),
             OrganizerReport::Work { .. } => 0,
             OrganizerReport::ReducedWork { .. } => 1,
             OrganizerReport::Maintenance { .. } => 2,
@@ -575,7 +589,28 @@ pub struct OrganizerView {
     pub total_receipt_count: u32,
     pub receipts: Vec<OrganizerReceipt>,
     pub positions: Vec<OrganizerPosition>,
+    pub aid_partners: Vec<OrganizerKnownAidPartner>,
     pub aid_options: Vec<OrganizerAidOption>,
+}
+
+impl OrganizerView {
+    /// Resolve only a report from its known subject and its disclosed source.
+    #[must_use]
+    pub fn knows_report_subject(&self, observation: &OrganizerObservation) -> bool {
+        match &observation.report {
+            OrganizerReport::Partner { .. } => {
+                observation.subject_id == observation.source_actor_id
+                    && self
+                        .aid_partners
+                        .iter()
+                        .any(|p| p.actor_id == observation.subject_id)
+            }
+            _ => {
+                observation.subject_id == self.workplace_id
+                    && observation.source_actor_id == self.workplace_partner_id
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

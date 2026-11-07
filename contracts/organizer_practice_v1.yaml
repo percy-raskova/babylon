@@ -7,12 +7,12 @@ meta:
   scope: Captured Wayne collective, two independent partners, and one workplace
 
 encoding:
-  runtime_session_protocol_version: 17
+  runtime_session_protocol_version: 18
   outer: exact_ASCII_domain_then_NUL_then_canonical_UTF8_JSON
-  version: config_and_state_schema_version_11_where_present
-  current_domains: {config: "babylon.organizer-config.v10\0", state: "babylon.organizer-state.v9\0",
+  version: config_and_state_schema_version_12_where_present
+  current_domains: {config: "babylon.organizer-config.v11\0", state: "babylon.organizer-state.v10\0",
                     receipt: "babylon.organizer-receipt.v2\0", commitment: "babylon.organizer-commitment.v3\0",
-                    period_entries: "babylon.organizer-period-entries.v4\0", journal: "babylon.organizer-journal.v4\0"}
+                    period_entries: "babylon.organizer-period-entries.v5\0", journal: "babylon.organizer-journal.v5\0"}
   field_order: Rust_declared_struct_field_order
   numbers: whole_unsigned_integers_and_strict_nonnegative_i128_decimal_cash_strings
   byte_arrays: fixed_length_JSON_unsigned_integer_arrays
@@ -34,6 +34,9 @@ captured_content:
   contributors: attributed_participant_bodies_with_finite_whole_hours
   promises: disjoint_actor_commitments_whose_sum_cannot_exceed_contributor_hours
   communication: workplace_record_permissions_and_bounded_contact_scope
+  aid_partner_roster: known_actor_and_label_independent_of_action_availability
+  partner_report_sharing: independent_Designed_scopes_for_food_required_period_services_and_labor_time
+  partner_reports: Derived_opening_food_assessment_or_completed_material_receipts_with_exact_subject_and_dated_grant
   initial_knowledge: attributed_period_specific_observations
   costs: captured_scenario_defines_organizer_table
   source_digest: authored_declarations_and_organizer_defines

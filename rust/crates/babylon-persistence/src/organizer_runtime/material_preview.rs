@@ -10,6 +10,9 @@ use babylon_material_circuit::UnitId;
 use babylon_material_circuit::{
     AidTransport, CircuitAccounting, HouseholdTimeAccounting, MaterialCatalog, MaterialCircuitState,
 };
+use babylon_practice_contract::OrganizerAidCashStatus;
+use babylon_practice_contract::OrganizerAidMaterialPostings;
+use babylon_practice_contract::OrganizerAidSupportStatus;
 use babylon_practice_contract::OrganizerAllocation;
 use babylon_practice_contract::{
     OrganizerAidKind, OrganizerAidSupport, OrganizerConfig, OrganizerGiftConsent,
@@ -116,15 +119,14 @@ pub enum OrganizerFoodDelivery {
     Granted { granted_quantity: u64 },
 }
 
-impl From<babylon_practice_contract::OrganizerAidSupportStatus> for OrganizerFoodDelivery {
-    fn from(status: babylon_practice_contract::OrganizerAidSupportStatus) -> Self {
-        use babylon_practice_contract::OrganizerAidSupportStatus as Status;
+impl From<OrganizerAidSupportStatus> for OrganizerFoodDelivery {
+    fn from(status: OrganizerAidSupportStatus) -> Self {
         match status {
-            Status::NotRequested => Self::NotRequested,
-            Status::AwaitingDelivery => Self::AwaitingDelivery,
-            Status::ReceivingRefused => Self::ReceivingRefused,
-            Status::TerminalFailure => Self::TerminalFailure,
-            Status::Granted {
+            OrganizerAidSupportStatus::NotRequested => Self::NotRequested,
+            OrganizerAidSupportStatus::AwaitingDelivery => Self::AwaitingDelivery,
+            OrganizerAidSupportStatus::ReceivingRefused => Self::ReceivingRefused,
+            OrganizerAidSupportStatus::TerminalFailure => Self::TerminalFailure,
+            OrganizerAidSupportStatus::Granted {
                 granted_quantity, ..
             } => Self::Granted { granted_quantity },
         }
@@ -143,8 +145,8 @@ pub struct OrganizerAidTransfer {
     pub good_id: [u8; 32],
     pub unit_id: [u8; 32],
     pub status: OrganizerFoodDelivery,
-    pub cash_status: babylon_practice_contract::OrganizerAidCashStatus,
-    pub material_postings: babylon_practice_contract::OrganizerAidMaterialPostings,
+    pub cash_status: OrganizerAidCashStatus,
+    pub material_postings: OrganizerAidMaterialPostings,
 }
 
 impl From<&OrganizerAidSupport> for OrganizerAidTransfer {

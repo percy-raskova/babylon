@@ -1,6 +1,7 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
 use super::admission;
+use babylon_practice_contract::OrganizerSharingBasis;
 
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
@@ -317,6 +318,8 @@ pub enum VenueLogReader {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GameOrganizerPolicy {
+    pub local_report_sharing: GamePartnerReportSharing,
+    pub remote_report_sharing: GamePartnerReportSharing,
     pub evidence_class: String,
     pub venue_log_reader: VenueLogReader,
     pub organization_label: String,
@@ -342,4 +345,13 @@ pub struct GameOrganizerPolicy {
     pub neighborhood_policy: OrganizerPartnerPolicy,
     pub local_policy: OrganizerPartnerPolicy,
     pub remote_policy: OrganizerPartnerPolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GamePartnerReportSharing {
+    pub evidence_class: OrganizerSharingBasis,
+    pub food: Vec<String>,
+    pub essential_services: Vec<String>,
+    pub participation_time: bool,
 }

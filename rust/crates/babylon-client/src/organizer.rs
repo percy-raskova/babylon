@@ -132,6 +132,7 @@ pub(crate) mod tests {
             total_receipt_count: 0,
             receipts: Vec::new(),
             positions: Vec::new(),
+            aid_partners: vec![],
             aid_options: Vec::new(),
         };
         (
@@ -351,8 +352,8 @@ pub(crate) mod tests {
     fn real_independent_leg_status_seeds_draft_and_authenticated_review() {
         use babylon_practice_contract::{OrganizerAllocation, OrganizerConfig, OrganizerState};
         for bytes in [
-            include_str!("../../babylon-persistence/tests/fixtures/food_only_no_payer_v17.json"),
-            include_str!("../../babylon-persistence/tests/fixtures/cash_only_no_food_v17.json"),
+            include_str!("../../babylon-persistence/tests/fixtures/food_only_no_payer_v18.json"),
+            include_str!("../../babylon-persistence/tests/fixtures/cash_only_no_food_v18.json"),
         ] {
             let capture: Value = serde_json::from_str(bytes).expect("producer capture");
             let snapshot: OrganizerSnapshot =

@@ -1,5 +1,6 @@
 //! Native Bevy controls and evidence inspectors for the lawful organizer projection.
 
+use super::evidence::EvidenceMode;
 use super::{board, workspace, workspace_copy as copy};
 
 #[path = "report_view.rs"]
@@ -65,6 +66,8 @@ pub(crate) enum OrganizerAction {
     RemoveReference,
     CloseInspector,
     ArchiveWorkplace,
+    ArchiveReport,
+    ArchiveSelection,
     ArchiveOrganization,
 }
 
@@ -85,7 +88,15 @@ pub(crate) struct OrganizerEvidenceRequested;
 
 #[derive(Event)]
 pub(crate) struct OrganizerArchiveRequested {
-    pub organization: bool,
+    pub target: OrganizerArchiveTarget,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OrganizerArchiveTarget {
+    Browse,
+    Workplace,
+    Collective,
+    PartnerOrganization(u64),
 }
 
 #[derive(Component)]
@@ -1078,7 +1089,13 @@ pub(super) fn visible(
     if matches!(action, OrganizerAction::Refresh) {
         return view == PrimaryView::Organizer && client.inspector == OrganizerInspector::Direction;
     }
-    if matches!(action, OrganizerAction::ArchiveWorkplace) {
+    if matches!(action, OrganizerAction::ArchiveReport) {
+        return client.inspector == OrganizerInspector::Evidence;
+    }
+    if matches!(
+        action,
+        OrganizerAction::ArchiveWorkplace | OrganizerAction::ArchiveSelection
+    ) {
         return view == PrimaryView::Organizer || client.inspector != OrganizerInspector::Closed;
     }
     if matches!(
@@ -1140,7 +1157,13 @@ pub(super) fn enabled(
         OrganizerAction::Refresh => {
             client.pending.is_none() && !session.advance_pending() && !session.lifecycle_pending()
         }
-        OrganizerAction::ArchiveWorkplace | OrganizerAction::ArchiveOrganization => {
+        OrganizerAction::ArchiveReport => {
+            report_archive_target(client, session.viewed_tick).is_some()
+                && enabled(OrganizerAction::ArchiveWorkplace, client, session)
+        }
+        OrganizerAction::ArchiveWorkplace
+        | OrganizerAction::ArchiveSelection
+        | OrganizerAction::ArchiveOrganization => {
             client.view.is_some()
                 && (matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
                     || (session.phase == SessionPhase::Advancing
@@ -1354,10 +1377,70 @@ fn pauses_playback(action: OrganizerAction) -> bool {
             action,
             OrganizerAction::Review
                 | OrganizerAction::OpenReferences
+                | OrganizerAction::ArchiveSelection
+                | OrganizerAction::ArchiveReport
                 | OrganizerAction::ArchiveWorkplace
                 | OrganizerAction::ArchiveOrganization
                 | OrganizerAction::Refresh
         )
+}
+
+fn report_archive_target(client: &OrganizerClient, period: u64) -> Option<OrganizerArchiveTarget> {
+    use babylon_persistence::runtime_session::OrganizerReport;
+
+    let id = client.selected_evidence_id(period)?;
+    if let Some(observation) = client.lawful_evidence(id, period) {
+        return Some(match observation.report {
+            OrganizerReport::Partner { .. } => {
+                OrganizerArchiveTarget::PartnerOrganization(observation.subject_id)
+            }
+            _ => OrganizerArchiveTarget::Workplace,
+        });
+    }
+    (client.evidence.mode == EvidenceMode::Saved && client.draft.as_ref()?.references.contains(&id))
+        .then_some(OrganizerArchiveTarget::Browse)
+}
+
+fn open_archive(action: OrganizerAction, state: &mut ActionState, commands: &mut Commands) -> bool {
+    let ActionState {
+        client,
+        session,
+        ui,
+        view,
+        focus,
+        atlas,
+        selected,
+        ..
+    } = state;
+    let target = match action {
+        OrganizerAction::ArchiveOrganization => OrganizerArchiveTarget::Collective,
+        OrganizerAction::ArchiveSelection => match client.selected_subject {
+            Some(
+                OrganizerSubject::AidPartner(id)
+                | OrganizerSubject::WorkplaceCommittee(id)
+                | OrganizerSubject::NeighborhoodGroup(id),
+            ) => OrganizerArchiveTarget::PartnerOrganization(id),
+            Some(OrganizerSubject::Collective(_)) => OrganizerArchiveTarget::Collective,
+            _ => OrganizerArchiveTarget::Workplace,
+        },
+        OrganizerAction::ArchiveReport => {
+            let Some(target) = report_archive_target(client, session.viewed_tick) else {
+                return false;
+            };
+            target
+        }
+        _ => OrganizerArchiveTarget::Workplace,
+    };
+    if client.inspector == OrganizerInspector::Closed {
+        client.return_focus = focus.get();
+    }
+    selected.0 = atlas.index_of_fips("26163");
+    commands.trigger(OrganizerArchiveRequested { target });
+    client.inspector = OrganizerInspector::Closed;
+    **view = PrimaryView::Map;
+    ui.archive_open = true;
+    ui.history_open = false;
+    true
 }
 
 fn actions(
@@ -1443,18 +1526,13 @@ fn actions(
             | OrganizerAction::RemoveReference => {
                 change_evidence(action, client, session, time.elapsed_secs_f64());
             }
-            OrganizerAction::ArchiveWorkplace | OrganizerAction::ArchiveOrganization => {
-                if client.inspector == OrganizerInspector::Closed {
-                    client.return_focus = focus.get();
+            OrganizerAction::ArchiveWorkplace
+            | OrganizerAction::ArchiveOrganization
+            | OrganizerAction::ArchiveReport
+            | OrganizerAction::ArchiveSelection => {
+                if !open_archive(action, &mut state, &mut commands) {
+                    continue;
                 }
-                selected.0 = atlas.index_of_fips("26163");
-                commands.trigger(OrganizerArchiveRequested {
-                    organization: matches!(action, OrganizerAction::ArchiveOrganization),
-                });
-                client.inspector = OrganizerInspector::Closed;
-                **view = PrimaryView::Map;
-                ui.archive_open = true;
-                ui.history_open = false;
             }
             OrganizerAction::CloseInspector => {
                 client.inspector = OrganizerInspector::Closed;
@@ -2400,7 +2478,10 @@ pub(crate) mod tests {
             Some([2; 32])
         );
         press_named(&mut app, "Cited workplace Archive");
-        assert_eq!(app.world().resource::<ArchiveRequests>().0, vec![false]);
+        assert_eq!(
+            app.world().resource::<ArchiveRequests>().0,
+            [OrganizerArchiveTarget::Workplace]
+        );
         assert_eq!(*app.world().resource::<PrimaryView>(), PrimaryView::Map);
         app.world_mut().write_message(OrganizerAction::Open);
         app.update();
@@ -3334,7 +3415,7 @@ pub(crate) mod tests {
     }
 
     #[derive(Resource, Default)]
-    struct ArchiveRequests(Vec<bool>);
+    struct ArchiveRequests(Vec<OrganizerArchiveTarget>);
 
     pub(super) fn measured_board(viewport: UVec2, scale: f32, larger: bool, long: bool) -> App {
         let (mut app, body_font) = crate::test_support::ui_text_app();
@@ -3356,7 +3437,7 @@ pub(crate) mod tests {
         if let Some(view) = client.view.as_mut() {
             let national: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v17.json"
+                "/../babylon-persistence/tests/fixtures/national_organizer_opening_v18.json"
             )))
             .expect("captured national opening");
             if viewport.x > 1400 {
@@ -3498,9 +3579,9 @@ pub(crate) mod tests {
                         OrganizerSubject::Collective(_) => 0,
                         OrganizerSubject::WorkplaceCommittee(_) => 1,
                         OrganizerSubject::NeighborhoodGroup(_) => 2,
-                        OrganizerSubject::Contributor(_) | OrganizerSubject::Workplace(_) => {
-                            return None
-                        }
+                        OrganizerSubject::AidPartner(_)
+                        | OrganizerSubject::Contributor(_)
+                        | OrganizerSubject::Workplace(_) => return None,
                     };
                     Some((entity, images[index].clone()))
                 })
@@ -4450,6 +4531,13 @@ pub(crate) mod tests {
         )
     }
 
+    fn record_archive_request(
+        event: On<OrganizerArchiveRequested>,
+        mut requests: ResMut<ArchiveRequests>,
+    ) {
+        requests.0.push(event.target);
+    }
+
     fn organizer_navigation() -> (App, Entity, OrganizerDraft) {
         let mut session = ObserverSession::new(CampaignId::from_uuid(Uuid::from_u128(927)));
         session.phase = SessionPhase::Ready;
@@ -4494,6 +4582,7 @@ pub(crate) mod tests {
                 total_receipt_count: 0,
                 receipts: Vec::new(),
                 positions: Vec::new(),
+                aid_partners: vec![],
                 aid_options: Vec::new(),
             }),
             ..default()
@@ -4538,11 +4627,7 @@ pub(crate) mod tests {
             Update,
             crate::observer_ui::keyboard.before(ObserverSet::Input),
         )
-        .add_observer(
-            |event: On<OrganizerArchiveRequested>, mut requests: ResMut<ArchiveRequests>| {
-                requests.0.push(event.organization);
-            },
-        );
+        .add_observer(record_archive_request);
         install(&mut app);
         let focus = app.world_mut().spawn_empty().id();
         app.world_mut()
@@ -4733,7 +4818,7 @@ pub(crate) mod tests {
                 });
             }
         }
-        press_named(&mut app, "Workplace evidence");
+        press_named(&mut app, "Acquired reports");
         (app, draft)
     }
 
@@ -4985,6 +5070,11 @@ pub(crate) mod tests {
         press_named(&mut app, "Keep report in draft");
         press_named(&mut app, "Return to decision [Esc]");
         let retained = app.world().resource::<OrganizerClient>().draft.clone();
+        let period = app.world().resource::<ObserverSession>().viewed_tick;
+        let subject = Some(OrganizerSubject::NeighborhoodGroup(93));
+        app.world_mut()
+            .resource_mut::<OrganizerClient>()
+            .selected_subject = subject;
         {
             let mut client = app.world_mut().resource_mut::<OrganizerClient>();
             let view = client
@@ -4996,15 +5086,27 @@ pub(crate) mod tests {
         }
         press_named(&mut app, "Personal notes");
         press_named(&mut app, "Open saved references");
-        assert!(painted_text(&mut app, true).contains("Open Cited workplace Archive"));
+        assert!(painted_text(&mut app, true).contains("Open Report Archive"));
         assert!(!painted_text(&mut app, true).contains("777 kg"));
         assert_eq!(app.world().resource::<OrganizerClient>().draft, retained);
         assert!(app.world().resource::<OrganizerClient>().outbox.is_none());
-        press_named(&mut app, "Cited workplace Archive");
-        assert_eq!(app.world().resource::<ArchiveRequests>().0, vec![false]);
+        press_named(&mut app, "Report Archive");
+        assert_eq!(
+            app.world().resource::<ArchiveRequests>().0,
+            [OrganizerArchiveTarget::Browse]
+        );
         assert!(app.world().resource::<ObserverUiState>().archive_open);
         assert_eq!(app.world().resource::<OrganizerClient>().draft, retained);
         assert!(app.world().resource::<OrganizerClient>().outbox.is_none());
+        app.world_mut().write_message(OrganizerAction::Open);
+        app.update();
+        assert_eq!(
+            app.world().resource::<ObserverSession>().viewed_tick,
+            period
+        );
+        let client = app.world().resource::<OrganizerClient>();
+        assert_eq!(client.selected_subject, subject);
+        assert_eq!(client.draft, retained);
     }
 
     #[test]
@@ -5229,7 +5331,7 @@ pub(crate) mod tests {
         assert!(app.world().resource::<ObserverUiState>().archive_open);
         assert_eq!(
             app.world().resource::<ArchiveRequests>().0,
-            [false],
+            [OrganizerArchiveTarget::Workplace],
             "the shortcut must request the lawful workplace dossier"
         );
         assert_eq!(
@@ -5443,7 +5545,10 @@ pub(crate) mod tests {
             .write_message(OrganizerAction::ArchiveWorkplace);
         app.update();
         assert_eq!(*app.world().resource::<PrimaryView>(), PrimaryView::Map);
-        assert_eq!(app.world().resource::<ArchiveRequests>().0, vec![false]);
+        assert_eq!(
+            app.world().resource::<ArchiveRequests>().0,
+            [OrganizerArchiveTarget::Workplace]
+        );
         assert_eq!(
             app.world()
                 .get::<Text>(reading)
@@ -5575,7 +5680,10 @@ pub(crate) mod tests {
         typing_key(&mut app, window, KeyCode::KeyI, "i");
         assert_eq!(*app.world().resource::<PrimaryView>(), PrimaryView::Map);
         assert!(app.world().resource::<ObserverUiState>().archive_open);
-        assert_eq!(app.world().resource::<ArchiveRequests>().0, [false]);
+        assert_eq!(
+            app.world().resource::<ArchiveRequests>().0,
+            [OrganizerArchiveTarget::Workplace]
+        );
         assert_eq!(
             app.world().resource::<OrganizerClient>().return_focus,
             Some(focus)
@@ -5839,7 +5947,10 @@ pub(crate) mod tests {
         assert!(history.contains("CITY PD VISIT · PERIOD 2"), "{history}");
         assert!(history.contains("Cited workplace Archive"), "{history}");
         press_named(&mut app, "Cited workplace Archive");
-        assert_eq!(app.world().resource::<ArchiveRequests>().0, [false]);
+        assert_eq!(
+            app.world().resource::<ArchiveRequests>().0,
+            [OrganizerArchiveTarget::Workplace]
+        );
         return_to_organizer(&mut app, focus, &draft);
     }
 
@@ -6121,7 +6232,10 @@ pub(crate) mod tests {
         app.world_mut()
             .write_message(OrganizerAction::ArchiveWorkplace);
         app.update();
-        assert_eq!(app.world().resource::<ArchiveRequests>().0, [false]);
+        assert_eq!(
+            app.world().resource::<ArchiveRequests>().0,
+            [OrganizerArchiveTarget::Workplace]
+        );
         assert_eq!(
             app.world().resource::<OrganizerClient>().return_focus,
             Some(focus)
@@ -6479,7 +6593,10 @@ pub(crate) mod tests {
             OrganizerInspector::Receipts
         );
         press_named(&mut app, "Our practice Archive");
-        assert_eq!(app.world().resource::<ArchiveRequests>().0, vec![true]);
+        assert_eq!(
+            app.world().resource::<ArchiveRequests>().0,
+            [OrganizerArchiveTarget::Collective]
+        );
         assert!(app.world().resource::<OrganizerClient>().outbox.is_none());
     }
 }

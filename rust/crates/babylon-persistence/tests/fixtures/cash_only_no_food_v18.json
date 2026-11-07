@@ -309,6 +309,12 @@
           76,
           76
         ],
+        "report_sharing": {
+          "essential_services": [],
+          "evidence_class": "Designed",
+          "food": [],
+          "participation_time": []
+        },
         "social_class_target": [
           97,
           97,
@@ -541,7 +547,7 @@
       }
     ],
     "partner_response_hours": 2,
-    "schema_version": 11,
+    "schema_version": 12,
     "time_binding": {
       "household": {
         "bindings": [
@@ -1734,6 +1740,13 @@
           "receiving_consent": "accept"
         }
       ],
+      "aid_partners": [
+        {
+          "actor_id": 120,
+          "kind": "remote",
+          "label": "Independent recipient"
+        }
+      ],
       "authority_id": [
         2,
         2,
@@ -1877,7 +1890,7 @@
     "learned_authority_index": [],
     "pending_aid": [],
     "period": 0,
-    "schema_version": 11,
+    "schema_version": 12,
     "standing": {
       "authorized": true,
       "partner_actor_id": 103,

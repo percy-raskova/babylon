@@ -70,7 +70,9 @@ fn portrait(subject: OrganizerSubject) -> Option<VisualAssetId> {
         OrganizerSubject::Collective(_) => Some(VisualAssetId::GroupWayneCollective),
         OrganizerSubject::NeighborhoodGroup(_) => Some(VisualAssetId::GroupNeighborhoodContact),
         OrganizerSubject::WorkplaceCommittee(_) => Some(VisualAssetId::GroupWorkplaceCommittee),
-        OrganizerSubject::Contributor(_) | OrganizerSubject::Workplace(_) => None,
+        OrganizerSubject::AidPartner(_)
+        | OrganizerSubject::Contributor(_)
+        | OrganizerSubject::Workplace(_) => None,
     }
 }
 
@@ -155,7 +157,7 @@ fn masthead(root: &mut ChildSpawnerCommands) {
             ui::button(row, "Advance one period", OrganizerAction::Advance);
             crate::production::button(row, "World", ProductionCommand::Map);
             crate::production::button(row, "Evidence", ProductionCommand::Open);
-            ui::button(row, "Archive", OrganizerAction::ArchiveWorkplace);
+            ui::button(row, "Archive", OrganizerAction::ArchiveSelection);
             crate::observer_ui::button(
                 row,
                 "Time",
@@ -225,7 +227,7 @@ fn dossier(root: &mut ChildSpawnerCommands) {
                 });
             panel.spawn(ui::row()).with_children(|links| {
                 for (label, dest) in [
-                    ("Workplace evidence", OrganizerInspector::Evidence),
+                    ("Acquired reports", OrganizerInspector::Evidence),
                     ("Relationships", OrganizerInspector::Relationships),
                     ("Direction / routine", OrganizerInspector::Direction),
                     ("Practice history", OrganizerInspector::Receipts),
@@ -256,6 +258,11 @@ pub(super) fn subject_reading(scope: &Scope) -> String {
         OrganizerSubject::Workplace(_) | OrganizerSubject::WorkplaceCommittee(_) => {
             presentation::situation(view, scope.session.viewed_tick)
         }
+        OrganizerSubject::AidPartner(id) => view
+            .aid_partners
+            .iter()
+            .find(|p| p.actor_id == id)
+            .map_or_else(String::new, |p| p.label.clone()),
         OrganizerSubject::Contributor(id) => view
             .positions
             .iter()

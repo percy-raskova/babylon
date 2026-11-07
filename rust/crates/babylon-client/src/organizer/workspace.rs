@@ -218,6 +218,8 @@ fn known_partner(view: &OrganizerView, actor_id: u64) -> NamedPartner<'_> {
         Some(OrganizerSubject::NeighborhoodGroup(actor_id))
     } else if actor_id == view.actor_id {
         Some(OrganizerSubject::Collective(actor_id))
+    } else if view.aid_partners.iter().any(|p| p.actor_id == actor_id) {
+        Some(OrganizerSubject::AidPartner(actor_id))
     } else {
         None
     };
@@ -564,7 +566,7 @@ fn collect_reports<'a>(
 ) {
     for observation in &view.observations {
         if observation.actor_id != view.actor_id
-            || observation.subject_id != view.workplace_id
+            || !view.knows_report_subject(observation)
             || observation.observed_period > period
             || observation.acquired_period > period
         {
@@ -1049,6 +1051,13 @@ mod tests {
     }
 
     fn install_aid(client: &mut OrganizerClient) {
+        view_mut(client).aid_partners.push(
+            babylon_persistence::runtime_session::OrganizerKnownAidPartner {
+                kind: OrganizerAidKind::Local,
+                actor_id: 95,
+                label: "Recipient collective".into(),
+            },
+        );
         view_mut(client).aid_options.push(OrganizerAidOption {
             kind: OrganizerAidKind::Local,
             partner_actor_id: 95,

@@ -55,6 +55,7 @@ fn reply(payer: i128, gift: i128, price: i128) -> RuntimeSessionResponse {
                 total_receipt_count: 0,
                 receipts: vec![],
                 positions: vec![],
+                aid_partners: vec![],
                 aid_options: vec![],
             },
             pending: None,
@@ -138,8 +139,8 @@ fn organizer_body_fields_are_required_in_current_wire_and_fixtures() {
         );
     }
     for bytes in [
-        include_str!("../../tests/fixtures/national_organizer_opening_v17.json"),
-        include_str!("../../tests/fixtures/national_organizer_pending_v17.json"),
+        include_str!("../../tests/fixtures/national_organizer_opening_v18.json"),
+        include_str!("../../tests/fixtures/national_organizer_pending_v18.json"),
     ] {
         let snapshot: OrganizerSnapshot =
             serde_json::from_str(bytes).expect("current fixture is complete");

@@ -1,6 +1,7 @@
 use super::support;
 use babylon_kernel::replay::ReplaySessionId;
 use babylon_practice_contract::OrganizerCommand;
+use babylon_practice_contract::OrganizerReportSharing;
 use babylon_practice_contract::ResolvedOrganizerPeriod;
 use babylon_practice_contract::{
     OrganizerAidBinding, OrganizerAidCashStatus, OrganizerAidKind, OrganizerAidMaterialPostings,
@@ -47,6 +48,7 @@ fn captured() -> OrganizerConfig {
     ]
     .into_iter()
     .map(|(kind, actor, contributor, tag)| OrganizerAidBinding {
+        report_sharing: OrganizerReportSharing::withheld(),
         kind,
         mandate_id: [tag; 32],
         source_hash: [tag + 10; 32],
@@ -1253,7 +1255,7 @@ fn later_support_cannot_repeat_dispatch_postings_or_foreign_actor_authority() {
 
 #[test]
 fn current_organizer_refuses_prior_schema_even_without_aid() {
-    assert_eq!(ORGANIZER_SCHEMA_VERSION, 11);
+    assert_eq!(ORGANIZER_SCHEMA_VERSION, 12);
     let mut prior = support::config();
     prior.schema_version = 6;
     assert_eq!(
@@ -1746,4 +1748,94 @@ fn retained_cash_response(
         final_row.practice.time_use.is_empty(),
         "later delivery cannot charge another coordination attempt"
     );
+}
+
+#[test]
+fn disclosed_aid_partner_survives_pending_freight_and_withheld_reports() {
+    let (config, _, pending) = remote_pending();
+    let opening = babylon_practice_contract::initial_organizer_state(&config).expect("opening");
+    let mut journal = babylon_practice_contract::OrganizerPeriodJournal::empty();
+    let before = babylon_practice_contract::organizer_view(
+        &config,
+        &opening,
+        &journal,
+        config.controlled_actor_id,
+    )
+    .expect("known opening partners");
+    journal.append(pending.journal).expect("dated evidence");
+    let after = babylon_practice_contract::organizer_view(
+        &config,
+        &pending.state,
+        &journal,
+        config.controlled_actor_id,
+    )
+    .expect("known pending partners");
+    assert_eq!(before.aid_partners.len(), 2);
+    assert_eq!(after.aid_partners, before.aid_partners);
+    assert_eq!((before.aid_options.len(), after.aid_options.len()), (2, 1));
+    assert!(after.observations.iter().all(|o| after
+        .aid_partners
+        .iter()
+        .all(|p| p.actor_id != o.subject_id)));
+}
+
+#[test]
+fn receiving_and_practice_do_not_authorize_unshared_topics_or_relabel_evidence() {
+    use babylon_practice_contract::{OrganizerPartnerFacts, OrganizerReportCommodity};
+    let mut config = captured();
+    let food = OrganizerReportCommodity {
+        good_id: [4; 32],
+        unit_id: [5; 32],
+        label: "Food".into(),
+        unit_label: "parcel".into(),
+    };
+    let opening = OrganizerPartnerFacts::OpeningAssessment {
+        commodity: food.clone(),
+        opening_stock: 2,
+        required: 4,
+    };
+    let time = OrganizerPartnerFacts::ParticipationTime {
+        labor_unit: [6; 32],
+        attended: 4,
+        protected: 2,
+        unpaid: 1,
+        contributed: 1,
+        remaining: 2,
+    };
+    let actor = config.aid_bindings[0].partner.actor_id;
+    assert!(
+        babylon_practice_contract::partner_observation(&config, actor, 0, 0, opening.clone())
+            .is_err()
+    );
+    assert!(
+        babylon_practice_contract::partner_observation(&config, actor, 1, 1, time.clone()).is_err()
+    );
+    config.aid_bindings[0].report_sharing.food.push(food);
+    let evidence =
+        babylon_practice_contract::partner_observation(&config, actor, 0, 0, opening.clone())
+            .expect("explicit food sharing");
+    assert!(
+        babylon_practice_contract::partner_observation(&config, actor, 1, 1, time.clone()).is_err()
+    );
+    assert!(babylon_practice_contract::partner_observation(
+        &config,
+        config.aid_bindings[1].partner.actor_id,
+        0,
+        0,
+        opening
+    )
+    .is_err());
+    config.initial_observations.push(evidence);
+    assert!(babylon_practice_contract::initial_organizer_state(&config).is_ok());
+    config.initial_observations[0].subject_id = config.aid_bindings[1].partner.actor_id;
+    assert!(babylon_practice_contract::initial_organizer_state(&config).is_err());
+    config.aid_bindings[0]
+        .report_sharing
+        .participation_time
+        .push([6; 32]);
+    let delayed =
+        babylon_practice_contract::partner_observation(&config, actor, 1, 3, time.clone())
+            .expect("independent time sharing");
+    assert_eq!((delayed.observed_period, delayed.acquired_period), (1, 3));
+    assert!(babylon_practice_contract::partner_observation(&config, actor, 1, 0, time).is_err());
 }

@@ -716,6 +716,7 @@ pub(crate) fn config() -> OrganizerConfig {
             .collect(),
         },
         aid_bindings: vec![OrganizerAidBinding {
+            report_sharing: babylon_practice_contract::OrganizerReportSharing::withheld(),
             kind: OrganizerAidKind::Local,
             mandate_id: [91; 32],
             source_hash: [92; 32],

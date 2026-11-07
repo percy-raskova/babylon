@@ -7,6 +7,7 @@
 //! Keyboard and pointer controls share admission and are checked again on apply.
 
 use babylon_persistence::identity::CampaignId;
+use babylon_persistence::runtime_session::OrganizerView;
 use babylon_persistence::{ArchivePageRef, ArchiveSubjectKind, SemanticArchiveReader};
 
 use bevy::ecs::system::SystemParam;
@@ -28,7 +29,7 @@ use crate::observer_layout::ObserverRegion;
 use crate::observer_ui::ObserverCommand;
 use crate::observer_ui::{ObserverFeedback, ObserverFontRole, ObserverFrame, ObserverUiState};
 use crate::organizer::ui::OrganizerAction;
-use crate::organizer::ui::OrganizerArchiveRequested;
+use crate::organizer::ui::{OrganizerArchiveRequested, OrganizerArchiveTarget};
 use crate::organizer::OrganizerClient;
 use crate::palette;
 use crate::ui::dossier_compose;
@@ -496,6 +497,21 @@ struct DossierReadIdentity<'w> {
     frame: Option<Res<'w, ObserverFrame>>,
 }
 
+fn disclosed_organization(view: &OrganizerView, actor_id: u64) -> Option<&str> {
+    if actor_id == view.actor_id {
+        Some(&view.organization_label)
+    } else if actor_id == view.workplace_partner_id {
+        Some(&view.workplace_partner_label)
+    } else if actor_id == view.neighborhood_partner_id {
+        Some(&view.neighborhood_partner_label)
+    } else {
+        view.aid_partners
+            .iter()
+            .find(|p| p.actor_id == actor_id)
+            .map(|p| p.label.as_str())
+    }
+}
+
 impl DossierReadIdentity<'_> {
     fn organizer_subject(&self, page: &DossierPageView) -> bool {
         let DossierPageView::Subject(request) = page else {
@@ -515,7 +531,12 @@ impl DossierReadIdentity<'_> {
             && request.scope.campaign == session.campaign
             && match request.kind.as_str() {
                 "workplace" => request.id == view.workplace_id.to_string(),
-                "organization" => request.id == view.actor_id.to_string(),
+                "organization" => request
+                    .id
+                    .parse()
+                    .ok()
+                    .and_then(|id| disclosed_organization(view, id))
+                    .is_some(),
                 _ => false,
             }
     }
@@ -1342,21 +1363,33 @@ fn open_organizer_archive(
         return;
     }
     origin.0 = Some(session.campaign);
-    let Some(mut scope) = identity.scope(&DossierPageView::Card) else {
-        return;
-    };
-    let (kind, id, label) = if request.organization {
-        (
+    let (kind, id, label) = match request.target {
+        OrganizerArchiveTarget::Browse => {
+            *outputs.view = DossierPageView::Card;
+            *outputs.presentation = DossierPresentation::default();
+            outputs.projection.0 = None;
+            *outputs.fetch = DossierFetchState::Idle;
+            return;
+        }
+        OrganizerArchiveTarget::Collective => (
             ArchiveSubjectKind::Organization,
             view.actor_id,
             view.organization_label.clone(),
-        )
-    } else {
-        (
+        ),
+        OrganizerArchiveTarget::Workplace => (
             ArchiveSubjectKind::Workplace,
             view.workplace_id,
             view.workplace_label.clone(),
-        )
+        ),
+        OrganizerArchiveTarget::PartnerOrganization(id) => {
+            let Some(label) = disclosed_organization(view, id) else {
+                return;
+            };
+            (ArchiveSubjectKind::Organization, id, label.into())
+        }
+    };
+    let Some(mut scope) = identity.scope(&DossierPageView::Card) else {
+        return;
     };
     let Ok(target) = ArchivePageRef::try_new(kind, id.to_string()) else {
         return;
@@ -1364,12 +1397,7 @@ fn open_organizer_archive(
     scope.subject = target;
     *outputs.view = DossierPageView::Subject(Box::new(SubjectPageRequest {
         scope,
-        kind: if request.organization {
-            "organization"
-        } else {
-            "workplace"
-        }
-        .into(),
+        kind: kind.as_str().into(),
         id: id.to_string(),
         label: Some(label),
     }));
@@ -2271,6 +2299,47 @@ pub(crate) mod tests {
         assert_eq!(organizer_ui_tests::draft_debug(&app), draft);
 
         assert_stale_completion_refused(&mut app, &expected);
+        assert_partner_archive_navigation(&mut app);
+    }
+
+    fn assert_partner_archive_navigation(app: &mut App) {
+        use babylon_persistence::runtime_session::OrganizerSnapshot;
+        use bevy::ecs::system::RunSystemOnce;
+        let captured: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../babylon-persistence/tests/fixtures/national_organizer_pending_v18.json"
+        )))
+        .expect("actual pending national snapshot");
+        let actor_id = captured.view.aid_partners[1].actor_id;
+        app.world_mut().resource_mut::<OrganizerClient>().view = Some(captured.view);
+        app.world_mut().trigger(OrganizerArchiveRequested {
+            target: OrganizerArchiveTarget::PartnerOrganization(actor_id),
+        });
+        let admitted = app
+            .world_mut()
+            .run_system_once(
+                |identity: DossierReadIdentity, page: Res<DossierPageView>| {
+                    identity.organizer_subject(&page)
+                },
+            )
+            .expect("real reader identity");
+        assert!(
+            admitted,
+            "retain this disclosed partner across period refresh"
+        );
+        let DossierPageView::Subject(request) = app.world().resource::<DossierPageView>() else {
+            panic!("expected a disclosed organization page");
+        };
+        assert_eq!(request.kind, "organization");
+        assert_eq!(request.id, actor_id.to_string());
+        app.world_mut().trigger(OrganizerArchiveRequested {
+            target: OrganizerArchiveTarget::Browse,
+        });
+        assert_eq!(
+            *app.world().resource::<DossierPageView>(),
+            DossierPageView::Card
+        );
+        assert!(app.world().resource::<ActiveCountyDossier>().0.is_none());
     }
 
     #[test]

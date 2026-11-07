@@ -23,6 +23,7 @@ use crate::public_venue::AdmittedPublicVenueSource;
 use babylon_graph::stable_element::StableElementResolver;
 use babylon_material_circuit::AgencyObservationFundingReceipt;
 use babylon_practice_contract::CityPdCaseSource;
+use babylon_practice_contract::OrganizerPartnerFacts;
 use babylon_practice_contract::PublicVenueHistory;
 use babylon_practice_contract::PublicVenueRecordKind;
 use std::collections::BTreeSet;
@@ -732,6 +733,12 @@ impl MaterialWorldRegister {
             None if transition.collections.is_empty() => None,
             None => return Err(MaterialWorldError::Wire),
         };
+        let partner_reports = match self.organizer_config() {
+            Some(config) => {
+                super::organizer_reports::closed(config, self.state.period, &transition)?
+            }
+            None => Vec::new(),
+        };
         let register = Self::from_validated_candidate(catalog, transition.state)?;
         Ok(PreparedMaterialWorld {
             prior_digest: self.digest,
@@ -740,6 +747,7 @@ impl MaterialWorldRegister {
             organizer_facts,
             organizer_aid_support,
             organizer_collection_fact,
+            partner_reports,
             city_pd_opening: self.city_pd.clone(),
             public_venue_opening: self.public_venue.clone(),
             agency_attendance,
@@ -814,6 +822,7 @@ pub struct PreparedMaterialWorld {
     organizer_facts: Option<OrganizerWorkplaceFacts>,
     organizer_aid_support: Vec<OrganizerAidSupport>,
     organizer_collection_fact: Option<OrganizerCollectionFact>,
+    partner_reports: Vec<(u64, OrganizerPartnerFacts)>,
     city_pd_opening: Option<CityPdRegister>,
     public_venue_opening: Option<PublicVenueHistory>,
     agency_attendance: Vec<AgencyObservationFundingReceipt>,
@@ -838,8 +847,8 @@ impl PreparedMaterialWorld {
         &mut self,
         catalog: &MaterialCatalog,
         config: OrganizerConfig,
-        organizer: OrganizerState,
-        journal: OrganizerPeriodJournal,
+        mut organizer: OrganizerState,
+        mut journal: OrganizerPeriodJournal,
         resolver: &StableElementResolver,
     ) -> Result<(), MaterialWorldError> {
         let entries = journal.latest().ok_or(MaterialWorldError::Wire)?;
@@ -859,6 +868,25 @@ impl PreparedMaterialWorld {
         )?;
         // Contributions debit a separate ledger; the material time partition is
         // still the gross supply actually closed before later political work.
+        let entries = journal.periods.last_mut().ok_or(MaterialWorldError::Wire)?;
+        for (actor, facts) in
+            self.partner_reports
+                .drain(..)
+                .chain(super::organizer_reports::completed_time(
+                    &config,
+                    self.register.completed_tick,
+                    &state,
+                )?)
+        {
+            babylon_practice_contract::record_partner_report(
+                &config,
+                &mut organizer,
+                entries,
+                actor,
+                facts,
+            )
+            .map_err(MaterialWorldError::Organizer)?;
+        }
         self.register = MaterialWorldRegister::build(
             catalog,
             self.register.completed_tick,
@@ -977,6 +1005,7 @@ pub(crate) fn encode_bound_organizer(
         }
         return Ok(vec![0]);
     };
+    super::organizer_reports::validate_scopes(catalog, config)?;
     organizer_collection::validate_binding(catalog, config, circuit)?;
     organizer_collection::current(config, state, journal, circuit, completed_tick)?;
     organizer_support::validate_pending_freight(circuit, state)?;

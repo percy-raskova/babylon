@@ -10,6 +10,7 @@ use crate::{
     ArchiveProducerOutcome, ArchiveSignal, ArchiveSubject, ArchiveSubjectKind,
     PendingArchiveReceipt, SemanticArchiveError,
 };
+use babylon_practice_contract::OrganizerPeriodJournal;
 use babylon_practice_contract::OrganizerPeriodJournalEntries;
 
 use crate::archive;
@@ -54,7 +55,10 @@ fn observation_citation(
     observation: &OrganizerObservation,
 ) -> Result<ArchiveCitation, SemanticArchiveError> {
     ArchiveCitation::try_new(
-        "committed-organizer-report-v1".into(),
+        match &observation.report {
+            OrganizerReport::Partner { .. } => "derived-scoped-partner-report-v1",
+            _ => "committed-organizer-report-v1",
+        }.into(),
         format!(
             "source-actor/{}/observed-period/{}/acquired-period/{}/observation/{}/action-receipt/{}",
             observation.source_actor_id,
@@ -139,6 +143,25 @@ fn validate_receipt_row(
     )
 }
 
+fn report_subject_kind(observation: &OrganizerObservation) -> ArchiveSubjectKind {
+    match &observation.report {
+        OrganizerReport::Partner { .. } => ArchiveSubjectKind::Organization,
+        _ => ArchiveSubjectKind::Workplace,
+    }
+}
+
+fn report_rows<'a>(
+    config: &'a OrganizerConfig,
+    journal: &'a OrganizerPeriodJournal,
+) -> impl Iterator<Item = &'a OrganizerObservation> {
+    config.initial_observations.iter().chain(
+        journal
+            .periods
+            .iter()
+            .flat_map(|entries| &entries.observations),
+    )
+}
+
 pub(crate) fn insert_projection(
     client: &mut impl GenericClient,
     campaign: CampaignId,
@@ -158,11 +181,7 @@ pub(crate) fn insert_projection(
     }
     let actor = config.controlled_actor_id.to_string();
     insert_subjects(client, campaign, config)?;
-    for observation in journal
-        .periods
-        .iter()
-        .flat_map(|entries| entries.observations.iter())
-    {
+    for observation in report_rows(config, journal) {
         if observation.actor_id != config.controlled_actor_id {
             continue;
         }
@@ -181,7 +200,7 @@ pub(crate) fn insert_projection(
         archive::insert_grant_row(
             client,
             campaign,
-            "workplace",
+            report_subject_kind(observation).as_str(),
             &observation.subject_id.to_string(),
             &format!("report-{}", hex(&observation.observation_id)),
             observation.acquired_period,
@@ -313,8 +332,8 @@ fn encounter_signal(value: &CityPdEncounter) -> Result<ArchiveSignal, SemanticAr
     )
 }
 
-fn subject_definitions(config: &OrganizerConfig) -> [(ArchiveSubjectKind, u64, &str); 4] {
-    [
+fn subject_definitions(config: &OrganizerConfig) -> Vec<(ArchiveSubjectKind, u64, &str)> {
+    let mut subjects: Vec<(ArchiveSubjectKind, u64, &str)> = vec![
         (
             ArchiveSubjectKind::Workplace,
             config.workplace_id,
@@ -335,7 +354,15 @@ fn subject_definitions(config: &OrganizerConfig) -> [(ArchiveSubjectKind, u64, &
             config.neighborhood_partner.actor_id,
             &config.neighborhood_partner.label,
         ),
-    ]
+    ];
+    subjects.extend(config.aid_bindings.iter().map(|b| {
+        (
+            ArchiveSubjectKind::Organization,
+            b.partner.actor_id,
+            b.partner.label.as_str(),
+        )
+    }));
+    subjects
 }
 
 fn validate_subjects(
@@ -408,6 +435,7 @@ fn insert_subjects(
 
 fn report_text(observation: &OrganizerObservation) -> String {
     let detail = match &observation.report {
+        OrganizerReport::Partner { facts, .. } => facts.detail(),
         OrganizerReport::ReducedWork {
             previous_labor_hours,
             performed_labor_hours,
@@ -689,11 +717,10 @@ impl CapturedOrganizerPages {
         let journal = register
             .organizer_journal()
             .ok_or(SemanticArchiveError::StoredPageMismatch)?;
-        let mut observations = journal
-            .periods
-            .iter()
-            .flat_map(|entries| entries.observations.iter())
-            .collect::<Vec<_>>();
+        let config = register
+            .organizer_config()
+            .ok_or(SemanticArchiveError::StoredPageMismatch)?;
+        let mut observations = report_rows(config, journal).collect::<Vec<_>>();
         observations.sort_by_key(|row| (row.acquired_period, row.observation_id));
         let mut receipts = journal
             .periods
@@ -721,13 +748,15 @@ impl CapturedOrganizerPages {
             let id: String = row.get(2);
             let title: String = row.get(3);
             let mut signals = Vec::new();
+            for observation in observations.iter().copied().filter(|observation| {
+                observation.actor_id.to_string() == actor
+                    && report_subject_kind(observation).as_str() == kind
+                    && observation.acquired_period <= self.tick
+                    && observation.subject_id.to_string() == id
+            }) {
+                signals.push(observation_signal(observation)?);
+            }
             if kind == "workplace" {
-                for observation in observations.iter().copied().filter(|observation| {
-                    observation.actor_id.to_string() == actor
-                        && observation.subject_id.to_string() == id
-                }) {
-                    signals.push(observation_signal(observation)?);
-                }
                 for encounter in encounters.iter().filter(|value| {
                     value.controlled_actor_id.to_string() == actor
                         && value.subject_id.to_string() == id
@@ -776,7 +805,11 @@ fn observation_signal(
     ArchiveSignal::try_new(
         format!("report-{}", hex(&observation.observation_id)),
         format!(
-            "Workplace evidence from period {}",
+            "{} from period {}",
+            match &observation.report {
+                OrganizerReport::Partner { facts, .. } => facts.title(),
+                _ => "Workplace evidence",
+            },
             observation.observed_period
         ),
         report_text(observation),
@@ -854,6 +887,13 @@ fn aid_signal(row: &OrganizerAidResolutionReceipt) -> Result<ArchiveSignal, Sema
     };
     // Keep the existing actor-scoped grant and receipt citation. The producer
     // obtained this full row from the authenticated period register, not SQL text.
+    let request = match row.authorization.gift.commitment.command.allocation {
+        babylon_practice_contract::OrganizerAllocation::Aid {
+            food_quantity,
+            cash_micros,
+        } => format!(" Original request {food_quantity} food units and {cash_micros} cash micros."),
+        _ => return Err(SemanticArchiveError::StoredPageMismatch),
+    };
     ArchiveSignal::try_new(
         format!("practice-{}", hex(&row.practice.receipt_id)),
         format!(
@@ -861,7 +901,7 @@ fn aid_signal(row: &OrganizerAidResolutionReceipt) -> Result<ArchiveSignal, Sema
             row.practice.period
         ),
         format!(
-            "{}\n{}",
+            "{}\n{}{request}",
             receipt_text(&row.practice),
             aid_support_text(&evidence)
         ),
@@ -897,6 +937,7 @@ pub(crate) struct CapturedOrganizerProjection {
     receipts: Vec<Row>,
     encounters: Vec<Row>,
     encounter_grants: Vec<Row>,
+    report_grants: Vec<Row>,
 }
 
 pub(crate) fn capture_projection(
@@ -912,12 +953,14 @@ pub(crate) fn capture_projection(
         .map_err(|_| MaterialRuntimeError::Bounds)?;
     let encounters = client.query("SELECT receipt_id,actor_id,subject_id,resolve_tick,encounter_bytes FROM babylon_state.organizer_encounter_v1 WHERE campaign_id=$1 AND resolve_tick<=$2 ORDER BY receipt_id LIMIT $3", &[campaign.as_uuid(), &tick, &bound])?;
     let encounter_grants = client.query("SELECT subject_kind,subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator FROM babylon_meta.archive_knowledge_grant_witness_v1 WHERE campaign_id=$1 AND grant_key LIKE 'city-pd-%' AND granted_tick<=$2 ORDER BY grant_key LIMIT $3", &[campaign.as_uuid(), &tick, &bound])?;
+    let report_grants = client.query("SELECT subject_kind,subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator FROM babylon_meta.archive_knowledge_grant_witness_v1 WHERE campaign_id=$1 AND grant_key LIKE 'report-%' AND granted_tick<=$2 ORDER BY grant_key", &[campaign.as_uuid(),&tick])?;
     Ok(CapturedOrganizerProjection {
         subjects,
         observations,
         receipts,
         encounters,
         encounter_grants,
+        report_grants,
     })
 }
 
@@ -934,15 +977,26 @@ impl CapturedOrganizerProjection {
             .ok_or(MaterialRuntimeError::OrganizerStorage)?;
         validate_captured_subjects(&self.subjects, config)?;
         let observed = &self.observations;
-        let mut expected = journal
-            .periods
-            .iter()
-            .flat_map(|entries| entries.observations.iter())
+        let mut expected = report_rows(config, journal)
             .filter(|row| row.actor_id == config.controlled_actor_id)
             .collect::<Vec<_>>();
         expected.sort_by_key(|row| row.observation_id);
-        if observed.len() != expected.len() {
+        if observed.len() != expected.len() || self.report_grants.len() != expected.len() {
             return Err(MaterialRuntimeError::OrganizerStorage);
+        }
+        for (row, observation) in self.report_grants.iter().zip(&expected) {
+            let citation = observation_citation(observation).map_err(archive_error)?;
+            if row.get::<_, String>("subject_kind") != report_subject_kind(observation).as_str()
+                || row.get::<_, String>("subject_id") != observation.subject_id.to_string()
+                || row.get::<_, String>("grant_key")
+                    != format!("report-{}", hex(&observation.observation_id))
+                || u64::try_from(row.get::<_, i64>("granted_tick")).ok()
+                    != Some(observation.acquired_period)
+                || row.get::<_, String>("provenance_source_id") != citation.source_id()
+                || row.get::<_, String>("provenance_locator") != citation.locator()
+            {
+                return Err(MaterialRuntimeError::OrganizerStorage);
+            }
         }
         for (row, expected) in observed.iter().zip(expected) {
             validate_observation_row(row, expected)?;

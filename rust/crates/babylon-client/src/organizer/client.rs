@@ -593,6 +593,7 @@ impl OrganizerClient {
             previous.period == snapshot.view.period
                 && (previous.actor_id != snapshot.view.actor_id
                     || previous.authority_id != snapshot.view.authority_id
+                    || previous.aid_partners != snapshot.view.aid_partners
                     || previous.workplace_id != snapshot.view.workplace_id
                     || previous.content_digest != snapshot.view.content_digest
                     || previous.resource_digest != snapshot.view.resource_digest)

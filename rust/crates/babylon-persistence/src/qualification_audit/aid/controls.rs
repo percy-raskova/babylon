@@ -196,16 +196,29 @@ fn original_remote_offer_survives_arrival_without_repeated_dispatch_charges() {
     let fact = audit
         .read(session.catalog(), &second, session.material(), &after)
         .expect("the fixture reader returns its authored facts");
+    let current = after
+        .aid_resolutions
+        .iter()
+        .find(|r| {
+            r.practice.period == after.view.period
+                && r.pending.original_commitment_id == commitment.commitment_id
+        })
+        .expect("current arrival for the original commitment");
     assert_eq!(
-        after.aid_resolutions[0].practice.outcome,
+        current.practice.outcome,
         OrganizerOutcome::AidPracticeCompleted
     );
+    assert!(after.aid_resolutions.iter().any(|r| {
+        r.practice.period < current.practice.period
+            && r.pending.original_commitment_id == commitment.commitment_id
+            && r.practice.outcome == OrganizerOutcome::AidAwaitingSupport
+    }));
     assert!(second
         .receipts
         .aid
         .iter()
         .all(|r| r.contribution_hours == 0));
-    assert_eq!(after.aid_resolutions[0].practice.hours_spent, 5);
+    assert_eq!(current.practice.hours_spent, 5);
     assert_eq!(fact.independent_practices[0]["recipient_debited_hours"], 2);
 }
 

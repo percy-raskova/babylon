@@ -6492,6 +6492,8 @@ pub(crate) mod tests {
                 "2 shared material hours",
                 "consent: accepted",
                 "Protected consumption",
+                "keeps refunds for fully funded essential services",
+                "An unmet service without full funding blocks the gift",
                 "No cash or time is reserved",
                 "period 4",
             ] {

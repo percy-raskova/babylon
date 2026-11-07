@@ -26,13 +26,13 @@ use babylon_material_circuit::CollectionReceipt;
 use babylon_material_circuit::CollectionResolveInput;
 use babylon_material_circuit::HouseholdCohort;
 use babylon_material_circuit::IncomeReceipt;
-use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitError;
 use babylon_material_circuit::MaterialCircuitState;
 use babylon_material_circuit::MaterialCircuitTransition;
 use babylon_material_circuit::MoneyLocation;
 use babylon_material_circuit::MoneyTransferPurpose;
 use babylon_material_circuit::OutboundOrderId;
+use babylon_material_circuit::{MaterialCatalog, MaterialPurchase, OrderId, ServiceOrder};
 #[path = "support/organizer_funding_control.rs"]
 mod control;
 
@@ -536,6 +536,21 @@ fn assert_protected_service_refusal(
         ),
         (8, 3, 5)
     );
+    let order = completed
+        .service_performance
+        .iter()
+        .find(|row| {
+            row.buyer == AccountId::Household(control::donor()) && row.good_id == control::good(6)
+        })
+        .expect("the P4 household-service order reports its actual admission");
+    assert_eq!(
+        (
+            order.requested_quantity,
+            order.admitted_quantity,
+            order.performed_quantity
+        ),
+        (8, 3, 3)
+    );
     assert!(cash(&completed.state, AccountId::Household(control::donor())) > COLLECTION);
     assert!(remaining(&completed.state, control::donor()) > collections[0].collection_hours);
 }
@@ -827,4 +842,162 @@ fn collected_cash_only_changes_next_ordinary_food_purchase_in_finite_control() {
     );
     assert_eq!(payment.debit.delta, control::money(-4 * 280_000_000));
     assert_eq!(payment.credit.delta, control::money(4 * 280_000_000));
+}
+
+#[test]
+fn funded_utility_shortfall_keeps_refund_and_floor_before_partial_gift() {
+    for capacity in [7, 0] {
+        let (catalog, mut state) = control::opening();
+        state
+            .production_commitments
+            .iter_mut()
+            .find(|row| row.site_id == control::site(3))
+            .expect("utility production commitment")
+            .planned_batches = capacity;
+        state
+            .production_commitments
+            .retain(|row| row.planned_batches > 0);
+        let donor = AccountId::Household(control::donor());
+        let baseline = control::close(&catalog, &state, &[], &[]).expect("ordinary close");
+        let performance = baseline
+            .service_performance
+            .iter()
+            .find(|row| row.buyer == donor && row.good_id == control::good(3))
+            .expect("donor's utility order");
+        assert_eq!(
+            (
+                performance.requested_quantity,
+                performance.admitted_quantity,
+                performance.performed_quantity
+            ),
+            (8, 8, capacity)
+        );
+        let expected_refund = i128::from(8 - capacity) * 75_000_000;
+        let id = OutboundOrderId::Service(performance.order_id);
+        let refund = baseline
+            .money_transfers
+            .iter()
+            .find(|row| row.purpose == MoneyTransferPurpose::PurchaseRefund(id))
+            .expect("cash returned to donor");
+        assert_eq!(refund.credit.location, MoneyLocation::Cash(donor));
+        assert_eq!(refund.credit.delta.micro_units(), expected_refund);
+        let opening_eligible_balance = control::cash(&baseline.state, donor);
+        let mut input = control::collection(1);
+        let floor = opening_eligible_balance - expected_refund - 100_001;
+        input.protected_cash_floor = control::money(floor);
+        let completed = close_and_reexecute(&catalog, &state, &[], std::slice::from_ref(&input));
+        let receipt = &completed.collections[0];
+        assert_eq!(receipt.outcome, CollectionOutcome::PartiallyCollected);
+        assert_eq!(receipt.collected.micro_units(), 100_001);
+        assert_eq!(receipt.performed_hours, 2);
+        assert_eq!(
+            control::cash(&completed.state, donor),
+            floor + expected_refund
+        );
+        assert_eq!(
+            control::cash(&completed.state, control::organization())
+                - control::cash(&baseline.state, control::organization()),
+            100_001
+        );
+        assert_eq!(completed.household_services, baseline.household_services);
+        input.protected_cash_floor = control::money(opening_eligible_balance - expected_refund);
+        let protected = control::close(&catalog, &state, &[], &[input])
+            .expect("floor and refund consume the full remaining balance");
+        let refused = &protected.collections[0];
+        assert_eq!(
+            (
+                refused.outcome,
+                refused.collected,
+                refused.performed_hours,
+                refused.transfer_ordinal
+            ),
+            (
+                CollectionOutcome::InsufficientCash,
+                control::money(0),
+                0,
+                None
+            )
+        );
+        assert_eq!(
+            control::cash(&protected.state, donor),
+            opening_eligible_balance
+        );
+    }
+}
+
+#[test]
+fn carried_service_reserve_and_current_topup_join_their_own_prices() {
+    let (catalog, mut opening) = control::opening();
+    opening
+        .production_commitments
+        .retain(|row| row.site_id != control::site(3));
+    let donor = AccountId::Household(control::donor());
+    let carried_id = OrderId::from_bytes([29; 32]);
+    let (state, opening_reservation) = babylon_material_circuit::admit_material_purchase(
+        &catalog,
+        &opening,
+        MaterialPurchase::Service(ServiceOrder {
+            order_id: carried_id,
+            performance_period: 1,
+            provider_site_id: control::site(3),
+            buyer: donor,
+            good_id: control::good(3),
+            unit_id: control::unit(3),
+            quantity: 3,
+        }),
+        control::money(12_345),
+    )
+    .expect("distinct three-unit commitment at accepted price");
+    assert_eq!(opening_reservation.credit.delta.micro_units(), 37_035);
+    let routine = control::close(&catalog, &state, &[], &[]).expect("ordinary close");
+    let mut input = control::collection(1);
+    let refunded = 37_035 + 5 * 75_000_000;
+    input.protected_cash_floor =
+        control::money(control::cash(&routine.state, donor) - refunded - 11);
+    let closed = close_and_reexecute(&catalog, &state, &[], &[input]);
+    assert_eq!(closed.collections[0].collected, control::money(11));
+    assert_eq!(
+        closed.collections[0].outcome,
+        CollectionOutcome::PartiallyCollected
+    );
+    let carried = OutboundOrderId::Service(carried_id);
+    assert!(!closed
+        .money_transfers
+        .iter()
+        .any(|m| m.purpose == MoneyTransferPurpose::PurchaseReservation(carried)));
+    assert!(closed.money_transfers.iter().any(|m| m.purpose
+        == MoneyTransferPurpose::PurchaseRefund(carried)
+        && m.credit.delta.micro_units() == 37_035));
+}
+
+#[test]
+fn under_requested_essential_service_still_blocks_cash_and_hours() {
+    for maximum in [0, 7] {
+        let (catalog, mut opening) = control::opening();
+        let CircuitAccounting::Monetary(economy) = &mut opening.accounting else {
+            panic!("monetary paper economy");
+        };
+        let policy = economy
+            .recurring
+            .as_mut()
+            .expect("recurring purchases")
+            .household_purchases
+            .iter_mut()
+            .find(|p| p.principal_id == control::donor() && p.good_id == control::good(3))
+            .expect("utility purchase policy");
+        policy.enabled = maximum != 0;
+        if maximum != 0 {
+            policy.maximum_purchase = maximum;
+        }
+        let result = close_and_reexecute(&catalog, &opening, &[], &[control::collection(1)]);
+        let row = &result.collections[0];
+        assert_eq!(
+            (row.outcome, row.collected, row.performed_hours),
+            (
+                CollectionOutcome::ProtectedServiceUnmet,
+                control::money(0),
+                0
+            )
+        );
+    }
 }

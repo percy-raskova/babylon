@@ -21,6 +21,14 @@ ADR293_wayne_resource_allocations:
     A partial gift records exact actual micros and still costs the existing
     two hours. Protected needs, due payments, floor and time remain binding.
     The uncollected remainder is terminal and never retries automatically.
+    Under the Director's Designed collection rule, a cash-funded essential
+    service can expire without blocking a gift of the remaining surplus.
+    Derive its protected amount from the actual current-close refund to that
+    household. Retain this cash alongside the floor and other protections.
+    Each order binds its admitted units, accepted price, reservation, performed
+    units, settlement and refund. A prior accepted order carries its own
+    opening reserve. A wholly or partly unfunded unmet need still blocks.
+    The household retains its cash for ordinary later purchasing.
 
     The approved complete aid allocation independently selects food from zero
     to four person-period packages (initially one) and cash from $0 to $1450
@@ -46,11 +54,9 @@ ADR293_wayne_resource_allocations:
     retained response. Food freight remains physical; AidCashReserve and linked
     cash-per-unit reserve/grant/refund paths are removed. Captured mandate terms
     seed the personal draft and authenticate the selected command and preview.
-    A normal-national funded path remains blocked by actual donor protection
-    refusals. Task 1C must diagnose and repair that path before reports, the
-    amount editor or native acceptance proceed. Task 2 owns topic-specific need
-    reports and Task 3 owns the amount editor. No native campaign acceptance or
-    live PostgreSQL proof is claimed here.
+    The normal national close applies the Designed refund protection before
+    distribution. Task 2 supplies authorized partner reports. Task 3 owns
+    the amount editor. Native acceptance and live publication remain open.
     Food qualification uses a bounded credit per original commitment. Within one
     recipient, good, unit and close, ascending original commitment identity takes
     at most its actual grant from the remaining actual household consumption.
@@ -59,8 +65,8 @@ ADR293_wayne_resource_allocations:
     marginal consumption increase. Cash qualifies independently, and a retained
     first response remains final even if a later food credit is zero.
   current_contract: |
-    Organizer schema 11, config domain v10, state v9, commitment v3, journal and
-    period-entry domains v4; receipt domain v2, runtime protocol 16, personal
+    Organizer schema 12, config domain v11, state v10, commitment v3, journal and
+    period-entry domains v5, receipt domain v2, runtime protocol 18, personal
     draft schema 4. Material catalog schema 2/domain v2, circuit state schema
     22, world register v7 and tick receipts v20 are the only current formats.
     Runtime food preview and payer cash are required nullable facts. An absent
@@ -81,12 +87,14 @@ ADR293_wayne_resource_allocations:
     controls cover unselected-leg wiring, receiving refusal, cash surviving food
     loss, retained response across delayed arrival and cold checkpoints, and
     actual cash followed by ordinary later purchase in a finite Designed economy.
-    The latter is mechanism evidence, not a successful normal-national campaign.
-    A separate national witness ruled out detached-fixture contamination and
-    identified a funded utility order shortfall: 8 admitted, 7 performed, 1
-    refunded, with all provider output allocated against excess admitted demand.
-    Ten consecutive normal collection periods found no lawful funding window;
-    source diagnosis and playable acceptance remain open under Task 1C.
+    Ten prior national collection closes produced no contribution under the
+    earlier blanket refusal. In the repaired Wayne witness the household
+    reserved $600 for eight utility units, received seven, settled $525 and
+    kept its $75 refund. A $1,450 collection raised the treasury from $1 to
+    $1,451. A separate cash-only local ruling gave $1,450 the following close.
+    Ordinary subsequent purchasing settled eight supplies bundles at $147.
+    The recipient consumed four and retained four. Food stayed unmet.
+    The $1,450 gift does not identify the source of any fungible unit bought.
     Eight economic hash pins changed only through current catalog/state framing;
     reversing that framing exactly reproduces all eight prior hashes.
   related:

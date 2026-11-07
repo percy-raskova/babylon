@@ -11,13 +11,14 @@ use super::ServiceOutputReceipt;
 use super::ServicePerformanceReceipt;
 use super::ServiceStage;
 use super::UnitId;
+use crate::collection_funding::ServiceAdmissions;
 use crate::inventory;
 use crate::inventory::InventoryLedger;
 use crate::valuation::CostClose;
-use crate::MaterialCatalog;
 use crate::{
     AccountId, CircuitAccounting, MoneyTransferReceipt, OutboundOrderId, ProductionCommitment,
 };
+use crate::{FinalDemandPrincipalId, MaterialCatalog};
 use babylon_kernel::currency::Currency;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -25,6 +26,7 @@ type GrantKey = (AccountId, GoodId, UnitId);
 
 /// Transient current-period grants. No field can be captured as durable service stock.
 pub(crate) struct ServiceClose {
+    pub(crate) collection_admissions: ServiceAdmissions,
     pub(crate) performance: Vec<ServicePerformanceReceipt>,
     pub(crate) household: Vec<HouseholdServiceReceipt>,
     pub(crate) markets: Vec<ServiceMarketReceipt>,
@@ -36,9 +38,13 @@ impl ServiceClose {
         catalog: &MaterialCatalog,
         state: &mut MaterialCircuitState,
         movements: &mut Vec<MoneyTransferReceipt>,
+        donor: Option<FinalDemandPrincipalId>,
     ) -> Result<Self> {
+        let mut collection_admissions = ServiceAdmissions::capture_opening(state, donor)?;
         let performance = super::admission::admit(catalog, state, movements)?;
+        collection_admissions.capture_requests(&performance, donor);
         Ok(Self {
+            collection_admissions,
             markets: super::market::capture(catalog, state)?,
             performance,
             outputs: vec![],

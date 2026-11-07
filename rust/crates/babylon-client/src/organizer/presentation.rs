@@ -469,7 +469,7 @@ fn collection_review_terms(client: &OrganizerClient) -> String {
         OrganizerGiftConsent::Accept => "accepted independently",
         OrganizerGiftConsent::Refuse => "refused independently",
     };
-    format!("Contributor: {}\nVoluntary gift: up to {} currency; {} shared material hours. Cash consent: {consent}.\nProtected cash floor: {} currency. Protected consumption, services, closing stock and due payments are checked at close. A partial gift still costs the fixed hours. Organization cash: {} currency. No cash or time is reserved.", terms.contributor_label, crate::human_numbers::currency(terms.maximum_cash_micros), crate::observer_ui::grouped(terms.collection_hours), crate::human_numbers::currency(terms.protected_cash_floor_micros), crate::human_numbers::currency(terms.organization_cash_micros))
+    format!("Contributor: {}\nVoluntary gift: up to {} currency; {} shared material hours. Cash consent: {consent}.\nProtected cash floor: {} currency. Protected consumption, closing stocks and due payments come first. The household also keeps refunds for fully funded essential services. An unmet service without full funding blocks the gift. A partial gift still costs the fixed hours. Organization cash: {} currency. No cash or time is reserved.", terms.contributor_label, crate::human_numbers::currency(terms.maximum_cash_micros), crate::observer_ui::grouped(terms.collection_hours), crate::human_numbers::currency(terms.protected_cash_floor_micros), crate::human_numbers::currency(terms.organization_cash_micros))
 }
 
 fn aid_terms(preview: &OrganizerMaterialAidPreview) -> String {
@@ -1301,7 +1301,7 @@ fn collection_detail(client: &OrganizerClient, view: &OrganizerView) -> String {
     for byte in m.source_hash {
         let _ = write!(source, "{byte:02x}");
     }
-    format!("Contributor: {} (participant {}). Designed terms verified at period {}; source {}.\nVoluntary household gift: up to {} currency; {} shared material hours. Independent cash consent: {}. Protected cash floor: {} currency; mandatory protected needs and due payments are checked at close. Protected consumption, essential services and closing stocks come first. A positive amount below the cap is a partial gift and still uses the fixed hours. Organization cash now: {} currency.\nResolves period {}. {} No cash or time is reserved. Later aid needs its own ruling; no immediate membership, agreement or time gain.", m.contributor_label, m.contributor_id, m.period, source, crate::human_numbers::currency(m.maximum_cash_micros), crate::observer_ui::grouped(m.collection_hours), consent, crate::human_numbers::currency(m.protected_cash_floor_micros), crate::human_numbers::currency(m.organization_cash_micros), resolves, displacement)
+    format!("Contributor: {} (participant {}). Designed terms verified at period {}; source {}.\nVoluntary household gift: up to {} currency; {} shared material hours. Independent cash consent: {}. Protected cash floor: {} currency; mandatory protected needs and due payments are checked at close. Protected consumption and closing stocks come first. The household keeps refunds for fully funded essential services in addition to the floor. An unmet service without full funding blocks the gift. A positive amount below the cap is a partial gift and still uses the fixed hours. Organization cash now: {} currency.\nResolves period {}. {} No cash or time is reserved. Later aid needs its own ruling; no immediate membership, agreement or time gain.", m.contributor_label, m.contributor_id, m.period, source, crate::human_numbers::currency(m.maximum_cash_micros), crate::observer_ui::grouped(m.collection_hours), consent, crate::human_numbers::currency(m.protected_cash_floor_micros), crate::human_numbers::currency(m.organization_cash_micros), resolves, displacement)
 }
 
 fn collection_outcome(outcome: OrganizerCollectionOutcome) -> &'static str {
@@ -1311,14 +1311,14 @@ fn collection_outcome(outcome: OrganizerCollectionOutcome) -> &'static str {
         OrganizerCollectionOutcome::CashConsentRefused => "Household cash consent was refused",
         OrganizerCollectionOutcome::ProtectedConsumptionUnmet => "Household consumption is unmet",
         OrganizerCollectionOutcome::ProtectedServiceUnmet => {
-            "Essential household services are unmet"
+            "An unmet essential service lacked full funding"
         }
         OrganizerCollectionOutcome::ProtectedClosingStockUnmet => {
             "Protected closing pantry or stocks are unmet"
         }
         OrganizerCollectionOutcome::DuePaymentUnmet => "Outstanding protected payments remain due",
         OrganizerCollectionOutcome::InsufficientCash => {
-            "No eligible cash remains above the protected floor"
+            "No eligible cash remains after the protected floor and service refunds"
         }
         OrganizerCollectionOutcome::InsufficientContributionTime => {
             "Insufficient actual authorized household time"

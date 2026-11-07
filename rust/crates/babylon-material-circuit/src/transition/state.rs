@@ -41,6 +41,7 @@ use crate::CircuitAccounting;
 use crate::CollectionReceipt;
 use crate::CollectionResolveInput;
 use crate::EquipmentWearReceipt;
+use crate::FinalDemandPrincipalId;
 use crate::HouseholdConsumptionReceipt;
 use crate::HouseholdContributionUse;
 use crate::HouseholdDemandReceipt;
@@ -1294,14 +1295,15 @@ pub(crate) struct FundedProductionReceipts {
 }
 
 pub(crate) fn close_funded_production(
-    catalog: &MaterialCatalog,
+    context: MaterialContext<'_>,
     opening: &MaterialCircuitState,
-    state: &mut MaterialCircuitState,
     costs: &mut CostClose,
     money_transfers: &mut Vec<MoneyTransferReceipt>,
     wage_accruals: &mut Vec<WageAccrualReceipt>,
     agency_inputs: &[AgencyAttendanceInput],
+    collection_donor: Option<FinalDemandPrincipalId>,
 ) -> Result<FundedProductionReceipts, MaterialCircuitError> {
+    let MaterialContext { catalog, state } = context;
     crate::payments::settle_deliveries(state, money_transfers)?;
     crate::recurring::firms::retire_resolved_purchases(state)?;
     let finance = FinancialClose::opening(state, costs, money_transfers)?;
@@ -1310,7 +1312,7 @@ pub(crate) fn close_funded_production(
     let agency = crate::agency_attendance::reserve(opening, state, agency_inputs, money_transfers)?;
     let household_demand =
         crate::recurring::admit_household_orders(catalog, state, money_transfers)?;
-    let mut services = ServiceClose::new(catalog, state, money_transfers)?;
+    let mut services = ServiceClose::new(catalog, state, money_transfers, collection_donor)?;
     let productive = execute_production_stages(
         catalog,
         opening,
@@ -1363,6 +1365,8 @@ pub(crate) fn close_household_finance(
         crate::collection::CollectionEvidence {
             consumption: &households.consumption,
             services: &services.household,
+            admissions: &services.collection_admissions,
+            performance: &services.performance,
             time: &households.time,
             taxes: &finance.taxes,
             contributions: &finance.contributions,
@@ -1401,13 +1405,16 @@ fn close_support_parts(
     let (mut aid_receipts, mut money_transfers) = (close.aid_receipts, close.money_transfers);
     let (mut dispatches, mut wage_accruals) = (Vec::new(), Vec::new());
     let mut funded = close_funded_production(
-        catalog,
+        MaterialContext {
+            catalog,
+            state: &mut state,
+        },
         opening,
-        &mut state,
         &mut costs,
         &mut money_transfers,
         &mut wage_accruals,
         agency_inputs,
+        collection_inputs.first().map(|row| row.donor),
     )?;
     let (outbound, procurement) = dispatch_and_replenish(
         catalog,

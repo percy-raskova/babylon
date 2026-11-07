@@ -29,6 +29,16 @@ cannot form valid aid. These Designed values belong in the national
 scenario's existing defines file. Preserve the opening $1 treasury and real
 household endowments.
 
+At collection close, the household first covers current goods, its closing
+stocks and due payments. An unmet essential service blocks a gift if the
+household lacks full funding. A provider can deliver fewer units than the
+household paid for. The household keeps its refund and its protected cash floor.
+
+Only the eligible surplus can fund a gift. Consent, pledged hours and actual
+available time still apply. This Designed rule uses a Derived refund from the
+order's actual postings. The household can use its cash for ordinary purchases
+in the next period.
+
 Keep selected amounts distinct from actual amounts. One try can fulfill only
 part of a selected leg. The rest ends without retry. Food moves physically.
 Cash settles at the existing following-period support close, after ordinary
@@ -54,10 +64,17 @@ response stays final even if a later food delivery receives zero credit.
 The backend supplies required allocation identity, selected collection,
 independent aid legs, captured initial targets and saved draft/command
 construction. Original requests, dispatch facts and the first response remain
-available through delayed delivery and restart. Normal-national collection
-remains blocked by actual protected needs, including a funded utility order
-that received seven of eight units. The report work can proceed independently. Native acceptance still requires
-a lawful funded path in the normal national campaign.
+available through delayed delivery and restart.
+
+In the national Wayne witness,
+the contributing household received seven of eight utility units, kept its
+$75 refund and gave $1,450. The organization then gave $1,450 to the local
+partner. At the next purchasing close, its household bought eight
+manufactured-supply bundles at $147, consumed four and kept four. Its food
+need remained unmet.
+
+The partner's reports cover the topics it agreed to
+share. Native acceptance and a live campaign remain separate.
 
 A sender can see the original allocation, food movement, actual cash gift
 and independent practice response. The partner controls reports about

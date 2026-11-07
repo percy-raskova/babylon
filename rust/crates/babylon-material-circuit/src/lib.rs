@@ -13,6 +13,7 @@ pub use agency_attendance::{
 mod aid;
 pub use aid::*;
 mod collection;
+mod collection_funding;
 pub use collection::{
     collection_contribution_id, CollectionOutcome, CollectionReceipt, CollectionResolveInput,
 };

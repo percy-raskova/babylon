@@ -22,14 +22,20 @@ LINEAGE = b"reviewed lineage\n"
 
 
 def fixture() -> tuple[dict[str, bytes | None], backup.PhysicalWitness]:
-    control = bytearray(8192)
-    struct.pack_into("<Q", control, 0, SYSTEM)
-    struct.pack_into("<I", control, 16, 1)
-    struct.pack_into("<Q", control, 32, SEGMENT + 80)
-    struct.pack_into("<I", control, 48, 1)
+    # Literal fixture emitted by the PG17.11 upstream C declarations and independent
+    # x86 CRC32C instructions. Validator changes do not regenerate its checksums.
+    control = bytes.fromhex(
+        "52b2070000000000a40600008979100c010000000000000000f153650000000050001000000000005000100000000000010000000100000001000000010000000003000000000000014000000000000000000000000000000000000000000000000000000000000000f15365000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000087d6324100200000000002000020000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000048e4114b"
+    ).ljust(8192, b"\0")
     wal = bytearray(SEGMENT)
     struct.pack_into("<HHIQ", wal, 0, 0xD116, 2, 1, SEGMENT)
     struct.pack_into("<QII", wal, 24, SYSTEM, SEGMENT, 8192)
+    checkpoint = bytes.fromhex(
+        "7200000000000000280010000000000000000000e2b59f0dff585000100000000000010000000100000001000000010000000003000000000000014000000000000000000000000000000000000000000000000000000000000000f153650000000000000000000000000000000000000000"
+    )
+    wal[80 : 80 + len(checkpoint)] = checkpoint
+    relation = bytearray(PAGE_BYTES := 8192)
+    struct.pack_into("<5H", relation, 10, 0, 24, PAGE_BYTES, PAGE_BYTES, PAGE_BYTES + 4)
     payloads = {
         "global": None,
         "base": None,
@@ -40,7 +46,7 @@ def fixture() -> tuple[dict[str, bytes | None], backup.PhysicalWitness]:
         ".babylon-postgres-lineage-v1": LINEAGE,
         "global/pg_control": bytes(control),
         WAL: bytes(wal),
-        RELATION: b"shutdown pages",
+        RELATION: bytes(relation),
     }
     before = {
         name: backup.Member(
@@ -64,6 +70,17 @@ def fixture() -> tuple[dict[str, bytes | None], backup.PhysicalWitness]:
         "host": {"mode": 0o700, "uid": 100071, "gid": 200073},
         "cluster": str(SYSTEM),
     }
+    before[RELATION] = backup.Member("file", 0o600, 71, 73, 8192, None)
+    physical["pgss"] = {"preload": "pg_stat_statements", "save": "on", "version": "1.11"}
+    physical["relation_sizes"] = {RELATION: 8192}
+    physical["relation_page_samples"] = {RELATION: {"0": True}}
+    before["pg_stat_tmp/pgss_query_texts.stat"] = backup.Member("file", 0o600, 71, 73, 12, None)
+    for name in ("pg_stat", "pg_stat_tmp"):
+        payloads[name] = None
+        before[name] = backup.Member("dir", 0o700, 71, 73, 0, None)
+    payloads["pg_stat/pg_stat_statements.stat"] = struct.pack("<IIi", 0x20220408, 1700, 0) + bytes(
+        16
+    )
     witness = backup.PhysicalWitness(
         physical, before, {"babylon_state.tick_commit": RELATION}, 551, SEGMENT, 0xD116
     )
@@ -102,8 +119,8 @@ def test_independent_members_prove_bind_and_numeric_translation(
     with path.open("rb") as stream:
         members, translation = backup.archive_manifest(stream, witness)
     assert translation == namespace
-    assert members[RELATION].sha256 == hashlib.sha256(b"shutdown pages").hexdigest()
-    assert members[RELATION].size == 14
+    assert members[RELATION].sha256 == hashlib.sha256(files[RELATION] or b"").hexdigest()
+    assert members[RELATION].size == 8192
 
 
 @pytest.mark.parametrize(
@@ -304,7 +321,11 @@ def test_only_verified_restore_is_dropped_without_force(
     monkeypatch.setattr(backup, "_conn", lambda *_args: db)
     monkeypatch.setattr(backup.Run, "authenticate", lambda _self: {})
     roster = {run.database: 30}
-    state = {"campaign": "campaign", "database": {"owner": "confined"}, "markers": ["real P2"]}
+    state: dict[str, Any] = {
+        "campaign": "campaign",
+        "database": {"owner": "confined", "allows_connections": True, "connection_limit": -1},
+        "markers": ["real P2"],
+    }
     commands = []
     probes: list[str] = []
     seen = []
@@ -321,10 +342,21 @@ def test_only_verified_restore_is_dropped_without_force(
 
     def snapshot(conn: MagicMock, campaign: str, period: int) -> dict[str, Any]:
         seen.append(campaign)
-        return state if fault != "wrong_restored" or len(seen) == 1 else {**state, "markers": []}
+        if len(seen) == 2:
+            return {
+                **state,
+                "database": {**state["database"], "allows_connections": False},
+                "markers": [] if fault == "wrong_restored" else state["markers"],
+            }
+        return state
 
     def probe(
-        conn: MagicMock, selected: backup.Run, database: str, oid: int, verified_oid: int | None
+        conn: MagicMock,
+        selected: backup.Run,
+        database: str,
+        oid: int,
+        verified_oid: int | None,
+        gate: object = None,
     ) -> dict[str, str]:
         probes.append(database)
         return {
@@ -347,6 +379,14 @@ def test_only_verified_restore_is_dropped_without_force(
     monkeypatch.setattr(backup, "_verify_create", lambda *_args: 31)
     monkeypatch.setattr(backup, "_db_privileges", lambda *_args: None)
     monkeypatch.setattr(backup, "_command", command)
+    gate = MagicMock()
+    gate.limit = -1
+    gate.postmaster = "startup"
+    gate.reset = None
+    gate.sessions = []
+    monkeypatch.setattr(backup, "RestoreAdmission", lambda *_args: gate)
+    if fault == "foreign_session":
+        gate.reconcile.side_effect = backup.Refusal("unaccounted session")
     if fault == "none":
         backup._logical(run, target, state)
     else:
@@ -359,11 +399,10 @@ def test_only_verified_restore_is_dropped_without_force(
         "docker",
         "exec",
         "-i",
-        "-e",
-        "PGAPPNAME=wayne_backup_restore",
         run.container,
         "pg_restore",
         "--exit-on-error",
+        "--single-transaction",
         "-U",
         "test",
         "--dbname=" + run.verification,
@@ -393,12 +432,15 @@ def test_restricted_roles_must_read_production_data_and_receive_exact_denials(
     ) -> MagicMock:
         login = MagicMock()
         login.__enter__.return_value = login
+        login.info.backend_pid = 551
         kind = application.removeprefix("wayne_probe_")
         selected.append(role)
 
         def execute(query: str, args: tuple[object, ...] = ()) -> MagicMock:
             cursor = MagicMock()
-            if "pg_has_role" in query:
+            if "WHERE pid=pg_backend_pid()" in query:
+                cursor.fetchall.return_value = [(551, "started", 30, role, "127.0.0.1", 52722)]
+            elif "pg_has_role" in query:
                 cursor.fetchall.return_value = [
                     (role, role, database, "on" if fault == "read_only" else "off", owner[2], True)
                 ]
@@ -461,6 +503,7 @@ def test_database_creation_uses_captured_writer_and_locale_and_pins_fresh_oid(
     assert backup._verify_create(conn, run, catalog) == 31
     query = conn.execute.call_args_list[0].args[0].as_string()
     assert f'CREATE DATABASE "{run.verification}" WITH TEMPLATE template0 OWNER "confined"' in query
+    assert "ALLOW_CONNECTIONS false CONNECTION LIMIT 0" in query
     assert "BUILTIN_LOCALE 'C.UTF-8' LC_COLLATE 'C.UTF-8' LC_CTYPE 'C.UTF-8'" in query
     conn.execute.return_value.fetchall.return_value = [(30, "confined")]
     with pytest.raises(backup.Refusal):
@@ -520,3 +563,302 @@ def test_numeric_namespace_requires_unique_translation_or_globally_identity_maps
         else:
             with pytest.raises(backup.Refusal, match="ambiguous"):
                 backup.archive_manifest(stream, witness)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "control-version",
+        "catalog-version",
+        "control-crc",
+        "zero-record",
+        "wal-record-crc",
+        "foreign-checkpoint",
+        "both-copies-truncated",
+        "zero-padded-relation",
+        "pgss-running-after-stop",
+        "pgss-no-dump",
+        "pgss-disabled",
+        "unknown-stat-temp",
+    ],
+)
+def test_independent_stopped_bind_witness_rejects_corruption(tmp_path: Path, fault: str) -> None:
+    files, witness = fixture()
+    if fault in ("control-version", "catalog-version", "control-crc"):
+        control = bytearray(files["global/pg_control"] or b"")
+        control[{"control-version": 8, "catalog-version": 12, "control-crc": 288}[fault]] ^= 1
+        files["global/pg_control"] = bytes(control)
+    elif fault in ("zero-record", "wal-record-crc", "foreign-checkpoint"):
+        wal = bytearray(files[WAL] or b"")
+        if fault == "zero-record":
+            wal[80:194] = bytes(114)
+        else:
+            wal[100 if fault == "wal-record-crc" else 129] ^= 1
+        files[WAL] = bytes(wal)
+    elif fault == "both-copies-truncated":
+        files[RELATION] = b""
+    elif fault == "zero-padded-relation":
+        files[RELATION] = bytes(8192)
+    elif fault == "pgss-running-after-stop":
+        files["pg_stat_tmp/pgss_query_texts.stat"] = b"retained"
+    elif fault == "pgss-no-dump":
+        del files["pg_stat/pg_stat_statements.stat"]
+    elif fault == "pgss-disabled":
+        witness.physical["pgss"]["save"] = "off"
+    else:
+        files["pg_stat_tmp/unknown"] = b"unproved"
+    for name in ("first.tar", "second.tar"):
+        path = tmp_path / name
+        archive(path, files)
+        with path.open("rb") as stream, pytest.raises(backup.Refusal):
+            backup.archive_manifest(stream, witness)
+
+
+@pytest.mark.parametrize(
+    "fault", ["none", "undrained", "missing", "wrong_dirty", "wrong_batch", "wrong_knowledge"]
+)
+def test_same_snapshot_requires_drained_terminal_archive_chain(fault: str) -> None:
+    conn = MagicMock()
+    markers = [{"tick": n, "hash": str(n) * 64} for n in (1, 2)]
+    rows: list[list[Any]] = [
+        [
+            m["tick"],
+            m["hash"],
+            m["hash"],
+            m["hash"],
+            "b" * 64,
+            "c" * 64,
+            "c" * 64,
+            "d" * 64,
+            "d" * 64,
+        ]
+        for m in markers
+    ]
+    totals = (2, 2, 1) if fault == "undrained" else (None, 2, 0)
+    if fault == "missing":
+        rows.pop()
+    elif fault == "wrong_dirty":
+        rows[-1][1] = "7" * 64
+    elif fault == "wrong_batch":
+        rows[-1][4] = None
+    elif fault == "wrong_knowledge":
+        rows[-1][-1] = "8" * 64
+    conn.execute.return_value.fetchall.side_effect = [[totals], rows]
+    if fault == "none":
+        result = backup._archive_terminal(conn, "campaign", markers)
+        assert (
+            result["pending"] == 0
+            and result["watermark"] == 2
+            and result["terminal_marker"] == markers[-1]["hash"]
+        )
+        assert len(result["receipts"]) == 2
+    else:
+        with pytest.raises(backup.Refusal):
+            backup._archive_terminal(conn, "campaign", markers)
+
+
+def test_interrupted_command_preserves_partial_streams_and_primary_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+    import stat
+    from contextlib import ExitStack
+
+    outputs = backup.Evidence(tmp_path)
+    calls = []
+    real = os.fsync
+
+    def sync(fd: int) -> None:
+        name = os.readlink(f"/proc/self/fd/{fd}")
+        calls.append((name, stat.S_ISDIR(os.fstat(fd).st_mode)))
+        real(fd)
+        if name.endswith(".stderr"):
+            raise OSError("stderr fsync failure")
+
+    monkeypatch.setattr(os, "fsync", sync)
+    with (
+        pytest.raises(backup.Refusal, match="primary monitor failure") as exc,
+        ExitStack() as stack,
+    ):
+        out = stack.enter_context(backup._output(outputs, "restore.partial"))
+        err = stack.enter_context(backup._output(outputs, "restore.partial.stderr"))
+        out.write(b"interrupted stdout")
+        err.write(b"interrupted stderr")
+        raise backup.Refusal("primary monitor failure")
+    assert (tmp_path / "restore.partial").read_bytes() == b"interrupted stdout"
+    assert (tmp_path / "restore.partial.stderr").read_bytes() == b"interrupted stderr"
+    assert {path for path, directory in calls if not directory} == {
+        str(tmp_path / "restore.partial"),
+        str(tmp_path / "restore.partial.stderr"),
+    }
+    assert sum(directory for _, directory in calls) >= 4
+    assert any("stderr fsync failure" in note for note in exc.value.__notes__)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "none",
+        "short_foreign",
+        "unflushed",
+        "reset",
+        "restart",
+        "wrong_incarnation",
+        "unobserved",
+        "extra_live",
+        "foreign_transport",
+        "startup_lock",
+        "replication_slots",
+    ],
+)
+def test_restore_admission_requires_actual_incarnation_closed_gate_and_exact_cumulative_sessions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fault: str,
+) -> None:
+    owner = ["x"] * 21
+    owner[2] = "1" * 32
+    owner[8] = "writer"
+    run = backup.Run(tmp_path, tmp_path, tuple(owner), "campaign", 2)
+    admin = MagicMock()
+    state: dict[str, Any] = {
+        "open": False,
+        "limit": 0,
+        "sessions": 0,
+        "epoch": None,
+        "server": "100",
+        "locks": 0,
+        "senders": 0,
+    }
+
+    def query(conn: Any, stmt: str, args: tuple[object, ...] = ()) -> tuple[Any, ...]:
+        if "FROM pg_locks" in stmt:
+            return (state["locks"],)
+        if "FROM pg_stat_database" in stmt:
+            return (
+                state["sessions"],
+                state["epoch"],
+                state["server"],
+                "on",
+                "on",
+                state["senders"],
+            )
+        if "datallowconn" in stmt:
+            return (313, "writer", state["open"], state["limit"])
+        return (313, "writer")
+
+    monkeypatch.setattr(backup, "_one", query)
+    monkeypatch.setattr(backup, "_inventory", lambda *_args: {})
+    actual = backup.Backend(120, "1000", 313, "test", None, -1)
+    roster = [actual]
+    monkeypatch.setattr(backup, "_clients", lambda _admin: roster)
+    gate = backup.RestoreAdmission(admin, run, 313, -1)
+    state["limit"] = -1
+    if fault == "foreign_transport":
+        roster[0] = backup.Backend(120, "1000", 313, "test", "127.0.0.1", 50111)
+    elif fault == "extra_live":
+        roster.append(backup.Backend(121, "1001", 313, "test", None, -1))
+    if fault in ("foreign_transport", "extra_live"):
+        with pytest.raises(backup.Refusal):
+            gate.observe_restore()
+        return
+    if fault != "unobserved":
+        gate.observe_restore()
+    if fault == "wrong_incarnation":
+        roster[0] = backup.Backend(120, "2000", 313, "test", None, -1)
+        with pytest.raises(backup.Refusal):
+            gate.observe_restore()
+        return
+    roster.clear()
+    state["sessions"] = 2 if fault == "short_foreign" else 0 if fault == "unflushed" else 1
+    if fault == "reset":
+        state["epoch"] = "new"
+    if fault == "restart":
+        state["server"] = "101"
+    if fault == "startup_lock":
+        state["locks"] = 1
+    if fault == "replication_slots":
+        state["senders"] = 1
+    if fault == "none":
+        gate.finish_restore()
+        assert gate.sessions[0]["backend"]["started"] == "1000"
+    else:
+        with pytest.raises(backup.Refusal):
+            gate.finish_restore()
+
+
+@pytest.mark.parametrize("fault", ["none", "wrong-remnant", "wrong-timeline", "torn-record"])
+def test_shutdown_checkpoint_can_span_a_segment_with_an_authenticated_continuation(
+    tmp_path: Path, fault: str
+) -> None:
+    files, witness = fixture()
+    control = bytes.fromhex(
+        "52b2070000000000a40600008979100c010000000000000000f1536500000000e0ff1f0000000000e0ff1f0000000000010000000100000001000000010000000003000000000000014000000000000000000000000000000000000000000000000000000000000000f15365000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000087d632410020000000000200002000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003b7e7914"
+    ).ljust(8192, b"\0")
+    record = bytes.fromhex(
+        "720000000000000028001000000000000000000004f2e4c2ff58e0ff1f0000000000010000000100000001000000010000000003000000000000014000000000000000000000000000000000000000000000000000000000000000f153650000000000000000000000000000000000000000"
+    )
+    files["global/pg_control"] = control
+    prior = bytearray(files[WAL] or b"")
+    struct.pack_into("<HHIQI", prior, SEGMENT - 8192, 0xD116, 0, 1, 2 * SEGMENT - 8192, 0)
+    prior[-32:] = record[:32]
+    files[WAL] = bytes(prior)
+    following = bytearray(SEGMENT)
+    struct.pack_into(
+        "<HHIQI",
+        following,
+        0,
+        0xD116,
+        3,
+        2 if fault == "wrong-timeline" else 1,
+        2 * SEGMENT,
+        len(record) - 32 + (fault == "wrong-remnant"),
+    )
+    struct.pack_into("<QII", following, 24, SYSTEM, SEGMENT, 8192)
+    following[40 : 40 + len(record) - 32] = record[32:]
+    if fault == "torn-record":
+        following[80] ^= 1
+    files["pg_wal/000000010000000000000002"] = bytes(following)
+    path = tmp_path / "cross.tar"
+    archive(path, files)
+    with path.open("rb") as stream:
+        if fault == "none":
+            assert backup.archive_manifest(stream, witness)[1] == "container"
+        else:
+            with pytest.raises(backup.Refusal):
+                backup.archive_manifest(stream, witness)
+
+
+def test_command_monitor_failure_syncs_both_streams_and_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+    import subprocess
+    from typing import BinaryIO
+
+    seen = []
+    real = os.fsync
+
+    def fsync(fd: int) -> None:
+        seen.append(os.readlink(f"/proc/self/fd/{fd}"))
+        real(fd)
+
+    def popen(args: list[str], *, stdin: object, stdout: BinaryIO, stderr: BinaryIO) -> MagicMock:
+        stdout.write(b"partial native stdout")
+        stderr.write(b"partial native stderr")
+        proc = MagicMock()
+        proc.__enter__.return_value = proc
+        proc.poll.return_value = None
+        return proc
+
+    monkeypatch.setattr(os, "fsync", fsync)
+    monkeypatch.setattr(subprocess, "Popen", popen)
+    monitor = MagicMock()
+    monitor.observe_restore.side_effect = backup.Refusal("unexpected backend")
+    with pytest.raises(backup.Refusal, match="unexpected backend"):
+        backup._command(backup.Evidence(tmp_path), "partial", ["synthetic"], monitor=monitor)
+    for name in ("partial", "partial.stderr"):
+        assert str(tmp_path / name) in seen and (tmp_path / name).read_bytes().startswith(
+            b"partial native"
+        )
+    assert seen.count(str(tmp_path)) >= 4

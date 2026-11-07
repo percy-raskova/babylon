@@ -8,6 +8,7 @@ import re
 import struct
 import subprocess
 import tarfile
+import time
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass
@@ -62,11 +63,11 @@ def _one(
 
 
 def _catalog(conn: Connection) -> dict[str, Any]:
-    owner, encoding, collate, ctype, provider, locale, rules, connlimit, default_acl = _one(
+    owner, encoding, collate, ctype, provider, locale, rules, connlimit, default_acl, allows = _one(
         conn,
         """
         SELECT pg_get_userbyid(datdba),pg_encoding_to_char(encoding),datcollate,datctype,
-               datlocprovider::text,datlocale,daticurules,datconnlimit,datacl IS NULL
+               datlocprovider::text,datlocale,daticurules,datconnlimit,datacl IS NULL,datallowconn
         FROM pg_catalog.pg_database WHERE datname=current_database()
     """,
     )
@@ -92,6 +93,7 @@ def _catalog(conn: Connection) -> dict[str, Any]:
         "icu_rules": rules,
         "connection_limit": connlimit,
         "acl_default": default_acl,
+        "allows_connections": allows,
         "acl": [list(row) for row in acl],
         "settings": [list(row) for row in settings],
     }
@@ -211,6 +213,71 @@ def _markers(rows: list[tuple[Any, ...]], period: int, foundation: str) -> list[
     return entries
 
 
+def _archive_terminal(
+    conn: Connection, campaign: str, markers: list[dict[str, Any]]
+) -> dict[str, Any]:
+    # archive_worker.rs ARCHIVE_SWEEP_WATERMARK_SQL, including marker-backed
+    # outer consumption semantics. All reads share terminal_snapshot's transaction.
+    first, highest, pending = _one(
+        conn,
+        """
+        SELECT min(d.resolve_tick) FILTER(WHERE c.campaign_id IS NULL),coalesce(max(d.resolve_tick),0),
+               count(*) FILTER(WHERE c.campaign_id IS NULL)
+        FROM babylon_state.archive_dirty_receipt_v1 d
+        JOIN babylon_state.tick_commit m USING(campaign_id,resolve_tick)
+        LEFT JOIN babylon_meta.archive_receipt_consumption_v1 c USING(campaign_id,resolve_tick)
+        WHERE d.campaign_id=%s::uuid
+    """,
+        (campaign,),
+    )
+    watermark = highest if first is None else first - 1
+    if pending or first is not None or watermark != markers[-1]["tick"]:
+        raise Refusal("Archive is not drained through the terminal marker")
+    rows = conn.execute(
+        """
+        SELECT resolve_tick,encode(d.tick_content_hash,'hex'),encode(c.tick_content_hash,'hex'),
+               encode(k.tick_content_hash,'hex'),encode(c.batch_sha256,'hex'),
+               encode(c.worker_contract_sha256,'hex'),encode(k.worker_contract_sha256,'hex'),
+               encode(c.knowledge_sha256,'hex'),encode(k.knowledge_sha256,'hex')
+        FROM babylon_state.archive_dirty_receipt_v1 d
+        FULL JOIN babylon_meta.archive_receipt_consumption_v1 c USING(campaign_id,resolve_tick)
+        FULL JOIN babylon_meta.archive_tick_knowledge_v3 k USING(campaign_id,resolve_tick)
+        WHERE campaign_id=%s::uuid ORDER BY resolve_tick
+    """,
+        (campaign,),
+    ).fetchall()
+    if len(rows) != len(markers):
+        raise Refusal("Archive proof is missing a committed period")
+    receipts = []
+    for marker, row in zip(markers, rows, strict=True):
+        tick, dirty, consumed, knowledge_marker, batch, worker, known_worker, knowledge, known = row
+        if (
+            tick != marker["tick"]
+            or not dirty == consumed == knowledge_marker == marker["hash"]
+            or worker != known_worker
+            or knowledge != known
+            or not all(re.fullmatch("[a-f0-9]{64}", v or "") for v in (batch, worker, knowledge))
+        ):
+            raise Refusal(
+                "Archive dirty, consumption or knowledge identity differs from its committed marker"
+            )
+        receipts.append(
+            {
+                "tick": tick,
+                "marker": dirty,
+                "batch": batch,
+                "worker": worker,
+                "knowledge": knowledge,
+            }
+        )
+    return {
+        "terminal_marker": markers[-1]["hash"],
+        "watermark": watermark,
+        "pending": pending,
+        "receipts": receipts,
+    }
+
+
 def terminal_snapshot(connection: Connection, campaign: str, period: int) -> dict[str, Any]:
     if str(UUID(campaign)) != campaign or type(period) is not int or period <= 0:
         raise Refusal("terminal campaign or period is malformed")
@@ -246,11 +313,13 @@ def terminal_snapshot(connection: Connection, campaign: str, period: int) -> dic
         """,
             (campaign,),
         ).fetchall()
+        chain = _markers(markers, period, identity[0][3])
         return {
             "campaign": campaign,
             "period": period,
             "identity": list(identity[0]),
-            "markers": _markers(markers, period, identity[0][3]),
+            "markers": chain,
+            "archive_terminal": _archive_terminal(connection, campaign, chain),
             "campaign_rows_sha256": _campaign_rows(connection, campaign),
             "database": _catalog(connection),
             "object_authority": _object_authority(connection),
@@ -288,11 +357,215 @@ def _member_name(raw: str) -> str:
     return value
 
 
-def _shutdown_change(path: str) -> bool:
+# PostgreSQL REL_17_11 pg_control.h and xlogrecord.h, little-endian linux/amd64.
+# C layout witness: sizeof(CheckPoint)=88, offsetof(ControlFileData,crc)=288.
+PGSS_RUNNING = "pg_stat_tmp/pgss_query_texts.stat"
+PGSS_STOPPED = "pg_stat/pg_stat_statements.stat"
+PAGE = 8192
+RELSEG_BYTES = PAGE * 131072
+
+
+def _crc32c(data: bytes) -> int:
+    value = 0xFFFFFFFF
+    for byte in data:
+        value ^= byte
+        for _ in range(8):
+            value = (value >> 1) ^ (0x82F63B78 if value & 1 else 0)
+    return value ^ 0xFFFFFFFF
+
+
+def _checkpoint(
+    stream: BinaryIO, control: bytes, wal: dict[str, int], witness: PhysicalWitness
+) -> None:
+    cluster = int(witness.physical["cluster"])
+    if (
+        len(control) != PAGE
+        or struct.unpack_from("<QIII", control) != (cluster, 1700, 202406281, 1)
+        or struct.unpack_from("<I", control, 288)[0] != _crc32c(control[:288])
+        or struct.unpack_from("<IIII", control, 216) != (PAGE, 131072, PAGE, witness.segment_bytes)
+    ):
+        raise Refusal("clean control format, catalog, cluster, block geometry or CRC differs")
+    lsn, redo, timeline = struct.unpack_from("<QQI", control, 32)
+    if not timeline or not lsn or lsn != redo or lsn % 8:
+        raise Refusal("shutdown checkpoint lacks an aligned redo location and timeline")
+    cursor = lsn
+    record = bytearray()
+    while len(record) < 114:
+        log, position = divmod(cursor, 2**32)
+        segment, within_segment = divmod(position, witness.segment_bytes)
+        page_offset, in_page = divmod(within_segment, PAGE)
+        name = f"pg_wal/{timeline:08X}{log:08X}{segment:08X}"
+        if name not in wal:
+            raise Refusal("checkpoint segment is absent or lacks its source-bound long header")
+        page_start = wal[name] + page_offset * PAGE
+        stream.seek(page_start)
+        page = stream.read(40)
+        magic, flags, tli, address, remaining = struct.unpack_from("<HHIQI", page)
+        header_size = 40 if page_offset == 0 else 24
+        if (
+            magic != 0xD116
+            or tli != timeline
+            or address != cursor - in_page
+            or flags & ~7
+            or bool(flags & 2) != (page_offset == 0)
+        ):
+            raise Refusal("shutdown checkpoint WAL page identity differs")
+        if record:
+            if in_page or not flags & 1 or remaining != 114 - len(record):
+                raise Refusal("shutdown checkpoint continuation length or location differs")
+            in_page = header_size
+            cursor += header_size
+        elif in_page < header_size or (flags & 1 and in_page < header_size + remaining):
+            raise Refusal("shutdown checkpoint starts inside a WAL header or preceding record")
+        take = min(114 - len(record), PAGE - in_page)
+        stream.seek(page_start + in_page)
+        data = stream.read(take)
+        if len(data) != take:
+            raise Refusal("checkpoint WAL record is truncated")
+        record.extend(data)
+        cursor += take
+    length, xid, previous, flags, rmid = struct.unpack_from("<IIQBB", record)
+    if (
+        length != 114
+        or xid
+        or not 0 < previous < lsn
+        or flags
+        or rmid
+        or record[18:20] != bytes(2)
+        or record[24:26] != b"\xff\x58"
+        or record[26:] != control[40:128]
+        or struct.unpack_from("<I", record, 20)[0] != _crc32c(bytes(record[24:] + record[:20]))
+    ):
+        raise Refusal("WAL record is not the matching CRC-verified shutdown checkpoint")
+
+
+def _extent_files(sizes: dict[str, int]) -> dict[str, int]:
+    extents = {}
+    for path, size in sizes.items():
+        if size < 0 or size % PAGE:
+            raise Refusal("relation extent is not block aligned")
+        for pos in range(0, max(size, 1), RELSEG_BYTES):
+            name = path if pos == 0 else f"{path}.{pos // RELSEG_BYTES}"
+            extents[name] = min(size - pos, RELSEG_BYTES)
+    return extents
+
+
+def _initialized(header: bytes | memoryview) -> bool:
+    if len(header) != 24:
+        raise Refusal("relation block header is truncated")
+    if header == bytes(24):
+        return False
+    flags, lower, upper, special, version = struct.unpack_from("<5H", header, 10)
+    if (
+        flags & ~7
+        or not 24 <= lower <= upper <= special <= PAGE
+        or special % 8
+        or version != PAGE + 4
+    ):
+        raise Refusal("terminal relation block has an invalid PG17 page header")
+    return True
+
+
+def _source_pages(conn: Connection, sizes: dict[str, int]) -> dict[str, dict[str, bool]]:
+    samples = [
+        (name, offset)
+        for name, length in _extent_files(sizes).items()
+        if length
+        for offset in sorted({0, length - PAGE})
+    ]
+    result: dict[str, dict[str, bool]] = {}
+    rows = conn.execute(
+        """
+        SELECT path,off,pg_read_binary_file(path,off,24)
+        FROM unnest(%s::text[],%s::bigint[]) AS e(path,off) ORDER BY path,off
+    """,
+        ([name for name, _ in samples], [off for _, off in samples]),
+    ).fetchall()
+    if {(r[0], r[1]) for r in rows} != set(samples) or len(rows) != len(samples):
+        raise Refusal("source boundary block inventory differs from the SQL main-fork sizes")
+    for path, offset, header in rows:
+        result.setdefault(path, {})[str(offset)] = _initialized(bytes(header))
+    return result
+
+
+def _verify_blocks(chunk: bytes, start: int, samples: dict[str, bool]) -> None:
+    if len(chunk) % PAGE:
+        raise Refusal("incomplete terminal relation block")
+    view = memoryview(chunk)
+    for i in range(0, len(chunk), PAGE):
+        initialized = _initialized(view[i : i + 24])
+        # Mutable pages may be rewritten. An independently observed populated
+        # boundary cannot turn into an unproved hole at clean shutdown.
+        if not initialized and (samples.get(str(start + i)) or view[i : i + PAGE] != bytes(PAGE)):
+            raise Refusal("terminal block is missing or its zero header masks nonzero contents")
+
+
+def _extents(witness: PhysicalWitness, members: dict[str, Member]) -> None:
+    sizes = witness.physical["relation_sizes"]
+    if set(sizes) != set(witness.relations.values()):
+        raise Refusal("missing independent table or index extent")
+    for path, length in sizes.items():
+        if length < 0 or length % PAGE:
+            raise Refusal("SQL main-fork size is not block aligned")
+        # PostgreSQL may leave an empty trailing segment at an exact segment boundary.
+        full, remainder = divmod(length, RELSEG_BYTES)
+        for index in range(full + 1):
+            name = path if not index else f"{path}.{index}"
+            size = RELSEG_BYTES if index < full else remainder
+            if not size and index and name not in witness.members and name not in members:
+                continue
+            before, after = witness.members.get(name), members.get(name)
+            if (
+                before is None
+                or after is None
+                or before.kind != "file"
+                or after.kind != "file"
+                or before.size != size
+                or after.size != size
+            ):
+                raise Refusal(
+                    "terminal relation no longer covers its independently measured blocks"
+                )
+    # Any additional segment of a selected main fork needs independent proof.
+    for name in set(witness.members) | set(members):
+        base, dot, suffix = name.rpartition(".")
+        if (
+            dot
+            and base in sizes
+            and suffix.isdecimal()
+            and (
+                not suffix.isascii()
+                or suffix != str(int(suffix))
+                or not 1 <= int(suffix) <= sizes[base] // RELSEG_BYTES
+            )
+        ):
+            raise Refusal("terminal relation has an unaccounted segment")
+
+
+def _pgss_source(witness: PhysicalWitness) -> None:
+    config = witness.physical["pgss"]
+    before = witness.members.get(PGSS_RUNNING)
+    root = witness.physical["container_root"]
+    if (
+        config != {"preload": "pg_stat_statements", "save": "on", "version": "1.11"}
+        or before is None
+        or (before.kind, before.mode, before.uid, before.gid)
+        != ("file", 0o600, root["uid"], root["gid"])
+        or PGSS_STOPPED in witness.members
+    ):
+        raise Refusal(
+            "pg_stat_statements persistence configuration or directional file transition differs"
+        )
+
+
+def _shutdown_change(path: str, *, added: bool) -> bool:
+    if path in (PGSS_STOPPED, "pg_stat/pgstat.stat"):
+        return added
+    if path in (PGSS_RUNNING, "postmaster.pid"):
+        return not added
     return (
-        path in {"postmaster.pid", "pg_stat/pgstat.stat"}
-        or WAL_NAME.fullmatch(path) is not None
-        or path.startswith(("pg_wal/archive_status/", "pg_stat_tmp/"))
+        WAL_NAME.fullmatch(path) is not None
+        or re.fullmatch(r"pg_wal/archive_status/[A-F0-9]{24}\.(ready|done)", path) is not None
     )
 
 
@@ -317,9 +590,13 @@ def _valid_wal(path: str, header: bytes, size: int, witness: PhysicalWitness) ->
 
 def archive_manifest(stream: BinaryIO, witness: PhysicalWitness) -> tuple[dict[str, Member], str]:
     result: dict[str, Member] = {}
-    valid_wal: set[str] = set()
-    checkpoint_wal = None
-    clean_control = False
+    extent_files = _extent_files(witness.physical["relation_sizes"])
+    samples = witness.physical["relation_page_samples"]
+    for path, length in extent_files.items():
+        if length and set(samples.get(path, {})) != {str(x) for x in (0, length - PAGE)}:
+            raise Refusal("independent boundary block samples are absent")
+    wal: dict[str, int] = {}
+    control = b""
     with tarfile.open(fileobj=stream, mode="r:") as archive:
         for item in archive:
             path = _member_name(item.name)
@@ -341,28 +618,29 @@ def archive_manifest(stream: BinaryIO, witness: PhysicalWitness) -> tuple[dict[s
                 if source is None:
                     raise Refusal("ordinary archive member lacks its payload")
                 with source:
-                    header = source.read(64)
+                    header = source.read(
+                        PAGE if path == "global/pg_control" or path in extent_files else 64
+                    )
+                    if path in extent_files:
+                        _verify_blocks(header, 0, samples.get(path, {}))
                     hasher = hashlib.sha256(header)
                     size = len(header)
                     while data := source.read(1024 * 1024):
+                        if path in extent_files:
+                            _verify_blocks(data, size, samples.get(path, {}))
                         hasher.update(data)
                         size += len(data)
                     if size != item.size:
                         raise Refusal("archive file length differs from its actual payload")
                     digest = hasher.hexdigest()
-                if path == "global/pg_control" and size == 8192:
-                    clean_control = (
-                        struct.unpack_from("<Q", header)[0] == int(witness.physical["cluster"])
-                        and struct.unpack_from("<I", header, 16)[0] == 1
-                    )
-                    checkpoint = struct.unpack_from("<Q", header, 32)[0]
-                    timeline = struct.unpack_from("<I", header, 48)[0]
-                    log, position = divmod(checkpoint, 2**32)
-                    checkpoint_wal = (
-                        f"pg_wal/{timeline:08X}{log:08X}{position // witness.segment_bytes:08X}"
-                    )
+                if path == "global/pg_control" and size == PAGE:
+                    control = header
+                if path == PGSS_STOPPED and (
+                    size < 28 or struct.unpack_from("<II", header) != (0x20220408, 1700)
+                ):
+                    raise Refusal("pg_stat_statements shutdown file header differs")
                 if _valid_wal(path, header, size, witness):
-                    valid_wal.add(path)
+                    wal[path] = item.offset_data
             result[path] = Member(
                 "dir" if item.isdir() else "file", item.mode, item.uid, item.gid, item.size, digest
             )
@@ -382,15 +660,15 @@ def archive_manifest(stream: BinaryIO, witness: PhysicalWitness) -> tuple[dict[s
         "pg_tblspc",
         *witness.relations.values(),
     }
-    if (
-        not witness.relations
-        or not required <= result.keys()
-        or not clean_control
-        or checkpoint_wal not in valid_wal
-    ):
+    if not witness.relations or not required <= result.keys():
         raise Refusal(
             "archive lacks the admitted cluster, clean control, WAL or terminal relations"
         )
+    _checkpoint(stream, control, wal, witness)
+    _extents(witness, result)
+    _pgss_source(witness)
+    if PGSS_RUNNING in result or PGSS_STOPPED not in result:
+        raise Refusal("pg_stat_statements shutdown transition is incomplete")
     if any(path.startswith("pg_tblspc/") for path in result):
         raise Refusal("physical archive contains an external tablespace")
     modes = {"host", "container"}
@@ -401,7 +679,7 @@ def archive_manifest(stream: BinaryIO, witness: PhysicalWitness) -> tuple[dict[s
         if path == ".":
             expected = Member("dir", root["mode"], root["uid"], root["gid"], None, None)
         if actual is None or expected is None:
-            if not _shutdown_change(path):
+            if not _shutdown_change(path, added=expected is None):
                 raise Refusal("archive and independent stable member inventory differ: " + path)
             if actual is None:
                 continue
@@ -473,16 +751,215 @@ class Run:
         ):
             raise Refusal("backup requires the exact terminal media-native owner")
         storage.reauthenticate_native_owner(self.root, self.evidence, self.owner)
-        return storage._current_physical(
+        physical = storage._current_physical(
             Evidence(self.evidence), self.root, self.container, self.owner[2], self.owner[6]
         )
+        if type(physical.get("max_wal_senders")) is not int or physical["max_wal_senders"] != 0:
+            raise Refusal("native physical receipt does not exclude uncounted replication sessions")
+        return physical
+
+
+@dataclass(frozen=True)
+class Backend:
+    pid: int
+    started: str
+    oid: int
+    role: str
+    address: str | None
+    port: int
+
+
+def _clients(conn: Connection) -> list[Backend]:
+    return [
+        Backend(*row)
+        for row in conn.execute("""
+        SELECT pid,(extract(epoch FROM backend_start)*1000000)::bigint::text,datid,usename,host(client_addr),client_port
+        FROM pg_stat_activity WHERE pid<>pg_backend_pid() AND (backend_type='client backend'
+             OR backend_type='walsender') ORDER BY pid
+    """).fetchall()
+    ]
+
+
+def _own_backend(conn: Connection, oid: int, role: str) -> Backend:
+    values = _one(
+        conn,
+        """
+        SELECT pid,(extract(epoch FROM backend_start)*1000000)::bigint::text,datid,usename,host(client_addr),client_port
+        FROM pg_stat_activity WHERE pid=pg_backend_pid() AND usename=session_user
+    """,
+    )
+    own = Backend(*values)
+    if (
+        own.pid != conn.info.backend_pid
+        or own.oid != oid
+        or own.role != role
+        or not own.address
+        or own.port <= 0
+    ):
+        raise Refusal("SQL login does not match its own authenticated TCP backend")
+    return own
+
+
+class RestoreAdmission:
+    """One admitted backend per closed verification-database window."""
+
+    def __init__(self, admin: Connection, run: Run, oid: int, original_limit: int) -> None:
+        self.admin = admin
+        self.run = run
+        self.oid = oid
+        self.limit = original_limit
+        self.restore_backend: Backend | None = None
+        self.sessions: list[dict[str, Any]] = []
+        self._guard(False, 0)
+        self._barrier()
+        count, self.reset, self.postmaster = self._stats()
+        if count or original_limit == 0:
+            raise Refusal(
+                "new verification database has a prior session or source forbids connections"
+            )
+
+    def _guard(self, opened: bool, limit: int) -> None:
+        actual = _one(
+            self.admin,
+            """
+            SELECT oid,pg_get_userbyid(datdba),datallowconn,datconnlimit
+            FROM pg_database WHERE datname=%s
+        """,
+            (self.run.verification,),
+        )
+        if actual != (self.oid, self.run.owner[8], opened, limit):
+            raise Refusal("verification OID, owner or checked admission guard changed")
+
+    def _latch(self, opened: bool, limit: int) -> None:
+        if _one(
+            self.admin,
+            "SELECT oid,pg_get_userbyid(datdba) FROM pg_database WHERE datname=%s",
+            (self.run.verification,),
+        ) != (self.oid, self.run.owner[8]):
+            raise Refusal("verification database identity changed before admission transition")
+        self.admin.execute(
+            sql.SQL("ALTER DATABASE {} ALLOW_CONNECTIONS {} CONNECTION LIMIT {}").format(
+                sql.Identifier(self.run.verification), sql.Literal(opened), sql.Literal(limit)
+            )
+        )
+        self._guard(opened, limit)
+
+    def _barrier(self) -> None:
+        # REL_17_11 postinit.c holds this shared-object lock from before
+        # CheckMyDatabase until after its backend status becomes visible.
+        if _one(
+            self.admin,
+            """SELECT count(*) FROM pg_locks WHERE locktype='object'
+            AND classid='pg_catalog.pg_database'::regclass AND objid=%s::oid
+            AND mode='RowExclusiveLock'""",
+            (self.oid,),
+        ) != (0,):
+            raise Refusal("a verification backend is still entering the database")
+
+    def _stats(self) -> tuple[int, str | None, str]:
+        n, reset, started, counts, activities, senders = _one(
+            self.admin,
+            """
+            SELECT sessions,(extract(epoch FROM stats_reset)*1000000)::bigint::text,(extract(epoch FROM pg_postmaster_start_time())*1000000)::bigint::text,
+                   current_setting('track_counts'),current_setting('track_activities'),current_setting('max_wal_senders')::int
+            FROM pg_stat_database WHERE datid=%s
+        """,
+            (self.oid,),
+        )
+        if (
+            type(n) is not int
+            or n < 0
+            or not started
+            or (counts, activities, senders) != ("on", "on", 0)
+        ):
+            raise Refusal("server does not supply usable session statistics")
+        return n, reset, started
+
+    def reconcile(self, closing: Backend | None = None) -> None:
+        self._guard(False, self.limit)
+        self._barrier()
+        # A socket close does not wait for server teardown. Wait only for the
+        # exact backend whose own close we initiated, never an unknown client.
+        deadline = time.monotonic() + 5
+        while clients := _clients(self.admin):
+            if closing is None or clients != [closing] or time.monotonic() >= deadline:
+                raise Refusal(
+                    "unexpected or non-exiting client behind the closed verification gate"
+                )
+            time.sleep(0.025)
+        _inventory(self.admin, self.run, self.oid)
+        # Flush occurs in before_shmem_exit; activity removal is on_shmem_exit.
+        # Fresh autocommit statements read the count AFTER the zero-backend barrier.
+        if self._stats() != (len(self.sessions), self.reset, self.postmaster):
+            raise Refusal("verification session total, reset epoch or postmaster differs")
+
+    def _record(self, purpose: str, backend: Backend, opened_limit: int) -> None:
+        if any(row["backend"] == asdict(backend) for row in self.sessions):
+            raise Refusal("verification backend incarnation reused for another admitted connection")
+        self.sessions.append(
+            {
+                "purpose": purpose,
+                "backend": asdict(backend),
+                "open_limit": opened_limit,
+                "closed_limit": self.limit,
+                "expected_sessions": len(self.sessions) + 1,
+            }
+        )
+        self.reconcile(backend)
+
+    @contextmanager
+    def window(self, limit: int) -> Iterator[None]:
+        self._latch(True, limit)
+        try:
+            yield
+        finally:
+            self._latch(False, self.limit)
+
+    def observe_restore(self) -> None:
+        clients = _clients(self.admin)
+        if not clients:
+            return
+        if len(clients) != 1:
+            raise Refusal("additional client during single-connection pg_restore")
+        client = clients[0]
+        if (
+            client.oid != self.oid
+            or client.role != "test"
+            or client.address is not None
+            or client.port != -1
+            or client.pid <= 0
+            or not client.started
+            or self.restore_backend not in (None, client)
+        ):
+            raise Refusal("single local restore backend incarnation or transport changed")
+        self.restore_backend = client
+
+    def finish_restore(self) -> None:
+        if self.restore_backend is None:
+            raise Refusal("single-connection pg_restore exited without an observed backend")
+        self._record("pg_restore", self.restore_backend, 0)
+
+    @contextmanager
+    def session(self, role: str, purpose: str) -> Iterator[Connection]:
+        # Allow only one ordinary slot for a real restricted login. Close new
+        # admission before that login performs work. The final comparison runs
+        # after both restricted logins closed and their exact totals reconciled.
+        limit = 0 if role == "test" else 1
+        with ExitStack() as sessions:
+            with self.window(limit):
+                conn = sessions.enter_context(_conn(self.run, self.run.verification, role))
+                own = _own_backend(conn, self.oid, role)
+            self._barrier()
+            _inventory(self.admin, self.run, self.oid, own)
+            yield conn
+        self._record(purpose, own, limit)
 
 
 def _inventory(
     conn: Connection,
     run: Run,
     verified_oid: int | None = None,
-    admitted: tuple[str, int, str, str] | None = None,
+    admitted: Backend | None = None,
 ) -> dict[str, int]:
     rows = conn.execute("""
         SELECT d.datname::text,d.oid,r.rolname::text FROM pg_database d JOIN pg_roles r ON r.oid=d.datdba
@@ -507,11 +984,7 @@ def _inventory(
     )
     if endpoint != (run.owner[2], run.owner[20], "test", "test", "postgres"):
         raise Refusal("backup administrator identity or cluster differs from the captured owner")
-    clients = conn.execute("""
-        SELECT datname,datid,usename,application_name FROM pg_stat_activity
-        WHERE backend_type='client backend' AND pid<>pg_backend_pid()
-    """).fetchall()
-    if clients and (admitted is None or clients != [admitted]):
+    if _clients(conn) != ([] if admitted is None else [admitted]):
         raise Refusal("unexpected client on the task cluster during recovery")
     return {name: oid for name, (oid, _) in identities.items()}
 
@@ -534,10 +1007,36 @@ def _conn(
 
 @contextmanager
 def _output(directory: Evidence, name: str) -> Iterator[BinaryIO]:
-    with storage._new_stream(directory, name) as target:
-        yield target
-        target.flush()
-        os.fsync(target.fileno())
+    directory_fd = os.open(directory.path, storage.DIR_FLAGS)
+    try:
+        storage._private_dir(directory_fd)
+        target = storage._new_stream(directory, name)
+        primary: BaseException | None = None
+        try:
+            os.fsync(directory_fd)
+            yield target
+        except BaseException as exc:
+            primary = exc
+            raise
+        finally:
+            failures = []
+            for operation in (
+                target.flush,
+                lambda: os.fsync(target.fileno()),
+                target.close,
+                lambda: os.fsync(directory_fd),
+            ):
+                try:
+                    operation()
+                except OSError as exc:
+                    failures.append(exc)
+            if failures:
+                if primary is None:
+                    raise failures[0]
+                for failure in failures:
+                    primary.add_note(f"retaining {name}: {failure}")
+    finally:
+        os.close(directory_fd)
 
 
 def _command(
@@ -546,7 +1045,7 @@ def _command(
     args: list[str],
     *,
     source: Reference | None = None,
-    monitor: tuple[Connection, Run, int] | None = None,
+    monitor: RestoreAdmission | None = None,
 ) -> Reference:
     with ExitStack() as files:
         if source is not None:
@@ -559,10 +1058,7 @@ def _command(
         with subprocess.Popen(args, stdin=input_file, stdout=output, stderr=errors) as child:
             while child.poll() is None:
                 if monitor is not None:
-                    admin, run, oid = monitor
-                    _inventory(
-                        admin, run, oid, (run.verification, oid, "test", "wayne_backup_restore")
-                    )
+                    monitor.observe_restore()
                 try:
                     child.wait(timeout=0.5 if monitor else None)
                 except subprocess.TimeoutExpired:
@@ -600,14 +1096,11 @@ def _verify_create(admin: Connection, run: Run, catalog: dict[str, Any]) -> int:
     admin.execute(
         sql.SQL("""
         CREATE DATABASE {} WITH TEMPLATE template0 OWNER {} ENCODING {} LOCALE_PROVIDER builtin
-        BUILTIN_LOCALE {} LC_COLLATE {} LC_CTYPE {} CONNECTION LIMIT {}
+        BUILTIN_LOCALE {} LC_COLLATE {} LC_CTYPE {} ALLOW_CONNECTIONS false CONNECTION LIMIT 0
     """).format(
             sql.Identifier(run.verification),
             sql.Identifier(catalog["owner"]),
-            *(
-                sql.Literal(catalog[k])
-                for k in ("encoding", "locale", "collate", "ctype", "connection_limit")
-            ),
+            *(sql.Literal(catalog[k]) for k in ("encoding", "locale", "collate", "ctype")),
         )
     )
     oid, owner = _one(
@@ -677,14 +1170,25 @@ def _db_privileges(conn: Connection, name: str, catalog: dict[str, Any]) -> None
 
 
 def _probes(
-    admin: Connection, run: Run, database: str, oid: int, verification_oid: int | None
+    admin: Connection,
+    run: Run,
+    database: str,
+    oid: int,
+    verification_oid: int | None,
+    gate: RestoreAdmission | None = None,
 ) -> dict[str, Any]:
     results = {}
     for kind in ("reader", "observer"):
         role = "national_" + kind + "_" + run.owner[2][:12]
         application = "wayne_probe_" + kind
-        with _conn(run, database, role, application=application) as conn:
-            _inventory(admin, run, verification_oid, (database, oid, role, application))
+        session = (
+            gate.session(role, kind)
+            if gate
+            else _conn(run, database, role, application=application)
+        )
+        with session as conn:
+            if not gate:
+                _inventory(admin, run, verification_oid, _own_backend(conn, oid, role))
             identity = _one(
                 conn,
                 """
@@ -781,54 +1285,71 @@ def _logical(run: Run, backup: Evidence, functional: dict[str, Any]) -> list[Ref
                 {"name": run.verification, "oid": oid, "owner": run.owner[8], "initial": initial},
             )
         )
-        _inventory(admin, run, oid)
-        refs.append(
-            _command(
-                backup,
-                "restore.stdout",
-                [
-                    "docker",
-                    "exec",
-                    "-i",
-                    "-e",
-                    "PGAPPNAME=wayne_backup_restore",
-                    run.container,
-                    "pg_restore",
-                    "--exit-on-error",
-                    "-U",
-                    "test",
-                    "--dbname=" + run.verification,
-                ],
-                source=dump,
-                monitor=(admin, run, oid),
+        if original["database"]["allows_connections"] is not True:
+            raise Refusal("original database is not open for its verified logins")
+        # The actual closed DB guard is the sole intentional authority difference.
+        expected_closed = {
+            **original,
+            "database": {**original["database"], "allows_connections": False},
+        }
+        gate = RestoreAdmission(admin, run, oid, original["database"]["connection_limit"])
+        with gate.window(0):
+            refs.append(
+                _command(
+                    backup,
+                    "restore.stdout",
+                    [
+                        "docker",
+                        "exec",
+                        "-i",
+                        run.container,
+                        "pg_restore",
+                        "--exit-on-error",
+                        "--single-transaction",
+                        "-U",
+                        "test",
+                        "--dbname=" + run.verification,
+                    ],
+                    source=dump,
+                    monitor=gate,
+                )
             )
-        )
+        gate.finish_restore()
         refs.append(backup.reference("restore.stdout.stderr"))
-        with _conn(run, run.verification) as conn:
-            _db_privileges(conn, run.verification, original["database"])
+        with gate.session("test", "restore-authority") as conn:
+            _db_privileges(conn, run.verification, expected_closed["database"])
+        restored_probes = _probes(admin, run, run.verification, oid, oid, gate)
+        refs.append(backup.publish_json("restored-probes.json", restored_probes))
+        with gate.session("test", "final-snapshot") as conn:
             restored = terminal_snapshot(conn, run.campaign, run.period)
         refs.append(backup.publish_json("restored-terminal.json", restored))
-        restored_probes = _probes(admin, run, run.verification, oid, oid)
-        refs.append(backup.publish_json("restored-probes.json", restored_probes))
-        if restored != original or restored != functional or restored_probes != probes:
+        if restored != expected_closed or restored_probes != probes or original != functional:
             raise Refusal("restored state or restricted operations differ; retain both databases")
-        for ref in refs:
-            backup.verify(ref)
-    run.authenticate()
-    with _conn(run, run.database) as conn:
-        final_original = terminal_snapshot(conn, run.campaign, run.period)
-    if final_original != functional:
-        raise Refusal(
-            "original terminal state changed during restore; retain verification database"
-        )
-    with _conn(run, "postgres") as admin:
-        _inventory(admin, run, oid)
-        admin.execute(
-            sql.SQL("ALTER DATABASE {} ALLOW_CONNECTIONS false").format(
-                sql.Identifier(run.verification)
+        refs.append(
+            backup.publish_json(
+                "verification-admission.json",
+                {
+                    "verification_oid": oid,
+                    "original_allow_connections": True,
+                    "verified_final_allow_connections": False,
+                    "source_connection_limit": gate.limit,
+                    "creation_connection_limit": 0,
+                    "stats_reset": gate.reset,
+                    "postmaster_stamp": gate.postmaster,
+                    "sessions": gate.sessions,
+                },
             )
         )
-        _inventory(admin, run, oid)
+        for ref in refs:
+            backup.verify(ref)
+        run.authenticate()
+        with _conn(run, run.database) as source_conn:
+            final_original = terminal_snapshot(source_conn, run.campaign, run.period)
+        if final_original != functional:
+            raise Refusal(
+                "original terminal state changed during restore; retain verification database"
+            )
+        gate.reconcile()
         admin.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(run.verification)))
         if _inventory(admin, run) != initial:
             raise Refusal("normal cluster inventory differs after verification DB removal")
@@ -857,19 +1378,45 @@ def _physical_witness(run: Run, physical: dict[str, Any]) -> PhysicalWitness:
             or size > 1024**3
             or size & (size - 1)
             or len(wal_head) != 40
+            or struct.unpack_from("<H", wal_head)[0] != 0xD116
             or struct.unpack_from("<QII", wal_head, 24) != (int(cluster), size, 8192)
         ):
             raise Refusal("source database, cluster or WAL header differs from physical authority")
+        major, control_version, catalog, block, segment, preload, save, extension = _one(
+            conn,
+            """
+            SELECT current_setting('server_version_num'),(pg_control_system()).pg_control_version,
+                   (pg_control_system()).catalog_version_no, current_setting('block_size')::int,
+                   pg_size_bytes(current_setting('segment_size')), current_setting('shared_preload_libraries'),
+                   current_setting('pg_stat_statements.save'), (SELECT extversion FROM pg_extension
+                   WHERE extname='pg_stat_statements')
+        """,
+        )
+        if (major, control_version, catalog, block, segment, preload, save, extension) != (
+            "170011",
+            1700,
+            202406281,
+            PAGE,
+            RELSEG_BYTES,
+            "pg_stat_statements",
+            "on",
+            "1.11",
+        ):
+            raise Refusal(
+                "source PostgreSQL ABI, relation geometry or statistics extension differs"
+            )
+        physical = {**physical, "pgss": {"preload": preload, "save": save, "version": extension}}
         selected = conn.execute("""
             WITH terminal AS (
                 SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
                 WHERE c.relkind IN ('r','m') AND n.nspname IN ('babylon_state','babylon_meta')
             ), files AS (
                 SELECT oid FROM terminal UNION SELECT indexrelid FROM pg_index JOIN terminal ON indrelid=oid
-            ) SELECT n.nspname||'.'||c.relname,pg_relation_filepath(c.oid)
+            ) SELECT n.nspname||'.'||c.relname,pg_relation_filepath(c.oid),pg_relation_size(c.oid,'main')
             FROM files JOIN pg_class c USING(oid) JOIN pg_namespace n ON n.oid=c.relnamespace ORDER BY 1
         """).fetchall()
-        relations = dict(selected)
+        relations = {name: path for name, path, _ in selected}
+        physical["relation_sizes"] = {path: int(length) for _, path, length in selected}
         if (
             len(relations) != len(selected)
             or not REQUIRED_ROWS <= relations.keys()
@@ -881,6 +1428,7 @@ def _physical_witness(run: Run, physical: dict[str, Any]) -> PhysicalWitness:
             raise Refusal(
                 "terminal table and index relation paths are incomplete or outside the database"
             )
+        physical["relation_page_samples"] = _source_pages(conn, physical["relation_sizes"])
     cmd = ["docker", "exec", "-w", storage.PGDATA, run.container]
     # GNU find does not follow symlinks here. Its NUL-separated names are data.
     raw = storage._exec_bytes(
@@ -934,9 +1482,10 @@ def _physical_witness(run: Run, physical: dict[str, Any]) -> PhysicalWitness:
         *relations.values(),
     } <= members.keys() or not any(WAL_NAME.fullmatch(p) for p in members):
         raise Refusal("running physical witness is missing required relations, control or WAL")
-    return PhysicalWitness(
-        physical, members, relations, oid, size, struct.unpack_from("<H", wal_head)[0]
-    )
+    witness = PhysicalWitness(physical, members, relations, oid, size, 0xD116)
+    _extents(witness, members)
+    _pgss_source(witness)
+    return witness
 
 
 def _stopped(run: Run, witness: PhysicalWitness) -> None:

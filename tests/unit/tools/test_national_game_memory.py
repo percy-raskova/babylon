@@ -1262,6 +1262,7 @@ def capture_runner(
     children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
     operation_lock: AbstractContextManager[object] | None = None,
     foundation: str | None = "a" * 64,
+    cold_segment_period: int | None = None,
 ) -> memory.RunningMemoryCapture:
     return memory.RunningMemoryCapture(
         directory=directory,
@@ -1280,6 +1281,7 @@ def capture_runner(
         sample_gap_seconds=5,
         operation_timeout=2,
         operation_lock=operation_lock,
+        cold_segment_period=cold_segment_period,
     )
 
 
@@ -1713,3 +1715,31 @@ def test_periodic_capture_failure_is_visible_to_driver_and_never_publishes_resul
     assert not (tmp_path / "combined-memory.json").exists()
     assert json.loads((tmp_path / "combined-memory-progress.json").read_bytes())["capture_failed"]
     assert capture._thread is not None and not capture._thread.is_alive()
+
+
+@pytest.mark.parametrize("fixed,observed", [(0, 0), (10, 10), (0, 1), (10, 9)])
+def test_fixed_cold_pair_retains_its_actual_period_separately(
+    tmp_path: Path,
+    owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+    fixed: int,
+    observed: int,
+) -> None:
+    from contextlib import nullcontext
+
+    monkeypatch.setattr(
+        memory,
+        "collect_running_game",
+        lambda *_args, **kwargs: synthetic_batch(kwargs["sequence"], observed),
+    )
+    capture = capture_runner(tmp_path, owned_children, cold_segment_period=fixed)
+    expected = (
+        nullcontext() if fixed == observed else pytest.raises(memory.CaptureRefusal, match="fixed")
+    )
+    with expected, capture.lifecycle(*owned_children) as monitor:
+        monitor.finish()
+    assert not (tmp_path / "combined-memory.json").exists()
+    if fixed == observed:
+        result = json.loads((tmp_path / "segment-memory.json").read_bytes())
+        assert result["period"] == fixed and result["scope"] == "fixed_period_cold_native_pair"
+        assert {r["campaign_age_ticks"] for r in result["samples"]} == {fixed}

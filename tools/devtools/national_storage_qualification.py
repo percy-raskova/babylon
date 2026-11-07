@@ -2022,8 +2022,35 @@ class CombinedMemoryEvidence(FrozenRecord):
         return self
 
 
+class FixedPeriodMemory(FrozenRecord):
+    """Ordinary cold process intervals at P0 and P10, authenticated independently."""
+
+    version: Literal[1]
+    scope: Literal["fixed_period_cold_native_pair"]
+    campaign: StrictStr
+    foundation_sha256: Sha256
+    period: Literal[0, 10]
+    boot_id: StrictStr
+    interval_start_monotonic_ns: Nonnegative
+    interval_end_monotonic_ns: Positive
+    samples: Annotated[tuple[MemorySample, ...], Field(min_length=1)]
+    policy_sha256: Sha256
+    ownership_record_sha256: Sha256
+    source_manifest_sha256: Sha256
+    executable_manifest_sha256: Sha256
+    capture_implementation_sha256: Sha256
+    tooling_report_sha256: Sha256
+
+    @field_validator("version", "period", mode="before")
+    @classmethod
+    def exact_integer(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("cold memory scope needs exact integer version and period")
+        return value
+
+
 def authenticate_combined_memory_capture(
-    evidence: CombinedMemoryEvidence, directory: Path
+    evidence: CombinedMemoryEvidence | FixedPeriodMemory, directory: Path
 ) -> CombinedMemoryToolingReport:
     """Authenticate frozen runner artifacts, without provisioning or OS admission.
 
@@ -2221,6 +2248,7 @@ def main() -> int:
     p.add_argument("--qualify-playable", action="store_true")
     p.add_argument("--native-report", type=Path)
     p.add_argument("--qualify-native", action="store_true")
+    p.add_argument("--qualify-wayne-walk", action="store_true")
     p.add_argument("--combined-memory-report", type=Path)
     p.add_argument("--qualify-memory", action="store_true")
     p.add_argument("--qualify-memory-save", action="store_true")
@@ -2240,6 +2268,7 @@ def main() -> int:
                 or a.qualify_focused
                 or a.qualify_playable
                 or a.qualify_native
+                or a.qualify_wayne_walk
                 or a.qualify_memory
                 or a.qualify_memory_save
                 or any(
@@ -2272,7 +2301,7 @@ def main() -> int:
             return 0
         if (a.qualify_memory or a.qualify_memory_save) and a.combined_memory_report is None:
             raise ValueError("combined memory qualification requires authenticated current capture")
-        if a.qualify_native and any(
+        if (a.qualify_native or a.qualify_wayne_walk) and any(
             value is None
             for value in (a.native_report, a.playable_report, a.timings, a.combined_memory_report)
         ):
@@ -2291,6 +2320,7 @@ def main() -> int:
                 or a.timings is not None
                 or a.qualify_playable
                 or a.qualify_native
+                or a.qualify_wayne_walk
                 or a.native_report is not None
                 or a.playable_report is not None
                 or a.combined_memory_report is not None
@@ -2388,11 +2418,13 @@ def main() -> int:
             "status": "incomplete",
             "enjoyment_status": "unqualified",
         }
+        walk_status: object = "incomplete"
         if a.native_report is not None:
             from tools.devtools.national_native_evidence import (
                 MANIFEST_BYTES,
                 NativeRunEvidence,
                 evaluate_native,
+                evaluate_wayne_walk,
                 private_bytes,
             )
 
@@ -2408,7 +2440,23 @@ def main() -> int:
                 tuple(load(path) for path in a.ticks),
                 playable_report,
                 memory,
+                wayne_walk=a.qualify_wayne_walk,
             )
+            if a.qualify_wayne_walk:
+                if memory is None:
+                    raise ValueError("Wayne walk needs measured memory for its three process pairs")
+                walk_report = evaluate_wayne_walk(
+                    policy,
+                    NativeRunEvidence.model_validate(strict_json_bytes(native_bytes)),
+                    a.native_report.parent,
+                    PlayableReport.model_validate(strict_json(a.playable_report)),
+                    timing,
+                    memory,
+                    native_report,
+                    result,
+                )
+                result["wayne_walkthrough"] = walk_report
+                walk_status = walk_report["status"]
             playable_report["native_window_status"] = native_report["status"]
             playable_report["native_window_evidence"] = "native_material_timing_recovery_join_v4"
             playable_report["scope"] = native_report["scope"]
@@ -2453,6 +2501,8 @@ def main() -> int:
         and memory_report["actual_325_period_status"] != "qualified"
         or a.qualify_native
         and native_report["status"] != "qualified"
+        or a.qualify_wayne_walk
+        and walk_status != "qualified"
     )
 
 

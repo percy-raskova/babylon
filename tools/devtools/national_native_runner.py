@@ -7,6 +7,7 @@ the existing qualification evaluator alone decides admission.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -14,7 +15,9 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Literal, cast
 from uuid import UUID
 
 import psycopg
@@ -36,6 +39,7 @@ from tools.devtools.national_native_evidence import (
     NativeRunIncomplete,
     RecoveryRecord,
     private_bytes,
+    verify_frame_png,
 )
 from tools.devtools.national_storage_qualification import (
     ArchiveBoundary,
@@ -46,7 +50,28 @@ from tools.devtools.national_storage_qualification import (
     Snapshot,
     strict_json_bytes,
 )
-from tools.devtools.national_windowed_qualification import ControlState, PlannedChoice, drive_pair
+from tools.devtools.national_windowed_qualification import (
+    POLL_SECONDS,
+    AidAllocation,
+    AidAmounts,
+    CollectionAllocation,
+    CollectionAmount,
+    Command,
+    Commitment,
+    ControlChannel,
+    ControlState,
+    Observation,
+    PlannedChoice,
+    SelectAidPartner,
+    UnitAction,
+    drive_pair,
+    submit_choice,
+)
+from tools.devtools.wayne_qualification_storage import (
+    PrivateEvidence,
+    Reference,
+    reauthenticate_native_owner,
+)
 
 
 class NativeRunRefusal(ValueError):
@@ -138,8 +163,24 @@ class NativeRun:
         if private_bytes(self.lease, 4096) != self.ownership:
             raise NativeRunRefusal("national runner original ownership differs from the live lease")
         fields = self.ownership.decode().splitlines()
-        if len(fields) != 11 or fields[0] != "national-storage-runner-v1":
-            raise NativeRunRefusal("national runner ownership version is unsupported")
+        self.wayne_profile = os.environ.get("BABYLON_WAYNE_PROFILE")
+        if self.wayne_profile is None:
+            if len(fields) != 11 or fields[0] != "national-storage-runner-v1":
+                raise NativeRunRefusal("anonymous national runner requires its original ownership")
+        else:
+            from tools.devtools.wayne_qualification_storage import profile_run
+
+            run = profile_run(self.wayne_profile, "national_storage", str(self.periods), directory)
+            if (
+                len(fields) != 21
+                or fields[0] != "national-storage-runner-media-v2"
+                or fields[11] != self.wayne_profile
+                or fields[5] != str(run / "pgdata")
+                or not fields[12]
+                or any(re.fullmatch(r"0|[1-9][0-9]*", item) is None for item in fields[13:21])
+            ):
+                raise NativeRunRefusal("selected native run requires its complete media owner")
+        self.owner_fields = tuple(fields)
         if fields[1] != str(root) or fields[10] != str(directory):
             raise NativeRunRefusal("national runner ownership scope differs")
         self.supervisor = {
@@ -154,6 +195,7 @@ class NativeRun:
             "NATIONAL_DATABASE": fields[7],
             "NATIONAL_WRITER": fields[8],
             "NATIONAL_DATABASE_OID": fields[9],
+            "BABYLON_POSTGRES_IMAGE_ID": fields[6],
         }
         self.container = fields[4]
         self.writer_dsn = os.environ["BABYLON_NATIONAL_STORAGE_WRITER_DSN"]
@@ -186,6 +228,19 @@ class NativeRun:
         self.verify_live()
         self.verify_credentials(fields[2], fields[7], fields[8])
         self.verify_sources()
+        if self.wayne_profile:
+            roster = strict_json_bytes(private_bytes(directory / "normal-binaries.json", 16_384))
+            if not isinstance(roster, dict) or set(roster) != {p.name for p in self.binaries}:
+                raise NativeRunRefusal(
+                    "captured executable roster differs from the normal binaries"
+                )
+            for binary, digest in self.binaries.items():
+                entry = Reference.model_validate(roster[binary.name])
+                PrivateEvidence(directory).verify(entry)
+                if entry.sha256 != digest:
+                    raise NativeRunRefusal(
+                        "supervisor build differs from the archived normal executable"
+                    )
 
     @property
     def foundation(self) -> str:
@@ -205,7 +260,11 @@ class NativeRun:
                 timeout=10,
             )
         )
-        if not isinstance(ports, dict) or not isinstance(ports.get("5432/tcp"), list):
+        if (
+            not isinstance(ports, dict)
+            or set(ports) != {"5432/tcp"}
+            or not isinstance(ports["5432/tcp"], list)
+        ):
             raise NativeRunRefusal("owned native credentials have no explicit loopback binding")
         bindings = ports["5432/tcp"]
         if (
@@ -214,6 +273,11 @@ class NativeRun:
             or bindings[0].get("HostIp") != "127.0.0.1"
         ):
             raise NativeRunRefusal("owned native credential binding differs")
+        if (
+            getattr(self, "wayne_profile", None)
+            and bindings[0].get("HostPort") != self.owner_fields[19]
+        ):
+            raise NativeRunRefusal("owned native credentials differ from the media lease port")
         for dsn, role in (
             (self.writer_dsn, writer),
             (self.observer_dsn, "national_observer_" + canary[:12]),
@@ -249,6 +313,11 @@ class NativeRun:
                 )
             )
         }
+        if self.wayne_profile is not None:
+            for suffix in ("state", "data", "config", "cache"):
+                common["XDG_" + suffix.upper() + "_HOME"] = str(
+                    self.directory.parent / "xdg" / suffix
+                )
         common["BABYLON_RUNTIME_DSN"] = self.writer_dsn
         return launcher.child_environments(
             common,
@@ -418,7 +487,13 @@ class NativeRun:
         self.snapshot("schema-baseline")
         self.verify_sources()
 
-    def capture(self) -> memory.RunningMemoryCapture:
+    def capture(
+        self, segment: Path | None = None, *, fixed_period: int | None = None
+    ) -> memory.RunningMemoryCapture:
+        segment = self.directory if segment is None else segment
+        if segment != self.directory:
+            for filename in ("ownership", "policy.json"):
+                PrivateEvidence(segment).publish(filename, (self.directory / filename).read_bytes())
         self.verify_live()
         state = memory.docker_state(self.container, timeout=10)
         pid = state.host_pid
@@ -468,14 +543,14 @@ class NativeRun:
             cgroup_inode=inode.st_ino,
             executable_sha256=executable[0],
         )
-        (self.directory / "combined-memory-source.sha256").write_bytes(
+        (segment / "combined-memory-source.sha256").write_bytes(
             (self.directory / "source-before.sha256").read_bytes()
         )
-        (self.directory / "combined-memory-sampler-source.py").write_bytes(
+        (segment / "combined-memory-sampler-source.py").write_bytes(
             (self.root / "tools/devtools/national_game_memory.py").read_bytes()
         )
         publish(
-            self.directory / "combined-memory-executables.json",
+            segment / "combined-memory-executables.json",
             {
                 "version": 1,
                 "roles": {
@@ -486,7 +561,7 @@ class NativeRun:
             },
         )
         publish(
-            self.directory / "combined-memory-tooling.json",
+            segment / "combined-memory-tooling.json",
             {
                 "version": 1,
                 "compilation_peak_rss_upper_bound_bytes": None,
@@ -495,11 +570,11 @@ class NativeRun:
             },
         )
         expected = {
-            key: memory.executable_digest(self.directory / name)
+            key: memory.executable_digest(segment / name)
             for key, name in memory.CAPTURE_FILES.items()
         }
         self._capture = memory.RunningMemoryCapture(
-            directory=self.directory,
+            directory=segment,
             expected_hashes=expected,
             campaign=self.campaign,
             foundation_sha256=self._foundation,
@@ -510,6 +585,7 @@ class NativeRun:
             sample_gap_seconds=self.policy.maximum_combined_memory_sample_gap_seconds,
             operation_timeout=30,
             operation_lock=self.operation_lock,
+            cold_segment_period=fixed_period,
         )
         return self._capture
 
@@ -852,6 +928,36 @@ class NativeRun:
         )
         publish(self.directory / "native-window-evidence.json", manifest.model_dump(mode="json"))
 
+    def functional_terminal(self, state: ControlState, *, restored: bool = False) -> None:
+        from tools.devtools.wayne_qualification_backup import terminal_snapshot
+
+        if (
+            state.playing
+            or state.advance_pending
+            or state.organizer_pending
+            or state.lifecycle_pending
+            or state.viewed_tick != self.periods
+            or state.durable_tick != self.periods
+        ):
+            raise NativeRunRefusal("functional snapshot requires the installed paused terminal")
+        self.verify_live()
+        with psycopg.connect(self.writer_dsn, connect_timeout=5) as connection:
+            actual = terminal_snapshot(connection, self.campaign, self.periods)
+        evidence = PrivateEvidence(self.directory)
+        if restored:
+            expected = strict_json_bytes(
+                evidence.read_reference(
+                    evidence.reference("functional-terminal.json"), 64 * 1024 * 1024
+                )
+            )
+            if actual != expected:
+                raise NativeRunRefusal(
+                    "cold reopened functional terminal differs from the drained original"
+                )
+            evidence.publish_json("functional-terminal-reopened.json", actual)
+        else:
+            evidence.publish_json("functional-terminal.json", actual)
+
     def run(self) -> int:
         self.prepare()
         writer, reader = self.environments()
@@ -863,13 +969,29 @@ class NativeRun:
                 "BABYLON_QUALIFICATION_MATERIAL_DIRECTORY": str(self.directory),
             }
         )
+        if self.wayne_profile == "walk-01":
+            WayneWalk(self).drive(writer, reader)
+            self.verify_live()
+            self.verify_sources()
+            self.reports()
+            return 0
         capture = self.capture()
+        if self.wayne_profile:
+            reauthenticate_native_owner(self.root, self.directory, self.owner_fields)
         choices = tuple(
             choice
             for choice in (
-                PlannedChoice(period=1, choice="remote_aid"),
-                PlannedChoice(period=2, choice="pause_standing"),
-                PlannedChoice(period=3, choice="local_aid"),
+                PlannedChoice(
+                    period=1,
+                    choice="remote_aid",
+                    allocation=AidAllocation(aid=AidAmounts(food_quantity=1, cash_micros="0")),
+                ),
+                PlannedChoice(period=2, choice="pause_standing", allocation="none"),
+                PlannedChoice(
+                    period=3,
+                    choice="local_aid",
+                    allocation=AidAllocation(aid=AidAmounts(food_quantity=1, cash_micros="0")),
+                ),
             )
             if choice.period <= self.periods
         )
@@ -890,6 +1012,13 @@ class NativeRun:
             on_boundary=self.on_boundary,
             on_recovery=self.on_recovery,
             choices=choices,
+            on_installed=(
+                lambda _channel, _socket, state: (
+                    self.functional_terminal(state) if state.durable_tick == self.periods else None
+                )
+            )
+            if self.wayne_profile == "smoke-01"
+            else None,
             capture_lifecycle=capture.lifecycle,
         )
         if result:
@@ -898,6 +1027,658 @@ class NativeRun:
         self.verify_sources()
         self.reports()
         return 0
+
+
+def retire_wayne(root: Path, evidence: Path, campaign: str, periods: int) -> None:
+    from tools.devtools.wayne_qualification_backup import backup_and_retire
+    from tools.devtools.wayne_qualification_storage import (
+        held_native_lock,
+        reauthenticate_native_owner,
+    )
+
+    control = held_native_lock(root)
+    frozen = private_bytes(evidence / "ownership", 4096)
+    if private_bytes(control / "active", 4096) != frozen:
+        raise NativeRunRefusal("retained ownership changed before backup")
+    owner = tuple(frozen.decode().splitlines())
+    if (
+        len(owner) != 21
+        or owner[10] != str(evidence)
+        or (owner[11], periods) not in (("smoke-01", 2), ("walk-01", 10))
+    ):
+        raise NativeRunRefusal("retained native profile differs from the requested backup")
+    if (evidence / "campaign").read_text().strip() != campaign or str(UUID(campaign)) != campaign:
+        raise NativeRunRefusal("retained backup campaign differs")
+    reauthenticate_native_owner(root, evidence, owner)
+    backup_and_retire(root, evidence, owner, campaign, periods)
+    retired = strict_json_bytes(private_bytes(evidence / "retired-container.json", 16384))
+    pgdata = Path(owner[5]).lstat()
+    if (
+        not isinstance(retired, dict)
+        or retired.get("container") != owner[4]
+        or (pgdata.st_dev, pgdata.st_ino) != (int(owner[13]), int(owner[14]))
+        or held_native_lock(root) != control
+        or private_bytes(control / "active", 4096) != frozen
+    ):
+        raise NativeRunRefusal("exact stopped removal, retained PGDATA or matching lease differs")
+    (control / "active").unlink()
+
+
+class WayneWalk:
+    """Drive one bounded owned campaign through its normal process and UI boundaries."""
+
+    def __init__(self, run: NativeRun) -> None:
+        self.run = run
+        self.evidence = PrivateEvidence(run.directory)
+        self.raw = PrivateEvidence(run.directory.parent / "raw")
+        self.originals: dict[str, Commitment] = {}
+        self.first_report: str | None = None
+        self.processes: list[tuple[int, int, str]] = []
+        self.saved: dict[str, object] | None = None
+        self.pending: Commitment | None = None
+        self.stage = ""
+        self.cash_at: int | None = None
+        self.extra_collect_at: int | None = None
+        self.initial_reports: dict[str, str] = {}
+        self.process_start = 0
+        self.segment_capture: memory.RunningMemoryCapture | None = None
+
+    def draft(self) -> dict[str, Any]:
+        path = (
+            self.run.directory.parent
+            / "xdg/state/babylon/organizer-drafts"
+            / (self.run.campaign + ".json")
+        )
+        if not os.path.lexists(path):
+            return {"sha256": None, "draft": None}
+        if path.resolve(strict=True) != path:
+            raise NativeRunRefusal("owned campaign draft path is redirected")
+        data = private_bytes(path, 64 * 1024)
+        draft = strict_json_bytes(data)
+        if not isinstance(draft, dict):
+            raise NativeRunRefusal("owned draft is not an object")
+        return {"sha256": hashlib.sha256(data).hexdigest(), "draft": draft}
+
+    def facts(self, state: ControlState) -> dict[str, Any]:
+        """Capture private SQL originals and material marker independently of UI."""
+        self.run.verify_live()
+        self.run.verify_sources()
+        with psycopg.connect(self.run.writer_dsn, connect_timeout=5) as connection:
+            connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            foundation = connection.execute(
+                """
+                SELECT campaign_id::text,preset_id,encode(content_sha256,'hex'),
+                       encode(foundation_sha256,'hex'),encode(graph_foundation_sha256,'hex')
+                FROM public.v_observer_material_foundation_v1 WHERE campaign_id=%s::uuid
+            """,
+                (self.run.campaign,),
+            ).fetchone()
+            if (
+                foundation is None
+                or foundation[:2] != (self.run.campaign, "national-world")
+                or foundation[3] != state.foundation_sha256
+            ):
+                raise NativeRunRefusal("installed and persisted national identities differ")
+            rows = connection.execute(
+                """
+                SELECT resolves_period,consumed_period,nonce,command_bytes,commitment_bytes,commitment_sha256
+                FROM babylon_state.organizer_command_v1 WHERE campaign_id=%s::uuid ORDER BY resolves_period
+            """,
+                (self.run.campaign,),
+            ).fetchall()
+            commands = []
+            for period, consumed, nonce, command_bytes, commitment_bytes, commitment_id in rows:
+                command = Command.model_validate(strict_json_bytes(bytes(command_bytes)))
+                commitment = Commitment.model_validate(strict_json_bytes(bytes(commitment_bytes)))
+                if (
+                    commitment.command != command
+                    or bytes(command.nonce) != bytes(nonce)
+                    or bytes(commitment.commitment_id) != bytes(commitment_id)
+                    or commitment.resolves_period != period
+                    or consumed not in (None, period)
+                    or bytes(command.campaign_id) != UUID(self.run.campaign).bytes
+                ):
+                    raise NativeRunRefusal("native original disagrees with its SQL row")
+                commands.append(
+                    {
+                        "commitment": commitment.model_dump(mode="json"),
+                        "consumed_period": consumed,
+                        "command_sha256": hashlib.sha256(command_bytes).hexdigest(),
+                        "commitment_bytes_sha256": hashlib.sha256(commitment_bytes).hexdigest(),
+                    }
+                )
+            receipts = []
+            for receipt_id, actor, period, payload in connection.execute(
+                """
+                SELECT receipt_id,actor_id,resolve_tick,receipt_bytes FROM babylon_state.organizer_receipt_v1
+                WHERE campaign_id=%s::uuid ORDER BY resolve_tick,receipt_id
+            """,
+                (self.run.campaign,),
+            ):
+                receipt = strict_json_bytes(bytes(payload))
+                if (
+                    not isinstance(receipt, dict)
+                    or bytes(receipt["receipt_id"]) != bytes(receipt_id)
+                    or str(receipt["actor_id"]) != actor
+                    or receipt["period"] != period
+                ):
+                    raise NativeRunRefusal(
+                        "receipt identity differs from its committed SQL projection"
+                    )
+                receipts.append(receipt)
+            reports = {}
+            for rid, actor, subject, observed, acquired, raw in connection.execute(
+                """
+                SELECT observation_id,actor_id,subject_id,observed_period,acquired_period,observation_bytes
+                FROM babylon_state.organizer_observation_v1 WHERE campaign_id=%s::uuid ORDER BY observation_id
+            """,
+                (self.run.campaign,),
+            ):
+                report = Observation.model_validate(strict_json_bytes(bytes(raw)))
+                if (
+                    bytes(rid) != bytes(report.observation_id)
+                    or actor != str(report.actor_id)
+                    or subject != str(report.subject_id)
+                    or (observed, acquired) != (report.observed_period, report.acquired_period)
+                ):
+                    raise NativeRunRefusal(
+                        "scoped report identity or observed/acquired dates differ"
+                    )
+                reports[bytes(rid).hex()] = report.model_dump(mode="json")
+            grants = connection.execute(
+                """
+                SELECT subject_kind,subject_id,grant_key,granted_tick,provenance_source_id,provenance_locator
+                FROM babylon_meta.archive_knowledge_grant_witness_v1 WHERE campaign_id=%s::uuid
+                ORDER BY subject_kind,subject_id,grant_key
+            """,
+                (self.run.campaign,),
+            ).fetchall()
+            markers = connection.execute(
+                """
+                SELECT t.resolve_tick,encode(t.tick_content_hash,'hex'),encode(sha256(m.identity_bytes),'hex')
+                FROM babylon_state.tick_commit t JOIN babylon_state.material_tick_v3 m USING(campaign_id,resolve_tick)
+                WHERE t.campaign_id=%s::uuid ORDER BY t.resolve_tick
+            """,
+                (self.run.campaign,),
+            ).fetchall()
+        if [row[0] for row in markers] != list(range(1, state.durable_tick + 1)) or (
+            markers[-1][1] if markers else None
+        ) != state.tick_content_hash:
+            raise NativeRunRefusal("installed UI does not match the terminal committed marker")
+        return {
+            "campaign_identity": list(foundation),
+            "commands": commands,
+            "receipts": receipts,
+            "reports": reports,
+            "grants": [list(row) for row in grants],
+            "markers": [list(row) for row in markers],
+            "world_hash": state.world_hash,
+            "draft": self.draft(),
+        }
+
+    def frame(self, channel: ControlChannel, socket_root: Path, stage: str) -> None:
+        anchor = channel.state
+        if anchor is None or anchor.playing or anchor.advance_pending or anchor.organizer_pending:
+            raise NativeRunRefusal("raw frame requires the installed paused view")
+        for resize, width, height, large, scale in (
+            ("resize1366x768", 1366, 768, False, "1.0"),
+            ("resize1366x768", 1366, 768, True, "1.15"),
+            ("resize1920x1080", 1920, 1080, False, "1.25"),
+            ("resize1920x1080", 1920, 1080, True, "1.4375"),
+        ):
+            started = time.monotonic_ns()
+            channel.perform("larger_interface" if large else "standard_interface", self.run.timeout)
+            changed = channel.perform(cast(UnitAction, resize), self.run.timeout)
+            if (
+                changed.larger_interface is not large
+                or changed.inspector != anchor.inspector
+                or changed.campaign_id != anchor.campaign_id
+                or changed.durable_tick != anchor.durable_tick
+                or changed.viewed_tick != anchor.viewed_tick
+                or changed.selected_subject != anchor.selected_subject
+                or changed.selected_report_id != anchor.selected_report_id
+                or changed.choice != anchor.choice
+                or changed.selected_allocation != anchor.selected_allocation
+            ):
+                raise NativeRunRefusal("capture changed campaign, view, selected report or amounts")
+            if stage.endswith("-reviewed"):
+                channel.perform("close_inspector", self.run.timeout)
+                # A layout action consumed any prior temporary Review witness.
+                # Review anew before capture; the final capture preserves this exact nonce for Confirm.
+                changed = channel.perform("review", self.run.timeout)
+            state = channel.perform("capture_frame", self.run.timeout)
+            if state != changed or channel.records[-1].event != "frame_captured":
+                raise NativeRunRefusal("capture did not acknowledge the exact settled state")
+            raw = private_bytes(socket_root / f"frame-{channel.sequence}.png", 32 * 1024 * 1024)
+            verify_frame_png(raw, width, height)
+            name = f"{stage}-p{state.viewed_tick}-{width}x{height}-{scale}-seq{channel.sequence}"
+            original = self.raw.publish(name + ".png", raw)
+            self.raw.publish_json(
+                name + ".json",
+                {
+                    "utc": datetime.now(UTC).isoformat(),
+                    "started_monotonic_ns": started,
+                    "completed_monotonic_ns": time.monotonic_ns(),
+                    "segment": self.stage,
+                    "sequence": channel.sequence,
+                    "stage": stage,
+                    "role": "organizer",
+                    "panel": state.inspector,
+                    "width": width,
+                    "height": height,
+                    "scale": scale,
+                    "capture": original.model_dump(),
+                    "state": state.model_dump(mode="json"),
+                },
+            )
+
+    def inspect_partner(
+        self,
+        channel: ControlChannel,
+        socket_root: Path,
+        kind: Literal["local", "remote"],
+        *,
+        cite: bool = False,
+        stage: str | None = None,
+    ) -> str:
+        channel.perform("open_relationships", self.run.timeout)
+        channel.perform(SelectAidPartner(select_aid_partner=kind), self.run.timeout)
+        installed = channel.perform("inspect_subject_evidence", self.run.timeout)
+        facts = self.facts(installed)
+        rid = installed.selected_report_id
+        report = facts["reports"].get(rid)
+        if (
+            installed.inspector != "Evidence"
+            or rid is None
+            or report is None
+            or installed.selected_report_observed_period != report["observed_period"]
+            or installed.selected_report_acquired_period != report["acquired_period"]
+            or report["acquired_period"] > installed.viewed_tick
+            or report["report"]["kind"] != "partner"
+            or installed.selected_subject != f"AidPartner({report['subject_id']})"
+        ):
+            raise NativeRunRefusal("selected partner report differs from the scoped disclosure")
+        label = stage or f"{self.stage}-{kind}-report"
+        self.frame(channel, socket_root, label)
+        if cite:
+            channel.perform("draft_from_report", self.run.timeout)
+            draft = self.draft()["draft"]
+            if (
+                not isinstance(draft, dict)
+                or list(bytes.fromhex(rid)) not in draft["references"]
+                or draft["selected_reference"] != list(bytes.fromhex(rid))
+            ):
+                raise NativeRunRefusal("the selected report was not cited in this campaign draft")
+            self.first_report = rid
+        else:
+            channel.perform("close_inspector", self.run.timeout)
+        return rid
+
+    def submit(
+        self,
+        channel: ControlChannel,
+        socket_root: Path,
+        choice: PlannedChoice,
+        label: str,
+        *,
+        allow_refusal: bool = False,
+    ) -> ControlState | None:
+        def selected(stage: str, state: ControlState) -> None:
+            self.frame(channel, socket_root, label + "-" + stage)
+            if stage == "confirmed":
+                if state.commitment is None:
+                    raise NativeRunRefusal("ordinary Confirm lacks its original")
+                self.originals[label] = state.commitment
+
+        return submit_choice(
+            channel,
+            choice,
+            self.run.timeout,
+            exercise_editor=label == "collection" or label == "local-food",
+            on_stage=selected,
+            allow_review_refusal=allow_refusal,
+        )
+
+    def capture_stage(self, state: ControlState, label: str) -> dict[str, Any]:
+        facts = self.facts(state)
+        self.evidence.publish_json(
+            label + ".json",
+            {
+                "utc": datetime.now(UTC).isoformat(),
+                "monotonic_ns": time.monotonic_ns(),
+                "state": state.model_dump(mode="json"),
+                "facts": facts,
+            },
+        )
+        return facts
+
+    def cold_install(self, state: ControlState) -> None:
+        elapsed = time.monotonic_ns() - self.process_start
+        if elapsed >= self.run.policy.maximum_cold_open_seconds * 1_000_000_000:
+            raise NativeRunRefusal(
+                "actual new process installation exceeded its cold opening budget"
+            )
+        self.evidence.publish_json(
+            "cold-installed-" + self.stage + ".json",
+            {
+                "elapsed_ns": elapsed,
+                "processes": self.processes[-2:],
+                "state": state.model_dump(mode="json"),
+                "ownership_sha256": hashlib.sha256(self.run.ownership).hexdigest(),
+                "source_head": (self.run.directory / "source-head").read_text().strip(),
+            },
+        )
+        if self.segment_capture is None or state.foundation_sha256 is None:
+            raise NativeRunRefusal("cold installation has no captured foundation")
+        self.segment_capture.bind_foundation(state.foundation_sha256)
+        self.run._foundation = state.foundation_sha256
+
+    def installed(self, channel: ControlChannel, socket_root: Path, state: ControlState) -> None:
+        if self.stage == "opening":
+            self.frame(channel, socket_root, "opening")
+            self.initial_reports["local"] = self.inspect_partner(channel, socket_root, "local")
+            self.initial_reports["remote"] = self.inspect_partner(
+                channel, socket_root, "remote", cite=True
+            )
+            if len(set(self.initial_reports.values())) != 2:
+                raise NativeRunRefusal("both known partners must disclose distinct opening reports")
+            self.submit(
+                channel,
+                socket_root,
+                PlannedChoice(
+                    period=1,
+                    choice="collect",
+                    allocation=CollectionAllocation(
+                        collection=CollectionAmount(target_cash_micros="1450000000")
+                    ),
+                ),
+                "collection",
+            )
+            current = channel.state
+            if current is None or current.commitment != self.originals["collection"]:
+                raise NativeRunRefusal("P0 collection lacks its accepted original")
+            self.pending = current.commitment
+            self.saved = self.capture_stage(current, "pending-before-cold")
+            return
+        if self.stage == "completed":
+            fresh = self.capture_stage(state, "completed-after-cold")
+            if fresh != self.saved or state.commitment is not None:
+                raise NativeRunRefusal(
+                    "completed process-cold state differs from the installed terminal"
+                )
+            self.run.functional_terminal(state, restored=True)
+            self.frame(channel, socket_root, "restored-completed")
+            return
+        tick = state.durable_tick
+        if tick == 0:
+            fresh = self.capture_stage(state, "pending-after-cold")
+            if fresh != self.saved or self.pending is None or state.commitment != self.pending:
+                raise NativeRunRefusal(
+                    "pending original, reports or draft changed on process-cold Open"
+                )
+            return
+        self.capture_stage(state, f"walk-p{tick}-installed")
+        if tick == 1:
+            self.submit(
+                channel,
+                socket_root,
+                PlannedChoice(
+                    period=2,
+                    choice="local_aid",
+                    allocation=AidAllocation(aid=AidAmounts(food_quantity=1, cash_micros="0")),
+                ),
+                "local-food",
+            )
+        elif tick == 2:
+            self.submit(
+                channel,
+                socket_root,
+                PlannedChoice(
+                    period=3,
+                    choice="remote_aid",
+                    allocation=AidAllocation(
+                        aid=AidAmounts(food_quantity=2, cash_micros="280000000")
+                    ),
+                ),
+                "remote-mixed",
+            )
+            current = channel.state
+            if current is None or current.commitment is None:
+                raise NativeRunRefusal("mixed pending acceptance is absent")
+            before = self.capture_stage(current, "mixed-pending-before-reopen")
+            after = channel.perform("reopen", self.run.timeout)
+            if (
+                after.commitment != current.commitment
+                or self.capture_stage(after, "mixed-pending-after-reopen") != before
+            ):
+                raise NativeRunRefusal("pending remote original changed across ordinary reopen")
+        elif tick == 3:
+            channel.perform("inspect_receipts", self.run.timeout)
+            self.frame(channel, socket_root, "dispatch")
+            channel.perform("close_inspector", self.run.timeout)
+            self.submit(
+                channel,
+                socket_root,
+                PlannedChoice(period=4, choice="pause_standing", allocation="none"),
+                "pause-standing",
+            )
+        else:
+            mixed = self.originals["remote-mixed"]
+            material = [record.aid for record in self.run.material if record.aid is not None]
+            original = list(mixed.commitment_id)
+            freight = [
+                leg
+                for row in material
+                for leg in row.selected_aid
+                if leg["original_commitment"] == original
+            ]
+            terminal_food = any(
+                leg["outcome"] in ("Granted", "Lost", "Unshipped", "FoodReceivingRefused")
+                for leg in freight
+            )
+            if self.cash_at is None and terminal_food and tick <= self.run.periods - 2:
+                label = "local-cash" if self.extra_collect_at is None else "local-cash-retry"
+                refused = self.submit(
+                    channel,
+                    socket_root,
+                    PlannedChoice(
+                        period=tick + 1,
+                        choice="local_aid",
+                        allocation=AidAllocation(
+                            aid=AidAmounts(food_quantity=0, cash_micros="1000000000")
+                        ),
+                    ),
+                    label,
+                    allow_refusal=True,
+                )
+                if refused is None:
+                    self.cash_at = tick
+                elif (
+                    self.extra_collect_at is None
+                    and tick <= self.run.periods - 3
+                    and refused.preview is not None
+                    and refused.preview.refusal in ("aid_unavailable", "collection_cash_refused")
+                ):
+                    self.extra_collect_at = tick
+                    channel.perform("close_inspector", self.run.timeout)
+                    self.submit(
+                        channel,
+                        socket_root,
+                        PlannedChoice(
+                            period=tick + 1,
+                            choice="collect",
+                            allocation=CollectionAllocation(
+                                collection=CollectionAmount(target_cash_micros="1450000000")
+                            ),
+                        ),
+                        "additional-collection",
+                        allow_refusal=True,
+                    )
+                else:
+                    raise NativeRunRefusal(
+                        "actual local cash review refused: "
+                        + str(refused.preview.refusal if refused.preview else None)
+                    )
+            elif self.cash_at is not None and tick == self.cash_at + 2:
+                self.inspect_partner(channel, socket_root, "local", stage="cash-following-purchase")
+                if tick < self.run.periods:
+                    self.submit(
+                        channel,
+                        socket_root,
+                        PlannedChoice(period=tick + 1, choice="resume_standing", allocation="none"),
+                        "resume-standing",
+                        allow_refusal=True,
+                    )
+        if tick == self.run.periods:
+            self.terminal_navigation(channel, socket_root)
+            final = channel.state
+            if final is None:
+                raise NativeRunRefusal("terminal installed state missing after Return")
+            self.saved = self.capture_stage(final, "completed-before-cold")
+            self.run.functional_terminal(final)
+
+    def terminal_navigation(self, channel: ControlChannel, socket_root: Path) -> None:
+        prior = channel.state
+        if prior is None or prior.durable_tick <= 0:
+            raise NativeRunRefusal("history requires an installed positive period")
+        draft = self.draft()
+        original = self.capture_stage(prior, "before-history-archive-return")
+        history = channel.perform("previous_period", self.run.timeout)
+        if (
+            history.viewed_tick != prior.durable_tick - 1
+            or history.durable_tick != prior.durable_tick
+        ):
+            raise NativeRunRefusal("ordinary history changed its durable boundary")
+        channel.perform("return_live", self.run.timeout)
+        channel.perform("open_relationships", self.run.timeout)
+        channel.perform(SelectAidPartner(select_aid_partner="remote"), self.run.timeout)
+        before = channel.perform("inspect_subject_evidence", self.run.timeout)
+        rid = before.selected_report_id
+        if rid is None:
+            raise NativeRunRefusal("terminal partner report has no actual evidence identity")
+        self.frame(channel, socket_root, "answer-report")
+        channel.perform("archive_report", self.run.timeout)
+        deadline = time.monotonic() + self.run.policy.maximum_archive_catchup_seconds
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise NativeRunRefusal("restricted Archive report did not become ready")
+            reply = channel._exchange("open_archive_evidence", remaining)
+            if reply.event == "applied" and reply.reason is None:
+                break
+            if reply.event != "refused" or reply.reason != "control_stale_or_unavailable":
+                raise NativeRunRefusal("ordinary Archive evidence request refused")
+            time.sleep(min(POLL_SECONDS, remaining))
+        self.frame(channel, socket_root, "archive-report")
+        after = channel.perform("open_organizer", self.run.timeout)
+        if (
+            after.viewed_tick,
+            after.durable_tick,
+            after.selected_subject,
+            after.selected_report_id,
+        ) != (
+            before.viewed_tick,
+            before.durable_tick,
+            before.selected_subject,
+            rid,
+        ) or self.draft() != draft:
+            raise NativeRunRefusal("Return changed the report, period or private draft")
+        if self.capture_stage(after, "after-history-archive-return") != original:
+            raise NativeRunRefusal(
+                "history, Archive or Return altered committed facts or the draft"
+            )
+        self.frame(channel, socket_root, "return")
+
+    def pair(
+        self,
+        stage: str,
+        target: launcher.NewCampaignTarget | launcher.OpenCampaignTarget,
+        tick: int,
+        closes: int,
+        writer: dict[str, str],
+        reader: dict[str, str],
+    ) -> None:
+        self.stage = stage
+        main = stage == "walk"
+        directory = self.run.directory if main else self.run.directory / ("segment-" + stage)
+        if not main:
+            directory.mkdir(mode=0o700)
+        if self.processes:
+            for pid, start, _ in self.processes[-2:]:
+                try:
+                    present = memory.parse_start_time(Path(f"/proc/{pid}/stat").read_bytes(), pid)
+                except FileNotFoundError:
+                    continue
+                if present == start:
+                    raise NativeRunRefusal(
+                        "previous owned runtime or client has not exited normally"
+                    )
+        self.segment_capture = self.run.capture(directory, fixed_period=None if main else tick)
+
+        def started(runtime: subprocess.Popen[bytes], client: subprocess.Popen[bytes]) -> None:
+            self.run.verify_live()
+            self.run.verify_sources()
+            for process, binary in ((runtime, self.run.runtime), (client, self.run.client)):
+                proc = Path("/proc") / str(process.pid)
+                start = memory.parse_start_time((proc / "stat").read_bytes(), process.pid)
+                if (
+                    proc.stat().st_uid != os.geteuid()
+                    or os.readlink(proc / "exe") != str(binary)
+                    or memory.executable_digest(proc / "exe") != self.run.binaries[binary]
+                ):
+                    raise NativeRunRefusal(
+                        "new owned child identity differs from admitted executable"
+                    )
+                fresh = (process.pid, start, self.run.binaries[binary])
+                if fresh in self.processes:
+                    raise NativeRunRefusal("a process-cold segment reused its predecessor")
+                self.processes.append(fresh)
+
+        reauthenticate_native_owner(self.run.root, self.run.directory, self.run.owner_fields)
+        if not main:
+            reader = {
+                key: value
+                for key, value in reader.items()
+                if not key.startswith("BABYLON_QUALIFICATION_")
+            }
+        self.process_start = time.monotonic_ns()
+        result = drive_pair(
+            self.run.runtime,
+            self.run.client,
+            self.run.root,
+            writer,
+            reader,
+            defines_path=launcher.DEFAULT_DEFINES,
+            initial_target=target,
+            initial_tick=tick,
+            periods=closes,
+            directory=directory,
+            operation_timeout=self.run.timeout,
+            on_started=started,
+            on_boundary=self.run.on_boundary if main else lambda _state: None,
+            on_recovery=self.run.on_recovery if main else lambda _state: None,
+            on_opened=self.cold_install,
+            on_installed=self.installed,
+            play_last_close=main,
+            capture_lifecycle=self.segment_capture.lifecycle,
+        )
+        if result:
+            raise NativeRunRefusal("owned process pair did not exit normally")
+
+    def drive(self, writer: dict[str, str], reader: dict[str, str]) -> None:
+        campaign = UUID(self.run.campaign)
+        started = time.monotonic_ns()
+        self.pair(
+            "opening", launcher.NewCampaignTarget(campaign, "national-world"), 0, 0, writer, reader
+        )
+        self.pair("walk", launcher.OpenCampaignTarget(campaign), 0, 10, writer, reader)
+        self.pair("completed", launcher.OpenCampaignTarget(campaign), 10, 0, writer, reader)
+        self.run.verify_live()
+        self.run.verify_sources()
+        self.evidence.publish_json(
+            "walk-wall.json",
+            {"start_ns": started, "end_ns": time.monotonic_ns(), "campaign": self.run.campaign},
+        )
 
 
 def main() -> int:

@@ -1290,11 +1290,21 @@ class RunningMemoryCapture:
         sample_gap_seconds: int,
         operation_timeout: float,
         operation_lock: AbstractContextManager[object] | None = None,
+        cold_segment_period: int | None = None,
     ) -> None:
+        if cold_segment_period is not None and (
+            type(cold_segment_period) is not int or cold_segment_period not in (0, 10)
+        ):
+            raise CaptureRefusal("unknown fixed cold native segment")
+        self._cold_segment_period = cold_segment_period
         self.directory = directory
         self._expected = dict(expected_hashes)
         verify_frozen_files(directory, self._expected)
-        for name in ("combined-memory.json", "combined-memory-progress.json"):
+        for name in (
+            "combined-memory.json",
+            "combined-memory-progress.json",
+            "segment-memory.json",
+        ):
             if (directory / name).exists() or (directory / name).is_symlink():
                 raise CaptureRefusal("memory capture refuses an existing result or progress record")
         policy = Policy.model_validate_json((directory / "policy.json").read_bytes())
@@ -1526,11 +1536,32 @@ class RunningMemoryCapture:
         # Bind it while both actual children still exist, before ordinary Quit.
         self._capture_one(self._native)
         verify_frozen_files(self.directory, self._expected)
-        if not self._samples or self._boot is None or self._samples[-1].campaign_age_ticks == 0:
-            raise CaptureRefusal("memory capture has no actual positive committed horizon")
+        if not self._samples or self._boot is None:
+            raise CaptureRefusal("memory capture has no actual samples")
         if self._foundation is None:
             raise CaptureRefusal("memory capture has no acknowledged campaign foundation")
         ended = time.monotonic_ns()
+        if self._cold_segment_period is not None:
+            if any(row.campaign_age_ticks != self._cold_segment_period for row in self._samples):
+                raise CaptureRefusal("fixed cold segment included a different committed period")
+            write_capture_record(
+                self.directory / "segment-memory.json",
+                {
+                    "version": 1,
+                    "scope": "fixed_period_cold_native_pair",
+                    "campaign": self._campaign,
+                    "foundation_sha256": self._foundation,
+                    "period": self._cold_segment_period,
+                    "boot_id": self._boot,
+                    "interval_start_monotonic_ns": self._started_ns,
+                    "interval_end_monotonic_ns": ended,
+                    "samples": [sample.model_dump(mode="json") for sample in self._samples],
+                    **self._expected,
+                },
+            )
+            return
+        if self._samples[-1].campaign_age_ticks == 0:
+            raise CaptureRefusal("memory capture has no actual positive committed horizon")
         evidence = CombinedMemoryEvidence(
             version=2,
             source="linux_proc_smaps_rollup_v1",

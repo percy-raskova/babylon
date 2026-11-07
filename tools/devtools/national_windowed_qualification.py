@@ -507,7 +507,9 @@ class ControlsEvidence(ControlVersion):
 
 class PlannedChoice(FrozenRecord):
     period: Positive
+    allocation: Allocation
     choice: Literal[
+        "collect",
         "remote_aid",
         "local_aid",
         "inquiry_work_lost",
@@ -517,6 +519,17 @@ class PlannedChoice(FrozenRecord):
         "pause_standing",
         "resume_standing",
     ]
+
+    @model_validator(mode="after")
+    def offered_amount(self) -> Self:
+        if self.choice.startswith("inquiry_"):
+            if self.allocation != "none":
+                raise ValueError("inquiry cannot authorize an allocation")
+        else:
+            SelectedAllocation.model_validate(
+                {"choice": self.choice, "allocation": self.allocation}
+            )
+        return self
 
 
 def _unique_object(pairs: list[tuple[str, JsonValue]]) -> dict[str, JsonValue]:
@@ -760,7 +773,32 @@ class ControlChannel:
             raise ControlRefusal("native status request refused")
         return reply.state
 
-    def perform(self, action: Action, timeout: float) -> ControlState:
+    def witness_blocked_editor(self, action: Literal["review", "confirm"], timeout: float) -> None:
+        """Record an actual refused ordinary action for this exact invalid draft."""
+        prior = self.state
+        if (
+            prior is None
+            or prior.phase != "Ready"
+            or prior.organizer_period != prior.viewed_tick
+            or prior.viewed_tick != prior.durable_tick
+            or prior.allocation_error is None
+            or prior.reviewed_command is not None
+            or prior.preview is not None
+            or prior.commitment is not None
+        ):
+            raise ControlRefusal("expected refusal requires the installed invalid draft")
+        reply = self._exchange(action, timeout)
+        if (
+            reply.event != "refused"
+            or reply.reason not in ("ordinary_handler_refused", "control_stale_or_unavailable")
+            or reply.state != prior
+        ):
+            self.close()
+            raise ControlRefusal("invalid allocation action changed state or escaped refusal")
+
+    def perform(
+        self, action: Action, timeout: float, *, allow_review_refusal: bool = False
+    ) -> ControlState:
         prior = self.state
         if action == "review" and (
             prior is None or prior.phase != "Ready" or prior.selected_allocation is None
@@ -771,7 +809,17 @@ class ControlChannel:
             self.close()
             raise ControlRefusal("native confirmation requires this channel's current review")
         reply = self._exchange(action, timeout)
-        if reply.event != expected_event(action) or reply.reason is not None:
+        observed_refusal = (
+            allow_review_refusal
+            and action == "review"
+            and reply.event == "refused"
+            and reply.reason == "ordinary_response_refused"
+            and reply.state.preview is not None
+            and reply.state.preview.refusal is not None
+        )
+        if not observed_refusal and (
+            reply.event != expected_event(action) or reply.reason is not None
+        ):
             self.close()
             reason = f": {reply.reason}" if reply.reason is not None else ""
             raise ControlRefusal("ordinary native handler refused the requested action" + reason)
@@ -815,7 +863,7 @@ class ControlChannel:
                 prior is None
                 or command is None
                 or preview is None
-                or preview.refusal is not None
+                or (preview.refusal is not None) != observed_refusal
                 or prior.choice != command.choice
                 or prior.selected_allocation != command.allocation
                 or reply.state.choice != command.choice
@@ -829,7 +877,7 @@ class ControlChannel:
             ):
                 self.close()
                 raise ControlRefusal("native preview differs from its selected original")
-            self._review_witness = reply.state
+            self._review_witness = None if observed_refusal else reply.state
         if action == "confirm" and (
             prior is None
             or prior.preview is None
@@ -890,8 +938,58 @@ def finish_observations(
         channel.close()
 
 
-def submit_choice(channel: ControlChannel, choice: PlannedChoice, timeout: float) -> None:
-    """Review and confirm through the ordinary UI, including standing controls."""
+def whole_dollars(micros: str) -> str:
+    units, remainder = divmod(int(micros), 1_000_000)
+    if remainder:
+        raise ControlRefusal("ordinary organizer editor accepts whole dollars")
+    return str(units)
+
+
+def edit_amount(
+    channel: ControlChannel,
+    field: AmountField,
+    target: str,
+    timeout: float,
+    *,
+    witness_refusal: bool = False,
+) -> None:
+    current = channel.perform(FocusAmount(focus_amount=field), timeout)
+    if current.focused_amount != field or current.amount_text is None:
+        raise ControlRefusal("ordinary amount editor did not expose its focused text")
+    raw = current.amount_text
+
+    def key(value: AmountKey, expected: str, *, mutation: bool) -> ControlState:
+        state = channel.perform(value, timeout)
+        if state.focused_amount != field or state.amount_text != expected:
+            raise ControlRefusal("ordinary amount editor readback differs from the key")
+        if mutation and (state.preview is not None or state.reviewed_command is not None):
+            raise ControlRefusal("editing allocation preserved an obsolete review")
+        return state
+
+    key(AmountKey(amount_key="home"), raw, mutation=False)
+    while raw:
+        raw = raw[1:]
+        key(AmountKey(amount_key="delete"), raw, mutation=True)
+    if witness_refusal:
+        channel.witness_blocked_editor("review", timeout)
+        key(AmountKey(amount_key=CharacterKey(character="-")), "-", mutation=True)
+        channel.witness_blocked_editor("confirm", timeout)
+        key(AmountKey(amount_key="backspace"), "", mutation=True)
+    for char in target:
+        raw += char
+        key(AmountKey(amount_key=CharacterKey(character=char)), raw, mutation=True)
+
+
+def submit_choice(
+    channel: ControlChannel,
+    choice: PlannedChoice,
+    timeout: float,
+    *,
+    exercise_editor: bool = False,
+    on_stage: Callable[[str, ControlState], None] | None = None,
+    allow_review_refusal: bool = False,
+) -> ControlState | None:
+    """Submit the selected amount through a fresh witnessed Review and Confirm."""
     if channel.state is None or channel.state.durable_tick + 1 != choice.period:
         raise ControlRefusal("native choice plan does not match the next actual period")
     if choice.choice in {"pause_standing", "resume_standing"}:
@@ -906,6 +1004,7 @@ def submit_choice(channel: ControlChannel, choice: PlannedChoice, timeout: float
             channel.perform("close_inspector", timeout)
     else:
         actions: dict[str, Action] = {
+            "collect": "choose_collect",
             "remote_aid": "choose_remote_aid",
             "local_aid": "choose_local_aid",
             "inquiry_work_lost": "choose_inquiry_work_lost",
@@ -915,9 +1014,49 @@ def submit_choice(channel: ControlChannel, choice: PlannedChoice, timeout: float
         }
         channel.perform("inspect_practices", timeout)
         channel.perform(actions[choice.choice], timeout)
-    channel.perform("review", timeout)
-    channel.perform("confirm", timeout)
+    selected = channel.state
+    if selected is None:
+        raise ControlRefusal("ordinary practice selection lost its current state")
+    if exercise_editor or selected.selected_allocation != choice.allocation:
+        if isinstance(choice.allocation, CollectionAllocation):
+            if exercise_editor:
+                channel.perform("review", timeout)
+                channel.perform("close_inspector", timeout)
+            edit_amount(
+                channel,
+                "contribution",
+                whole_dollars(choice.allocation.collection.target_cash_micros),
+                timeout,
+                witness_refusal=exercise_editor,
+            )
+        elif isinstance(choice.allocation, AidAllocation):
+            food, cash = choice.allocation.aid.food_quantity, choice.allocation.aid.cash_micros
+            if exercise_editor:
+                edit_amount(channel, "food", "0", timeout)
+                edit_amount(channel, "cash", "0", timeout)
+                channel.witness_blocked_editor("review", timeout)
+            edit_amount(channel, "food", str(food), timeout)
+            edit_amount(channel, "cash", whole_dollars(cash), timeout)
+    if channel.state is None or channel.state.selected_allocation != choice.allocation:
+        raise ControlRefusal("ordinary selection differs from the requested allocation")
+    if on_stage is not None:
+        on_stage("selected", channel.state)
+    reviewed = (
+        channel.perform("review", timeout, allow_review_refusal=True)
+        if allow_review_refusal
+        else channel.perform("review", timeout)
+    )
+    if reviewed.preview is not None and reviewed.preview.refusal is not None:
+        if on_stage is not None:
+            on_stage("refused", reviewed)
+        return reviewed
+    if on_stage is not None:
+        on_stage("reviewed", reviewed)
+    accepted = channel.perform("confirm", timeout)
+    if on_stage is not None:
+        on_stage("confirmed", accepted)
     wait_ready(channel, timeout, organizer=True)
+    return None
 
 
 def wait_ready(channel: ControlChannel, timeout: float, *, organizer: bool) -> ControlState:
@@ -959,6 +1098,9 @@ def drive_pair(
     on_boundary: Callable[[ControlState], None],
     on_recovery: Callable[[ControlState], None],
     choices: tuple[PlannedChoice, ...] = (),
+    on_installed: Callable[[ControlChannel, Path, ControlState], None] | None = None,
+    play_last_close: bool = False,
+    on_opened: Callable[[ControlState], None] | None = None,
     capture_lifecycle: Callable[
         [subprocess.Popen[bytes], subprocess.Popen[bytes]],
         AbstractContextManager[CaptureMonitor | None],
@@ -1055,16 +1197,46 @@ def drive_pair(
                     if current.primary_view != "Organizer":
                         channel.perform("open_organizer", operation_timeout)
                     current = wait_ready(channel, operation_timeout, organizer=True)
+                    if on_opened is not None:
+                        on_opened(current)
                     on_boundary(current)
-                    for _period in range(periods):
+                    if on_installed is not None:
+                        on_installed(channel, endpoint.parent, current)
+                    for offset in range(periods):
                         if planned := schedule.get(current.durable_tick + 1):
                             submit_choice(channel, planned, operation_timeout)
-                        current = channel.perform("step", operation_timeout)
+                        before = current.durable_tick
+                        if play_last_close and offset + 1 == periods:
+                            channel.perform("play", operation_timeout)
+                            deadline = time.monotonic() + operation_timeout
+                            while (
+                                channel.state is not None and channel.state.durable_tick == before
+                            ):
+                                remaining = deadline - time.monotonic()
+                                if remaining <= 0:
+                                    raise ControlRefusal(
+                                        "ordinary Play did not install the requested final period"
+                                    )
+                                channel.observe(remaining)
+                                if (
+                                    channel.state is not None
+                                    and channel.state.durable_tick == before
+                                ):
+                                    time.sleep(min(POLL_SECONDS, remaining))
+                            channel.perform("pause", max(0.001, deadline - time.monotonic()))
+                        else:
+                            channel.perform("step", operation_timeout)
                         current = wait_ready(channel, operation_timeout, organizer=True)
+                        if current.durable_tick != before + 1 or current.playing:
+                            raise ControlRefusal(
+                                "ordinary advance installed outside the requested single close"
+                            )
                         on_boundary(current)
                         current = channel.perform("reopen", operation_timeout)
                         current = wait_ready(channel, operation_timeout, organizer=True)
                         on_recovery(current)
+                        if on_installed is not None:
+                            on_installed(channel, endpoint.parent, current)
                         write_observations(
                             directory / "native-controls.json", channel, "incomplete"
                         )

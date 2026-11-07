@@ -354,7 +354,9 @@ def test_new_choice_reviews_confirms_and_checks_exact_readback(
     worker.start()
     try:
         channel.observe(1)
-        planned = windowed.PlannedChoice.model_validate({"period": 1, "choice": choice})
+        planned = windowed.PlannedChoice.model_validate(
+            {"period": 1, "choice": choice, "allocation": "none"}
+        )
         if mismatched:
             with pytest.raises(windowed.ControlRefusal, match="different choice"):
                 windowed.submit_choice(channel, planned, 1)
@@ -861,7 +863,13 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
     boundaries: list[windowed.ControlState] = []
     recoveries: list[windowed.ControlState] = []
     plan = tuple(
-        windowed.PlannedChoice(period=period, choice=choice)
+        windowed.PlannedChoice.model_validate(
+            {
+                "period": period,
+                "choice": choice,
+                "allocation": admission_fields(choice, period - 1)[0]["allocation"],
+            }
+        )
         for period, choice in [(1, "remote_aid"), (2, "pause_standing"), (3, "local_aid")]
     )
     assert (
@@ -969,7 +977,9 @@ def test_standing_choice_uses_the_acknowledged_inspector_state(
     worker.start()
     try:
         channel.observe(1)
-        windowed.submit_choice(channel, windowed.PlannedChoice(period=2, choice=choice), 1)
+        windowed.submit_choice(
+            channel, windowed.PlannedChoice(period=2, choice=choice, allocation="none"), 1
+        )
         assert channel.state is not None
         assert channel.state.commitment == windowed.Commitment.model_validate(commitment)
         assert all(record.event != "refused" for record in channel.records)
@@ -995,7 +1005,13 @@ def test_duplicate_choice_schedule_refuses_before_launch(
     monkeypatch.setattr(
         windowed.launcher, "run_pair", lambda *args, **_kwargs: launched.append(args)
     )
-    entry = windowed.PlannedChoice(period=1, choice="remote_aid")
+    entry = windowed.PlannedChoice.model_validate(
+        {
+            "period": 1,
+            "choice": "remote_aid",
+            "allocation": admission_fields("remote_aid", 0)[0]["allocation"],
+        }
+    )
     with pytest.raises(windowed.ControlRefusal, match="schedule"):
         windowed.drive_pair(
             tmp_path / "runtime",
@@ -1376,3 +1392,96 @@ def test_capture_preserves_only_its_witnessed_review(
     with pytest.raises(windowed.ControlRefusal, match="requires this channel's current review"):
         channel.perform("confirm", 1)
     assert channel.sequence == last_sent
+
+
+def test_collected_plan_requires_an_exact_positive_allocation() -> None:
+    with pytest.raises(ValueError):
+        windowed.PlannedChoice.model_validate({"period": 1, "choice": "remote_aid"})
+    with pytest.raises(ValueError):
+        windowed.PlannedChoice.model_validate(
+            {
+                "period": 1,
+                "choice": "collect",
+                "allocation": {"aid": {"food_quantity": 1, "cash_micros": "0"}},
+            }
+        )
+    plan = windowed.PlannedChoice.model_validate(
+        {
+            "period": 1,
+            "choice": "collect",
+            "allocation": {"collection": {"target_cash_micros": "1450000000"}},
+        }
+    )
+    assert isinstance(plan.allocation, windowed.CollectionAllocation)
+    assert windowed.whole_dollars(plan.allocation.collection.target_cash_micros) == "1450"
+    with pytest.raises(windowed.ControlRefusal):
+        windowed.whole_dollars("1500000")
+
+
+def test_editor_refuses_a_mutation_that_preserves_the_review() -> None:
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+    fields = state()
+    command, preview, _ = admission_fields("hold", 0)
+    fields.update(
+        focused_amount="contribution", amount_text="2", reviewed_command=command, preview=preview
+    )
+
+    def reply() -> None:
+        with peer, peer.makefile("rb") as source:
+            for raw in source:
+                request = json.loads(raw)
+                if request["action"] == {"amount_key": "delete"}:
+                    fields["amount_text"] = ""
+                peer.sendall(
+                    json.dumps(
+                        {
+                            "version": 3,
+                            "sequence": request["sequence"],
+                            "event": "applied",
+                            "reason": None,
+                            "state": fields,
+                        }
+                    ).encode()
+                    + b"\n"
+                )
+
+    worker = threading.Thread(target=reply)
+    worker.start()
+    try:
+        with pytest.raises(windowed.ControlRefusal, match="obsolete review"):
+            windowed.edit_amount(channel, "contribution", "1450", 1)
+    finally:
+        channel.close()
+        worker.join(2)
+    assert not worker.is_alive()
+
+
+def test_observed_unavailable_offer_never_arms_confirmation(
+    organizer_channel: OrganizerChannel,
+) -> None:
+    channel, peer = organizer_channel
+    command, preview, _ = admission_fields("local_aid", 0)
+    selected = state()
+    selected.update(choice="local_aid", aid_allocation=command["allocation"])
+    peer.sendall(response(1, **selected))
+    channel.observe(1)
+    refused = json.loads(
+        response(
+            2,
+            "refused",
+            **{
+                **selected,
+                "reviewed_command": command,
+                "preview": {**preview, "refusal": "aid_unavailable"},
+            },
+        )
+    )
+    refused["reason"] = "ordinary_response_refused"
+    peer.sendall(json.dumps(refused).encode() + b"\n")
+    result = channel.perform("review", 1, allow_review_refusal=True)
+    assert result.preview is not None and result.preview.refusal == "aid_unavailable"
+    assert channel.records[-1].event == "refused"
+    with pytest.raises(windowed.ControlRefusal, match="current review"):
+        channel.perform("confirm", 1)
+    assert channel.sequence == 2

@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+wayne_media() {
+  local operation="$1" focus=national_storage
+  if [ "$BABYLON_WAYNE_PROFILE" = sql-01 ]; then focus=organizer_allocation_atomic; fi
+  shift
+  (cd "$REPO_ROOT" && mise exec -- uv run --frozen python -m tools.devtools.wayne_qualification_storage     "$operation" --root "$REPO_ROOT" --evidence "$BABYLON_STORAGE_REPORT_DIRECTORY"     --profile "$BABYLON_WAYNE_PROFILE" --focus "$focus"     --periods "${BABYLON_NATIONAL_STORAGE_PERIODS:-}" --canary "$CANARY" "$@")
+}
+
 national_success_selection() {
   NATIONAL_SUCCESS_DISPOSITION="${BABYLON_NATIONAL_SUCCESS_DISPOSITION-cleanup}"
   case "$NATIONAL_SUCCESS_DISPOSITION" in
@@ -111,7 +118,11 @@ national_begin() {
   if [[ "${BABYLON_STORAGE_SNAPSHOT_SCRIPT:-}" != /* ]] || [ ! -f "$BABYLON_STORAGE_SNAPSHOT_SCRIPT" ]; then
     die "an existing absolute snapshot collector is required"
   fi
-  mkdir "$BABYLON_STORAGE_REPORT_DIRECTORY" || die "national evidence directory must be new"
+  if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+    wayne_media reserve || die "Wayne media source admission refused"
+  else
+    mkdir "$BABYLON_STORAGE_REPORT_DIRECTORY" || die "national evidence directory must be new"
+  fi
   printf '%s\n' "$BABYLON_NATIONAL_CAPTURE_MODE" > "$BABYLON_STORAGE_REPORT_DIRECTORY/capture-mode"
   NATIONAL_DATABASE="national_${CANARY:0:12}"
   NATIONAL_WRITER="national_writer_${CANARY:0:12}"
@@ -159,6 +170,10 @@ national_policy_capture_agrees() {
 }
 
 national_record_contents() {
+  if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+    wayne_media owner --container "$CONTAINER_ID" --database-oid "$NATIONAL_DATABASE_OID"
+    return
+  fi
   printf '%s\n' 'national-storage-runner-v1' "$REPO_ROOT" "$CANARY" "$CONTAINER" \
     "$CONTAINER_ID" "$VOLUME" "${IMAGE_ID:-}" "$NATIONAL_DATABASE" \
     "$NATIONAL_WRITER" "$NATIONAL_DATABASE_OID" "$BABYLON_STORAGE_REPORT_DIRECTORY"
@@ -167,6 +182,12 @@ national_record_contents() {
 national_record() {
   umask 077
   local temporary="$NATIONAL_RECORD.tmp"
+  if [ -n "${BABYLON_WAYNE_PROFILE:-}" ] && [ -z "${NATIONAL_DATABASE_OID:-}" ]; then
+    if [ ! -e "$NATIONAL_RECORD" ]; then
+      (set -C; printf '%s\n' national-storage-runner-media-incomplete-v1 "$REPO_ROOT" "$CANARY"         "$CONTAINER" "$BABYLON_STORAGE_REPORT_DIRECTORY" > "$NATIONAL_RECORD") || return 1
+    fi
+    return 0
+  fi
   national_record_contents > "$temporary"
   mv -- "$temporary" "$NATIONAL_RECORD"
   cp -- "$NATIONAL_RECORD" "$BABYLON_STORAGE_REPORT_DIRECTORY/ownership"
@@ -263,8 +284,14 @@ national_verify_identity() {
   [ -f "$NATIONAL_RECORD" ] && [ ! -L "$NATIONAL_RECORD" ] || return 1
   [ "$(stat -c '%a' "$NATIONAL_RECORD")" = 600 ] || return 1
   cmp -s -- "$NATIONAL_RECORD" <(national_record_contents) || return 1
+  if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+    cmp -s -- "$NATIONAL_RECORD" "$BABYLON_STORAGE_REPORT_DIRECTORY/ownership" || return 1
+    # Recomputed media owner above already reauthenticates the physical cluster.
+    identity="$CONTAINER_ID|$IMAGE_ID|$CANARY|$VOLUME"
+  else
   identity="$(docker inspect --format '{{.Id}}|{{.Image}}|{{index .Config.Labels "babylon.disposable_runtime"}}|{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$CONTAINER_ID")" || return 1
   [ "$identity" = "$CONTAINER_ID|$IMAGE_ID|$CANARY|$VOLUME" ] || return 1
+  fi
   if [ "$live" -eq 1 ]; then
     role_cte="
 WITH expected(name,login,parent) AS (VALUES
@@ -386,7 +413,7 @@ national_source_paths() {
   done
   find content -type f -print0
   national_input_paths
-  printf '%s\0' tools/run_rust_postgres.sh tools/postgres_national_lifecycle.sh tools/run_observer_session.py tools/devtools/national_windowed_qualification.py tools/devtools/national_native_evidence.py tools/devtools/national_native_runner.py tools/devtools/national_game_memory.py tools/devtools/national_storage_qualification.py tools/devtools/national_storage_snapshot.py tools/devtools/national_storage_relations.sql
+  printf '%s\0' tools/run_rust_postgres.sh tools/postgres_national_lifecycle.sh tools/run_observer_session.py tools/devtools/national_windowed_qualification.py tools/devtools/national_native_evidence.py tools/devtools/national_native_runner.py tools/devtools/national_game_memory.py tools/devtools/wayne_qualification_storage.py tools/devtools/wayne_qualification_backup.py tools/devtools/national_storage_qualification.py tools/devtools/national_storage_snapshot.py tools/devtools/national_storage_relations.sql
 }
 
 national_source_manifest() {
@@ -485,7 +512,7 @@ print(value)
     # The two-period smoke retains every finite accounting proof. Both positive
     # practices need separate periods under the actual shared commitment, and
     # remain required by the longer material-playable admission.
-    if [ "$periods" -gt "$routine_periods" ]; then
+    if [ "$periods" -gt "$routine_periods" ] && [ "${BABYLON_WAYNE_PROFILE:-}" != walk-01 ]; then
       playable_flags+=(--qualify-playable)
     fi
     while IFS= read -r -d '' stage; do
@@ -553,7 +580,18 @@ PY_NATIVE_ROSTER
         [ ! -L "$BABYLON_STORAGE_REPORT_DIRECTORY/$artifact" ] || return 1
       native_files+=("$BABYLON_STORAGE_REPORT_DIRECTORY/$artifact")
     done <<< "$native_names"
-    native_flags+=(--native-report "$native_report" --qualify-native)
+    native_flags+=(--native-report "$native_report")
+    if [ "${BABYLON_WAYNE_PROFILE:-}" = walk-01 ]; then
+      native_flags+=(--qualify-wayne-walk)
+      local evidence="$BABYLON_STORAGE_REPORT_DIRECTORY"
+      local -a walk_inputs=("$evidence"/{pending-before-cold,pending-after-cold,mixed-pending-before-reopen,mixed-pending-after-reopen,completed-before-cold,completed-after-cold,before-history-archive-return,after-history-archive-return,walk-wall,functional-terminal,functional-terminal-reopened}.json "$evidence"/cold-installed-*.json "$evidence"/walk-p*-installed.json "$evidence"/segment-{opening,completed}/{native-controls,segment-memory,combined-memory-executables,combined-memory-tooling,policy}.json "$evidence"/segment-{opening,completed}/{ownership,combined-memory-source.sha256,combined-memory-sampler-source.py} "$evidence"/../raw/*.{json,png})
+      for artifact in "${walk_inputs[@]}"; do
+        [ -s "$artifact" ] && [ ! -L "$artifact" ] || return 1
+      done
+      native_files+=("${walk_inputs[@]}")
+    else
+      native_flags+=(--qualify-native)
+    fi
     evaluator_command=(python -c 'from tools.devtools.national_storage_qualification import main; raise SystemExit(main())')
   fi
   local evidence_manifest="$BABYLON_STORAGE_REPORT_DIRECTORY/evaluated-evidence.sha256"
@@ -662,17 +700,21 @@ PY_RECEIPT
 # No caller command is accepted; this dispatch invokes only the native launcher.
 national_native_open() {
   local directory descriptor identity campaign
-  if [ "$#" = 2 ] && [ "$1" = --national-native-open ]; then
+  local disposition=open
+  if [ "$#" = 2 ] && { [ "$1" = --national-native-open ] || [ "$1" = --wayne-backup-retire ]; }; then
+    if [ "$1" = --wayne-backup-retire ]; then disposition=backup-retire; fi
     campaign="$2"
     [[ "$campaign" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] ||
       die "canonical existing campaign required"
     directory="$(national_control_directory)" || return 1
     [ -f "$directory/active" ] && [ ! -L "$directory/active" ] || die "retained existing campaign required"
-    exec flock --nonblock --close --conflict-exit-code 75 "$directory/runner.lock"       bash "$REPO_ROOT/tools/run_rust_postgres.sh" --national-native-lock-held "$$" "$campaign"
+    exec flock --nonblock --close --conflict-exit-code 75 "$directory/runner.lock"       bash "$REPO_ROOT/tools/run_rust_postgres.sh" --national-native-lock-held "$$" "$campaign" "$disposition"
   fi
-  [ "$#" = 3 ] && [ "$1" = --national-native-lock-held ] && [ "$2" = "$PPID" ] || die "invalid native lock invocation"
+  { [ "$#" = 3 ] || [ "$#" = 4 ]; } && [ "$1" = --national-native-lock-held ] && [ "$2" = "$PPID" ] || die "invalid native lock invocation"
   [ "$(cat "/proc/$PPID/comm")" = flock ] || die "native lock supervisor is not flock"
   campaign="$3"
+  disposition="${4:-open}"
+  case "$disposition" in open | backup-retire) ;; *) die "unknown retained disposition" ;; esac
   directory="$(national_control_directory)" || return 1
   identity="$(stat -Lc '%d:%i' "$directory/runner.lock")" || return 1
   local locked=0
@@ -685,8 +727,22 @@ national_native_open() {
     [ "$(stat -c '%a' "$NATIONAL_RECORD")" = 600 ] || die "private retained ownership required"
   local -a record
   mapfile -t record < "$NATIONAL_RECORD"
-  [ "${#record[@]}" = 11 ] && [ "${record[0]}" = national-storage-runner-v1 ] &&
-    [ "${record[1]}" = "$REPO_ROOT" ] || die "retained ownership scope mismatch"
+  case "${record[0]:-}" in
+    national-storage-runner-v1)
+      [ "${#record[@]}" = 11 ] && [ -z "${BABYLON_WAYNE_PROFILE:-}" ] && [ "$disposition" = open ] ||
+        die "anonymous ownership does not authorize media retention"
+      ;;
+    national-storage-runner-media-v2)
+      if [[ "${#record[@]}" != 21 || ( "${record[11]:-}" != smoke-01 && "${record[11]:-}" != walk-01 ) ]]; then
+        die "unknown or incomplete media ownership"
+      fi
+      [ -z "${BABYLON_WAYNE_PROFILE:-}" ] || [ "$BABYLON_WAYNE_PROFILE" = "${record[11]}" ] ||
+        die "media profile differs from the exact active record"
+      export BABYLON_WAYNE_PROFILE="${record[11]}" BABYLON_POSTGRES_IMAGE_ID="${record[6]}"
+      ;;
+    *) die "retained ownership version is incomplete or unsupported" ;;
+  esac
+  [ "${record[1]}" = "$REPO_ROOT" ] || die "retained ownership checkout differs"
   CANARY="${record[2]}"; CONTAINER="${record[3]}"; CONTAINER_ID="${record[4]}"
   VOLUME="${record[5]}"; IMAGE_ID="${record[6]}"; NATIONAL_DATABASE="${record[7]}"
   NATIONAL_WRITER="${record[8]}"; NATIONAL_DATABASE_OID="${record[9]}"
@@ -735,6 +791,16 @@ for name,digest in receipt['evidence_sha256'].items():
 if set(receipt['evidence_sha256']) != expected:
     raise SystemExit('retained receipt evidence incomplete')
 PY_VERIFY
+  if [ "$disposition" = backup-retire ]; then
+    (cd "$REPO_ROOT" && mise exec -- uv run --frozen python - "$REPO_ROOT" "$BABYLON_STORAGE_REPORT_DIRECTORY" "$campaign" "$BABYLON_NATIONAL_STORAGE_PERIODS" <<'PY_BACKUP'
+import sys
+from pathlib import Path
+from tools.devtools.national_native_runner import retire_wayne
+retire_wayne(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], int(sys.argv[4]))
+PY_BACKUP
+    )
+    return
+  fi
   # Root supplies the exact combined-source admission before any live handoff.
   local manifest
   for manifest in native-combined-source.sha256 native-executables.sha256; do
@@ -767,6 +833,9 @@ if set(rows) != expected: raise SystemExit('native executable manifest scope ref
 for name,digest in rows.items():
     if hashlib.file_digest(open(name,'rb'),'sha256').hexdigest()!=digest:
         raise SystemExit('native executable admission refused')
+if environment.get('BABYLON_WAYNE_PROFILE') in ('smoke-01','walk-01'):
+    for suffix in ('state','data','config','cache'):
+        environment['XDG_'+suffix.upper()+'_HOME']=str(Path(environment['BABYLON_STORAGE_REPORT_DIRECTORY']).parent/'xdg'/suffix)
 credentials=launcher.ReaderCredentials(environment['BABYLON_OBSERVER_DSN'],environment['BABYLON_READER_DSN'])
 writer,reader=launcher.child_environments(environment,credentials)
 raise SystemExit(launcher.run_pair(runtime,client,root,writer,reader,

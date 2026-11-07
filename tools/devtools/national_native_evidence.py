@@ -11,16 +11,29 @@ import hashlib
 import json
 import os
 import stat
+from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import Field, JsonValue, StrictInt, StrictStr, field_validator, model_validator
+from PIL import Image, PngImagePlugin
+from pydantic import (
+    AwareDatetime,
+    Field,
+    JsonValue,
+    StrictBool,
+    StrictInt,
+    StrictStr,
+    field_validator,
+    model_validator,
+)
 from tools.devtools.national_storage_qualification import (
     AidPracticeEvidence,
     CombinedMemoryEvidence,
     EconomicBoundary,
     EconomicSummary,
+    FixedPeriodMemory,
     FrozenRecord,
     NativeTimings,
     Nonnegative,
@@ -32,18 +45,25 @@ from tools.devtools.national_storage_qualification import (
     Snapshot,
     TradeBoundary,
     TradeSummary,
+    authenticate_combined_memory_capture,
     evaluate_combined_memory,
     strict_json_bytes,
     verify_economic_summary,
 )
 from tools.devtools.national_windowed_qualification import (
     ActionObservation,
+    AidAllocation,
+    Bytes32,
+    CollectionAllocation,
     Command,
     Commitment,
     ControlsEvidence,
+    ControlState,
+    Observation,
     Preview,
     expected_event,
 )
+from tools.devtools.wayne_qualification_storage import RUN_PARENT, PrivateEvidence, Reference
 
 # Designed framing bounds, not alternative economic or save-growth policy.
 MATERIAL_RECORD_BYTES = 4_194_304  # Matches the native record writer.
@@ -423,6 +443,182 @@ def _trace(
     return tuple(steps), tuple(reopens)
 
 
+@dataclass(frozen=True)
+class ObservedPlayClose:
+    started_monotonic_ns: int
+    completed_monotonic_ns: int
+    state: ControlState
+
+
+def _walk_trace(
+    controls: ControlsEvidence,
+) -> tuple[tuple[ActionObservation | ObservedPlayClose, ...], tuple[ActionObservation, ...]]:
+    """Verify observed ordinary UI traces including historical, refused, and automatic inputs."""
+    previous: ActionObservation | None = None
+    first_ready = False
+    playing: ActionObservation | None = None
+    settling = False
+    steps: list[ActionObservation | ObservedPlayClose] = []
+    reopens: list[ActionObservation] = []
+    for action in controls.actions:
+        state = action.state
+        if (
+            state.campaign_id != controls.campaign
+            or action.completed_monotonic_ns < action.started_monotonic_ns
+            or (
+                previous is not None
+                and (
+                    action.sequence <= previous.sequence
+                    or action.started_monotonic_ns < previous.completed_monotonic_ns
+                )
+            )
+        ):
+            raise ValueError("walk trace is out of order or names a different campaign")
+        stale = _stale_poll(action)
+        old = previous.state if previous is not None else None
+        refused_editor = (
+            action.action in ("review", "confirm")
+            and action.event == "refused"
+            and action.reason in ("control_stale_or_unavailable", "ordinary_handler_refused")
+            and state == old
+            and state.allocation_error is not None
+            and state.commitment is None
+            and state.reviewed_command is None
+            and state.preview is None
+        )
+        waiting_archive = (
+            action.action == "open_archive_evidence"
+            and action.event == "refused"
+            and action.reason == "control_stale_or_unavailable"
+            and state == old
+        )
+        refused_offer = (
+            action.action == "review"
+            and action.event == "refused"
+            and action.reason == "ordinary_response_refused"
+            and state.preview is not None
+            and state.preview.refusal is not None
+            and state.reviewed_command is not None
+            and state.reviewed_command.allocation
+            == state.preview.allocation
+            == state.selected_allocation
+            and state.reviewed_command.expected_period == state.durable_tick
+            and state.commitment is None
+        )
+        if (
+            not stale
+            and not refused_editor
+            and not waiting_archive
+            and not refused_offer
+            and (action.event != expected_event(action.action) or action.reason is not None)
+        ):
+            raise ValueError("walk trace contains an unexpected refusal or mismatched event")
+        if first_ready and old is not None:
+            changed = state.durable_tick - old.durable_tick
+            reopened = action.action == "reopen" and action.event == "reopened_and_installed"
+            if (
+                old.scope_epoch is None
+                or state.scope_epoch != old.scope_epoch + int(reopened)
+                or state.perspective != old.perspective
+                or state.generation < old.generation
+                or (reopened and state.generation <= old.generation)
+                or state.foundation_sha256 != controls.foundation_sha256
+            ):
+                raise ValueError("walk trace scope or installed foundation changed")
+            if action.action == "play":
+                if (
+                    playing is not None
+                    or old.playing
+                    or action.event != "applied"
+                    or not state.playing
+                ):
+                    raise ValueError("walk Play is not a fresh ordinary admission")
+                playing = action
+            if changed:
+                if changed != 1 or (
+                    action.action != "step"
+                    and not (playing is not None and action.action in ("play", "pause", "status"))
+                ):
+                    raise ValueError("walk closed outside a single admitted step or Play")
+            elif (state.tick_content_hash, state.world_hash) != (
+                old.tick_content_hash,
+                old.world_hash,
+            ):
+                raise ValueError("walk material identity changed without a close")
+            if state.playing and playing is None:
+                raise ValueError("walk playback began without its ordinary Play event")
+            if action.action == "pause" and playing is not None:
+                if state.playing or state.durable_tick != playing.state.durable_tick + int(
+                    playing.state.durable_tick == 9
+                ):
+                    raise ValueError("final Play did not pause at the tenth installed period")
+                settling = True
+            if (
+                settling
+                and state.durable_tick == 10
+                and not any(
+                    (
+                        state.playing,
+                        state.lifecycle_pending,
+                        state.advance_pending,
+                        state.organizer_pending,
+                        state.organizer_status_due,
+                    )
+                )
+                and state.organizer_period == 10
+                and state.archive_verified_tick == 10
+            ):
+                if playing is None:
+                    raise ValueError("final automatic close has no Play admission")
+                steps.append(
+                    ObservedPlayClose(
+                        playing.started_monotonic_ns, action.completed_monotonic_ns, state
+                    )
+                )
+                playing = None
+                settling = False
+            if state.viewed_tick != state.durable_tick:
+                if state.viewed_tick != state.durable_tick - 1 or action.action not in (
+                    "previous_period",
+                    "status",
+                ):
+                    raise ValueError("walk history drifted outside its ordinary inspected period")
+            if reopened:
+                if state.commitment is None:
+                    reopens.append(action)
+                elif (
+                    state.durable_tick != 2
+                    or state.commitment.command.choice != "remote_aid"
+                    or state.commitment != old.commitment
+                ):
+                    raise ValueError("extra walk reopen lacks its exact mixed pending original")
+            if action.action == "step":
+                if (
+                    changed != 1
+                    or state.playing
+                    or state.advance_pending
+                    or state.viewed_tick != state.durable_tick
+                ):
+                    raise ValueError("walk step did not install one period")
+                steps.append(action)
+        if state.phase in ("Ready", "Complete") and not stale:
+            if state.scope_epoch is None or state.foundation_sha256 != controls.foundation_sha256:
+                raise ValueError("walk installed state lacks its acknowledged identity")
+            if not first_ready and state.durable_tick != controls.initial_tick:
+                raise ValueError("walk started from a different checkpoint")
+            first_ready = True
+        previous = action
+    if (
+        not first_ready
+        or playing is not None
+        or settling
+        or not controls.actions
+        or (controls.actions[-1].action != "quit" or not controls.actions[-1].state.quit_requested)
+    ):
+        raise ValueError("walk segment lacks verified installation and ordinary close")
+    return tuple(steps), tuple(reopens)
+
+
 def _originals(
     evidence: NativeRunEvidence,
     directory: Path,
@@ -432,6 +628,9 @@ def _originals(
     accepted = {}
     reviewed: ActionObservation | None = None
     for action in controls.actions:
+        if action.event == "refused":
+            reviewed = None
+            continue
         if action.action == "review":
             reviewed = action
         elif action.action == "confirm":
@@ -511,6 +710,8 @@ def evaluate_native(
     ticks: tuple[Snapshot, ...],
     material_result: dict[str, object],
     memory: CombinedMemoryEvidence | None,
+    *,
+    wayne_walk: bool = False,
 ) -> dict[str, object]:
     """Require real UI actions, exact source state and separate material proofs."""
     if directory.is_symlink() or not directory.is_dir():
@@ -545,7 +746,7 @@ def evaluate_native(
         evidence.status,
     ):
         raise ValueError("native controls differ from original run admission")
-    steps, reopens = _trace(controls)
+    steps, reopens = _walk_trace(controls) if wayne_walk else _trace(controls)
     actual = tuple(t.tick for t in ticks)
     if (
         tuple(a.state.durable_tick for a in steps) != actual
@@ -931,4 +1132,864 @@ def evaluate_native(
         "native_read_and_reopen_budgets_passed": phase_limits,
         "enjoyment_status": "unqualified",
         "scope": "Actual native action custody joined to authenticated material, Archive, storage and checkpoint recovery; scripted interaction does not establish enjoyment",
+    }
+
+
+class RecipientHours(NativeRecord):
+    actor_id: U64
+    contributor_id: U64
+    hours: U64
+
+
+class PracticeReceipt(NativeRecord):
+    receipt_id: Bytes32
+    commitment_id: Bytes32 | None
+    period: U64
+    actor_id: U64
+    choice: StrictStr
+    standing_work: StrictBool
+    hours_spent: U64
+    observation_ids: tuple[Bytes32, ...]
+    contact_product_id: Bytes32 | None
+    outcome: StrictStr
+    partner_actor_id: U64 | None
+    partner_response: StrictStr
+    time_use: tuple[RecipientHours, ...]
+
+
+def walk_response(
+    original: tuple[int, ...],
+    practices: tuple[AidPracticeEvidence, ...],
+    sql_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Join one actual gift's dated material legs and political responses to committed rows."""
+    practice_kinds = {
+        "aid_awaiting_support",
+        "no_qualifying_support",
+        "aid_response_retained",
+        "aid_practice_completed",
+        "aid_practice_uncompleted",
+        "insufficient_time",
+    }
+    rows = [
+        PracticeReceipt.model_validate(row)
+        for row in sql_rows
+        if row["commitment_id"] == list(original) and row["outcome"] in practice_kinds
+    ]
+    by_date = {row.period: row for row in rows}
+    if len(rows) != len(by_date) or len({row.receipt_id for row in rows}) != len(rows):
+        raise ValueError("original has duplicate recipient response rows")
+    if [p.period for p in practices] != sorted(by_date):
+        raise ValueError("recipient response dates differ from independent material accounting")
+    first: PracticeReceipt | None = None
+    for p in practices:
+        r = by_date[p.period]
+        if (
+            p.original_commitment != original
+            or (r.outcome, r.partner_actor_id, r.partner_response)
+            != (p.outcome, p.partner_actor, p.partner_response)
+            or sum(item.hours for item in r.time_use if item.actor_id == p.partner_actor)
+            != p.recipient_debited_hours
+        ):
+            raise ValueError(
+                "recipient, response or finite recipient hours differ from committed practice"
+            )
+        if p.outcome in ("aid_response_retained", "aid_awaiting_support", "no_qualifying_support"):
+            if (
+                r.time_use
+                or r.hours_spent
+                or p.recipient_debited_hours
+                or r.partner_actor_id is not None
+                or r.partner_response != "not_requested"
+            ):
+                raise ValueError("retained or absent response charged new recipient time")
+            if p.outcome == "aid_response_retained" and (
+                first is None or p.first_response_period != first.period
+            ):
+                raise ValueError(
+                    "retained response does not name its unique earlier first response"
+                )
+        else:
+            if (
+                first is not None
+                or not p.qualifying_received_support
+                or p.first_response_period != p.period
+                or p.partner_actor is None
+            ):
+                raise ValueError("recipient response lacks its unique first qualifying support")
+            first = r
+    return {
+        "original_commitment": bytes(original).hex(),
+        "first_response_receipt": first.model_dump(mode="json") if first else None,
+        "material_practices": [p.model_dump(mode="json") for p in practices],
+        "retained_without_second_debit": [
+            p.period for p in practices if p.outcome == "aid_response_retained"
+        ],
+    }
+
+
+class WalkStage(NativeRecord):
+    utc: AwareDatetime
+    monotonic_ns: Positive
+    state: ControlState
+    facts: dict[str, Any]
+
+
+class ColdInstallation(NativeRecord):
+    elapsed_ns: Positive
+    processes: Annotated[
+        tuple[tuple[Positive, Nonnegative, Sha256], ...], Field(min_length=2, max_length=2)
+    ]
+    state: ControlState
+    ownership_sha256: Sha256
+    source_head: Annotated[StrictStr, Field(pattern=r"^[0-9a-f]{40}$")]
+
+
+class WalkFrame(NativeRecord):
+    utc: AwareDatetime
+    started_monotonic_ns: Positive
+    completed_monotonic_ns: Positive
+    segment: Literal["opening", "walk", "completed"]
+    sequence: Positive
+    stage: Annotated[StrictStr, Field(pattern=r"^[a-z][a-z0-9-]+$")]
+    role: Literal["organizer"]
+    panel: StrictStr
+    width: Positive
+    height: Positive
+    scale: StrictStr
+    capture: Reference
+    state: ControlState
+
+
+def verify_frame_png(data: bytes, width: int, height: int) -> None:
+    if (width, height) not in ((1366, 768), (1920, 1080)) or not data.endswith(
+        bytes.fromhex("0000000049454e44ae426082")
+    ):
+        raise ValueError("native PNG extent or complete final chunk is absent")
+    try:
+        with Image.open(BytesIO(data), formats=("PNG",)) as image:
+            if (
+                not isinstance(image, PngImagePlugin.PngImageFile)
+                or image.size != (width, height)
+                or image.n_frames != 1
+            ):
+                raise ValueError("native PNG dimensions differ from the requested window")
+            image.verify()
+        with Image.open(BytesIO(data), formats=("PNG",)) as image:
+            image.load()
+    except (OSError, SyntaxError) as error:
+        raise ValueError("native PNG pixels or checksums cannot be verified") from error
+
+
+def _walk_frames(
+    raw: Path, segments: dict[str, ControlsEvidence]
+) -> tuple[dict[str, list[str]], int]:
+    custody = PrivateEvidence(raw)
+    actions = {
+        name: {a.sequence: a for a in segment.actions if a.action == "capture_frame"}
+        for name, segment in segments.items()
+    }
+    expected = {(key, seq) for key, mapping in actions.items() for seq in mapping}
+    seen: set[tuple[str, int]] = set()
+    sizes: dict[str, set[tuple[int, int, str]]] = {}
+    artifacts: dict[str, list[str]] = {}
+    screenshots: set[str] = set()
+    elapsed_ns = 0
+    for path in sorted(raw.glob("*.json")):
+        f = WalkFrame.model_validate(
+            strict_json_bytes(custody.read_reference(custody.reference(path.name)))
+        )
+        action = actions[f.segment].get(f.sequence)
+        identity = (f.segment, f.sequence)
+        name = f"{f.stage}-p{f.state.viewed_tick}-{f.width}x{f.height}-{f.scale}-seq{f.sequence}"
+        if (
+            identity in seen
+            or action is None
+            or action.event != "frame_captured"
+            or action.reason is not None
+            or f.state != action.state
+            or f.panel != f.state.inspector
+            or f.state.playing
+            or f.state.perspective != "PlayerKnowledge"
+            or f.started_monotonic_ns > action.started_monotonic_ns
+            or action.completed_monotonic_ns > f.completed_monotonic_ns
+            or (f.capture.path, path.name) != (name + ".png", name + ".json")
+        ):
+            raise ValueError("raw frame differs from its actual control, role, period or filename")
+        data = custody.read_reference(f.capture, 32 * 1024 * 1024)
+        verify_frame_png(data, f.width, f.height)
+        layout = (f.width, f.height, f.scale)
+        roster = sizes.setdefault(f.stage, set())
+        if layout in roster or f.state.larger_interface != (f.scale in ("1.15", "1.4375")):
+            raise ValueError("native frame has a duplicate or mismatched layout")
+        roster.add(layout)
+        artifacts.setdefault(f.stage, []).append(f.capture.path)
+        elapsed_ns += f.completed_monotonic_ns - f.started_monotonic_ns
+        seen.add(identity)
+        screenshots.add(f.capture.path)
+    expected_layout = {
+        (1366, 768, "1.0"),
+        (1366, 768, "1.15"),
+        (1920, 1080, "1.25"),
+        (1920, 1080, "1.4375"),
+    }
+    if (
+        not seen
+        or seen != expected
+        or screenshots != {path.name for path in raw.glob("*.png")}
+        or any(layouts != expected_layout for layouts in sizes.values())
+    ):
+        raise ValueError(
+            "native frame sets do not cover each captured action in all four actual layouts"
+        )
+    return artifacts, elapsed_ns
+
+
+def _walk_scope(evidence: PrivateEvidence, name: str) -> Any:
+    return strict_json_bytes(
+        evidence.read_reference(evidence.reference(name), CONTROLS_RECORD_BYTES)
+    )
+
+
+def _walk_checkpoint(
+    evidence: PrivateEvidence,
+    before: str,
+    after: str,
+    choice: str | None,
+    period: int,
+    controls: tuple[ControlsEvidence, ControlsEvidence],
+) -> WalkStage:
+    left, right = (
+        WalkStage.model_validate(_walk_scope(evidence, name + ".json")) for name in (before, after)
+    )
+    if (
+        left.facts != right.facts
+        or left.monotonic_ns >= right.monotonic_ns
+        or left.state.commitment != right.state.commitment
+    ):
+        raise ValueError("restored draft, SQL, report or original differs across the checkpoint")
+    for stage, trace in zip((left, right), controls, strict=True):
+        s = stage.state
+        if (
+            s.campaign_id != trace.campaign
+            or s.durable_tick != period
+            or s.viewed_tick != period
+            or s.foundation_sha256 != trace.foundation_sha256
+            or s.playing
+            or not any(
+                a.state == s and a.completed_monotonic_ns <= stage.monotonic_ns
+                for a in trace.actions
+            )
+            or (s.commitment.command.choice if s.commitment else None) != choice
+        ):
+            raise ValueError("SQL checkpoint differs from its actual installed native control")
+    return right
+
+
+def _walk_memory(
+    policy: Policy,
+    base: Path,
+    native: NativeRunEvidence,
+    main: CombinedMemoryEvidence,
+    segments: dict[str, ControlsEvidence],
+    markers: dict[int, str],
+) -> list[dict[str, Any]]:
+    if not main.samples or main.periods != 10:
+        raise ValueError("national walk requires a complete ten-close main memory witness")
+    identities: set[tuple[int, int, str]] = set()
+    prior_end = 0
+    source_head = private_bytes(base / "source-head", 64).decode().strip()
+    reports = []
+    for name, start_tick in (("opening", 0), ("walk", 0), ("completed", 10)):
+        folder = base if name == "walk" else base / ("segment-" + name)
+        segment: CombinedMemoryEvidence | FixedPeriodMemory = (
+            main
+            if name == "walk"
+            else FixedPeriodMemory.model_validate(
+                _walk_scope(PrivateEvidence(folder), "segment-memory.json")
+            )
+        )
+        cold = ColdInstallation.model_validate(
+            _walk_scope(PrivateEvidence(base), "cold-installed-" + name + ".json")
+        )
+        trace = segments[name]
+        if (
+            segment.campaign,
+            segment.foundation_sha256,
+            segment.boot_id,
+            segment.policy_sha256,
+            segment.source_manifest_sha256,
+            segment.executable_manifest_sha256,
+            segment.ownership_record_sha256,
+            segment.capture_implementation_sha256,
+        ) != (
+            native.campaign,
+            native.foundation_sha256,
+            main.boot_id,
+            native.policy_sha256,
+            native.source_manifest_sha256,
+            native.executable_manifest_sha256,
+            native.ownership_record_sha256,
+            main.capture_implementation_sha256,
+        ):
+            raise ValueError(
+                "cold interval campaign, frozen source, executable, owner or boot differs"
+            )
+        if (
+            cold.ownership_sha256 != native.ownership_record_sha256
+            or cold.source_head != source_head
+            or cold.state.durable_tick != start_tick
+            or cold.elapsed_ns >= policy.maximum_cold_open_seconds * 1_000_000_000
+            or not any(action.state == cold.state for action in trace.actions)
+            or segment.interval_start_monotonic_ns < prior_end
+        ):
+            raise ValueError(
+                "process-cold installation lacks matching timed installed controls and owner"
+            )
+        native_pids = set(cold.processes)
+        if len(native_pids) != 2 or identities & native_pids:
+            raise ValueError("process-cold pair repeated an earlier owned process")
+        identities.update(native_pids)
+        authenticate_combined_memory_capture(segment, folder)
+        prev = segment.interval_start_monotonic_ns
+        peak = gap = 0
+        ages = set()
+        founded = False
+        for i, sample in enumerate(segment.samples, 1):
+            proc = {
+                p.role: (p.pid, p.start_time_ticks, p.executable_sha256)
+                for p in sample.processes
+                if p.role in ("native-client", "engine-runtime")
+            }
+            if (
+                sample.sequence != i
+                or sample.monotonic_ns < prev
+                or sample.monotonic_ns + sample.capture_duration_ns
+                > segment.interval_end_monotonic_ns
+                or sample.simultaneous_capture != "owned_game_group_stopped"
+                or sample.roster_complete != "all_game_processes_in_owned_scope"
+                or sample.native_client_mode != "windowed"
+                or proc != {"engine-runtime": cold.processes[0], "native-client": cold.processes[1]}
+                or not any(p.role == "game-postgresql" for p in sample.processes)
+                or sample.foundation_sha256 not in (native.foundation_sha256, None)
+                or (founded and sample.foundation_sha256 is None)
+                or sample.tick_content_hash != markers.get(sample.campaign_age_ticks)
+            ):
+                raise ValueError(
+                    "cold memory sample lacks the exact owned process and committed marker"
+                )
+            if sample.foundation_sha256 is not None:
+                founded = True
+            ages.add(sample.campaign_age_ticks)
+            gap = max(gap, sample.monotonic_ns - prev)
+            prev = sample.monotonic_ns + sample.capture_duration_ns
+            peak = max(
+                peak,
+                sum(
+                    p.rss_bytes + p.private_hugetlb_bytes + p.shared_hugetlb_bytes
+                    for p in sample.processes
+                ),
+            )
+        gap = max(gap, segment.interval_end_monotonic_ns - prev)
+        if (
+            not founded
+            or ages != (set(range(11)) if name == "walk" else {start_tick})
+            or (isinstance(segment, FixedPeriodMemory) and segment.period != start_tick)
+            or (segment.samples[0].foundation_sha256 is None) != (name == "opening")
+            or peak > policy.maximum_combined_running_game_memory_bytes
+            or gap > policy.maximum_combined_memory_sample_gap_seconds * 1_000_000_000
+            or not all(
+                segment.interval_start_monotonic_ns
+                <= a.started_monotonic_ns
+                <= a.completed_monotonic_ns
+                <= segment.interval_end_monotonic_ns
+                for a in trace.actions
+                if a.action != "quit"
+            )
+        ):
+            raise ValueError("cold interval coverage, memory budget or sampled cadence differs")
+        prior_end = segment.interval_end_monotonic_ns
+        reports.append(
+            {
+                "segment": name,
+                "initial_tick": start_tick,
+                "processes": cold.processes,
+                "cold_install_ns": cold.elapsed_ns,
+                "peak_combined_rss_upper_bound_bytes": peak,
+                "maximum_sample_gap_ns": gap,
+                "capture_start_ns": segment.interval_start_monotonic_ns,
+                "capture_end_ns": segment.interval_end_monotonic_ns,
+            }
+        )
+    return reports
+
+
+def _walk_originals(segments: dict[str, ControlsEvidence]) -> dict[tuple[int, ...], Commitment]:
+    all_commands = {}
+    for controls in segments.values():
+        review = None
+        for action in controls.actions:
+            state = action.state
+            if action.action == "review" and action.event == "preview_admitted":
+                ruling = state.preview
+                command = state.reviewed_command
+                if (
+                    ruling is None
+                    or command is None
+                    or ruling.refusal is not None
+                    or command.allocation != ruling.allocation
+                    or command.choice != ruling.choice
+                    or ruling.current_period != command.expected_period
+                    or command.expected_period != state.durable_tick
+                    or bytes(command.campaign_id) != UUID(controls.campaign).bytes
+                ):
+                    raise ValueError("walk admitted review differs from its actual selection")
+                review = state
+            elif action.action == "confirm" and action.event == "acceptance_admitted":
+                original = state.commitment
+                if (
+                    review is None
+                    or original is None
+                    or original.command != review.reviewed_command
+                    or original.resolves_period != state.durable_tick + 1
+                    or original.commitment_id in all_commands
+                ):
+                    raise ValueError(
+                        "walk original lacks its unique actual review and confirmation"
+                    )
+                all_commands[original.commitment_id] = original
+                review = None
+            elif (
+                action.action not in ("status", "capture_frame")
+                or action.event != expected_event(action.action)
+                or state != review
+            ):
+                review = None
+    return all_commands
+
+
+def evaluate_wayne_walk(
+    policy: Policy,
+    native: NativeRunEvidence,
+    base: Path,
+    material: PlayableReport,
+    timing: NativeTimings,
+    memory: CombinedMemoryEvidence,
+    native_result: dict[str, object],
+    storage: dict[str, object],
+) -> dict[str, Any]:
+    if (
+        base != RUN_PARENT / "walk-01/evidence"
+        or native.requested_periods != 10
+        or native.status != "completed"
+    ):
+        raise ValueError(
+            "Wayne walkthrough needs its exact disposable media run and ten-close admission"
+        )
+    evidence = PrivateEvidence(base)
+    owner = evidence.read_reference(evidence.reference("ownership"), 4096).decode().splitlines()
+    if (
+        len(owner) != 21
+        or owner[0] != "national-storage-runner-media-v2"
+        or owner[10] != str(base)
+        or owner[11] != "walk-01"
+    ):
+        raise ValueError("walk evidence names a different native owner")
+    segments = {
+        name: ControlsEvidence.model_validate(
+            _walk_scope(evidence, prefix + "native-controls.json")
+        )
+        for name, prefix in (
+            ("opening", "segment-opening/"),
+            ("walk", ""),
+            ("completed", "segment-completed/"),
+        )
+    }
+    for label, trace in segments.items():
+        if (trace.foundation_sha256, trace.campaign, trace.initial_tick, trace.status) != (
+            native.foundation_sha256,
+            native.campaign,
+            10 if label == "completed" else 0,
+            "completed",
+        ):
+            raise ValueError("process-cold trace names a different terminal or campaign")
+        steps, reopens = _walk_trace(trace)
+        if label != "walk" and (steps or reopens):
+            raise ValueError("fixed-period cold segment performed an extra advance or reopen")
+    pending = _walk_checkpoint(
+        evidence,
+        "pending-before-cold",
+        "pending-after-cold",
+        "collect",
+        0,
+        (segments["opening"], segments["walk"]),
+    )
+    mixed = _walk_checkpoint(
+        evidence,
+        "mixed-pending-before-reopen",
+        "mixed-pending-after-reopen",
+        "remote_aid",
+        2,
+        (segments["walk"], segments["walk"]),
+    )
+    terminal = _walk_checkpoint(
+        evidence,
+        "completed-before-cold",
+        "completed-after-cold",
+        None,
+        10,
+        (segments["walk"], segments["completed"]),
+    )
+    if (
+        not pending.facts["draft"]["sha256"]
+        or pending.facts["campaign_identity"] != terminal.facts["campaign_identity"]
+        or mixed.facts["campaign_identity"] != terminal.facts["campaign_identity"]
+    ):
+        raise ValueError("pending and completed drafts or installed national identities are absent")
+    frames, capture_wall_ns = _walk_frames(base.parent / "raw", segments)
+    originals = _walk_originals(segments)
+    sql_originals = {
+        Commitment.model_validate(row["commitment"]).commitment_id: Commitment.model_validate(
+            row["commitment"]
+        )
+        for row in terminal.facts["commands"]
+        if row["consumed_period"] == row["commitment"]["resolves_period"]
+    }
+    if (
+        sql_originals != originals
+        or pending.state.commitment not in originals.values()
+        or mixed.state.commitment not in originals.values()
+    ):
+        raise ValueError("accepted native originals differ from the settled SQL command roster")
+    if (
+        pending.state.commitment is None
+        or not isinstance(pending.state.commitment.command.allocation, CollectionAllocation)
+        or pending.state.commitment.command.allocation.collection.target_cash_micros != "1450000000"
+    ):
+        raise ValueError("pending cold checkpoint lacks the exact accepted collection")
+    if not any(
+        a.action == "review"
+        and a.event == "preview_admitted"
+        and isinstance(a.state.selected_allocation, CollectionAllocation)
+        and a.state.selected_allocation.collection.target_cash_micros == "280000000"
+        for a in segments["opening"].actions
+    ):
+        raise ValueError("walk lacks the original opening proposal before editing")
+    history_before = WalkStage.model_validate(
+        _walk_scope(evidence, "before-history-archive-return.json")
+    )
+    history_after = WalkStage.model_validate(
+        _walk_scope(evidence, "after-history-archive-return.json")
+    )
+    if history_before.facts != history_after.facts or history_after.facts != terminal.facts:
+        raise ValueError(
+            "history or Archive Return changed authoritative reports, receipts or the draft"
+        )
+    reports = terminal.facts["reports"]
+    grants = terminal.facts["grants"]
+    disclosed = {}
+    for key, raw in reports.items():
+        report = Observation.model_validate(raw)
+        if report.report.kind != "partner":
+            continue
+        date = report.acquired_period
+        receipt = (
+            bytes(report.receipt_id).hex() if report.receipt_id is not None else "automatic-report"
+        )
+        locator = f"source-actor/{report.source_actor_id}/observed-period/{report.observed_period}/acquired-period/{date}/observation/{key}/action-receipt/{receipt}"
+        if (
+            key != bytes(report.observation_id).hex()
+            or report.observed_period > date
+            or date > 10
+            or [
+                "organization",
+                str(report.subject_id),
+                "report-" + key,
+                date,
+                "derived-scoped-partner-report-v1",
+                locator,
+            ]
+            not in grants
+        ):
+            raise ValueError("partner disclosure lacks its exact dated SQL evidence grant")
+        disclosed[key] = report.model_dump(mode="json")
+    for trace in segments.values():
+        for a in trace.actions:
+            s = a.state
+            if (
+                a.action not in ("inspect_subject_evidence", "open_archive_evidence")
+                or a.event == "refused"
+            ):
+                continue
+            raw = disclosed.get(s.selected_report_id or "")
+            if (
+                raw is None
+                or (
+                    s.selected_subject,
+                    s.selected_report_observed_period,
+                    s.selected_report_acquired_period,
+                )
+                != (
+                    f"AidPartner({raw['subject_id']})",
+                    raw["observed_period"],
+                    raw["acquired_period"],
+                )
+                or raw["acquired_period"] > s.viewed_tick
+            ):
+                raise ValueError("displayed report differs from its subject and period grant")
+    period_facts = material.independent_account_posting_audit.get("periods")
+    if (
+        not isinstance(period_facts, list)
+        or len(period_facts) != 10
+        or not all(isinstance(row, dict) for row in period_facts)
+    ):
+        raise ValueError("ten actual aid boundaries required for the national walk")
+    ordered = [AidBoundary.model_validate({"version": 2, **period}) for period in period_facts]
+    details = []
+    missing = []
+    expected_allocations = {
+        "local-food": ("local_aid", 1, "0"),
+        "remote-mixed": ("remote_aid", 2, "280000000"),
+        "local-cash": ("local_aid", 0, "1000000000"),
+    }
+    for label, (choice, food, cash) in expected_allocations.items():
+        choices = [
+            c
+            for c in originals.values()
+            if c.command.choice == choice
+            and isinstance(c.command.allocation, AidAllocation)
+            and (c.command.allocation.aid.food_quantity, c.command.allocation.aid.cash_micros)
+            == (food, cash)
+        ]
+        if not choices:
+            missing.append(label + " original")
+            continue
+        if len(choices) != 1:
+            raise ValueError("walk repeats an intended aid original")
+        c = choices[0]
+        practices = tuple(
+            p
+            for row in ordered
+            for p in row.independent_practices
+            if p.original_commitment == c.commitment_id
+        )
+        proof = walk_response(c.commitment_id, practices, terminal.facts["receipts"])
+        proof["selection"] = label
+        proof["material_legs"] = [
+            {"period": b.period, **leg}
+            for b in ordered
+            for leg in b.selected_aid
+            if leg["original_commitment"] == list(c.commitment_id)
+        ]
+        admitted = AidOriginal.model_validate(
+            _artifact(
+                base,
+                next(
+                    a
+                    for a in native.aid_originals
+                    if a.name == "aid-" + bytes(c.commitment_id).hex() + ".json"
+                ),
+                MATERIAL_RECORD_BYTES,
+            )
+        )
+        origin = admitted.review.before
+        offer = origin.get("aid")
+        treasury = origin.get("collection")
+        if (
+            not isinstance(offer, list)
+            or not isinstance(treasury, dict)
+            or not isinstance(treasury.get("organization_cash_micros"), str)
+        ):
+            raise ValueError("accepted aid original lacks its actual treasury and material offers")
+        kind = "remote" if choice == "remote_aid" else "local"
+        admitted_offers = [
+            row for row in offer if isinstance(row, dict) and row.get("kind") == kind
+        ]
+        if (
+            len(admitted_offers) != 1
+            or admitted_offers[0].get("period") != c.command.expected_period
+        ):
+            raise ValueError("native aid original does not bind its current recipient offer")
+        proof["admitted_offer"] = admitted_offers[0]
+        proof["organization_cash_before_micros"] = treasury["organization_cash_micros"]
+        confirmations = [
+            a
+            for a in segments["walk"].actions
+            if a.action == "confirm"
+            and a.state.commitment == c
+            and a.event == "acceptance_admitted"
+        ]
+        if len(confirmations) != 1:
+            raise ValueError("walk acceptance lacks one observed timestamp")
+        proof["accepted_monotonic_ns"] = confirmations[0].completed_monotonic_ns
+        for row in proof["material_legs"]:
+            installed = WalkStage.model_validate(
+                _walk_scope(evidence, f"walk-p{row['period']}-installed.json")
+            )
+            if (
+                installed.state.durable_tick != row["period"]
+                or installed.state.tick_content_hash
+                != material.boundaries[row["period"] - 1].tick_content_hash
+            ):
+                raise ValueError("dated material leg differs from installed period and marker")
+            row["observed_utc"] = installed.utc.isoformat()
+            row["observed_monotonic_ns"] = installed.monotonic_ns
+        recipient = admitted_offers[0]["recipient_actor_id"]
+        proof["recipient_reports"] = [
+            r
+            for r in disclosed.values()
+            if r["subject_id"] == recipient
+            and r["source_actor_id"] == recipient
+            and r["actor_id"] == c.command.actor_id
+            and c.command.expected_period <= r["acquired_period"]
+        ]
+        if label == "local-cash" and not any(
+            r["observed_period"] == c.resolves_period + 1
+            and r["report"]["facts"]["basis"] in ("food_provision", "essential_services")
+            for r in proof["recipient_reports"]
+        ):
+            missing.append("following ordinary local recipient purchasing disclosure")
+        if label == "local-food":
+            collection = origin.get("collection_resolutions")
+            if not isinstance(collection, list):
+                raise ValueError(
+                    "local food admission lacks the preceding authoritative collection resolution"
+                )
+            rows = [
+                row
+                for row in collection
+                if isinstance(row, dict)
+                and row.get("commitment") == pending.state.commitment.model_dump(mode="json")
+            ]
+            if len(rows) != 1:
+                raise ValueError("first collection outcome does not bind the pending cold original")
+            fact = rows[0].get("fact")
+            if not isinstance(fact, dict):
+                raise ValueError("first collection resolution lacks its material fact")
+            if fact.get("requested_cash_micros") != "1450000000" or fact.get("period") != 1:
+                raise ValueError("collection outcome differs from its accepted amount and period")
+            proof["prior_collection_fact"] = fact
+            if fact.get("collected_cash_micros") != "1450000000":
+                missing.append("full requested initial collection")
+        if sum(p.food_consumed_quantity for p in practices) != food or sum(
+            int(p.cash_received_micros) for p in practices
+        ) != int(cash):
+            missing.append(label + " full requested material outcome")
+        details.append(proof)
+        if proof["first_response_receipt"] is None:
+            missing.append(label + " first recipient response")
+        if label == "remote-mixed" and (
+            not any(p.cash_received_period for p in practices)
+            or not any(p.food_consumption_period for p in practices)
+            or not proof["retained_without_second_debit"]
+        ):
+            missing.append("distinct remote material legs and retained first response")
+        if label == "local-cash" and not any(p.cash_received_period for p in practices):
+            missing.append("actual local cash transfer")
+    basic = {
+        "opening",
+        "opening-local-report",
+        "opening-remote-report",
+        "dispatch",
+        "answer-report",
+        "return",
+        "archive-report",
+        "restored-completed",
+        "cash-following-purchase",
+    }
+    cash_label = "local-cash-retry" if "local-cash-retry-confirmed" in frames else "local-cash"
+    for choice_label in (
+        "collection",
+        "local-food",
+        "remote-mixed",
+        "pause-standing",
+        cash_label,
+        "resume-standing",
+    ):
+        basic.update(choice_label + "-" + s for s in ("selected", "reviewed", "confirmed"))
+    missing.extend("raw frames " + stage for stage in sorted(basic - frames.keys()))
+    if not all(
+        any(r["report"]["facts"]["basis"] == kind for r in disclosed.values())
+        for kind in ("food_provision", "essential_services", "participation_time")
+    ):
+        missing.append("dated recipient food, services and time disclosures")
+    standing = {
+        c.command.choice: c.resolves_period
+        for c in originals.values()
+        if c.command.choice in ("pause_standing", "resume_standing")
+    }
+    start, finish = standing.get("pause_standing"), standing.get("resume_standing")
+    if start is None or finish is None or not start < finish:
+        missing.append("ordinary Pause and Resume standing")
+    else:
+        receipts = terminal.facts["receipts"]
+        if (
+            not any(r["period"] == start and r["outcome"] == "standing_paused" for r in receipts)
+            or not any(
+                r["period"] == finish and r["outcome"] == "standing_resumed" for r in receipts
+            )
+            or any(
+                r["standing_work"] and r["outcome"] != "no_authorized_practice"
+                for r in receipts
+                if start < r["period"] < finish
+            )
+        ):
+            missing.append("standing remained paused until the explicit Resume")
+    if not all(
+        material.independent_account_posting_audit.get(key) == "passed"
+        for key in (
+            "cash_and_in_kind_postings",
+            "time_partition_and_residual_bound",
+            "exact_final_contribution_debit_ledger",
+        )
+    ):
+        missing.append("authenticated material and finite-hours accounting")
+    process_memory = _walk_memory(
+        policy,
+        base,
+        native,
+        memory,
+        segments,
+        {b.tick: b.tick_content_hash for b in material.boundaries},
+    )
+    if (
+        native_result["status"] == "failed"
+        or not native_result["separate_byte_budgets_passed"]
+        or not native_result["native_read_and_reopen_budgets_passed"]
+        or storage["status"] == "failed"
+    ):
+        raise ValueError("walk exceeded an unchanged material, storage, read or native phase limit")
+    wall = _walk_scope(evidence, "walk-wall.json")
+    if (
+        wall["campaign"] != native.campaign
+        or not (
+            wall["start_ns"]
+            <= process_memory[0]["capture_start_ns"]
+            < process_memory[-1]["capture_end_ns"]
+            <= wall["end_ns"]
+        )
+        or wall["end_ns"] - wall["start_ns"] > timing.run.elapsed_ns
+    ):
+        raise ValueError("walk wall clock does not cover all cold restarts and verification")
+    return {
+        "status": "incomplete" if missing else "qualified",
+        "missing": missing,
+        "actual_periods": 10,
+        "process_segments": process_memory,
+        "full_walk_elapsed_ns": wall["end_ns"] - wall["start_ns"],
+        "native_operation_elapsed_ns": timing.run.elapsed_ns,
+        "peak_combined_rss_upper_bound_bytes": max(
+            s["peak_combined_rss_upper_bound_bytes"] for s in process_memory
+        ),
+        "pending_process_cold": "collect",
+        "pending_in_process": "remote_mixed",
+        "completed_process_cold_period": 10,
+        "native_aid_timelines": details,
+        "granted_recipient_reports": disclosed,
+        "raw_frames": frames,
+        "layout_and_capture_elapsed_ns": capture_wall_ns,
+        "opening_treasury_display": "requires inspection of retained opening frames",
+        "recipient_manufactured_purchase_quantities": "unverified by this native audit reader",
+        "recipient_purchase_funding_source": "unattributed",
+        "user_enjoyment": "unqualified",
     }

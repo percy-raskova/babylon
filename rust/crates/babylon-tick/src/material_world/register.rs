@@ -434,25 +434,64 @@ impl MaterialWorldRegister {
         })
     }
 
+    fn rebuild_binding(
+        self,
+        catalog: &MaterialCatalog,
+        resolver: Option<&StableElementResolver>,
+    ) -> Result<Self, MaterialWorldError> {
+        if self.catalog_digest != catalog.catalog_digest() {
+            return Self::build(
+                catalog,
+                self.completed_tick,
+                self.state,
+                self.organizer,
+                self.public_venue,
+                self.city_pd,
+                resolver,
+            );
+        }
+        if self
+            .completed_tick
+            .checked_add(1)
+            .ok_or(MaterialWorldError::Arithmetic)?
+            != self.state.period
+        {
+            return Err(MaterialWorldError::PeriodMismatch);
+        }
+        // The private material state and frame were admitted under this exact
+        // immutable catalog. Rebind components without admitting the core again.
+        let canonical_bytes = self.canonical_bytes;
+        let mut sections = canonical_bytes
+            .as_slice()
+            .get(REGISTER_DOMAIN.len() + 12..)
+            .ok_or(MaterialWorldError::Wire)?;
+        let state_bytes = take_organizer_section(&mut sections)?;
+        Self::assemble(
+            catalog,
+            self.completed_tick,
+            self.state,
+            self.organizer,
+            self.public_venue,
+            self.city_pd,
+            AssemblyEvidence {
+                resolver,
+                state_bytes,
+            },
+        )
+    }
+
     /// Bind captured organizer content and complete state into this world identity.
     /// # Errors
     /// Refuses invalid content/state, mismatched periods, or aggregate byte limits.
     pub fn with_organizer(
-        self,
+        mut self,
         catalog: &MaterialCatalog,
         config: OrganizerConfig,
         state: OrganizerState,
         journal: OrganizerPeriodJournal,
     ) -> Result<Self, MaterialWorldError> {
-        Self::build(
-            catalog,
-            self.completed_tick,
-            self.state,
-            Some((config, state, journal)),
-            self.public_venue,
-            self.city_pd,
-            None,
-        )
+        self.organizer = Some((config, state, journal));
+        self.rebuild_binding(catalog, None)
     }
 
     /// Bind the private opponent using the resolver of the same graph session.
@@ -460,20 +499,13 @@ impl MaterialWorldRegister {
     /// # Errors
     /// Refuses invalid opponent, material, venue, or resolver bindings.
     pub fn with_city_pd(
-        self,
+        mut self,
         catalog: &MaterialCatalog,
         city_pd: CityPdRegister,
         resolver: &StableElementResolver,
     ) -> Result<Self, MaterialWorldError> {
-        Self::build(
-            catalog,
-            self.completed_tick,
-            self.state,
-            self.organizer,
-            self.public_venue,
-            Some(city_pd),
-            Some(resolver),
-        )
+        self.city_pd = Some(city_pd);
+        self.rebuild_binding(catalog, Some(resolver))
     }
 
     #[must_use]
@@ -486,20 +518,13 @@ impl MaterialWorldRegister {
     /// # Errors
     /// Refuses invalid venue, organizer, material, or opponent bindings.
     pub fn with_public_venue(
-        self,
+        mut self,
         catalog: &MaterialCatalog,
         venue: PublicVenueHistory,
         resolver: Option<&StableElementResolver>,
     ) -> Result<Self, MaterialWorldError> {
-        Self::build(
-            catalog,
-            self.completed_tick,
-            self.state,
-            self.organizer,
-            Some(venue),
-            self.city_pd,
-            resolver,
-        )
+        self.public_venue = Some(venue);
+        self.rebuild_binding(catalog, resolver)
     }
 
     #[must_use]

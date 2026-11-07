@@ -1660,7 +1660,7 @@ class RunningMemoryCapture:
     def lifecycle(
         self, runtime: subprocess.Popen[bytes], client: subprocess.Popen[bytes]
     ) -> Iterator[RunningMemoryCapture]:
-        if self._thread is not None:
+        if self._native is not None:
             raise CaptureRefusal("memory capture lifecycle cannot be reused")
         with OwnedNativePair(
             runtime,
@@ -1676,13 +1676,21 @@ class RunningMemoryCapture:
                 if self._foundation is None:
                     # The native client waits on its private startup admission.
                     # Capture real absence before permitting any New operation.
-                    self._capture_one(native)
-                    if self._samples[0].foundation_sha256 is not None:
-                        raise CaptureRefusal("startup memory capture requires an absent campaign")
+                    try:
+                        self._capture_one(native)
+                        if self._samples[0].foundation_sha256 is not None:
+                            raise CaptureRefusal(
+                                "startup memory capture requires an absent campaign"
+                            )
+                    except BaseException as error:
+                        # finish() must drain and report this refusal without reentering PG.
+                        self._failure = error
+                        raise
                 self._start_worker(native)
                 yield self  # The driver checks failures and finishes before ordinary Quit.
             except BaseException as error:
-                failure = error
+                if error is not self._failure:
+                    failure = error
                 raise
             finally:
                 try:

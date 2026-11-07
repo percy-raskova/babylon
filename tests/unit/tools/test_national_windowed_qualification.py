@@ -590,11 +590,47 @@ def test_slow_fragments_cannot_reset_the_overall_response_deadline(
     assert peer.timeouts == pytest.approx([0.05, 0.05, 0.03, 0.01])
 
 
-def test_cold_first_reply_failure_is_private_and_precedes_capture_cleanup(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_listener_bind_failure_is_diagnosed_before_first_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    started_ns = time.monotonic_ns()
+    original = PermissionError("private transport detail")
+    seen: list[dict[str, Any] | None] = []
+
+    class Listener(socket.socket):
+        def bind(self, _address: str) -> None:
+            raise original
+
+        def close(self) -> None:
+            path = tmp_path / "native-control-failure.json"
+            seen.append(json.loads(path.read_bytes()) if path.is_file() else None)
+            super().close()
+
+    monkeypatch.setattr(windowed.socket, "socket", Listener)
+    with pytest.raises(PermissionError) as failed:
+        windowed.drive_pair(
+            tmp_path / "runtime",
+            tmp_path / "client",
+            tmp_path,
+            {},
+            {},
+            defines_path=tmp_path / "defines",
+            initial_target=windowed.launcher.OpenCampaignTarget(UUID(CAMPAIGN)),
+            initial_tick=0,
+            periods=0,
+            directory=tmp_path,
+            operation_timeout=2,
+            on_started=lambda *_args: None,
+            on_boundary=lambda _state: None,
+            on_recovery=lambda _state: None,
+            cold_window=windowed.ColdControlWindow(time.monotonic_ns(), 180),
+        )
+    assert failed.value is original
+    assert len(seen) == 1 and seen[0] is not None
+    assert (seen[0]["phase"], seen[0]["reason"]) == ("socket_admission", "transport_error")
+    assert "private transport detail" not in json.dumps(seen[0])
+
+
+def first_reply_standins(tmp_path: Path) -> tuple[Path, Path]:
     runtime = tmp_path / "runtime"
     client = tmp_path / "client"
     runtime.write_text(f"#!{sys.executable}\nimport sys\nsys.stdin.buffer.read()\n")
@@ -606,6 +642,81 @@ def test_cold_first_reply_failure_is_private_and_precedes_capture_cleanup(
     )
     runtime.chmod(0o700)
     client.chmod(0o700)
+    return runtime, client
+
+
+@pytest.mark.parametrize("phase", ["socket_admission", "initial_readiness"])
+def test_real_smoke_budget_refusal_keeps_wall_diagnosis_and_divergence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    from tools.devtools import national_native_runner as runner
+
+    run = object.__new__(runner.NativeRun)
+    run.directory = tmp_path
+    run.wayne_profile = "smoke-01"
+    diagnoses: list[dict[str, Any] | None] = []
+    refusals: list[runner.NativeRunRefusal] = []
+
+    def expired() -> None:
+        path = tmp_path / "native-control-failure.json"
+        diagnoses.append(json.loads(path.read_bytes()) if path.is_file() else None)
+        try:
+            run.check_budget("smoke-wall", 900_000_000_000, 900, None, strict=True)
+        except runner.NativeRunRefusal as error:
+            refusals.append(error)
+            raise
+
+    runtime, client = first_reply_standins(tmp_path)
+    start = time.monotonic_ns()
+    wall = start / 1e9
+    if phase == "initial_readiness":
+        wall += 900
+        receive = windowed.ControlChannel._receive
+
+        def expire_on_first_reply(channel: windowed.ControlChannel, deadline: float):
+            with monkeypatch.context() as clock:
+                clock.setattr(windowed.time, "monotonic", lambda: wall)
+                return receive(channel, deadline)
+
+        monkeypatch.setattr(windowed.ControlChannel, "_receive", expire_on_first_reply)
+    with pytest.raises(runner.NativeRunRefusal) as failed:
+        windowed.drive_pair(
+            runtime,
+            client,
+            tmp_path,
+            {},
+            {},
+            defines_path=tmp_path / "defines",
+            initial_target=windowed.launcher.OpenCampaignTarget(UUID(CAMPAIGN)),
+            initial_tick=0,
+            periods=0,
+            directory=tmp_path,
+            operation_timeout=2,
+            on_started=lambda *_args: None,
+            on_boundary=lambda _state: None,
+            on_recovery=lambda _state: None,
+            cold_window=windowed.ColdControlWindow(start, 180),
+            wall_deadline=wall,
+            on_wall_expired=expired,
+        )
+    assert refusals == [failed.value]
+    divergence = json.loads((tmp_path / "first-budget-divergence.json").read_bytes())
+    assert (
+        divergence["stage"] == "smoke-wall" and divergence["elapsed_ns"] == divergence["ceiling_ns"]
+    )
+    final = json.loads((tmp_path / "native-control-failure.json").read_bytes())
+    assert final["reason"] == "wall_deadline" and final["phase"] == phase
+    assert diagnoses == [final]
+
+
+def test_cold_first_reply_failure_is_private_and_precedes_capture_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started_ns = time.monotonic_ns()
+    runtime, client = first_reply_standins(tmp_path)
     seen = []
     diagnosis_before_close: list[bool] = []
     original_close = windowed.ControlChannel.close

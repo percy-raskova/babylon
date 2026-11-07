@@ -1433,6 +1433,26 @@ def drive_pair(
                 "native control and diagnostic publication failed", [error, publication]
             ) from None
 
+    def expired_wall() -> None:
+        # Only remaining_control_time's observed wall expiry invokes this callback.
+        # Save that cause before the runner publishes its divergence and raises.
+        diagnostic_failure: BaseException | None = None
+        try:
+            diagnose(ControlRefusal("smoke wall deadline exceeded", reason="wall_deadline"))
+        except BaseException as error:
+            diagnostic_failure = error
+        try:
+            if on_wall_expired is not None:
+                on_wall_expired()
+        except BaseException as budget:
+            if diagnostic_failure is not None:
+                raise BaseExceptionGroup(
+                    "smoke budget and control diagnostic failed", [budget, diagnostic_failure]
+                ) from None
+            raise
+        if diagnostic_failure is not None:
+            raise diagnostic_failure
+
     with ExitStack() as resources:
         temporary = tempfile.TemporaryDirectory(prefix="babylon-q-", dir="/tmp", delete=False)
         release_directory = True
@@ -1457,9 +1477,6 @@ def drive_pair(
         resources.callback(cleanup)
         endpoint = Path(temporary.name) / "control.sock"
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
-            listener.bind(str(endpoint))
-            endpoint.chmod(0o600)
-            listener.listen(1)
 
             def opening_timeout() -> float:
                 if cold_deadline is None and wall_deadline is None:
@@ -1467,7 +1484,7 @@ def drive_pair(
                 deadline = time.monotonic() + operation_timeout
                 if cold_deadline is not None:
                     deadline = min(deadline, cold_deadline)
-                remaining = remaining_control_time(deadline, wall_deadline, on_wall_expired)
+                remaining = remaining_control_time(deadline, wall_deadline, expired_wall)
                 if remaining <= 0:
                     raise ControlRefusal(
                         "process-cold installation deadline exceeded", reason="cold_deadline"
@@ -1475,6 +1492,9 @@ def drive_pair(
                 return min(operation_timeout, remaining)
 
             try:
+                listener.bind(str(endpoint))
+                endpoint.chmod(0o600)
+                listener.listen(1)
                 listener.settimeout(opening_timeout())
             except BaseException as error:
                 diagnose(error)
@@ -1524,7 +1544,7 @@ def drive_pair(
                         on_refusal=diagnose,
                         on_observed=on_observed,
                         wall_deadline=wall_deadline,
-                        on_wall_expired=on_wall_expired,
+                        on_wall_expired=expired_wall,
                     )
                 except BaseException as error:
                     try:

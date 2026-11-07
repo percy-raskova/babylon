@@ -1236,7 +1236,9 @@ def frozen_capture_files(directory: Path) -> dict[str, str]:
     return result
 
 
-def synthetic_batch(sequence: int, age: int) -> memory.QuiescentBatch:
+def synthetic_batch(
+    sequence: int, age: int, *, foundation: str | None = "a" * 64
+) -> memory.QuiescentBatch:
     binding = memory.ProcessBinding(
         pid=17, start_time_ticks=123, role="game-postgresql", executable_sha256="c" * 64
     )
@@ -1244,7 +1246,7 @@ def synthetic_batch(sequence: int, age: int) -> memory.QuiescentBatch:
         boot_id="00000000-0000-0000-0000-000000000001",
         sample=memory.MemorySample(
             sequence=sequence,
-            foundation_sha256="a" * 64,
+            foundation_sha256=foundation,
             campaign_age_ticks=age,
             tick_content_hash="b" * 64 if age else None,
             monotonic_ns=time.monotonic_ns(),
@@ -1579,6 +1581,69 @@ def test_startup_marker_records_absence_without_creating_a_foundation() -> None:
         )
 
 
+@pytest.mark.parametrize("fault", ["unproven-thaw", "physical-post"])
+def test_startup_capture_failure_never_reenters_the_database(
+    tmp_path: Path,
+    owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    capture = capture_runner(tmp_path, owned_children, foundation=None)
+    pg = capture._postgres
+    events: list[str] = []
+    original = memory.CaptureRefusal(fault)
+    freezer = ModeledFreezer(pg, lambda _stopped: None, events, None, monkeypatch)
+
+    def marker() -> memory.CampaignMemoryMarker:
+        events.append("marker")
+        return memory.CampaignMemoryMarker(
+            campaign=capture._campaign,
+            foundation_sha256=None,
+            campaign_age_ticks=0,
+            tick_content_hash=None,
+        )
+
+    def physical() -> None:
+        events.append("physical")
+        if fault == "physical-post" and events.count("physical") == 2:
+            raise original
+
+    def verify(*, timeout: float, paused: bool) -> tuple[int, ...]:
+        if (
+            fault == "unproven-thaw"
+            and not paused
+            and events[-1] == "unpause"
+            and "thaw-proof-refused" not in events
+        ):
+            events.append("thaw-proof-refused")
+            raise original
+        return freezer.verify(timeout=timeout, paused=paused)
+
+    def counters(bindings: tuple[memory.ProcessBinding, ...], *, timeout: float):
+        return memory.decode_postgres_observations(helper_frame(bindings[0]), bindings)
+
+    monkeypatch.setattr(capture, "_read_marker", marker)
+    monkeypatch.setattr(pg, "verify", verify)
+    monkeypatch.setattr(pg, "observe", counters)
+    monkeypatch.setattr(pg, "_verify_physical_owner", physical)
+    monkeypatch.setattr(pg, "_verify_live_authority", lambda: events.append("authority"))
+    with pytest.raises(BaseException) as failed, capture.lifecycle(*owned_children):
+        pytest.fail("startup capture failure must precede driver admission")
+    expected = ["physical", "marker", "authority", "pause", "unpause"]
+    expected += (
+        ["thaw-proof-refused"] if fault == "unproven-thaw" else ["authority", "marker", "physical"]
+    )
+    assert events == expected
+    assert leaf_errors(failed.value) == [original]
+    assert not list(capture._records.glob("*.json"))
+    assert not list(capture._unassigned_records.glob("*.json"))
+    assert not (tmp_path / "combined-memory.json").exists()
+    assert not freezer.paused
+    with pytest.raises(memory.CaptureRefusal, match="reused"), capture.lifecycle(*owned_children):
+        pytest.fail("a failed capture lifecycle cannot be admitted again")
+    assert events == expected
+
+
 def test_startup_capture_finishes_absent_sample_before_releasing_the_driver(
     tmp_path: Path,
     owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
@@ -1613,6 +1678,34 @@ def test_startup_capture_finishes_absent_sample_before_releasing_the_driver(
         assert result.version == 2
         assert result.samples[0].foundation_sha256 is None
         assert all(s.foundation_sha256 == foundation for s in result.samples[1:])
+
+
+def test_admitted_driver_failure_still_captures_final_committed_boundary(
+    tmp_path: Path,
+    owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture = capture_runner(tmp_path, owned_children, foundation=None)
+    foundation: str | None = None
+
+    def collect(*_args: object, **kwargs: object) -> memory.QuiescentBatch:
+        return synthetic_batch(
+            kwargs["sequence"], int(foundation is not None), foundation=foundation
+        )
+
+    monkeypatch.setattr(memory, "collect_running_game", collect)
+    driver = RuntimeError("admitted driver failure")
+    with pytest.raises(RuntimeError) as failed, capture.lifecycle(*owned_children) as monitor:
+        foundation = "a" * 64
+        monitor.bind_foundation(foundation)
+        raise driver
+    assert failed.value is driver
+    evidence = memory.CombinedMemoryEvidence.model_validate_json(
+        (tmp_path / "combined-memory.json").read_bytes()
+    )
+    assert evidence.samples[0].foundation_sha256 is None
+    assert evidence.samples[-1].foundation_sha256 == foundation
+    assert evidence.samples[-1].campaign_age_ticks == 1
 
 
 def test_worker_start_refusal_exits_and_preserves_the_original_failure(

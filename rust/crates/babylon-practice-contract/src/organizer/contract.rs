@@ -16,6 +16,7 @@ use super::OrganizerPosition;
 use super::OrganizerPreview;
 use super::OrganizerReceipt;
 use super::OrganizerRefusal;
+use super::OrganizerReport;
 use super::OrganizerStandingWork;
 use super::OrganizerState;
 use super::OrganizerTimeBindingMode;
@@ -34,7 +35,7 @@ use serde::de::DeserializeOwned;
 use std::collections::BTreeMap;
 
 const MAX_ORGANIZER_BYTES: usize = 32 * 1024 * 1024;
-const MAX_ORGANIZER_ROWS: usize = 65_536;
+pub(super) const MAX_ORGANIZER_ROWS: usize = 65_536;
 
 pub(super) fn canonical<T: Serialize>(domain: &[u8], value: &T) -> Result<Vec<u8>, OrganizerError> {
     let mut output = Vec::from(domain);
@@ -100,8 +101,27 @@ pub fn organizer_contact_product_id(
     )
 }
 
-fn label_valid(value: &str) -> bool {
+pub(super) fn label_valid(value: &str) -> bool {
     !value.is_empty() && value.len() <= 512 && !value.chars().any(char::is_control)
+}
+
+// A later acquisition may add a dated grant, but cannot change that period's facts.
+fn consistent_partner_reports<'a>(rows: impl Iterator<Item = &'a OrganizerObservation>) -> bool {
+    let mut dated = BTreeMap::new();
+    for row in rows {
+        if let OrganizerReport::Partner { facts, .. } = &row.report {
+            let key = (
+                row.actor_id,
+                row.subject_id,
+                row.report.kind_index(),
+                row.observed_period,
+            );
+            if dated.insert(key, facts).is_some_and(|old| old != facts) {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 /// Validate the schema version and bounded contents of a captured config.
@@ -196,8 +216,15 @@ pub fn validate_organizer_config(config: &OrganizerConfig) -> Result<(), Organiz
     {
         return Err(OrganizerError::InvalidConfig);
     }
+    validate_opening_observations(config)
+}
+
+fn validate_opening_observations(config: &OrganizerConfig) -> Result<(), OrganizerError> {
     if config.initial_observations.len() > MAX_ORGANIZER_ROWS {
         return Err(OrganizerError::SizeLimit);
+    }
+    if !consistent_partner_reports(config.initial_observations.iter()) {
+        return Err(OrganizerError::InvalidConfig);
     }
     let mut observations = BTreeSet::new();
     for observation in &config.initial_observations {
@@ -363,6 +390,9 @@ pub fn validate_organizer_period_entries(
             return Err(OrganizerError::InvalidState);
         }
     }
+    if !consistent_partner_reports(entries.observations.iter()) {
+        return Err(OrganizerError::InvalidState);
+    }
     let mut observation_ids = BTreeSet::new();
     for observation in &entries.observations {
         if observation.actor_id != config.controlled_actor_id
@@ -404,6 +434,16 @@ pub fn validate_organizer_journal(
         }
         prior = Some(entries.period);
         validate_organizer_period_entries(config, entries)?;
+    }
+    if !consistent_partner_reports(
+        config.initial_observations.iter().chain(
+            journal
+                .periods
+                .iter()
+                .flat_map(|entries| &entries.observations),
+        ),
+    ) {
+        return Err(OrganizerError::InvalidState);
     }
     let latest = journal.latest();
     if state.period == 0 {
@@ -497,6 +537,11 @@ pub fn validate_organizer_pair(
 ) -> Result<(), OrganizerError> {
     validate_organizer_config(config)?;
     validate_organizer_state(state)?;
+    if state.period == 0
+        && state.learned_authority_index != learned_authority_index(&config.initial_observations)
+    {
+        return Err(OrganizerError::InvalidState);
+    }
     let partner_ids = [
         config.workplace_partner.actor_id,
         config.neighborhood_partner.actor_id,
@@ -1010,18 +1055,19 @@ pub fn organizer_view(
         .take(ORGANIZER_RECENT_OBSERVATIONS)
         .map(|r| r.observation_id)
         .collect();
+    let mut by_observation = observations.clone();
+    by_observation.sort_by_key(|r| (r.observed_period, r.acquired_period, r.observation_id));
     let mut topics = BTreeMap::new();
-    for row in observations.iter().rev() {
+    for row in by_observation.into_iter().rev() {
         let key = (row.subject_id, row.source_actor_id, row.report.kind_index());
-        let count = topics.entry(key).or_insert(0);
-        let limit = if matches!(row.report, super::OrganizerReport::Partner { .. }) {
+        let periods = topics.entry(key).or_insert_with(BTreeSet::new);
+        let limit = if matches!(row.report, OrganizerReport::Partner { .. }) {
             2
         } else {
             1
         };
-        if *count < limit {
+        if periods.len() < limit && periods.insert(row.observed_period) {
             selected.insert(row.observation_id);
-            *count += 1;
         }
     }
     for row in &state.learned_authority_index {

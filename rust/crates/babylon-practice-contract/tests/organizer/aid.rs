@@ -1,6 +1,5 @@
 use super::support;
 use babylon_kernel::replay::ReplaySessionId;
-use babylon_practice_contract::OrganizerCommand;
 use babylon_practice_contract::OrganizerReportSharing;
 use babylon_practice_contract::ResolvedOrganizerPeriod;
 use babylon_practice_contract::{
@@ -15,6 +14,7 @@ use babylon_practice_contract::{
     PracticeResourceAllocationMode, PracticeResourceCapacity, PracticeResourceId,
     PracticeResourceOwner, PracticeTargetTag, ORGANIZER_SCHEMA_VERSION,
 };
+use babylon_practice_contract::{OrganizerCommand, OrganizerObservation};
 use std::collections::BTreeSet;
 
 fn captured() -> OrganizerConfig {
@@ -1838,4 +1838,190 @@ fn receiving_and_practice_do_not_authorize_unshared_topics_or_relabel_evidence()
             .expect("independent time sharing");
     assert_eq!((delayed.observed_period, delayed.acquired_period), (1, 3));
     assert!(babylon_practice_contract::partner_observation(&config, actor, 1, 0, time).is_err());
+}
+
+fn dated_report_config() -> OrganizerConfig {
+    let mut config = captured();
+    let commodity = babylon_practice_contract::OrganizerReportCommodity {
+        good_id: [4; 32],
+        unit_id: [5; 32],
+        label: "Food".into(),
+        unit_label: "parcel".into(),
+    };
+    for binding in &mut config.aid_bindings {
+        binding.report_sharing.food.push(commodity.clone());
+    }
+    config
+}
+
+fn dated_food(
+    config: &OrganizerConfig,
+    partner: usize,
+    observed: u64,
+    acquired: u64,
+    stock: u64,
+) -> OrganizerObservation {
+    use babylon_practice_contract::OrganizerPartnerFacts;
+    let binding = &config.aid_bindings[partner];
+    let commodity = binding.report_sharing.food[0].clone();
+    let facts = if observed == 0 {
+        OrganizerPartnerFacts::OpeningAssessment {
+            commodity,
+            opening_stock: stock,
+            required: 3,
+        }
+    } else {
+        OrganizerPartnerFacts::FoodProvision {
+            commodity,
+            required: 3,
+            consumed: 2,
+            unmet: 1,
+            closing: stock,
+            purchased: 1,
+            settled_micros: 4,
+        }
+    };
+    babylon_practice_contract::partner_observation(
+        config,
+        binding.partner.actor_id,
+        observed,
+        acquired,
+        facts,
+    )
+    .expect("dated permitted report")
+}
+
+#[test]
+fn captured_topic_labels_and_nested_services_obey_organizer_bounds() {
+    let mut config = dated_report_config();
+    for invalid in ["one\ntwo".to_owned(), " ".to_owned(), "x".repeat(513)] {
+        config.aid_bindings[0].report_sharing.food[0].unit_label = invalid;
+        assert_eq!(
+            babylon_practice_contract::validate_organizer_config(&config),
+            Err(OrganizerError::InvalidConfig)
+        );
+    }
+    let sharing = &mut config.aid_bindings[0].report_sharing;
+    sharing.food[0].unit_label = "parcel".into();
+    let template = sharing.food[0].clone();
+    sharing.essential_services = (1..=65_537_u64)
+        .map(|id| {
+            let mut commodity = template.clone();
+            commodity.good_id = [0; 32];
+            commodity.good_id[24..].copy_from_slice(&id.to_be_bytes());
+            commodity
+        })
+        .collect();
+    assert_eq!(
+        babylon_practice_contract::validate_organizer_config(&config),
+        Err(OrganizerError::InvalidConfig)
+    );
+    config.aid_bindings[0]
+        .report_sharing
+        .essential_services
+        .pop()
+        .expect("single excess service");
+    babylon_practice_contract::validate_organizer_config(&config)
+        .expect("exact contract collection bound");
+}
+
+#[test]
+fn dated_opening_refuses_conflicting_captured_stock() {
+    let mut config = dated_report_config();
+    config.initial_observations = vec![
+        dated_food(&config, 0, 0, 0, 2),
+        dated_food(&config, 0, 0, 0, 3),
+    ];
+    assert_eq!(
+        babylon_practice_contract::validate_organizer_config(&config),
+        Err(OrganizerError::InvalidConfig)
+    );
+}
+
+#[test]
+fn dated_completed_refuses_conflict_within_and_across_acquisitions() {
+    let config = dated_report_config();
+    let mut state = babylon_practice_contract::initial_organizer_state(&config).expect("opening");
+    let first = dated_food(&config, 0, 1, 1, 3);
+    let mut entry = OrganizerPeriodJournalEntries::new(1);
+    entry.observations = vec![first, dated_food(&config, 0, 1, 1, 4)];
+    assert_eq!(
+        babylon_practice_contract::validate_organizer_period_entries(&config, &entry),
+        Err(OrganizerError::InvalidState)
+    );
+    entry.observations.pop();
+    let mut journal = OrganizerPeriodJournal {
+        periods: vec![entry, OrganizerPeriodJournalEntries::new(2)],
+    };
+    state.period = 2;
+    journal.periods[1]
+        .observations
+        .push(dated_food(&config, 0, 1, 2, 3));
+    assert!(
+        babylon_practice_contract::validate_organizer_journal(&config, &state, &journal).is_ok()
+    );
+    journal.periods[1].observations[0] = dated_food(&config, 0, 1, 2, 4);
+    assert_eq!(
+        babylon_practice_contract::validate_organizer_journal(&config, &state, &journal),
+        Err(OrganizerError::InvalidState)
+    );
+}
+
+#[test]
+fn dated_opening_authority_is_exact_even_without_period_journal() {
+    let mut config = dated_report_config();
+    config.initial_observations = vec![dated_food(&config, 0, 0, 0, 3)];
+    let state = babylon_practice_contract::initial_organizer_state(&config).expect("opening");
+    let mut missing = state.clone();
+    missing.learned_authority_index.clear();
+    assert!(babylon_practice_contract::validate_organizer_journal(
+        &config,
+        &missing,
+        &OrganizerPeriodJournal::empty()
+    )
+    .is_err());
+    let mut other = config.clone();
+    other.initial_observations = vec![dated_food(&other, 0, 0, 0, 4)];
+    let changed = babylon_practice_contract::initial_organizer_state(&other)
+        .expect("different lawful capture");
+    assert!(babylon_practice_contract::validate_organizer_pair(&config, &changed).is_err());
+    assert!(babylon_practice_contract::validate_organizer_pair(&config, &state).is_ok());
+}
+
+#[test]
+fn dated_retention_keeps_two_latest_distinct_observed_periods_after_delayed_acquisition() {
+    let config = dated_report_config();
+    let mut state = babylon_practice_contract::initial_organizer_state(&config).expect("opening");
+    let mut journal = OrganizerPeriodJournal::empty();
+    for period in 1..=21 {
+        state.period = period;
+        let mut row = OrganizerPeriodJournalEntries::new(period);
+        if [9, 10, 11, 12, 13].contains(&period) {
+            let observed = match period {
+                11 => 1,
+                12 => 2,
+                13 => 10,
+                _ => period,
+            };
+            row.observations
+                .push(dated_food(&config, 0, observed, period, observed));
+        }
+        row.observations
+            .push(dated_food(&config, 1, period, period, 0));
+        journal.append(row).expect("ordered periods");
+    }
+    let view = babylon_practice_contract::organizer_view(
+        &config,
+        &state,
+        &journal,
+        config.controlled_actor_id,
+    )
+    .expect("acquired history");
+    let retained: Vec<_> = view
+        .observations
+        .iter()
+        .filter(|r| r.subject_id == config.aid_bindings[0].partner.actor_id)
+        .map(|r| (r.observed_period, r.acquired_period))
+        .collect();
+    assert_eq!(retained, [(9, 9), (10, 13)]);
 }

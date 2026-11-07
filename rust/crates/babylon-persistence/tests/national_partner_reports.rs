@@ -3,10 +3,10 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitState;
-use babylon_material_circuit::OutboundOrderId;
 use babylon_material_circuit::{
     CircuitAccounting, FinalDemandPrincipalId, HouseholdTimeAccounting, HouseholdTimeBook,
 };
+use babylon_material_circuit::{MoneyTransferPurpose, OutboundOrderId};
 use babylon_persistence::economic_catalog::{self, CapturedEconomicCatalog};
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::qualification_audit::aid;
@@ -117,7 +117,7 @@ fn check_completed(
             unmet,
             closing,
             purchased,
-            ..
+            settled_micros,
         } => {
             let source = actual
                 .household_consumption
@@ -137,15 +137,30 @@ fn check_completed(
                     source.closing_quantity
                 )
             );
-            assert_eq!(
-                *purchased,
-                actual
-                    .household_demand
-                    .iter()
-                    .filter(|r| r.principal_id == principal && r.good_id == source.good_id)
-                    .map(|r| r.fulfilled_quantity)
-                    .sum::<u64>()
-            );
+            let handoffs: Vec<_> = actual
+                .local_fulfillments
+                .iter()
+                .filter(|r| {
+                    r.demand_principal_id == principal
+                        && r.good_id == source.good_id
+                        && r.unit_id == source.unit_id
+                })
+                .collect();
+            assert_eq!(*purchased, handoffs.iter().map(|r| r.quantity).sum::<u64>());
+            let paid = actual
+                .money_transfers
+                .iter()
+                .filter(|t| {
+                    handoffs.iter().any(|r| {
+                        t.purpose
+                            == MoneyTransferPurpose::DeliverySettlement(
+                                OutboundOrderId::LocalFinalDemand(r.order_id),
+                            )
+                    })
+                })
+                .map(|t| t.credit.delta.micro_units())
+                .sum::<i128>();
+            assert_eq!(*settled_micros, paid);
         }
         OrganizerPartnerFacts::EssentialServices { services } => {
             check_services(principal, actual, services);
@@ -218,14 +233,10 @@ fn check_services(
         let mut refunded = 0;
         for t in &actual.money_transfers {
             match t.purpose {
-                babylon_material_circuit::MoneyTransferPurpose::DeliverySettlement(id)
-                    if orders.contains(&id) =>
-                {
+                MoneyTransferPurpose::DeliverySettlement(id) if orders.contains(&id) => {
                     settled += t.credit.delta.micro_units();
                 }
-                babylon_material_circuit::MoneyTransferPurpose::PurchaseRefund(id)
-                    if orders.contains(&id) =>
-                {
+                MoneyTransferPurpose::PurchaseRefund(id) if orders.contains(&id) => {
                     refunded += t.credit.delta.micro_units();
                 }
                 _ => {}

@@ -16,6 +16,19 @@ pub(crate) enum OrganizerSubject {
     Workplace(u64),
 }
 
+impl OrganizerSubject {
+    pub(super) fn report_subject(self, view: &OrganizerView) -> Option<u64> {
+        match self {
+            Self::Workplace(id) if id == view.workplace_id => Some(id),
+            Self::WorkplaceCommittee(id) if id == view.workplace_partner_id => {
+                Some(view.workplace_id)
+            }
+            Self::AidPartner(id) if view.aid_partners.iter().any(|p| p.actor_id == id) => Some(id),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum OrganizerSceneMode {
     #[default]

@@ -2,11 +2,12 @@
 use super::MaterialWorldError;
 use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::{
-    AccountId, FinalDemandPrincipalId, MaterialCircuitState, MaterialCircuitTransition,
-    MoneyLocation, MoneyTransferPurpose, OutboundOrderId, SiteId,
+    AccountId, CircuitAccounting, FinalDemandPrincipalId, MaterialCircuitState,
+    MaterialCircuitTransition, MoneyLocation, MoneyTransferPurpose, OutboundOrderId, SiteId,
 };
 use babylon_practice_contract::{
-    OrganizerConfig, OrganizerPartnerFacts, OrganizerReportCommodity, OrganizerServiceReport,
+    OrganizerConfig, OrganizerPartnerFacts, OrganizerReportCommodity, OrganizerReportSharing,
+    OrganizerServiceReport,
 };
 use std::collections::BTreeMap;
 use std::result::Result as StdResult;
@@ -14,8 +15,8 @@ use std::result::Result as StdResult;
 type Result<T> = StdResult<T, MaterialWorldError>;
 type Reports = Vec<(u64, OrganizerPartnerFacts)>;
 
-/// Only permitted partner orders enter this join. Funds come from actual matching
-/// signed postings; the quoted price independently validates an observed posting.
+/// A completed handoff or service performance supplies the expected amount.
+/// Actual signed postings independently establish settlement and refund.
 struct ReportOrder {
     buyer: AccountId,
     seller: SiteId,
@@ -71,7 +72,7 @@ fn money(
             || credit < 0
             || credit.checked_neg() != Some(receipt.debit.delta.micro_units())
         {
-            return Err(MaterialWorldError::Wire);
+            return Err(MaterialWorldError::ReportSettlement);
         }
         let value = if refund {
             &mut order.refunded
@@ -86,81 +87,29 @@ fn money(
         .values()
         .any(|r| (r.settled, r.refunded) != (r.expected_settled, r.expected_refunded))
     {
-        return Err(MaterialWorldError::Wire);
+        return Err(MaterialWorldError::ReportSettlement);
     }
     Ok(())
 }
-pub(super) fn closed(
-    config: &OrganizerConfig,
+pub(super) fn closed<'a>(
+    scopes: impl IntoIterator<Item = (u64, FinalDemandPrincipalId, &'a OrganizerReportSharing)>,
+    opening: &MaterialCircuitState,
     period: u64,
     transition: &MaterialCircuitTransition,
 ) -> Result<Reports> {
     let mut reports = Vec::new();
-    for binding in &config.aid_bindings {
-        let principal = FinalDemandPrincipalId::from_bytes(binding.recipient_principal_id);
-        let actor = binding.partner.actor_id;
-        for commodity in &binding.report_sharing.food {
-            let row = transition
-                .household_consumption
-                .iter()
-                .find(|r| {
-                    r.period == period
-                        && r.principal_id == principal
-                        && r.good_id.as_bytes() == commodity.good_id
-                        && r.unit_id.as_bytes() == commodity.unit_id
-                })
-                .ok_or(MaterialWorldError::Wire)?;
-            let buyer = AccountId::Household(principal);
-            let mut orders = BTreeMap::new();
-            let mut purchased = 0u64;
-            for r in transition.household_demand.iter().filter(|r| {
-                r.period == period
-                    && r.principal_id == principal
-                    && r.good_id == row.good_id
-                    && r.unit_id == row.unit_id
-            }) {
-                purchased = purchased
-                    .checked_add(r.fulfilled_quantity)
-                    .ok_or(MaterialWorldError::Arithmetic)?;
-                if orders
-                    .insert(
-                        OutboundOrderId::LocalFinalDemand(r.order_id),
-                        ReportOrder::new(
-                            buyer,
-                            r.retailer_site_id,
-                            r.unit_price.micro_units(),
-                            r.fulfilled_quantity,
-                            r.expired_quantity,
-                        )?,
-                    )
-                    .is_some()
-                {
-                    return Err(MaterialWorldError::Wire);
-                }
-            }
-            money(transition, &mut orders)?;
-            let settled_micros = orders
-                .values()
-                .try_fold(0i128, |v, r| v.checked_add(r.settled))
-                .ok_or(MaterialWorldError::Arithmetic)?;
+    let payments = service_orders(transition, period)?;
+    for (actor, principal, sharing) in scopes {
+        for commodity in &sharing.food {
             reports.push((
                 actor,
-                OrganizerPartnerFacts::FoodProvision {
-                    commodity: commodity.clone(),
-                    required: row.required_quantity,
-                    consumed: row.consumed_quantity,
-                    unmet: row.unmet_quantity,
-                    closing: row.closing_quantity,
-                    purchased,
-                    settled_micros,
-                },
+                food(opening, transition, period, principal, commodity)?,
             ));
         }
-        let services = binding
-            .report_sharing
+        let services = sharing
             .essential_services
             .iter()
-            .map(|c| service(transition, period, principal, c))
+            .map(|c| service(transition, &payments, period, principal, c))
             .collect::<Result<Vec<_>>>()?;
         if !services.is_empty() {
             reports.push((actor, OrganizerPartnerFacts::EssentialServices { services }));
@@ -169,8 +118,142 @@ pub(super) fn closed(
     Ok(reports)
 }
 
+fn food(
+    opening: &MaterialCircuitState,
+    transition: &MaterialCircuitTransition,
+    period: u64,
+    principal: FinalDemandPrincipalId,
+    commodity: &OrganizerReportCommodity,
+) -> Result<OrganizerPartnerFacts> {
+    let row = transition
+        .household_consumption
+        .iter()
+        .find(|r| {
+            r.period == period
+                && r.principal_id == principal
+                && r.good_id.as_bytes() == commodity.good_id
+                && r.unit_id.as_bytes() == commodity.unit_id
+        })
+        .ok_or(MaterialWorldError::ReportRetailHandoff)?;
+    let buyer = AccountId::Household(principal);
+    let mut orders = BTreeMap::new();
+    let mut handoffs = BTreeMap::new();
+    for handoff in transition.local_fulfillments.iter().filter(|r| {
+        r.demand_principal_id == principal && r.good_id == row.good_id && r.unit_id == row.unit_id
+    }) {
+        if handoff.quantity == 0 || handoffs.insert(handoff.order_id, handoff).is_some() {
+            return Err(MaterialWorldError::ReportRetailHandoff);
+        }
+    }
+    for r in transition.household_demand.iter().filter(|r| {
+        r.period == period
+            && r.principal_id == principal
+            && r.good_id == row.good_id
+            && r.unit_id == row.unit_id
+    }) {
+        let handoff = handoffs.get(&r.order_id);
+        if r.fulfilled_quantity != handoff.map_or(0, |h| h.quantity)
+            || handoff.is_some_and(|h| h.retailer_site_id != r.retailer_site_id)
+        {
+            return Err(MaterialWorldError::ReportRetailHandoff);
+        }
+        if orders
+            .insert(
+                OutboundOrderId::LocalFinalDemand(r.order_id),
+                ReportOrder::new(
+                    buyer,
+                    r.retailer_site_id,
+                    r.unit_price.micro_units(),
+                    r.fulfilled_quantity,
+                    r.expired_quantity,
+                )?,
+            )
+            .is_some()
+        {
+            return Err(MaterialWorldError::ReportRetailHandoff);
+        }
+    }
+    let mut purchased = 0_u64;
+    for handoff in handoffs.values() {
+        let id = OutboundOrderId::LocalFinalDemand(handoff.order_id);
+        purchased = purchased
+            .checked_add(handoff.quantity)
+            .ok_or(MaterialWorldError::Arithmetic)?;
+        if let std::collections::btree_map::Entry::Vacant(slot) = orders.entry(id) {
+            let CircuitAccounting::Monetary(economy) = &opening.accounting else {
+                return Err(MaterialWorldError::ReportRetailHandoff);
+            };
+            let escrow = economy
+                .book
+                .purchase(id)
+                .map_err(|_| MaterialWorldError::ReportRetailHandoff)?;
+            if escrow.buyer != buyer || escrow.seller != AccountId::Site(handoff.retailer_site_id) {
+                return Err(MaterialWorldError::ReportRetailHandoff);
+            }
+            slot.insert(ReportOrder::new(
+                buyer,
+                handoff.retailer_site_id,
+                escrow.unit_price.micro_units(),
+                handoff.quantity,
+                0,
+            )?);
+        }
+    }
+    money(transition, &mut orders)?;
+    let settled_micros = orders
+        .values()
+        .try_fold(0i128, |v, r| v.checked_add(r.settled))
+        .ok_or(MaterialWorldError::Arithmetic)?;
+    Ok(OrganizerPartnerFacts::FoodProvision {
+        commodity: commodity.clone(),
+        required: row.required_quantity,
+        consumed: row.consumed_quantity,
+        unmet: row.unmet_quantity,
+        closing: row.closing_quantity,
+        purchased,
+        settled_micros,
+    })
+}
+fn service_orders(
+    transition: &MaterialCircuitTransition,
+    period: u64,
+) -> Result<BTreeMap<OutboundOrderId, ReportOrder>> {
+    let mut orders = BTreeMap::new();
+    for r in &transition.service_performance {
+        if r.period != period
+            || orders
+                .insert(
+                    OutboundOrderId::Service(r.order_id),
+                    ReportOrder::new(
+                        r.buyer,
+                        r.provider_site_id,
+                        r.unit_price.micro_units(),
+                        r.performed_quantity,
+                        r.expired_quantity,
+                    )?,
+                )
+                .is_some()
+        {
+            return Err(MaterialWorldError::ReportServicePerformance);
+        }
+    }
+    for posting in &transition.money_transfers {
+        if let MoneyTransferPurpose::DeliverySettlement(id @ OutboundOrderId::Service(_))
+        | MoneyTransferPurpose::PurchaseRefund(id @ OutboundOrderId::Service(_)) =
+            posting.purpose
+        {
+            if !orders.contains_key(&id) {
+                return Err(MaterialWorldError::ReportServicePerformance);
+            }
+        }
+    }
+    money(transition, &mut orders)?;
+    Ok(orders)
+}
+
 fn service(
     transition: &MaterialCircuitTransition,
+    payments: &BTreeMap<OutboundOrderId, ReportOrder>,
     period: u64,
     principal: FinalDemandPrincipalId,
     commodity: &OrganizerReportCommodity,
@@ -184,9 +267,10 @@ fn service(
                 && r.good_id.as_bytes() == commodity.good_id
                 && r.unit_id.as_bytes() == commodity.unit_id
         })
-        .ok_or(MaterialWorldError::Wire)?;
+        .ok_or(MaterialWorldError::ReportServicePerformance)?;
     let buyer = AccountId::Household(principal);
-    let mut orders = BTreeMap::new();
+    let mut settled_micros = 0_i128;
+    let mut refunded_micros = 0_i128;
     let mut performed = 0u64;
     let mut expired = 0u64;
     for r in transition.service_performance.iter().filter(|r| {
@@ -195,21 +279,15 @@ fn service(
             && r.good_id == row.good_id
             && r.unit_id == row.unit_id
     }) {
-        if orders
-            .insert(
-                OutboundOrderId::Service(r.order_id),
-                ReportOrder::new(
-                    buyer,
-                    r.provider_site_id,
-                    r.unit_price.micro_units(),
-                    r.performed_quantity,
-                    r.expired_quantity,
-                )?,
-            )
-            .is_some()
-        {
-            return Err(MaterialWorldError::Wire);
-        }
+        let payment = payments
+            .get(&OutboundOrderId::Service(r.order_id))
+            .ok_or(MaterialWorldError::ReportServicePerformance)?;
+        settled_micros = settled_micros
+            .checked_add(payment.settled)
+            .ok_or(MaterialWorldError::Arithmetic)?;
+        refunded_micros = refunded_micros
+            .checked_add(payment.refunded)
+            .ok_or(MaterialWorldError::Arithmetic)?;
         performed = performed
             .checked_add(r.performed_quantity)
             .ok_or(MaterialWorldError::Arithmetic)?;
@@ -218,17 +296,8 @@ fn service(
             .ok_or(MaterialWorldError::Arithmetic)?;
     }
     if performed != row.performed_quantity {
-        return Err(MaterialWorldError::Wire);
+        return Err(MaterialWorldError::ReportServicePerformance);
     }
-    money(transition, &mut orders)?;
-    let settled_micros = orders
-        .values()
-        .try_fold(0i128, |v, r| v.checked_add(r.settled))
-        .ok_or(MaterialWorldError::Arithmetic)?;
-    let refunded_micros = orders
-        .values()
-        .try_fold(0i128, |v, r| v.checked_add(r.refunded))
-        .ok_or(MaterialWorldError::Arithmetic)?;
     Ok(OrganizerServiceReport {
         commodity: commodity.clone(),
         required: row.required_quantity,
@@ -260,7 +329,7 @@ pub(super) fn completed_time(
                         && r.principal_id == principal
                         && r.labor_unit_id.as_bytes() == *labor_unit
                 })
-                .ok_or(MaterialWorldError::Wire)?;
+                .ok_or(MaterialWorldError::ReportHouseholdTime)?;
             let contributed = book
                 .contributions
                 .iter()
@@ -307,7 +376,7 @@ pub(super) fn validate_scopes(catalog: &MaterialCatalog, config: &OrganizerConfi
                     && m.recipient_actor == binding.partner.actor_id
                     && m.recipient.as_bytes() == binding.recipient_principal_id
             })
-            .ok_or(MaterialWorldError::Wire)?;
+            .ok_or(MaterialWorldError::ReportSharingScope)?;
         for commodity in scope.food.iter().chain(&scope.essential_services) {
             let good = GoodId::from_bytes(commodity.good_id);
             let unit = UnitId::from_bytes(commodity.unit_id);
@@ -316,12 +385,12 @@ pub(super) fn validate_scopes(catalog: &MaterialCatalog, config: &OrganizerConfi
                 .binary_search_by_key(&(mandate.recipient, good, unit), |n| {
                     (n.principal_id, n.good_id, n.unit_id)
                 })
-                .map_err(|_| MaterialWorldError::Wire)?;
+                .map_err(|_| MaterialWorldError::ReportSharingScope)?;
             let kind = catalog
                 .commodities
                 .iter()
                 .find(|c| c.good_id == good && c.unit_id == unit)
-                .ok_or(MaterialWorldError::Wire)?
+                .ok_or(MaterialWorldError::ReportSharingScope)?
                 .kind;
             let valid = if scope.food.contains(commodity) {
                 good == mandate.good_id
@@ -331,7 +400,7 @@ pub(super) fn validate_scopes(catalog: &MaterialCatalog, config: &OrganizerConfi
                 matches!(kind, CommodityKind::PeriodService { .. })
             };
             if !valid {
-                return Err(MaterialWorldError::Wire);
+                return Err(MaterialWorldError::ReportSharingScope);
             }
         }
         if scope.participation_time.iter().any(|id| {
@@ -340,8 +409,139 @@ pub(super) fn validate_scopes(catalog: &MaterialCatalog, config: &OrganizerConfi
                     p.principal_id == mandate.recipient && p.labor_unit_id.as_bytes() == *id
                 })
         }) {
-            return Err(MaterialWorldError::Wire);
+            return Err(MaterialWorldError::ReportSharingScope);
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::tests::agency_control as material;
+    use super::*;
+    use babylon_material_circuit::{FinalDemandOrder, MaterialPurchase, OrderId};
+
+    fn commodity(id: u8) -> OrganizerReportCommodity {
+        OrganizerReportCommodity {
+            good_id: material::good(id).as_bytes(),
+            unit_id: material::unit(id).as_bytes(),
+            label: format!("Commodity {id}"),
+            unit_label: "unit".into(),
+        }
+    }
+
+    #[test]
+    fn scoped_receipts_include_old_and_new_food_handoffs_with_both_signed_payments() {
+        let (catalog, opening) = material::opening();
+        let old = OrderId::from_bytes([1; 32]);
+        let food_good = 2;
+        let seller = material::site(2);
+        let principal = material::donor();
+        let (opening, _) = babylon_material_circuit::admit_material_purchase(
+            &catalog,
+            &opening,
+            MaterialPurchase::LocalFinalDemand(FinalDemandOrder {
+                order_id: old,
+                retailer_site_id: seller,
+                demand_principal_id: principal,
+                good_id: material::good(food_good),
+                unit_id: material::unit(food_good),
+                ordered: 1,
+                fulfilled: 0,
+            }),
+            material::money(7),
+        )
+        .expect("old finite order at its own fixed price");
+        let mut close =
+            material::close(&catalog, &opening, &[], &[]).expect("ordinary household close");
+        let handoffs: Vec<_> = close
+            .local_fulfillments
+            .iter()
+            .filter(|r| {
+                r.demand_principal_id == principal && r.good_id == material::good(food_good)
+            })
+            .collect();
+        assert_eq!(
+            handoffs.len(),
+            2,
+            "expected both the finite and generated handoff"
+        );
+        let quantity = handoffs.iter().map(|r| r.quantity).sum();
+        let paid = close
+            .money_transfers
+            .iter()
+            .filter(|t| {
+                handoffs.iter().any(|r| {
+                    t.purpose
+                        == MoneyTransferPurpose::DeliverySettlement(
+                            OutboundOrderId::LocalFinalDemand(r.order_id),
+                        )
+                })
+            })
+            .map(|t| t.credit.delta.micro_units())
+            .sum();
+        let sharing = OrganizerReportSharing {
+            food: vec![commodity(food_good)],
+            ..OrganizerReportSharing::withheld()
+        };
+        let publish = |candidate: &_| closed([(30, principal, &sharing)], &opening, 1, candidate);
+        let reports = publish(&close).expect("opted-in food report");
+        let [(
+            30,
+            OrganizerPartnerFacts::FoodProvision {
+                purchased,
+                settled_micros,
+                ..
+            },
+        )] = reports.as_slice()
+        else {
+            panic!("food report")
+        };
+        assert_eq!((*purchased, *settled_micros), (quantity, paid));
+        close.money_transfers.retain(|row| {
+            row.purpose
+                != MoneyTransferPurpose::DeliverySettlement(OutboundOrderId::LocalFinalDemand(old))
+        });
+        assert!(matches!(
+            publish(&close),
+            Err(MaterialWorldError::ReportSettlement)
+        ));
+    }
+
+    #[test]
+    fn scoped_receipts_reject_missing_fully_expired_performance_and_its_unmatched_refund() {
+        let (catalog, mut opening) = material::opening();
+        opening
+            .production_commitments
+            .retain(|p| p.site_id != material::site(3));
+        let mut close = material::close(&catalog, &opening, &[], &[])
+            .expect("real service payments and refunds");
+        let principal = material::donor();
+        let sharing = OrganizerReportSharing {
+            essential_services: vec![commodity(3), commodity(4)],
+            ..OrganizerReportSharing::withheld()
+        };
+        let publish = |candidate: &_| closed([(30, principal, &sharing)], &opening, 1, candidate);
+        let reports = publish(&close).expect("opted-in service report");
+        let [(30, OrganizerPartnerFacts::EssentialServices { services })] = reports.as_slice()
+        else {
+            panic!("only granted service topic")
+        };
+        let [expired, paid] = services.as_slice() else {
+            panic!("two granted services")
+        };
+        assert!(paid.settled_micros > 0);
+        assert_eq!(expired.performed, 0);
+        assert!(expired.expired > 0 && expired.refunded_micros > 0);
+        close
+            .service_performance
+            .retain(|r| r.good_id != material::good(3));
+        assert!(
+            matches!(
+                publish(&close),
+                Err(MaterialWorldError::ReportServicePerformance)
+            ),
+            "a real refund lost its private order"
+        );
+    }
 }

@@ -220,12 +220,13 @@ pub(super) fn observation(
     text
 }
 
-pub(super) fn situation(view: &OrganizerView, period: u64) -> String {
+pub(super) fn situation(view: &OrganizerView, subject_id: u64, period: u64) -> String {
     let latest = view
         .observations
         .iter()
         .filter(|item| {
             item.actor_id == view.actor_id
+                && item.subject_id == subject_id
                 && view.knows_report_subject(item)
                 && item.acquired_period <= period
                 && item.observed_period <= period
@@ -233,7 +234,9 @@ pub(super) fn situation(view: &OrganizerView, period: u64) -> String {
         .max_by_key(|item| (item.observed_period, item.acquired_period));
     latest.map_or_else(
         || {
-            if period == 0 {
+            if subject_id != view.workplace_id {
+                format!("{} · No report from this partner is available at period {period}.",partner(view,subject_id))
+            } else if period == 0 {
                 "No completed-period report exists yet. An inquiry now still costs time; it cannot obtain that report.".into()
             } else if period != view.period {
                 "Open Cited workplace Archive to review earned reports at the inspected period.".into()
@@ -593,8 +596,10 @@ fn aid_history(client: &OrganizerClient, period: u64) -> String {
         );
         let _ = writeln!(
             text,
-            "Aid payer cash: gift paid {} currency.",
-            crate::human_numbers::currency(postings.payer_cash_granted_micros)
+            "Aid payer cash: gift paid {} currency. Cash outcome: {} at original dispatch. Freight loss: {} units in this period.",
+            crate::human_numbers::currency(postings.payer_cash_granted_micros),
+            row.support.cash_status.label(),
+            crate::observer_ui::grouped(postings.lost_quantity)
         );
         let _ = writeln!(text, "Independent outcome: {}; partner {}; coordination {} hours. A declined practice never revokes a delivered gift.", outcome(row.practice.outcome), response(row.practice.partner_response), crate::observer_ui::grouped(row.practice.hours_spent));
     }
@@ -1119,10 +1124,23 @@ fn evidence_inspector(
             "No acquired report is available at this period.".into()
         }
     }, |item| observation(view, item, period));
-    if item.is_none_or(|r| !matches!(r.report, OrganizerReport::Partner { .. })) {
+    if item.is_some_and(|r| !matches!(r.report, OrganizerReport::Partner { .. }))
+        || client.evidence.mode == EvidenceMode::Subject(view.workplace_id)
+    {
         text.push_str("\n\nREPORT SCOPE\nWorkplace reports do not establish aid delivery, household consumption or independent participation. Provider-private accounts remain undisclosed.");
     }
-    if period == view.period {
+    if let EvidenceMode::Subject(id) = client.evidence.mode {
+        let subject = if id == view.workplace_id {
+            &view.workplace_label
+        } else {
+            partner(view, id)
+        };
+        let _ = write!(
+            text,
+            "\n{subject} · {} retained report(s) available at period {period}.",
+            client.evidence_ids(period).len()
+        );
+    } else if period == view.period {
         let _ = write!(text, "\n{} recent and latest report(s) shown; {} acquired through committed period {}. Earlier reports remain in the Archive for their subject.", view.observations.len(), view.total_observation_count, view.period);
     } else {
         text.push_str("\nThe as-of total is unavailable. Each known subject has its own Archive at the inspected period.");
@@ -1366,12 +1384,15 @@ mod tests {
         assert!(
             aftermath(&OrganizerClient::default(), &view, 1).contains("Open Our practice Archive")
         );
-        assert!(situation(&view, 1).contains("Open Cited workplace Archive"));
+        assert!(situation(&view, view.workplace_id, 1).contains("Open Cited workplace Archive"));
 
         let mut no_current_totals = view.clone();
         no_current_totals.total_receipt_count = 0;
         no_current_totals.total_observation_count = 0;
-        assert_eq!(situation(&view, 1), situation(&no_current_totals, 1));
+        assert_eq!(
+            situation(&view, view.workplace_id, 1),
+            situation(&no_current_totals, no_current_totals.workplace_id, 1)
+        );
         assert_eq!(
             aftermath(&client, &view, 1),
             aftermath(&client, &no_current_totals, 1)
@@ -1500,6 +1521,24 @@ mod tests {
             aid_resolutions: vec![row],
             ..OrganizerClient::default()
         }
+    }
+
+    #[test]
+    fn sender_history_keeps_cash_disposition_and_actual_freight_loss() {
+        let mut client = aid_history_client();
+        let row = &mut client.aid_resolutions[0];
+        row.support.cash_status =
+            babylon_persistence::runtime_session::OrganizerAidCashStatus::ReceivingRefused;
+        row.support.material_postings.payer_cash_granted_micros = 0;
+        row.support.material_postings.lost_quantity = 1;
+        let period = row.practice.period;
+        let text = aid_history(&client, period);
+        assert!(
+            text.contains("Cash outcome: receiving refused") && text.contains("Freight loss: 1")
+        );
+        client.aid_resolutions[0].support.cash_status =
+            babylon_persistence::runtime_session::OrganizerAidCashStatus::Unfunded;
+        assert!(aid_history(&client, period).contains("Cash outcome: unfunded"));
     }
 
     fn aid_arrival_client() -> OrganizerClient {
@@ -2313,7 +2352,7 @@ mod tests {
             expired_batches: 777,
         };
         view.observations.push(report);
-        let text = situation(&view, 3);
+        let text = situation(&view, view.workplace_id, 3);
         assert!(
             text.contains("Observed period 2 · historical report"),
             "{text}"
@@ -2324,7 +2363,7 @@ mod tests {
         assert!(!text.contains("999"), "{text}");
         assert!(!text.contains("source actor"), "{text}");
         assert!(!text.contains(&"07".repeat(32)), "{text}");
-        assert!(situation(&view, 1).contains("Open Cited workplace Archive"));
+        assert!(situation(&view, view.workplace_id, 1).contains("Open Cited workplace Archive"));
     }
 
     #[test]

@@ -1,4 +1,5 @@
 //! Selected report identity, real glyphs and reading continuity.
+use super::Scope;
 use super::{
     tests, ActionButton, Destination, DispatchDestination, OrganizerAction,
     OrganizerEvidenceRequested, TextPart,
@@ -402,4 +403,88 @@ fn partner_comparison_requires_a_prior_acquired_topic_for_the_same_reader() {
     view.observations[0] = prior;
     view.observations[0].actor_id += 1;
     assert!(detail(&view).contains("Earlier comparable report unknown"));
+}
+
+#[test]
+fn scoped_opening_dossier_selects_only_the_known_subject_and_world_names_its_scope() {
+    use crate::organizer::scene::OrganizerSubject;
+    use babylon_persistence::runtime_session::OrganizerSnapshot;
+    use bevy::ecs::system::RunSystemOnce;
+    let captured: OrganizerSnapshot = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../babylon-persistence/tests/fixtures/national_organizer_opening_v18.json"
+    )))
+    .expect("actual opening disclosure");
+    let partners = captured.view.aid_partners.clone();
+    let workplace = captured.view.workplace_id;
+    let committee = captured.view.workplace_partner_id;
+    let (mut app, _) = tests::admitted_scene_fixture();
+    let mut session = app.world_mut().resource_mut::<ObserverSession>();
+    session.viewed_tick = 0;
+    session.durable_tick = 0;
+    let context = session.context();
+    let campaign = *session.campaign.as_uuid().as_bytes();
+    let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+    client.view = Some(captured.view);
+    client.body_durable_tick = Some(0);
+    client.body_context = Some(context);
+    let mut scope = captured.body_scope;
+    scope.campaign_id = campaign;
+    client.body_scope = Some(scope);
+    for subject in [
+        OrganizerSubject::Workplace(workplace),
+        OrganizerSubject::WorkplaceCommittee(committee),
+        OrganizerSubject::AidPartner(partners[0].actor_id),
+        OrganizerSubject::AidPartner(partners[1].actor_id),
+    ] {
+        app.world_mut()
+            .resource_mut::<OrganizerClient>()
+            .selected_subject = Some(subject);
+        let reading = app
+            .world_mut()
+            .run_system_once(|scope: Scope| super::board::subject_reading(&scope))
+            .expect("visible subject reading");
+        app.world_mut().resource_mut::<OrganizerClient>().inspector = OrganizerInspector::Closed;
+        app.world_mut()
+            .write_message(OrganizerAction::InspectSubjectEvidence);
+        app.update();
+        let client = app.world().resource::<OrganizerClient>();
+        assert_eq!(client.inspector, OrganizerInspector::Evidence);
+        let visible = client.evidence_ids(0);
+        if let OrganizerSubject::AidPartner(id) = subject {
+            let expected = partners
+                .iter()
+                .find(|p| p.actor_id == id)
+                .expect("known partner");
+            assert_eq!(visible.len(), 1);
+            assert_eq!(
+                client
+                    .lawful_evidence(visible[0], 0)
+                    .expect("selected partner report")
+                    .subject_id,
+                id
+            );
+            assert!(
+                reading.contains("Opening food assessment") && reading.contains(&expected.label),
+                "{reading}"
+            );
+            assert!(!reading.contains(
+                &partners
+                    .iter()
+                    .find(|p| p.actor_id != id)
+                    .expect("other partner")
+                    .label
+            ));
+        } else {
+            assert_eq!(visible.len(), 0);
+            assert!(!reading.contains("Opening food assessment"), "{reading}");
+        }
+    }
+    let world = super::copy::world_reports(
+        app.world().resource::<OrganizerClient>(),
+        app.world().resource::<ObserverSession>(),
+    )
+    .expect("earned World summary");
+    assert!(partners.iter().all(|p| world.contains(&p.label)));
+    assert!(!world.contains("This is workplace report scope"));
 }

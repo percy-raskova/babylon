@@ -289,6 +289,19 @@ pub enum OrganizerAidCashStatus {
     ReceivingRefused,
 }
 
+impl OrganizerAidCashStatus {
+    /// The sender's independent dispatch-time cash outcome.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::NotRequested => "not requested",
+            Self::Granted => "granted",
+            Self::Unfunded => "unfunded",
+            Self::ReceivingRefused => "receiving refused",
+        }
+    }
+}
+
 /// Host joins actual material receipts, consumption and surviving freight before
 /// supplying this closed fact. Missing facts never confer practice eligibility.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -78,7 +78,7 @@ pub(crate) fn world_reports(client: &OrganizerClient, session: &ObserverSession)
         );
     }
     text.push_str(
-        "\nThis is workplace report scope; the wider production circuit is not disclosed.",
+        "\nEach report covers the facts its named source shared. The wider production circuit remains undisclosed.",
     );
     Some(text)
 }

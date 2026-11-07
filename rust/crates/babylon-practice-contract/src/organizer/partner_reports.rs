@@ -49,10 +49,13 @@ impl OrganizerReportSharing {
         let valid = |c: &OrganizerReportCommodity| {
             c.good_id != [0; 32]
                 && c.unit_id != [0; 32]
+                && super::contract::label_valid(&c.label)
+                && super::contract::label_valid(&c.unit_label)
                 && !c.label.trim().is_empty()
                 && !c.unit_label.trim().is_empty()
         };
-        self.food.len() <= 1
+        self.essential_services.len() <= super::contract::MAX_ORGANIZER_ROWS
+            && self.food.len() <= 1
             && self.participation_time.len() <= 1
             && self.participation_time.iter().all(|id| *id != [0; 32])
             && self.food.iter().chain(&self.essential_services).all(valid)
@@ -154,10 +157,12 @@ impl OrganizerPartnerFacts {
                 required,
                 consumed,
                 unmet,
+                settled_micros,
                 ..
             } => {
                 period > 0
                     && scope.food.contains(commodity)
+                    && *settled_micros >= 0
                     && consumed.checked_add(*unmet) == Some(*required)
             }
             Self::EssentialServices { services } => {

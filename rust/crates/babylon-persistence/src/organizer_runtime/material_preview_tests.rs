@@ -259,7 +259,6 @@ fn stock_only_status_admits_food_without_unselected_payer() {
             cash_micros: 0,
         },
     );
-    verify_independent_selected_terms(&session, &snapshot, &accepted);
     let candidate = fixture::prepare(&session, Some(&accepted));
     let facts = super::resolutions(
         candidate
@@ -270,6 +269,7 @@ fn stock_only_status_admits_food_without_unselected_payer() {
             .latest()
             .expect("close"),
     );
+    verify_independent_selected_terms(&session, &snapshot, &accepted, &facts);
     assert!(matches!(
         facts[0].support.status,
         super::OrganizerFoodDelivery::Granted {
@@ -302,7 +302,6 @@ fn cash_only_status_admits_cash_without_unselected_food_metadata() {
             cash_micros: 3,
         },
     );
-    verify_independent_selected_terms(&session, &snapshot, &accepted);
     let candidate = fixture::prepare(&session, Some(&accepted));
     let facts = super::resolutions(
         candidate
@@ -313,6 +312,7 @@ fn cash_only_status_admits_cash_without_unselected_food_metadata() {
             .latest()
             .expect("close"),
     );
+    verify_independent_selected_terms(&session, &snapshot, &accepted, &facts);
     assert_eq!(
         facts[0].support.status,
         super::OrganizerFoodDelivery::NotRequested
@@ -327,6 +327,7 @@ fn verify_independent_selected_terms(
     session: &Session,
     snapshot: &OrganizerSnapshot,
     accepted: &OrganizerCommitment,
+    resolutions: &[OrganizerAidResolution],
 ) {
     let cash_only = accepted.command.choice == OrganizerChoice::RemoteAid;
     let expected: Value = serde_json::from_str(if cash_only {
@@ -338,6 +339,10 @@ fn verify_independent_selected_terms(
     assert_eq!(
         serde_json::to_value(snapshot).expect("status JSON"),
         expected["snapshot"]
+    );
+    assert_eq!(
+        serde_json::to_value(resolutions).expect("complete dated resolution projection"),
+        expected["resolutions"]
     );
     let config = session.material().organizer_config().expect("config");
     let state = session.material().organizer_state().expect("state");
@@ -689,4 +694,54 @@ fn varying_unshared_household_hours_changes_neither_report_count_nor_disclosed_p
     let (second, same) = close(12);
     assert_ne!(first, second);
     assert_eq!(known, same);
+}
+
+#[test]
+fn scoped_archive_opening_bound_register_refuses_changed_or_missing_partner_knowledge() {
+    use babylon_practice_contract::{OrganizerPartnerFacts, OrganizerPeriodJournal};
+    let session = cash_purchase_session(4, 8);
+    let mut config = session
+        .material()
+        .organizer_config()
+        .expect("admitted config")
+        .clone();
+    let binding = &config.aid_bindings[0];
+    let actor = binding.partner.actor_id;
+    let commodity = binding.report_sharing.food[0].clone();
+    let opening = |config: &_, stock| {
+        babylon_practice_contract::partner_observation(
+            config,
+            actor,
+            0,
+            0,
+            OrganizerPartnerFacts::OpeningAssessment {
+                commodity: commodity.clone(),
+                opening_stock: stock,
+                required: 1,
+            },
+        )
+        .expect("valid assessment")
+    };
+    config.initial_observations = vec![opening(&config, 3)];
+    let state =
+        babylon_practice_contract::initial_organizer_state(&config).expect("correct authority");
+    let bind = |state| {
+        session.material().clone().with_organizer(
+            session.catalog(),
+            config.clone(),
+            state,
+            OrganizerPeriodJournal::empty(),
+        )
+    };
+    assert!(bind(state.clone()).is_ok());
+    let mut missing = state;
+    missing.learned_authority_index.clear();
+    assert!(bind(missing).is_err());
+    let mut changed = config.clone();
+    changed.initial_observations = vec![opening(&changed, 4)];
+    assert!(bind(
+        babylon_practice_contract::initial_organizer_state(&changed)
+            .expect("valid alternate capture")
+    )
+    .is_err());
 }

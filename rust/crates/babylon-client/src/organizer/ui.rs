@@ -59,6 +59,7 @@ pub(crate) enum OrganizerAction {
     Refresh,
     Inspect(OrganizerInspector),
     OpenReferences,
+    InspectSubjectEvidence,
     Follow(DatedLink),
     PreviousEvidence,
     NextEvidence,
@@ -459,17 +460,19 @@ fn render_scene(
     let historical = scope.session.viewed_tick != scope.session.durable_tick;
     let availability = scene_availability(&scope, next.as_ref());
     let placeholder = scene_placeholder(&availability);
-    let workplace_selected = next.as_ref().is_some_and(|scene| {
+    let report_subject_selected = next.as_ref().is_some_and(|scene| {
         scene.nodes.iter().any(|node| {
             Some(node.subject) == scope.client.selected_subject
-                && matches!(
-                    node.subject,
-                    OrganizerSubject::Workplace(_) | OrganizerSubject::WorkplaceCommittee(_)
-                )
+                && scope
+                    .client
+                    .view
+                    .as_ref()
+                    .and_then(|view| node.subject.report_subject(view))
+                    .is_some()
         })
     });
     for mut node in &mut evidence {
-        node.display = if workplace_selected {
+        node.display = if report_subject_selected {
             Display::Flex
         } else {
             Display::None
@@ -1145,6 +1148,7 @@ pub(super) fn enabled(
                     _ => true,
                 }
         }
+        OrganizerAction::InspectSubjectEvidence => client.selected_report_subject().is_some(),
         OrganizerAction::Inspect(_) | OrganizerAction::OpenReferences => client.view.is_some(),
         OrganizerAction::PreviousEvidence => client
             .evidence_neighbor(false, session.viewed_tick)
@@ -1346,9 +1350,10 @@ fn feedback(action: OrganizerAction) -> Option<OrganizerFeedback> {
         OrganizerAction::SetSceneMode(_)
         | OrganizerAction::SelectSubject(_)
         | OrganizerAction::Choose(_) => Some(OrganizerFeedback::Select),
-        OrganizerAction::Inspect(_) | OrganizerAction::OpenReferences | OrganizerAction::Review => {
-            Some(OrganizerFeedback::Open)
-        }
+        OrganizerAction::Inspect(_)
+        | OrganizerAction::InspectSubjectEvidence
+        | OrganizerAction::OpenReferences
+        | OrganizerAction::Review => Some(OrganizerFeedback::Open),
         OrganizerAction::CloseInspector => Some(OrganizerFeedback::Back),
         _ => None,
     }
@@ -1377,6 +1382,7 @@ fn pauses_playback(action: OrganizerAction) -> bool {
             action,
             OrganizerAction::Review
                 | OrganizerAction::OpenReferences
+                | OrganizerAction::InspectSubjectEvidence
                 | OrganizerAction::ArchiveSelection
                 | OrganizerAction::ArchiveReport
                 | OrganizerAction::ArchiveWorkplace
@@ -1493,10 +1499,7 @@ fn actions(
             }
             OrganizerAction::Confirm => {
                 confirm_approach(client, session);
-                client.inspector = OrganizerInspector::Closed;
-                if let Some(entity) = client.return_focus.take() {
-                    focus.set(entity, FocusCause::Navigated);
-                }
+                close_inspector(client, focus);
             }
             OrganizerAction::Advance => {
                 observer_commands.write(ObserverCommand::Step);
@@ -1512,6 +1515,13 @@ fn actions(
                 if inspector == OrganizerInspector::Evidence {
                     client.open_evidence_reports(session.viewed_tick);
                 }
+            }
+            OrganizerAction::InspectSubjectEvidence => {
+                if !client.open_selected_subject_reports(session.viewed_tick) {
+                    continue;
+                }
+                client.return_focus = focus.get();
+                client.inspector = OrganizerInspector::Evidence;
             }
             OrganizerAction::OpenReferences => {
                 if client.inspector == OrganizerInspector::Closed {
@@ -1535,15 +1545,19 @@ fn actions(
                 }
             }
             OrganizerAction::CloseInspector => {
-                client.inspector = OrganizerInspector::Closed;
-                if let Some(entity) = client.return_focus.take() {
-                    focus.set(entity, FocusCause::Navigated);
-                }
+                close_inspector(client, focus);
             }
         }
         if let Some(receipt) = qualification.as_deref_mut() {
             receipt.organizer_finished(message_id, true, &state.client);
         }
+    }
+}
+
+fn close_inspector(client: &mut OrganizerClient, focus: &mut InputFocus) {
+    client.inspector = OrganizerInspector::Closed;
+    if let Some(entity) = client.return_focus.take() {
+        focus.set(entity, FocusCause::Navigated);
     }
 }
 

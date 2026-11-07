@@ -11,6 +11,7 @@ use super::OrganizerClient;
 pub(super) enum EvidenceMode {
     #[default]
     Reports,
+    Subject(u64),
     Saved,
 }
 
@@ -51,6 +52,7 @@ impl OrganizerClient {
             .iter()
             .filter(|item| {
                 item.actor_id == view.actor_id
+                    && !matches!(self.evidence.mode,EvidenceMode::Subject(id) if item.subject_id!=id)
                     && view.knows_report_subject(item)
                     && item.observed_period <= period
                     && item.acquired_period <= period
@@ -72,6 +74,13 @@ impl OrganizerClient {
 
     pub(super) fn selected_evidence_id(&self, period: u64) -> Option<[u8; 32]> {
         match self.evidence.mode {
+            EvidenceMode::Subject(_) => {
+                let ids = self.evidence_ids(period);
+                self.evidence
+                    .selected_report
+                    .filter(|id| ids.contains(id))
+                    .or_else(|| ids.first().copied())
+            }
             EvidenceMode::Reports => self
                 .evidence
                 .selected_report
@@ -100,6 +109,19 @@ impl OrganizerClient {
         }
     }
 
+    pub(super) fn selected_report_subject(&self) -> Option<u64> {
+        self.selected_subject?.report_subject(self.view.as_ref()?)
+    }
+
+    pub(super) fn open_selected_subject_reports(&mut self, period: u64) -> bool {
+        let Some(subject) = self.selected_report_subject() else {
+            return false;
+        };
+        self.evidence.mode = EvidenceMode::Subject(subject);
+        self.evidence.selected_report = self.evidence_ids(period).first().copied();
+        true
+    }
+
     pub(super) fn open_saved_references(&mut self) {
         self.evidence.mode = EvidenceMode::Saved;
     }
@@ -123,7 +145,9 @@ impl OrganizerClient {
             return;
         };
         match self.evidence.mode {
-            EvidenceMode::Reports => self.evidence.selected_report = Some(id),
+            EvidenceMode::Reports | EvidenceMode::Subject(_) => {
+                self.evidence.selected_report = Some(id);
+            }
             EvidenceMode::Saved => {
                 if let Some(draft) = &mut self.draft {
                     draft.selected_reference = Some(id);

@@ -465,7 +465,7 @@ fn a_refused_successor_leaves_the_published_register_unchanged() {
     reason = "the shared paper-control fixture also supports other material tests"
 )]
 #[path = "../../../babylon-material-circuit/tests/support/organizer_funding_control.rs"]
-mod agency_control;
+pub(super) mod agency_control;
 
 #[test]
 fn actual_paid_agency_attendance_roundtrips_through_the_canonical_tick() {

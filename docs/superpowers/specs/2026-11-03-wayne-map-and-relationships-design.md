@@ -439,6 +439,8 @@ The two known aid groups keep their own actor identities when freight is pending
 
 A retained report opens its own Archive subject at the inspected period. A saved reference holds only the report ID. When that report leaves the recent view, its link opens the general Wayne Archive at the inspected period. The player can select a known organization to find its older reports. Returning preserves the decision subject and draft.
 
-The opening food assessment compares the pantry stock at capture with the food the household needs. A completed food report describes household consumption, unmet need, closing stock and ordinary purchases in the granted food unit. The essential service report names the granted household services and gives performed, satisfied, unmet, unused and expired units with actual settled and refunded cash.
+The opening food assessment compares the pantry stock at capture with the food the household needs. Neither partner asks for cash or quotes a price in this assessment. The opening brief classifies the $280 proposal as Designed. A later sale records its own terms.
+
+A completed food report describes household consumption, unmet need, closing stock and ordinary purchases in the granted food unit. The essential service report names the granted household services and gives performed, satisfied, unmet, unused and expired units with actual settled and refunded cash.
 
 The completed time report deducts the final period's posted contributions once from the residual household hours. Better housing service can coexist with the same residual hours. These Derived reports cover only the named topics. Household materials and unrelated cash uses remain unknown. When a household buys goods with fungible cash, the receipts cannot identify which gift paid for them.

@@ -247,6 +247,11 @@ pub enum MaterialWorldError {
     ByteLimit,
     Allocation,
     Wire,
+    ReportSettlement,
+    ReportRetailHandoff,
+    ReportServicePerformance,
+    ReportHouseholdTime,
+    ReportSharingScope,
     Organizer(OrganizerError),
     CityPd(CityPdRegisterError),
 }
@@ -734,9 +739,18 @@ impl MaterialWorldRegister {
             None => return Err(MaterialWorldError::Wire),
         };
         let partner_reports = match self.organizer_config() {
-            Some(config) => {
-                super::organizer_reports::closed(config, self.state.period, &transition)?
-            }
+            Some(config) => super::organizer_reports::closed(
+                config.aid_bindings.iter().map(|binding| {
+                    (
+                        binding.partner.actor_id,
+                        FinalDemandPrincipalId::from_bytes(binding.recipient_principal_id),
+                        &binding.report_sharing,
+                    )
+                }),
+                &self.state,
+                self.state.period,
+                &transition,
+            )?,
             None => Vec::new(),
         };
         let register = Self::from_validated_candidate(catalog, transition.state)?;

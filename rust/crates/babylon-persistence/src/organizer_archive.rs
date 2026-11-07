@@ -10,8 +10,8 @@ use crate::{
     ArchiveProducerOutcome, ArchiveSignal, ArchiveSubject, ArchiveSubjectKind,
     PendingArchiveReceipt, SemanticArchiveError,
 };
-use babylon_practice_contract::OrganizerPeriodJournal;
 use babylon_practice_contract::OrganizerPeriodJournalEntries;
+use babylon_practice_contract::{OrganizerAidCashStatus, OrganizerPeriodJournal};
 
 use crate::archive;
 use crate::material_runtime::ArchiveFoundationCandidate;
@@ -754,7 +754,7 @@ impl CapturedOrganizerPages {
                     && observation.acquired_period <= self.tick
                     && observation.subject_id.to_string() == id
             }) {
-                signals.push(observation_signal(observation)?);
+                signals.push(PageEvidence::Report(observation));
             }
             if kind == "workplace" {
                 for encounter in encounters.iter().filter(|value| {
@@ -762,7 +762,7 @@ impl CapturedOrganizerPages {
                         && value.subject_id.to_string() == id
                         && value.resolve_period <= self.tick
                 }) {
-                    signals.push(encounter_signal(encounter)?);
+                    signals.push(PageEvidence::Encounter(encounter));
                 }
             } else {
                 let matching_receipts = receipts
@@ -771,18 +771,22 @@ impl CapturedOrganizerPages {
                     .filter(|value| value.actor_id.to_string() == actor && actor == id);
                 for value in matching_receipts {
                     if let Some(collection) = collection_by_receipt.get(&value.receipt_id) {
-                        signals.push(collection_signal(collection)?);
+                        signals.push(PageEvidence::Collection(collection));
                         continue;
                     }
                     let aid = aid_by_receipt.get(&value.receipt_id);
                     signals.push(match aid {
-                        Some(row) => aid_signal(row)?,
-                        None => practice_signal(value)?,
+                        Some(row) => PageEvidence::Aid(row),
+                        None => PageEvidence::Practice(value),
                     });
                 }
             }
             let kind = crate::archive::decode_subject_kind(&kind)?;
-            pages.push(ArchivePageInput::try_new(ArchiveSubject::try_new(kind,id,title)?,receipt.resolve_tick(),*receipt.tick_content_hash(),"Designed Wayne scenario: these fictional organizations and modeled workplace do not represent observed organizations or the whole workforce. What have we learned or performed, and which commitment should we review next?".into(),signals,Vec::new())?);
+            pages.push(organizer_page(
+                ArchiveSubject::try_new(kind, id, title)?,
+                &receipt,
+                signals,
+            )?);
         }
         let remaining = total.saturating_sub(pages.len());
         Ok((
@@ -797,6 +801,55 @@ impl CapturedOrganizerPages {
             Some(admitted),
         ))
     }
+}
+
+enum PageEvidence<'a> {
+    Report(&'a OrganizerObservation),
+    Encounter(&'a CityPdEncounter),
+    Practice(&'a OrganizerReceipt),
+    Collection(&'a OrganizerCollectionResolution),
+    Aid(&'a OrganizerAidResolutionReceipt),
+}
+
+impl PageEvidence<'_> {
+    fn period(&self) -> u64 {
+        match self {
+            Self::Report(r) => r.acquired_period,
+            Self::Encounter(r) => r.resolve_period,
+            Self::Practice(r) => r.period,
+            Self::Collection(r) => r.practice.period,
+            Self::Aid(r) => r.practice.period,
+        }
+    }
+    fn signal(&self) -> Result<ArchiveSignal, SemanticArchiveError> {
+        match self {
+            Self::Report(r) => observation_signal(r),
+            Self::Encounter(r) => encounter_signal(r),
+            Self::Practice(r) => practice_signal(r),
+            Self::Collection(r) => collection_signal(r),
+            Self::Aid(r) => aid_signal(r),
+        }
+    }
+}
+
+fn organizer_page(
+    subject: ArchiveSubject,
+    receipt: &PendingArchiveReceipt,
+    mut evidence: Vec<PageEvidence<'_>>,
+) -> Result<ArchivePageInput, SemanticArchiveError> {
+    evidence.retain(|e| e.period() <= receipt.resolve_tick());
+    // Each earlier receipt keeps its own revision. Select this receipt's newest
+    // eligible facts before building text, retaining canonical order within ties.
+    let skip = evidence.len().saturating_sub(archive::MAX_SIGNALS);
+    if skip > 0 {
+        evidence.sort_by_key(PageEvidence::period);
+    }
+    let signals = evidence
+        .iter()
+        .skip(skip)
+        .map(PageEvidence::signal)
+        .collect::<Result<Vec<_>, _>>()?;
+    ArchivePageInput::try_new(subject,receipt.resolve_tick(),*receipt.tick_content_hash(),"Designed Wayne scenario: these fictional organizations and modeled workplace do not represent observed organizations or the whole workforce. What have we learned or performed, and which commitment should we review next?".into(),signals,Vec::new())
 }
 
 fn observation_signal(
@@ -842,6 +895,7 @@ struct AidSupportEvidence<'a> {
     good: &'a [u8; 32],
     unit: &'a [u8; 32],
     status: OrganizerFoodDelivery,
+    cash_status: OrganizerAidCashStatus,
     material_postings: &'a OrganizerAidMaterialPostings,
 }
 
@@ -858,7 +912,7 @@ fn aid_support_text(evidence: &AidSupportEvidence<'_>) -> String {
         ),
     };
     format!(
-        "Original human admission period: {}\nMaterial dispatch period: {}\nActual support resolution period: {}\nOriginal commitment: {}\nMaterial commitment: {}\nGood: {}; unit: {}\n{support}\nActual material postings in period {}: Dispatched food: {} units; donor household fulfillment: {} hours. Aid payer cash: gift paid {} micro-units; fulfillment is separate from independent coordination.\nDesigned eligibility requires positive cash settled at original dispatch or a food grant with positive bounded same-period consumption credit. It does not prove donated units caused additional consumption or released time; receiving support does not authorize agreement or participation.",
+        "Original human admission period: {}\nMaterial dispatch period: {}\nActual support resolution period: {}\nOriginal commitment: {}\nMaterial commitment: {}\nGood: {}; unit: {}\n{support}\nActual material postings in period {}: Dispatched food: {} units; donor household fulfillment: {} hours. Aid payer cash: gift paid {} micro-units; fulfillment is separate from independent coordination. Cash outcome: {} at original dispatch. Freight loss: {} units in this period.\nDesigned eligibility requires positive cash settled at original dispatch or a food grant with positive bounded same-period consumption credit. It does not prove donated units caused additional consumption or released time; receiving support does not authorize agreement or participation.",
         evidence.admission,
         evidence.dispatch,
         evidence.resolution,
@@ -869,7 +923,9 @@ fn aid_support_text(evidence: &AidSupportEvidence<'_>) -> String {
         evidence.resolution,
         evidence.material_postings.dispatched_quantity,
         evidence.material_postings.fulfillment_hours,
-        evidence.material_postings.payer_cash_granted_micros
+        evidence.material_postings.payer_cash_granted_micros,
+        evidence.cash_status.label(),
+        evidence.material_postings.lost_quantity
     )
 }
 
@@ -883,6 +939,7 @@ fn aid_signal(row: &OrganizerAidResolutionReceipt) -> Result<ArchiveSignal, Sema
         good: &row.support.good_id,
         unit: &row.support.unit_id,
         status: row.support.status.into(),
+        cash_status: row.support.cash_status,
         material_postings: &row.support.material_postings,
     };
     // Keep the existing actor-scoped grant and receipt citation. The producer
@@ -1061,6 +1118,7 @@ fn collection_signal(
 #[cfg(test)]
 mod projection_tests {
     use super::*;
+    use crate::{ArchiveKnowledgeGrant, FogSafeArchiveRenderer};
 
     fn observation() -> OrganizerObservation {
         OrganizerObservation {
@@ -1078,6 +1136,139 @@ mod projection_tests {
                 previous_output_kg: Some(960),
             },
         }
+    }
+
+    #[test]
+    fn scoped_archive_bounds_partner_revisions_and_retains_earlier_acquisition() {
+        use crate::runtime_session::OrganizerSnapshot;
+        let captured: OrganizerSnapshot = serde_json::from_str(include_str!(
+            "../tests/fixtures/national_organizer_pending_v18.json"
+        ))
+        .expect("real national topics");
+        let partner = &captured.view.aid_partners[0];
+        let observations: Vec<_> = captured
+            .view
+            .observations
+            .iter()
+            .filter(|r| r.subject_id == partner.actor_id)
+            .collect();
+        let seed = observations
+            .iter()
+            .find(|r| r.acquired_period == 0)
+            .expect("opening");
+        let mut rows = vec![(**seed).clone()];
+        for period in 1..=86 {
+            for (i, report) in observations
+                .iter()
+                .filter(|r| r.acquired_period == 1)
+                .enumerate()
+            {
+                let mut row = (**report).clone();
+                row.observed_period = period;
+                row.acquired_period = period;
+                row.observation_id[..8].copy_from_slice(&period.to_be_bytes());
+                row.observation_id[8] = u8::try_from(i).expect("bounded topics");
+                rows.push(row);
+            }
+        }
+        assert_eq!(rows.len(), 259);
+        let revision = |period| {
+            let subject = ArchiveSubject::try_new(
+                ArchiveSubjectKind::Organization,
+                partner.actor_id.to_string(),
+                partner.label.clone(),
+            )
+            .expect("known partner");
+            let receipt =
+                PendingArchiveReceipt::try_new(period, [1; 32]).expect("committed boundary");
+            organizer_page(
+                subject,
+                &receipt,
+                rows.iter().map(PageEvidence::Report).collect(),
+            )
+            .expect("bounded partner publication")
+        };
+        let earlier = revision(85);
+        let later = revision(86);
+        assert_eq!((earlier.signals().len(), later.signals().len()), (256, 256));
+        let early_id = observation_signal(&rows[1]).expect("early signal");
+        let future_id = observation_signal(rows.last().expect("future row")).expect("later signal");
+        assert!(earlier.signals().contains(&early_id));
+        assert!(!earlier.signals().contains(&future_id));
+        assert!(!later.signals().contains(&early_id));
+        assert!(later.signals().contains(&future_id));
+        let page = earlier.subject().page_ref();
+        let grant = |key: &str, tick, citation: ArchiveCitation| {
+            ArchiveKnowledgeGrant::try_new(page.clone(), key.into(), tick, citation)
+                .expect("exact grant")
+        };
+        let knowledge = ArchiveKnowledge::try_new(vec![
+            grant(
+                "subject",
+                0,
+                ArchiveCitation::try_new(
+                    "captured-organizer".into(),
+                    "disclosed-organization".into(),
+                )
+                .expect("identity citation"),
+            ),
+            grant(early_id.grant_key(), 1, early_id.citation().clone()),
+        ])
+        .expect("historical knowledge");
+        let renderer = FogSafeArchiveRenderer::new().expect("Archive renderer");
+        let historical = renderer
+            .render(&revision(rows[1].acquired_period), &knowledge)
+            .expect("earned earlier revision");
+        assert!(historical.citations().contains(early_id.citation()));
+        assert!(!historical.citations().contains(future_id.citation()));
+        let current = renderer
+            .render(&later, &knowledge)
+            .expect("same restricted reader");
+        assert!(!current.citations().contains(future_id.citation()));
+        assert!(!current.citations().contains(early_id.citation()));
+    }
+
+    #[test]
+    fn scoped_archive_records_cash_disposition_and_loss_on_the_actual_support_signal() {
+        use crate::organizer_aid_fixture as fixture;
+        use babylon_practice_contract::{OrganizerAidCashStatus, OrganizerAllocation};
+        let config = fixture::config();
+        let session = fixture::authored_session(
+            crate::michigan_dynamic_hex_foundation().expect("foundation"),
+            config,
+            false,
+            false,
+        );
+        let command = fixture::commitment_with_allocation(
+            &session,
+            OrganizerChoice::LocalAid,
+            OrganizerAllocation::Aid {
+                food_quantity: 1,
+                cash_micros: 3,
+            },
+        );
+        let candidate = fixture::prepare(&session, Some(&command));
+        let mut row = candidate
+            .material()
+            .register()
+            .organizer_journal()
+            .expect("journal")
+            .latest()
+            .expect("dated entry")
+            .aid_receipts[0]
+            .clone();
+        row.support.material_postings.payer_cash_granted_micros = 0;
+        row.support.cash_status = OrganizerAidCashStatus::Unfunded;
+        let unfunded = aid_signal(&row).expect("unfunded signal");
+        row.support.cash_status = OrganizerAidCashStatus::ReceivingRefused;
+        let refused = aid_signal(&row).expect("refused signal");
+        assert!(unfunded.value().contains("Cash outcome: unfunded"));
+        assert!(refused.value().contains("Cash outcome: receiving refused"));
+        assert_ne!(unfunded.value(), refused.value());
+        row.support.material_postings.lost_quantity = 1;
+        let lost = aid_signal(&row).expect("positive freight loss");
+        assert!(lost.value().contains("Freight loss: 1"));
+        assert!(!refused.value().contains("household_consumed_quantity"));
     }
 
     #[test]
@@ -1100,6 +1291,7 @@ mod projection_tests {
             good: &[3; 32],
             unit: &[4; 32],
             status,
+            cash_status: OrganizerAidCashStatus::Granted,
             material_postings: &material_postings,
         };
         let text = aid_support_text(&evidence);

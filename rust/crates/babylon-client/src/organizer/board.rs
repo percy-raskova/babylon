@@ -222,7 +222,7 @@ fn dossier(root: &mut ChildSpawnerCommands) {
                     ui::button(
                         links,
                         "Inspect selected evidence",
-                        OrganizerAction::Inspect(OrganizerInspector::Evidence),
+                        OrganizerAction::InspectSubjectEvidence,
                     );
                 });
             panel.spawn(ui::row()).with_children(|links| {
@@ -255,14 +255,13 @@ pub(super) fn subject_reading(scope: &Scope) -> String {
         .selected_subject
         .unwrap_or(OrganizerSubject::Collective(view.actor_id));
     match subject {
-        OrganizerSubject::Workplace(_) | OrganizerSubject::WorkplaceCommittee(_) => {
-            presentation::situation(view, scope.session.viewed_tick)
+        OrganizerSubject::Workplace(_)
+        | OrganizerSubject::WorkplaceCommittee(_)
+        | OrganizerSubject::AidPartner(_) => {
+            subject.report_subject(view).map_or_else(String::new, |id| {
+                presentation::situation(view, id, scope.session.viewed_tick)
+            })
         }
-        OrganizerSubject::AidPartner(id) => view
-            .aid_partners
-            .iter()
-            .find(|p| p.actor_id == id)
-            .map_or_else(String::new, |p| p.label.clone()),
         OrganizerSubject::Contributor(id) => view
             .positions
             .iter()

@@ -609,6 +609,45 @@ class DiskReservation(Record):
     measured_basis: Annotated[str, Field(min_length=1)]
 
 
+class NativeExpectations(Record):
+    source_head: Annotated[str, Field(pattern="^[0-9a-f]{40}$")]
+    capacity: Reference
+    runtime: Reference
+    client: Reference
+    material_audit: Reference
+
+    def products(self) -> dict[str, Reference]:
+        return {
+            "babylon-runtime": self.runtime,
+            "babylon-client": self.client,
+            "babylon-material-audit": self.material_audit,
+        }
+
+
+def _native_expectations(
+    parent: PrivateEvidence, profile: str
+) -> tuple[Reference, NativeExpectations]:
+    raw = os.environ.get("BABYLON_WAYNE_NATIVE_EXPECTATION_REF")
+    if not raw:
+        raise StorageRefusal("missing released native expectation reference")
+    try:
+        ref = Reference.model_validate(strict_json_bytes(raw.encode()))
+        if ref.path != f"{profile}-native-expectations.json":
+            raise StorageRefusal("released native expectation reference names another run")
+        packet = NativeExpectations.model_validate(
+            strict_json_bytes(parent.read_reference(ref, 8192))
+        )
+    except StorageRefusal:
+        raise
+    except (OSError, ValueError) as error:
+        raise StorageRefusal("invalid released native expectation reference or record") from error
+    if packet.capacity.path != f"{profile}-capacity.json" or any(
+        product.path != "normal-" + name for name, product in packet.products().items()
+    ):
+        raise StorageRefusal("released native expectations name a different capacity or product")
+    return ref, packet
+
+
 def _exec_bytes(args: list[str], *, timeout: int = 15) -> bytes:
     return subprocess.run(args, capture_output=True, check=True, timeout=timeout).stdout
 
@@ -768,6 +807,11 @@ def reserve_run(profile: str, focus: str, periods: str, evidence: Path, root: Pa
             )
         reservations = PrivateEvidence(RUN_PARENT)
         reservation_ref = reservations.reference(f"{profile}-capacity.json")
+        native_ref = None
+        if profile != "sql-01":
+            native_ref, expected = _native_expectations(reservations, profile)
+            if head != expected.source_head or reservation_ref != expected.capacity:
+                raise StorageRefusal("released native source HEAD or capacity reference differs")
         reservation = read_typed(reservations, reservation_ref, DiskReservation)
         if reservation.profile != profile or reservation.source_head != head:
             raise StorageRefusal("disk capacity evidence does not name this run and source")
@@ -822,6 +866,8 @@ def reserve_run(profile: str, focus: str, periods: str, evidence: Path, root: Pa
                 "daemon": _daemon(),
                 "image": _image(os.environ["BABYLON_POSTGRES_IMAGE_ID"]),
             }
+            if native_ref is not None:
+                declaration["native_expectations"] = native_ref.model_dump()
             selected = PrivateEvidence(evidence)
             selected.publish_json("media-creation.json", declaration)
             selected.publish("source-head", (head + "\n").encode())
@@ -2231,12 +2277,26 @@ def main() -> int:
                 if args.profile == "sql-01":
                     raise StorageRefusal("SQL fixture cannot admit native executables")
                 source_unchanged(args.root, args.evidence)
+                ref, expected = _native_expectations(PrivateEvidence(RUN_PARENT), args.profile)
+                creation = strict_json_bytes(
+                    directory.read_reference(directory.reference("media-creation.json"))
+                )
+                if (
+                    not isinstance(creation, dict)
+                    or creation.get("native_expectations") != ref.model_dump()
+                ):
+                    raise StorageRefusal(
+                        "released native expectations differ from initial reservation"
+                    )
                 roster = {}
-                for name in ("babylon-runtime", "babylon-client", "babylon-material-audit"):
+                for name, product in expected.products().items():
                     binary = args.root / "rust/target/debug" / name
-                    roster[name] = _archive_file(
-                        directory, binary, "normal-" + name, executable=True
-                    ).model_dump()
+                    captured = _archive_file(directory, binary, "normal-" + name, executable=True)
+                    if captured != product:
+                        raise StorageRefusal(
+                            f"captured normal executable differs from native release: {name}"
+                        )
+                    roster[name] = captured.model_dump()
                 directory.publish_json("normal-binaries.json", roster)
                 directory.publish(
                     "native-combined-source.sha256",

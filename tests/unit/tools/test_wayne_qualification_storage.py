@@ -868,3 +868,158 @@ def test_sql_archive_publication_preserves_existing_evidence_and_rejects_aliases
         storage._publish_test_archive(directory, staging)
     directory.verify(existing)
     staging.verify(staged)
+
+
+@pytest.fixture
+def native_release(tmp_path, monkeypatch):
+    import hashlib
+    import os
+    from contextlib import contextmanager
+
+    parent = tmp_path / "qualification-06"
+    parent.mkdir(mode=0o700)
+    root = tmp_path / "repo"
+    binaries = root / "rust/target/debug"
+    binaries.mkdir(parents=True)
+    head = "a" * 40
+    store = storage.PrivateEvidence(parent)
+    capacity = store.publish_json(
+        "smoke-01-capacity.json",
+        {
+            "tag": "wayne-disk-reservation-v1",
+            "profile": "smoke-01",
+            "source_head": head,
+            "build_bytes": 1,
+            "primary_bytes": 1,
+            "evidence_bytes": 1,
+            "restore_bytes": 1,
+            "dump_bytes": 1,
+            "archive_bytes": 1,
+            "measured_basis": "synthetic capacity",
+        },
+    )
+    packet = {"source_head": head, "capacity": capacity.model_dump()}
+    for slot, name in (
+        ("runtime", "babylon-runtime"),
+        ("client", "babylon-client"),
+        ("material_audit", "babylon-material-audit"),
+    ):
+        data = name.encode()
+        (binaries / name).write_bytes(data)
+        packet[slot] = {
+            "path": "normal-" + name,
+            "bytes": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(),
+        }
+
+    @contextmanager
+    def pins(path):
+        rows = []
+        for selected in [parent] if path == parent else [parent, path]:
+            fd = os.open(selected, storage.DIR_FLAGS)
+            try:
+                rows.append(storage._directory_pin(fd, selected))
+            finally:
+                os.close(fd)
+        yield rows
+
+    monkeypatch.setattr(storage, "pinned_ancestry", pins)
+    monkeypatch.setattr(storage, "MEDIA_CHECKOUT", root)
+    monkeypatch.setattr(storage, "RUN_PARENT", parent)
+    monkeypatch.setattr(storage, "actual_host_context", lambda: None)
+    monkeypatch.setattr(storage, "selected_policy", lambda _: None)
+    monkeypatch.setattr(storage, "_daemon_endpoint", lambda: None)
+    monkeypatch.setattr(storage, "_daemon", lambda: {})
+    monkeypatch.setattr(storage, "_image", lambda _: {})
+    monkeypatch.setattr(storage, "exact_output", lambda args: head if "HEAD" in args else "")
+    for key in tuple(os.environ):
+        if key.startswith("PG") or key.endswith("_DSN") or key == "CARGO_TARGET_DIR":
+            monkeypatch.delenv(key)
+    monkeypatch.setenv("BABYLON_POSTGRES_IMAGE_ID", "sha256:" + "1" * 64)
+    monkeypatch.delenv("BABYLON_WAYNE_NATIVE_EXPECTATION_REF", raising=False)
+    return root, store, packet
+
+
+@pytest.mark.parametrize("change", ["head", "capacity", "missing", "malformed", "wrong-product"])
+def test_native_reserve_refuses_before_profile_creation(native_release, monkeypatch, change):
+    root, store, packet = native_release
+    if change == "head":
+        packet["source_head"] = "b" * 40
+    elif change == "capacity":
+        (store.path / "smoke-01-capacity.json").write_bytes(
+            (store.path / "smoke-01-capacity.json").read_bytes().replace(b"synthetic", b"refreshed")
+        )
+    elif change == "malformed":
+        del packet["client"]
+    elif change == "wrong-product":
+        packet["runtime"] = packet["client"]
+    if change != "missing":
+        ref = store.publish_json("smoke-01-native-expectations.json", packet)
+        monkeypatch.setenv("BABYLON_WAYNE_NATIVE_EXPECTATION_REF", ref.model_dump_json())
+    run = store.path / "smoke-01"
+    with pytest.raises(storage.StorageRefusal, match="native"):
+        storage.reserve_run("smoke-01", "national_storage", "2", run / "evidence", root)
+    assert not run.exists()
+
+
+@pytest.mark.parametrize("change", ["none", "size", "same-size", "new-reference"])
+def test_native_pin_publishes_only_released_normal_copies(
+    native_release, monkeypatch, change, capsys
+):
+    import sys
+
+    root, store, packet = native_release
+    ref = store.publish_json("smoke-01-native-expectations.json", packet)
+    monkeypatch.setenv("BABYLON_WAYNE_NATIVE_EXPECTATION_REF", ref.model_dump_json())
+    evidence = store.path / "smoke-01/evidence"
+    storage.reserve_run("smoke-01", "national_storage", "2", evidence, root)
+    (evidence / "source-before.sha256").write_bytes(b"captured source")
+    binary = root / "rust/target/debug/babylon-material-audit"
+    if change == "new-reference":
+        # Even a second internally consistent packet cannot replace the one selected at reserve.
+        packet["source_head"] = "c" * 40
+        (store.path / ref.path).unlink()
+        second = store.publish_json(ref.path, packet)
+        monkeypatch.setenv("BABYLON_WAYNE_NATIVE_EXPECTATION_REF", second.model_dump_json())
+    elif change != "none":
+        binary.write_bytes(b"x" * (binary.stat().st_size if change == "same-size" else 1))
+    monkeypatch.setattr(storage, "source_unchanged", lambda *_: None)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "wayne",
+            "pin-binaries",
+            "--root",
+            str(root),
+            "--evidence",
+            str(evidence),
+            "--canary",
+            "a" * 32,
+            "--container",
+            "b" * 64,
+            "--profile",
+            "smoke-01",
+            "--focus",
+            "national_storage",
+            "--periods",
+            "2",
+        ],
+    )
+    previous = storage.os.umask(0o077)
+    try:
+        result = storage.main()
+    finally:
+        storage.os.umask(previous)
+    roster = evidence / "normal-binaries.json"
+    if change == "none":
+        assert result == 0, capsys.readouterr().err
+        assert storage.strict_json_bytes(roster.read_bytes()) == {
+            entry["path"].removeprefix("normal-"): entry
+            for entry in (packet["runtime"], packet["client"], packet["material_audit"])
+        }
+    else:
+        reason = "initial reservation" if change == "new-reference" else "babylon-material-audit"
+        assert result == 1 and reason in capsys.readouterr().err
+        assert not roster.exists()
+        assert not (evidence / "native-executables.sha256").exists()

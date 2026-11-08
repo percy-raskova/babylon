@@ -13,7 +13,7 @@ def test_three_media_profiles_require_the_exact_run_and_horizon() -> None:
         ("walk-01", "national_storage", "10", "walk-01"),
     ):
         lane = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop")
-        evidence = lane / "qualification-06" / leaf / "evidence"
+        evidence = lane / "qualification-07" / leaf / "evidence"
         with pytest.raises(storage.StorageRefusal):
             storage.profile_run(
                 profile, focus, periods, lane / "qualification-01" / leaf / "evidence"

@@ -25,11 +25,66 @@ pub(super) struct Preferences {
     domestic: BTreeMap<(EconomicLocation, GoodId, UnitId, Option<SiteId>), Option<SiteId>>,
 }
 
-pub(super) type Providers = BTreeMap<(GoodId, UnitId), BTreeMap<EconomicLocation, Vec<SiteId>>>;
+pub(super) type Providers = BTreeMap<(GoodId, UnitId), ProviderLocations>;
+
+pub(super) struct ProviderLocations {
+    sites: BTreeMap<EconomicLocation, Vec<SiteId>>,
+    foreign: Vec<EconomicLocation>,
+    counties_by_employment: Vec<EconomicLocation>,
+}
+
+impl ProviderLocations {
+    fn new(
+        mut sites: BTreeMap<EconomicLocation, Vec<SiteId>>,
+        actors: &BTreeMap<SiteId, ActorContext>,
+    ) -> Self {
+        let mut foreign = Vec::new();
+        let mut counties_by_employment = Vec::new();
+        for (&location, ids) in &mut sites {
+            ids.sort_unstable_by_key(|id| (std::cmp::Reverse(actors[id].employed), *id));
+            match location {
+                EconomicLocation::Foreign(_) => foreign.push(location),
+                EconomicLocation::County(_) => counties_by_employment.push(location),
+                EconomicLocation::Dependency(_) => {}
+            }
+        }
+        counties_by_employment
+            .sort_unstable_by_key(|loc| (std::cmp::Reverse(actors[&sites[loc][0]].employed), *loc));
+        Self {
+            sites,
+            foreign,
+            counties_by_employment,
+        }
+    }
+
+    // Workplaces rotate the same finite counterpart roster independently.
+    fn secondary_candidates(
+        &self,
+        location: EconomicLocation,
+        buyer: SiteId,
+    ) -> Result<impl Iterator<Item = EconomicLocation> + '_> {
+        let county_buyer = matches!(location, EconomicLocation::County(_));
+        let order = if county_buyer {
+            &self.foreign
+        } else {
+            &self.counties_by_employment
+        };
+        let rotation = if county_buyer && !order.is_empty() {
+            let bytes = buyer.as_bytes();
+            usize::try_from(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+                .map_err(|_| NationalOpeningError::Bounds)?
+                % order.len()
+        } else {
+            0
+        };
+        let (before, after) = order.split_at(rotation);
+        Ok(after.iter().chain(before).copied())
+    }
+}
 
 pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
     let retailers = local_retailers(builder)?;
-    let mut providers: Providers = BTreeMap::new();
+    let mut sites_by_good = BTreeMap::<_, BTreeMap<_, Vec<_>>>::new();
     let actors: Vec<_> = builder.actors.values().cloned().collect();
     for actor in actors {
         if actor.process_id.is_none() {
@@ -70,7 +125,7 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
             },
         });
         if actor.employed > 0 {
-            providers
+            sites_by_good
                 .entry((good.good_id, good.unit_id))
                 .or_default()
                 .entry(actor.location)
@@ -78,11 +133,10 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
                 .push(actor.site_id);
         }
     }
-    for locations in providers.values_mut() {
-        for ids in locations.values_mut() {
-            ids.sort_unstable_by_key(|id| (std::cmp::Reverse(builder.actors[id].employed), *id));
-        }
-    }
+    let providers = sites_by_good
+        .into_iter()
+        .map(|(good, sites)| (good, ProviderLocations::new(sites, &builder.actors)))
+        .collect();
     let mut network = Network::new(builder.transport)?;
     let mut preferences = Preferences::default();
     households(
@@ -537,6 +591,7 @@ fn service_provider(
     let Some(locations) = providers.get(&(good, unit)) else {
         return Ok(None);
     };
+    let locations = &locations.sites;
     let candidates = locations
         .keys()
         .copied()
@@ -567,7 +622,7 @@ pub(super) struct ProcurementNeed<'a> {
 }
 
 pub(super) fn primary_supplier(
-    locations: &BTreeMap<EconomicLocation, Vec<SiteId>>,
+    locations: &ProviderLocations,
     network: &mut Network<'_>,
     preferences: &mut Preferences,
     location: EconomicLocation,
@@ -575,6 +630,7 @@ pub(super) fn primary_supplier(
     good: &GameCommodity,
 ) -> Result<Option<SiteId>> {
     let cargo = good.cargo.ok_or(NationalOpeningError::Policy)?;
+    let locations = &locations.sites;
     let excluded = locations
         .get(&location)
         .filter(|ids| ids.contains(&buyer))
@@ -613,7 +669,7 @@ pub(super) fn primary_supplier(
 
 pub(super) fn secondary_supplier(
     builder: &Builder<'_>,
-    locations: &BTreeMap<EconomicLocation, Vec<SiteId>>,
+    locations: &ProviderLocations,
     network: &mut Network<'_>,
     buyer: SiteId,
     cargo: CargoClass,
@@ -623,35 +679,10 @@ pub(super) fn secondary_supplier(
         .get(&buyer)
         .ok_or(NationalOpeningError::Identity)?
         .location;
-    // Source rosters qualify identity, not a promised annual import quantity.
-    // Rotate bounded counterpart preferences deterministically across workplaces.
-    let mut external: Vec<_> = locations
-        .keys()
-        .copied()
-        .filter(|&candidate| match location {
-            EconomicLocation::County(_) => matches!(candidate, EconomicLocation::Foreign(_)),
-            _ => matches!(candidate, EconomicLocation::County(_)),
-        })
-        .collect();
-    if matches!(location, EconomicLocation::County(_)) && !external.is_empty() {
-        let bytes = buyer.as_bytes();
-        let rotation =
-            usize::try_from(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-                .map_err(|_| NationalOpeningError::Bounds)?
-                % external.len();
-        external.rotate_left(rotation);
-    } else {
-        external.sort_unstable_by_key(|loc| {
-            (
-                std::cmp::Reverse(builder.actors[&locations[loc][0]].employed),
-                *loc,
-            )
-        });
-    }
     let mut secondary = None;
-    for candidate in external {
+    for candidate in locations.secondary_candidates(location, buyer)? {
         if network.path(candidate, location, cargo)?.is_some() {
-            secondary = locations[&candidate]
+            secondary = locations.sites[&candidate]
                 .iter()
                 .copied()
                 .find(|&site| site != buyer);
@@ -773,6 +804,53 @@ mod retailer_index_controls {
             members: vec![],
         }
     }
+    #[test]
+    fn secondary_candidates_preserve_buyer_rotation_and_county_ties() {
+        use babylon_kernel::economic_location::{ForeignCounterpart, UsDependency};
+
+        let first = actor(1, "26001", 30);
+        let second = actor(2, "26003", 30);
+        let third = actor(3, "26163", 40);
+        let counties = [first.location, second.location, third.location];
+        let canada = EconomicLocation::Foreign(ForeignCounterpart::Canada);
+        let mexico = EconomicLocation::Foreign(ForeignCounterpart::Mexico);
+        let japan = EconomicLocation::Foreign(ForeignCounterpart::Japan);
+        let dependency = EconomicLocation::Dependency(UsDependency::Guam);
+        let foreign_rows = [canada, mexico, japan, dependency]
+            .into_iter()
+            .zip([4, 5, 6, 7])
+            .map(|(location, id)| ActorContext {
+                location,
+                ..actor(id, "26163", 10)
+            });
+        let actors: BTreeMap<_, _> = [first, second, third]
+            .into_iter()
+            .chain(foreign_rows)
+            .map(|row| (row.site_id, row))
+            .collect();
+        let sites = actors
+            .values()
+            .map(|row| (row.location, vec![row.site_id]))
+            .collect();
+        let providers = ProviderLocations::new(sites, &actors);
+        let order = |location, offset| {
+            let mut bytes = [0; 32];
+            bytes[3] = offset;
+            providers
+                .secondary_candidates(location, SiteId::from_bytes(bytes))
+                .expect("the fixture rotation fits the host index")
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(order(counties[0], 1), [mexico, japan, canada]);
+        assert_eq!(order(counties[0], 2), [japan, canada, mexico]);
+        assert_eq!(order(counties[0], 4), [mexico, japan, canada]);
+        assert_eq!(order(japan, 2), [counties[2], counties[0], counties[1]]);
+        assert_eq!(
+            order(dependency, 1),
+            [counties[2], counties[0], counties[1]]
+        );
+    }
+
     #[test]
     fn fallback_indices_match_original_location_selection_and_first_pool() {
         let rows = [

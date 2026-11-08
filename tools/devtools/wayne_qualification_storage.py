@@ -24,7 +24,7 @@ from psycopg import sql
 from pydantic import BaseModel, ConfigDict, Field
 from tools.devtools.national_storage_qualification import selected_policy, strict_json_bytes
 
-RUN_PARENT = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-05")
+RUN_PARENT = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-06")
 MEDIA = Path("/media/user/data")
 PGDATA: Literal["/var/lib/postgresql/data"] = "/var/lib/postgresql/data"
 TEST_NAME = (

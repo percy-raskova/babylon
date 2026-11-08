@@ -16,6 +16,7 @@ from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import BinaryIO
 
 import pytest
@@ -1687,6 +1688,71 @@ def test_startup_capture_finishes_absent_sample_before_releasing_the_driver(
         assert result.version == 2
         assert result.samples[0].foundation_sha256 is None
         assert all(s.foundation_sha256 == foundation for s in result.samples[1:])
+
+
+@pytest.mark.parametrize("worker_delay_ns", [0, 2_000_000_000, 4_000_000_000])
+def test_first_periodic_sample_counts_completed_startup_work(
+    tmp_path: Path,
+    owned_children: tuple[subprocess.Popen[bytes], subprocess.Popen[bytes]],
+    monkeypatch: pytest.MonkeyPatch,
+    worker_delay_ns: int,
+) -> None:
+    capture = capture_runner(tmp_path, owned_children, foundation=None)
+    capture._stop_on_budget = True
+    now_ns = 100_000_000_000
+    capture._started_ns = now_ns
+    native = pair(owned_children)
+
+    def monotonic_ns() -> int:
+        return now_ns
+
+    def wait(timeout: float | None = None) -> bool:
+        nonlocal now_ns
+        assert timeout is not None
+        if not capture._stop.is_set():
+            now_ns += round(timeout * 1_000_000_000)
+        return capture._stop.is_set()
+
+    def collect(*_args: object, **kwargs: object) -> memory.QuiescentBatch:
+        nonlocal now_ns
+        # Model costly admission before counters, then restoration/owner proof
+        # after them. Only the middle interval is a measured sample.
+        now_ns += 1_100_000_000
+        started = now_ns
+        now_ns += 700_000_000
+        raw = synthetic_batch(int(kwargs["sequence"]), 0, foundation=None).model_dump()
+        raw["sample"]["monotonic_ns"] = started
+        raw["sample"]["capture_duration_ns"] = 700_000_000
+        now_ns += 1_500_000_000
+        if kwargs["sequence"] == 2:
+            capture._stop.set()
+        return memory.QuiescentBatch.model_validate(raw)
+
+    monkeypatch.setattr(
+        memory,
+        "time",
+        SimpleNamespace(monotonic_ns=monotonic_ns, monotonic=lambda: now_ns / 1_000_000_000),
+    )
+    monkeypatch.setattr(capture._stop, "wait", wait)
+    monkeypatch.setattr(memory, "collect_running_game", collect)
+    capture._capture_one(native)
+    now_ns += worker_delay_ns
+    mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+    capture._run(native, mask)
+
+    assert len(capture._samples) == 2
+    first, second = capture._samples
+    gap = second.monotonic_ns - first.monotonic_ns - first.capture_duration_ns
+    if worker_delay_ns == 4_000_000_000:
+        # Scheduling cannot repair an already missed deadline or conceal it.
+        assert gap > 5_000_000_000
+        with pytest.raises(memory.CaptureRefusal, match="budget"):
+            capture.check()
+    else:
+        capture.check()
+        assert gap <= 5_000_000_000
+    assert len(list(capture._records.glob("*.json"))) == 2
+    assert capture._worker_finished.is_set()
 
 
 def test_admitted_driver_failure_still_captures_final_committed_boundary(

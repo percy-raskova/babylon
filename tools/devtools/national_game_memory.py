@@ -1671,7 +1671,12 @@ class RunningMemoryCapture:
         try:
             signal.pthread_sigmask(signal.SIG_SETMASK, signal_mask)
             if self._samples:
-                self._stop.wait(self._gap)
+                # Startup restoration, publication and worker admission already
+                # consume the unsampled interval; do not restart its wait here.
+                previous = self._samples[-1]
+                previous_end = previous.monotonic_ns + previous.capture_duration_ns
+                elapsed = (time.monotonic_ns() - previous_end) / 1_000_000_000
+                self._stop.wait(max(0, self._gap - elapsed))
             while not self._stop.is_set():
                 started = time.monotonic()
                 self._capture_periodic(native)

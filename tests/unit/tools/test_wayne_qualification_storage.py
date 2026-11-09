@@ -6,14 +6,17 @@ import pytest
 from tools.devtools import wayne_qualification_storage as storage
 
 
-def test_three_media_profiles_require_the_exact_run_and_horizon() -> None:
+@pytest.mark.parametrize("mode", ["normal_play", "memory_capture"])
+def test_three_media_profiles_require_the_exact_run_and_horizon(monkeypatch, mode) -> None:
+    monkeypatch.setenv("BABYLON_NATIVE_MEASUREMENT_MODE", mode)
     for profile, focus, periods, leaf in (
         ("sql-01", "organizer_allocation_atomic", "", "sql-01"),
         ("smoke-01", "national_storage", "2", "smoke-01"),
         ("walk-01", "national_storage", "10", "walk-01"),
     ):
         lane = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop")
-        evidence = lane / "qualification-09" / leaf / "evidence"
+        run = lane / "qualification-10" / leaf
+        evidence = (run if profile == "sql-01" else run / mode) / "evidence"
         with pytest.raises(storage.StorageRefusal):
             storage.profile_run(
                 profile, focus, periods, lane / "qualification-01" / leaf / "evidence"
@@ -490,7 +493,7 @@ def test_held_slot_stop_requires_exact_fast_configuration_and_current_clean_stop
     from types import SimpleNamespace
 
     cid, label, image = "a" * 64, "c" * 32, "sha256:" + "b" * 64
-    run = tmp_path / "walk-01"
+    run = tmp_path / "walk-01" / "normal_play"
     evidence = storage.PrivateEvidence(run / "evidence")
     evidence.path.mkdir(parents=True, mode=0o700)
     pg = {"inode": 32, "uid": 70, "gid": 1000}
@@ -915,7 +918,13 @@ def native_release(tmp_path, monkeypatch):
     @contextmanager
     def pins(path):
         rows = []
-        for selected in [parent] if path == parent else [parent, path]:
+        for selected in [
+            parent,
+            *(
+                parent / Path(*path.relative_to(parent).parts[:n])
+                for n in range(1, len(path.relative_to(parent).parts) + 1)
+            ),
+        ]:
             fd = os.open(selected, storage.DIR_FLAGS)
             try:
                 rows.append(storage._directory_pin(fd, selected))
@@ -937,6 +946,7 @@ def native_release(tmp_path, monkeypatch):
             monkeypatch.delenv(key)
     monkeypatch.setenv("BABYLON_POSTGRES_IMAGE_ID", "sha256:" + "1" * 64)
     monkeypatch.delenv("BABYLON_WAYNE_NATIVE_EXPECTATION_REF", raising=False)
+    monkeypatch.setenv("BABYLON_NATIVE_MEASUREMENT_MODE", "normal_play")
     return root, store, packet
 
 
@@ -956,7 +966,7 @@ def test_native_reserve_refuses_before_profile_creation(native_release, monkeypa
     if change != "missing":
         ref = store.publish_json("smoke-01-native-expectations.json", packet)
         monkeypatch.setenv("BABYLON_WAYNE_NATIVE_EXPECTATION_REF", ref.model_dump_json())
-    run = store.path / "smoke-01"
+    run = store.path / "smoke-01" / "normal_play"
     with pytest.raises(storage.StorageRefusal, match="native"):
         storage.reserve_run("smoke-01", "national_storage", "2", run / "evidence", root)
     assert not run.exists()
@@ -971,7 +981,7 @@ def test_native_pin_publishes_only_released_normal_copies(
     root, store, packet = native_release
     ref = store.publish_json("smoke-01-native-expectations.json", packet)
     monkeypatch.setenv("BABYLON_WAYNE_NATIVE_EXPECTATION_REF", ref.model_dump_json())
-    evidence = store.path / "smoke-01/evidence"
+    evidence = store.path / "smoke-01/normal_play/evidence"
     storage.reserve_run("smoke-01", "national_storage", "2", evidence, root)
     (evidence / "source-before.sha256").write_bytes(b"captured source")
     binary = root / "rust/target/debug/babylon-material-audit"

@@ -22,9 +22,14 @@ from uuid import UUID, uuid4
 import psycopg
 from psycopg import sql
 from pydantic import BaseModel, ConfigDict, Field
-from tools.devtools.national_storage_qualification import selected_policy, strict_json_bytes
+from tools.devtools.national_storage_qualification import (
+    MeasurementMode,
+    measurement_mode,
+    selected_policy,
+    strict_json_bytes,
+)
 
-RUN_PARENT = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-09")
+RUN_PARENT = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-10")
 MEDIA = Path("/media/user/data")
 PGDATA: Literal["/var/lib/postgresql/data"] = "/var/lib/postgresql/data"
 TEST_NAME = (
@@ -77,10 +82,31 @@ class Reference(Record):
     sha256: Annotated[str, Field(pattern="^[0-9a-f]{64}$")]
 
 
+def member_run(profile: str, mode: MeasurementMode) -> Path:
+    if profile not in ("smoke-01", "walk-01"):
+        raise StorageRefusal("unsupported paired native workload")
+    return RUN_PARENT / profile / measurement_mode(mode)
+
+
+def native_path(evidence: Path) -> tuple[str, MeasurementMode]:
+    run = evidence.parent
+    mode = measurement_mode(run.name)
+    profile = run.parent.name
+    if evidence != member_run(profile, mode) / "evidence":
+        raise StorageRefusal("native evidence does not name its canonical workload and mode")
+    return profile, mode
+
+
 def profile_run(profile: str, focus: str, periods: str, evidence: Path) -> Path:
     if PROFILES.get(profile) != (focus, periods):
         raise StorageRefusal("Wayne media profile, focus and period count disagree")
-    run = RUN_PARENT / profile
+    run = (
+        RUN_PARENT / profile
+        if profile == "sql-01"
+        else member_run(
+            profile, measurement_mode(os.environ.get("BABYLON_NATIVE_MEASUREMENT_MODE"))
+        )
+    )
     if evidence != run / "evidence":
         raise StorageRefusal("Wayne evidence does not name its selected media run")
     return run
@@ -833,6 +859,22 @@ def reserve_run(profile: str, focus: str, periods: str, evidence: Path, root: Pa
         free = available.f_bavail * available.f_frsize
         if free < required:
             raise StorageRefusal("available media space is below the measured run reservation")
+        if profile != "sql-01":
+            if run.name == "memory_capture":
+                from tools.devtools.national_native_pair import verify_retirement
+
+                verify_retirement(member_run(profile, "normal_play"))
+            run.parent.mkdir(mode=0o700, exist_ok=True)
+            with pinned_ancestry(run.parent) as workload_pins:
+                if (
+                    workload_pins[:-1] != parent_pins
+                    or workload_pins[-1].mode != 0o700
+                    or workload_pins[-1].uid != os.geteuid()
+                ):
+                    raise StorageRefusal(
+                        "native workload parent differs from private media admission"
+                    )
+                parent_pins = workload_pins
         run.mkdir(mode=0o700)
         with pinned_ancestry(run) as run_pins:
             if (
@@ -886,13 +928,18 @@ def released_head(directory: PrivateEvidence, root: Path) -> str:
     ):
         raise StorageRefusal("released HEAD differs from the current clean source")
     parent = PrivateEvidence(RUN_PARENT)
-    reference = parent.reference(f"{directory.path.parent.name}-capacity.json")
+    profile = (
+        "sql-01"
+        if directory.path == RUN_PARENT / "sql-01/evidence"
+        else native_path(directory.path)[0]
+    )
+    reference = parent.reference(f"{profile}-capacity.json")
     reservation = read_typed(parent, reference, DiskReservation)
     if (
         reservation.source_head != current
         or packet.get("reservation") != reference.model_dump()
         or packet.get("capacity") != reservation.model_dump()
-        or reservation.profile != directory.path.parent.name
+        or reservation.profile != profile
         or directory.read_reference(directory.reference("source-head")) != (current + "\n").encode()
     ):
         raise StorageRefusal("released HEAD or the original capacity reservation changed")
@@ -965,7 +1012,7 @@ def create_and_start(directory: PrivateEvidence, root: Path, canary: str, image:
                 "config_file=/etc/postgresql/postgresql.conf",
                 "-c",
                 "babylon.disposable_runtime=" + canary,
-                *(["-c", "max_wal_senders=0"] if run.name in ("smoke-01", "walk-01") else []),
+                *(["-c", "max_wal_senders=0"] if run.name != "sql-01" else []),
             ],
             timeout=30,
         )
@@ -1161,7 +1208,7 @@ def physical_observation(
             raise StorageRefusal("actual cluster version or lineage marker differs")
         native_settings: dict[str, int] = {}
         with physical_session(port, physical_connection) as conn:
-            if run.name in ("smoke-01", "walk-01"):
+            if run.name != "sql-01":
                 slots = conn.execute("SELECT current_setting('max_connections')").fetchone()
                 if slots != ("50",):
                     raise StorageRefusal("native backup requires the released 50 connection slots")
@@ -1745,11 +1792,7 @@ def _fenced_stop(directory: PrivateEvidence, cid: str, image: str) -> None:
     from datetime import UTC, datetime
 
     run = directory.path.parent
-    if (
-        run.name not in ("smoke-01", "walk-01")
-        or directory.path != RUN_PARENT / run.name / "evidence"
-    ):
-        raise StorageRefusal("fenced shutdown requires an owned selected native run")
+    native_path(directory.path)
     physical = strict_json_bytes(directory.read_reference(directory.reference("physical.json")))
     if (
         not isinstance(physical, dict)
@@ -2059,8 +2102,7 @@ def owner_lines(
     host = physical["host"]
     creator = physical["creator"]
     run = directory.path.parent
-    if run.name not in ("smoke-01", "walk-01") or run.parent != RUN_PARENT:
-        raise StorageRefusal("media owner requires the exact selected native run")
+    profile, _mode = native_path(directory.path)
     fields = [
         "national-storage-runner-media-v2",
         str(root),
@@ -2073,7 +2115,7 @@ def owner_lines(
         "national_writer_" + canary[:12],
         database_oid,
         str(directory.path),
-        run.name,
+        profile,
         physical["daemon"],
         str(os.makedev(host["major"], host["minor"])),
         str(host["inode"]),

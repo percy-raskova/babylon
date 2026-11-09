@@ -38,6 +38,7 @@ from tools.devtools.national_storage_qualification import (
     EconomicSummary,
     FixedPeriodMemory,
     FrozenRecord,
+    MeasurementMode,
     NativeTimings,
     Nonnegative,
     PlayableBoundary,
@@ -72,7 +73,7 @@ from tools.devtools.national_windowed_qualification import (
     Preview,
     expected_event,
 )
-from tools.devtools.wayne_qualification_storage import RUN_PARENT, PrivateEvidence, Reference
+from tools.devtools.wayne_qualification_storage import PrivateEvidence, Reference, member_run
 
 # Designed framing bounds, not alternative economic or save-growth policy.
 MATERIAL_RECORD_BYTES = 4_194_304  # Matches the native record writer.
@@ -117,8 +118,12 @@ class Artifact(NativeRecord):
 
 
 class NativeRunEvidence(NativeRecord):
-    version: Literal[4]
-    scope: Literal["native_material_timing_recovery_join_v4"]
+    version: Literal[5]
+    scope: Literal["native_material_timing_recovery_join_v5"]
+    measurement_mode: MeasurementMode
+    started_monotonic_ns: Nonnegative
+    completed_monotonic_ns: Positive
+    inputs_sha256: Sha256
     status: Literal["incomplete", "completed"]
     policy_sha256: Sha256
     campaign: StrictStr
@@ -443,6 +448,8 @@ def verify_mixed_recovery(
     recovery: RecoveryRecord,
     policy: Policy,
     policy_sha256: str,
+    *,
+    captured: bool = False,
 ) -> None:
     after = action.state
     facts = boundary.facts
@@ -512,7 +519,7 @@ def verify_mixed_recovery(
         raise ValueError(
             "mixed pending recovery differs from its actual dated source or installed action"
         )
-    if (
+    if not captured and (
         recovery.cold_reopen_elapsed_ns >= policy.maximum_cold_open_seconds * 1_000_000_000
         or restored.production_read_elapsed_ns
         > policy.maximum_production_read_seconds * 1_000_000_000
@@ -965,6 +972,11 @@ def evaluate_native(
         or timing.campaign != evidence.campaign
     ):
         raise ValueError("native run differs from frozen policy or material campaign")
+    captured = evidence.measurement_mode == "memory_capture"
+    if not captured and memory is not None:
+        raise ValueError("normal native evidence cannot include a memory certificate")
+    if PrivateEvidence(directory).reference("inputs.sha256").sha256 != evidence.inputs_sha256:
+        raise ValueError("native captured input manifest differs")
     controls = ControlsEvidence.model_validate(
         _artifact(directory, evidence.controls, CONTROLS_RECORD_BYTES)
     )
@@ -975,6 +987,22 @@ def evaluate_native(
         evidence.status,
     ):
         raise ValueError("native controls differ from original run admission")
+    if (
+        evidence.completed_monotonic_ns - evidence.started_monotonic_ns != timing.run.elapsed_ns
+        or any(
+            not evidence.started_monotonic_ns
+            <= a.started_monotonic_ns
+            <= a.completed_monotonic_ns
+            <= evidence.completed_monotonic_ns
+            for a in controls.actions
+        )
+        or memory is not None
+        and not evidence.started_monotonic_ns
+        <= memory.interval_start_monotonic_ns
+        < memory.interval_end_monotonic_ns
+        <= evidence.completed_monotonic_ns
+    ):
+        raise ValueError("native wall clock differs from its timing, controls or capture interval")
     steps, reopens = _walk_trace(controls) if wayne_walk else _trace(controls)
     actual = tuple(t.tick for t in ticks)
     if (
@@ -1294,7 +1322,9 @@ def evaluate_native(
             second = RecoveryRecord.model_validate(
                 _artifact(directory, extra, MATERIAL_RECORD_BYTES)
             )
-            verify_mixed_recovery(before, action, record, second, policy, policy_sha256)
+            verify_mixed_recovery(
+                before, action, record, second, policy, policy_sha256, captured=captured
+            )
             if second.previous_scope != recovery.restored_scope or second.source != recovery.source:
                 raise ValueError(
                     "mixed pending recovery did not start from its preceding P2 restart"
@@ -1352,28 +1382,37 @@ def evaluate_native(
     ):
         raise ValueError("native production renewal differs from independent material evidence")
     originals = _originals(evidence, directory, controls, playable)
-    memory_status: object = "incomplete"
+    memory_status: object = "incomplete" if captured else "not_measured"
+    memory_observation: dict[str, object] | None = None
     if memory is not None:
         if (
             memory.ownership_record_sha256,
             memory.source_manifest_sha256,
-            memory.executable_manifest_sha256,
         ) != (
             evidence.ownership_record_sha256,
             evidence.source_manifest_sha256,
-            evidence.executable_manifest_sha256,
         ):
             raise ValueError(
                 "native source, executable or ownership admission differs from combined capture"
             )
-        memory_status = evaluate_combined_memory(
+        resource = evaluate_combined_memory(
             policy,
             policy_sha256,
             memory,
             playable.campaign,
             playable.foundation_sha256,
             tuple(t.marker_and_encoded_package_hashes[-1][1] for t in ticks),
-        )["status"]
+        )
+        memory_status = resource["status"]
+        memory_observation = {
+            key: resource[key]
+            for key in (
+                "sample_count",
+                "maximum_unsampled_gap_ns",
+                "observed_sample_peak_rss_upper_bound_bytes",
+                "campaign_creation_coverage",
+            )
+        }
         if any(
             a.started_monotonic_ns < memory.interval_start_monotonic_ns
             or a.completed_monotonic_ns > memory.interval_end_monotonic_ns
@@ -1393,10 +1432,20 @@ def evaluate_native(
         and controls.actions[-1].action == "quit"
         and controls.actions[-1].state.quit_requested
     )
-    failed = not byte_limits or not phase_limits or material_status == "failed"
-    qualified = completed and memory_status == "qualified" and material_status == "qualified"
+    failed = (
+        not byte_limits
+        or (not captured and not phase_limits)
+        or memory_status == "failed"
+        or material_status == "failed"
+    )
+    qualified = (
+        completed
+        and (not captured or memory_status == "qualified")
+        and material_status == "qualified"
+    )
     return {
-        "version": 4,
+        "version": 5,
+        "measurement_mode": evidence.measurement_mode,
         "graph_foundation_sha256": evidence.graph_foundation_sha256,
         "status": "failed" if failed else ("qualified" if qualified else "incomplete"),
         "actual_periods": len(ticks),
@@ -1408,9 +1457,10 @@ def evaluate_native(
         "archive_measurement": "accepted_commit_to_accepted_archive_completion",
         "cold_reopen_measurement": "client_enqueue_to_installed_authenticated_read",
         "combined_memory_status": memory_status,
+        "main_interval_observation": memory_observation,
         "material_status": material_status,
         "separate_byte_budgets_passed": byte_limits,
-        "native_read_and_reopen_budgets_passed": phase_limits,
+        "native_read_and_reopen_budgets_passed": None if captured else phase_limits,
         "enjoyment_status": "unqualified",
         "scope": "Actual native action custody joined to authenticated material, Archive, storage and checkpoint recovery; scripted interaction does not establish enjoyment",
     }
@@ -1545,6 +1595,8 @@ class WalkStage(NativeRecord):
 
 
 class ColdInstallation(NativeRecord):
+    started_monotonic_ns: Nonnegative
+    installed_monotonic_ns: Positive
     elapsed_ns: Positive
     processes: Annotated[
         tuple[tuple[Positive, Nonnegative, Sha256], ...], Field(min_length=2, max_length=2)
@@ -1728,11 +1780,11 @@ def _walk_memory(
     policy: Policy,
     base: Path,
     native: NativeRunEvidence,
-    main: CombinedMemoryEvidence,
+    main: CombinedMemoryEvidence | None,
     segments: dict[str, ControlsEvidence],
     markers: dict[int, str],
 ) -> list[dict[str, Any]]:
-    if not main.samples or main.periods != 10:
+    if main is not None and (not main.samples or main.periods != 10):
         raise ValueError("national walk requires a complete ten-close main memory witness")
     identities: set[tuple[int, int, str]] = set()
     prior_end = 0
@@ -1740,6 +1792,41 @@ def _walk_memory(
     reports = []
     for name, start_tick in (("opening", 0), ("walk", 0), ("completed", 10)):
         folder = base if name == "walk" else base / ("segment-" + name)
+        cold = ColdInstallation.model_validate(
+            _walk_scope(PrivateEvidence(base), "cold-installed-" + name + ".json")
+        )
+        trace = segments[name]
+        if (
+            cold.ownership_sha256 != native.ownership_record_sha256
+            or cold.source_head != source_head
+            or cold.state.durable_tick != start_tick
+            or (
+                main is None and cold.elapsed_ns >= policy.maximum_cold_open_seconds * 1_000_000_000
+            )
+            or not any(action.state == cold.state for action in trace.actions)
+            or not trace.actions
+            or trace.actions[0].started_monotonic_ns < prior_end
+        ):
+            raise ValueError(
+                "process-cold installation lacks matching timed installed controls and owner"
+            )
+        native_pids = set(cold.processes)
+        if len(native_pids) != 2 or identities & native_pids:
+            raise ValueError("process-cold pair repeated an earlier owned process")
+        identities.update(native_pids)
+        if main is None:
+            prior_end = trace.actions[-1].completed_monotonic_ns
+            reports.append(
+                {
+                    "segment": name,
+                    "initial_tick": start_tick,
+                    "processes": cold.processes,
+                    "cold_install_ns": cold.elapsed_ns,
+                    "start_ns": trace.actions[0].started_monotonic_ns,
+                    "end_ns": prior_end,
+                }
+            )
+            continue
         segment: CombinedMemoryEvidence | FixedPeriodMemory = (
             main
             if name == "walk"
@@ -1747,10 +1834,6 @@ def _walk_memory(
                 _walk_scope(PrivateEvidence(folder), "segment-memory.json")
             )
         )
-        cold = ColdInstallation.model_validate(
-            _walk_scope(PrivateEvidence(base), "cold-installed-" + name + ".json")
-        )
-        trace = segments[name]
         if (
             segment.campaign,
             segment.foundation_sha256,
@@ -1766,28 +1849,13 @@ def _walk_memory(
             main.boot_id,
             native.policy_sha256,
             native.source_manifest_sha256,
-            native.executable_manifest_sha256,
+            main.executable_manifest_sha256,
             native.ownership_record_sha256,
             main.capture_implementation_sha256,
         ):
             raise ValueError(
                 "cold interval campaign, frozen source, executable, owner or boot differs"
             )
-        if (
-            cold.ownership_sha256 != native.ownership_record_sha256
-            or cold.source_head != source_head
-            or cold.state.durable_tick != start_tick
-            or cold.elapsed_ns >= policy.maximum_cold_open_seconds * 1_000_000_000
-            or not any(action.state == cold.state for action in trace.actions)
-            or segment.interval_start_monotonic_ns < prior_end
-        ):
-            raise ValueError(
-                "process-cold installation lacks matching timed installed controls and owner"
-            )
-        native_pids = set(cold.processes)
-        if len(native_pids) != 2 or identities & native_pids:
-            raise ValueError("process-cold pair repeated an earlier owned process")
-        identities.update(native_pids)
         authenticate_combined_memory_capture(segment, folder)
         prev = segment.interval_start_monotonic_ns
         peak = gap = 0
@@ -1831,6 +1899,7 @@ def _walk_memory(
         gap = max(gap, segment.interval_end_monotonic_ns - prev)
         if (
             not founded
+            or segment.interval_start_monotonic_ns < prior_end
             or ages != (set(range(11)) if name == "walk" else {start_tick})
             or (isinstance(segment, FixedPeriodMemory) and segment.period != start_tick)
             or (segment.samples[0].foundation_sha256 is None) != (name == "opening")
@@ -1855,8 +1924,8 @@ def _walk_memory(
                 "cold_install_ns": cold.elapsed_ns,
                 "peak_combined_rss_upper_bound_bytes": peak,
                 "maximum_sample_gap_ns": gap,
-                "capture_start_ns": segment.interval_start_monotonic_ns,
-                "capture_end_ns": segment.interval_end_monotonic_ns,
+                "start_ns": segment.interval_start_monotonic_ns,
+                "end_ns": segment.interval_end_monotonic_ns,
             }
         )
     return reports
@@ -2234,12 +2303,13 @@ def evaluate_wayne_walk(
     base: Path,
     material: PlayableReport,
     timing: NativeTimings,
-    memory: CombinedMemoryEvidence,
+    memory: CombinedMemoryEvidence | None,
     native_result: dict[str, object],
     storage: dict[str, object],
 ) -> dict[str, Any]:
     if (
-        base != RUN_PARENT / "walk-01/evidence"
+        base != member_run("walk-01", native.measurement_mode) / "evidence"
+        or (memory is None) != (native.measurement_mode == "normal_play")
         or native.requested_periods != 10
         or native.status != "completed"
     ):
@@ -2699,7 +2769,7 @@ def evaluate_wayne_walk(
     if (
         native_result["status"] == "failed"
         or not native_result["separate_byte_budgets_passed"]
-        or not native_result["native_read_and_reopen_budgets_passed"]
+        or native_result["native_read_and_reopen_budgets_passed"] is False
         or storage["status"] == "failed"
     ):
         raise ValueError("walk exceeded an unchanged material, storage, read or native phase limit")
@@ -2708,8 +2778,8 @@ def evaluate_wayne_walk(
         wall["campaign"] != native.campaign
         or not (
             wall["start_ns"]
-            <= process_memory[0]["capture_start_ns"]
-            < process_memory[-1]["capture_end_ns"]
+            <= process_memory[0]["start_ns"]
+            < process_memory[-1]["end_ns"]
             <= wall["end_ns"]
         )
         or wall["end_ns"] - wall["start_ns"] > timing.run.elapsed_ns
@@ -2724,7 +2794,9 @@ def evaluate_wayne_walk(
         "native_operation_elapsed_ns": timing.run.elapsed_ns,
         "peak_combined_rss_upper_bound_bytes": max(
             s["peak_combined_rss_upper_bound_bytes"] for s in process_memory
-        ),
+        )
+        if memory is not None
+        else None,
         "pending_process_cold": "collect",
         "pending_in_process": "remote_mixed",
         "mixed_pending_recovery": native_result["mixed_pending_recovery"],

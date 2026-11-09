@@ -27,6 +27,17 @@ from pydantic import (
     model_validator,
 )
 
+MeasurementMode = Literal["normal_play", "memory_capture"]
+
+
+def measurement_mode(value: str | None) -> MeasurementMode:
+    if value == "normal_play":
+        return "normal_play"
+    if value == "memory_capture":
+        return "memory_capture"
+    raise ValueError("native measurement purpose must be normal_play or memory_capture")
+
+
 Nonnegative = Annotated[StrictInt, Field(ge=0, le=2**63 - 1)]
 RELATION_COLUMNS = (
     "schema",
@@ -1591,6 +1602,8 @@ def evaluate_playable(
     storage: dict[str, object],
     timing_report: dict[str, object],
     smoke: dict[str, object],
+    *,
+    captured: bool = False,
 ) -> dict[str, object]:
     """Admit actual material aid evidence; native interaction remains unqualified."""
     if playable.policy_sha256 != policy_sha256:
@@ -1895,6 +1908,15 @@ def evaluate_playable(
             )
         }
     )
+    if captured:
+        admission = {
+            "status": "qualified"
+            if storage["budget_passed"] is True
+            and storage["lookup_delta_hashes_verified"] is True
+            and storage["restart_verified_ticks"] == playable.requested_periods
+            and storage["committed_ticks"] == playable.requested_periods
+            else "incomplete"
+        }
     byte_budgets_pass = all(
         b.production.material_register_bytes <= policy.maximum_material_register_bytes
         and b.production.production_evidence_body_bytes
@@ -1902,8 +1924,7 @@ def evaluate_playable(
         for b in playable.boundaries
     )
     failed = (
-        not archive_pass
-        or not production_pass
+        (not captured and (not archive_pass or not production_pass))
         or not byte_budgets_pass
         or admission["status"] == "failed"
     )
@@ -1918,8 +1939,12 @@ def evaluate_playable(
             else ("failed" if failed else ("incomplete" if incomplete else "qualified"))
         ),
         "positive_aid_practice_status": "qualified" if full_positive_aid else "incomplete",
-        "archive_catchup_status": "qualified" if archive_pass else "failed",
-        "production_read_status": "qualified" if production_pass else "failed",
+        "archive_catchup_status": "diagnostic"
+        if captured
+        else ("qualified" if archive_pass else "failed"),
+        "production_read_status": "diagnostic"
+        if captured
+        else ("qualified" if production_pass else "failed"),
         "trade_accounting_status": "qualified" if trade_status == "passed" else "incomplete",
         "trade_required_for_run": trade_required,
         "economic_accounting_status": economic["status"],
@@ -2266,7 +2291,7 @@ def evaluate_combined_memory(
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     p.add_argument(
         "--policy",
         type=Path,
@@ -2285,9 +2310,7 @@ def main() -> int:
     p.add_argument("--qualify-smoke", action="store_true")
     p.add_argument("--playable-report", type=Path)
     p.add_argument("--qualify-playable", action="store_true")
-    p.add_argument("--native-report", type=Path)
-    p.add_argument("--qualify-native", action="store_true")
-    p.add_argument("--qualify-wayne-walk", action="store_true")
+    p.add_argument("--qualify-native-pair", choices=("smoke-01", "walk-01"))
     p.add_argument("--combined-memory-report", type=Path)
     p.add_argument("--qualify-memory", action="store_true")
     p.add_argument("--qualify-memory-save", action="store_true")
@@ -2295,7 +2318,15 @@ def main() -> int:
     p.add_argument("--qualify-focused", action="store_true")
     a = p.parse_args()
     try:
-        if a.qualify_wayne_walk or os.environ.get("BABYLON_WAYNE_PROFILE") in (
+        if a.qualify_native_pair:
+            from tools.devtools.national_native_pair import qualify_pair
+
+            if any(v for k, v in vars(a).items() if k not in ("policy", "qualify_native_pair")):
+                raise ValueError("native pair qualification only accepts its canonical workload")
+            selected_policy(a.policy)
+            print(json.dumps(qualify_pair(a.qualify_native_pair), indent=2))
+            return 0
+        if os.environ.get("BABYLON_WAYNE_PROFILE") in (
             "smoke-01",
             "walk-01",
         ):
@@ -2311,8 +2342,6 @@ def main() -> int:
                 or a.qualify_timing
                 or a.qualify_focused
                 or a.qualify_playable
-                or a.qualify_native
-                or a.qualify_wayne_walk
                 or a.qualify_memory
                 or a.qualify_memory_save
                 or any(
@@ -2325,7 +2354,6 @@ def main() -> int:
                         a.timings,
                         a.focused_junit,
                         a.playable_report,
-                        a.native_report,
                         a.combined_memory_report,
                     )
                 )
@@ -2345,15 +2373,6 @@ def main() -> int:
             return 0
         if (a.qualify_memory or a.qualify_memory_save) and a.combined_memory_report is None:
             raise ValueError("combined memory qualification requires authenticated current capture")
-        if (a.qualify_native or a.qualify_wayne_walk) and any(
-            value is None
-            for value in (a.native_report, a.playable_report, a.timings, a.combined_memory_report)
-        ):
-            raise ValueError(
-                "native qualification requires material, timing and combined-memory evidence"
-            )
-        if a.native_report is not None and (a.playable_report is None or a.timings is None):
-            raise ValueError("native evidence requires the actual material and timing report")
         a.reopens = a.reopens or []
         if a.focused_junit is not None:
             if (
@@ -2363,9 +2382,6 @@ def main() -> int:
                 or a.qualify_smoke
                 or a.timings is not None
                 or a.qualify_playable
-                or a.qualify_native
-                or a.qualify_wayne_walk
-                or a.native_report is not None
                 or a.playable_report is not None
                 or a.combined_memory_report is not None
                 or a.qualify_memory
@@ -2462,51 +2478,8 @@ def main() -> int:
             "status": "incomplete",
             "enjoyment_status": "unqualified",
         }
-        walk_status: object = "incomplete"
-        if a.native_report is not None:
-            from tools.devtools.national_native_evidence import (
-                MANIFEST_BYTES,
-                NativeRunEvidence,
-                evaluate_native,
-                evaluate_wayne_walk,
-                private_bytes,
-            )
-
-            native_bytes = private_bytes(a.native_report, MANIFEST_BYTES)
-            native_report = evaluate_native(
-                policy,
-                policy_sha256,
-                NativeRunEvidence.model_validate(strict_json_bytes(native_bytes)),
-                a.native_report.parent,
-                PlayableReport.model_validate(strict_json(a.playable_report)),
-                timing,
-                load(a.opening),
-                tuple(load(path) for path in a.ticks),
-                playable_report,
-                memory,
-                wayne_walk=a.qualify_wayne_walk,
-            )
-            if a.qualify_wayne_walk:
-                if memory is None:
-                    raise ValueError("Wayne walk needs measured memory for its three process pairs")
-                walk_report = evaluate_wayne_walk(
-                    policy,
-                    NativeRunEvidence.model_validate(strict_json_bytes(native_bytes)),
-                    a.native_report.parent,
-                    PlayableReport.model_validate(strict_json(a.playable_report)),
-                    timing,
-                    memory,
-                    native_report,
-                    result,
-                )
-                result["wayne_walkthrough"] = walk_report
-                walk_status = walk_report["status"]
-            playable_report["native_window_status"] = native_report["status"]
-            playable_report["native_window_evidence"] = "native_material_timing_recovery_join_v4"
-            playable_report["scope"] = native_report["scope"]
-            result["native_report_sha256"] = hashlib.sha256(native_bytes).hexdigest()
         result["native_window"] = native_report
-        result["qualification_report_version"] = 7
+        result["qualification_report_version"] = 8
         if len(a.ticks) >= policy.qualification_ticks and a.playable_report is not None:
             memory_horizon = (
                 "actual_325_period_status"
@@ -2543,10 +2516,6 @@ def main() -> int:
         and memory_report["actual_52_period_status"] != "qualified"
         or a.qualify_memory_save
         and memory_report["actual_325_period_status"] != "qualified"
-        or a.qualify_native
-        and native_report["status"] != "qualified"
-        or a.qualify_wayne_walk
-        and walk_status != "qualified"
     )
 
 

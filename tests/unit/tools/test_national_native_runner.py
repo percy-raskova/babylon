@@ -189,6 +189,8 @@ def test_native_opening_mismatch_cannot_bind_or_publish_the_capture(tmp_path, mo
     run = object.__new__(runner.NativeRun)
     run.campaign = "81b979ee-a9c1-48fd-8835-06cbfe594675"
     run.policy_hash = "c" * 64
+    run.policy = SimpleNamespace(maximum_production_read_seconds=180)
+    run.mode = "normal_play"
     run._foundation = None
     run.opening = None
     run.directory = tmp_path
@@ -204,6 +206,7 @@ def test_native_opening_mismatch_cannot_bind_or_publish_the_capture(tmp_path, mo
         tick_content_hash=None,
     )
     record = SimpleNamespace(
+        production_read_elapsed_ns=1,
         tick=0,
         tick_content_hash=None,
         opening=SimpleNamespace(
@@ -369,6 +372,7 @@ def test_over_budget_boundary_records_and_aborts_before_archive(tmp_path, monkey
     run.campaign = "c"
     run.stage = "walk"
     run._foundation = "f"
+    run.mode = "normal_play"
     run.wayne_profile = "walk-01"
     run.boundaries = []
     run.started = 0
@@ -664,6 +668,8 @@ def test_process_cold_failed_before_install_keeps_actual_segment_first_and_lates
         root=tmp_path,
         directory=tmp_path,
         owner_fields=(),
+        mode="memory_capture",
+        cold_seconds=lambda: 900,
         capture=lambda *_args, **_kw: object(),
         boundaries=[SimpleNamespace(tick=9, tick_content_hash="a" * 64)],
     )
@@ -769,6 +775,8 @@ def test_cold_failure_uses_actual_partial_spawn_roster(
         root=tmp_path,
         directory=tmp_path,
         owner_fields=(),
+        mode="memory_capture",
+        cold_seconds=lambda: 900,
         runtime=tmp_path / "runtime",
         client=tmp_path / "client",
         timeout=1,
@@ -932,6 +940,7 @@ def test_mixed_confirm_reopen_stops_before_p3_on_its_own_slow_receipt(tmp_path):
     packet["authenticated_read"]["runtime_epoch"] = after.scope_epoch
     packet["authenticated_read"]["observation_generation"] = after.generation
     run = object.__new__(runner.NativeRun)
+    run.mode = "normal_play"
     run.directory, run.wayne_profile, run.policy, run.timeout = tmp_path, "walk-01", policy(), 900
     run.policy_hash = "ab" * 32
     run.material = [e.MaterialRecord.model_validate(records["material-2.json"])]
@@ -1034,3 +1043,59 @@ def test_walk_cash_follow_up_waits_for_reconciled_mixed_food(
     else:
         walk.installed(None, tmp_path, state)
         assert proposals == ([(5, "local-cash")] if should_follow else [])
+
+
+@pytest.mark.parametrize("mode", ["normal_play", "memory_capture"])
+def test_walk_uses_all_three_cold_segments_and_only_constructs_requested_sampler(
+    tmp_path, monkeypatch, mode
+):
+    import uuid
+
+    segments = []
+    captures = []
+
+    def capture(directory, *, fixed_period):
+        captures.append((directory, fixed_period))
+        return SimpleNamespace(lifecycle="designed memory monitor")
+
+    run = SimpleNamespace(
+        root=tmp_path,
+        directory=tmp_path,
+        mode=mode,
+        owner_fields=(),
+        runtime=tmp_path / "runtime",
+        client=tmp_path / "client",
+        timeout=900,
+        campaign=str(uuid.uuid4()),
+        capture=capture,
+        cold_seconds=lambda: 180 if mode == "normal_play" else 900,
+        verify_live=lambda: None,
+        verify_sources=lambda: None,
+        on_recovery=lambda _s: None,
+    )
+
+    def drive(*_args, **kwargs):
+        segments.append(
+            (
+                kwargs["initial_tick"],
+                kwargs["periods"],
+                kwargs["play_penultimate_close"],
+                kwargs["cold_window"].maximum_seconds,
+                kwargs["capture_lifecycle"],
+            )
+        )
+        assert all(
+            callable(kwargs[key])
+            for key in ("on_opened", "on_installed", "on_boundary", "on_recovery")
+        )
+        return 0
+
+    monkeypatch.setattr(runner, "drive_pair", drive)
+    monkeypatch.setattr(runner, "reauthenticate_native_owner", lambda *_a: None)
+    runner.WayneWalk(run).drive({}, {})
+    assert [s[:3] for s in segments] == [(0, 0, False), (0, 10, True), (10, 0, False)]
+    if mode == "normal_play":
+        assert not captures and all(s[3:] == (180, None) for s in segments)
+    else:
+        assert [p for _, p in captures] == [0, None, 10]
+        assert all(s[3:] == (900, "designed memory monitor") for s in segments)

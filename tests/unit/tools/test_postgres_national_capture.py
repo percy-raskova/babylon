@@ -950,3 +950,47 @@ def test_native_handoff_binary_admission_refuses_before_process_pair(tmp_path, f
     assert (tmp_path / "pair-called").exists() is (fault is None)
     assert "private-observer" not in result.stdout + result.stderr
     assert "private-reader" not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("fail_retirement", [True, False])
+def test_pair_operator_completes_each_retirement_before_next_run_and_final_evaluation(
+    tmp_path, fail_retirement
+):
+    import os
+    import subprocess
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[3] / "tools/run_rust_postgres.sh"
+    folder = tmp_path / "bin"
+    folder.mkdir()
+    # Subprocess boundaries replace real fixture operations in this ordering test.
+    for name, body in {
+        "mise": """case "$9" in
+        path) printf '%s/%s\\n' "$PAIR_FIXTURE" "$BABYLON_NATIVE_MEASUREMENT_MODE";;
+        qualify) echo final >> "$PAIR_FIXTURE/calls";; *) exit 93;; esac""",
+        "bash": """if [ "$#" = 1 ]; then
+            echo "create $BABYLON_NATIVE_MEASUREMENT_MODE" >> "$PAIR_FIXTURE/calls"
+            mkdir "$BABYLON_STORAGE_REPORT_DIRECTORY"
+            echo same-campaign > "$BABYLON_STORAGE_REPORT_DIRECTORY/campaign"
+        elif [ "$2" = --wayne-backup-retire ] && [ "$3" = same-campaign ]; then
+            echo "retire $BABYLON_NATIVE_MEASUREMENT_MODE" >> "$PAIR_FIXTURE/calls"
+            [ "$FAIL_RETIRE" = no ] || exit 64
+        else exit 92; fi""",
+    }.items():
+        exe = folder / name
+        exe.write_text("#!/bin/sh\nset -eu\n" + body + "\n")
+        exe.chmod(0o700)
+    result = subprocess.run(
+        ["/bin/bash", str(script), "--wayne-native-pair", "smoke-01"],
+        env={
+            "PATH": str(folder) + ":" + os.defpath,
+            "PAIR_FIXTURE": str(tmp_path),
+            "FAIL_RETIRE": "yes" if fail_retirement else "no",
+        },
+        capture_output=True,
+    )
+    expected = ["create normal_play", "retire normal_play"]
+    if not fail_retirement:
+        expected += ["create memory_capture", "retire memory_capture", "final"]
+    assert (tmp_path / "calls").read_text().splitlines() == expected
+    assert result.returncode == (64 if fail_retirement else 0)

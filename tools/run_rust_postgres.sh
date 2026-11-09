@@ -12,6 +12,31 @@ readonly CARGO_BUILD_JOBS
 # after it proves exact ownership of the random-canary container below.
 readonly TEST_HARNESS_ACK="I_UNDERSTAND_THIS_DISPOSABLE_RUNTIME_DROPS_ITS_SCRATCH_DATABASES_AND_ROLES"
 readonly LIVE_FOCUS="${BABYLON_POSTGRES_LIVE_FOCUS-runtime_smoke}"
+if [ "${1:-}" = --help ]; then
+  printf '%s\n' 'Run an isolated PostgreSQL test with BABYLON_POSTGRES_LIVE_FOCUS.' \
+    'For paired native qualification use --wayne-native-pair {smoke-01|walk-01}.' \
+    'Supply the released PostgreSQL image, host context and native expectation references.' \
+    'The operator drives and restore-verifies both members in order.'
+  exit 0
+fi
+if [ "${1:-}" = --wayne-native-pair ]; then
+  [ "$#" = 2 ] || { echo "usage: --wayne-native-pair {smoke-01|walk-01}" >&2; exit 2; }
+  case "$2" in smoke-01) periods=2;; walk-01) periods=10;; *) echo "unsupported native workload" >&2; exit 2;; esac
+  [ "${BABYLON_NATIONAL_STORAGE_PERIODS:-$periods}" = "$periods" ] || { echo "requested native horizon differs" >&2; exit 2; }
+  export BABYLON_WAYNE_PROFILE="$2" BABYLON_POSTGRES_LIVE_FOCUS=national_storage
+  export BABYLON_NATIONAL_CAPTURE_MODE=playable-aid BABYLON_NATIONAL_STORAGE_PERIODS="$periods"
+  export BABYLON_NATIONAL_STORAGE_QUALIFICATION=report-only BABYLON_NATIONAL_SUCCESS_DISPOSITION=retain-for-native BABYLON_NATIONAL_QUALIFY_TIMING=0
+  cd "$REPO_ROOT"
+  for mode in normal_play memory_capture; do
+    export BABYLON_NATIVE_MEASUREMENT_MODE="$mode"
+    BABYLON_STORAGE_REPORT_DIRECTORY="$(mise exec -- uv run --frozen python -m tools.devtools.national_native_pair path "$2")"
+    export BABYLON_STORAGE_REPORT_DIRECTORY
+    bash "$REPO_ROOT/tools/run_rust_postgres.sh"
+    campaign="$(cat "$BABYLON_STORAGE_REPORT_DIRECTORY/campaign")"
+    bash "$REPO_ROOT/tools/run_rust_postgres.sh" --wayne-backup-retire "$campaign"
+  done
+  exec mise exec -- uv run --frozen python -m tools.devtools.national_native_pair qualify "$2"
+fi
 if [ "${1:-}" = --wayne-backup-retire ] || [ "${1:-}" = --national-native-open ] || [ "${1:-}" = --national-native-lock-held ]; then
   # The hook does not follow external sources; this helper calls die indirectly.
   # shellcheck source=tools/postgres_national_lifecycle.sh disable=SC1091
@@ -69,6 +94,7 @@ if [ -n "${BABYLON_WAYNE_PROFILE:-}" ] || [ "$LIVE_FOCUS" = organizer_allocation
   case "$LIVE_FOCUS:${BABYLON_WAYNE_PROFILE:-}" in
     organizer_allocation_atomic:sql-01) umask 077; wayne_media reserve ;;
     national_storage:smoke-01 | national_storage:walk-01)
+      case "${BABYLON_NATIVE_MEASUREMENT_MODE:-}" in normal_play|memory_capture) ;; *) die "explicit native measurement purpose required";; esac
       [ "${BABYLON_NATIONAL_CAPTURE_MODE:-}" = playable-aid ] &&
         [ "${BABYLON_NATIONAL_STORAGE_QUALIFICATION:-}" = report-only ] &&
         [ "${BABYLON_NATIONAL_SUCCESS_DISPOSITION:-}" = retain-for-native ] &&
@@ -84,6 +110,9 @@ if [ "$LIVE_FOCUS" = national_storage ]; then
   # shellcheck source=tools/postgres_national_lifecycle.sh disable=SC1091
   source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"
   national_capture_selection
+  if [ "$BABYLON_NATIONAL_CAPTURE_MODE" = playable-aid ] && [ -z "${BABYLON_WAYNE_PROFILE:-}" ]; then
+    die "native qualification requires --wayne-native-pair smoke-01 or walk-01"
+  fi
   national_lock_entry "$@"
   national_begin
 fi
@@ -743,7 +772,7 @@ cleanup_checked
 trap - EXIT INT TERM HUP
 if [ "$LIVE_FOCUS" = national_storage ]; then
   if [ "$NATIONAL_SUCCESS_DISPOSITION" = retain-for-native ]; then
-    printf 'National lifecycle status=success-retained-for-native; scope and acceptance remain in native-handoff.json and qualification.json\n'
+    printf 'National lifecycle status=retained member pending verified backup and pair evaluation\n'
     exit "$status"
   fi
   printf 'National lifecycle status=success-cleaned; storage acceptance is recorded separately in qualification.json\n'

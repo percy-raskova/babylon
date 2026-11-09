@@ -289,6 +289,8 @@ def _archive_terminal(
 
 
 def terminal_snapshot(connection: Connection, campaign: str, period: int) -> dict[str, Any]:
+    from tools.devtools.national_native_pair import terminal_decisions
+
     if str(UUID(campaign)) != campaign or type(period) is not int or period <= 0:
         raise Refusal("terminal campaign or period is malformed")
     if connection.info.transaction_status != psycopg.pq.TransactionStatus.IDLE:
@@ -330,6 +332,7 @@ def terminal_snapshot(connection: Connection, campaign: str, period: int) -> dic
             "identity": list(identity[0]),
             "markers": chain,
             "archive_terminal": _archive_terminal(connection, campaign, chain),
+            "organizer_decisions": terminal_decisions(connection, campaign),
             "campaign_rows_sha256": _campaign_rows(connection, campaign),
             "database": _catalog(connection),
             "object_authority": _object_authority(connection),
@@ -809,7 +812,7 @@ class Run:
             or self.owner[0] != "national-storage-runner-media-v2"
             or self.owner[1] != str(self.root)
             or self.owner[10] != str(self.evidence)
-            or self.evidence != storage.RUN_PARENT / self.owner[11] / "evidence"
+            or storage.native_path(self.evidence)[0] != self.owner[11]
             or self.owner[11] not in ("smoke-01", "walk-01")
             or self.period != int(storage.PROFILES[self.owner[11]][1])
             or not re.fullmatch(r"[a-f0-9]{32}", self.owner[2])
@@ -2134,6 +2137,7 @@ def backup_and_retire(
     seal = backup.publish_json(
         "recovery-seal.json",
         {
+            "completed_member": directory.reference("completed-member.json").model_dump(),
             "owner": directory.reference("ownership").model_dump(),
             "functional": functional_ref.model_dump(),
             "shutdown": shutdown.model_dump(),

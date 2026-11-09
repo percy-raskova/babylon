@@ -51,6 +51,7 @@ from tools.devtools.national_storage_qualification import (
     PlayableReport,
     Policy,
     Snapshot,
+    measurement_mode,
     selected_policy,
     strict_json_bytes,
 )
@@ -138,6 +139,7 @@ def aid_identity(value: object) -> tuple[int, ...]:
 
 class NativeRun:
     def __init__(self, root: Path, directory: Path) -> None:
+        self.mode = measurement_mode(os.environ.get("BABYLON_NATIVE_MEASUREMENT_MODE"))
         self.root = root
         self.directory = directory
         self.policy = Policy.model_validate_json((directory / "policy.json").read_bytes())
@@ -146,7 +148,6 @@ class NativeRun:
         if str(UUID(self.campaign)) != self.campaign or UUID(self.campaign).int == 0:
             raise NativeRunRefusal("national runner requires its canonical campaign")
         requested = os.environ.get("BABYLON_NATIONAL_STORAGE_PERIODS", "")
-        requested = requested or str(self.policy.routine_smoke_periods)
         if re.fullmatch(r"[1-9][0-9]*", requested) is None or len(requested) > 10:
             raise NativeRunRefusal("national runner period request is malformed")
         self.periods = int(requested)
@@ -173,25 +174,25 @@ class NativeRun:
             raise NativeRunRefusal("national runner original ownership differs from the live lease")
         fields = self.ownership.decode().splitlines()
         self.wayne_profile = os.environ.get("BABYLON_WAYNE_PROFILE")
-        if self.wayne_profile is None:
-            if len(fields) != 11 or fields[0] != "national-storage-runner-v1":
-                raise NativeRunRefusal("anonymous national runner requires its original ownership")
-        else:
-            from tools.devtools.wayne_qualification_storage import profile_run, released_head
+        if self.wayne_profile not in ("smoke-01", "walk-01"):
+            raise NativeRunRefusal(
+                "native qualification requires a released smoke or walk workload"
+            )
+        from tools.devtools.wayne_qualification_storage import profile_run, released_head
 
-            selected_policy(directory / "policy.json")
-            released_head(PrivateEvidence(directory), root)
+        selected_policy(directory / "policy.json")
+        released_head(PrivateEvidence(directory), root)
 
-            run = profile_run(self.wayne_profile, "national_storage", str(self.periods), directory)
-            if (
-                len(fields) != 21
-                or fields[0] != "national-storage-runner-media-v2"
-                or fields[11] != self.wayne_profile
-                or fields[5] != str(run / "pgdata")
-                or not fields[12]
-                or any(re.fullmatch(r"0|[1-9][0-9]*", item) is None for item in fields[13:21])
-            ):
-                raise NativeRunRefusal("selected native run requires its complete media owner")
+        run = profile_run(self.wayne_profile, "national_storage", str(self.periods), directory)
+        if (
+            len(fields) != 21
+            or fields[0] != "national-storage-runner-media-v2"
+            or fields[11] != self.wayne_profile
+            or fields[5] != str(run / "pgdata")
+            or not fields[12]
+            or any(re.fullmatch(r"0|[1-9][0-9]*", item) is None for item in fields[13:21])
+        ):
+            raise NativeRunRefusal("selected native run requires its complete media owner")
         self.owner_fields = tuple(fields)
         if fields[1] != str(root) or fields[10] != str(directory):
             raise NativeRunRefusal("national runner ownership scope differs")
@@ -244,19 +245,16 @@ class NativeRun:
         self.verify_live()
         self.verify_credentials(fields[2], fields[7], fields[8])
         self.verify_sources()
-        if self.wayne_profile:
-            roster = strict_json_bytes(private_bytes(directory / "normal-binaries.json", 16_384))
-            if not isinstance(roster, dict) or set(roster) != {p.name for p in self.binaries}:
+        roster = strict_json_bytes(private_bytes(directory / "normal-binaries.json", 16_384))
+        if not isinstance(roster, dict) or set(roster) != {p.name for p in self.binaries}:
+            raise NativeRunRefusal("captured executable roster differs from the normal binaries")
+        for binary, digest in self.binaries.items():
+            entry = Reference.model_validate(roster[binary.name])
+            PrivateEvidence(directory).verify(entry)
+            if entry.sha256 != digest:
                 raise NativeRunRefusal(
-                    "captured executable roster differs from the normal binaries"
+                    "supervisor build differs from the archived normal executable"
                 )
-            for binary, digest in self.binaries.items():
-                entry = Reference.model_validate(roster[binary.name])
-                PrivateEvidence(directory).verify(entry)
-                if entry.sha256 != digest:
-                    raise NativeRunRefusal(
-                        "supervisor build differs from the archived normal executable"
-                    )
 
     @property
     def foundation(self) -> str:
@@ -289,10 +287,7 @@ class NativeRun:
             or bindings[0].get("HostIp") != "127.0.0.1"
         ):
             raise NativeRunRefusal("owned native credential binding differs")
-        if (
-            getattr(self, "wayne_profile", None)
-            and bindings[0].get("HostPort") != self.owner_fields[19]
-        ):
+        if bindings[0].get("HostPort") != self.owner_fields[19]:
             raise NativeRunRefusal("owned native credentials differ from the media lease port")
         for dsn, role in (
             (self.writer_dsn, writer),
@@ -329,11 +324,8 @@ class NativeRun:
                 )
             )
         }
-        if self.wayne_profile is not None:
-            for suffix in ("state", "data", "config", "cache"):
-                common["XDG_" + suffix.upper() + "_HOME"] = str(
-                    self.directory.parent / "xdg" / suffix
-                )
+        for suffix in ("state", "data", "config", "cache"):
+            common["XDG_" + suffix.upper() + "_HOME"] = str(self.directory.parent / "xdg" / suffix)
         common["BABYLON_RUNTIME_DSN"] = self.writer_dsn
         return launcher.child_environments(
             common,
@@ -348,11 +340,7 @@ class NativeRun:
         self._verify_supervisor("national_verify_physical_owner")
 
     def _verify_capture_authority(self) -> None:
-        # Anonymous volumes keep their original stopped-side Docker inspection.
-        if self.wayne_profile is None:
-            self.verify_live()
-        else:
-            self._verify_supervisor("national_verify_live_authority")
+        self._verify_supervisor("national_verify_live_authority")
 
     def _verify_supervisor(
         self,
@@ -524,13 +512,7 @@ class NativeRun:
         self.snapshot("schema-baseline")
         self.verify_sources()
 
-    def capture(
-        self, segment: Path | None = None, *, fixed_period: int | None = None
-    ) -> memory.RunningMemoryCapture:
-        segment = self.directory if segment is None else segment
-        if segment != self.directory:
-            for filename in ("ownership", "policy.json"):
-                PrivateEvidence(segment).publish(filename, (self.directory / filename).read_bytes())
+    def postgres_admission(self) -> memory.PostgresAdmission:
         self.verify_live()
         state = memory.docker_state(self.container, timeout=10)
         pid = state.host_pid
@@ -565,7 +547,7 @@ class NativeRun:
         )
         if len(executable) != 2 or executable[1] != "/proc/1/exe":
             raise NativeRunRefusal("owned PostgreSQL executable admission differs")
-        admission = memory.PostgresAdmission(
+        return memory.PostgresAdmission(
             container_id=state.container_id,
             image_id=state.image_id,
             host_pid=pid,
@@ -580,6 +562,15 @@ class NativeRun:
             cgroup_inode=inode.st_ino,
             executable_sha256=executable[0],
         )
+
+    def capture(
+        self, segment: Path | None = None, *, fixed_period: int | None = None
+    ) -> memory.RunningMemoryCapture:
+        segment = self.directory if segment is None else segment
+        if segment != self.directory:
+            for filename in ("ownership", "policy.json"):
+                PrivateEvidence(segment).publish(filename, (self.directory / filename).read_bytes())
+        admission = self.postgres_admission()
         (segment / "combined-memory-source.sha256").write_bytes(
             (self.directory / "source-before.sha256").read_bytes()
         )
@@ -625,7 +616,7 @@ class NativeRun:
             operation_timeout=30,
             operation_lock=self.operation_lock,
             cold_segment_period=fixed_period,
-            stop_on_budget=bool(self.wayne_profile),
+            stop_on_budget=True,
         )
         return self._capture
 
@@ -716,7 +707,7 @@ class NativeRun:
         *,
         strict: bool = False,
     ) -> None:
-        if not getattr(self, "wayne_profile", None):
+        if self.mode == "memory_capture":
             return
         ceiling = maximum_seconds * 1_000_000_000
         if elapsed_ns > ceiling or strict and elapsed_ns == ceiling:
@@ -745,13 +736,12 @@ class NativeRun:
             raise NativeRunRefusal(
                 "native material publication differs from its installed UI boundary"
             )
-        if getattr(self, "wayne_profile", None):
-            self.check_budget(
-                "production-read",
-                record.production_read_elapsed_ns,
-                self.policy.maximum_production_read_seconds,
-                state,
-            )
+        self.check_budget(
+            "production-read",
+            record.production_read_elapsed_ns,
+            self.policy.maximum_production_read_seconds,
+            state,
+        )
         if not record.tick:
             if record.opening is None or self.opening is not None:
                 raise NativeRunRefusal("native run requires one authenticated opening")
@@ -771,9 +761,8 @@ class NativeRun:
                     raise NativeRunRefusal(
                         "native opening differs from independent committed identity"
                     )
-                if self._capture is None:
-                    raise NativeRunRefusal("native opening has no owned memory capture")
-                self._capture.bind_foundation(opening.foundation_sha256)
+                if self._capture is not None:
+                    self._capture.bind_foundation(opening.foundation_sha256)
                 self._foundation = opening.foundation_sha256
             self.opening = record
             self.snapshot("opening-created")
@@ -785,30 +774,26 @@ class NativeRun:
             raise NativeRunRefusal("native committed facts omit or duplicate a requested period")
         advance = read_record(self.directory / f"advance-{record.tick}.json", AdvanceRecord)
         self.progress(record.tick, "committed", advance.model_dump(mode="json"))
-        if getattr(self, "wayne_profile", None):
-            self.check_budget(
-                "advance",
-                advance.advance_elapsed_ns,
-                self.policy.maximum_advance_p95_seconds,
-                state,
-            )
-            self.check_budget(
-                "archive-catchup",
-                advance.archive_elapsed_ns,
-                self.policy.maximum_archive_catchup_seconds,
-                state,
-            )
+        self.check_budget(
+            "advance",
+            advance.advance_elapsed_ns,
+            self.policy.maximum_advance_p95_seconds,
+            state,
+        )
+        self.check_budget(
+            "archive-catchup",
+            advance.archive_elapsed_ns,
+            self.policy.maximum_archive_catchup_seconds,
+            state,
+        )
         archive = self.archive(record)
-        if getattr(self, "wayne_profile", None):
-            archive_record = read_record(
-                self.directory / f"archive-{record.tick}.json", ArchiveRecord
-            )
-            self.check_budget(
-                "archive-read",
-                archive_record.archive_read_elapsed_ns,
-                self.policy.maximum_archive_catchup_seconds,
-                state,
-            )
+        archive_record = read_record(self.directory / f"archive-{record.tick}.json", ArchiveRecord)
+        self.check_budget(
+            "archive-read",
+            archive_record.archive_read_elapsed_ns,
+            self.policy.maximum_archive_catchup_seconds,
+            state,
+        )
         self.progress(record.tick, "archive", archive.model_dump(mode="json"))
         self.progress(record.tick, "accounting", record.aid.model_dump(mode="json"))
         snapshot = self.snapshot(f"tick-{record.tick:02}")
@@ -854,20 +839,19 @@ class NativeRun:
     def on_recovery(self, state: ControlState) -> None:
         name = f"recovery-{state.durable_tick}-{state.scope_epoch}.json"
         recovery = read_record(self.directory / name, RecoveryRecord)
-        if getattr(self, "wayne_profile", None):
-            self.check_budget(
-                "checkpoint-reopen",
-                recovery.cold_reopen_elapsed_ns,
-                self.policy.maximum_cold_open_seconds,
-                state,
-                strict=True,
-            )
-            self.check_budget(
-                "restored-production-read",
-                recovery.authenticated_read.production_read_elapsed_ns,
-                self.policy.maximum_production_read_seconds,
-                state,
-            )
+        self.check_budget(
+            "checkpoint-reopen",
+            recovery.cold_reopen_elapsed_ns,
+            self.policy.maximum_cold_open_seconds,
+            state,
+            strict=True,
+        )
+        self.check_budget(
+            "restored-production-read",
+            recovery.authenticated_read.production_read_elapsed_ns,
+            self.policy.maximum_production_read_seconds,
+            state,
+        )
         restored = self.snapshot(f"tick-{state.durable_tick:02}-reopened")
         original = self.snapshots[-1]
         if (
@@ -972,6 +956,7 @@ class NativeRun:
         publish(
             self.directory / "national-playable-qualification.json", report.model_dump(mode="json")
         )
+        completed = time.monotonic_ns()
         timing = NativeTimings.model_validate(
             {
                 "version": 2,
@@ -997,7 +982,7 @@ class NativeRun:
                 "run": {
                     "periods": self.periods,
                     "compilation_included": False,
-                    "elapsed_ns": time.monotonic_ns() - self.started,
+                    "elapsed_ns": completed - self.started,
                 },
             }
         )
@@ -1013,8 +998,12 @@ class NativeRun:
 
         manifest = NativeRunEvidence.model_validate(
             {
-                "version": 4,
-                "scope": "native_material_timing_recovery_join_v4",
+                "version": 5,
+                "scope": "native_material_timing_recovery_join_v5",
+                "measurement_mode": self.mode,
+                "started_monotonic_ns": self.started,
+                "completed_monotonic_ns": completed,
+                "inputs_sha256": memory.executable_digest(self.directory / "inputs.sha256"),
                 "status": "completed",
                 "policy_sha256": self.policy_hash,
                 "campaign": self.campaign,
@@ -1023,10 +1012,10 @@ class NativeRun:
                 "requested_periods": self.periods,
                 "ownership_record_sha256": memory.executable_digest(self.directory / "ownership"),
                 "source_manifest_sha256": memory.executable_digest(
-                    self.directory / "combined-memory-source.sha256"
+                    self.directory / "source-before.sha256"
                 ),
                 "executable_manifest_sha256": memory.executable_digest(
-                    self.directory / "combined-memory-executables.json"
+                    self.directory / "normal-binaries.json"
                 ),
                 "controls": artifact("native-controls.json"),
                 "opening": artifact("material-0.json"),
@@ -1070,8 +1059,41 @@ class NativeRun:
         else:
             evidence.publish_json("functional-terminal.json", actual)
 
+    def cold_seconds(self) -> int:
+        return self.policy.maximum_cold_open_seconds if self.mode == "normal_play" else self.timeout
+
+    def process_identity(
+        self, process: subprocess.Popen[bytes], binary: Path
+    ) -> tuple[int, int, str]:
+        proc = Path("/proc") / str(process.pid)
+        start = memory.parse_start_time((proc / "stat").read_bytes(), process.pid)
+        if (
+            proc.stat().st_uid != os.geteuid()
+            or os.readlink(proc / "exe") != str(binary)
+            or memory.executable_digest(proc / "exe") != self.binaries[binary]
+        ):
+            raise NativeRunRefusal("new owned child differs from the admitted executable")
+        return process.pid, start, self.binaries[binary]
+
+    def record_processes(self, segment: str) -> None:
+        pg = self.postgres_admission()
+        publish(
+            self.directory / f"processes-{segment}.json",
+            {
+                "segment": segment,
+                "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
+                "runtime": self.pair_identity[0],
+                "client": self.pair_identity[1],
+                "postgres": [pg.host_pid, pg.start_time_ticks, pg.executable_sha256],
+                "container": pg.container_id,
+                "owner_sha256": hashlib.sha256(self.ownership).hexdigest(),
+            },
+        )
+
     def run(self) -> int:
         self.prepare()
+        if self.marker().foundation_sha256 is not None:
+            raise NativeRunRefusal("declared campaign already exists before native New")
         writer, reader = self.environments()
         reader.update(
             {
@@ -1087,43 +1109,47 @@ class NativeRun:
             self.verify_sources()
             self.reports()
             return 0
-        capture = self.capture()
-        if self.wayne_profile:
-            reauthenticate_native_owner(self.root, self.directory, self.owner_fields)
-        choices = tuple(
-            choice
-            for choice in (
-                PlannedChoice(
-                    period=1,
-                    choice="remote_aid",
-                    allocation=AidAllocation(aid=AidAmounts(food_quantity=1, cash_micros="0")),
-                ),
-                PlannedChoice(period=2, choice="pause_standing", allocation="none"),
-                PlannedChoice(
-                    period=3,
-                    choice="local_aid",
-                    allocation=AidAllocation(aid=AidAmounts(food_quantity=1, cash_micros="0")),
-                ),
-            )
-            if choice.period <= self.periods
+        capture = self.capture() if self.mode == "memory_capture" else None
+        reauthenticate_native_owner(self.root, self.directory, self.owner_fields)
+        choices = (
+            PlannedChoice(
+                period=1,
+                choice="remote_aid",
+                allocation=AidAllocation(aid=AidAmounts(food_quantity=1, cash_micros="0")),
+            ),
+            PlannedChoice(period=2, choice="pause_standing", allocation="none"),
         )
         self.stage = "windowed_new_play_recovery"
         cold_start = time.monotonic_ns()
-        self.segment = "smoke" if self.wayne_profile else None
+        self.segment = "smoke"
 
         def started(runtime: subprocess.Popen[bytes], client: subprocess.Popen[bytes]) -> None:
-            if self.wayne_profile:
-                self.pair_identity = [
-                    (
-                        p.pid,
-                        memory.parse_start_time(Path(f"/proc/{p.pid}/stat").read_bytes(), p.pid),
-                        self.binaries[exe],
-                    )
-                    for p, exe in ((runtime, self.runtime), (client, self.client))
-                ]
+            self.pair_identity = [
+                self.process_identity(p, exe)
+                for p, exe in ((runtime, self.runtime), (client, self.client))
+            ]
+            self.record_processes("smoke")
             self.verify_live()
 
         latest_smoke: ControlState | None = None
+
+        def opened_smoke(state: ControlState) -> None:
+            elapsed = time.monotonic_ns() - cold_start
+            self.check_budget(
+                "cold-smoke", elapsed, self.policy.maximum_cold_open_seconds, state, strict=True
+            )
+            publish(
+                self.directory / "cold-installed-smoke.json",
+                {
+                    "elapsed_ns": elapsed,
+                    "started_monotonic_ns": cold_start,
+                    "installed_monotonic_ns": cold_start + elapsed,
+                    "state": state.model_dump(mode="json"),
+                    "processes": self.pair_identity,
+                    "ownership_sha256": hashlib.sha256(self.ownership).hexdigest(),
+                    "source_head": (self.directory / "source-head").read_text().strip(),
+                },
+            )
 
         def observed_smoke(state: ControlState) -> None:
             nonlocal latest_smoke
@@ -1157,21 +1183,13 @@ class NativeRun:
             directory=self.directory,
             operation_timeout=self.timeout,
             on_started=started,
-            cold_window=ColdControlWindow(cold_start, self.policy.maximum_cold_open_seconds)
-            if self.wayne_profile
-            else None,
-            on_opened=lambda state: self.check_budget(
-                "cold-smoke",
-                time.monotonic_ns() - cold_start,
-                self.policy.maximum_cold_open_seconds,
-                state,
-                strict=True,
-            ),
-            on_observed=observed_smoke if self.wayne_profile == "smoke-01" else None,
+            cold_window=ColdControlWindow(cold_start, self.cold_seconds()),
+            on_opened=opened_smoke,
+            on_observed=observed_smoke if self.mode == "normal_play" else None,
             wall_deadline=self.started / 1e9 + self.policy.maximum_routine_smoke_seconds
-            if self.wayne_profile == "smoke-01"
+            if self.mode == "normal_play"
             else None,
-            on_wall_expired=expired_smoke if self.wayne_profile == "smoke-01" else None,
+            on_wall_expired=expired_smoke if self.mode == "normal_play" else None,
             on_boundary=self.on_boundary,
             on_recovery=self.on_recovery,
             choices=choices,
@@ -1179,10 +1197,8 @@ class NativeRun:
                 lambda _channel, _socket, state: (
                     self.functional_terminal(state) if state.durable_tick == self.periods else None
                 )
-            )
-            if self.wayne_profile == "smoke-01"
-            else None,
-            capture_lifecycle=capture.lifecycle,
+            ),
+            capture_lifecycle=capture.lifecycle if capture else None,
         )
         if result:
             raise NativeRunRefusal("windowed national pair did not exit cleanly")
@@ -1719,15 +1735,25 @@ class WayneWalk:
             "cold-installed-" + self.stage + ".json",
             {
                 "elapsed_ns": elapsed,
+                "started_monotonic_ns": self.process_start,
+                "installed_monotonic_ns": self.process_start + elapsed,
                 "processes": self.processes[-2:],
                 "state": state.model_dump(mode="json"),
                 "ownership_sha256": hashlib.sha256(self.run.ownership).hexdigest(),
                 "source_head": (self.run.directory / "source-head").read_text().strip(),
             },
         )
-        if self.segment_capture is None or state.foundation_sha256 is None:
-            raise NativeRunRefusal("cold installation has no captured foundation")
-        self.segment_capture.bind_foundation(state.foundation_sha256)
+        marker = self.run.marker()
+        if state.foundation_sha256 is None or (
+            marker.foundation_sha256,
+            marker.campaign_age_ticks,
+            marker.tick_content_hash,
+        ) != (state.foundation_sha256, state.durable_tick, state.tick_content_hash):
+            raise NativeRunRefusal(
+                "cold installation differs from the committed foundation and tail"
+            )
+        if self.segment_capture is not None:
+            self.segment_capture.bind_foundation(state.foundation_sha256)
         self.run._foundation = state.foundation_sha256
 
     def installed(self, channel: ControlChannel, socket_root: Path, state: ControlState) -> None:
@@ -1829,6 +1855,7 @@ class WayneWalk:
                 recovery,
                 self.run.policy,
                 self.run.policy_hash,
+                captured=self.run.mode == "memory_capture",
             )
             if (
                 recovery.previous_scope != self.run.recoveries[-1][1].restored_scope
@@ -1944,7 +1971,11 @@ class WayneWalk:
             raise NativeRunRefusal("terminal partner report has no actual evidence identity")
         self.frame(channel, socket_root, "answer-report")
         channel.perform("archive_report", self.run.timeout)
-        deadline = time.monotonic() + self.run.policy.maximum_archive_catchup_seconds
+        deadline = time.monotonic() + (
+            self.run.policy.maximum_archive_catchup_seconds
+            if self.run.mode == "normal_play"
+            else self.run.timeout
+        )
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -2004,21 +2035,12 @@ class WayneWalk:
                 ("client", client, self.run.client),
             ):
                 self.launch_stage = "authenticate-" + role
-                proc = Path("/proc") / str(process.pid)
-                start = memory.parse_start_time((proc / "stat").read_bytes(), process.pid)
-                if (
-                    proc.stat().st_uid != os.geteuid()
-                    or os.readlink(proc / "exe") != str(binary)
-                    or memory.executable_digest(proc / "exe") != self.run.binaries[binary]
-                ):
-                    raise NativeRunRefusal(
-                        "new owned child identity differs from admitted executable"
-                    )
-                fresh = (process.pid, start, self.run.binaries[binary])
+                fresh = self.run.process_identity(process, binary)
                 if fresh in self.processes:
                     raise NativeRunRefusal("a process-cold segment reused its predecessor")
                 self.processes.append(fresh)
                 self.run.pair_identity.append(fresh)
+            self.run.record_processes(stage)
             self.launch_stage = "install-and-drive"
 
         self.process_start = time.monotonic_ns()
@@ -2039,7 +2061,11 @@ class WayneWalk:
                             "previous owned runtime or client has not exited normally"
                         )
             self.launch_stage = "prepare-memory-capture"
-            self.segment_capture = self.run.capture(directory, fixed_period=None if main else tick)
+            self.segment_capture = (
+                self.run.capture(directory, fixed_period=None if main else tick)
+                if self.run.mode == "memory_capture"
+                else None
+            )
             self.launch_stage = "reauthenticate-native-owner"
             reauthenticate_native_owner(self.run.root, self.run.directory, self.run.owner_fields)
             if not main:
@@ -2092,7 +2118,6 @@ class WayneWalk:
         started: Callable[[subprocess.Popen[bytes], subprocess.Popen[bytes]], None],
         main: bool,
     ) -> None:
-        assert self.segment_capture is not None
         result = drive_pair(
             self.run.runtime,
             self.run.client,
@@ -2112,12 +2137,10 @@ class WayneWalk:
             on_recovery=self.run.on_recovery if main else lambda _state: None,
             on_opened=self.cold_install,
             on_observed=self.observed,
-            cold_window=ColdControlWindow(
-                self.process_start, self.run.policy.maximum_cold_open_seconds
-            ),
+            cold_window=ColdControlWindow(self.process_start, self.run.cold_seconds()),
             on_installed=self.installed,
             play_penultimate_close=main,
-            capture_lifecycle=self.segment_capture.lifecycle,
+            capture_lifecycle=self.segment_capture.lifecycle if self.segment_capture else None,
         )
         if result:
             raise NativeRunRefusal("owned process pair did not exit normally")

@@ -2705,7 +2705,7 @@ def native_join_evidence(directory):
     for phase in ("advances", "cold_reopens", "archive_catchups", "production_reads"):
         for row in timing[phase]:
             row["elapsed_ns"] = 3 if phase == "cold_reopens" else 1
-    timing["run"]["elapsed_ns"] = 1000
+    timing["run"]["elapsed_ns"] = 2_010_000_000
     native = NativeTimings.model_validate(timing)
     records = {}
     actions = []
@@ -3023,9 +3023,15 @@ def native_join_evidence(directory):
         path.chmod(0o600)
         return {"name": name, "sha256": hashlib.sha256(raw).hexdigest()}
 
+    (directory / "inputs.sha256").write_bytes(b"Designed input manifest")
+    (directory / "inputs.sha256").chmod(0o600)
     manifest = {
-        "version": 4,
-        "scope": "native_material_timing_recovery_join_v4",
+        "version": 5,
+        "scope": "native_material_timing_recovery_join_v5",
+        "measurement_mode": "memory_capture",
+        "started_monotonic_ns": 0,
+        "completed_monotonic_ns": native.run.elapsed_ns,
+        "inputs_sha256": hashlib.sha256(b"Designed input manifest").hexdigest(),
         "status": "completed",
         "policy_sha256": h,
         "campaign": campaign,
@@ -3106,11 +3112,13 @@ def test_native_runner_assembles_the_actual_consuming_report_without_state_recon
     manifest, report, native, memory, opening, ticks, records = native_join_evidence(tmp_path)
     run = object.__new__(runner.NativeRun)
     run.directory = tmp_path
+    run.mode = "memory_capture"
     run.policy_hash = manifest["policy_sha256"]
     run.campaign = manifest["campaign"]
     run._foundation = manifest["foundation_sha256"]
     run.periods = 2
-    run.started = time.monotonic_ns() - 10000
+    run.started = 0
+    monkeypatch.setattr(time, "monotonic_ns", lambda: native.run.elapsed_ns)
     run.opening = MaterialRecord.model_validate(records["material-0.json"])
     run.material = [MaterialRecord.model_validate(records[f"material-{i}.json"]) for i in (1, 2)]
     run.boundaries = [PlayableBoundary.model_validate(row) for row in report["boundaries"]]
@@ -3129,6 +3137,11 @@ def test_native_runner_assembles_the_actual_consuming_report_without_state_recon
     ):
         (tmp_path / name).write_bytes(b"Designed custody control")
         raw_memory[key] = hashlib.sha256((tmp_path / name).read_bytes()).hexdigest()
+
+    (tmp_path / "source-before.sha256").write_bytes(
+        (tmp_path / "combined-memory-source.sha256").read_bytes()
+    )
+    (tmp_path / "normal-binaries.json").write_bytes(b"Designed executable roster")
 
     def refuse_reconstruction(*_args, **_kwargs):
         raise AssertionError("report assembly must consume immutable native facts")
@@ -3334,7 +3347,7 @@ def test_native_cli_requires_real_material_and_memory_evidence(monkeypatch, caps
     with pytest.raises(SystemExit) as error:
         main()
     assert error.value.code == 2
-    assert "native qualification requires" in capsys.readouterr().err
+    assert "unrecognized arguments: --qualify-native" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -3460,141 +3473,6 @@ def test_native_opening_authenticates_its_exact_county_roster(tmp_path, fault):
     manifest["opening"]["sha256"] = hashlib.sha256(raw).hexdigest()
     with pytest.raises(ValueError):
         native_join_result(tmp_path, manifest, report, native, memory, opening, ticks)
-
-
-def test_native_evaluator_main_consumes_joined_components_and_enforces_refusal(
-    tmp_path, monkeypatch, capsys
-):
-    """Execute the real evaluator with Designed wires, never claim native play."""
-    import json
-    import sys
-
-    from tools.devtools.national_storage_qualification import main
-
-    manifest, report, native, memory, _opening, _ticks, records = native_join_evidence(tmp_path)
-    chosen = tmp_path / "policy.json"
-    chosen.write_text(json.dumps(policy().model_dump(mode="json")))
-    policy_hash = hashlib.sha256(chosen.read_bytes()).hexdigest()
-    manifest["policy_sha256"] = report["policy_sha256"] = policy_hash
-
-    def bind_policy(value):
-        if isinstance(value, dict):
-            for key, child in value.items():
-                if key == "policy_sha256":
-                    value[key] = policy_hash
-                else:
-                    bind_policy(child)
-        elif isinstance(value, list):
-            for child in value:
-                bind_policy(child)
-
-    for artifact in (
-        manifest["controls"],
-        manifest["opening"],
-        *manifest["boundaries"],
-        *manifest["advances"],
-        *manifest["archives"],
-        *manifest["recoveries"],
-        *manifest["aid_originals"],
-    ):
-        bind_policy(records[artifact["name"]])
-        if artifact["name"].startswith("advance-"):
-            period = records[artifact["name"]]["committed_tail"]["resolve_tick"]
-            records[artifact["name"]]["material_record_sha256"] = manifest["boundaries"][
-                period - 1
-            ]["sha256"]
-        raw = json.dumps(records[artifact["name"]]).encode()
-        (tmp_path / artifact["name"]).write_bytes(raw)
-        artifact["sha256"] = hashlib.sha256(raw).hexdigest()
-    memory_raw = memory.model_dump(mode="json")
-    memory_raw["policy_sha256"] = policy_hash
-    capture_files = {
-        "ownership": ("ownership_record_sha256", b"Designed ownership control\n"),
-        "combined-memory-source.sha256": ("source_manifest_sha256", b"Designed source control\n"),
-        "combined-memory-executables.json": (
-            "executable_manifest_sha256",
-            json.dumps(
-                {
-                    "version": 1,
-                    "roles": {
-                        role: ["ab" * 32]
-                        for role in ("native-client", "engine-runtime", "game-postgresql")
-                    },
-                }
-            ).encode(),
-        ),
-        "combined-memory-sampler-source.py": (
-            "capture_implementation_sha256",
-            b"# Designed sampler control\n",
-        ),
-        "combined-memory-tooling.json": (
-            "tooling_report_sha256",
-            json.dumps(
-                {
-                    "version": 1,
-                    "compilation_peak_rss_upper_bound_bytes": None,
-                    "external_test_tooling_peak_rss_upper_bound_bytes": None,
-                    "scope": "separate_tooling_not_running_game_compliance",
-                }
-            ).encode(),
-        ),
-    }
-    for name, (field, raw) in capture_files.items():
-        (tmp_path / name).write_bytes(raw)
-        memory_raw[field] = hashlib.sha256(raw).hexdigest()
-        if field in manifest:
-            manifest[field] = memory_raw[field]
-    _storage, _old_native, baseline, opening, ticks, reopens = smoke_evidence()
-    inputs = {
-        "native-report.json": manifest,
-        "playable.json": report,
-        "timings.json": native.model_dump(mode="json"),
-        "memory.json": memory_raw,
-        "baseline.json": baseline,
-        "opening.json": opening,
-        **{f"tick-{n}.json": row for n, row in enumerate(ticks, 1)},
-        **{f"reopen-{n}.json": row for n, row in enumerate(reopens, 1)},
-    }
-    for name, value in inputs.items():
-        (tmp_path / name).write_text(json.dumps(value))
-        (tmp_path / name).chmod(0o600)
-    arguments = [
-        "measure",
-        "--policy",
-        str(chosen),
-        "--baseline",
-        str(tmp_path / "baseline.json"),
-        "--opening",
-        str(tmp_path / "opening.json"),
-        "--ticks",
-        *(str(tmp_path / f"tick-{n}.json") for n in (1, 2)),
-        "--reopens",
-        *(str(tmp_path / f"reopen-{n}.json") for n in (1, 2)),
-        "--timings",
-        str(tmp_path / "timings.json"),
-        "--playable-report",
-        str(tmp_path / "playable.json"),
-        "--combined-memory-report",
-        str(tmp_path / "memory.json"),
-        "--native-report",
-        str(tmp_path / "native-report.json"),
-        "--qualify-native",
-    ]
-    monkeypatch.setattr(sys, "argv", arguments)
-    assert main() == 0
-    result = json.loads(capsys.readouterr().out)
-    assert result["qualification_report_version"] == 7
-    assert result["native_window"]["status"] == "qualified"
-    assert result["native_window"]["enjoyment_status"] == "unqualified"
-    assert result["combined_running_game_memory"]["actual_52_period_status"] == "incomplete"
-    inputs["native-report.json"]["status"] = "incomplete"
-    records["native-controls.json"]["status"] = "incomplete"
-    raw = json.dumps(records["native-controls.json"]).encode()
-    (tmp_path / "native-controls.json").write_bytes(raw)
-    manifest["controls"]["sha256"] = hashlib.sha256(raw).hexdigest()
-    (tmp_path / "native-report.json").write_text(json.dumps(manifest))
-    assert main() == 1
-    assert json.loads(capsys.readouterr().out)["native_window"]["status"] == "incomplete"
 
 
 def test_cash_qualifies_practice_without_certifying_consumed_food():
@@ -4131,3 +4009,11 @@ def test_extra_mixed_recovery_has_its_own_typed_marker_epoch_and_budget(tmp_path
     else:
         with pytest.raises(ValueError, match="mixed.*recovery"):
             e.verify_mixed_recovery(prior, action, original, receipt, policy(), "ab" * 32)
+
+
+def test_normal_native_member_measures_ordinary_play_without_a_sampler(tmp_path):
+    manifest, report, timing, _memory, opening, ticks, _ = native_join_evidence(tmp_path)
+    manifest["measurement_mode"] = "normal_play"
+    result = native_join_result(tmp_path, manifest, report, timing, None, opening, ticks)
+    assert result["status"] == "qualified"
+    assert result["combined_memory_status"] == "not_measured"

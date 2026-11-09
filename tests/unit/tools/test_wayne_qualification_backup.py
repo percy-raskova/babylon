@@ -576,6 +576,7 @@ def test_retirement_needs_both_stopped_reads_and_reread_source_seals(
     (tmp_path / "backup").mkdir(mode=0o700)
     directory = backup.Evidence(evidence)
     saved = {"campaign": "campaign", "period": 2}
+    directory.publish_json("completed-member.json", {"scope": "Designed custody input"})
     directory.publish_json("functional-terminal.json", saved)
     directory.publish("ownership", b"owner\n")
     payloads, witness = fixture()

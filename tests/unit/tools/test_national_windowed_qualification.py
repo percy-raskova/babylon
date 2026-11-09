@@ -819,6 +819,7 @@ def test_real_smoke_budget_refusal_keeps_wall_diagnosis_and_divergence(
 
     run = object.__new__(runner.NativeRun)
     run.directory = tmp_path
+    run.mode = "normal_play"
     run.wayne_profile = "smoke-01"
     diagnoses: list[dict[str, Any] | None] = []
     refusals: list[runner.NativeRunRefusal] = []

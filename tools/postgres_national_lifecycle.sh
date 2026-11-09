@@ -6,6 +6,10 @@ wayne_media() {
   (cd "$REPO_ROOT" && mise exec -- uv run --frozen python -m tools.devtools.wayne_qualification_storage     "$operation" --root "$REPO_ROOT" --evidence "$BABYLON_STORAGE_REPORT_DIRECTORY"     --profile "$BABYLON_WAYNE_PROFILE" --focus "$focus"     --periods "${BABYLON_NATIONAL_STORAGE_PERIODS:-}" --canary "$CANARY" "$@")
 }
 
+wayne_pair() {
+  (cd "$REPO_ROOT" && mise exec -- uv run --frozen python -m tools.devtools.national_native_pair "$1" "$BABYLON_WAYNE_PROFILE")
+}
+
 national_success_selection() {
   NATIONAL_SUCCESS_DISPOSITION="${BABYLON_NATIONAL_SUCCESS_DISPOSITION-cleanup}"
   case "$NATIONAL_SUCCESS_DISPOSITION" in
@@ -162,6 +166,10 @@ national_begin() {
   printf '%s\n' "$NATIONAL_QUALIFY_TIMING" > "$BABYLON_STORAGE_REPORT_DIRECTORY/timing-qualification-mode"
   printf '%s\n' "$NATIONAL_STORAGE_QUALIFICATION" > "$BABYLON_STORAGE_REPORT_DIRECTORY/storage-qualification-mode"
   national_reproducibility
+  if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+    BABYLON_NATIONAL_STORAGE_CAMPAIGN="$(wayne_pair admit)" || die "native pair declaration refused"
+    export BABYLON_NATIONAL_STORAGE_CAMPAIGN
+  fi
   cmp -- "$REPO_ROOT/rust/crates/babylon-persistence/tests/national_storage_encoded_measurement.rs" "$BABYLON_STORAGE_REPORT_DIRECTORY/measurement-source.rs" || die "measurement source changed during capture"
   cmp -- "$REPO_ROOT/rust/crates/babylon-persistence/tests/fixtures/national_capture.rs" "$BABYLON_STORAGE_REPORT_DIRECTORY/national-input-source.rs" || die "national input source changed during capture"
   cmp -- "$REPO_ROOT/tools/devtools/national_storage_qualification.py" "$BABYLON_STORAGE_REPORT_DIRECTORY/national_storage_qualification.py"
@@ -253,7 +261,9 @@ for name in names:
         raise SystemExit("National startup admission refused: " + name) from None
 PY_STARTUP
   export BABYLON_NATIONAL_STORAGE_CAMPAIGN
-  BABYLON_NATIONAL_STORAGE_CAMPAIGN="$(cat /proc/sys/kernel/random/uuid)"
+  if [ -z "${BABYLON_WAYNE_PROFILE:-}" ]; then
+    BABYLON_NATIONAL_STORAGE_CAMPAIGN="$(cat /proc/sys/kernel/random/uuid)"
+  fi
   printf '%s\n' "$BABYLON_NATIONAL_STORAGE_CAMPAIGN" > "$BABYLON_STORAGE_REPORT_DIRECTORY/campaign"
 }
 
@@ -398,9 +408,13 @@ national_verify_success() {
     periods="$(national_period_count)" || return 1
     printf -v stage 'tick-%02d-reopened.json' "$periods"
     [ -s "$BABYLON_STORAGE_REPORT_DIRECTORY/$stage" ] || return 1
-    [ -s "$BABYLON_STORAGE_REPORT_DIRECTORY/qualification.json" ] || return 1
     [ -s "$BABYLON_STORAGE_REPORT_DIRECTORY/native-timings.json" ] || return 1
-    (cd "$BABYLON_STORAGE_REPORT_DIRECTORY" && sha256sum --check evaluated-evidence.sha256) || return 1
+    if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+      wayne_pair verify-member || return 1
+    else
+      [ -s "$BABYLON_STORAGE_REPORT_DIRECTORY/qualification.json" ] || return 1
+      (cd "$BABYLON_STORAGE_REPORT_DIRECTORY" && sha256sum --check evaluated-evidence.sha256) || return 1
+    fi
 
   fi
   printf '%s\n' "$identity" > "$BABYLON_STORAGE_REPORT_DIRECTORY/success-proof"
@@ -449,7 +463,7 @@ national_source_paths() {
   done
   find content -type f -print0
   national_input_paths
-  printf '%s\0' tools/run_rust_postgres.sh tools/postgres_national_lifecycle.sh tools/run_observer_session.py tools/devtools/national_windowed_qualification.py tools/devtools/national_native_evidence.py tools/devtools/national_native_runner.py tools/devtools/national_game_memory.py tools/devtools/wayne_qualification_storage.py tools/devtools/wayne_qualification_backup.py tools/devtools/national_storage_qualification.py tools/devtools/national_storage_snapshot.py tools/devtools/national_storage_relations.sql
+  printf '%s\0' tools/run_rust_postgres.sh tools/postgres_national_lifecycle.sh tools/run_observer_session.py tools/devtools/national_windowed_qualification.py tools/devtools/national_native_evidence.py tools/devtools/national_native_pair.py tools/devtools/national_native_runner.py tools/devtools/national_game_memory.py tools/devtools/wayne_qualification_storage.py tools/devtools/wayne_qualification_backup.py tools/devtools/national_storage_qualification.py tools/devtools/national_storage_snapshot.py tools/devtools/national_storage_relations.sql
 }
 
 national_source_manifest() {
@@ -520,6 +534,10 @@ national_verify_source_capture() {
 
 national_measure() {
   (cd "$BABYLON_STORAGE_REPORT_DIRECTORY" && sha256sum --check operator.sha256) || return 1
+  if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+    national_verify_source_capture && wayne_pair member && national_verify_source_capture || return 1
+    return 0
+  fi
   local periods tick stage routine_periods
   periods="$(national_period_count)" || return 1
   routine_periods="$(mise exec -- uv run --frozen python -c '
@@ -587,49 +605,7 @@ print(value)
     done
     memory_flags+=(--combined-memory-report "$BABYLON_STORAGE_REPORT_DIRECTORY/combined-memory.json")
   fi
-  local -a native_flags=() native_files=() evaluator_command=()
-  local native_report="$BABYLON_STORAGE_REPORT_DIRECTORY/native-window-evidence.json"
-  evaluator_command=(python "$BABYLON_STORAGE_REPORT_DIRECTORY/national_storage_qualification.py")
-  if [ -e "$native_report" ] || [ -L "$native_report" ]; then
-    [ "$BABYLON_NATIONAL_CAPTURE_MODE" = playable-aid ] &&
-      [ "${#memory_files[@]}" -gt 0 ] || return 1
-    # The native evidence models import the canonical typed reader contracts.
-    # Execute that same frozen evaluator in the project module context; verify
-    # both its captured bytes and complete source closure before/after reads.
-    cmp -- "$REPO_ROOT/tools/devtools/national_storage_qualification.py" \
-      "$BABYLON_STORAGE_REPORT_DIRECTORY/national_storage_qualification.py" || return 1
-    national_verify_source_capture || return 1
-    local native_names artifact
-    native_names="$(cd "$REPO_ROOT" && mise exec -- uv run --frozen python - "$native_report" <<'PY_NATIVE_ROSTER'
-import sys
-from pathlib import Path
-from tools.devtools.national_native_evidence import MANIFEST_BYTES,NativeRunEvidence,private_bytes
-from tools.devtools.national_storage_qualification import strict_json_bytes
-evidence=NativeRunEvidence.model_validate(strict_json_bytes(private_bytes(Path(sys.argv[1]),MANIFEST_BYTES)))
-for artifact in (evidence.controls,evidence.opening,*evidence.boundaries,*evidence.advances,*evidence.archives,*evidence.recoveries,*evidence.aid_originals):
-    print(artifact.name)
-PY_NATIVE_ROSTER
-    )" || return 1
-    native_files+=("$native_report")
-    while IFS= read -r artifact; do
-      [ -n "$artifact" ] && [ -s "$BABYLON_STORAGE_REPORT_DIRECTORY/$artifact" ] &&
-        [ ! -L "$BABYLON_STORAGE_REPORT_DIRECTORY/$artifact" ] || return 1
-      native_files+=("$BABYLON_STORAGE_REPORT_DIRECTORY/$artifact")
-    done <<< "$native_names"
-    native_flags+=(--native-report "$native_report")
-    if [ "${BABYLON_WAYNE_PROFILE:-}" = walk-01 ]; then
-      native_flags+=(--qualify-wayne-walk)
-      local evidence="$BABYLON_STORAGE_REPORT_DIRECTORY"
-      local -a walk_inputs=("$evidence"/{pending-before-cold,pending-after-cold,mixed-pending-before-reopen,mixed-pending-after-reopen,completed-before-cold,completed-after-cold,before-history-archive-return,after-history-archive-return,walk-wall,functional-terminal,functional-terminal-reopened}.json "$evidence"/cold-installed-*.json "$evidence"/walk-p*-{committed,installed}.json "$evidence"/segment-{opening,completed}/{native-controls,segment-memory,combined-memory-executables,combined-memory-tooling,policy}.json "$evidence"/segment-{opening,completed}/{ownership,combined-memory-source.sha256,combined-memory-sampler-source.py} "$evidence"/../raw/*.{json,png})
-      for artifact in "${walk_inputs[@]}"; do
-        [ -s "$artifact" ] && [ ! -L "$artifact" ] || return 1
-      done
-      native_files+=("${walk_inputs[@]}")
-    else
-      native_flags+=(--qualify-native)
-    fi
-    evaluator_command=(python -c 'from tools.devtools.national_storage_qualification import main; raise SystemExit(main())')
-  fi
+  local -a evaluator_command=(python "$BABYLON_STORAGE_REPORT_DIRECTORY/national_storage_qualification.py")
   local evidence_manifest="$BABYLON_STORAGE_REPORT_DIRECTORY/evaluated-evidence.sha256"
   [ ! -e "$evidence_manifest" ] && [ ! -e "$evidence_manifest.partial" ] || return 1
   # Authenticate the exact inputs before evaluation, then prove they did not
@@ -637,7 +613,7 @@ PY_NATIVE_ROSTER
   sha256sum "$BABYLON_STORAGE_REPORT_DIRECTORY/schema-baseline.json" \
     "$BABYLON_STORAGE_REPORT_DIRECTORY/opening-created.json" \
     "${ticks[@]}" "${reopens[@]}" \
-    "$BABYLON_STORAGE_REPORT_DIRECTORY/native-timings.json" "${gameplay[@]}" "${progress[@]}" "${memory_files[@]}" "${native_files[@]}" \
+    "$BABYLON_STORAGE_REPORT_DIRECTORY/native-timings.json" "${gameplay[@]}" "${progress[@]}" "${memory_files[@]}" \
     > "$evidence_manifest.partial" || return 1
   # Matching routine runs enforce the separate smoke contract; explicit full
   # timing qualification remains independent. Explicit storage/save modes also
@@ -648,10 +624,9 @@ PY_NATIVE_ROSTER
     --baseline "$BABYLON_STORAGE_REPORT_DIRECTORY/schema-baseline.json" \
     --opening "$BABYLON_STORAGE_REPORT_DIRECTORY/opening-created.json" \
     --ticks "${ticks[@]}" --reopens "${reopens[@]}" \
-    --timings "$BABYLON_STORAGE_REPORT_DIRECTORY/native-timings.json" "${timing_flags[@]}" "${storage_flags[@]}" "${playable_flags[@]}" "${memory_flags[@]}" "${native_flags[@]}" \
+    --timings "$BABYLON_STORAGE_REPORT_DIRECTORY/native-timings.json" "${timing_flags[@]}" "${storage_flags[@]}" "${playable_flags[@]}" "${memory_flags[@]}" \
     > "$BABYLON_STORAGE_REPORT_DIRECTORY/qualification.json.partial" || return 1
   sha256sum --check "$evidence_manifest.partial" || return 1
-  if [ "${#native_flags[@]}" -gt 0 ]; then national_verify_source_capture || return 1; fi
   (cd "$BABYLON_STORAGE_REPORT_DIRECTORY" && sha256sum --check operator.sha256) || return 1
   mv -- "$BABYLON_STORAGE_REPORT_DIRECTORY/qualification.json.partial" "$BABYLON_STORAGE_REPORT_DIRECTORY/qualification.json"
   mise exec -- uv run --frozen python -c \
@@ -701,6 +676,7 @@ PY_FAILURE
 national_retain_success() {
   [[ "${NATIONAL_DATABASE_OID:-}" =~ ^[1-9][0-9]*$ ]] || return 1
   national_verify_success || return 1
+  if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then return 0; fi
   local receipt="$BABYLON_STORAGE_REPORT_DIRECTORY/native-handoff.json"
   [ ! -e "$receipt" ] && [ ! -L "$receipt" ] || return 1
   mise exec -- uv run --frozen python - "$BABYLON_STORAGE_REPORT_DIRECTORY" <<'PY_RECEIPT'
@@ -774,6 +750,13 @@ national_native_open() {
       fi
       [ -z "${BABYLON_WAYNE_PROFILE:-}" ] || [ "$BABYLON_WAYNE_PROFILE" = "${record[11]}" ] ||
         die "media profile differs from the exact active record"
+      local member_dir member_mode
+      member_dir="${record[10]%/evidence}"
+      member_mode="${member_dir##*/}"
+      case "$member_mode" in normal_play|memory_capture) ;; *) die "retained native member lacks measurement purpose";; esac
+      [ -z "${BABYLON_NATIVE_MEASUREMENT_MODE:-}" ] || [ "$BABYLON_NATIVE_MEASUREMENT_MODE" = "$member_mode" ] ||
+        die "retained native purpose differs"
+      export BABYLON_NATIVE_MEASUREMENT_MODE="$member_mode"
       export BABYLON_WAYNE_PROFILE="${record[11]}" BABYLON_POSTGRES_IMAGE_ID="${record[6]}"
       ;;
     *) die "retained ownership version is incomplete or unsupported" ;;
@@ -792,8 +775,10 @@ national_native_open() {
     [[ "$BABYLON_STORAGE_REPORT_DIRECTORY" = /* ]] || die "retained identity malformed"
   [ "$(cat "$BABYLON_STORAGE_REPORT_DIRECTORY/campaign")" = "$campaign" ] || die "existing campaign differs from retained evidence"
   [ "$(cat "$BABYLON_STORAGE_REPORT_DIRECTORY/capture-mode")" = playable-aid ] || die "retained campaign is not playable"
-  [ -f "$BABYLON_STORAGE_REPORT_DIRECTORY/native-handoff.json" ] &&
+  if [ -z "${BABYLON_WAYNE_PROFILE:-}" ]; then
+    [ -f "$BABYLON_STORAGE_REPORT_DIRECTORY/native-handoff.json" ] &&
     [ ! -L "$BABYLON_STORAGE_REPORT_DIRECTORY/native-handoff.json" ] || die "successful retention receipt required"
+  fi
   export BABYLON_STORAGE_REPORT_DIRECTORY
   # Reuse captured policy for the same explicit period request, never a new default.
   BABYLON_NATIONAL_STORAGE_PERIODS="$(mise exec -- uv run --frozen python - "$BABYLON_STORAGE_REPORT_DIRECTORY/native-timings.json" <<'PY_PERIODS'
@@ -813,6 +798,7 @@ PY_PERIODS
   export BABYLON_RUNTIME_DSN="postgresql://$NATIONAL_WRITER:$CANARY@127.0.0.1:$PORT/$NATIONAL_DATABASE"
   export BABYLON_OBSERVER_DSN="postgresql://national_observer_${CANARY:0:12}:$CANARY@127.0.0.1:$PORT/$NATIONAL_DATABASE"
   export BABYLON_READER_DSN="postgresql://national_reader_${CANARY:0:12}:$CANARY@127.0.0.1:$PORT/$NATIONAL_DATABASE"
+  if [ -z "${BABYLON_WAYNE_PROFILE:-}" ]; then
   mise exec -- uv run --frozen python - "$BABYLON_STORAGE_REPORT_DIRECTORY" "$campaign" <<'PY_VERIFY' || return 1
 import hashlib,json,sys
 from pathlib import Path
@@ -827,6 +813,7 @@ for name,digest in receipt['evidence_sha256'].items():
 if set(receipt['evidence_sha256']) != expected:
     raise SystemExit('retained receipt evidence incomplete')
 PY_VERIFY
+  fi
   if [ "$disposition" = backup-retire ]; then
     (cd "$REPO_ROOT" && mise exec -- uv run --frozen python - "$REPO_ROOT" "$BABYLON_STORAGE_REPORT_DIRECTORY" "$campaign" "$BABYLON_NATIONAL_STORAGE_PERIODS" <<'PY_BACKUP'
 import sys

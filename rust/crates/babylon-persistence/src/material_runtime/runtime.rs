@@ -3,6 +3,7 @@
 use super::{envelope, observer_actions, open, runtime_checkpoint, MaterialComponentIdentity};
 use crate::organizer_runtime::OrganizerBodyAttribution;
 use babylon_graph::stable_element::StableElementResolver;
+use babylon_practice_contract::OrganizerPeriodJournal;
 use babylon_practice_contract::OrganizerPeriodJournalEntries;
 use babylon_tick::material_world::DecodedCityPdAttemptEvidence;
 use babylon_tick::material_world::DecodedMaterialOrganizerEvidence;
@@ -308,18 +309,45 @@ impl MaterialRuntimeFoundation {
         Self::from_parts(graph, graph_foundation, admitted, register, spec)
     }
 
-    /// Capture an explicitly composed current register, including organizer authority.
+    /// Capture the initial register authorized by the economic source.
     /// # Errors
-    /// Refuses a non-foundation register or any invalid captured source identity.
-    pub(crate) fn capture_register(
+    /// Refuses invalid captured source identities or opening graph/material composition.
+    pub(crate) fn capture_economic_opening(
         graph: ReplayTickSession<HypergraphStore>,
         bundle: FoundationContentBundle,
-        register: MaterialWorldRegister,
         spec: MaterialFoundationSpec,
     ) -> Result<Self, MaterialRuntimeError> {
         validate_foundation_spec(&spec)?;
         let graph_foundation = CampaignFoundation::capture(&graph, bundle)?;
         let admitted = admitted_material(&graph_foundation, &spec)?;
+        let source = graph_foundation
+            .content_bundle()
+            .economic_catalog()
+            .ok_or(MaterialRuntimeError::FoundationMismatch)?;
+        let mut register =
+            MaterialWorldRegister::try_new(&admitted.catalog, 0, admitted.state.clone())?;
+        if let Some((config, state)) = &admitted.organizer {
+            register = register.with_organizer(
+                &admitted.catalog,
+                config.clone(),
+                state.clone(),
+                OrganizerPeriodJournal::empty(),
+            )?;
+        }
+        if let Some(venue) = source.initial_public_venue().map_err(|error| {
+            MaterialRuntimeError::Graph(RustPersistenceRuntimeError::EconomicCatalog(error))
+        })? {
+            register = register.with_public_venue(&admitted.catalog, venue, None)?;
+        }
+        if let Some(city_pd) = source
+            .initial_city_pd(&admitted.catalog, register.state(), graph.stable_resolver())
+            .map_err(|error| {
+                MaterialRuntimeError::Graph(RustPersistenceRuntimeError::EconomicCatalog(error))
+            })?
+        {
+            register =
+                register.with_city_pd(&admitted.catalog, city_pd, graph.stable_resolver())?;
+        }
         Self::from_parts(graph, graph_foundation, admitted, register, spec)
     }
 

@@ -1,10 +1,10 @@
+use super::envelope::CanonicalMaterialFoundation;
 use super::runtime::{MaterialRuntimeError, MaterialRuntimeFoundation, StoredMaterialFoundation};
 use crate::economic_catalog::CapturedEconomicCatalog;
 use crate::foundation::{CampaignFoundation, FoundationContentBundle};
 use crate::identity::CampaignId;
 use crate::michigan_material::MichiganDeliveryPreset;
 use crate::michigan_material::MichiganMaterialCatalog;
-use crate::runtime;
 use crate::simulation_experiment::SimulationExperimentV1;
 use babylon_bsl::structural_verbs::CollectingSink;
 use babylon_graph::hypergraph_store::HypergraphStore;
@@ -778,22 +778,29 @@ fn captured_source_refuses_changed_tick_zero_organizer_agreements() {
         OrganizerPeriodJournal::empty(),
     )
     .expect("the fixture builder accepts the authored options");
-    let graph = runtime::reconstruct_graph_foundation_session(original.graph_foundation()).expect(
-        "the fixture call `reconstruct_graph_foundation_session` succeeds for the authored inputs",
-    );
-    assert!(MaterialRuntimeFoundation::capture_register(
-        graph,
-        FoundationContentBundle::decode(
-            original
-                .graph_foundation()
-                .content_bundle()
-                .canonical_bytes(),
-        )
-        .expect("the committed canonical bytes decode"),
-        altered_register,
-        original.spec().clone(),
+    let mut stored = stored_copy(&original);
+    stored.initial_register_bytes = altered_register.canonical_bytes().to_vec();
+    let expected = CanonicalMaterialFoundation::new(
+        stored.spec.preset_id.as_bytes(),
+        stored.spec.duration,
+        &stored.spec.content_digest,
+        original.graph_foundation().canonical_bytes(),
+        &stored.initial_register_bytes,
     )
-    .is_err());
+    .expect("the changed register remains canonically framed")
+    .digest();
+    stored.foundation_digest = expected;
+    assert!(
+        matches!(
+            super::reconstruct_material_foundation(
+                stored,
+                persisted_graph_copy(original.graph_foundation()),
+                expected,
+            ),
+            Err(MaterialRuntimeError::FoundationMismatch)
+        ),
+        "captured source must reject changed agreements even under a consistent composite digest"
+    );
 }
 
 #[test]

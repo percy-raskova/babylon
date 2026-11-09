@@ -1331,6 +1331,16 @@ def wait_ready(channel: ControlChannel, timeout: float, *, organizer: bool) -> C
     while time.monotonic() < deadline:
         current = channel.observe(max(0.001, deadline - time.monotonic()))
         if (
+            not organizer
+            and current.scope_epoch is not None
+            and current.splash_visible
+            and current.opening_stage == "Warning"
+        ):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            current = channel.perform("continue_warning", remaining)
+        if (
             current.phase in {"Ready", "Complete"}
             and not current.lifecycle_pending
             and not current.advance_pending
@@ -1576,7 +1586,7 @@ def drive_pair(
                                 "native opening navigation deadline exceeded",
                                 reason="navigation_deadline",
                             )
-                        if current.opening_stage == "Warning":
+                        if current.splash_visible and current.opening_stage == "Warning":
                             channel.perform("continue_warning", remaining)
                         elif current.opening_stage == "Title":
                             channel.perform("continue_title", remaining)

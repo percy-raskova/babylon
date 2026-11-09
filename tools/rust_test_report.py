@@ -926,4 +926,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    commands_using_shared_artifacts = {"run", "rerun-failed", "coverage"}
+    if sys.argv[1:2] and sys.argv[1] in commands_using_shared_artifacts:
+        # A single Cargo invocation protects every coverage phase and nextest's
+        # shared JUnit path from cleanup through copying the final receipt.
+        tools_dir = Path(__file__).resolve().parent
+        env = {**os.environ, "PATH": f"{tools_dir}:{os.environ['PATH']}"}
+        result = subprocess.run(  # noqa: S603, S607 -- repository-owned Cargo subcommand
+            ["cargo", "babylon-report", "--", *sys.argv[1:]], cwd=RUST_ROOT, env=env, check=False
+        )
+        raise SystemExit(result.returncode)
     raise SystemExit(main())

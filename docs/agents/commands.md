@@ -34,6 +34,31 @@ not copy reference data or start Postgres. Data tasks check their own
 inputs. Nested worktrees must exclude the parent checkout's Mise configuration.
 `mise config ls` shows the files loaded.
 
+Managed Babylon builds keep executables in each checkout's `rust/target`.
+One checkout at a time uses the media mount's intermediate directory. Switching
+checkouts rebuilds from the repository's compiler cache. The lease covers test
+execution and all coverage reports. The local dynamic client runs under its own
+profile. For full workspace debugger symbols, run `cargo build --profile
+full-debug` from `rust/`.
+
+`mise run rust:build-budget` shows whether the directory is busy, the last recorded idle owner,
+intermediate bytes, checkout target bytes, and compiler cache bytes.
+
+The `pinned_files` inventory checks launch manifests and later operator build receipts
+in run directories directly under this checkout's `reports/test-results`.
+It checks the native runtime and client separately. The launcher checks both
+digests against one receipt and checks the source and campaign before launch.
+
+`referenced_bytes` counts allocated bytes at those paths, including digest mismatches.
+`matching_bytes` counts the subset that matches at least one recorded digest.
+Both totals count hard links once. An incomplete check shows `null`.
+These bytes are part of the checkout target total.
+
+To preview cleanup, run
+`mise run rust:build-budget -- prune`. Add `--apply` to remove idle managed
+intermediates. The manager requires 40 GiB free and retains up to 64 GiB of
+intermediates between commands.
+
 ```bash
 mise run check:static                 # Retained static contracts, lint, types, lock
 mise run check                        # Static checks, governance, and Python unit tests

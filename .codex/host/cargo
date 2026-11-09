@@ -179,6 +179,23 @@ fi
 
 managed_target_dir="$(codex_rust_target_dir_for_repository "$repository" "$repository_root")"
 managed_build_dir="$managed_target_dir"
+nested_coverage=0
+if [ "$repository" = babylon ]; then
+  cache_root="$(codex_rust_babylon_cache_root)"
+  tools_root="$(codex_rust_babylon_tools_root)"
+  budget_root="$CODEX_RUST_BUDGET_ROOT"
+  managed_build_dir="$budget_root/slot/build"
+  codex_rust_babylon_validate_storage
+  if [ "${CODEX_RUST_SCOPE_ACTIVE:-}" = 1 ] && [ -n "${CARGO_WORKTREE_BUDGET_SESSION:-}" ] &&
+     [ "${CARGO_BUILD_BUILD_DIR:-}" = "$managed_build_dir/llvm-cov-target" ]; then
+    # llvm-cov 0.9 passes these two exact derived paths when invoking Cargo.
+    # The budget manager authenticates this nested session before execution.
+    nested_coverage=1
+  fi
+else
+  cache_root="$(codex_rust_cache_root)"
+  tools_root="$(codex_rust_tools_root)"
+fi
 managed_target_parent="$(dirname -- "$managed_target_dir")"
 if [ ! -d "$managed_target_parent" ]; then
   echo "cargo: managed target parent does not exist: $managed_target_parent" >&2
@@ -204,11 +221,12 @@ if [ -e "$managed_target_dir" ]; then
     exit 64
   fi
 fi
-if [ "${CARGO_TARGET_DIR+x}" = x ] && [ "$CARGO_TARGET_DIR" != "$managed_target_dir" ]; then
+if [ "${CARGO_TARGET_DIR+x}" = x ] && [ "$CARGO_TARGET_DIR" != "$managed_target_dir" ] &&
+   { [ "$nested_coverage" != 1 ] || [ "$CARGO_TARGET_DIR" != "$managed_target_dir/llvm-cov-target" ]; }; then
   echo "cargo: CARGO_TARGET_DIR must be $managed_target_dir in this worktree" >&2
   exit 64
 fi
-if [ "${CARGO_BUILD_BUILD_DIR+x}" = x ] && [ "$CARGO_BUILD_BUILD_DIR" != "$managed_build_dir" ]; then
+if [ "${CARGO_BUILD_BUILD_DIR+x}" = x ] && [ "$CARGO_BUILD_BUILD_DIR" != "$managed_build_dir" ] && [ "$nested_coverage" != 1 ]; then
   echo "cargo: CARGO_BUILD_BUILD_DIR must be $managed_build_dir in this worktree" >&2
   exit 64
 fi
@@ -221,7 +239,6 @@ for prohibited_target_environment in CARGO_BUILD_TARGET_DIR; do
 done
 
 slice="$(codex_rust_slice_for_repository "$repository")"
-cache_root="$(codex_rust_cache_root)"
 case "$cache_root" in
   *[!A-Za-z0-9_./-]*)
     echo "cargo: cache root contains unsupported characters: $cache_root" >&2
@@ -230,7 +247,6 @@ case "$cache_root" in
 esac
 cache_dir="$(codex_rust_cache_dir "$repository" "$cache_root")"
 server_socket="$(codex_rust_server_socket "$repository" "$cache_root")"
-tools_root="$(codex_rust_tools_root)"
 sccache_bin="$(codex_rust_sccache_bin "$tools_root")"
 socket_length="$(LC_ALL=C printf '%s' "$server_socket" | wc -c | tr -d ' ')"
 if [ "$socket_length" -gt 107 ]; then
@@ -264,8 +280,34 @@ case "${1:-}" in
     ;;
 esac
 
+# Only inspect the subcommand position. A test filter or binary name of
+# "metadata" must never opt an executing command out of the lease.
+inspection_command() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --quiet|-q|--verbose|-v|-vv|-vvv|--locked|--offline|--frozen|--color=*|-C?*|--directory=*) shift ;;
+      --color|-C|--directory) [ "$#" -ge 2 ] || return 1; shift 2 ;;
+      metadata|locate-project) return 0 ;;
+      -V|--version) [ "$#" -eq 1 ]; return ;;
+      nextest|llvm-cov) [ "$#" -eq 2 ] && [ "$2" = --version ]; return ;;
+      *) return 1 ;;
+    esac
+  done
+  return 1
+}
+inspect_only=0
+# Nested calls still authenticate against their enclosing lease.
+if [ -z "${CARGO_WORKTREE_BUDGET_SESSION:-}" ] && inspection_command "$@"; then inspect_only=1; fi
 expect_jobs=0
+expect_coverage_target=0
 for cargo_argument in "$@"; do
+  if [ "$expect_coverage_target" -eq 1 ]; then
+    [ "$cargo_argument" = "$managed_target_dir/llvm-cov-target" ] || {
+      echo "cargo: unexpected nested coverage target: $cargo_argument" >&2; exit 64
+    }
+    expect_coverage_target=0
+    continue
+  fi
   if [ "$expect_jobs" -eq 1 ]; then
     case "$cargo_argument" in
       1|2|3|4)
@@ -297,12 +339,21 @@ for cargo_argument in "$@"; do
       exit 64
       ;;
     --target-dir|--target-dir=*)
+      if [ "$nested_coverage" = 1 ]; then
+        case "$cargo_argument" in
+          --target-dir) expect_coverage_target=1; continue ;;
+          "--target-dir=$managed_target_dir/llvm-cov-target") continue ;;
+        esac
+      fi
       echo "cargo: caller-supplied --target-dir is prohibited in a managed repository" >&2
       echo "cargo: each worktree owns its Cargo target and build directory" >&2
       exit 64
       ;;
   esac
 done
+if [ "$expect_coverage_target" = 1 ]; then
+  echo "cargo: --target-dir is missing its coverage directory" >&2; exit 64
+fi
 if [ "$expect_jobs" -eq 1 ]; then
   echo "cargo: --jobs is missing its value" >&2
   exit 64
@@ -315,6 +366,7 @@ if [ "${CODEX_RUST_HOST_DRY_RUN:-0}" = 1 ]; then
   printf 'socket=%s\n' "$server_socket"
   printf 'wrapper=%s\n' "$sccache_bin"
   printf 'target=%s\n' "$managed_target_dir"
+  printf 'build_dir=%s\n' "$managed_build_dir"
   printf 'jobs=%s\n' "$requested_jobs"
   exit 88
 fi
@@ -387,28 +439,55 @@ else
     "$@"
 fi
 
+set -- "$real_cargo" "$@"
+if [ "$repository" = babylon ]; then
+  # Cargo plugins start fresh Cargo processes. Export the same enforced wrapper
+  # and cache values so those children remain cached throughout the lease.
+  wrapper="$sccache_bin"
+  if [ "$bootstrap_requested" -eq 1 ]; then wrapper=""; fi
+  coverage_target="$managed_target_dir/llvm-cov-target"
+  coverage_build="$managed_build_dir/llvm-cov-target"
+  for path in "$coverage_target" "$coverage_build"; do
+    [ "$(readlink -m -- "$path")" = "$path" ] || {
+      echo "cargo: coverage path traverses a symlink: $path" >&2; exit 64
+    }
+  done
+  set -- /usr/bin/env -u CARGO_INCREMENTAL \
+    CARGO_PROFILE_DEV_DEBUG=line-tables-only CARGO_PROFILE_TEST_DEBUG=line-tables-only \
+    CARGO_PROFILE_DEV_INCREMENTAL=false CARGO_PROFILE_TEST_INCREMENTAL=false \
+    RUSTC_WRAPPER="$wrapper" SCCACHE_DIR="$cache_dir" \
+    SCCACHE_SERVER_UDS="$server_socket" SCCACHE_CACHE_SIZE=10G SCCACHE_CLIENT_SIDE=0 \
+    CARGO_LLVM_COV_TARGET_DIR="$coverage_target" CARGO_LLVM_COV_BUILD_DIR="$coverage_build" "$@"
+  if [ "$nested_coverage" = 1 ]; then
+    set -- /usr/bin/env CARGO_BUILD_BUILD_DIR="$coverage_build" \
+      CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$managed_target_dir}" "$@"
+  fi
+  if [ "$inspect_only" -eq 0 ]; then
+    budget_bin="$(codex_rust_budget_bin "$tools_root")"
+    if [ ! -x "$budget_bin" ] || ! codex_rust_budget_digest_matches "$budget_bin"; then
+      echo "cargo: missing or corrupt pinned $budget_bin; run host setup" >&2; exit 69
+    fi
+    set -- "$budget_bin" --root "$budget_root" --owner "$repository_root" \
+      --target-dir "$managed_target_dir" --mount "$CODEX_RUST_BABYLON_MOUNT" \
+      --budget-bytes "$CODEX_RUST_BUDGET_BYTES" --reserve-bytes "$CODEX_RUST_RESERVE_BYTES" \
+      run -- "$@"
+  fi
+fi
+set -- /usr/bin/env \
+  -u RUSTC_WRAPPER -u RUSTC_WORKSPACE_WRAPPER \
+  -u CARGO_BUILD_RUSTC_WRAPPER -u CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER \
+  -u SCCACHE_DIR -u SCCACHE_SERVER_UDS -u SCCACHE_CACHE_SIZE -u SCCACHE_CLIENT_SIDE \
+  -u CODEX_RUST_HOST_DRY_RUN -u CODEX_RUST_SCCACHE_BOOTSTRAP \
+  CARGO_BUILD_JOBS="$requested_jobs" CARGO_TARGET_DIR="$managed_target_dir" \
+  CARGO_BUILD_BUILD_DIR="$managed_build_dir" CODEX_RUST_CARGO_DISPATCHER="$dispatcher_path" "$@"
+
 if [ "${CODEX_RUST_SCOPE_ACTIVE:-0}" = 1 ]; then
   if ! codex_rust_process_is_in_slice "$slice" "$cgroup_membership_file"; then
     echo "cargo: process is not in repository slice $slice despite CODEX_RUST_SCOPE_ACTIVE=1" >&2
     echo "cargo: refusing a stale or forged scoped-reentry signal" >&2
     exit 69
   fi
-  CARGO_BUILD_JOBS="$requested_jobs" \
-    CARGO_TARGET_DIR="$managed_target_dir" \
-    CARGO_BUILD_BUILD_DIR="$managed_build_dir" \
-    CODEX_RUST_CARGO_DISPATCHER="$dispatcher_path" \
-    exec /usr/bin/env \
-      -u RUSTC_WRAPPER \
-      -u RUSTC_WORKSPACE_WRAPPER \
-      -u CARGO_BUILD_RUSTC_WRAPPER \
-      -u CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER \
-      -u SCCACHE_DIR \
-      -u SCCACHE_SERVER_UDS \
-      -u SCCACHE_CACHE_SIZE \
-      -u SCCACHE_CLIENT_SIDE \
-      -u CODEX_RUST_HOST_DRY_RUN \
-      -u CODEX_RUST_SCCACHE_BOOTSTRAP \
-      "$real_cargo" "$@"
+  exec "$@"
 fi
 
 if ! codex_rust_slice_matches_policy "$CODEX_RUST_PARENT_SLICE" "$dispatcher_dir"; then
@@ -430,19 +509,4 @@ exec systemd-run \
   --same-dir \
   --slice="$slice" \
   --setenv=CODEX_RUST_SCOPE_ACTIVE=1 \
-  --setenv=CODEX_RUST_CARGO_DISPATCHER="$dispatcher_path" \
-  --setenv=CARGO_BUILD_JOBS="$requested_jobs" \
-  --setenv=CARGO_TARGET_DIR="$managed_target_dir" \
-  --setenv=CARGO_BUILD_BUILD_DIR="$managed_build_dir" \
-  /usr/bin/env \
-    -u RUSTC_WRAPPER \
-    -u RUSTC_WORKSPACE_WRAPPER \
-    -u CARGO_BUILD_RUSTC_WRAPPER \
-    -u CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER \
-    -u SCCACHE_DIR \
-    -u SCCACHE_SERVER_UDS \
-    -u SCCACHE_CACHE_SIZE \
-    -u SCCACHE_CLIENT_SIDE \
-    -u CODEX_RUST_HOST_DRY_RUN \
-    -u CODEX_RUST_SCCACHE_BOOTSTRAP \
-    "$real_cargo" "$@"
+  "$@"

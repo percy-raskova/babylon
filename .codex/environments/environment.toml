@@ -174,19 +174,22 @@ PY
 
 python3 "$CODEX_WORKTREE_PATH/.codex/host/cargo-config.py" "$CODEX_WORKTREE_PATH/rust"
 
-# Two measured 15 GiB worktree targets plus the bounded 10 GiB compiler cache.
-minimum_free_kib=41943040
-available_kib="$(df -Pk "$CODEX_WORKTREE_PATH" | awk 'NR == 2 { print $4 }')"
-case "$available_kib" in
-  ''|*[!0-9]*)
-    echo "could not read free space for $CODEX_WORKTREE_PATH" >&2
+. "$CODEX_WORKTREE_PATH/.codex/host/policy.sh"
+codex_tools_root="$(codex_rust_babylon_tools_root)"
+codex_cache_root="$(codex_rust_babylon_cache_root)"
+codex_rust_babylon_validate_storage
+
+# Before installing tools, require the reserve on the intermediate and final filesystems.
+for volume in "$CODEX_RUST_BABYLON_MOUNT" "$CODEX_WORKTREE_PATH"; do
+  available_kib="$(df -Pk "$volume" | awk 'NR == 2 { print $4 }')"
+  case "$available_kib" in
+    ''|*[!0-9]*) echo "could not read free space for $volume" >&2; exit 1 ;;
+  esac
+  if [ "$available_kib" -lt "$((CODEX_RUST_RESERVE_BYTES / 1024))" ]; then
+    echo "Codex setup requires $((CODEX_RUST_RESERVE_BYTES / 1073741824)) GiB free on $volume" >&2
     exit 1
-    ;;
-esac
-if [ "$available_kib" -lt "$minimum_free_kib" ]; then
-  echo "Codex worktrees require 40 GiB free; $CODEX_WORKTREE_PATH has $((available_kib / 1048576)) GiB" >&2
-  exit 1
-fi
+  fi
+done
 
 if [ ! -e .env ] && [ ! -L .env ]; then
   install -m 600 .env.example .env
@@ -194,9 +197,6 @@ fi
 
 rustup toolchain install 1.99.1 --profile minimal --component clippy --component rustfmt
 
-. "$CODEX_WORKTREE_PATH/.codex/host/policy.sh"
-codex_tools_root="$(codex_rust_tools_root)"
-codex_cache_root="$(codex_rust_cache_root)"
 codex_rust_data_root="${XDG_DATA_HOME:-$HOME/.local/share}"
 codex_rust_dispatcher_bin="$codex_rust_data_root/codex-rust-host/bin"
 codex_rust_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
@@ -205,18 +205,6 @@ codex_rust_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
 # and so the following sccache bootstrap enters the governed dispatcher.
 export PATH="$codex_rust_dispatcher_bin:$codex_rust_cargo_home/bin:$PATH"
 mkdir -p "$codex_tools_root" "$codex_cache_root"
-cache_available_kib="$(df -Pk "$codex_cache_root" | awk 'NR == 2 { print $4 }')"
-case "$cache_available_kib" in
-  ''|*[!0-9]*)
-    echo "could not read free space for $codex_cache_root" >&2
-    exit 1
-    ;;
-esac
-if [ "$cache_available_kib" -lt 10485760 ]; then
-  echo "the sccache filesystem requires 10 GiB free; $codex_cache_root has $((cache_available_kib / 1048576)) GiB" >&2
-  exit 1
-fi
-
 CODEX_RUST_CACHE_ROOT="$codex_cache_root" "$CODEX_WORKTREE_PATH/.codex/host/install.sh"
 hash -r
 
@@ -260,15 +248,17 @@ mise run hooks
 mise run check:env-contract
 mise run check:worktree-contract
 
-target_directory="$(
+(
   cd "$CODEX_WORKTREE_PATH/rust"
   cargo metadata --locked --no-deps --format-version 1 |
-    python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])'
-)"
-if [ "$target_directory" != "$CODEX_WORKTREE_PATH/rust/target" ]; then
-  echo "Cargo target must be $CODEX_WORKTREE_PATH/rust/target, got $target_directory" >&2
-  exit 1
-fi
+    python3 -c '
+import json, sys
+metadata = json.load(sys.stdin)
+for key, expected in zip(("target_directory", "build_directory"), sys.argv[1:], strict=True):
+    if metadata.get(key) != expected:
+        raise SystemExit(f"Cargo {key} must be {expected}, got {metadata.get(key)}")
+' "$CODEX_WORKTREE_PATH/rust/target" "$CODEX_RUST_BUDGET_ROOT/slot/build"
+)
 
 git status --short --branch
 '''

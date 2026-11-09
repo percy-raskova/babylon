@@ -590,6 +590,170 @@ def test_slow_fragments_cannot_reset_the_overall_response_deadline(
     assert peer.timeouts == pytest.approx([0.05, 0.05, 0.03, 0.01])
 
 
+@pytest.mark.parametrize(
+    ("initial_phase", "organizer", "outcome", "warning_visible", "menu_open"),
+    [
+        ("Loading", False, "ready", True, False),
+        ("Ready", False, "ready", True, False),
+        ("Loading", False, "refused", True, False),
+        ("Loading", False, "late", True, False),
+        ("Loading", True, "ready", True, False),
+        ("Ready", True, "ready", True, False),
+        ("Ready", False, "ready", False, False),
+        ("Ready", False, "ready", False, True),
+    ],
+)
+def test_opening_warning_uses_fresh_scoped_loading_status(
+    monkeypatch: pytest.MonkeyPatch,
+    initial_phase: str,
+    organizer: bool,
+    outcome: str,
+    warning_visible: bool,
+    menu_open: bool,
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr(windowed.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(windowed.time, "monotonic_ns", lambda: int(clock[0] * 1e9))
+    monkeypatch.setattr(
+        windowed.time, "sleep", lambda delay: clock.__setitem__(0, clock[0] + delay)
+    )
+
+    class OpeningPeer:
+        def __init__(self) -> None:
+            self.requests: list[dict[str, Any]] = []
+            self.timeouts: list[tuple[float, float]] = []
+            self.reply = b""
+            self.statuses = 0
+            self.continued = False
+            self.closed = False
+
+        def settimeout(self, timeout: float) -> None:
+            self.timeouts.append((clock[0], timeout))
+
+        def sendall(self, frame: bytes) -> None:
+            request = json.loads(frame)
+            self.requests.append(request)
+            fields = state()
+            fields.update(
+                phase="Loading",
+                foundation_sha256=None,
+                lifecycle_pending=True,
+                organizer_period=None,
+                splash_visible=warning_visible,
+                menu_open=menu_open,
+                opening_stage="Warning",
+                generation=3,
+            )
+            event, reason = "observed", None
+            if request["action"] == "status":
+                self.statuses += 1
+                if self.statuses == 1:
+                    fields.update(scope_epoch=None, generation=0)
+                elif self.statuses == 2:
+                    event, reason = "refused", "control_stale_or_unavailable"
+                    if initial_phase == "Ready":
+                        fields = state() | {
+                            "generation": 3,
+                            "splash_visible": warning_visible,
+                            "menu_open": menu_open,
+                            "opening_stage": "Warning",
+                        }
+                else:
+                    # Ready arrives independently of clearing the warning.
+                    fields = state() | {
+                        "generation": 4,
+                        "splash_visible": warning_visible,
+                        "menu_open": menu_open,
+                        "opening_stage": "Title" if self.continued else "Warning",
+                    }
+            else:
+                assert request["action"] == "continue_warning"
+                event = "refused" if outcome == "refused" else "applied"
+                reason = "control_stale_or_unavailable" if outcome == "refused" else None
+                self.continued = outcome != "refused"
+                if initial_phase == "Ready":
+                    fields = state() | {"generation": 3, "splash_visible": True}
+                fields["opening_stage"] = "Production" if self.continued else "Warning"
+            clock[0] += 10 if outcome == "late" and request["action"] == "continue_warning" else 0.1
+            self.reply = (
+                json.dumps(
+                    {
+                        "version": 4,
+                        "sequence": request["sequence"],
+                        "event": event,
+                        "reason": reason,
+                        "state": fields,
+                    }
+                ).encode()
+                + b"\n"
+            )
+
+        def recv(self, size: int) -> bytes:
+            part, self.reply = self.reply[:size], self.reply[size:]
+            return part
+
+        def close(self) -> None:
+            self.closed = True
+
+    peer = OpeningPeer()
+    channel = windowed.ControlChannel(cast(socket.socket, peer), CAMPAIGN, 0)
+    try:
+        if outcome == "ready":
+            ready = windowed.wait_ready(channel, 1, organizer=organizer)
+            assert ready.phase == "Ready"
+            if organizer or not warning_visible:
+                assert ready.opening_stage == "Warning"
+                assert all(row["action"] == "status" for row in peer.requests)
+            elif initial_phase == "Loading":
+                assert ready.opening_stage == "Title"
+                assert [row["action"] for row in peer.requests] == [
+                    "status",
+                    "status",
+                    "continue_warning",
+                    "status",
+                ]
+                assert channel.records[2].state.phase == "Loading"
+                assert channel.records[3].state.phase == "Ready"
+            else:
+                assert ready.opening_stage == "Production"
+                assert [row["action"] for row in peer.requests] == [
+                    "status",
+                    "status",
+                    "continue_warning",
+                ]
+        else:
+            with pytest.raises(windowed.ControlRefusal) as failed:
+                windowed.wait_ready(channel, 1, organizer=organizer)
+            assert [row["action"] for row in peer.requests] == [
+                "status",
+                "status",
+                "continue_warning",
+            ]
+            assert peer.closed and not channel.ready
+            assert (
+                failed.value.reason
+                == {
+                    "late": "response_deadline",
+                    "refused": "control_refused",
+                }[outcome]
+            )
+        if not organizer and warning_visible:
+            continued = peer.requests[2]
+            assert continued["campaign_id"] == CAMPAIGN
+            assert (
+                continued["scope_epoch"],
+                continued["expected_tick"],
+                continued["expected_generation"],
+            ) == (7, 0, 3)
+        assert peer.requests[0]["scope_epoch"] is None
+        assert peer.requests[1]["scope_epoch"] is None
+        assert [at + timeout for at, timeout in peer.timeouts] == pytest.approx(
+            [101.0] * len(peer.timeouts)
+        )
+    finally:
+        channel.close()
+
+
 def test_listener_bind_failure_is_diagnosed_before_first_close(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

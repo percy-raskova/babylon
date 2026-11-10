@@ -3272,6 +3272,69 @@ def test_period_proof_has_one_ordered_ready_endpoint_and_protected_close(
             verify(controls)
 
 
+@pytest.mark.parametrize(
+    ("consumer", "defect"),
+    [("smoke", "published"), ("walk", "published"), ("smoke", "wrong_request")],
+)
+def test_first_strict_ready_cannot_be_filtered_before_endpoint_count(tmp_path, consumer, defect):
+    from tools.devtools.national_native_evidence import _trace, _walk_trace
+    from tools.devtools.national_windowed_qualification import ControlsEvidence
+
+    from tests.unit.tools.test_national_windowed_qualification import bounded_play_controls
+
+    if consumer == "smoke":
+        *_, records = native_join_evidence(tmp_path)
+        raw = records["native-controls.json"]
+        verify = _trace
+        cause_action = "step"
+    else:
+        raw = bounded_play_controls().model_dump(mode="json")
+        verify = _walk_trace
+        cause_action = "pause"
+    actions = raw["actions"]
+    fence_index = next(i for i, row in enumerate(actions) if row["action"] == "await_period_proof")
+    ready_index = fence_index - 1
+    clean = actions[ready_index]
+    assert clean["action"] == "status" and clean["state"]["period_proof"] is None
+    fence = actions[fence_index]
+    assert fence["state"]["period_proof"] is not None
+    early = deepcopy(clean)
+    early.update(
+        started_monotonic_ns=clean["started_monotonic_ns"] - 2,
+        completed_monotonic_ns=clean["started_monotonic_ns"] - 1,
+    )
+    if defect == "published":
+        early["state"]["period_proof"] = deepcopy(fence["state"]["period_proof"])
+        early["state"]["archive_verified_tick"] = fence["state"]["archive_verified_tick"]
+        clean["state"]["archive_verified_tick"] = fence["state"]["archive_verified_tick"]
+    else:
+        early["state"]["advance_request_id"] += 100
+    actions.insert(ready_index, early)
+    for sequence, row in enumerate(actions, 1):
+        row["sequence"] = sequence
+    controls = ControlsEvidence.model_validate(raw)
+    cause = next(row for row in controls.actions if row.action == cause_action)
+    proof = next(row for row in controls.actions if row.action == "await_period_proof")
+    strict = [
+        row
+        for row in controls.actions
+        if cause.sequence < row.sequence < proof.sequence
+        and row.action == "status"
+        and row.event == "observed"
+        and row.reason is None
+        and row.state.period_actionable
+    ]
+    assert len(strict) == 2, "both actual accepted strict rows must enter endpoint selection"
+    assert strict[1].state.period_proof is None
+    if defect == "published":
+        assert strict[0].state.period_proof == proof.state.period_proof
+        assert strict[0].state.archive_verified_tick == proof.state.archive_verified_tick
+    else:
+        assert strict[0].state.advance_request_id != strict[1].state.advance_request_id
+    with pytest.raises(ValueError, match="proof|ready"):
+        verify(controls)
+
+
 def test_native_late_period_proof_extends_original_clock_without_extending_early_ready(tmp_path):
     from tools.devtools.national_storage_qualification import NativeTimings
 

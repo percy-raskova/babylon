@@ -722,11 +722,7 @@ def _bind_period_proofs(
                 and a.event == "observed"
                 and a.reason is None
                 and a.state.period_actionable
-                and a.state.period_proof is None
                 and max(exchanges) < a.sequence < fence.sequence
-                and a.completed_monotonic_ns >= cause.completed_monotonic_ns
-                and a.completed_monotonic_ns <= fence.started_monotonic_ns
-                and a.state.period_identity() == cause.state.period_identity()
             )
         ]
         if len(polls) != 1:
@@ -736,7 +732,10 @@ def _bind_period_proofs(
         actionable = polls[0]
         proof = fence.state.period_proof
         if (
-            not actionable.state.period_actionable
+            actionable.completed_monotonic_ns < cause.completed_monotonic_ns
+            or actionable.completed_monotonic_ns > fence.started_monotonic_ns
+            or actionable.state.period_identity() != cause.state.period_identity()
+            or not actionable.state.period_actionable
             or not fence.state.period_actionable
             or actionable.state.advance_request_id is None
             or actionable.state.period_proof is not None

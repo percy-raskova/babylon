@@ -1595,6 +1595,7 @@ class WalkStage(NativeRecord):
 
 
 class ColdInstallation(NativeRecord):
+    readiness_sequence: Positive
     started_monotonic_ns: Nonnegative
     installed_monotonic_ns: Positive
     elapsed_ns: Positive

@@ -57,13 +57,14 @@ from tools.devtools.national_storage_qualification import (
 )
 from tools.devtools.national_windowed_qualification import (
     POLL_SECONDS,
+    SMOKE_DECISIONS,
+    WALK_FIXED_DECISIONS,
+    ActionObservation,
     AidAllocation,
-    AidAmounts,
     Bytes32,
     Choice,
     ColdControlWindow,
     CollectionAllocation,
-    CollectionAmount,
     Command,
     Commitment,
     ControlChannel,
@@ -76,6 +77,8 @@ from tools.devtools.national_windowed_qualification import (
     UnitAction,
     drive_pair,
     submit_choice,
+    walk_cash,
+    walk_resume,
 )
 from tools.devtools.wayne_qualification_storage import (
     PrivateEvidence,
@@ -804,6 +807,15 @@ class NativeRun:
             )
         if snapshot.lookup_delta_hashes is None:
             raise NativeRunRefusal("native storage boundary lacks authenticated lookup hashes")
+        if self.wayne_profile == "smoke-01":
+            from tools.devtools.national_native_pair import terminal_decisions
+
+            with psycopg.connect(self.writer_dsn, connect_timeout=5) as connection:
+                connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                originals = terminal_decisions(connection, self.campaign)
+            PrivateEvidence(self.directory).publish_json(
+                f"resolved-decisions-{record.tick}.json", originals
+            )
         facts = record.facts
         boundary = PlayableBoundary.model_validate(
             {
@@ -1111,14 +1123,6 @@ class NativeRun:
             return 0
         capture = self.capture() if self.mode == "memory_capture" else None
         reauthenticate_native_owner(self.root, self.directory, self.owner_fields)
-        choices = (
-            PlannedChoice(
-                period=1,
-                choice="remote_aid",
-                allocation=AidAllocation(aid=AidAmounts(food_quantity=1, cash_micros="0")),
-            ),
-            PlannedChoice(period=2, choice="pause_standing", allocation="none"),
-        )
         self.stage = "windowed_new_play_recovery"
         cold_start = time.monotonic_ns()
         self.segment = "smoke"
@@ -1133,7 +1137,8 @@ class NativeRun:
 
         latest_smoke: ControlState | None = None
 
-        def opened_smoke(state: ControlState) -> None:
+        def opened_smoke(ready: ActionObservation) -> None:
+            state = ready.state
             elapsed = time.monotonic_ns() - cold_start
             self.check_budget(
                 "cold-smoke", elapsed, self.policy.maximum_cold_open_seconds, state, strict=True
@@ -1144,6 +1149,7 @@ class NativeRun:
                     "elapsed_ns": elapsed,
                     "started_monotonic_ns": cold_start,
                     "installed_monotonic_ns": cold_start + elapsed,
+                    "readiness_sequence": ready.sequence,
                     "state": state.model_dump(mode="json"),
                     "processes": self.pair_identity,
                     "ownership_sha256": hashlib.sha256(self.ownership).hexdigest(),
@@ -1192,7 +1198,7 @@ class NativeRun:
             on_wall_expired=expired_smoke if self.mode == "normal_play" else None,
             on_boundary=self.on_boundary,
             on_recovery=self.on_recovery,
-            choices=choices,
+            choices=SMOKE_DECISIONS,
             on_installed=(
                 lambda _channel, _socket, state: (
                     self.functional_terminal(state) if state.durable_tick == self.periods else None
@@ -1722,7 +1728,8 @@ class WayneWalk:
             self.first_observed = state
         self.latest_observed = state
 
-    def cold_install(self, state: ControlState) -> None:
+    def cold_install(self, ready: ActionObservation) -> None:
+        state = ready.state
         elapsed = time.monotonic_ns() - self.process_start
         self.run.check_budget(
             "cold-" + self.stage,
@@ -1737,6 +1744,7 @@ class WayneWalk:
                 "elapsed_ns": elapsed,
                 "started_monotonic_ns": self.process_start,
                 "installed_monotonic_ns": self.process_start + elapsed,
+                "readiness_sequence": ready.sequence,
                 "processes": self.processes[-2:],
                 "state": state.model_dump(mode="json"),
                 "ownership_sha256": hashlib.sha256(self.run.ownership).hexdigest(),
@@ -1768,13 +1776,7 @@ class WayneWalk:
             self.submit(
                 channel,
                 socket_root,
-                PlannedChoice(
-                    period=1,
-                    choice="collect",
-                    allocation=CollectionAllocation(
-                        collection=CollectionAmount(target_cash_micros="1450000000")
-                    ),
-                ),
+                WALK_FIXED_DECISIONS[0],
                 "collection",
             )
             current = channel.state
@@ -1805,24 +1807,14 @@ class WayneWalk:
             self.submit(
                 channel,
                 socket_root,
-                PlannedChoice(
-                    period=2,
-                    choice="local_aid",
-                    allocation=AidAllocation(aid=AidAmounts(food_quantity=1, cash_micros="0")),
-                ),
+                WALK_FIXED_DECISIONS[1],
                 "local-food",
             )
         elif tick == 2:
             self.submit(
                 channel,
                 socket_root,
-                PlannedChoice(
-                    period=3,
-                    choice="remote_aid",
-                    allocation=AidAllocation(
-                        aid=AidAmounts(food_quantity=2, cash_micros="280000000")
-                    ),
-                ),
+                WALK_FIXED_DECISIONS[2],
                 "remote-mixed",
             )
             current = channel.state
@@ -1877,7 +1869,7 @@ class WayneWalk:
             self.submit(
                 channel,
                 socket_root,
-                PlannedChoice(period=4, choice="pause_standing", allocation="none"),
+                WALK_FIXED_DECISIONS[3],
                 "pause-standing",
             )
         else:
@@ -1889,13 +1881,7 @@ class WayneWalk:
                 refused = self.submit(
                     channel,
                     socket_root,
-                    PlannedChoice(
-                        period=tick + 1,
-                        choice="local_aid",
-                        allocation=AidAllocation(
-                            aid=AidAmounts(food_quantity=0, cash_micros="1000000000")
-                        ),
-                    ),
+                    walk_cash(tick + 1),
                     label,
                     allow_refusal=True,
                 )
@@ -1912,13 +1898,7 @@ class WayneWalk:
                     self.submit(
                         channel,
                         socket_root,
-                        PlannedChoice(
-                            period=tick + 1,
-                            choice="collect",
-                            allocation=CollectionAllocation(
-                                collection=CollectionAmount(target_cash_micros="1450000000")
-                            ),
-                        ),
+                        WALK_FIXED_DECISIONS[0].at_period(tick + 1),
                         "additional-collection",
                         allow_refusal=True,
                     )
@@ -1933,7 +1913,7 @@ class WayneWalk:
                     self.submit(
                         channel,
                         socket_root,
-                        PlannedChoice(period=tick + 1, choice="resume_standing", allocation="none"),
+                        walk_resume(tick + 1),
                         "resume-standing",
                         allow_refusal=True,
                     )

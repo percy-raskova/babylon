@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, BinaryIO, Literal
 from uuid import UUID, uuid4
@@ -1787,6 +1788,30 @@ def run_sql_witness(
     remove_stopped(directory, root, cid, canary, image)
 
 
+def shutdown_events(data: bytes, since: datetime, finished: datetime) -> list[tuple[datetime, str]]:
+    events = []
+    for line in data.decode("utf-8", "strict").splitlines():
+        match = re.fullmatch(
+            r"(\S+) .*?\[1\]\s+LOG:\s+(received fast shutdown request|database system is shut down)",
+            line,
+        )
+        if match:
+            stamp = datetime.fromisoformat(match[1])
+            if stamp.tzinfo is None or not since <= stamp <= finished:
+                raise StorageRefusal(
+                    "PostgreSQL shutdown log occurs outside the actual stop interval"
+                )
+            events.append((stamp, match[2]))
+    if [entry[1] for entry in events] != [
+        "received fast shutdown request",
+        "database system is shut down",
+    ] or events[1][0] < events[0][0]:
+        raise StorageRefusal(
+            "fenced shutdown lacks ordered fresh PostgreSQL PID 1 fast and clean log records"
+        )
+    return events
+
+
 def _fenced_stop(directory: PrivateEvidence, cid: str, image: str) -> None:
     """A verified fast shutdown keeps the caller's ordinary connection slots occupied."""
     from datetime import UTC, datetime
@@ -1879,26 +1904,7 @@ def _fenced_stop(directory: PrivateEvidence, cid: str, image: str) -> None:
         )
         data = logs.stdout + logs.stderr
         raw = directory.publish("clean-shutdown.log", data)
-        events = []
-        for line in data.decode("utf-8", "strict").splitlines():
-            match = re.fullmatch(
-                r"(\S+) .*?\[1\]\s+LOG:\s+(received fast shutdown request|database system is shut down)",
-                line,
-            )
-            if match:
-                stamp = datetime.fromisoformat(match[1])
-                if stamp.tzinfo is None or not since <= stamp <= finished:
-                    raise StorageRefusal(
-                        "PostgreSQL shutdown log occurs outside the actual stop interval"
-                    )
-                events.append((stamp, match[2]))
-        if [entry[1] for entry in events] != [
-            "received fast shutdown request",
-            "database system is shut down",
-        ] or events[1][0] < events[0][0]:
-            raise StorageRefusal(
-                "fenced shutdown lacks ordered fresh PostgreSQL PID 1 fast and clean log records"
-            )
+        events = shutdown_events(data, since, finished)
         directory.publish_json(
             "native-fenced-stop-v1.json",
             {

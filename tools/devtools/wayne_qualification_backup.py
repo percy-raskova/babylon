@@ -931,6 +931,29 @@ def _stop_logging(conn: Connection) -> dict[str, str]:
                current_setting('log_min_messages'),current_setting('log_timezone')
     """,
     )
+    result = {
+        "prefix": prefix,
+        "locale": locale,
+        "verbosity": verbosity,
+        "destination": destination,
+        "collector": collector,
+        "minimum": minimum,
+        "timezone": zone,
+    }
+    _verify_stop_logging(**result)
+    return result
+
+
+def _verify_stop_logging(
+    *,
+    prefix: str,
+    locale: str,
+    verbosity: str,
+    destination: str,
+    collector: str,
+    minimum: str,
+    timezone: str,
+) -> None:
     if (
         prefix != "%m [%p] "
         or locale != "C"
@@ -952,21 +975,12 @@ def _stop_logging(conn: Connection) -> dict[str, str]:
                 "log",
                 "fatal",
             )
-            or zone not in ("UTC", "Etc/UTC", "GMT", "Etc/GMT")
+            or timezone not in ("UTC", "Etc/UTC", "GMT", "Etc/GMT")
         )
     ):
         raise Refusal(
             "selected backend lacks a supported timestamped English PID-prefixed stderr log"
         )
-    return {
-        "prefix": prefix,
-        "locale": locale,
-        "verbosity": verbosity,
-        "destination": destination,
-        "collector": collector,
-        "minimum": minimum,
-        "timezone": zone,
-    }
 
 
 class RestoreAdmission:
@@ -1669,6 +1683,7 @@ def _restored_source(
                 backup.publish_json(
                     "verification-admission.json",
                     {
+                        "restore_evidence": {r.path: r.model_dump() for r in refs},
                         "verification_oid": oid,
                         "original_allow_connections": True,
                         "verified_final_allow_connections": False,
@@ -2014,6 +2029,8 @@ def _shutdown_evidence(
     run: Run,
     physical: dict[str, Any],
     clients: tuple[Backend, ...],
+    *,
+    replay: bool = False,
 ) -> tuple[Reference, Reference, Reference, Reference]:
     attempt = directory.reference("native-fenced-stop-attempt-v1.json")
     success = directory.reference("native-fenced-stop-v1.json")
@@ -2066,17 +2083,41 @@ def _shutdown_evidence(
                 datetime.fromisoformat(match[2]).replace(tzinfo=UTC),
             )
         )
-    corroboration = backup.publish_json(
-        "fenced-client-exits.json",
-        {
-            "stop": success.model_dump(),
-            "expected": [asdict(b) for b in clients],
-            "exits": [
-                {"pid": pid, "docker_stamp": stamp.isoformat(), "server_stamp": server.isoformat()}
-                for pid, stamp, server in exits
-            ],
-        },
-    )
+    packet = {
+        "stop": success.model_dump(),
+        "expected": [asdict(b) for b in clients],
+        "exits": [
+            {"pid": pid, "docker_stamp": stamp.isoformat(), "server_stamp": server.isoformat()}
+            for pid, stamp, server in exits
+        ],
+    }
+    if replay:
+        corroboration = backup.reference("fenced-client-exits.json")
+        if strict_json_bytes(backup.read_reference(corroboration)) != packet:
+            raise Refusal("retained held-client exits differ from the actual shutdown log")
+        if (
+            start_record.get("host_pid") != physical["pid"]
+            or start_record.get("container_pid") != 1
+            or start_record.get("stop_signal") != "SIGINT"
+            or start_record.get("image_stop_signal") != "SIGINT"
+            or start_record.get("host") != physical["host"]
+            or start_record.get("bind")
+            != {"mounts": physical["mounts"], "port_request": physical["port_request"]}
+            or (start_record.get("uid"), start_record.get("gid"))
+            != (physical["server_uid"], physical["server_gid"])
+            or not Path(start_record["executable"]).is_absolute()
+            or Path(start_record["executable"]).name != "postgres"
+            or [
+                e[0]
+                for e in storage.shutdown_events(directory.read_reference(log), since, finished)
+            ]
+            != [fast, clean]
+        ):
+            raise Refusal(
+                "retained fenced-stop attempt differs from the held physical source or ordered PID 1 shutdown"
+            )
+    else:
+        corroboration = backup.publish_json("fenced-client-exits.json", packet)
     if (
         any(
             stamp.tzinfo is None
@@ -2091,6 +2132,273 @@ def _shutdown_evidence(
             "fresh fast shutdown did not account for every held ordinary client exactly once"
         )
     return attempt, success, log, corroboration
+
+
+RESTORE_FILES = frozenset(
+    {
+        "original-terminal.json",
+        "original-probes.json",
+        "verification-identity.json",
+        "restored-probes.json",
+        "restored-terminal.json",
+        "database.dump",
+        "cluster-globals.sql",
+        "restore-list.txt",
+        "restore.stdout",
+        "database.dump.stderr",
+        "cluster-globals.sql.stderr",
+        "restore-list.txt.stderr",
+        "restore.stdout.stderr",
+    }
+)
+RECOVERY_FILES = RESTORE_FILES | {
+    "verification-admission.json",
+    "pre-checkpoint-terminal.json",
+    "post-physical-terminal.json",
+    "pre-checkpoint-quiescence.json",
+    "pre-stop-quiescence.json",
+    "pre-stop-physical.json",
+    "fenced-client-exits.json",
+    "pgdata.tar",
+    "pgdata-second.tar",
+    "pgdata.tar.manifest.json",
+    "pgdata-second.tar.manifest.json",
+    "pgdata.tar.partial.stderr",
+    "pgdata-second.tar.partial.stderr",
+    "retained-storage.json",
+}
+
+
+def _retained_record(directory: Evidence, name: str) -> Any:
+    return strict_json_bytes(directory.read_reference(directory.reference(name), 512 * 1024**2))
+
+
+def _restore_clients(
+    run: Run, backup: Evidence, refs: dict[str, Reference], original: dict[str, Any]
+) -> tuple[Backend, ...]:
+    identity = _retained_record(backup, "verification-identity.json")
+    admission = _retained_record(backup, "verification-admission.json")
+    closed = {**original["database"], "allows_connections": False}
+    roster = identity["initial"]
+    oid = identity["oid"]
+    if (
+        identity["name"] != run.verification
+        or identity["owner"] != run.owner[8]
+        or roster.get(run.database) != int(run.owner[9])
+        or oid in roster.values()
+        or run.verification in roster
+        or admission["verification_oid"] != oid
+        or admission["source_connection_limit"] != original["database"]["connection_limit"]
+        or admission["creation_connection_limit"] != 0
+        or original["database"]["owner"] != run.owner[8]
+        or original["database"]["allows_connections"] is not True
+        or admission["original_allow_connections"] is not True
+        or admission["verified_final_allow_connections"] is not False
+        or admission["final_shared_database"] != closed
+        or admission["held_client_slots"] != NATIVE_CLIENT_SLOTS
+        or admission["restore_evidence"]
+        != {name: refs[name].model_dump() for name in RESTORE_FILES}
+    ):
+        raise Refusal("verification database, restore inputs, privileges or held slots differ")
+    with backup.file("database.dump") as dump:
+        if dump.read(5) != b"PGDMP":
+            raise Refusal("retained restore input lacks a PostgreSQL custom-format header")
+    listing = backup.read_reference(refs["restore-list.txt"]).decode().splitlines()
+    if (
+        f";     dbname: {run.database}" not in listing
+        or ";     Format: CUSTOM" not in listing
+        or not refs["cluster-globals.sql"].bytes
+    ):
+        raise Refusal("logical dump listing or globals differ from the original database")
+    probes = _retained_record(backup, "original-probes.json")
+    if set(probes) != {"reader", "observer"} or probes != _retained_record(
+        backup, "restored-probes.json"
+    ):
+        raise Refusal("restored restricted reader/observer evidence differs")
+    for kind, probe in probes.items():
+        if (
+            probe["role"] != "national_" + kind + "_" + run.owner[2][:12]
+            or probe["denied_sqlstates"] != ["42501", "42501"]
+            or not all(probe["allowed"])
+        ):
+            raise Refusal("restored access did not retain actual confined roles and denied probes")
+    marker = original["markers"][-1]
+    if probes["observer"]["allowed"] != [run.period, marker["identity"], marker["hash"]] or probes[
+        "reader"
+    ]["allowed"][:2] != ["county", "26163"]:
+        raise Refusal("restored probe differs from the terminal marker or required Wayne grant")
+    baseline = admission["baseline"]
+    totals = {k: dict(v) for k, v in baseline["databases"].items()}
+    if {k: t["oid"] for k, t in totals.items()} != {**roster, run.verification: oid} or totals[
+        run.verification
+    ]["sessions"] != 0:
+        raise Refusal("verification census differs from the initial cluster")
+    admin = Backend(**admission["maintenance_backend"])
+    if admin.oid != roster["postgres"] or admin.role != "test":
+        raise Refusal("verification observer does not name the admitted maintenance login")
+    expected: list[tuple[str, str, int | None]] = [
+        (purpose, run.verification, 1 if purpose in ("reader", "observer") else 0)
+        for purpose in ("pg_restore", "restore-authority", "reader", "observer", "final-snapshot")
+    ]
+    expected.extend(
+        ("final-fence", db, None)
+        for db in [run.database, "template1"] + ["postgres"] * (NATIVE_CLIENT_SLOTS - 3)
+    )
+    held = [admin]
+    seen = {admin}
+    for (purpose, db, limit), row in zip(expected, admission["sessions"], strict=True):
+        backend = Backend(**row["backend"])
+        role = (
+            "national_" + purpose + "_" + run.owner[2][:12]
+            if purpose in ("reader", "observer")
+            else "test"
+        )
+        totals[db]["sessions"] += 1
+        if (
+            (
+                row["purpose"],
+                row["database"],
+                row["open_limit"],
+                row["closed_limit"],
+                row["expected_sessions"],
+            )
+            != (
+                purpose,
+                db,
+                limit,
+                None if limit is None else admission["source_connection_limit"],
+                totals[db]["sessions"],
+            )
+            or backend.oid != totals[db]["oid"]
+            or backend.role != role
+            or backend in seen
+            or type(backend.pid) is not int
+            or backend.pid <= 0
+            or not backend.started
+            or (purpose == "pg_restore" and (backend.address is not None or backend.port != -1))
+            or (purpose != "pg_restore" and (not backend.address or backend.port <= 0))
+        ):
+            raise Refusal("restore session identity, ordering or cumulative census differs")
+        seen.add(backend)
+        if purpose == "final-fence":
+            held.append(backend)
+    stats = {"postmaster": baseline["postmaster"], "databases": totals}
+    if (
+        admission["final_cluster_stats"] != stats
+        or len({b.pid for b in held}) != NATIVE_CLIENT_SLOTS
+    ):
+        raise Refusal("verification lacks the complete distinct held cluster census")
+    del totals[run.verification]
+    ordered = [asdict(b) for b in sorted(held, key=lambda b: b.pid)]
+    for name in ("pre-checkpoint-quiescence.json", "pre-stop-quiescence.json"):
+        census = _retained_record(backup, name)
+        if (
+            census["actual_stats"] != stats
+            or census["expected_stats"] != stats
+            or census["expected_clients"] != ordered
+            or census["observer_pid"] != admin.pid
+            or census["prepared_transactions"]
+            or census["entering_backends"]
+            or set(census["client_logging"]) != {str(b.pid) for b in held}
+            or [r["backend"] for r in census["clients"]] != ordered
+        ):
+            raise Refusal("held slots differ between physical observation and stop")
+        for settings in census["client_logging"].values():
+            _verify_stop_logging(**settings)
+        for client in census["clients"]:
+            observer = client["backend"]["pid"] == admin.pid
+            if (
+                client["backend_type"] != "client backend"
+                or client["no_xid"] is not True
+                or client["state"] != ("active" if observer else "idle")
+                or not observer
+                and (client["no_transaction"] is not True or client["no_xmin"] is not True)
+            ):
+                raise Refusal("retained held client was not quiescent for its admitted role")
+    return tuple(held)
+
+
+def verify_retained_backup(run: Run, record: dict[str, Any], original: dict[str, Any]) -> None:
+    """Replay the retained restore, fenced shutdown and both offline archive witnesses."""
+    evidence, backup = Evidence(run.evidence), Evidence(run.evidence.parent / "backup")
+    references = [Reference.model_validate(row) for row in record["retained"]]
+    refs = {ref.path: ref for ref in references}
+    if set(refs) != RECOVERY_FILES or len(refs) != len(references):
+        raise Refusal("recovery seal differs from the complete restore and physical archive roster")
+    for ref in references:
+        backup.verify(ref)
+    closed = {**original, "database": {**original["database"], "allows_connections": False}}
+    if (
+        any(
+            _retained_record(backup, name) != original
+            for name in (
+                "original-terminal.json",
+                "pre-checkpoint-terminal.json",
+                "post-physical-terminal.json",
+            )
+        )
+        or _retained_record(backup, "restored-terminal.json") != closed
+    ):
+        raise Refusal("restored or physical checkpoint state differs from the original")
+    held = _restore_clients(run, backup, refs, original)
+    physical = _retained_record(evidence, "physical.json")
+    raw = _retained_record(backup, "pre-stop-physical.json")
+    witness = PhysicalWitness(
+        **{**raw, "members": {k: Member(**v) for k, v in raw["members"].items()}}
+    )
+    if (
+        {
+            k: v
+            for k, v in witness.physical.items()
+            if k not in ("relation_sizes", "relation_page_occupancy", "pgss")
+        }
+        != physical
+        or witness.database_oid != int(run.owner[9])
+        or not witness.relations
+        or witness.wal_magic != 0xD116
+        or physical["max_connections"] != NATIVE_CLIENT_SLOTS
+        or physical["max_wal_senders"] != 0
+    ):
+        raise Refusal("pre-stop physical witness differs from the admitted source")
+    for key, ref in zip(
+        ("stop_attempt", "fenced_stop", "shutdown", "held_exits"),
+        _shutdown_evidence(evidence, backup, run, physical, held, replay=True),
+        strict=True,
+    ):
+        if (
+            refs["fenced-client-exits.json"].model_dump() if key == "held_exits" else record[key]
+        ) != ref.model_dump():
+            raise Refusal("seal substituted its canonical stop evidence")
+    prior = None
+    for name in ("pgdata.tar", "pgdata-second.tar"):
+        with backup.file(name) as stream:
+            members, namespace = archive_manifest(stream, witness)
+        manifest = _retained_record(backup, name + ".manifest.json")
+        if (
+            manifest
+            != {
+                "archive": refs[name].model_dump(),
+                "root_and_source": refs["pre-stop-physical.json"].model_dump(),
+                "numeric_id_space": namespace,
+                "members": {k: asdict(v) for k, v in members.items()},
+            }
+            or prior is not None
+            and prior != (members, namespace)
+        ):
+            raise Refusal(
+                "independent offline archive differs from its source or retained manifest"
+            )
+        prior = (members, namespace)
+    inventory = _retained_record(backup, "retained-storage.json")
+    rows = inventory["backup_files_before_seal"]
+    if (
+        len(rows) != len(refs) - 1
+        or {r["path"]: r["bytes"] for r in rows}
+        != {k: v.bytes for k, v in refs.items() if k != "retained-storage.json"}
+        or inventory["primary_file_bytes"]
+        != sum(m.size or 0 for m in members.values() if m.kind == "file")
+    ):
+        raise Refusal("retained byte inventory differs from the independently archived members")
 
 
 def backup_and_retire(

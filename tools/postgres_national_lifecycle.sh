@@ -483,6 +483,9 @@ national_input_paths() {
 
 national_reproducibility() {
   local cache="$REPO_ROOT/reports/test-results/national-storage-runner/reproducibility" digest temporary destination
+  case "${BABYLON_WAYNE_PROFILE:-}" in
+    smoke-01|walk-01) cache="$BABYLON_STORAGE_REPORT_DIRECTORY" ;;
+  esac
   mkdir -p "$cache"
   national_source_manifest > "$BABYLON_STORAGE_REPORT_DIRECTORY/source-before.sha256"
   national_input_paths > "$BABYLON_STORAGE_REPORT_DIRECTORY/input-paths.nul"

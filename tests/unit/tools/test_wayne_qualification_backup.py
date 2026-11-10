@@ -1904,3 +1904,302 @@ def test_container_inventory_matches_real_portable_utilities_on_tiny_fixture(
         assert members["PG_VERSION"].sha256 == hashlib.sha256(b"17\n").hexdigest()
         assert members[".babylon-postgres-lineage-v1"].sha256 == hashlib.sha256(LINEAGE).hexdigest()
         assert members["nested/-name\nwith\ttabs"].sha256 is None
+
+
+def designed_custom_dump(database: str) -> bytes:
+    """PostgreSQL custom archive v1.14, with a single table definition in its TOC."""
+
+    def integer(n: int) -> bytes:
+        return bytes((int(n < 0),)) + abs(n).to_bytes(4, "little")
+
+    def string(s: str | None) -> bytes:
+        return integer(-1) if s is None else integer(len(s)) + s.encode("ascii")
+
+    header = b"PGDMP" + bytes((1, 14, 0, 4, 8, 1)) + integer(0)
+    date = b"".join(integer(n) for n in (0, 0, 0, 9, 10, 126, 0))
+    toc = integer(1) + integer(1) + integer(0)
+    return (
+        header
+        + date
+        + string(database)
+        + string("17.11") * 2
+        + toc
+        + b"".join(string(k) for k in ("1259", "16386", "tick_commit", "TABLE"))
+        + integer(2)
+        + b"".join(
+            string(k)
+            for k in (
+                "CREATE TABLE babylon_state.tick_commit(resolve_tick bigint);",
+                "DROP TABLE babylon_state.tick_commit;",
+                None,
+                "babylon_state",
+                None,
+                "heap",
+                "test",
+                "false",
+                None,
+            )
+        )
+        + bytes((3,))
+        + bytes(8)
+    )
+
+
+def retained_pair_recovery(run, evidence, backup_store, physical, functional):
+    """Retain independent PG17 fixture tars, canonical restore/held-client and shutdown evidence."""
+    from copy import deepcopy
+    from dataclasses import asdict
+
+    owner = run.owner
+    database, verification = run.database, run.verification
+    restored = {**functional, "database": {**functional["database"], "allows_connections": False}}
+    marker = functional["markers"][-1]
+    probes = {
+        k: {
+            "role": f"national_{k}_{owner[2][:12]}",
+            "denied_sqlstates": ["42501", "42501"],
+            "allowed": [2, marker["identity"], marker["hash"]]
+            if k == "observer"
+            else ["county", "26163", 2, "ab" * 32, "cd" * 32],
+        }
+        for k in ("reader", "observer")
+    }
+    files = []
+
+    def record(name, value):
+        ref = backup_store.publish_json(name, value)
+        files.append(ref)
+        return ref
+
+    def raw(name, data):
+        ref = backup_store.publish(name, data)
+        files.append(ref)
+        return ref
+
+    record("original-terminal.json", functional)
+    record("restored-terminal.json", restored)
+    record("original-probes.json", probes)
+    record("restored-probes.json", probes)
+    initial = {database: 551, "postgres": 5, "template1": 1, "template0": 4, "babylon_test": 10}
+    oid = initial[database] + 1
+    record(
+        "verification-identity.json",
+        {"name": verification, "owner": owner[8], "oid": oid, "initial": initial},
+    )
+    for name, content in (
+        ("database.dump", designed_custom_dump(database)),
+        ("cluster-globals.sql", b"CREATE ROLE test;\n"),
+        (
+            "restore-list.txt",
+            f";     dbname: {database}\n;     Format: CUSTOM\n1; 1259 16386 TABLE babylon_state tick_commit test\n".encode(),
+        ),
+        ("restore.stdout", b""),
+    ):
+        raw(name, content)
+        raw(name + ".stderr", b"")
+    base = {
+        "postmaster": "123000",
+        "databases": {
+            k: {"oid": v, "sessions": 0, "reset": None}
+            for k, v in {**initial, verification: oid}.items()
+        },
+    }
+    stats = deepcopy(base)
+
+    def backend(pid, db, role):
+        return backup.Backend(
+            pid, str(pid), stats["databases"][db]["oid"], role, "127.0.0.1", 33000 + pid
+        )
+
+    admin = backend(1, "postgres", "test")
+    held = [admin]
+    sessions = []
+
+    def session(purpose, db, limit, role):
+        b = backend(2 + len(sessions), db, role)
+        if purpose == "pg_restore":
+            b = backup.Backend(b.pid, b.started, b.oid, b.role, None, -1)
+        if purpose == "final-fence":
+            held.append(b)
+        stats["databases"][db]["sessions"] += 1
+        sessions.append(
+            {
+                "purpose": purpose,
+                "database": db,
+                "open_limit": limit,
+                "closed_limit": None if limit is None else -1,
+                "expected_sessions": stats["databases"][db]["sessions"],
+                "backend": asdict(b),
+            }
+        )
+
+    for name in ("pg_restore", "restore-authority", "reader", "observer", "final-snapshot"):
+        restricted = name in probes
+        session(
+            name,
+            verification,
+            1 if restricted else 0,
+            probes[name]["role"] if restricted else "test",
+        )
+    for db in [database, "template1"] + ["postgres"] * (backup.NATIVE_CLIENT_SLOTS - 3):
+        session("final-fence", db, None, "test")
+    record(
+        "verification-admission.json",
+        {
+            "restore_evidence": {r.path: r.model_dump() for r in files},
+            "verification_oid": oid,
+            "original_allow_connections": True,
+            "verified_final_allow_connections": False,
+            "source_connection_limit": -1,
+            "creation_connection_limit": 0,
+            "baseline": base,
+            "maintenance_backend": asdict(admin),
+            "sessions": sessions,
+            "final_cluster_stats": stats,
+            "final_shared_database": restored["database"],
+            "held_client_slots": len(held),
+        },
+    )
+    del stats["databases"][verification]
+    for stem in ("pre-checkpoint", "pre-stop"):
+        record(
+            stem + "-quiescence.json",
+            {
+                "expected_stats": stats,
+                "actual_stats": stats,
+                "expected_clients": [asdict(b) for b in held],
+                "clients": [
+                    asdict(
+                        backup.ClientActivity(
+                            b,
+                            "active" if b == admin else "idle",
+                            b != admin,
+                            True,
+                            b != admin,
+                            "client backend",
+                        )
+                    )
+                    for b in held
+                ],
+                "observer_pid": admin.pid,
+                "prepared_transactions": 0,
+                "entering_backends": 0,
+                "client_logging": {
+                    str(b.pid): {
+                        "prefix": "%m [%p] ",
+                        "locale": "C",
+                        "verbosity": "default",
+                        "destination": "stderr",
+                        "collector": "off",
+                        "minimum": "warning",
+                        "timezone": "UTC",
+                    }
+                    for b in held
+                },
+            },
+        )
+    record("pre-checkpoint-terminal.json", functional)
+    record("post-physical-terminal.json", functional)
+    payloads, witness = fixture()
+    witness.physical.update(physical)
+    struct_control = bytearray(payloads["global/pg_control"])
+    struct.pack_into("<Q", struct_control, 0, int(physical["cluster"]))
+    struct.pack_into("<I", struct_control, 288, backup._crc32c(bytes(struct_control[:288])))
+    payloads["global/pg_control"] = bytes(struct_control)
+    wal = bytearray(payloads[WAL])
+    struct.pack_into("<Q", wal, 24, int(physical["cluster"]))
+    payloads[WAL] = bytes(wal)
+    wref = record("pre-stop-physical.json", asdict(witness))
+    attempt = evidence.publish_json(
+        "native-fenced-stop-attempt-v1.json",
+        {
+            "container": run.container,
+            "image": owner[6],
+            "container_pid": 1,
+            "executable": "/usr/lib/postgresql/17/bin/postgres",
+            "host_pid": physical["pid"],
+            "host": physical["host"],
+            "stop_signal": "SIGINT",
+            "image_stop_signal": "SIGINT",
+            "bind": {"mounts": physical["mounts"], "port_request": physical["port_request"]},
+            "uid": physical["server_uid"],
+            "gid": physical["server_gid"],
+            "since": "2026-11-07T11:00:01+00:00",
+        },
+    )
+
+    def log_line(seconds, pid, msg):
+        return f"2026-11-07T11:00:0{seconds}Z 2026-11-07 11:00:0{seconds}.000 UTC [{pid}] {msg}\n"
+
+    log = evidence.publish(
+        "clean-shutdown.log",
+        (
+            log_line(1, 1, "LOG: received fast shutdown request")
+            + "".join(
+                log_line(2, b.pid, "FATAL:  terminating connection due to administrator command")
+                for b in held
+            )
+            + log_line(3, 1, "LOG: database system is shut down")
+        ).encode(),
+    )
+    stop = evidence.publish_json(
+        "native-fenced-stop-v1.json",
+        {
+            "attempt": attempt.model_dump(),
+            "log": log.model_dump(),
+            "fast": "2026-11-07T11:00:01+00:00",
+            "clean": "2026-11-07T11:00:03+00:00",
+            "finished": "2026-11-07T11:00:04+00:00",
+            "container": run.container,
+            "image": owner[6],
+            "host": physical["host"],
+            "exit_code": 0,
+            "oom_killed": False,
+        },
+    )
+    *_, exits = backup._shutdown_evidence(evidence, backup_store, run, physical, tuple(held))
+    files.append(exits)
+    for name in ("pgdata.tar", "pgdata-second.tar"):
+        archive(backup_store.path / name, payloads)
+        (backup_store.path / name).chmod(0o600)
+        ref = backup_store.reference(name)
+        files.append(ref)
+        raw(name + ".partial.stderr", b"")
+        with backup_store.file(name) as stream:
+            members, namespace = backup.archive_manifest(stream, witness)
+        record(
+            name + ".manifest.json",
+            {
+                "archive": ref.model_dump(),
+                "root_and_source": wref.model_dump(),
+                "numeric_id_space": namespace,
+                "members": {k: asdict(v) for k, v in members.items()},
+            },
+        )
+    record(
+        "retained-storage.json",
+        {
+            "primary_file_bytes": sum(m.size or 0 for m in members.values() if m.kind == "file"),
+            "backup_files_before_seal": [
+                {
+                    "path": r.path,
+                    "bytes": r.bytes,
+                    "allocated": (backup_store.path / r.path).stat().st_blocks * 512,
+                }
+                for r in files
+            ],
+            "available_media_bytes_at_measurement": 1024**3,
+        },
+    )
+    backup_store.publish_json(
+        "recovery-seal.json",
+        {
+            "completed_member": evidence.reference("completed-member.json").model_dump(),
+            "owner": evidence.reference("ownership").model_dump(),
+            "functional": evidence.reference("functional-terminal.json").model_dump(),
+            "shutdown": log.model_dump(),
+            "fenced_stop": stop.model_dump(),
+            "stop_attempt": attempt.model_dump(),
+            "retained": [r.model_dump() for r in files],
+        },
+    )

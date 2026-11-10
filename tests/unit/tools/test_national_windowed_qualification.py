@@ -122,6 +122,40 @@ def response(sequence: int, event: str = "observed", **changes: Any) -> bytes:
     )
 
 
+def installed_opening_view() -> dict[str, Any]:
+    return {
+        "period": 0,
+        "actor_id": 1,
+        "authority_id": [1] * 16,
+        "content_digest": [1] * 32,
+        "resource_digest": [2] * 32,
+        "standing": {"authorized": True, "partner_actor_id": 10, "paused_reason": None},
+        "available_hours": 2,
+        "contact_hours": 0,
+        "hold_reviewable": True,
+        "pause_reviewable": True,
+        "resume_reviewable": False,
+        "pending_freight": [],
+        "aid_response_history": [],
+    }
+
+
+def test_cold_endpoint_retains_its_actual_ready_poll_after_an_identical_state() -> None:
+    sock, peer = socket.socketpair()
+    with sock, peer:
+        channel = windowed.ControlChannel(sock, CAMPAIGN, 0)
+        view = installed_opening_view()
+        peer.sendall(response(1, installed_organizer=view))
+        first = channel.observe(1)
+        peer.sendall(response(2, installed_organizer=view))
+        installed = windowed.wait_ready(channel, 1, organizer=True, cold=True)
+        assert installed == first
+        assert [(r.sequence, r.action, r.event) for r in channel.records] == [
+            (1, "status", "observed"),
+            (2, "status", "observed"),
+        ]
+
+
 def test_operator_controls_have_a_distinct_completed_frame_event() -> None:
     from typing import get_args
 

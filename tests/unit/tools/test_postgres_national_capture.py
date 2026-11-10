@@ -994,3 +994,63 @@ def test_pair_operator_completes_each_retirement_before_next_run_and_final_evalu
         expected += ["create memory_capture", "retire memory_capture", "final"]
     assert (tmp_path / "calls").read_text().splitlines() == expected
     assert result.returncode == (64 if fail_retirement else 0)
+
+
+def test_named_native_shell_retains_replayable_capsules_inside_each_member(tmp_path):
+    import hashlib
+    from types import SimpleNamespace
+
+    from tools.devtools.national_native_pair import _verify_capsules
+    from tools.devtools.wayne_qualification_storage import PrivateEvidence
+
+    repo = Path(__file__).resolve().parents[3]
+    fixture = tmp_path / "captured-source"
+    sampler = fixture / "tools/devtools/national_game_memory.py"
+    sampler.parent.mkdir(parents=True)
+    sampler.write_bytes(b"designed capture source")
+    (fixture / "input").write_bytes(b"designed input")
+    for mode in ("normal_play", "memory_capture"):
+        evidence = tmp_path / "smoke-01" / mode / "evidence"
+        evidence.mkdir(parents=True, mode=0o700)
+        result = subprocess.run(
+            [
+                "bash",
+                "-euc",
+                r"""
+umask 077
+source "$1"
+REPO_ROOT="$2"
+CANARY=fixture
+national_source_paths(){ printf '%s\0' tools/devtools/national_game_memory.py input; }
+national_input_paths(){ printf '%s\0' input; }
+national_reproducibility
+""",
+                "capture",
+                str(repo / "tools/postgres_national_lifecycle.sh"),
+                str(fixture),
+            ],
+            env={
+                **os.environ,
+                "BABYLON_WAYNE_PROFILE": "smoke-01",
+                "BABYLON_STORAGE_REPORT_DIRECTORY": str(evidence),
+            },
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        store = PrivateEvidence(evidence)
+        sources = store.reference("source-before.sha256")
+        inputs = store.reference("inputs.sha256")
+        names = set()
+        assert (
+            _verify_capsules(
+                store,
+                SimpleNamespace(source_sha256=sources.sha256, inputs_sha256=inputs.sha256),
+                names,
+            )
+            == hashlib.sha256(sampler.read_bytes()).hexdigest()
+        )
+        assert {n for n in names if n.endswith(".tar.gz")} == {
+            f"inputs-{inputs.sha256}.tar.gz",
+            f"source-{sources.sha256}.tar.gz",
+        }

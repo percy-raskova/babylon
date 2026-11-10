@@ -6,6 +6,9 @@ import argparse
 import hashlib
 import json
 import os
+import re
+import tarfile
+from itertools import pairwise
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
@@ -21,9 +24,12 @@ from tools.devtools.national_native_evidence import (
     ColdInstallation,
     NativeRecord,
     NativeRunEvidence,
+    PracticeReceipt,
+    WalkStage,
     _artifact,
     evaluate_native,
     evaluate_wayne_walk,
+    verify_first_receipt_prefix,
 )
 from tools.devtools.national_storage_qualification import (
     CombinedMemoryEvidence,
@@ -46,12 +52,16 @@ from tools.devtools.national_storage_qualification import (
     strict_json_bytes,
 )
 from tools.devtools.national_windowed_qualification import (
+    SMOKE_DECISIONS,
+    WALK_FIXED_DECISIONS,
     Bytes16,
-    Bytes32,
     Command,
     Commitment,
     ControlsEvidence,
+    PlannedChoice,
     SelectedAllocation,
+    walk_cash,
+    walk_resume,
 )
 from tools.devtools.wayne_qualification_storage import PrivateEvidence, Reference
 
@@ -222,7 +232,7 @@ def decision_semantics(
         raw = bytes.fromhex(row.command_hex)
         command = Command.model_validate(strict_json_bytes(raw))
         commitment = Commitment.model_validate(strict_json_bytes(bytes.fromhex(row.commitment_hex)))
-        receipt = strict_json_bytes(bytes.fromhex(row.receipt_hex))
+        receipt = PracticeReceipt.model_validate(strict_json_bytes(bytes.fromhex(row.receipt_hex)))
         cid = hashlib.sha256(b"babylon.organizer-commitment.v3\0" + raw).digest()
         rid = _receipt_id(command, row.period, cid)
         if (
@@ -237,14 +247,12 @@ def decision_semantics(
             or row.period != commitment.resolves_period
             or markers.get(row.period) != row.marker
             or rid.hex() != row.receipt_id
-            or not isinstance(receipt, dict)
-            or bytes(TypeAdapter(Bytes32).validate_python(receipt.get("receipt_id"))) != rid
-            or bytes(TypeAdapter(Bytes32).validate_python(receipt.get("commitment_id"))) != cid
-            or type(receipt.get("actor_id")) is not int
-            or receipt["actor_id"] != command.actor_id
-            or type(receipt.get("period")) is not int
-            or receipt["period"] != row.period
-            or receipt.get("choice") != command.model_dump(mode="json")["choice"]
+            or bytes(receipt.receipt_id) != rid
+            or receipt.commitment_id is None
+            or bytes(receipt.commitment_id) != cid
+            or receipt.actor_id != command.actor_id
+            or receipt.period != row.period
+            or receipt.choice != command.choice
         ):
             raise ValueError(
                 "persisted command, native acceptance, receipt or committed marker differs"
@@ -254,7 +262,7 @@ def decision_semantics(
                 period=row.period,
                 actor=command.actor_id,
                 authority=command.authority_id,
-                partner=receipt["partner_actor_id"],
+                partner=receipt.partner_actor_id,
                 recipient=recipient,
                 choice=command.choice,
                 allocation=command.allocation,
@@ -379,6 +387,74 @@ def _custody(
     return fields, products
 
 
+def _checksum_manifest(store: PrivateEvidence, name: str) -> dict[str, str]:
+    rows = {}
+    for line in store.read_reference(store.reference(name)).decode().splitlines():
+        match = re.fullmatch(r"([a-f0-9]{64})  ([^\\\x00-\x1f]+)", line)
+        if not match:
+            raise ValueError("invalid source or input checksum row")
+        digest, path = match.groups()
+        if (
+            path.startswith("/")
+            or any(part in ("", ".", "..") for part in path.split("/"))
+            or path in rows
+        ):
+            raise ValueError("duplicate or redirected source/input manifest path")
+        rows[path] = digest
+    if not rows:
+        raise ValueError("source or input manifest is empty")
+    return rows
+
+
+def _verify_capsules(store: PrivateEvidence, declaration: Declaration, names: set[str]) -> str:
+    source = _checksum_manifest(store, "source-before.sha256")
+    inputs = _checksum_manifest(store, "inputs.sha256")
+    if not inputs.items() <= source.items():
+        raise ValueError("input manifest differs from the captured source closure")
+    for kind, prefix, fingerprint, rows in (
+        ("input", "inputs", declaration.inputs_sha256, inputs),
+        (
+            "source",
+            "source",
+            declaration.source_sha256,
+            {k: v for k, v in source.items() if k not in inputs},
+        ),
+    ):
+        name = f"{prefix}-{fingerprint}.tar.gz"
+        ref = store.reference(name)
+        expected = f"{ref.sha256}  {store.path / name}\n".encode()
+        for pointer in (name + ".sha256", kind + "-archive.sha256"):
+            if store.read_reference(store.reference(pointer)) != expected:
+                raise ValueError("retained source/input capsule checksum or destination differs")
+            names.add(pointer)
+        size_name = kind + "-archive-bytes"
+        if store.read_reference(store.reference(size_name)) != f"{ref.bytes}\n".encode():
+            raise ValueError("retained source/input capsule length differs")
+        names.update((size_name, name))
+        seen = set()
+        with (
+            store.file(name) as compressed,
+            tarfile.open(fileobj=compressed, mode="r|gz") as archive,
+        ):
+            for item in archive:
+                if not item.isfile() or item.name in seen or item.name not in rows:
+                    raise ValueError(
+                        "capsule contains a foreign, repeated or nonregular source/input"
+                    )
+                content = archive.extractfile(item)
+                if content is None:
+                    raise ValueError("regular capsule member lacks readable source/input bytes")
+                digest = hashlib.sha256()
+                while block := content.read(1024 * 1024):
+                    digest.update(block)
+                if digest.hexdigest() != rows[item.name]:
+                    raise ValueError("retained capsule content differs from its frozen manifest")
+                seen.add(item.name)
+        if seen != rows.keys():
+            raise ValueError("capsule lacks a required source/input file")
+    return source["tools/devtools/national_game_memory.py"]
+
+
 def evaluate_member(base: Path) -> CompletedMember:
     """Reopen every required input from the selected workload/mode's private retained bundle."""
     profile, mode = storage.native_path(base)
@@ -427,6 +503,7 @@ def evaluate_member(base: Path) -> CompletedMember:
         )
     )
     names.update(f"tick-{n:02}{suffix}.json" for n in periods for suffix in ("", "-reopened"))
+    sampler_digest = _verify_capsules(store, declaration, names)
     names.add("progress-000-starting.json")
     names.update(
         f"progress-{n:03}-{stage}.json"
@@ -550,9 +627,19 @@ def evaluate_member(base: Path) -> CompletedMember:
             or not cold.installed_monotonic_ns
             <= trace.actions[-1].completed_monotonic_ns
             <= native.completed_monotonic_ns
+            or not cold.state.cold_organizer_ready
+            or cold.state.foundation_sha256 != native.foundation_sha256
+            or cold.state.tick_content_hash != markers.get(cold.state.durable_tick)
             or not any(
-                a.state == cold.state and a.completed_monotonic_ns <= cold.installed_monotonic_ns
-                for a in trace.actions
+                a.sequence == cold.readiness_sequence
+                and a.action == "status"
+                and a.event == "observed"
+                and a.reason is None
+                and a.state == cold.state
+                and a.completed_monotonic_ns
+                <= cold.installed_monotonic_ns
+                <= following.started_monotonic_ns
+                for a, following in pairwise(trace.actions)
             )
             or cold.state.campaign_id != declaration.campaign
             or cold.state.durable_tick != (10 if segment == "completed" else 0)
@@ -592,6 +679,10 @@ def evaluate_member(base: Path) -> CompletedMember:
                     "combined-memory-tooling.json",
                 )
             )
+            if interval.capture_implementation_sha256 != sampler_digest:
+                raise ValueError(
+                    "retained sampler implementation differs from admitted source capsule"
+                )
             for sample in interval.samples:
                 observed = {
                     (p.role, p.pid, p.start_time_ticks, p.executable_sha256)
@@ -654,6 +745,62 @@ def evaluate_member(base: Path) -> CompletedMember:
     decisions = decision_semantics(
         functional["organizer_decisions"], confirmed, recipients, markers, native.campaign
     )
+    schedule = tuple(
+        PlannedChoice.model_validate(
+            {"period": d.period, "choice": d.choice, "allocation": d.allocation}
+        )
+        for d in decisions
+    )
+    if not walk:
+        if schedule != SMOKE_DECISIONS:
+            raise ValueError("ordered original decisions differ from the released smoke workload")
+    else:
+        tail = schedule[len(WALK_FIXED_DECISIONS) :]
+        if len(tail) not in (2, 3):
+            raise ValueError(
+                "walk must resolve local cash and Resume with at most one extra collection"
+            )
+        cash, resume = tail[-2:]
+        if (
+            schedule[:4] != WALK_FIXED_DECISIONS
+            or not 5 <= cash.period <= 9
+            or cash != walk_cash(cash.period)
+            or resume != walk_resume(cash.period + 2)
+            or (
+                len(tail) == 3
+                and (
+                    not 5 <= tail[0].period < cash.period
+                    or tail[0] != WALK_FIXED_DECISIONS[0].at_period(tail[0].period)
+                )
+            )
+        ):
+            raise ValueError("ordered original decisions differ from the released walk workload")
+    originals = TypeAdapter(tuple[OriginalDecision, ...]).validate_python(
+        functional["organizer_decisions"]
+    )
+    if walk:
+        stages = {
+            n: WalkStage.model_validate(
+                _json(store, f"walk-p{n}-installed.json", CONTROLS_RECORD_BYTES)
+            )
+            for n in periods
+        }
+        for row in originals:
+            raw = bytes.fromhex(row.receipt_hex)
+            verify_first_receipt_prefix(
+                stages,
+                PracticeReceipt.model_validate(strict_json_bytes(raw)).model_dump(mode="json"),
+                hashlib.sha256(raw).digest(),
+            )
+    else:
+        for n in periods:
+            name = f"resolved-decisions-{n}.json"
+            names.add(name)
+            dated = TypeAdapter(tuple[OriginalDecision, ...]).validate_python(_json(store, name))
+            if dated != tuple(row for row in originals if row.period <= n):
+                raise ValueError(
+                    "terminal resolution differs from the independently retained dated original"
+                )
     if walk:
         names.update(p.name for p in base.glob("walk-*.json"))
         names.update(
@@ -727,30 +874,14 @@ def verify_retirement(run: Path) -> RetiredMember:
         != member.pgdata
     ):
         raise ValueError("member retirement owner, PGDATA, completion or functional state differs")
-    required = {
-        "original-terminal.json",
-        "restored-terminal.json",
-        "database.dump",
-        "pgdata.tar",
-        "pgdata-second.tar",
-        "original-probes.json",
-        "restored-probes.json",
-        "verification-admission.json",
-    }
-    refs = [Reference.model_validate(row) for row in record["retained"]]
-    if not required.issubset({r.path for r in refs}) or len({r.path for r in refs}) != len(refs):
-        raise ValueError("recovery seal lacks independent restore and archive evidence")
-    for item in refs:
-        backup.verify(item)
-    for key in ("shutdown", "fenced_stop", "stop_attempt"):
-        evidence.verify(Reference.model_validate(record[key]))
-    expected = {**original, "database": {**original["database"], "allows_connections": False}}
-    if (
-        _json(backup, "original-terminal.json", CONTROLS_RECORD_BYTES) != original
-        or _json(backup, "restored-terminal.json", CONTROLS_RECORD_BYTES) != expected
-        or _json(backup, "original-probes.json") != _json(backup, "restored-probes.json")
-    ):
-        raise ValueError("restored member changed functional state or access")
+    from tools.devtools.wayne_qualification_backup import Run, verify_retained_backup
+
+    owner = tuple(evidence.read_reference(evidence.reference("ownership")).decode().splitlines())
+    verify_retained_backup(
+        Run(storage.MEDIA_CHECKOUT, evidence.path, owner, original["campaign"], original["period"]),
+        record,
+        original,
+    )
     return RetiredMember(
         measurement_mode=mode,
         completed=completed,
@@ -883,7 +1014,7 @@ def main() -> int:
             else:
                 verify_completed(evidence)
         return 0
-    except (OSError, ValueError, KeyError) as error:
+    except (OSError, ValueError, KeyError, tarfile.TarError) as error:
         parser.error(str(error))
 
 

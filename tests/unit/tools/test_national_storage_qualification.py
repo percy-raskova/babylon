@@ -2691,7 +2691,7 @@ def test_cli_full_playable_memory_missing_cannot_claim_full_admission(
     assert output["material_playable"]["status"] == "incomplete"
 
 
-def native_join_evidence(directory):
+def native_join_evidence(directory, *, named_smoke=False):
     """Designed evidence-join control, not an observed native campaign."""
     import json
     from uuid import UUID
@@ -2699,6 +2699,8 @@ def native_join_evidence(directory):
     from tools.devtools.national_storage_qualification import CombinedMemoryEvidence, NativeTimings
 
     report, _storage, native, _baseline, opening, ticks, _reopens = playable_evidence()
+    if named_smoke:
+        report = operational_aid_evidence()
     h = "ab" * 32
     campaign = report["campaign"]
     timing = native.model_dump(mode="json")
@@ -2808,7 +2810,7 @@ def native_join_evidence(directory):
             for key, value in report["independent_account_posting_audit"].items()
             if key != "periods"
         }
-        aid_summary["accepted_original_commands"] = tick
+        aid_summary["accepted_original_commands"] = min(tick, len(report["aid_periods"]))
         if not tick:
             for key in (
                 "cash_and_in_kind_postings",
@@ -2858,7 +2860,7 @@ def native_join_evidence(directory):
     aid_names = []
     recovery_names = []
     for n, boundary in enumerate(report["boundaries"], 1):
-        choice = "remote_aid" if n == 1 else "local_aid"
+        choice = "remote_aid" if n == 1 else ("pause_standing" if named_smoke else "local_aid")
         command = {
             "campaign_id": list(UUID(campaign).bytes),
             "actor_id": 1,
@@ -2870,6 +2872,8 @@ def native_join_evidence(directory):
             "choice": choice,
             "allocation": {"aid": {"food_quantity": 1, "cash_micros": "0"}},
         }
+        if choice == "pause_standing":
+            command["allocation"] = "none"
         commitment = {"command": command, "commitment_id": [n] * 32, "resolves_period": n}
         preview = {
             "choice": choice,
@@ -2882,31 +2886,32 @@ def native_join_evidence(directory):
             "replaces_standing_work": True,
             "observations": [],
         }
-        report["aid_periods"][n - 1].update(commitment=commitment, preview=preview)
         action(
             "review",
             "preview_admitted",
             state(n - 1, choice=choice, reviewed_command=command, preview=preview),
         )
         action("confirm", "acceptance_admitted", state(n - 1, choice=choice, commitment=commitment))
-        name = "aid-" + bytes([n] * 32).hex() + ".json"
-        aid_names.append(name)
-        records[name] = {
-            "version": 1,
-            "scope": "actual_native_aid_acceptance_witness_only",
-            "foundation_sha256": h,
-            "policy_sha256": h,
-            "tick_content_hash": h if n > 1 else None,
-            "commitment": commitment,
-            "review": {
-                "scope": {"epoch": epoch, "campaign_id": campaign},
-                "observation_generation": generation,
-                "request_id": n,
-                "command": command,
-                "admission": preview,
-                "before": {"view": {"period": n - 1}},
-            },
-        }
+        if choice != "pause_standing":
+            report["aid_periods"][n - 1].update(commitment=commitment, preview=preview)
+            name = "aid-" + bytes([n] * 32).hex() + ".json"
+            aid_names.append(name)
+            records[name] = {
+                "version": 1,
+                "scope": "actual_native_aid_acceptance_witness_only",
+                "foundation_sha256": h,
+                "policy_sha256": h,
+                "tick_content_hash": h if n > 1 else None,
+                "commitment": commitment,
+                "review": {
+                    "scope": {"epoch": epoch, "campaign_id": campaign},
+                    "observation_generation": generation,
+                    "request_id": n,
+                    "command": command,
+                    "admission": preview,
+                    "before": {"view": {"period": n - 1}},
+                },
+            }
         generation += 1
         aid = report["independent_account_posting_audit"]["periods"][n - 1]
         facts = {

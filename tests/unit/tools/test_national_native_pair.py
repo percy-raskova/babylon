@@ -1,7 +1,9 @@
 """Designed command custody for serial native measurement members."""
 
 import hashlib
+import io
 import json
+import tarfile
 from uuid import UUID
 
 import pytest
@@ -13,6 +15,18 @@ MARKER = "98" * 32
 
 def wire(value):
     return json.dumps(value, separators=(",", ":")).encode()
+
+
+def receipt_fields(choice):
+    return {
+        "standing_work": False,
+        "outcome": "standing_paused" if choice == "pause_standing" else "aid_scheduled",
+        "hours_spent": 0,
+        "partner_response": "not_requested",
+        "observation_ids": [],
+        "contact_product_id": None,
+        "time_use": [],
+    }
 
 
 def original(nonce, quantity=2, partner=17):
@@ -34,6 +48,7 @@ def original(nonce, quantity=2, partner=17):
         b"babylon.organizer-receipt.v1\0" + wire([command["campaign_id"], 11, 1, cid])
     ).digest()
     receipt = {
+        **receipt_fields("remote_aid"),
         "commitment_id": cid,
         "receipt_id": list(rid),
         "choice": "remote_aid",
@@ -79,12 +94,17 @@ def test_independent_nonces_match_only_after_each_raw_receipt_and_marker_joins()
         )
 
 
-def bind_originals(old_campaign, campaign, playable, database, selected, offset):
+def bind_originals(old_campaign, campaign, records, database, selected, offset):
     ids = {}
     originals = []
     for n in (1, 2):
+        accepted = [
+            a["state"]["commitment"]
+            for a in records["native-controls.json"]["actions"]
+            if a["action"] == "confirm"
+        ][n - 1]
         command = dict(
-            playable["aid_periods"][n - 1]["commitment"]["command"],
+            accepted["command"],
             campaign_id=list(UUID(campaign).bytes),
             nonce=[n + offset] * 16,
         )
@@ -96,6 +116,7 @@ def bind_originals(old_campaign, campaign, playable, database, selected, offset)
             b"babylon.organizer-receipt.v1\0" + wire([command["campaign_id"], 1, n, list(cid)])
         ).digest()
         receipt = {
+            **receipt_fields(command["choice"]),
             "actor_id": 1,
             "period": n,
             "choice": command["choice"],
@@ -144,7 +165,73 @@ def bind_originals(old_campaign, campaign, playable, database, selected, offset)
     return bind, ids, originals
 
 
-def member_bundle(releases, mode):
+def source_capsules(store, defect):
+    captures = {
+        "tools/devtools/national_game_memory.py": b"designed sampler",
+        "content/scenarios/national/defines.toml": b"[fixture]",
+    }
+
+    def manifest(rows):
+        return b"".join(
+            f"{hashlib.sha256(raw).hexdigest()}  {name}\n".encode() for name, raw in rows.items()
+        )
+
+    inputs = {name: raw for name, raw in captures.items() if name.startswith("content/")}
+    leaves = {name: raw for name, raw in captures.items() if name not in inputs}
+    (store.path / "inputs.sha256").write_bytes(manifest(inputs))
+    source = store.publish("source-before.sha256", manifest(captures))
+    for kind, prefix, fingerprint, rows in (
+        ("input", "inputs", store.reference("inputs.sha256").sha256, inputs),
+        ("source", "source", source.sha256, leaves),
+    ):
+        if defect == "altered-input-content" and kind == "input":
+            rows = dict.fromkeys(rows, b"substituted input")
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode="w:gz") as tar:
+            for name, raw in rows.items():
+                info = tarfile.TarInfo(name)
+                info.size = len(raw)
+                tar.addfile(info, io.BytesIO(raw))
+        name = f"{prefix}-{fingerprint}.tar.gz"
+        ref = store.publish(name, stream.getvalue())
+        checksum = f"{ref.sha256}  {store.path / name}\n".encode()
+        store.publish(name + ".sha256", checksum)
+        store.publish(kind + "-archive.sha256", checksum)
+        store.publish(kind + "-archive-bytes", f"{ref.bytes}\n".encode())
+    return source
+
+
+def bind_dated_decisions(store, records, originals, manifest, timing, defect):
+    from tests.unit.tools.test_national_windowed_qualification import installed_opening_view
+
+    records["native-controls.json"]["actions"][0]["state"]["installed_organizer"] = (
+        installed_opening_view()
+    )
+    for n in (1, 2):
+        store.publish_json(f"resolved-decisions-{n}.json", originals[:n])
+    if defect == "early-loading":
+        actions = records["native-controls.json"]["actions"]
+        early = {**actions[0], "state": {**actions[0]["state"], "phase": "Loading"}}
+        for a in actions:
+            a["sequence"] += 1
+            for key in ("started_monotonic_ns", "completed_monotonic_ns"):
+                a[key] += 181 * 10**9
+        actions.insert(0, early)
+        manifest["completed_monotonic_ns"] += 181 * 10**9
+        clock = timing.model_dump(mode="json")
+        clock["run"]["elapsed_ns"] += 181 * 10**9
+        timing = type(timing).model_validate(clock)
+    if defect in ("truncated-receipt", "changed-receipt"):
+        raw = json.loads(bytes.fromhex(originals[0]["receipt_hex"]))
+        if defect == "truncated-receipt":
+            del raw["hours_spent"]
+        else:
+            raw["hours_spent"] += 1
+        originals[0]["receipt_hex"] = wire(raw).hex()
+    return timing
+
+
+def member_bundle(releases, mode, *, defect=None):
     """Rebind valid designed material, timing, and memory leaves to a fresh fixture."""
     from pathlib import Path
 
@@ -177,7 +264,7 @@ def member_bundle(releases, mode):
         "sha256:" + "ab" * 32,
         database,
         "national_writer_" + canary[:12],
-        "123",
+        "551",
         str(base),
         profile,
         "daemon",
@@ -190,13 +277,16 @@ def member_bundle(releases, mode):
         "23456",
         str(offset),
     ]
-    manifest, playable, timing, memory, _, _, records = native_join_evidence(base)
+    manifest, playable, timing, memory, _, _, records = native_join_evidence(
+        base, named_smoke=defect != "wrong-decisions"
+    )
     shared = (
         Path(__file__).resolve().parents[3] / "contracts/national_storage_qualification_v6.json"
     ).read_bytes()
     selected = store.publish("policy.json", shared)
     owner_ref = store.publish("ownership", ("\n".join(owner) + "\n").encode())
-    source = store.publish("source-before.sha256", b"designed source")
+    source = source_capsules(store, defect)
+    manifest["inputs_sha256"] = store.reference("inputs.sha256").sha256
     store.publish("source-head", b"a" * 40 + b"\n")
     products = {}
     for name in ("babylon-runtime", "babylon-client", "babylon-material-audit"):
@@ -229,11 +319,11 @@ def member_bundle(releases, mode):
     campaign = declaration.campaign
     store.publish("campaign", (campaign + "\n").encode())
     bind, ids, originals = bind_originals(
-        manifest["campaign"], campaign, playable, database, selected, offset
+        manifest["campaign"], campaign, records, database, selected, offset
     )
     records = bind(records)
     playable = bind(playable)
-    for n in (1, 2):
+    for n in range(1, len(manifest["aid_originals"]) + 1):
         old = "aid-" + bytes([n] * 32).hex() + ".json"
         fresh = "aid-" + bytes(ids[n]).hex() + ".json"
         original = records.pop(old)
@@ -243,6 +333,7 @@ def member_bundle(releases, mode):
         records[fresh] = original
         manifest["aid_originals"][n - 1]["name"] = fresh
         (base / old).unlink()
+    timing = bind_dated_decisions(store, records, originals, manifest, timing, defect)
     for artifact in (
         manifest["controls"],
         manifest["opening"],
@@ -291,8 +382,18 @@ def member_bundle(releases, mode):
             "campaign": campaign,
         },
     )
-    store.publish_json(
-        "physical.json",
+    from tools.devtools.wayne_qualification_backup import Run
+
+    from tests.unit.tools.test_wayne_qualification_backup import fixture as physical_fixture
+    from tests.unit.tools.test_wayne_qualification_backup import retained_pair_recovery
+
+    _, witness = physical_fixture()
+    physical = {
+        k: v
+        for k, v in witness.physical.items()
+        if k not in ("relation_sizes", "relation_page_occupancy", "pgss")
+    }
+    physical.update(
         {
             "container": container,
             "label": canary,
@@ -301,9 +402,15 @@ def member_bundle(releases, mode):
             "port": 23456,
             "path": owner[5],
             "name": owner[3],
-            "host": {"major": 0, "minor": 1, "inode": offset},
-        },
+            "host": {**physical["host"], "major": 0, "minor": 1, "inode": offset},
+            "pid": offset + 3,
+            "mounts": [],
+            "port_request": {},
+            "max_connections": 50,
+            "max_wal_senders": 0,
+        }
     )
+    store.publish_json("physical.json", physical)
     for name in ("reader-role", "observer-role"):
         store.publish_json(name, {"designed": True})
     role_digests = {
@@ -334,6 +441,7 @@ def member_bundle(releases, mode):
             "elapsed_ns": 15,
             "started_monotonic_ns": 1,
             "installed_monotonic_ns": 16,
+            "readiness_sequence": 1,
             "ownership_sha256": owner_ref.sha256,
             "source_head": "a" * 40,
             "state": records["native-controls.json"]["actions"][0]["state"],
@@ -348,14 +456,15 @@ def member_bundle(releases, mode):
             ownership_record_sha256=owner_ref.sha256,
         )
         row["source_manifest_sha256"] = store.publish(
-            "combined-memory-source.sha256", b"designed source"
+            "combined-memory-source.sha256", store.read_reference(source)
         ).sha256
         row["executable_manifest_sha256"] = store.publish_json(
             "combined-memory-executables.json",
             {"version": 1, "roles": {k: [v] for k, v in role_digests.items()}},
         ).sha256
         row["capture_implementation_sha256"] = store.publish(
-            "combined-memory-sampler-source.py", b"designed sampler"
+            "combined-memory-sampler-source.py",
+            b"different sampler" if defect == "spoofed-sampler" else b"designed sampler",
         ).sha256
         row["tooling_report_sha256"] = store.publish_json(
             "combined-memory-tooling.json",
@@ -374,46 +483,60 @@ def member_bundle(releases, mode):
     functional = {
         "period": 2,
         "campaign": campaign,
-        "database": {"allows_connections": True},
+        "database": {"allows_connections": True, "owner": owner[8], "connection_limit": -1},
         "organizer_decisions": originals,
-        "markers": [{"tick": n, "hash": "ab" * 32} for n in (1, 2)],
+        "markers": [{"tick": n, "hash": "ab" * 32, "identity": "0a" * 256} for n in (1, 2)],
     }
-    terminal = store.publish_json("functional-terminal.json", functional)
+    store.publish_json("functional-terminal.json", functional)
     member = pair.evaluate_member(base)
-    completed = store.publish_json("completed-member.json", member.model_dump(mode="json"))
+    store.publish_json("completed-member.json", member.model_dump(mode="json"))
     retired = store.publish_json(
         "retired-container.json",
         {"container": container, "retained_pgdata": {"major": 0, "minor": 1, "inode": offset}},
     )
-    retained = [
-        backup.publish_json("original-terminal.json", functional),
-        backup.publish_json(
-            "restored-terminal.json", {**functional, "database": {"allows_connections": False}}
-        ),
-    ]
-    for name in (
-        "database.dump",
-        "pgdata.tar",
-        "pgdata-second.tar",
-        "original-probes.json",
-        "restored-probes.json",
-        "verification-admission.json",
-    ):
-        retained.append(backup.publish_json(name, {"designed": True}))
-    backup.publish_json(
-        "recovery-seal.json",
-        {
-            "completed_member": completed.model_dump(),
-            "owner": owner_ref.model_dump(),
-            "functional": terminal.model_dump(),
-            **{
-                key: store.publish_json(key + ".json", {}).model_dump()
-                for key in ("shutdown", "fenced_stop", "stop_attempt")
-            },
-            "retained": [r.model_dump() for r in retained],
-        },
+    retained_pair_recovery(
+        Run(storage.MEDIA_CHECKOUT, base, tuple(owner), campaign, 2),
+        store,
+        backup,
+        physical,
+        functional,
     )
     return member, retired
+
+
+def check_recovery_substitution(pair, storage):
+    run = storage.member_run("smoke-01", "normal_play")
+    b = storage.PrivateEvidence(run / "backup")
+    e = storage.PrivateEvidence(run / "evidence")
+    seal_path = b.path / "recovery-seal.json"
+    saved = seal_path.read_bytes()
+    for name, field, replacement, reason in (
+        ("verification-identity.json", "name", "other", "verification database"),
+        (
+            "pgdata-second.tar.manifest.json",
+            "root_and_source",
+            e.reference("ownership").model_dump(),
+            "independent offline archive",
+        ),
+        ("fenced-client-exits.json", "expected", [], "held-client exits"),
+    ):
+        path = b.path / name
+        old = path.read_bytes()
+        path.write_bytes(wire({**json.loads(old), field: replacement}))
+        packet = json.loads(saved)
+        packet["retained"] = [
+            b.reference(name).model_dump() if r["path"] == name else r for r in packet["retained"]
+        ]
+        seal_path.write_bytes(wire(packet))
+        with pytest.raises(ValueError, match=reason):
+            pair.qualify_pair("smoke-01")
+        path.write_bytes(old)
+    packet = json.loads(saved)
+    packet["shutdown"] = e.reference("ownership").model_dump()
+    seal_path.write_bytes(wire(packet))
+    with pytest.raises(ValueError, match="canonical stop evidence"):
+        pair.qualify_pair("smoke-01")
+    seal_path.write_bytes(saved)
 
 
 def test_complete_pair_reopens_both_real_evidence_bundles_and_fails_closed(tmp_path, monkeypatch):
@@ -429,6 +552,7 @@ def test_complete_pair_reopens_both_real_evidence_bundles_and_fails_closed(tmp_p
     assert normal.decisions == memory.decisions
     result = pair.qualify_pair("smoke-01")
     assert result["status"] == "qualified" and result["qualification_report_version"] == 8
+    check_recovery_substitution(pair, storage)
     declaration = releases.reference("smoke-01/pair-declaration.json")
     for change in (
         {"measurement_mode": "normal_play"},
@@ -490,3 +614,56 @@ def test_captured_phase_elapsed_is_diagnostic_and_normal_open_enforces_its_limit
         ticks,
     )
     assert normal["status"] == "failed" and normal["native_read_and_reopen_budgets_passed"] is False
+
+
+@pytest.mark.parametrize(
+    ("defect", "reason"),
+    [
+        ("wrong-decisions", "released smoke workload"),
+        ("partial-recovery", "complete restore and physical archive roster"),
+        ("missing-capsule", "source-"),
+        ("altered-input-content", "content differs from its frozen manifest"),
+        ("spoofed-sampler", "sampler implementation differs from admitted source"),
+        ("truncated-receipt", "hours_spent"),
+        ("changed-receipt", "differs from the independently retained dated original"),
+        ("early-loading", "process-cold installation differs"),
+    ],
+)
+def test_final_pair_refuses_review_defects(tmp_path, monkeypatch, defect, reason):
+    from tools.devtools import national_native_pair as pair
+    from tools.devtools import wayne_qualification_storage as storage
+
+    monkeypatch.setattr(storage, "RUN_PARENT", tmp_path)
+    releases = storage.PrivateEvidence(tmp_path)
+    if defect == "wrong-decisions":
+        # Model two completed legacy fixtures that agreed on the wrong second command.
+        # Final qualification below uses the actual current workload and both sealed packets.
+        with monkeypatch.context() as legacy:
+            remote, _pause = pair.SMOKE_DECISIONS
+            local = pair.PlannedChoice(period=2, choice="local_aid", allocation=remote.allocation)
+            legacy.setattr(pair, "SMOKE_DECISIONS", (remote, local))
+            one, _ = member_bundle(releases, "normal_play", defect=defect)
+            two, _ = member_bundle(releases, "memory_capture", defect=defect)
+            assert one.decisions == two.decisions
+        with pytest.raises(ValueError, match=reason):
+            pair.qualify_pair("smoke-01")
+        return
+    with pytest.raises((ValueError, FileNotFoundError), match=reason):
+        member_bundle(releases, "normal_play", defect=defect)
+        member_bundle(
+            releases,
+            "memory_capture",
+            defect=defect if defect == "spoofed-sampler" else None,
+        )
+        run = storage.member_run("smoke-01", "normal_play")
+        if defect == "missing-capsule":
+            for capsule in (run / "evidence").glob("source-*.tar.gz"):
+                capsule.unlink()
+        if defect == "partial-recovery":
+            seal = run / "backup/recovery-seal.json"
+            packet = json.loads(seal.read_bytes())
+            packet["retained"] = [
+                r for r in packet["retained"] if r["path"] != "pre-stop-physical.json"
+            ]
+            seal.write_bytes(wire(packet))
+        pair.qualify_pair("smoke-01")

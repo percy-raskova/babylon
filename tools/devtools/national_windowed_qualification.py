@@ -622,6 +622,26 @@ class ControlState(FrozenRecord):
     production_reading: StrictStr | None
 
     @property
+    def cold_organizer_ready(self) -> bool:
+        return (
+            self.phase in ("Ready", "Complete")
+            and self.scope_epoch is not None
+            and self.primary_view == "Organizer"
+            and self.opening_stage == "Game"
+            and not (
+                self.splash_visible
+                or self.menu_open
+                or self.lifecycle_pending
+                or self.advance_pending
+                or self.organizer_pending
+                or self.organizer_status_due
+            )
+            and self.viewed_tick == self.durable_tick == self.organizer_period
+            and self.installed_organizer is not None
+            and self.installed_organizer.period == self.durable_tick
+        )
+
+    @property
     def selected_allocation(self) -> Allocation | None:
         if self.allocation_error is not None:
             return None
@@ -692,6 +712,51 @@ class PlannedChoice(FrozenRecord):
                 {"choice": self.choice, "allocation": self.allocation}
             )
         return self
+
+    def at_period(self, period: int) -> PlannedChoice:
+        return PlannedChoice(period=period, choice=self.choice, allocation=self.allocation)
+
+
+SMOKE_DECISIONS = (
+    PlannedChoice(
+        period=1,
+        choice="remote_aid",
+        allocation=AidAllocation(aid=AidAmounts(food_quantity=1, cash_micros="0")),
+    ),
+    PlannedChoice(period=2, choice="pause_standing", allocation="none"),
+)
+WALK_FIXED_DECISIONS = (
+    PlannedChoice(
+        period=1,
+        choice="collect",
+        allocation=CollectionAllocation(
+            collection=CollectionAmount(target_cash_micros="1450000000")
+        ),
+    ),
+    PlannedChoice(
+        period=2,
+        choice="local_aid",
+        allocation=AidAllocation(aid=AidAmounts(food_quantity=1, cash_micros="0")),
+    ),
+    PlannedChoice(
+        period=3,
+        choice="remote_aid",
+        allocation=AidAllocation(aid=AidAmounts(food_quantity=2, cash_micros="280000000")),
+    ),
+    SMOKE_DECISIONS[1].at_period(4),
+)
+
+
+def walk_cash(period: int) -> PlannedChoice:
+    return PlannedChoice(
+        period=period,
+        choice="local_aid",
+        allocation=AidAllocation(aid=AidAmounts(food_quantity=0, cash_micros="1000000000")),
+    )
+
+
+def walk_resume(period: int) -> PlannedChoice:
+    return PlannedChoice(period=period, choice="resume_standing", allocation="none")
 
 
 def _unique_object(pairs: list[tuple[str, JsonValue]]) -> dict[str, JsonValue]:
@@ -962,7 +1027,9 @@ class ControlChannel:
             current.scope_epoch if current.scope_epoch is not None else self.scope_epoch
         )
 
-    def _exchange(self, action: Action, timeout: float) -> ControlResponse:
+    def _exchange(
+        self, action: Action, timeout: float, *, retain_ready: bool = False
+    ) -> ControlResponse:
         if self._check_capture is not None:
             self._check_capture()
         if self.closed:
@@ -1008,7 +1075,14 @@ class ControlChannel:
             if self._on_observed is not None:
                 self._on_observed(reply.state)
             self._bind(reply.state, action, reply.event)
-            if not self.records or action != "status" or reply.state != self.records[-1].state:
+            if (
+                not self.records
+                or action != "status"
+                or reply.state != self.records[-1].state
+                or retain_ready
+                and reply.event == "observed"
+                and reply.state.cold_organizer_ready
+            ):
                 self.records.append(
                     ActionObservation(
                         sequence=self.sequence,
@@ -1034,8 +1108,8 @@ class ControlChannel:
                 "native control exchange refused: " + str(error), reason=_failure_reason(error)
             ) from error
 
-    def observe(self, timeout: float) -> ControlState:
-        reply = self._exchange("status", timeout)
+    def observe(self, timeout: float, *, retain_ready: bool = False) -> ControlState:
+        reply = self._exchange("status", timeout, retain_ready=retain_ready)
         if reply.event != "observed" and not (
             reply.event == "refused" and reply.reason == "control_stale_or_unavailable"
         ):
@@ -1326,10 +1400,12 @@ def submit_choice(
     return None
 
 
-def wait_ready(channel: ControlChannel, timeout: float, *, organizer: bool) -> ControlState:
+def wait_ready(
+    channel: ControlChannel, timeout: float, *, organizer: bool, cold: bool = False
+) -> ControlState:
     deadline = time.monotonic() + _duration(timeout)
     while time.monotonic() < deadline:
-        current = channel.observe(max(0.001, deadline - time.monotonic()))
+        current = channel.observe(max(0.001, deadline - time.monotonic()), retain_ready=cold)
         if (
             not organizer
             and current.scope_epoch is not None
@@ -1342,6 +1418,13 @@ def wait_ready(channel: ControlChannel, timeout: float, *, organizer: bool) -> C
             current = channel.perform("continue_warning", remaining)
         if (
             current.phase in {"Ready", "Complete"}
+            and (
+                not cold
+                or current.cold_organizer_ready
+                and channel.last_response is not None
+                and channel.last_response.event == "observed"
+                and channel.last_response.reason is None
+            )
             and not current.lifecycle_pending
             and not current.advance_pending
             and (
@@ -1377,7 +1460,7 @@ def drive_pair(
     choices: tuple[PlannedChoice, ...] = (),
     on_installed: Callable[[ControlChannel, Path, ControlState], None] | None = None,
     play_penultimate_close: bool = False,
-    on_opened: Callable[[ControlState], None] | None = None,
+    on_opened: Callable[[ActionObservation], None] | None = None,
     on_observed: Callable[[ControlState], None] | None = None,
     cold_window: ColdControlWindow | None = None,
     wall_deadline: float | None = None,
@@ -1606,10 +1689,12 @@ def drive_pair(
                     if current.primary_view != "Organizer":
                         channel.perform("open_organizer", opening_timeout())
                     phase = "organizer_readiness"
-                    current = wait_ready(channel, opening_timeout(), organizer=True)
+                    current = wait_ready(
+                        channel, opening_timeout(), organizer=True, cold=on_opened is not None
+                    )
                     phase = "opening_boundary"
                     if on_opened is not None:
-                        on_opened(current)
+                        on_opened(channel.records[-1])
                     on_boundary(current)
                     if on_installed is not None:
                         on_installed(channel, endpoint.parent, current)

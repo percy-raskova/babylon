@@ -570,8 +570,8 @@ The current private startup, input, response and trace formats are v5.
 Advance v1 and recovery v2 keep their meanings.
 
 The central ``RUN_PARENT`` resolver places the pair at
-``qualification-11/<workload>/<mode>/`` and the unpaired SQL fixture at
-``qualification-11/sql-01``. Earlier namespaces, source and binaries remain
+``qualification-12/<workload>/<mode>/`` and the unpaired SQL fixture at
+``qualification-12/sql-01``. Earlier namespaces, source and binaries remain
 intact. Unsupported old native formats refuse before writes, without a
 compatibility path. Non-native material-only evaluation remains separate.
 

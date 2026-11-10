@@ -1980,7 +1980,9 @@ def designed_custom_dump(database: str) -> bytes:
     )
 
 
-def retained_pair_recovery(run, evidence, backup_store, physical, functional):
+def retained_pair_recovery(
+    run, evidence, backup_store, physical, functional, *, reader_period: int = 2
+):
     """Retain independent PG17 fixture tars, canonical restore/held-client and shutdown evidence."""
     from copy import deepcopy
     from dataclasses import asdict
@@ -1995,7 +1997,7 @@ def retained_pair_recovery(run, evidence, backup_store, physical, functional):
             "denied_sqlstates": ["42501", "42501"],
             "allowed": [2, marker["identity"], marker["hash"]]
             if k == "observer"
-            else ["county", "26163", 2, "ab" * 32, "cd" * 32],
+            else ["county", "26163", reader_period, "ab" * 32, "cd" * 32],
         }
         for k in ("reader", "observer")
     }
@@ -2300,6 +2302,8 @@ def recovery_admission_bytes(tmp_path_factory: pytest.TempPathFactory) -> dict[s
         ("late-period", "Wayne reader revision"),
         ("negative-period", "Wayne reader revision"),
         ("boolean-period", "Wayne reader revision"),
+        ("restored-period-float", "Wayne reader revision"),
+        ("restored-period-boolean", "Wayne reader revision"),
         ("invalid-revision", "Wayne reader revision"),
         ("invalid-body", "Wayne reader revision"),
     ],
@@ -2345,11 +2349,26 @@ def test_checksum_consistent_logical_recovery_refuses_incomplete_observations(
                 row[2] = {"late-period": 3, "negative-period": -1, "boolean-period": True}[fault]
             elif fault in ("invalid-revision", "invalid-body"):
                 row[3 if fault == "invalid-revision" else 4] = "g" * 64
+            elif name == "restored-probes.json" and fault == "restored-period-float":
+                assert type(row[2]) is int and row[2] == 2
+                row[2] = 2.0
+            elif name == "restored-probes.json" and fault == "restored-period-boolean":
+                assert type(row[2]) is int and row[2] == 1
+                row[2] = True
+            else:
+                return publish(store, name, data)
             data = json.dumps(probes).encode()
         return publish(store, name, data)
 
     monkeypatch.setattr(storage.PrivateEvidence, "publish", acquire)
-    retained_pair_recovery(run, evidence, retained, physical, original)
+    retained_pair_recovery(
+        run,
+        evidence,
+        retained,
+        physical,
+        original,
+        reader_period=1 if fault == "restored-period-boolean" else 2,
+    )
     seal = json.loads(retained.read_reference(retained.reference("recovery-seal.json")))
     with pytest.raises(backup.Refusal, match=reason):
         backup.verify_retained_backup(run, seal, original)

@@ -2304,9 +2304,12 @@ def _restore_clients(
         raise Refusal("verification database, restore inputs, privileges or held slots differ")
     _verify_logical_dump(backup, refs, run.database)
     probes = _retained_record(backup, "original-probes.json")
-    if set(probes) != {"reader", "observer"} or probes != _retained_record(
-        backup, "restored-probes.json"
-    ):
+    restored_probes = _retained_record(backup, "restored-probes.json")
+    for observed in (probes, restored_probes):
+        if set(observed) != {"reader", "observer"}:
+            raise Refusal("restricted probe evidence must include the reader and observer")
+        _require_wayne_reader_revision(observed["reader"].get("allowed"), run.period)
+    if probes != restored_probes:
         raise Refusal("restored restricted reader/observer evidence differs")
     for kind, probe in probes.items():
         if probe["role"] != "national_" + kind + "_" + run.owner[2][:12] or probe[
@@ -2314,7 +2317,6 @@ def _restore_clients(
         ] != ["42501", "42501"]:
             raise Refusal("restored access did not retain actual confined roles and denied probes")
     marker = original["markers"][-1]
-    _require_wayne_reader_revision(probes["reader"].get("allowed"), run.period)
     if probes["observer"].get("allowed") != [run.period, marker["identity"], marker["hash"]]:
         raise Refusal("restored probe differs from the terminal marker or required Wayne grant")
     baseline = admission["baseline"]

@@ -785,6 +785,13 @@ class NativeRun:
         proof = state.period_proof
         if (
             proof is None
+            or advance.runtime_scope.campaign_id != self.campaign
+            or advance.runtime_scope.epoch != state.scope_epoch
+            or advance.foundation_sha256 != self.foundation
+            or advance.policy_sha256 != self.policy_hash
+            or advance.committed_tail.resolve_tick != record.tick
+            or advance.committed_tail.tick_content_hash != record.tick_content_hash
+            or advance.committed_tail.world_hash != record.facts.nominal_world_hash
             or proof.request_id != advance.request_id
             or state.advance_request_id != advance.request_id
             or proof.scope_epoch != record.runtime_epoch

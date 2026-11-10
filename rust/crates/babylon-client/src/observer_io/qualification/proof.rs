@@ -67,6 +67,7 @@ impl InstalledKnown {
             && session.accepts(&self.context)
             && session.perspective == Perspective::PlayerKnowledge
             && !session.playing
+            && !session.quit_requested
             && !session.lifecycle_pending()
             && matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
             && session.foundation_digest.as_ref() == Some(&self.binding.foundation)
@@ -98,6 +99,14 @@ impl InstalledKnown {
 }
 
 impl NativeAudit {
+    fn proof_running(&mut self, session: &ObserverSession) -> Result<(), &'static str> {
+        if session.quit_requested {
+            self.refuse_period_proof("period_proof_quit");
+            return Err("period_proof_quit");
+        }
+        Ok(())
+    }
+
     pub(in crate::observer_io) fn proof_allows_next_source(&self) -> bool {
         matches!(self.proof, None | Some(Progress::Acknowledged { .. }))
     }
@@ -166,6 +175,7 @@ impl NativeAudit {
         session: &ObserverSession,
         sequence: u64,
     ) -> Result<(), &'static str> {
+        self.proof_running(session)?;
         let Some(Progress::AwaitingFence(known)) = self.proof.as_ref() else {
             return Err("period_proof_not_awaiting_fence");
         };
@@ -232,6 +242,7 @@ impl NativeAudit {
         session: &ObserverSession,
         snapshot: Option<&ObserverEconomySnapshot>,
     ) -> Result<Option<(Work, InstalledKnown)>, String> {
+        self.proof_running(session)?;
         let Some(Progress::Requested(fence)) = &self.proof else {
             return Ok(None);
         };
@@ -258,6 +269,7 @@ impl NativeAudit {
         candidate: Candidate,
         cursor: Option<ObserverMaterialCursor>,
     ) -> Result<(), String> {
+        self.proof_running(session)?;
         let Some(Progress::Reading(fence)) = &self.proof else {
             return Err("native proof result lacks its original fence".into());
         };
@@ -302,6 +314,7 @@ impl NativeAudit {
         session: &ObserverSession,
         snapshot: Option<&ObserverEconomySnapshot>,
     ) -> Result<Option<ObserverMaterialCursor>, String> {
+        self.proof_running(session)?;
         let Some(Progress::AwaitingJoin { fence, .. }) = &self.proof else {
             return Ok(None);
         };
@@ -382,6 +395,9 @@ impl NativeAudit {
         sequence: u64,
         snapshot: Option<&ObserverEconomySnapshot>,
     ) -> Result<(), &'static str> {
+        if session.quit_requested {
+            return Err("period_proof_quit");
+        }
         if !matches!(&self.proof, Some(Progress::Published { fence, .. })
             if fence.sequence == sequence && snapshot.is_some_and(|s| fence.installed.binding.agrees(s)))
             || self.period_proof_receipt(session).is_none()
@@ -415,6 +431,9 @@ impl NativeAudit {
         &self,
         session: &ObserverSession,
     ) -> Option<&PeriodProofReceipt> {
+        if session.quit_requested {
+            return None;
+        }
         match &self.proof {
             Some(
                 Progress::Published { fence, receipt } | Progress::Acknowledged { fence, receipt },
@@ -532,6 +551,45 @@ pub(in crate::observer_io) mod tests {
         assert!(audit.period_proof_outcome(7).is_none());
         assert!(!directory.0.join("material-1.json").exists());
         assert!(!directory.0.join("advance-1.json").exists());
+    }
+
+    #[test]
+    fn quit_is_terminal_before_any_period_proof_join() {
+        for archive_first in [false, true] {
+            let (directory, mut audit, mut session, frame) = installed_close();
+            if archive_first {
+                session.archive_verified_tick = 1;
+                audit
+                    .advance_archive_progress(&session)
+                    .expect("matching Archive");
+            }
+            audit.request_period_proof(&session, 7).expect("fence");
+            let (work, _) = audit
+                .take_proof_work(&session, frame.for_session(&session))
+                .expect("admitted read")
+                .expect("requested work");
+            drop(work);
+            session.quit_requested = true;
+            assert!(
+                audit
+                    .join_period_proof(&session, frame.for_session(&session))
+                    .is_err(),
+                "Quit must refuse before inspecting or committing any staged candidate"
+            );
+            assert_eq!(
+                audit.period_proof_outcome(7),
+                Some(Err("period_proof_quit"))
+            );
+            assert_eq!(
+                audit.request_period_proof(&session, 8),
+                Err("period_proof_quit")
+            );
+            assert!(audit
+                .take_proof_work(&session, frame.for_session(&session))
+                .is_err());
+            assert!(!directory.0.join("material-1.json").exists());
+            assert!(!directory.0.join("advance-1.json").exists());
+        }
     }
 
     #[test]

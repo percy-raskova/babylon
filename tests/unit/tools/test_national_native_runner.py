@@ -441,6 +441,30 @@ def test_actual_boundary_checks_follow_matching_published_proof(tmp_path, fault)
         assert calls == ["archive", "storage"] and len(run.boundaries) == 1
 
 
+@pytest.mark.parametrize(
+    "field", ["campaign", "epoch", "foundation", "policy", "tick", "marker", "world"]
+)
+def test_live_boundary_rejects_foreign_advance_before_independent_callbacks(tmp_path, field):
+    run, state, calls, records = boundary_run(tmp_path)
+    advance = records["advance-1.json"]
+    if field == "campaign":
+        advance["runtime_scope"]["campaign_id"] = "00000000-0000-4000-8000-000000000001"
+    elif field == "epoch":
+        advance["runtime_scope"]["epoch"] += 1
+    elif field in ("foundation", "policy"):
+        advance[field + "_sha256"] = "fe" * 32
+    elif field == "tick":
+        advance["committed_tail"]["resolve_tick"] += 1
+    else:
+        advance["committed_tail"]["tick_content_hash" if field == "marker" else "world_hash"] = (
+            "fe" * 32
+        )
+    (tmp_path / "advance-1.json").write_text(json.dumps(advance))
+    with pytest.raises(runner.NativeRunRefusal, match="proof|Advance"):
+        run.on_boundary(state)
+    assert calls == []
+
+
 def test_over_budget_boundary_records_and_aborts_before_archive(tmp_path):
     run, state, _calls, records = boundary_run(tmp_path)
     records["advance-1.json"]["advance_elapsed_ns"] = 121_000_000_000

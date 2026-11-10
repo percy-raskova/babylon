@@ -656,9 +656,21 @@ def _trace(
 
 @dataclass(frozen=True)
 class ObservedPlayClose:
-    started_monotonic_ns: int
-    completed_monotonic_ns: int
-    state: ControlState
+    play: ActionObservation
+    pause: ActionObservation
+    ready: ActionObservation
+
+    @property
+    def started_monotonic_ns(self) -> int:
+        return self.play.started_monotonic_ns
+
+    @property
+    def completed_monotonic_ns(self) -> int:
+        return self.ready.completed_monotonic_ns
+
+    @property
+    def state(self) -> ControlState:
+        return self.ready.state
 
 
 @dataclass(frozen=True)
@@ -697,6 +709,11 @@ def _bind_period_proofs(
         if len(matches) != 1:
             raise ValueError("native period proof is missing, duplicated or substituted")
         fence = matches[0]
+        exchanges = (
+            {cause.play.sequence, cause.pause.sequence}
+            if isinstance(cause, ObservedPlayClose)
+            else {cause.sequence}
+        )
         polls = [
             a
             for a in controls.actions
@@ -704,14 +721,19 @@ def _bind_period_proofs(
                 a.action == "status"
                 and a.event == "observed"
                 and a.reason is None
+                and a.state.period_actionable
+                and a.state.period_proof is None
+                and max(exchanges) < a.sequence < fence.sequence
                 and a.completed_monotonic_ns >= cause.completed_monotonic_ns
                 and a.completed_monotonic_ns <= fence.started_monotonic_ns
                 and a.state.period_identity() == cause.state.period_identity()
             )
         ]
-        if not polls:
-            raise ValueError("native period proof lacks its accepted actionable status")
-        actionable = polls[-1]
+        if len(polls) != 1:
+            raise ValueError(
+                "native period proof requires one first accepted actionable ready status"
+            )
+        actionable = polls[0]
         proof = fence.state.period_proof
         if (
             not actionable.state.period_actionable
@@ -739,10 +761,9 @@ def _bind_period_proofs(
             or fence.state.play_interlock != actionable.state.play_interlock
             or fence.state.play_interlock != cause.state.play_interlock
             or any(
-                a.action not in ("status", "pause", "await_period_proof")
+                a.action not in ("status", "await_period_proof") and a.sequence not in exchanges
                 for a in controls.actions
-                if cause.completed_monotonic_ns <= a.started_monotonic_ns
-                and a.completed_monotonic_ns <= fence.completed_monotonic_ns
+                if min(exchanges) <= a.sequence <= fence.sequence
             )
         ):
             raise ValueError("native period proof differs from its ordered actionable close")
@@ -760,6 +781,7 @@ def _walk_trace(
     previous: ActionObservation | None = None
     first_ready = False
     playing: ActionObservation | None = None
+    paused: ActionObservation | None = None
     enqueued: ActionObservation | None = None
     settling = False
     arm: ActionObservation | None = None
@@ -890,7 +912,8 @@ def _walk_trace(
             if action.action == "pause" and playing is not None:
                 lock = state.play_interlock
                 if (
-                    state.playing
+                    paused is not None
+                    or state.playing
                     or state.durable_tick not in (8, 9)
                     or lock is None
                     or lock.phase != "paused_after_enqueue"
@@ -902,6 +925,7 @@ def _walk_trace(
                     or lock.scope_epoch != state.scope_epoch
                 ):
                     raise ValueError("ordinary Pause lacks the exact P9 pending-at-enqueue witness")
+                paused = action
                 settling = True
             if (
                 settling
@@ -919,14 +943,11 @@ def _walk_trace(
                 and action.action == "status"
                 and state.period_actionable
             ):
-                if playing is None or enqueued is None:
-                    raise ValueError("final automatic close has no Play admission")
-                steps.append(
-                    ObservedPlayClose(
-                        playing.started_monotonic_ns, action.completed_monotonic_ns, state
-                    )
-                )
+                if playing is None or paused is None or enqueued is None:
+                    raise ValueError("final automatic close has no Play/Pause admission")
+                steps.append(ObservedPlayClose(playing, paused, action))
                 playing = None
+                paused = None
                 enqueued = None
                 settling = False
             if state.viewed_tick != state.durable_tick:
@@ -1284,6 +1305,7 @@ def evaluate_native(
             or step.fence.state.period_proof.request_id != advance.request_id
             or step.fence.state.period_proof.policy_sha256 != policy_sha256
             or step.fence.state.period_proof.envelope_digest != facts.envelope_digest
+            or step.fence.state.period_proof.world_hash != facts.nominal_world_hash
             or record.observation_generation != step.actionable.state.generation
             or advance.advance_elapsed_ns
             > step.actionable.completed_monotonic_ns - step.started_monotonic_ns

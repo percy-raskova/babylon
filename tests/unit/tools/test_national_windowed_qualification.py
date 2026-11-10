@@ -174,11 +174,7 @@ def test_positive_period_ready_endpoint_retains_strict_actionable_status_before_
         assert channel.records[-1].action == "status"
 
 
-@pytest.mark.parametrize("archive_first", [False, True])
-@pytest.mark.parametrize("fault", ["none", "proof_request", "changed_play_witness"])
-def test_walk_trace_binds_bounded_play_pause_ready_and_private_fence(archive_first, fault):
-    from tools.devtools.national_native_evidence import ObservedPlayClose, _walk_trace
-
+def bounded_play_controls(archive_first=False, fault="none"):
     opening = state(8)
     opening["installed_organizer"] = {**installed_opening_view(), "period": 8}
     opening["generation"] = 1
@@ -265,6 +261,15 @@ def test_walk_trace_binds_bounded_play_pause_ready_and_private_fence(archive_fir
             ],
         }
     )
+    return controls
+
+
+@pytest.mark.parametrize("archive_first", [False, True])
+@pytest.mark.parametrize("fault", ["none", "proof_request", "changed_play_witness"])
+def test_walk_trace_binds_bounded_play_pause_ready_and_private_fence(archive_first, fault):
+    from tools.devtools.national_native_evidence import ObservedPlayClose, _walk_trace
+
+    controls = bounded_play_controls(archive_first, fault)
     if fault != "none":
         with pytest.raises(ValueError, match="proof|Play"):
             _walk_trace(controls)

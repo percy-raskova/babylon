@@ -3159,6 +3159,119 @@ def rewrite_native_artifact(directory, manifest, name, record):
     raise AssertionError("fixture artifact is not admitted")
 
 
+def test_retained_period_proof_world_must_join_authenticated_material(tmp_path):
+    manifest, report, native, memory, opening, ticks, records = native_join_evidence(tmp_path)
+    controls = records["native-controls.json"]
+    epoch = next(
+        row["state"]["scope_epoch"] for row in controls["actions"] if row["action"] == "step"
+    )
+    changed = 0
+    for row in controls["actions"]:
+        if row["action"] in ("step", "status", "await_period_proof") and (
+            row["state"]["durable_tick"],
+            row["state"]["scope_epoch"],
+        ) == (1, epoch):
+            changed += 1
+            row["state"]["world_hash"] = "fe" * 32
+            if row["state"]["period_proof"]:
+                row["state"]["period_proof"]["world_hash"] = "fe" * 32
+    assert changed == 3, "mutate the actual Step/ready/fence triple"
+    rewrite_native_artifact(tmp_path, manifest, "native-controls.json", controls)
+    with pytest.raises(ValueError, match="timing custody|world"):
+        native_join_result(tmp_path, manifest, report, native, memory, opening, ticks)
+
+
+@pytest.mark.parametrize(
+    ("consumer", "defect"),
+    [
+        ("smoke", "duplicate_ready"),
+        ("walk", "duplicate_ready"),
+        ("smoke", "after_fence_tie"),
+        ("walk", "after_fence_tie"),
+        ("smoke", "transient"),
+        ("walk", "transient"),
+        ("walk", "navigation"),
+    ],
+)
+def test_period_proof_has_one_ordered_ready_endpoint_and_protected_close(
+    tmp_path, consumer, defect
+):
+    from tools.devtools.national_native_evidence import _trace, _walk_trace
+    from tools.devtools.national_windowed_qualification import ControlsEvidence
+
+    from tests.unit.tools.test_national_windowed_qualification import bounded_play_controls
+
+    if consumer == "smoke":
+        *_, records = native_join_evidence(tmp_path)
+        raw = records["native-controls.json"]
+        cause_index = next(i for i, a in enumerate(raw["actions"]) if a["action"] == "step")
+        ready_index = cause_index + 1
+        verify = _trace
+    else:
+        raw = bounded_play_controls().model_dump(mode="json")
+        ready_index = 4
+        verify = _walk_trace
+    actions = raw["actions"]
+    ready = deepcopy(actions[ready_index])
+    fence_index = ready_index + 1
+    if defect == "duplicate_ready":
+        duplicate = deepcopy(ready)
+        duplicate.update(
+            started_monotonic_ns=ready["completed_monotonic_ns"] + 1,
+            completed_monotonic_ns=ready["completed_monotonic_ns"] + 2,
+        )
+        actions.insert(fence_index, duplicate)
+    elif defect == "transient":
+        transient = deepcopy(ready)
+        transient["state"]["organizer_pending"] = True
+        transient.update(
+            started_monotonic_ns=ready["started_monotonic_ns"] - 2,
+            completed_monotonic_ns=ready["started_monotonic_ns"] - 1,
+        )
+        actions.insert(ready_index, transient)
+    elif defect == "after_fence_tie":
+        actions.pop(ready_index)
+        fence = actions[ready_index]
+        tie = fence["started_monotonic_ns"]
+        fence["completed_monotonic_ns"] = tie
+        ready.update(started_monotonic_ns=tie, completed_monotonic_ns=tie)
+        if consumer == "walk":
+            actions[3]["state"] = deepcopy(ready["state"])
+        actions.insert(ready_index + 1, ready)
+    else:
+        actions[3]["state"] = deepcopy(ready["state"])
+        previous = deepcopy(ready)
+        previous.update(
+            action="previous_period",
+            event="applied",
+            started_monotonic_ns=46,
+            completed_monotonic_ns=47,
+        )
+        previous["state"].update(viewed_tick=8, generation=3)
+        live = deepcopy(ready)
+        live.update(
+            action="return_live",
+            event="applied",
+            started_monotonic_ns=48,
+            completed_monotonic_ns=49,
+        )
+        live["state"]["generation"] = 4
+        for row in actions[ready_index:]:
+            row["state"]["generation"] = 4
+            if row["state"]["period_proof"]:
+                row["state"]["period_proof"]["generation"] = 4
+        actions[ready_index:ready_index] = [previous, live]
+    for sequence, row in enumerate(actions, 1):
+        row["sequence"] = sequence
+    controls = ControlsEvidence.model_validate(raw)
+    if defect == "transient":
+        closes, _ = verify(controls)
+        assert closes[0].actionable.sequence == ready_index + 2
+    else:
+        with pytest.raises(ValueError, match="proof|Play|ready"):
+            verify(controls)
+
+
 def test_native_late_period_proof_extends_original_clock_without_extending_early_ready(tmp_path):
     from tools.devtools.national_storage_qualification import NativeTimings
 

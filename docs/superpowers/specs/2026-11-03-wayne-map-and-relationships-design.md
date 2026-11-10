@@ -503,3 +503,200 @@ A partner report can start a personal proposal and keep its citation. The player
 Cash keeps its dispatch date when food arrives later. The player can read the date of delivery and the date of the first partner response. A partner can respond once to settled cash before freight arrives. The household can buy goods at the next opportunity after settlement. A shared report can tell the player what the household received or consumed. If food in transit can still prompt a response, the player can review a pause in routine work.
 
 A new support result or a first or changed shared shortfall can pause Play. A report with the same unmet quantity can carry a new date without interrupting Play. Reopening a campaign starts from the developments already on record. Independent national windowed qualification and human play remain pending.
+
+
+## National game grain
+
+The Director approved national coverage with international trade at game resolution on 10 November 2026. This is the initial implementation candidate for PER-364; performance, native and human acceptance remain open. ADR296 records the architecture decision. `2026-11-10-national-game-grain.md` is the implementation plan.
+
+The Lawverian construction uses finite source contributions `C`, representative principals `R`, and a total assignment `q: C -> R`. For an additive same-unit quantity `v`, its pushforward sums only within the assigned fibre. Require `sum(q_* v) = sum(v)` and compatibility with composed regrouping. Test these laws against opening quantities and source incidence. They do not establish `q(T(s)) = Tbar(q(s))` for the previous fine economy: independent balances, supplier ranking, service complements and finite freight defeat that claim. No automatic adjunction or class theory follows from grouping. Geography and the dialectic remain unchanged; these are subordinate authoring constructions.
+
+Generate a **Designed representative economy by state and captured freight catchment**, before site/account/relationship construction. Use the complete current `NationalTransportReference::county_access()` mapping, not an old commuting-zone map. Keep all Wayne (`26163`) and Cook (`17031`) economic actors and households detailed. Preserve the twelve foreign groups and six dependencies exactly as separately generated counterparts. Keep county geometry and all county reference observations available.
+
+Each background catchment has independent representative workplaces by productive function, source ownership and relative labor-reserve position; independent households by the same catchment/position and existing `HouseholdBudgetKey`. Distinct representative owners, public budgets, household budgets, time accounts and stocks remain separate throughout the engine. This replaces background old principals with a newly authored representation; it does not merge preserved firms and then claim unchanged behavior.
+
+Do not add employment sharing to this candidate. The completed single profile measured 37,019,840 B across two retained roster arrays and a 0.02645-second incidence fold, without evidence of material warm-turn benefit or peak-copy lifetime. The chosen implementation reduces actual principals and their large supplier, staffing, purchase and route relation families.
+
+### Captured geometry and finite membership
+
+Existing input authority: `economic_catalog/national.rs::NationalSources::admit` checks the fifteen existing source kinds; no sixteenth dataset is needed. `national_transport/artifact.rs::decode_captured` validates the complete county-access roster. Each `CountyTransportAccess` supplies a county, a three-digit FAF zone and optional airport override. The current transport builder explicitly generates county→FAF local roads, FAF→trunk regional roads, finite gateway/terminal pools and airport exceptions (`tools/national_transport_network.py`, `tools/national_transport_graph.py`). These are already Designed routing constructs with source provenance.
+
+1. Start with every county in the admitted current 3,144 roster. Refuse missing, duplicate or extra membership; do not infer an old FIPS replacement.
+2. Make Wayne/Cook singleton **detailed** cells. This deliberately protects more than the minimum aid participant closure: every parent budget, employer, retailer, service provider, public account and named organization in those counties retains its original identity and opening construction.
+3. Make a background singleton for every county with an airport override, any extra county-node incident edge beyond the reciprocal captured county↔its-FAF `local_road` pair, or a transport infrastructure node located in that county with kind Airport/Border/Bulk/Liquid/Marine/Trunk. These counties retain their distinct physical access; they may use representative actor labels, but no cross-county aggregation occurs there. A malformed expected pair is an explicit admission error, not a singleton fallback hiding corrupt data.
+4. Form provisional groups from remaining counties by `(state FIPS, captured FAF zone)`, then apply the deterministic capacity refinement below. The resulting disjoint cells never cross the current service jurisdiction rule, which permits domestic service selection only within the same state (`opening/markets.rs::service_provider`). Select the cell's **real county hub** by greatest captured observed population, then ascending CountyGeoid. Keep its existing `EconomicLocation::County`, county logistics node and original local-road link. No `EconomicLocation::Region`, fake county or coordinate rewrite is introduced.
+5. AFTER capacity refinement fixes final memberships and hubs, derive a labor-reserve position for each county within its final cell. Never retain labels computed against provisional groups. Compare `county.reserve * cell.force` against `cell.reserve * county.force` using checked u128 products; `force = employed + reserve`. The ordered labels are `NoLaborForce`, `BelowCellReserveRate`, `AtCellReserveRate`, `AboveCellReserveRate`. This is an allocation stratum, NOT a new political/class classifier or response curve. Missing controls refuse; zero labor force is explicit. It preserves differing reserve-support/payroll exposure instead of creating one universal background balance. Singleton cells have one occupied position.
+6. A source county is assigned once to `(cell, position)`. Live workplace keys add `(EconomicFunction, QcewOwnership, ResidentWorkplaceSourceKind)`. Keep household enterprises, fallback employers and source-QCEW contributions distinguished. Live household keys add existing `HouseholdBudgetKey`, never combine ordinary/collective, historical earning/non-earning, or owner-exposed/non-owner budgets. Multiple occupied positions and ownerships provide independent counterparties where the source supplies them; do not fabricate employers merely to hit a target count. Existing finite primary/secondary domestic/foreign supplier choices still apply.
+
+There is no arbitrary actor-count cap or claim that this yields a particular number. The exact candidate roster is the set of occupied keys. Report the counts of cells, protected cells, special-access singletons, occupied positions, representative sites/households/member incidences and relations from the candidate's ordinary construction; do not rerun the baseline profile. The supplied baseline is 57,238 admitted source cohorts and 60,634 sites; it is not a prediction of savings. State×FAF grouping has actual total membership in current inputs, unlike historical CZs.
+
+### Explicit source-principal disposition
+
+The reference source cohort denotes a source contribution and its source ownership label. In the coarse opening, background source cohort identities are **provenance records**, not additional live companies or shadow accounts. Their population, allocated employment/reserve, additive productive endowment and demand contributions enter exactly one representative. The representative SiteId is new, its budget is its own, and its future purchases, failure, profit and employment apply to that representative alone. No claims that old fine firms independently survived, that fine trajectories commute, or that old hashes match.
+
+Background households likewise become newly Designed counted budgets within cell/position/budget key. Their within-cell money, food and time fungibility is intentional approximation. Different positions, budget keys and catchments remain unable to spend each other's resources without current explicit transfer mechanics. No national or state-wide household pantry/cash account exists. Keep source worker-class controls (all eight classes) in the contribution record; preserve the existing live Employee/WorkingOwner/UnpaidFamily compensation semantics. The reserve-position stratum does not relabel a person's class.
+
+Background local financial institutions become explicitly labeled **catchment provisioning budgets**, with new IDs by `(cell, position)`; they are not claimed to be all the old county governments merged into one legal government. Their taxes, reserves, operating grants and ownership follow the existing finite policy within that position. Retain public/private/local/state/federal source ownership distinctions between workplace keys. New public site claims belong to their new position-specific public budget; private site claims go only to the corresponding position's owner-exposed households. Cross-position beneficial ownership is absent unless explicitly already authored. Any existing named political/consent authority found outside Wayne/Cook must be added to the exact protected closure and its contributions removed once before folding. Do not assign it to a representative by its location alone.
+
+The existing Wayne↔Canada/Japan Designed capital-goods claims remain explicit because all Wayne principals are protected. Existing twelve foreign and six dependency populations, source classes, financial institutions and identities remain separate and unchanged in construction. Their trade outcomes can change with the domestic roster.
+
+### Freight and service policy: no capacity windfall
+
+The live representative is anchored at its real hub. Its logistics use the same captured transport network, existing route algorithm, finite shared pool IDs, cargo restrictions, max-period/max-loss route composition and actual merchant labor limits. Do not sum all member counties' last-mile capacities into the hub or multiply regional/gateway capacity by membership. A catchment's aggregate freight shares its **one original hub access lane** and all ordinary downstream regional/trunk/gateway pools; its capacity remains exactly the captured hub lane capacity. This is deliberately conservative, not 100% pooling of every county lane. Non-road/island/special-gateway counties remain singleton so no bulk path or terminal becomes available by reclassification.
+
+This discards independently simulated background county last-mile activity and represents it at the hub. It does not assert those counties physically moved or acquired the hub's actual infrastructure. Their county dossiers show source geography plus “economic contribution represented in [catchment] at [hub]”; they must not show a catchment price or shortage as an observed individual county outcome. The original source graph remains captured and inspectable; unused source local lanes need not create live economic relations.
+
+Trade paths between different live hubs, protected counties and foreign/dependency counterparts still consume their exact captured finite pools. Same-hub representative goods movements use existing local trade rules and merchant handling; this local fungibility is a declared Designed approximation. Service coverage stays within the state and uses actual finite service supply and buyer connections. No aggregate availability is copied to every buyer. Ownership/position separation prevents one universal service producer where multiple occupied keys exist.
+
+#### Deterministic capacity refinement before the candidate is fixed
+
+Apply this exact algorithm inside membership capture after existing source allocation and `aid::prepare`, before live actor construction. It uses only captured source allocation, household needs, recipes/commodity mass and actual transport links/pools. It adds no simulation run, profile, capacity, optimizer or policy mode.
+
+For each ordinary county `c`, calculate:
+
+- `D(c)`: recurring household food units from its source household allocation and the captured food need's actual persons/households basis. Use original parent margins exactly once, not parent plus aid child. All Wayne/Cook rows are already protected singleton cells. Current captured food demand is one person-period parcel per person; food mass `m` is 14,000 grams. Read both from captured policy, never hard-code them in the implementation.
+- `H(c)`: sum `member.labor_force * work_hours_per_person` over source workplace allocations whose recipe outputs the food good. Include reserve workers, Employee/WorkingOwner/UnpaidFamily members where applicable, each once. Use checked arithmetic. This is an optimistic labor ceiling, not predicted attendance. Do not use current employed workers alone, opening pantry/retailer stock, cash or source payroll as recurring production.
+- For a proposed set `S`, `U(S) = floor(sum H(c) / food_recipe.labor_hours_per_batch) * food_recipe.output_units_per_batch`. The current policy has one food-producing recipe; require that declared condition at admission or return `UnsupportedEssentialFoodRecipe`. This upper bound ignores inputs, services, equipment, reserve activation, protected-time shortfall and losses; treating them as unconstrained can only overestimate local output. Computing the floor AFTER total food hours is deliberately optimistic across source sites and future representative positions. This capacity bound is separate from opening endowment generation, which still sums the per-source floors exactly.
+- `L(S) = max(0, sum D(c) - U(S)) * m`, checked in u128 then checked against the finite captured capacity. It is a lower bound on recurring essential import mass at the chosen grain. It does not include intermediate goods, exports, losses or bidirectional contention. It is not a full viability certificate.
+- `C(c)`: minimum capacity among actual finite pools on the admitted reciprocal county↔FAF local access lane. The ordinary-county admission condition already excludes alternate county access and special gateways, so every external food delivery must cross that lane. Confirm general-cargo compatibility and the same shared pool in both directions; reject inconsistent capture rather than invent a road. The current local-road lane is 20,000,000,000 grams per period. Regional/gateway capacities stay additional independent constraints.
+
+For EACH provisional `(state, FAF)` group:
+
+1. Peel off each county with `L({c}) > C(c)` as a singleton. Record `PreExistingEssentialAccessDeficit` and its bound/capacity. This preserves pre-existing scarcity and its original access; it is not a failure that permits capacity inflation, a claim that the old whole economy was viable, or a reason to delete the county. Protected/special-access singleton cells also remain singleton and record their applicable bound or explicit `NotSingleRoadAccess` reason.
+2. Sort remaining counties by descending captured population, then ascending CountyGeoid. Maintain bins in creation order. For each county, scan bins in that order; place it in the FIRST bin for which `L(bin ∪ {c}) <= C(hub(bin))`. If none accepts, create a new singleton bin. Its own bound passed step 1, so this step terminates without a fallback. A bin's first member is its hub: descending population order makes that exactly the stipulated largest-population member with canonical tie-break. No later county can change the hub or capacity. Recompute the candidate bound from additive D/H totals before every insertion. Never backtrack or optimize globally.
+3. Canonicalize each final member list by CountyGeoid and assign its identity as described below. Recompute reserve positions against THIS final membership. Record final D, H, optimistic output U, lower-bound mass L, capacity C, member list and reason (`FitsCapturedHubAccess`, `CapacitySubdivision`, protected/special reason or pre-existing deficit) in the existing witness. Include the generation/source-policy digest. Reversed source iteration produces the same sorted input, bins, IDs and labels.
+
+This is the one settled capacity-aware partition algorithm, not an alternative mode. A later food-producing county can reduce a bin's deficit; first-fit accepts that opportunity only in canonical order. It need not find the fewest hubs. An accepted lower bound does **not** prove affordability, sufficient merchant labor, full intermediate supply, export capacity, shared regional/gateway feasibility, or practical gameplay. Those remain real engine constraints and prototype acceptance questions. Do not promise elimination of source scarcity. This refinement specifically prevents a provable new essential-import obstruction from replacing independent ordinary local lanes by one lane when the optimistic recurring deficit already exceeds its capacity.
+
+**Unique subgroup identity:** every catchment, including a non-singleton subdivision, uses `CatchmentKey { state, faf_zone, hub, membership_digest }`. Compute `membership_digest = SHA256(domain_tag || generation_policy_digest || member_count_u32_be || ascending_fixed_width_5_byte_CountyGeoids)`; require nonempty membership, unique members and hub membership. `CatchmentId` hashes the canonical complete key. Do not use `singleton: None` as the identity of all state×FAF subdivisions. Distinct disjoint non-singleton bins have distinct canonical membership bytes; on any digest/key collision with unequal membership, refuse `CatchmentIdentityCollision`. Keep the actual list alongside its digest so a hash is not the only membership witness.
+
+**Finite RED/GREEN fixture:** two ordinary same-state/same-FAF counties each have D=1,000,000 food units and H=0, with independent 20,000,000,000-gram local lanes and sufficient unchanged 200,000,000,000-gram regional capacity. Each singleton has L=14,000,000,000; their proposed union has L=28,000,000,000. Require two bins, original lane identities/capacities and no capacity multiplier. Add four counties with D=600,000/H=0 each: first-fit makes two multi-county bins (16,800,000,000 each), and their keys must differ despite identical state/FAF and `singleton=None` in the obsolete design. Include a singleton whose own bound exceeds its lane: retain it with the pre-existing-deficit reason. Include food surplus and input-order reversal cases; recompute expected reserve labels after the final split. These fixtures exercise arithmetic and membership via the real post-aid/pre-actors folding entry point, not a disconnected helper. No new baseline run is needed.
+
+Pre-measurement correction of this identified design hole does not consume the ONE corrective iteration reserved for measured acceptance failure. The initial measured candidate includes this deterministic refinement from the start. If it yields too little structural reduction or poor gameplay, report that result under the unchanged bounded contract.
+
+
+Supplier selection remains the current deterministic algorithm: provider employment rank and SiteId tie-break, foreign rotation from buyer SiteId. New representative IDs and employment sizes therefore create new Designed supplier choices. Capture the resulting relationships; do not claim unchanged old ranks/rotations. Foreground actors retain IDs; their upstream national choices may change, which is an intended national counterfactual, not a rewrite of their aid terms.
+
+### Initial quantities and counted incidence
+
+Do not generate the full fine `EconomicOpening` then consolidate it. A bounded county-local source allocation pass may calculate old source weights and count tuples; this is not live economic expansion.
+
+Reuse `allocate_home_county` as the bounded source-assignment roster; do not rewrite its county/member identity staging. Its existing weights, checked apportionment, class controls, household/payee assignment and synthetic fallback/household-enterprise rows are the exact provenance needed. Construct the empty Builder and run existing `aid::prepare` first, establishing child/parent remapping exactly. Immediately AFTER aid preparation and BEFORE `actors::domestic`, fold this source allocation plus household/time controls into representative keys. Wayne/Cook rows pass through with current IDs. No fine EconomicOpening, financial accounts, markets, routes or runtime graph is created. Retain compact immutable source assignment/witness as capture provenance, never as a second compiled live graph. Account every source county/cohort and synthetic fallback/household-enterprise contribution separately.
+
+For each background `(workplace key, household key, attendance mode)` produce one counted live member. Sum employed/reserve independently and create one new StaffingMemberId/graph subject, StaffingPoolBinding, EmploymentTerms and payee link. Include cell and reserve-position in every new ID digest; EconomicLocation alone is insufficient because multiple independent positions share a hub. Bind member residence to the hub representation, and retain its actual county incidence only in the immutable source-contribution witness. Do not claim a fictitious commute or retain duplicate county worker capacity in the runtime graph.
+
+For households, sum same-unit counts: persons, households, employed, reserve, eligible16+, inactive, armed and under16. Compile ordinary/collective protected needs from their unchanged bases. Put explicit aggregate eligible counts in the existing eligibility override map so `opening/household_time.rs` does not accidentally reread only the hub county's eligible population. Sum household initial cash/food and protected quantities under existing authoring; do not derive all household resources from employer cash. Graph workforce stocks and household available hours each have exactly one live authority.
+
+For production, reuse existing formulas through ONE ephemeral `SourceSeed` at a time, fold its typed endowments immediately, and drop it. Do not create a Vec of fine EconomicSiteSeeds. Preserve sums of the per-source authored opening quantities where rounding matters. In particular, compute each source site's `floor(employed * work_hours_per_person / labor_hours_per_batch)` and sum those batches; do not replace it with floor of aggregate hours, which would create free opening productive batches. Sum authored input/output stocks, equipment/nameplate quantities, resource deposits and opening wage/input cash using checked quantities and exact micros. Keep additive units and stock owner keys explicit. Per-source metadata, missing/published measures and remainder witnesses remain immutable source evidence. No mean is summed as a total; source employment is still placement evidence, not double-counted ACS people.
+
+Runtime production may thereafter use the representative's shared labor/material pool under current mechanics. This is the declared new model, not a promise of subsequent source-site capacity equivalence. Audit equations cover opening source accounting and current engine conservation; they do not equate the old and new dynamic trajectories.
+
+### Concrete types and interfaces
+
+Add `rust/crates/babylon-persistence/src/national_economy/grain.rs` with scoped `grain/tests.rs`. Keep membership, keys and folding together initially; split only if actual code size/cohesion warrants it. The types below specify necessary typed data, not a generic framework, one file per type or a required public API. Reuse existing source allocation/helpers. Expose one current fold operation, no old-mode switch.
+
+```rust
+pub struct NationalGrainPolicy {
+    pub protected_counties: BTreeSet<CountyGeoid>,
+    pub generation: NationalGrainGeneration, // current StateFafReservePositions
+}
+pub struct CatchmentKey {
+    pub state: StateFips, pub faf_zone: FafZone, pub hub: CountyGeoid,
+    pub membership_digest: [u8; 32],
+}
+pub enum ReservePosition { NoLaborForce, BelowCellReserveRate, AtCellReserveRate, AboveCellReserveRate }
+pub struct RepresentativeWorkplaceKey {
+    pub catchment: CatchmentId, pub position: ReservePosition,
+    pub function: EconomicFunction, pub ownership: QcewOwnership,
+    pub source_kind: ResidentWorkplaceSourceKind,
+}
+pub struct RepresentativeHouseholdKey {
+    pub catchment: CatchmentId, pub position: ReservePosition, pub budget: HouseholdBudgetKey,
+}
+pub struct CountyContribution {
+    pub county: CountyGeoid, pub destination: ContributionDestination,
+    pub controls: ResidentCountyAllocation,
+    // Typed source workplace/endowment and household/time contributions, canonical order.
+}
+pub enum ContributionDestination { Detailed(CountyGeoid), Representative { catchment: CatchmentId, position: ReservePosition } }
+pub struct NationalGenerationWitness {
+    pub source_digest: [u8; 32], pub policy_digest: [u8; 32],
+    pub catchments: Vec<CapturedCatchment>, pub counties: Vec<CountyContribution>,
+    pub source_incidence: Vec<SourceRepresentativeIncidence>,
+}
+pub struct NationalOpeningRoster {
+    pub workplaces: ResidentWorkplaceAllocation,
+    pub households: Vec<OpeningHouseholdAllocation>,
+    pub household_time: Vec<OpeningHouseholdTimeAllocation>,
+    pub workplace_endowments: BTreeMap<SiteId, OpeningProductiveEndowment>,
+    pub representation: NationalGenerationWitness,
+    pub financial_domains: BTreeMap<AccountId, FinancialDomainId>,
+}
+
+pub fn capture_membership(
+    counties: &NationalCountyReference, transport: &NationalTransportReference,
+    source: &ResidentWorkplaceAllocation, // existing post-aid source assignment
+    households: &NationalHouseholdAllocation,
+    protected: &ProtectedOpeningSelection, policy: &NationalGamePolicy,
+) -> Result<CapturedNationalMembership, NationalGrainError>;
+
+pub(crate) fn coarsen_source_allocation(
+    source: ResidentWorkplaceAllocation, // consumed after aid::prepare
+    households: &NationalHouseholdAllocation,
+    time: &NationalHouseholdTimeAllocation,
+    aid: &NationalAidCapture, policy: &NationalGamePolicy,
+    membership: &CapturedNationalMembership,
+) -> Result<NationalOpeningRoster, NationalGrainError>;
+```
+
+Use existing strong identifiers where they exist; new catchment/domain IDs are immutable authoring identifiers, not simulation primitives. `StateFips`/`FafZone` are validated wrappers if no existing type matches. Error variants carry a county/key and reason: `IncompleteCountyMembership`, `UnexpectedAccess`, `ProtectedContributionOverlap`, `SourceIncidenceMismatch`, `HouseholdMargin`, `ClassMargin`, `TimeMargin`, `EndowmentUnit`, `MissingOwnerBudget`, `UnsupportedGeneration`, `UnsupportedEssentialFoodRecipe`, `CatchmentIdentityCollision`, `Arithmetic`. Refuse unknown policy generation; no backward adapter.
+
+Add captured content in `content/scenarios/national/defines.toml`:
+
+```toml
+[grain]
+evidence_class = "Designed"
+generation = "state_faf_reserve_positions"
+protected_counties = ["17031", "26163"]
+hub_selection = "largest_observed_population_then_geoid"
+access_capacity = "captured_hub_lane"
+capacity_refinement = "essential_food_lower_bound_first_fit"
+```
+
+These are closed policy tags, not an extensible plugin system. Preserve all numeric game terms. No new thresholds/response curves; no values in source code that compete with defines. Wire the typed policy through `national_economy/policy/{game,admission,...}.rs` and captured source digest. Store witness once with admitted source/campaign capture and regenerate from those bytes on recovery; do not repeat the county×source incidence list in every material state or receipt. Authenticate its digest and validate regeneration. Receipt source IDs refer to the new live principals.
+
+### Files and real consumer path
+
+- `national_resident_allocation/allocation.rs`, `households.rs`: preserve the existing source allocation and its county-based `validate_totals` where possible. The new fold separately validates source county controls and live member pushforward; never run location-based source validation on hub-remapped rows. Small helper visibility extraction is sufficient if needed; no deep identity-staging rewrite.
+- `national_economy/opening/build.rs`: retain `allocate_home_county` → `Builder::new` → `aid::prepare`; insert membership capture plus `coarsen_source_allocation` immediately AFTER aid preparation and BEFORE `actors::domestic`, funding, markets, finance and routes. This is pre-live-economic-expansion: bounded source assignment is evidence, not a fine EconomicOpening. Pass explicit household identity/time/endowment/domain maps into Builder. Only the generated current roster reaches the economic compiler.
+- `opening/actors.rs`: consume explicit opening households and representative endowments; set `EconomicSiteSource::Designed` with witness key for representatives. Do not use `matches!(EconomicSiteSource::Qcew)` as the only source-ownership check: explicit retained `QcewOwnership` must reach `ActorContext` for representative public/private finance. Labels say “representative [function] — [catchment/position]”, not “[hub] observed workplace.”
+- `national_economy` target-identity definitions: add one current representative target constructor using the whole key. Existing exact constructors remain for detailed/external actors only.
+- `opening/financial.rs`: key representative public accounts and private owners by `FinancialDomainId`, not hub `EconomicLocation`. Otherwise same-hub positions silently merge budgets and share owner recipients. Institution display locations remain the hub; financial ownership uses explicit domain. Preserve detailed and external domain IDs and Wayne cross-border claims.
+- `opening/markets.rs`, `equipment.rs`, `routes.rs`: consume only generated live roster. Prefer same financial position where a corresponding local retailer exists; use existing finite alternate supplier policy for other trades. Retail selection caches must include representative position/domain where household cash/handling authority would otherwise collapse. A selected retailer can serve multiple independent buyers, but its own stock/handling capacity is never duplicated. Preserve exact finite route pools, no per-member route expansion.
+- `opening/household_time.rs`: use exact captured overrides for representative households; refuse any missing override instead of falling through to hub county eligibility. `opening/aid.rs` remains exact for Wayne/Cook parents, children and contribution budgets, including the $1 treasury, food allocation 0–4 units (280 is the food price/default contribution, not the allocation limit), cash allocation 0–1450 and cash target 1–1450, protected needs, routine/practice time, separate report permissions, partner consent/refusal and P+1/P+2 timing.
+- `opening/detail.rs` / `national_household_refinement`: retire the misleading late “consolidation” claim. It can classify the already-coarse current principals for display/foreground selection, but the generation witness owns source-to-live incidence. Do not preserve two competing national-generation authorities.
+- `economic_catalog/national.rs`, `model.rs`, `compile.rs`: admit and retain witness in `NationalSources`, return the coarse `EconomicOpening`, and use the ordinary compiler for graph, employment, material catalog, account/policy and route creation. No fine background `EconomicOpening` or duplicate register is retained.
+- Ordinary runtime remains `MaterialReplaySession` → detached tick → material state/graph/events/receipts → atomic publication → existing persistence. Current wire schemas, canonical binary encoding, lookup/delta/zstd, replay and restart admission apply to the smaller real network. Identity changes require fresh campaigns, no migration.
+
+### Minimum scoped read work
+
+The initial economic candidate already reduces full national projection inputs. Also remove any unnecessary full `ProductionSnapshot` request from the ordinary organizer advance/briefing path: use authenticated `organizer_runtime/snapshot.rs` and `organizer_runtime/material_preview.rs` disclosures, committed organizer/gift/time facts and world-hash boundary already available. Keep this a routing change through current actor disclosure, not a second state/projection engine.
+
+`observer_material/snapshot.rs::material_observation` currently constructs all production families via `production_projection/projection.rs::project_economic_current`; `KnownPreview` already avoids it. An organizer-local question must not create a full national DTO solely to discard it. If a missing field requires projection, add a typed `ProductionReadScope::Actor(ActorDisclosureScope)` at that shared projection boundary and select rows by the authenticated disclosed principals plus incident orders/routes, before expensive family DTO allocation. Do not filter only after building all families. The scope is server-derived, never an arbitrary client list that widens knowledge. Full national observer/inspection continues using `National`; evidence hashing binds the actual selected disclosure and scope. Do not relabel a scoped result as the full national production hash. Full observer still has authentic national inspection on demand.
+
+No change to causal validation, committed source/receipt bytes, stored history or authentication is authorized by scoping. A complete state decode may still be required by current authentication; report it honestly. This work is secondary and cannot substitute for reduced actors/state/receipts.
+
+### Executable laws and smallest meaningful checks
+
+Use RED/GREEN for these changed contracts. No builds/tests were run for this spec.
+
+1. Complete current county partition: exactly 3,144 admitted keys, each one destination, protected counties excluded from background sums, special-access counties singleton, capacity-aware first-fit subgroup membership and IDs exact, reserve labels recomputed against final groups, captured transport membership/digest exact. Reversed input insertion order yields identical witness and opening bytes.
+2. Source pushforward: for each county, source household/person/employed/reserve/eight-class/time totals reconcile before folding; aggregate totals reconcile after folding. Sum same-unit source endowments and show the per-source floor case that would fail if floor moved after grouping. Unknown/suppressed source values remain tagged, not zero.
+3. Classification factorization: if two contributions share a representative, their retained ownership/function/source-kind/attendance/household classes agree. Source class totals and each live class margin agree. For additive measure v and grouping q, `sum(q_*v) = sum(v)` and composed regrouping has the same total as one pushforward. These are finite accounting laws, not `q(T(s)) = Tbar(q(s))`.
+4. Live identity joins: every staffing member has one household payee and pool, aggregate employment terms exactly match member force/compensation, eligible time covers force with current rules; no fine background member/site/account remains live. No source contribution is instantiated both detailed and representative. Every runtime graph stock has its one current owner.
+5. Independent budgets: two same-hub positions with different balances cannot fund each other's payroll/purchases; public claims/taxes/support go to the correct domain. Cash/stock/time conservation and atomic refusal hold through real compile/tick, not just helper arithmetic. A starving position must not use another position's pantry.
+6. Freight counterexample: two representative shipments share a finite original hub/regional/gateway pool; their combined serviced mass cannot exceed it. Opposite directions contend where current source pools say so. Island bulk still refuses; different gateways remain distinct; no capacity sum from multiple county local lanes. Local merchant labor is consumed once.
+7. Foreground regression: compile Wayne/Cook pre/post candidate and compare protected opening identities, budget/food/money/time/aid terms exactly. Do not require identical subsequent national procurement trajectories. Run existing funded collect/local food/remote mixed/routine during arrival/cash-only/subsequent purchase and independent partner refusal tests through actual runtime, receipt, replay and restart paths; at-most-once nonce/response remains unchanged.
+8. Knowledge and presentation: changing an undisclosed remote representative without changing disclosed consequences leaves the actor disclosure identical; declared source provenance/cell labels remain truthful. Full national observation includes all current live principals and source membership; county dossier never presents hub outcome as county-specific observed data.
+
+Existing scoped Rust format/tests/clippy/BSL-sentinel and mechanics conformance/replay gates apply separately and serially. Do not generate documentation. Any intentional baseline change uses the repository ceremony and required record; do not modify a baseline merely to hide failed conservation or a performance miss.

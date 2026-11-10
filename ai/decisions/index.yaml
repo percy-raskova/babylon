@@ -1,5 +1,5 @@
 meta:
-  version: 1.92.0
+  version: 1.93.0
   updated: '2026-11-10'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -25,6 +25,11 @@ meta:
   # ADR160-169 = P26 international-trade lane block (101-trade-activation),
   # allocated by Director ruling 2026-07-27; ADR160 minted at its charter.
 decisions:
+  ADR296_national_game_grain:
+    title: Generate a Designed national economy before live economic expansion
+    status: accepted
+    date: '2026-11-10'
+    file: ADR296_national_game_grain.yaml
   ADR295_native_readiness_proof_fence:
     title: Native readiness precedes a private authenticated period proof fence
     status: accepted

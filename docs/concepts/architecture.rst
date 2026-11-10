@@ -491,11 +491,56 @@ Native aid replies encode money as canonical decimal strings and decode it as
 exact signed 128-bit integers. Numeric tokens and malformed or overflowing
 strings refuse. Canonical engine receipts keep their existing encoding.
 
-The optional national playable qualification uses the same session path for
-campaign admission, aid commitments, advances and recovery. It verifies actual
-committed receipt families through ``ObserverEconomyReader`` with a separate
-full-observer credential. The reader authenticates the foundation, complete
-history, current and previous envelopes, and committed identity before exposing
+Native national qualification requires two serial members of a named workload:
+``normal_play`` for ordinary timing and ``memory_capture`` for complete memory
+coverage (ADR294). ``smoke-01`` covers two committed periods and ``walk-01`` ten.
+Both members use the same session path, decisions, controls, Play/Pause,
+reports, Archive and reopens. Each walk repeats opening New, pending Open and
+completed Open in distinct cold processes. The longer walk has its own elapsed
+time and cannot claim the two-period smoke ceiling.
+
+Policy v6 keeps cold open/reopen below 180 seconds and advances at most
+120 seconds. Archive and production reads each take at most 180 seconds.
+Focused controls take at most 60 seconds and the two-period smoke at most
+900 seconds. Normal play constructs no sampler or capture lifecycle.
+
+Captured raw phase durations are diagnostic,
+with the existing finite 900-second operation watchdog and existing control and
+cleanup watchdogs. Capture retains full creation/period coverage, source and
+executable admission, exact process/backend identity, authority and restoration.
+RSS plus ``hugetlb`` must stay at most 10,000,000,000 bytes.
+The largest gap between samples must stay at most five seconds. No freeze
+subtraction or synthetic zero-memory record can pass either gate.
+
+Each member owns a new database and private XDG state under the single common
+lease. One fresh canonical UUID4 belongs only to its two empty databases.
+
+The final join compares source closure, actual role-to-binary digests, inputs,
+policy, horizon and foundations. Exact nonce-bearing command, commitment,
+receipt and marker joins remain inside each member. Cross-member comparison
+derives ordered actual decision semantics and exact selected allocations from
+those authenticated bytes. Legitimate nonce differences produce different
+raw command hashes.
+Restart and recovery preserve functional state locally.
+
+Each member independently restores and verifies its logical dump, retains its
+physical archives and proves clean stop and retirement. Final evaluation
+rereads both bundles. Neither member alone can qualify.
+
+The current formats are ``NativeRunEvidence`` v5, ``CompletedMember`` v1,
+``NativePairEvidence`` v1 and final report v8. The pair's canonical namespace is
+``qualification-10/<workload>/<mode>/``. The SQL fixture remains unpaired at
+``qualification-10/sql-01``. Unsupported old native formats refuse before
+writes. Non-native material-only evaluation remains separate.
+
+The :doc:`operator guide </how-to/debug-simulation-outcomes>` describes the public
+paired producer and evaluator. Reports and Linear own actual acceptance.
+
+The playable consumer verifies campaign admission, aid commitments, advances
+and recovery. It authenticates committed receipt families through
+``ObserverEconomyReader`` with a separate full-observer credential. The reader
+authenticates the foundation, complete history, current and previous envelopes,
+and committed identity before exposing
 receipts and the closing period's household contribution debits. Preview readers
 have no authority to read them. Ordinary snapshots do not copy these vectors.
 
@@ -543,7 +588,7 @@ it. The shorter smoke records this witness without claiming sustained renewal.
 
 The national development storage benchmark has a Designed ceiling of
 40,000,000 bytes per committed tick, recorded in
-``contracts/national_storage_qualification_v5.json``. It reports the separate
+``contracts/national_storage_qualification_v6.json``. It reports the separate
 23,000,000-byte optimization target and the longer-term total-save result.
 Count all retained campaign relations and indexes, including receipts, graph
 history and checkpoint growth.
@@ -557,8 +602,9 @@ recovery intervals separately. Shrinking another relation cannot conceal a
 growing history or unlisted allocation. Parent totals already include their
 TOAST heap and indexes.
 
-Policy version five records this measurement contract and separate material
-register and production-evidence byte budgets.
+Policy version six keeps this measurement contract and separate material
+register and production-evidence byte budgets. It also sets the combined
+running-game memory ceiling and largest allowed sample gap.
 Retained earlier results keep their captured policy and evaluator.
 
 ADR273 preserves the earlier interim decision. ADR280 owns current development

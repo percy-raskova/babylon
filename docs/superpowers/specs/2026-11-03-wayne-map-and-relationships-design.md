@@ -328,6 +328,17 @@ unavailable evidence. A human play session remains distinct from component and
 runtime checks.
 
 Use existing national qualification controls and run heavy work serially.
+ADR294 requires ordinary timing and a separate complete memory member for each
+named national workload. Both exercise the same controls, decisions, Play/Pause,
+reports, Archive and cold restarts against the same build and captured inputs.
+Each owns its database, personal state and verified backup/retirement custody.
+Authenticate exact command/receipt/marker joins within each member and compare
+actual ordered decision semantics across members, allowing legitimate nonce
+differences. Only their final join can qualify. Keep policy v6 limits unchanged,
+keep raw captured durations as diagnostics and never subtract imposed freezes.
+The two-period smoke and ten-period walk do not replace 52/325-period or human
+acceptance. See the [operator guide](../../how-to/debug-simulation-outcomes.rst)
+and [measurement research](../../gameplay/research/39-native-measurement-method-2026-11-09.md).
 Measure the resource and persistence effects against the existing North Star
 budget. Do not invent frame-rate ceilings. Playable acceptance is conditional
 on a real, visible, explainable committed result and its evidence, not on a

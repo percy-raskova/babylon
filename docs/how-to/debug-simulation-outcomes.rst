@@ -712,44 +712,96 @@ For save qualification, change the mode to ``save``, use the captured
 ``save_qualification_ticks`` count, and select a new evidence directory. This is
 an expensive real run. An existing retained game blocks another.
 
-The default ``raw-economic`` capture measures the national economy directly.
-Set ``BABYLON_NATIONAL_CAPTURE_MODE=playable-aid`` to create the current
-``NationalWorld`` campaign through the runtime session protocol. This consumer
-submits remote aid in period one and local aid in period two, checks nonce
-retries, and reopens after every committed period. Use at least two periods.
-Unknown capture modes refuse before acquiring the national lease.
+The default ``raw-economic`` capture mode keeps the independent storage/save
+examples above. Native playable qualification requires a named pair. After
+release of the actual build and workload records, run one of these commands:
 
-The playable consumer also verifies committed cash, goods and household time
-through an authenticated observer credential. It waits for Archive catch-up.
-A confined reader verifies the dated Wayne county and organization dossiers.
-The complete production snapshot must also pass at each committed boundary.
-The captured policy allows at most 180 seconds each for Archive
-catch-up after acknowledgement and the complete production read.
+.. code-block:: bash
 
-Playable evidence version three includes Derived trade facts tied to each
-committed period and canonical receipt. These facts reconcile funded procurement,
-delivery, realization and matched payments at the original admission price.
-The audit retains unresolved orders and retires completed or lost orders.
-It counts actual foreign production receipts. Counterpart presence and planned
-production cannot substitute for output. Cash totals use exact common-currency
-integers, without adding unlike goods or production batch quantities.
+   bash tools/run_rust_postgres.sh --wayne-native-pair smoke-01
+   bash tools/run_rust_postgres.sh --wayne-native-pair walk-01
 
-The two-period smoke can finish while trade remains in transit. Full national
-and long-save checks test for settled imports, settled exports and actual
-foreign production. A run of 52 periods or more must pass these checks even
-with a changed smoke duration. Unsupported playable evidence versions fail.
-The separate native timing evidence remains version two.
+``smoke-01`` requests two committed periods. ``walk-01`` requests ten and times
+its longer walk separately. Supply exactly these external release inputs:
 
-The runner enforces ``--qualify-playable`` against the resulting report. Campaign,
-foundation, period, county roster and canonical hashes must agree with the
-storage and recovery evidence. It preserves compact accounting facts and atomic
-progress records alongside that evidence. These reads count toward total native
-run duration. An interrupted run retains an explicit incomplete failure summary
-and its exact disposable game. Actual scarcity can leave positive aid consequences
-incomplete. This automated material qualification does not establish native
-interaction or enjoyment.
+* ``BABYLON_POSTGRES_IMAGE_ID``: the full cached image ID for
+  ``babylon-postgres-runtime:local``. Media admission refuses implicit builds.
+* ``BABYLON_WAYNE_HOST_CONTEXT_SHA256``: the digest of the actual private
+  ``host-process-context.json`` observation under the qualification parent.
+* ``BABYLON_WAYNE_NATIVE_EXPECTATION_REF``: serialized ``Reference`` JSON with
+  ``path``, ``bytes`` and ``sha256`` fields, not a filename.
 
-The default development timing limit is under sixty seconds per focused
+The expectation path is ``smoke-01-native-expectations.json`` or
+``walk-01-native-expectations.json``. Each record binds the clean source head,
+measured capacity and actual installed runtime, client and material-audit
+program references for that workload.
+
+Have ``PostgreSQL`` 17+ ``pg_restore`` on PATH. Retained recovery validation uses it
+only to list and fully read custom dumps offline, without a database connection.
+
+Use the locked project runner, local Docker socket, clean admitted source,
+private owned media directories and the common lease. Clear inherited ``PG*``,
+``*_DSN`` and ``CARGO_TARGET_DIR`` settings before admission.
+
+Preserve previous
+binaries before a build can replace them. Do not reuse historical campaign hashes
+or invent a capacity measurement. This command supplies no release-file generator.
+
+The producer selects the admitted workload and explicit measurement purpose.
+It drives ``normal_play``, independently restore-verifies and retires that
+member, then repeats the workload as ``memory_capture`` and verifies its own
+custody before the final join. Both use the same build, captured inputs,
+controls, actual decisions, Play/Pause, reports, Archive and ordinary reopens.
+Each walk includes opening New, pending Open and completed Open in distinct
+cold processes. The source creates one fresh shared UUID4 for the pair's two
+new empty databases and authenticates their installed P0 state.
+
+The canonical parent is
+``/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-10``.
+Each member retains its own ``<workload>/<mode>/evidence/``, ``backup/``, ``raw/``,
+``pgdata/`` and ``xdg/``. Keep the shared ``<workload>/pair-declaration.json``
+and all member custody. ``sql-01`` remains unpaired at the parent's ``sql-01``.
+Earlier namespaces and artifacts remain unchanged. A failed member stops the
+command and retains failure/ownership evidence for exact recovery.
+
+Reread the retained pair through the public evaluator:
+
+.. code-block:: bash
+
+   mise exec -- uv run --frozen python -m tools.devtools.national_storage_qualification \
+     --qualify-native-pair smoke-01
+
+Select ``walk-01`` to check that workload. This evaluator returns the
+validated packet. The pair operator's ``qualify`` action publishes
+``<workload>/qualification.json`` with create-only publication and equality
+checking on replay. Its module is ``tools.devtools.national_native_pair`` with
+``{path,admit,member,verify-member,qualify} {smoke-01,walk-01}``.
+``member_run(profile, mode)`` and ``native_path(evidence)`` resolve the layout.
+Use the paired shell producer for the full operation.
+
+Current native evidence is ``NativeRunEvidence`` v5, ``CompletedMember`` v1,
+``NativePairEvidence`` v1 and final report v8. The final evaluator rereads both
+members' source/input capsules, decisions, original receipts, markers, restore
+seals and retirement evidence. Raw nonce-bearing identities remain exact inside
+each member. Across members it derives ordered decision semantics and selected
+allocations, permitting legitimate different ``nonces``. Neither a caller's decision
+hash nor a successful timing member can replace complete memory evidence.
+Unsupported old native evidence and anonymous native invocations refuse.
+
+Normal play creates no sampler or capture lifecycle. Apply the unchanged v6
+cold/advance/read/Archive/control/smoke limits to its actual elapsed times.
+Captured raw phase durations remain diagnostic, with the existing 900-second
+operation watchdog and existing control/cleanup watchdogs. The memory member
+must cover creation and every period, authenticate actual processes and
+backends, and pass restoration. RSS plus ``hugetlb`` must stay
+<=10,000,000,000 bytes and the largest gap between samples <=5 seconds.
+Never subtract imposed freezes.
+
+Neither named pair establishes actual 52/325-period, p95, physical interaction
+or enjoyment acceptance. Keep those results separate in reports and Linear.
+Non-native material-only evaluation remains available for its own evidence.
+
+The default development timing limit is at most sixty seconds per focused
 control. Cold loads must finish under 180 seconds. The two-period smoke check
 with recovery must finish within 900 seconds. National advances aim for sixty to ninety
 seconds, with p95 at most 120 seconds.

@@ -125,12 +125,23 @@ This convention does not trace parcels or claim marginal effects.
 
 ### Runtime qualification
 
-- Fresh national campaign, disposable exclusively owned database/container/port and separate XDG personal state; explicit source/binary/owner/canary/lock/current-input admission. No inherited/shared target or default protected DSN. Wait for original human game's normal closure before native admission; never close it automatically or use its save.
+<!-- Vale: these are qualification constraints, not procedural steps. -->
+<!-- vale ste.ProcedureLength = NO -->
+
+- Use the ADR294 pair for each named workload: `normal_play` then `memory_capture`, serially under the common lease. Use `bash tools/run_rust_postgres.sh --wayne-native-pair smoke-01` for two periods and `walk-01` for ten. No anonymous single-run native certificate.
+- Give each member a disposable owned database/container/port and separate XDG state, with explicit source/binary/owner/canary/lock/current-input admission. Source declares one fresh shared UUID4 only for these two empty databases and authenticates each actual P0. No inherited/shared target or default protected DSN. Wait for the original human game's normal closure before admission. Never close it automatically or use its save.
+- Release exactly three external inputs: cached `BABYLON_POSTGRES_IMAGE_ID`, actual `BABYLON_WAYNE_HOST_CONTEXT_SHA256`, and serialized per-workload `BABYLON_WAYNE_NATIVE_EXPECTATION_REF` Reference JSON. Have `PostgreSQL` 17+ `pg_restore` on PATH for offline custom-dump list/read validation. Do not invent a release generator or copy historical P0 hashes.
 - Before any live run, prepare concrete bounded operator/admission/recovery plan for independent review and controller release. Reuse existing controls, no new general lifecycle framework. Retain failures; no hidden reset or enlarged budget.
 - Actual ordinary national sequence: inspect opening, adjustable Collect, local food-only, remote mixed, explicit routine management through disclosed arrival, cash-only, then following ordinary purchasing close. Actual national route defines waits. Exercise pending and completed restart, and verify real installed actor/observation/durable state, not process readiness alone.
 - Real normal binaries, four fitted native variants, actual allocation editor/review/confirm/advance/report/evidence/return path, distinct per-leg dates/results and exactly one response. Root personally inspects images. Retain raw unmodified captures, source capsule, input and binary hashes and exact authoritative snapshots.
-- Current national policy v6 boundaries: each measured advance <=120s; cold open <180s; Archive catch-up/production read <=180s; existing TWO-period smoke <=900s. Keep52-sample p95 minimum and broader long-save acceptance separate. Time longer multi-period walk separately under unchanged per-boundary limits; never label it a two-period900s pass or substitute Michigan. Preserve current storage/memory budgets. Demonstrated blocking loop bottlenecks require bounded repair and requalification, not limit changes.
-- Validate full backup by restoring into a distinct verification database and comparing non-null actual terminal authoritative snapshots before exact disposable retirement. Preserve PGDATA/XDG/source/raw images/full backup/logs/unique evidence; no broad cleanup.
+- Keep numeric policy v6 unchanged byte for byte. Normal play constructs no sampler. Enforce advance <=120s and cold open/reopen <180s. Archive and production reads take <=180s each, focused controls <=60s and the existing two-period smoke <=900s. Time the longer walk separately. Keep the required 52 samples for p95 and 52/325-period acceptance separate.
+- The required memory member repeats the same workload, including all three process-cold walk segments. Keep full creation/period coverage, source/actual-role admission, process/backend identity, authority and restoration. Keep RSS plus `hugetlb` <=10,000,000,000 bytes and largest gap between samples <=5s. Raw phase durations remain diagnostic under the existing 900s operation watchdog and existing control/cleanup watchdogs. Never subtract freezes or invent zero-memory evidence.
+- Authenticate exact command/commitment/receipt/marker joins and restart state within each member. Compare equal source closure, actual role-to-binary digests, inputs, policy, workload, horizon, foundations and ordered actual decision semantics across members, allowing legitimate different `nonces`. Matching decisions must also match the named schedule.
+- Restore each full backup into its own verification database. Compare actual terminal state, check logical/physical custody and exact retirement. Reread both bundles for final report v8.
+
+  Preserve PGDATA/XDG/source/input capsules/raw images/full backup/logs/unique evidence. The canonical namespace is `qualification-10/<workload>/<mode>/`. `sql-01` stays unpaired. Leave earlier namespaces unchanged. A missing/failed member cannot qualify.
+
+<!-- vale ste.ProcedureLength = YES -->
 
 ### Verification and delivery
 

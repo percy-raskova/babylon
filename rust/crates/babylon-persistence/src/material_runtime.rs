@@ -71,9 +71,7 @@ use crate::runtime::verify_runtime_schema_client;
 use crate::stored_tick::StoredTickReadSource;
 use babylon_graph::hypergraph_store::HypergraphStore;
 use babylon_practice_contract::OrderedPracticeActionBatch;
-use babylon_tick::material_replay::{
-    IdentifiedMaterialTick, MaterialReplayError, MaterialReplaySession,
-};
+use babylon_tick::material_replay::{IdentifiedMaterialTick, MaterialReplaySession};
 use babylon_tick::material_world::MaterialWorldRegister;
 use postgres::{Config, GenericClient, NoTls};
 

@@ -3,9 +3,9 @@
 use super::{
     capture_identity, material_storage, runtime_checkpoint, CampaignId, CapturedMaterialFoundation,
     Config, DurableMaterialRuntime, FoundationReadSource, HypergraphStore, IdentifiedMaterialTick,
-    MaterialComponentIdentity, MaterialEnvelopeRead, MaterialReadAuthority, MaterialReplayError,
-    MaterialReplaySession, MaterialRuntimeError, MaterialRuntimeFoundation, NoTls,
-    StoredMaterialTick, StoredTickReadSource,
+    MaterialComponentIdentity, MaterialEnvelopeRead, MaterialReadAuthority, MaterialReplaySession,
+    MaterialRuntimeError, MaterialRuntimeFoundation, NoTls, StoredMaterialTick,
+    StoredTickReadSource,
 };
 use babylon_tick::public_venue::AdmittedPublicVenueSource;
 use material_storage::Error;
@@ -92,16 +92,11 @@ pub(super) fn restore<C>(
     let lookup = OpeningRegister::from_opening(&foundation.register).map_err(Error::State)?;
     let initial_lookup_chain = material_storage::initial_lookup_chain(&lookup)?;
     let stored = if let Some(checkpoint) = captured.checkpoint {
-        let scope = foundation
-            .graph
-            .stable_graph_state()
-            .map_err(MaterialReplayError::Graph)?
-            .scenario_scope()
-            .to_owned();
+        let scope = foundation.graph.stable_resolver().scenario_scope();
         let components = MaterialComponentIdentity::from_foundation(&foundation.graph_foundation);
         Some(checkpoint.admit(
             MaterialReadAuthority::cold(
-                &scope,
+                scope,
                 digest,
                 &components,
                 &lookup,
@@ -161,15 +156,10 @@ fn reconstruct_sources(
     lookup: &OpeningRegister,
     stored: &StoredMaterialTick<'_>,
 ) -> Result<Vec<AdmittedPublicVenueSource>, MaterialRuntimeError> {
-    let scope = foundation
-        .graph
-        .stable_graph_state()
-        .map_err(MaterialReplayError::Graph)?
-        .scenario_scope()
-        .to_owned();
+    let scope = foundation.graph.stable_resolver().scenario_scope();
     let components = MaterialComponentIdentity::from_foundation(&foundation.graph_foundation);
     let authority = MaterialReadAuthority::cold(
-        &scope,
+        scope,
         foundation.digest(),
         &components,
         lookup,

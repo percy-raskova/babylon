@@ -785,3 +785,90 @@ fn proportional_base_and_shared_corridor_residual_conserve_permutations() {
         }
     }
 }
+
+#[test]
+fn decoded_circuit_owner_preserves_canonical_bytes_and_complete_continuation() {
+    let (catalog, opening) = base_state();
+    let dispatched = babylon_material_circuit::advance_material_circuit(&catalog, &opening)
+        .expect("the routed fixture advances with in-transit freight");
+    let bytes =
+        babylon_material_circuit::encode_material_circuit_state(&catalog, &dispatched.state)
+            .expect("the dispatched state has canonical bytes");
+    let ordinary = babylon_material_circuit::decode_material_circuit_state(&catalog, &bytes)
+        .expect("the public decoder admits the dispatched state");
+    let decoded =
+        babylon_material_circuit::decode_material_circuit_state_for_encoding(&catalog, &bytes)
+            .expect("the encoding owner admits the same complete state");
+    assert_eq!(decoded.state(), &ordinary);
+    let expected = babylon_material_circuit::advance_material_circuit(&catalog, &ordinary)
+        .expect("the public decoded state completes freight arrival");
+    let (state, encoded) = decoded
+        .into_state_and_canonical_bytes()
+        .expect("the admitted owner serializes under its captured catalog digest");
+    assert_eq!(state, ordinary);
+    assert_eq!(encoded, bytes);
+    let actual = babylon_material_circuit::advance_material_circuit(&catalog, &state)
+        .expect("the owner preserves complete continuation inputs");
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn decoded_circuit_owner_retains_exact_wire_catalog_order_and_state_refusals() {
+    use babylon_material_circuit::MaterialCircuitError;
+
+    let (catalog, state) = base_state();
+    let bytes = babylon_material_circuit::encode_material_circuit_state(&catalog, &state)
+        .expect("the fixture has canonical bytes");
+    let refuse = |payload: &[u8], expected| {
+        assert_eq!(
+            babylon_material_circuit::decode_material_circuit_state(&catalog, payload).err(),
+            Some(expected),
+            "the public decoder establishes the existing refusal"
+        );
+        assert_eq!(
+            babylon_material_circuit::decode_material_circuit_state_for_encoding(&catalog, payload)
+                .err(),
+            Some(expected),
+            "the encoding owner preserves the exact refusal"
+        );
+    };
+    let mut wrong_domain = bytes.clone();
+    wrong_domain[0] ^= 1;
+    refuse(&wrong_domain, MaterialCircuitError::WireDomain);
+    let version = MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
+    let mut wrong_version = bytes.clone();
+    wrong_version[version + 1] = 0;
+    refuse(&wrong_version, MaterialCircuitError::WireVersion);
+    refuse(
+        &bytes[..bytes.len() - 1],
+        MaterialCircuitError::WireTruncated,
+    );
+    let mut trailing = bytes.clone();
+    trailing.push(0);
+    refuse(&trailing, MaterialCircuitError::WireTrailing);
+    let period = version + 2 + 32;
+    let mut zero_period = bytes.clone();
+    zero_period[period..period + 8].copy_from_slice(&0_u64.to_be_bytes());
+    refuse(&zero_period, MaterialCircuitError::PeriodInvariant);
+
+    // Two empty service families and one route-stage row precede inventory.
+    let inventory = period + 8 + 4 + 4 + 4 + 32 + 2 + 32 + 4;
+    let row_length = 32 + 32 + 32 + 8;
+    let mut noncanonical = bytes.clone();
+    let rows = &bytes[inventory..inventory + 2 * row_length];
+    noncanonical[inventory..inventory + row_length].copy_from_slice(&rows[row_length..]);
+    noncanonical[inventory + row_length..inventory + 2 * row_length]
+        .copy_from_slice(&rows[..row_length]);
+    refuse(&noncanonical, MaterialCircuitError::WireNoncanonical);
+
+    let mut foreign_definition = catalog.clone().into_definition();
+    foreign_definition.route_stages[0].travel_periods = 2;
+    let foreign = MaterialCatalog::try_new(foreign_definition)
+        .expect("the distinct travel schedule is a valid foreign catalog");
+    assert_eq!(
+        babylon_material_circuit::decode_material_circuit_state_for_encoding(&foreign, &bytes)
+            .err(),
+        Some(MaterialCircuitError::WireDomain),
+        "an encoding owner cannot admit bytes authenticated by another catalog"
+    );
+}

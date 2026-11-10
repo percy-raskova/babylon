@@ -34,7 +34,7 @@ use babylon_practice_contract::{
     OrganizerTimeBindingMode,
 };
 use babylon_tick::material_world;
-use babylon_tick::material_world::MaterialWorldRegister;
+use babylon_tick::material_world::{MaterialWorldError, MaterialWorldRegister};
 use babylon_tick::replay_session::ReplayCommitDisposition;
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -1802,6 +1802,21 @@ fn external_register_reopen_adopts_authenticated_bytes_and_rejects_wire_changes(
         "owned admission must retain the exact authenticated input allocation"
     );
     let domain = b"babylon.material-world-register.v7\0".len();
+    for (tick, expected) in [
+        (u64::MAX, MaterialWorldError::Arithmetic),
+        (
+            session.completed_tick() + 1,
+            MaterialWorldError::PeriodMismatch,
+        ),
+    ] {
+        let mut changed = canonical.to_vec();
+        changed[domain + 4..domain + 12].copy_from_slice(&tick.to_be_bytes());
+        assert_eq!(
+            MaterialWorldRegister::decode_external(&catalog, changed).err(),
+            Some(expected),
+            "circuit admission keeps the outer tick's exact arithmetic and period refusals"
+        );
+    }
     for (tag, version) in [(b'5', 5_u32), (b'6', 6_u32)] {
         let mut previous = canonical.to_vec();
         previous[domain - 2] = tag;

@@ -659,14 +659,16 @@ impl MaterialWorldRegister {
             return Err(MaterialWorldError::Wire);
         }
         let (organizer, public_venue) = decode_organizer_frame(organizer_wire)?;
-        let state = babylon_material_circuit::decode_material_circuit_state(catalog, state_bytes)?;
-        if tick.checked_add(1).ok_or(MaterialWorldError::Arithmetic)? != state.period {
+        let decoded = babylon_material_circuit::decode_material_circuit_state_for_encoding(
+            catalog,
+            state_bytes,
+        )?;
+        if tick.checked_add(1).ok_or(MaterialWorldError::Arithmetic)? != decoded.state().period {
             return Err(MaterialWorldError::PeriodMismatch);
         }
-        // Validate the same canonical circuit and bound organizer as construction,
-        // without assembling a second full outer register during admission.
-        let canonical_state =
-            babylon_material_circuit::encode_material_circuit_state(catalog, &state)?;
+        // Serialize the same admitted circuit before validating its bound organizer,
+        // without repeating circuit admission or assembling a second outer register.
+        let (state, canonical_state) = decoded.into_state_and_canonical_bytes()?;
         let canonical_organizer = encode_bound_organizer(
             catalog,
             tick,

@@ -336,6 +336,20 @@ Authenticate exact command/receipt/marker joins within each member and compare
 actual ordered decision semantics across members, allowing legitimate nonce
 differences. Only their final join can qualify. Keep policy v6 limits unchanged,
 keep raw captured durations as diagnostics and never subtract imposed freezes.
+
+ADR295 records positive live readiness before private proof. Install the ordinary
+restricted frame and keep one accepted strictly actionable organizer status.
+Then ask for `await_period_proof` in the existing observation task slot. The
+matching material and Aid candidate must join accepted Archive completion.
+Actual publication, custody and cursor installation precede local reply queue
+acceptance.
+
+Preserve the original clocks, full authentication for cold openings and reopens,
+and all independent checks. Both actual positive arrival orders need native
+evidence. This adds no player control or mechanic. Source and component checks
+do not prove rendered behavior, input acceptance or a human session without
+coaching.
+
 The two-period smoke and ten-period walk do not replace 52/325-period or human
 acceptance. See the [operator guide](../../how-to/debug-simulation-outcomes.rst)
 and [measurement research](../../gameplay/research/39-native-measurement-method-2026-11-09.md).

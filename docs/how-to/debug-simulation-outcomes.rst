@@ -772,7 +772,7 @@ cold processes. The source creates one fresh shared UUID4 for the pair's two
 new empty databases and authenticates their installed P0 state.
 
 The canonical parent is
-``/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-10``.
+``/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-11``.
 Each member retains its own ``<workload>/<mode>/evidence/``, ``backup/``, ``raw/``,
 ``pgdata/`` and ``xdg/``. Keep the shared ``<workload>/pair-declaration.json``
 and all member custody. ``sql-01`` remains unpaired at the parent's ``sql-01``.
@@ -799,23 +799,53 @@ checking on replay. Its module is ``tools.devtools.national_native_pair`` with
 ``member_run(profile, mode)`` and ``native_path(evidence)`` resolve the layout.
 Use the paired shell producer for the full operation.
 
-Current native evidence is ``NativeRunEvidence`` v5, ``CompletedMember`` v1,
+Current native evidence is ``NativeRunEvidence`` and result v6 with scope
+``native_material_timing_recovery_join_v6``. Private startup, input, response and
+trace formats are v5.
+
+The unchanged enclosing formats are ``CompletedMember`` v1,
 ``NativePairEvidence`` v1 and final report v8. The final evaluator rereads both
 members' source/input capsules, decisions, original receipts, markers, restore
 seals and retirement evidence. Raw nonce-bearing identities remain exact inside
 each member. Across members it derives ordered decision semantics and selected
 allocations, permitting legitimate different ``nonces``. Neither a caller's decision
 hash nor a successful timing member can replace complete memory evidence.
-Unsupported old native evidence and anonymous native invocations refuse.
+
+Material v5, Advance v1 and recovery v2 remain unchanged. Unsupported old native
+evidence and anonymous native invocations refuse before writes. No compatibility
+path remains.
+
+For each positive live manual or bounded-Play close, keep the ordinary restricted
+frame and one explicit accepted, strictly actionable organizer status. Then ask
+for the private ``await_period_proof`` control. Check cause, unique accepted
+status and matching successful fence in causal sequence. Count accepted statuses
+before checking identity and absence of proof. Keep the original close-to-ready,
+close-to-fence and whole-run clocks.
+
+The fence waits for the matching material and Aid candidate and accepted Archive
+completion. Material and its referencing Advance must publish. Custody and the
+cursor must install before successful local reply queue acceptance. This does
+not prove peer receipt. Run the independent Archive, storage, decision and
+restart checks afterward, before the next source.
+
+Keep the sampler active across that entire path in memory mode. Preserve all
+three full-authentication cold segments in each walk. The proof uses the existing
+finite 900-second long-operation watchdog, not the focused-control deadline.
+
+Use the existing TIMINGS ``qualified_period_proof_candidate`` event's
+``archive_accepted`` field to distinguish Archive acceptance before candidate
+collection from candidate-first arrival. Keep actual native evidence for both
+positive orders. This event adds no telemetry backend. ADR295 and the
+:doc:`architecture </concepts/architecture>` describe the scheduling boundary.
 
 Normal play creates no sampler or capture lifecycle. Apply the unchanged v6
 cold/advance/read/Archive/control/smoke limits to its actual elapsed times.
 Captured raw phase durations remain diagnostic, with the existing 900-second
 operation watchdog and existing control/cleanup watchdogs. The memory member
-must cover creation and every period, authenticate actual processes and
-backends, and pass restoration. RSS plus ``hugetlb`` must stay
+must cover creation, every period and recovery. It must authenticate actual
+processes and backends, and pass restoration. RSS plus ``hugetlb`` must stay
 <=10,000,000,000 bytes and the largest gap between samples <=5 seconds.
-Never subtract imposed freezes.
+Never subtract imposed freezes or fabricate zero-memory samples.
 
 Neither named pair establishes actual 52/325-period, p95, physical interaction
 or enjoyment acceptance. Keep those results separate in reports and Linear.

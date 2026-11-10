@@ -506,8 +506,9 @@ Focused controls take at most 60 seconds and the two-period smoke at most
 
 Captured raw phase durations are diagnostic,
 with the existing finite 900-second operation watchdog and existing control and
-cleanup watchdogs. Capture retains full creation/period coverage, source and
-executable admission, exact process/backend identity, authority and restoration.
+cleanup watchdogs. Capture retains full creation, period and recovery coverage,
+source and executable admission, exact process/backend identity, authority and
+restoration.
 RSS plus ``hugetlb`` must stay at most 10,000,000,000 bytes.
 The largest gap between samples must stay at most five seconds. No freeze
 subtraction or synthetic zero-memory record can pass either gate.
@@ -527,11 +528,52 @@ Each member independently restores and verifies its logical dump, retains its
 physical archives and proves clean stop and retirement. Final evaluation
 rereads both bundles. Neither member alone can qualify.
 
-The current formats are ``NativeRunEvidence`` v5, ``CompletedMember`` v1,
-``NativePairEvidence`` v1 and final report v8. The pair's canonical namespace is
-``qualification-10/<workload>/<mode>/``. The SQL fixture remains unpaired at
-``qualification-10/sql-01``. Unsupported old native formats refuse before
-writes. Non-native material-only evaluation remains separate.
+For an audited positive live PlayerKnowledge close, manual Step and bounded Play
+install the ordinary restricted frame before private proof (ADR295). The driver keeps
+one accepted, strictly actionable organizer status, then requests
+``await_period_proof``. One existing observation task slot performs the private
+fold while the independent Archive worker can progress.
+
+The exact material and Aid candidate joins matching accepted Archive completion
+before material and its referencing Advance publish. Custody and the authenticated
+cursor install before the successful reply enters the local queue. This
+acknowledges local queue acceptance, not peer receipt. The next qualified source
+remains locked through pending or refused proof. Quit refuses publication and
+drains the task before qualified AppExit. Original clocks continue throughout.
+
+Qualified KnownPreview work leaves the cache-owned FullObserver admission owner
+and private cursor untouched on success, error or stale results. The private
+proof extends the contiguous authenticated prefix. P0 and every cold opening and
+reopen keep full authentication. Ordinary, unbounded and unaudited play keep their
+existing behavior. This schedule adds no mechanics, authority, visible debug
+control or telemetry backend.
+
+Both trace consumers check the causal sequence: close cause, unique accepted
+strictly actionable status, then matching successful fence. They count accepted
+statuses before validating identity and absence of proof. Campaign, epoch,
+foundation, policy, world, marker, envelope, original Advance and accepted-command
+custody remain exact. Enqueue-to-commit must fit the original close-to-ready
+interval. Enqueue-to-commit plus Archive must fit the later close-to-fence interval.
+The whole clock and independent Archive, storage, decision and restart joins
+remain mandatory.
+
+The fence uses the existing finite 900-second long operation watchdog. The
+focused UI deadline does not apply to this proof. Its overlap has no guaranteed
+speedup. The existing TIMINGS candidate event records whether the client accepted
+Archive completion before candidate collection. Both positive arrival orders
+need actual native acceptance.
+
+The current private startup, input, response and trace formats are v5.
+``NativeRunEvidence`` and its result are v6 with scope
+``native_material_timing_recovery_join_v6``. ``CompletedMember`` v1,
+``NativePairEvidence`` v1 and final report v8 remain unchanged. Material v5,
+Advance v1 and recovery v2 keep their meanings.
+
+The central ``RUN_PARENT`` resolver places the pair at
+``qualification-11/<workload>/<mode>/`` and the unpaired SQL fixture at
+``qualification-11/sql-01``. Earlier namespaces, source and binaries remain
+intact. Unsupported old native formats refuse before writes, without a
+compatibility path. Non-native material-only evaluation remains separate.
 
 The :doc:`operator guide </how-to/debug-simulation-outcomes>` describes the public
 paired producer and evaluator. Reports and Linear own actual acceptance.

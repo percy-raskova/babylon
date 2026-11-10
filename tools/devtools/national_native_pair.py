@@ -492,7 +492,14 @@ def verify_segment_timing(
         raise ValueError("process-cold installation differs from its prelaunch clock or deadline")
     for action in trace.actions:
         duration = action.completed_monotonic_ns - action.started_monotonic_ns
-        focused = action.action not in ("step", "reopen", "status", "play", "quit") and (
+        focused = action.action not in (
+            "step",
+            "reopen",
+            "status",
+            "play",
+            "quit",
+            "await_period_proof",
+        ) and (
             action.action not in ("open_organizer", "dismiss_splash")
             or action.sequence > cold.readiness_sequence
         )

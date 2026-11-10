@@ -90,7 +90,7 @@ fn read_startup(reader: &mut impl BufRead, campaign: &str) -> Result<(), &'stati
     }
     let admission: StartupAdmission =
         serde_json::from_slice(&bytes).map_err(|_| "capture_startup_frame_invalid")?;
-    if admission.version != 4 || admission.campaign_id != campaign {
+    if admission.version != 5 || admission.campaign_id != campaign {
         return Err("capture_startup_identity_invalid");
     }
     let StartupPhase::CaptureReady = admission.phase;
@@ -108,6 +108,7 @@ enum Action {
     DraftFromReport,
     ArchiveReport,
     Status,
+    AwaitPeriodProof,
     ArmOnePlayAdvance,
     Play,
     Pause,
@@ -326,7 +327,7 @@ fn read_input(reader: &mut impl BufRead) -> Result<Option<Input>, &'static str> 
         return Err("control_frame_not_bounded");
     }
     let input: Input = serde_json::from_slice(&bytes).map_err(|_| "control_frame_invalid")?;
-    if input.version != 4 || input.sequence == 0 {
+    if input.version != 5 || input.sequence == 0 {
         return Err("control_version_or_sequence_invalid");
     }
     Ok(Some(input))
@@ -708,24 +709,25 @@ impl PlayInterlock {
             || (!self.invalid && self.witness.as_ref().is_some_and(|w| w.matches(session)))
     }
 
-    pub(crate) fn enqueued(&mut self, session: &mut ObserverSession, request: u64) {
+    pub(crate) fn enqueued(&mut self, session: &mut ObserverSession, request: u64) -> bool {
         if !self.armed() || !self.admitted {
-            return;
+            return false;
         }
         session.pause_playback();
         let (Some(witness), Some((_, sequence))) = (&mut self.witness, self.play) else {
             self.invalid = true;
-            return;
+            return false;
         };
         if self.invalid || session.pending_advance_request() != Some(request) {
             self.invalid = true;
-            return;
+            return false;
         }
         witness.phase = PlayPhase::PausedAfterEnqueue;
         witness.play_sequence = Some(sequence);
         witness.request_id = Some(request);
         witness.pending_at_pause = session.pending_advance_request() == Some(request);
         witness.playing_after_pause = Some(session.playing);
+        true
     }
 }
 
@@ -783,6 +785,7 @@ struct Controls {
     next_sequence: Option<u64>,
     pending: Option<Pending>,
     reply: Option<Vec<u8>>,
+    proof_reply: Option<u64>,
     disabled: bool,
     capture_result: Option<Result<(), &'static str>>,
     observed_extent: Option<(Entity, UVec2)>,
@@ -795,6 +798,7 @@ impl Default for Controls {
             next_sequence: Some(1),
             pending: None,
             reply: None,
+            proof_reply: None,
             disabled: false,
             capture_result: None,
             observed_extent: None,
@@ -835,15 +839,28 @@ fn state(
 }
 
 fn response(sequence: Option<u64>, event: &str, reason: Option<&str>, state: Value) -> Vec<u8> {
+    bounded_response(sequence, event, reason, &state).unwrap_or_else(|_| {
+        let mut bytes = br#"{"version":5,"sequence":null,"event":"refused","reason":"control_response_not_bounded"}"#.to_vec();
+        bytes.push(b'\n');
+        bytes
+    })
+}
+
+fn bounded_response(
+    sequence: Option<u64>,
+    event: &str,
+    reason: Option<&str>,
+    state: &Value,
+) -> Result<Vec<u8>, &'static str> {
     let mut bytes = serde_json::to_vec(
-        &json!({"version":4,"sequence":sequence,"event":event,"reason":reason,"state":state}),
+        &json!({"version":5,"sequence":sequence,"event":event,"reason":reason,"state":state}),
     )
-    .expect("control response contains only finite typed state");
+    .map_err(|_| "control_response_encoding_failed")?;
     if state.is_null() || bytes.len() >= OUTPUT_BYTES {
-        bytes = br#"{"version":4,"sequence":null,"event":"refused","reason":"control_response_not_bounded"}"#.to_vec();
+        return Err("control_response_not_bounded");
     }
     bytes.push(b'\n');
-    bytes
+    Ok(bytes)
 }
 
 fn precondition(input: &Input, session: &ObserverSession) -> bool {
@@ -856,6 +873,33 @@ fn precondition(input: &Input, session: &ObserverSession) -> bool {
             input.expected_tick == session.durable_tick
                 && input.expected_generation == session.generation
         }
+}
+
+fn period_proof_available(
+    session: &ObserverSession,
+    client: &OrganizerClient,
+    ui: &ObserverUiState,
+    opening: &OpeningPresentation,
+    view: PrimaryView,
+) -> bool {
+    matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
+        && session.perspective == crate::observer::Perspective::PlayerKnowledge
+        && !session.playing
+        && !session.advance_pending()
+        && !session.lifecycle_pending()
+        && !session.organizer_control_pending()
+        && !session.quit_requested
+        && session.viewed_tick == session.durable_tick
+        && session.durable_tick > 0
+        && !ui.splash_visible
+        && !ui.menu_open
+        && opening.stage == OpeningStage::Game
+        && view == PrimaryView::Organizer
+        && client.pending.is_none()
+        && !client.status_due
+        && client.status_refusal(session).is_none()
+        && client.view.as_ref().map(|v| v.period) == Some(session.durable_tick)
+        && installed_organizer(client, session).is_some()
 }
 
 fn available(
@@ -899,6 +943,7 @@ fn available(
     }
     match action {
         Action::Status | Action::AmountKey(_) => true,
+        Action::AwaitPeriodProof => period_proof_available(session, client, ui, opening, view),
         Action::ArmOnePlayAdvance => {
             pipe && !ui.splash_visible && !ui.menu_open && !ui.comparison_open
         }
@@ -1021,7 +1066,7 @@ fn presentation_available(
 #[derive(bevy::ecs::system::SystemParam)]
 struct Situation<'w, 's> {
     interlock: Option<ResMut<'w, PlayInterlock>>,
-    audit: Option<Res<'w, NativeAudit>>,
+    audit: Option<ResMut<'w, NativeAudit>>,
     amount_fields: Query<'w, 's, &'static AmountField>,
     focus: Option<Res<'w, bevy::input_focus::InputFocus>>,
     session: Res<'w, ObserverSession>,
@@ -1098,6 +1143,14 @@ impl Situation<'_, '_> {
             return Value::Null;
         }
         result["installed_organizer"] = json!(installed_organizer(&self.client, &self.session));
+        result["advance_request_id"] = json!(self
+            .audit
+            .as_deref()
+            .and_then(|a| a.advance_request_id(&self.session)));
+        result["period_proof"] = json!(self
+            .audit
+            .as_deref()
+            .and_then(|a| a.period_proof_receipt(&self.session)));
         result["play_interlock"] = json!(self
             .interlock
             .as_ref()
@@ -1210,6 +1263,42 @@ impl Situation<'_, '_> {
 }
 
 impl Controls {
+    fn stage_result(
+        &mut self,
+        sequence: u64,
+        action: Action,
+        result: Result<&'static str, &'static str>,
+        situation: &mut Situation,
+    ) {
+        let proof = action == Action::AwaitPeriodProof;
+        let (event, reason) = match result {
+            Ok(event) => (event, None),
+            Err(reason) => ("refused", Some(reason)),
+        };
+        let bytes = if proof && reason.is_none() {
+            match bounded_response(Some(sequence), event, None, &situation.state()) {
+                Ok(bytes) => {
+                    self.proof_reply = Some(sequence);
+                    bytes
+                }
+                Err(reason) => {
+                    if let Some(audit) = situation.audit.as_deref_mut() {
+                        audit.refuse_period_proof(reason);
+                    }
+                    response(Some(sequence), "refused", Some(reason), situation.state())
+                }
+            }
+        } else {
+            if proof {
+                if let Some(audit) = situation.audit.as_deref_mut() {
+                    audit.refuse_period_proof(reason.unwrap_or("period_proof_completion_failed"));
+                }
+            }
+            response(Some(sequence), event, reason, situation.state())
+        };
+        self.reply = Some(bytes);
+    }
+
     fn respond(
         &mut self,
         sequence: Option<u64>,
@@ -1217,6 +1306,7 @@ impl Controls {
         reason: Option<&str>,
         situation: &Situation,
     ) {
+        self.proof_reply = None;
         self.reply = Some(response(sequence, event, reason, situation.state()));
     }
 }
@@ -1227,17 +1317,82 @@ enum OutputReady {
     Closed,
 }
 
-fn flush_reply(transport: &Transport, controls: &mut Controls) -> OutputReady {
+fn flush_reply(
+    transport: &Transport,
+    controls: &mut Controls,
+    situation: &mut Situation,
+) -> OutputReady {
+    if controls.proof_reply.is_some() && controls.reply.is_none() {
+        if let Some(audit) = situation.audit.as_deref_mut() {
+            audit.refuse_period_proof("period_proof_reply_absent");
+        }
+        controls.proof_reply = None;
+        return OutputReady::Closed;
+    }
+    if let Some(sequence) = controls.proof_reply {
+        let ready = situation
+            .audit
+            .as_deref()
+            .ok_or("period_proof_capability_absent")
+            .and_then(|audit| {
+                audit.fence_reply_ready(
+                    &situation.session,
+                    sequence,
+                    situation
+                        .frame
+                        .as_deref()
+                        .and_then(|f| f.for_session(&situation.session)),
+                )
+            });
+        if ready.is_ok() && proof_status_pending(situation) {
+            return OutputReady::Backpressure;
+        }
+        let ready = ready.and_then(|()| {
+            available(
+                Action::AwaitPeriodProof,
+                &situation.session,
+                &situation.client,
+                &situation.ui,
+                &situation.opening,
+                *situation.view,
+                situation.pipe.is_some(),
+            )
+            .then_some(())
+            .ok_or("period_proof_context_changed")
+        });
+        if let Err(reason) = ready {
+            if let Some(audit) = situation.audit.as_deref_mut() {
+                audit.refuse_period_proof(reason);
+            }
+            controls.respond(Some(sequence), "refused", Some(reason), situation);
+        }
+    }
     let Some(bytes) = controls.reply.take() else {
         return OutputReady::Ready;
     };
     match transport.outgoing.try_send(bytes) {
-        Ok(()) => OutputReady::Ready,
+        Ok(()) => {
+            if let Some(sequence) = controls.proof_reply.take() {
+                situation
+                    .audit
+                    .as_deref_mut()
+                    .expect("the exclusive flush validated this capability before try_send")
+                    .fence_reply_queued(sequence);
+            }
+            OutputReady::Ready
+        }
         Err(mpsc::TrySendError::Full(bytes)) => {
             controls.reply = Some(bytes);
             OutputReady::Backpressure
         }
-        Err(mpsc::TrySendError::Disconnected(_)) => OutputReady::Closed,
+        Err(mpsc::TrySendError::Disconnected(_)) => {
+            if controls.proof_reply.take().is_some() {
+                if let Some(audit) = situation.audit.as_deref_mut() {
+                    audit.refuse_period_proof("period_proof_reply_closed");
+                }
+            }
+            OutputReady::Closed
+        }
     }
 }
 
@@ -1334,10 +1489,10 @@ fn request_resize(
 fn admitted_input(
     transport: &Transport,
     controls: &mut Controls,
-    situation: &Situation,
+    situation: &mut Situation,
     observer: &mut MessageWriter<ObserverCommand>,
 ) -> Option<Input> {
-    match flush_reply(transport, controls) {
+    match flush_reply(transport, controls, situation) {
         OutputReady::Ready if controls.disabled => return None,
         OutputReady::Ready => {}
         OutputReady::Backpressure => return None,
@@ -1446,6 +1601,23 @@ fn handle_play_interlock(
     false
 }
 
+fn request_period_proof(input: Input, controls: &mut Controls, situation: &mut Situation) {
+    let sequence = input.sequence;
+    let result = situation
+        .audit
+        .as_deref_mut()
+        .ok_or("period_proof_capability_absent")
+        .and_then(|audit| audit.request_period_proof(&situation.session, sequence));
+    if let Err(reason) = result {
+        if let Some(audit) = situation.audit.as_deref_mut() {
+            audit.refuse_period_proof(reason);
+        }
+        controls.respond(Some(sequence), "refused", Some(reason), situation);
+        return;
+    }
+    controls.pending = Some(Pending::new(input, situation, None));
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "`dispatch` declares each Bevy parameter explicitly"
@@ -1464,11 +1636,16 @@ fn dispatch(
     mut windows: Query<(Entity, &mut Window), With<PrimaryWindow>>,
     resized: Res<Messages<WindowResized>>,
 ) {
-    let Some(input) = admitted_input(&transport, &mut controls, &situation, &mut observer) else {
+    let Some(input) = admitted_input(&transport, &mut controls, &mut situation, &mut observer)
+    else {
         return;
     };
     let sequence = input.sequence;
     if handle_play_interlock(&input, &mut situation, &mut controls) {
+        return;
+    }
+    if input.action == Action::AwaitPeriodProof {
+        request_period_proof(input, &mut controls, &mut situation);
         return;
     }
     receipt.tracked = None;
@@ -1636,7 +1813,77 @@ fn capture_handler(pending: &mut Pending, witness: Witness) -> Result<(), &'stat
     Ok(())
 }
 
+fn proof_status_pending(s: &Situation) -> bool {
+    s.client.pending.is_some() || s.client.status_due || s.session.organizer_control_pending()
+}
+
+fn period_proof_outcome(
+    pending: &Pending,
+    s: &Situation,
+) -> Option<Result<&'static str, &'static str>> {
+    let audit = s.audit.as_deref()?;
+    let result = audit.period_proof_outcome(pending.input.sequence)?;
+    if result.is_ok()
+        && (s.session.runtime_scope() != pending.scope.as_ref()
+            || s.session.context() != pending.context
+            || s.session.foundation_digest != pending.foundation
+            || s.session.content_hash != pending.content_hash
+            || s.session.world_hash != pending.world_hash
+            || audit.period_proof_receipt(&s.session).is_none())
+    {
+        return Some(Err("period_proof_context_changed"));
+    }
+    if result.is_ok() {
+        if let Err(reason) = audit.fence_reply_ready(
+            &s.session,
+            pending.input.sequence,
+            s.frame.as_deref().and_then(|f| f.for_session(&s.session)),
+        ) {
+            return Some(Err(reason));
+        }
+        if proof_status_pending(s) {
+            return None;
+        }
+        if !available(
+            Action::AwaitPeriodProof,
+            &s.session,
+            &s.client,
+            &s.ui,
+            &s.opening,
+            *s.view,
+            s.pipe.is_some(),
+        ) {
+            return Some(Err("period_proof_context_changed"));
+        }
+    }
+    Some(result.map(|()| "period_proof_published"))
+}
+
+fn step_outcome(pending: &Pending, s: &Situation) -> Option<Result<&'static str, &'static str>> {
+    if let Some(request) = s.session.pending_advance_request() {
+        if pending.request.is_some_and(|id| id != request) {
+            return Some(Err("control_request_changed"));
+        }
+        return None;
+    }
+    if pending.request.is_none() {
+        return Some(Err("ordinary_handler_refused"));
+    }
+    if pending.input.expected_tick.checked_add(1) != Some(s.session.durable_tick) {
+        return Some(Err("control_commit_mismatch"));
+    }
+    (matches!(
+        s.session.phase,
+        SessionPhase::Ready | SessionPhase::Complete
+    ) && s.session.viewed_tick == s.session.durable_tick
+        && s.session.content_hash.is_some())
+    .then_some(Ok("committed_and_installed"))
+}
+
 fn outcome(pending: &Pending, s: &Situation) -> Option<Result<&'static str, &'static str>> {
+    if pending.input.action == Action::AwaitPeriodProof {
+        return period_proof_outcome(pending, s);
+    }
     if pending.input.action == Action::Reopen {
         return reopen_outcome(pending, &s.session, &s.client);
     }
@@ -1708,24 +1955,7 @@ fn outcome(pending: &Pending, s: &Situation) -> Option<Result<&'static str, &'st
         return Some(Ok("refresh_requested"));
     }
     if action == Action::Step {
-        if let Some(request) = s.session.pending_advance_request() {
-            if pending.request.is_some_and(|id| id != request) {
-                return Some(Err("control_request_changed"));
-            }
-            return None;
-        }
-        if pending.request.is_none() {
-            return Some(Err("ordinary_handler_refused"));
-        }
-        if pending.input.expected_tick.checked_add(1) != Some(s.session.durable_tick) {
-            return Some(Err("control_commit_mismatch"));
-        }
-        return (matches!(
-            s.session.phase,
-            SessionPhase::Ready | SessionPhase::Complete
-        ) && s.session.viewed_tick == s.session.durable_tick
-            && s.session.content_hash.is_some())
-        .then_some(Ok("committed_and_installed"));
+        return step_outcome(pending, s);
     }
     if matches!(action, Action::Review | Action::Confirm) {
         return organizer_outcome(pending, s);
@@ -1976,7 +2206,7 @@ fn resize_outcome(
 fn complete(
     mut controls: ResMut<Controls>,
     mut receipt: ResMut<HandlerReceipt>,
-    situation: Situation,
+    mut situation: Situation,
     evidence: Res<ArchiveEvidenceReceipt>,
     mut windows: Query<(Entity, &mut Window), With<PrimaryWindow>>,
     resized: Res<Messages<WindowResized>>,
@@ -2052,11 +2282,8 @@ fn complete(
     };
     if let Some(result) = result {
         let sequence = pending.input.sequence;
-        let (event, reason) = match result {
-            Ok(event) => (event, None),
-            Err(reason) => ("refused", Some(reason)),
-        };
-        controls.reply = Some(response(Some(sequence), event, reason, situation.state()));
+        let action = pending.input.action;
+        controls.stage_result(sequence, action, result, &mut situation);
         controls.pending = None;
         receipt.tracked = None;
     }
@@ -2153,6 +2380,257 @@ mod tests {
         }
         assert!(serde_json::from_value::<Action>(json!("capture_desktop")).is_err());
         assert!(serde_json::from_value::<Action>(json!("shell_evidence")).is_err());
+    }
+
+    #[test]
+    fn qualification_period_proof_is_a_bounded_private_control() {
+        let frame = frame("");
+        // Use the actual strict decoder, preserving the complete numbered input.
+        let mut value: Value = serde_json::from_slice(&frame).expect("fixture JSON");
+        value["action"] = json!("await_period_proof");
+        let bytes = format!("{value}\n");
+        assert!(
+            read_input(&mut bytes.as_bytes()).is_ok(),
+            "the admitted private proof must have one bounded control variant"
+        );
+    }
+
+    #[test]
+    fn qualification_proof_success_encoding_refuses_null_or_unbounded_state() {
+        assert!(bounded_response(Some(7), "period_proof_published", None, &Value::Null).is_err());
+        assert!(bounded_response(
+            Some(7),
+            "period_proof_published",
+            None,
+            &json!({"oversized": "x".repeat(OUTPUT_BYTES)})
+        )
+        .is_err());
+        let fallback: Value = serde_json::from_slice(&response(
+            Some(7),
+            "period_proof_published",
+            None,
+            Value::Null,
+        ))
+        .expect("bounded refusal");
+        assert!(fallback["sequence"].is_null());
+        assert_eq!(fallback["event"], "refused");
+    }
+
+    #[test]
+    fn qualification_foreign_proof_reply_never_becomes_an_acknowledgement() {
+        use bevy::ecs::system::RunSystemOnce;
+        for output in ["ready", "full", "closed", "absent"] {
+            let (mut app, _) = super::ui::tests::allocation_opening();
+            let (_peer, _incoming, receiver) = amount_control_transport(&mut app, 1);
+            let mut receiver = Some(receiver);
+            if output == "full" {
+                app.world()
+                    .resource::<Transport>()
+                    .outgoing
+                    .try_send(b"prior".to_vec())
+                    .expect("bounded prior reply");
+            } else if output == "closed" {
+                drop(receiver.take());
+            }
+            {
+                let mut controls = app.world_mut().resource_mut::<Controls>();
+                controls.reply = (output != "absent").then(|| b"unadmitted success bytes".to_vec());
+                controls.proof_reply = Some(7);
+            }
+            let result = app
+                .world_mut()
+                .run_system_once(
+                    |transport: Res<Transport>,
+                     mut controls: ResMut<Controls>,
+                     mut situation: Situation| {
+                        flush_reply(&transport, &mut controls, &mut situation)
+                    },
+                )
+                .expect("actual control flush");
+            assert!(app.world().resource::<Controls>().proof_reply.is_none());
+            match output {
+                "ready" => {
+                    assert!(matches!(result, OutputReady::Ready));
+                    let raw = receiver
+                        .as_ref()
+                        .expect("receiver")
+                        .try_recv()
+                        .expect("actual reply");
+                    let reply: Value = serde_json::from_slice(&raw).expect("numbered refusal");
+                    assert_eq!(reply["event"], "refused");
+                }
+                "full" => {
+                    assert!(matches!(result, OutputReady::Backpressure));
+                    let reply: Value = serde_json::from_slice(
+                        app.world()
+                            .resource::<Controls>()
+                            .reply
+                            .as_ref()
+                            .expect("retained refusal"),
+                    )
+                    .expect("refusal");
+                    assert_eq!(reply["event"], "refused");
+                }
+                "closed" | "absent" => assert!(matches!(result, OutputReady::Closed)),
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[test]
+    fn qualification_period_proof_requires_a_strict_actionable_ordinary_status() {
+        use babylon_persistence::runtime_session::OrganizerBodySource;
+        for fault in [
+            "none",
+            "playing",
+            "perspective",
+            "viewed",
+            "status_due",
+            "body",
+            "period",
+        ] {
+            let (mut client, mut session) = crate::organizer::tests::ready();
+            session.perspective = crate::observer::Perspective::PlayerKnowledge;
+            session.content_hash = Some("04".repeat(32));
+            session.world_hash = Some("05".repeat(32));
+            let (_, _, _, mut snapshot) = crate::organizer::tests::status_fixture();
+            snapshot.body_scope.source = Some(OrganizerBodySource::Committed {
+                tick_content_hash: [4; 32],
+                world_hash: [5; 32],
+            });
+            client.queue(&mut session, RequestKind::Status, None);
+            let babylon_persistence::runtime_session::RuntimeSessionRequest::OrganizerStatus {
+                request_id,
+                ..
+            } = client.outbox.take().expect("actual status request")
+            else {
+                unreachable!();
+            };
+            client
+                .status(request_id, snapshot, &mut session)
+                .expect("actual admitted status");
+            let ui = ObserverUiState {
+                splash_visible: false,
+                menu_open: false,
+                ..default()
+            };
+            let opening = OpeningPresentation {
+                stage: OpeningStage::Game,
+                ..default()
+            };
+            match fault {
+                "none" => {}
+                "playing" => session.playing = true,
+                "perspective" => session.perspective = crate::observer::Perspective::FullObserver,
+                "viewed" => session.viewed_tick = 2,
+                "status_due" => client.status_due = true,
+                "body" => client.body_context = None,
+                "period" => client.view.as_mut().expect("actual view").period = 2,
+                _ => unreachable!(),
+            }
+            assert_eq!(
+                available(
+                    Action::AwaitPeriodProof,
+                    &session,
+                    &client,
+                    &ui,
+                    &opening,
+                    PrimaryView::Organizer,
+                    true
+                ),
+                fault == "none",
+                "{fault}"
+            );
+        }
+    }
+
+    #[test]
+    fn qualification_bounded_play_marks_only_its_actual_paused_enqueue_for_early_readiness() {
+        use babylon_persistence::runtime_session::OrganizerBodySource;
+        crate::observer_io::qualification::with_source_fixture(|audit, mut session, mut status| {
+            session.perspective = crate::observer::Perspective::PlayerKnowledge;
+            status.body_scope.campaign_id = *session.campaign.as_uuid().as_bytes();
+            status.body_scope.source = Some(OrganizerBodySource::Foundation {
+                foundation_digest: [0x0a; 32],
+            });
+            let mut client = OrganizerClient {
+                campaign: Some(*session.campaign.as_uuid()),
+                ..OrganizerClient::default()
+            };
+            for _ in 0..2 {
+                client.queue(&mut session, RequestKind::Status, None);
+                let babylon_persistence::runtime_session::RuntimeSessionRequest::OrganizerStatus {
+                    request_id,
+                    ..
+                } = client.outbox.take().expect("actual status request")
+                else {
+                    unreachable!();
+                };
+                client
+                    .status(request_id, status.clone(), &mut session)
+                    .expect("actual current opening status");
+            }
+            let scope = session.runtime_scope().expect("scope").clone();
+            let (mut app, requests, responses) = crate::observer_io::tests::quit_app();
+            crate::observer_io::tests::install_playback(&mut app);
+            app.insert_resource(audit)
+                .insert_resource(session)
+                .insert_resource(client)
+                .insert_resource(PrimaryView::Organizer)
+                .add_message::<OrganizerAction>();
+            app.world_mut().resource_mut::<ObserverUiState>().menu_open = false;
+            let (_peer, inputs, _outputs) = amount_control_transport(&mut app, 8);
+            app.world_mut().resource_mut::<OpeningPresentation>().stage = OpeningStage::Game;
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(Duration::from_secs(1));
+            issue_playback_input(&mut app, &inputs, 1, "arm_one_play_advance");
+            issue_playback_input(&mut app, &inputs, 2, "play");
+            let babylon_persistence::runtime_session::RuntimeSessionRequest::Advance {
+                request_id,
+                ..
+            } = requests.try_recv().expect("actual bounded Advance")
+            else {
+                unreachable!();
+            };
+            assert!(!app.world().resource::<ObserverSession>().playing);
+            assert_ne!(
+                request_id, 2,
+                "the actual runtime request is not the private Play sequence"
+            );
+            let paused = app
+                .world()
+                .resource::<PlayInterlock>()
+                .witness
+                .as_ref()
+                .expect("actual paused witness");
+            assert_eq!(paused.request_id, Some(request_id));
+            assert!(paused.pending_at_pause);
+            responses
+                .send(Ok(RuntimeSessionResponse::Committed {
+                    request_id,
+                    scope,
+                    tail: RuntimeSessionTail {
+                        resolve_tick: 1,
+                        tick_content_hash: Some("ab".repeat(32)),
+                        world_hash: Some("cd".repeat(32)),
+                    },
+                }))
+                .expect("accepted Commit");
+            app.update();
+            let session = app.world().resource::<ObserverSession>();
+            assert_eq!(session.durable_tick, 1);
+            assert_eq!(
+                app.world()
+                    .resource::<NativeAudit>()
+                    .advance_request_id(session),
+                Some(request_id)
+            );
+            assert!(
+                requests.try_recv().is_err(),
+                "bounded Play cannot enqueue a second close"
+            );
+        });
     }
 
     fn resize_fixture(
@@ -2690,7 +3168,7 @@ mod tests {
             ),
             "campaign startup must wait for explicit capture admission"
         );
-        let mut admission = b"{\"version\":4,\"campaign_id\":\"00000000-0000-0000-0000-000000000001\",\"phase\":\"capture_ready\"}\n".to_vec();
+        let mut admission = b"{\"version\":5,\"campaign_id\":\"00000000-0000-0000-0000-000000000001\",\"phase\":\"capture_ready\"}\n".to_vec();
         admission.extend(frame(""));
         peer.write_all(&admission)
             .expect("the fixture sink accepts the authored bytes");
@@ -2752,7 +3230,7 @@ mod tests {
     fn pending(session: &ObserverSession, client: &OrganizerClient, action: Action) -> Pending {
         Pending {
             input: Input {
-                version: 4,
+                version: 5,
                 sequence: 1,
                 campaign_id: session.campaign.as_uuid().to_string(),
                 scope_epoch: session.runtime_scope().map(|s| s.epoch),
@@ -3040,7 +3518,7 @@ mod tests {
         let mut send = |app: &mut App, action: Value| {
             sequence += 1;
             let session = app.world().resource::<ObserverSession>();
-            let record = json!({"version":4,"sequence":sequence,"campaign_id":session.campaign.as_uuid().to_string(),
+            let record = json!({"version":5,"sequence":sequence,"campaign_id":session.campaign.as_uuid().to_string(),
                 "scope_epoch":session.runtime_scope().map(|scope|scope.epoch),"expected_tick":session.durable_tick,
                 "expected_generation":session.generation,"action":action});
             let line = format!("{record}\n");
@@ -3784,17 +4262,17 @@ mod tests {
     }
 
     fn frame(extra: &str) -> Vec<u8> {
-        format!("{{\"version\":4,\"sequence\":1,\"campaign_id\":\"00000000-0000-0000-0000-000000000342\",\"scope_epoch\":null,\"expected_tick\":0,\"expected_generation\":0,\"action\":\"status\"{extra}}}\n").into_bytes()
+        format!("{{\"version\":5,\"sequence\":1,\"campaign_id\":\"00000000-0000-0000-0000-000000000342\",\"scope_epoch\":null,\"expected_tick\":0,\"expected_generation\":0,\"action\":\"status\"{extra}}}\n").into_bytes()
     }
 
     #[test]
     fn capture_startup_refuses_wrong_identity_old_frames_and_corruption() {
         let campaign = "00000000-0000-0000-0000-000000000001";
         let valid = format!(
-            "{{\"version\":4,\"campaign_id\":\"{campaign}\",\"phase\":\"capture_ready\"}}\n"
+            "{{\"version\":5,\"campaign_id\":\"{campaign}\",\"phase\":\"capture_ready\"}}\n"
         );
         for bytes in [
-            valid.replace("\"version\":4", "\"version\":1").into_bytes(),
+            valid.replace("\"version\":5", "\"version\":1").into_bytes(),
             valid
                 .replace(campaign, "00000000-0000-0000-0000-000000000002")
                 .into_bytes(),
@@ -3803,7 +4281,7 @@ mod tests {
                 .replace("\"phase\":", "\"unused\":true,\"phase\":")
                 .into_bytes(),
             valid
-                .replace("\"phase\":", "\"version\":4,\"phase\":")
+                .replace("\"phase\":", "\"version\":5,\"phase\":")
                 .into_bytes(),
             frame(""),
             valid.trim_end().as_bytes().to_vec(),
@@ -3833,7 +4311,7 @@ mod tests {
         for bytes in [
             String::from_utf8(frame(""))
                 .expect("the fixture bytes came from a UTF-8 string")
-                .replace("\"version\":4", "\"version\":1")
+                .replace("\"version\":5", "\"version\":1")
                 .into_bytes(),
             frame(",\"sequence\":2"),
             frame(",\"unused\":true"),
@@ -3971,7 +4449,7 @@ mod tests {
         let line = format!(
             "{}\n",
             json!({
-                "version":4,"sequence":sequence,"action":action,
+                "version":5,"sequence":sequence,"action":action,
                 "campaign_id":s.campaign.as_uuid().to_string(),
                 "scope_epoch":s.runtime_scope().map(|scope|scope.epoch),
                 "expected_tick":s.durable_tick,"expected_generation":s.generation

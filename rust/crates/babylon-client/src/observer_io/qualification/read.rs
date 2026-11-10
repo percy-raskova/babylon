@@ -1,7 +1,7 @@
 //! One full authenticated read per source boundary, shared by all audit folds.
 use super::recovery::Identity;
 use super::{
-    Candidate, Instant, KnownBinding, ObservationContext, ObserverEconomyReader,
+    Candidate, InstalledKnown, Instant, KnownBinding, ObservationContext, ObserverEconomyReader,
     ObserverMaterialCursor, ObserverVisibility, Opening, Perspective, PreparedObservation, Record,
     Work,
 };
@@ -23,8 +23,32 @@ impl Work {
         } else if context.tick == 0 {
             self.opening(reader, context, cursor)
         } else {
-            self.boundary(reader, context, cursor)
+            self.boundary(reader, context, cursor, None)
         }
+    }
+
+    pub(in crate::observer_io) fn read_private(
+        self,
+        reader: ObserverEconomyReader,
+        context: &ObservationContext,
+        cursor: &mut Option<ObserverMaterialCursor>,
+        installed: &InstalledKnown,
+    ) -> Result<Candidate, String> {
+        self.configuration
+            .policy
+            .verify()
+            .map_err(|e| e.to_string())?;
+        if context.tick == 0 || self.recovery.is_some() || *context != installed.context {
+            return Err("native private proof is not its admitted positive live close".into());
+        }
+        let (private, candidate) = self.boundary(reader, context, cursor, Some(installed))?;
+        drop(private);
+        if !installed.agrees(&candidate) {
+            return Err(
+                "native private proof differs from the installed restricted witness".into(),
+            );
+        }
+        Ok(candidate)
     }
 
     // The added admission lookup pushes this sequence one line past the limit.
@@ -154,6 +178,7 @@ impl Work {
         reader: ObserverEconomyReader,
         context: &ObservationContext,
         cursor: &mut Option<ObserverMaterialCursor>,
+        installed: Option<&InstalledKnown>,
     ) -> Result<(PreparedObservation, Candidate), String> {
         let mut candidate_cursor = cursor.clone();
         let started = Instant::now();
@@ -215,7 +240,17 @@ impl Work {
             evidence: Ok(Some(observation.production_evidence)),
         };
         drop(observation.accounting);
-        let prepared = present(prepared, context, &binding, &mut record)?;
+        let prepared = if let Some(installed) = installed {
+            if binding != installed.binding {
+                return Err(
+                    "native private material differs from the installed restricted frame".into(),
+                );
+            }
+            record.presentation_read_elapsed_ns = installed.presentation_read_elapsed_ns;
+            prepared
+        } else {
+            present(prepared, context, &binding, &mut record)?
+        };
         self.finish(
             context,
             cursor,

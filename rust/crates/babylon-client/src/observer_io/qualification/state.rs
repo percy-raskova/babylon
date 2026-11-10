@@ -1,5 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
 
+use super::proof::Progress;
 use super::{advance, aid, recovery};
 use babylon_persistence::qualification_audit::aid::PartnerReport;
 
@@ -61,6 +62,7 @@ pub(crate) struct NativeAudit {
     pub(super) boundary: Option<Identity>,
     pub(super) recovery: Option<recovery::Pending>,
     pub(super) advance: Option<advance::Pending>,
+    pub(super) proof: Option<Progress>,
 }
 
 pub(in crate::observer_io) struct Work {
@@ -160,6 +162,7 @@ impl NativeAudit {
             boundary: None,
             recovery: None,
             advance: None,
+            proof: None,
         }))
     }
 
@@ -242,7 +245,7 @@ impl NativeAudit {
         &mut self,
         session: &ObserverSession,
         candidate: Candidate,
-    ) -> Result<(), String> {
+    ) -> Result<String, String> {
         if self.scope.as_ref() != Some(&candidate.scope)
             || !publication_matches(
                 session,
@@ -305,7 +308,7 @@ impl NativeAudit {
         self.custody = custody;
         self.boundary = Some(candidate.identity);
         self.recovery = None;
-        Ok(())
+        Ok(hex(&babylon_kernel::content_digest::sha256_of(&bytes)))
     }
 
     pub(crate) fn status(
@@ -329,6 +332,11 @@ impl NativeAudit {
         request: &RuntimeSessionRequest,
         preview: Option<&OrganizerPreview>,
     ) -> Result<(), String> {
+        if matches!(request, RuntimeSessionRequest::SubmitOrganizer { .. })
+            && (self.advance.is_some() || !self.proof_allows_next_source())
+        {
+            return Err("native organizer mutation requires the pending period proof".into());
+        }
         self.custody.stage(session, request, preview)
     }
 
@@ -338,6 +346,9 @@ impl NativeAudit {
         request_id: u64,
         commitment: &OrganizerCommitment,
     ) -> Result<(), String> {
+        if self.advance.is_some() || !self.proof_allows_next_source() {
+            return Err("native organizer acceptance changed before period proof".into());
+        }
         let scope = self
             .scope
             .as_ref()
@@ -374,6 +385,7 @@ pub(in crate::observer_io) fn publication_matches(
         && session.content_hash.as_deref() == hash
 }
 
+#[derive(Clone, PartialEq, Eq)]
 pub(in crate::observer_io) struct KnownBinding {
     pub(super) campaign: String,
     pub(super) tick: u64,

@@ -48,6 +48,7 @@ UnitAction = Literal[
     "draft_from_report",
     "archive_report",
     "status",
+    "await_period_proof",
     "arm_one_play_advance",
     "play",
     "pause",
@@ -108,6 +109,7 @@ Event = Literal[
     "preview_admitted",
     "acceptance_admitted",
     "committed_and_installed",
+    "period_proof_published",
     "reopened_and_installed",
     "refresh_requested",
     "quit_requested",
@@ -119,6 +121,7 @@ EXPECTED: dict[str, str] = {
     "review": "preview_admitted",
     "confirm": "acceptance_admitted",
     "step": "committed_and_installed",
+    "await_period_proof": "period_proof_published",
     "reopen": "reopened_and_installed",
     "refresh": "refresh_requested",
     "quit": "quit_requested",
@@ -237,7 +240,7 @@ Campaign = Annotated[StrictStr, AfterValidator(_canonical_campaign)]
 
 
 class ControlVersion(FrozenRecord):
-    version: Literal[4]
+    version: Literal[5]
 
     @field_validator("version", mode="before")
     @classmethod
@@ -572,7 +575,24 @@ class PlayInterlock(FrozenRecord):
         return self
 
 
+class PeriodProof(FrozenRecord):
+    campaign_id: Campaign
+    scope_epoch: Nonnegative
+    foundation_sha256: Sha256
+    policy_sha256: Sha256
+    generation: Nonnegative
+    tick: Positive
+    tick_content_hash: Sha256
+    world_hash: Sha256
+    envelope_digest: Sha256
+    request_id: Positive
+    archive_verified_tick: Positive
+    material_record_sha256: Sha256
+
+
 class ControlState(FrozenRecord):
+    advance_request_id: Positive | None
+    period_proof: PeriodProof | None
     installed_organizer: InstalledOrganizer | None
     play_interlock: PlayInterlock | None
     campaign_id: Campaign
@@ -639,6 +659,25 @@ class ControlState(FrozenRecord):
             and self.viewed_tick == self.durable_tick == self.organizer_period
             and self.installed_organizer is not None
             and self.installed_organizer.period == self.durable_tick
+        )
+
+    @property
+    def period_actionable(self) -> bool:
+        return (
+            self.cold_organizer_ready and self.perspective == "PlayerKnowledge" and not self.playing
+        )
+
+    def period_identity(self) -> tuple[object, ...]:
+        return (
+            self.campaign_id,
+            self.scope_epoch,
+            self.foundation_sha256,
+            self.generation,
+            self.durable_tick,
+            self.viewed_tick,
+            self.tick_content_hash,
+            self.world_hash,
+            self.advance_request_id,
         )
 
     @property
@@ -920,6 +959,34 @@ class ControlChannel:
         elif self.scope_epoch is not None and current.scope_epoch != self.scope_epoch:
             raise ControlRefusal("native control runtime scope changed")
         prior = self.state
+        if action == "await_period_proof" and event == "period_proof_published":
+            proof = current.period_proof
+            if (
+                prior is None
+                or not prior.period_actionable
+                or prior.period_proof is not None
+                or prior.advance_request_id is None
+                or current.period_identity() != prior.period_identity()
+                or not current.period_actionable
+                or current.archive_verified_tick != current.durable_tick
+                or proof is None
+                or (
+                    proof.campaign_id,
+                    proof.scope_epoch,
+                    proof.foundation_sha256,
+                    proof.generation,
+                    proof.tick,
+                    proof.tick,
+                    proof.tick_content_hash,
+                    proof.world_hash,
+                    proof.request_id,
+                )
+                != current.period_identity()
+                or proof.archive_verified_tick != current.durable_tick
+            ):
+                raise ControlRefusal(
+                    "native period proof differs from its actionable original close"
+                )
         lock = current.play_interlock
         old_lock = prior.play_interlock if prior is not None else None
         if (
@@ -1039,7 +1106,7 @@ class ControlChannel:
         prior = self.state
         try:
             request = ControlInput(
-                version=4,
+                version=5,
                 sequence=self.sequence + 1,
                 campaign_id=self.campaign,
                 scope_epoch=prior.scope_epoch if prior else None,
@@ -1238,7 +1305,7 @@ def write_observations(
 ) -> None:
     """Atomic evidence of local actions; never a named qualification result."""
     payload = ControlsEvidence(
-        version=4,
+        version=5,
         status=status,
         campaign=channel.campaign,
         initial_tick=channel.initial_tick,
@@ -1401,11 +1468,18 @@ def submit_choice(
 
 
 def wait_ready(
-    channel: ControlChannel, timeout: float, *, organizer: bool, cold: bool = False
+    channel: ControlChannel,
+    timeout: float,
+    *,
+    organizer: bool,
+    cold: bool = False,
+    period_proof: bool = False,
 ) -> ControlState:
     deadline = time.monotonic() + _duration(timeout)
     while time.monotonic() < deadline:
-        current = channel.observe(max(0.001, deadline - time.monotonic()), retain_ready=cold)
+        current = channel.observe(
+            max(0.001, deadline - time.monotonic()), retain_ready=cold or period_proof
+        )
         if (
             not organizer
             and current.scope_epoch is not None
@@ -1419,11 +1493,14 @@ def wait_ready(
         if (
             current.phase in {"Ready", "Complete"}
             and (
-                not cold
+                not (cold or period_proof)
                 or current.cold_organizer_ready
                 and channel.last_response is not None
                 and channel.last_response.event == "observed"
                 and channel.last_response.reason is None
+            )
+            and (
+                not period_proof or current.perspective == "PlayerKnowledge" and not current.playing
             )
             and not current.lifecycle_pending
             and not current.advance_pending
@@ -1439,6 +1516,11 @@ def wait_ready(
             return current
         time.sleep(min(POLL_SECONDS, max(0, deadline - time.monotonic())))
     raise ControlRefusal("native control readiness deadline exceeded", reason="readiness_deadline")
+
+
+def wait_period_ready(channel: ControlChannel, timeout: float) -> ControlState:
+    """Retain the accepted ordinary actionable endpoint before requesting private proof."""
+    return wait_ready(channel, timeout, organizer=True, period_proof=True)
 
 
 def drive_pair(
@@ -1621,7 +1703,7 @@ def drive_pair(
                     # authenticated sample before yielding to this driver.
                     connection.sendall(
                         StartupAdmission(
-                            version=4,
+                            version=5,
                             campaign_id=str(initial_target.campaign),
                             phase="capture_ready",
                         )
@@ -1746,11 +1828,18 @@ def drive_pair(
                                 )
                         else:
                             channel.perform("step", operation_timeout)
-                        current = wait_ready(channel, operation_timeout, organizer=True)
+                        qualified = "BABYLON_QUALIFICATION_MATERIAL_DIRECTORY" in client_environment
+                        current = (
+                            wait_period_ready(channel, operation_timeout)
+                            if qualified
+                            else wait_ready(channel, operation_timeout, organizer=True)
+                        )
                         if current.durable_tick != before + 1 or current.playing:
                             raise ControlRefusal(
                                 "ordinary advance installed outside the requested single close"
                             )
+                        if qualified:
+                            current = channel.perform("await_period_proof", operation_timeout)
                         on_boundary(current)
                         phase = "recovery"
                         current = channel.perform("reopen", operation_timeout)

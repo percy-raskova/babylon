@@ -23,6 +23,8 @@ CAMPAIGN = "81b979ee-a9c1-48fd-8835-06cbfe594675"
 
 def state(tick: int = 0) -> dict[str, Any]:
     return {
+        "advance_request_id": None,
+        "period_proof": None,
         "campaign_id": CAMPAIGN,
         "scope_epoch": 7,
         "installed_organizer": None,
@@ -116,7 +118,7 @@ def response(sequence: int, event: str = "observed", **changes: Any) -> bytes:
     fields.update(changes)
     return (
         json.dumps(
-            {"version": 4, "sequence": sequence, "event": event, "reason": None, "state": fields}
+            {"version": 5, "sequence": sequence, "event": event, "reason": None, "state": fields}
         ).encode()
         + b"\n"
     )
@@ -154,6 +156,123 @@ def test_cold_endpoint_retains_its_actual_ready_poll_after_an_identical_state() 
             (1, "status", "observed"),
             (2, "status", "observed"),
         ]
+
+
+def test_positive_period_ready_endpoint_retains_strict_actionable_status_before_proof() -> None:
+    sock, peer = socket.socketpair()
+    with sock, peer:
+        channel = windowed.ControlChannel(sock, CAMPAIGN, 1)
+        view = installed_opening_view()
+        view["period"] = 1
+        boundary = {**state(1), "installed_organizer": view, "archive_verified_tick": 0}
+        peer.sendall(response(1, **boundary))
+        channel.observe(1)
+        peer.sendall(response(2, **boundary))
+        ready = windowed.wait_period_ready(channel, 1)
+        assert ready.cold_organizer_ready and ready.archive_verified_tick == 0
+        assert [r.sequence for r in channel.records] == [1, 2]
+        assert channel.records[-1].action == "status"
+
+
+@pytest.mark.parametrize("archive_first", [False, True])
+@pytest.mark.parametrize("fault", ["none", "proof_request", "changed_play_witness"])
+def test_walk_trace_binds_bounded_play_pause_ready_and_private_fence(archive_first, fault):
+    from tools.devtools.national_native_evidence import ObservedPlayClose, _walk_trace
+
+    opening = state(8)
+    opening["installed_organizer"] = {**installed_opening_view(), "period": 8}
+    opening["generation"] = 1
+    arm = {
+        "phase": "armed",
+        "arm_sequence": 2,
+        "play_sequence": None,
+        "campaign_id": CAMPAIGN,
+        "scope_epoch": 7,
+        "start_tick": 8,
+        "start_generation": 1,
+        "target_tick": 9,
+        "request_id": None,
+        "pending_at_pause": False,
+        "playing_after_pause": None,
+    }
+    paused = {
+        **arm,
+        "phase": "paused_after_enqueue",
+        "play_sequence": 3,
+        "request_id": 99,
+        "pending_at_pause": True,
+        "playing_after_pause": False,
+    }
+    ready = {
+        **state(9),
+        "generation": 2,
+        "advance_request_id": 99,
+        "installed_organizer": {**installed_opening_view(), "period": 9},
+        "play_interlock": paused,
+        "archive_verified_tick": 9 if archive_first else 8,
+    }
+    proof = {
+        "campaign_id": CAMPAIGN,
+        "scope_epoch": 7,
+        "foundation_sha256": "a" * 64,
+        "policy_sha256": "d" * 64,
+        "generation": 2,
+        "tick": 9,
+        "tick_content_hash": "b" * 64,
+        "world_hash": "c" * 64,
+        "envelope_digest": "e" * 64,
+        "request_id": 100 if fault != "none" else 99,
+        "archive_verified_tick": 9,
+        "material_record_sha256": "f" * 64,
+    }
+    fenced = {**ready, "archive_verified_tick": 9, "period_proof": proof}
+    if fault == "changed_play_witness":
+        changed = {**paused, "request_id": 100}
+        ready = {**ready, "advance_request_id": 100, "play_interlock": changed}
+        fenced = {**fenced, "advance_request_id": 100, "play_interlock": changed}
+    rows = [
+        ("status", "observed", opening),
+        ("arm_one_play_advance", "applied", {**opening, "play_interlock": arm}),
+        ("play", "applied", {**opening, "playing": True, "play_interlock": arm}),
+        (
+            "pause",
+            "applied",
+            {**opening, "phase": "Advancing", "advance_pending": True, "play_interlock": paused},
+        ),
+        ("status", "observed", ready),
+        ("await_period_proof", "period_proof_published", fenced),
+        ("quit", "quit_requested", {**fenced, "quit_requested": True}),
+    ]
+    controls = windowed.ControlsEvidence.model_validate(
+        {
+            "version": 5,
+            "status": "completed",
+            "campaign": CAMPAIGN,
+            "initial_tick": 8,
+            "foundation_sha256": "a" * 64,
+            "scope": "native_ui_actions_only_not_accounting_or_memory_qualification",
+            "actions": [
+                {
+                    "sequence": n,
+                    "action": action,
+                    "event": event,
+                    "reason": None,
+                    "state": current,
+                    "started_monotonic_ns": n * 10,
+                    "completed_monotonic_ns": n * 10 + 5,
+                }
+                for n, (action, event, current) in enumerate(rows, 1)
+            ],
+        }
+    )
+    if fault != "none":
+        with pytest.raises(ValueError, match="proof|Play"):
+            _walk_trace(controls)
+    else:
+        closes, reopens = _walk_trace(controls)
+        assert not reopens and len(closes) == 1
+        assert isinstance(closes[0].cause, ObservedPlayClose)
+        assert closes[0].actionable.sequence == 5 and closes[0].fence.sequence == 6
 
 
 def test_operator_controls_have_a_distinct_completed_frame_event() -> None:
@@ -264,7 +383,7 @@ def test_capture_refusal_preserves_specific_reason_and_trace() -> None:
             peer.sendall(
                 json.dumps(
                     {
-                        "version": 4,
+                        "version": 5,
                         "sequence": request["sequence"],
                         "event": "refused",
                         "reason": "capture_image_invalid",
@@ -377,7 +496,7 @@ def test_new_choice_reviews_confirms_and_checks_exact_readback(
                 peer.sendall(
                     json.dumps(
                         {
-                            "version": 4,
+                            "version": 5,
                             "sequence": len(requested),
                             "event": event,
                             "reason": None,
@@ -436,7 +555,7 @@ def test_transport_preserves_fragmented_frames_and_exact_preconditions() -> None
         worker.join(2)
     assert not worker.is_alive()
     assert requests[0] == {
-        "version": 4,
+        "version": 5,
         "sequence": 1,
         "campaign_id": CAMPAIGN,
         "scope_epoch": None,
@@ -564,9 +683,9 @@ def test_reopen_refuses_changed_or_incomplete_restored_identity(changes: dict[st
     "raw",
     [
         response(2),
-        response(1).replace(b'"version": 4', b'"version": 1'),
-        response(1).replace(b'"version": 4', b'"version": true'),
-        response(1).replace(b'"version": 4', b'"version": 4, "version": 4'),
+        response(1).replace(b'"version": 5', b'"version": 1'),
+        response(1).replace(b'"version": 5', b'"version": true'),
+        response(1).replace(b'"version": 5', b'"version": 5, "version": 5'),
         response(1, campaign_id="b4fcf361-af16-489f-83a6-3d9815a73844"),
         response(1, durable_tick=True),
         response(1, foundation_sha256="A" * 64),
@@ -712,7 +831,7 @@ def test_opening_warning_uses_fresh_scoped_loading_status(
             self.reply = (
                 json.dumps(
                     {
-                        "version": 4,
+                        "version": 5,
                         "sequence": request["sequence"],
                         "event": event,
                         "reason": reason,
@@ -1100,13 +1219,13 @@ def test_driver_uses_actual_owned_children_and_private_socket(tmp_path: Path) ->
         f"state={state()!r}\n"
         "with connection,connection.makefile('rb') as source:\n"
         "    admission=json.loads(source.readline())\n"
-        f"    assert admission=={{'version':4,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
+        f"    assert admission=={{'version':5,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
         f"    __import__('pathlib').Path({str(tmp_path / 'startup-admitted')!r}).write_text('admitted')\n"
         "    for line in source:\n"
         "        request=json.loads(line)\n"
         "        quitting=request['action']=='quit'\n"
         "        state['quit_requested']=quitting\n"
-        "        reply={'version':4,'sequence':request['sequence'],'event':'quit_requested' if quitting else 'observed','reason':None,'state':state}\n"
+        "        reply={'version':5,'sequence':request['sequence'],'event':'quit_requested' if quitting else 'observed','reason':None,'state':state}\n"
         "        connection.sendall(json.dumps(reply).encode()+b'\\n')\n"
         "        if quitting: break\n"
     )
@@ -1195,7 +1314,11 @@ def test_failed_capture_stops_controls_before_another_request() -> None:
         peer.close()
 
 
-def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Path) -> None:
+@pytest.mark.parametrize("mode", ["normal_play", "memory_capture"])
+@pytest.mark.parametrize("play_close", [False, True])
+def test_driver_reviews_and_confirms_the_three_period_aid_schedule(
+    tmp_path: Path, mode: str, play_close: bool
+) -> None:
     """Control transport only; stand-ins cannot establish aid accounting."""
     runtime = tmp_path / "runtime-standin"
     client = tmp_path / "client-standin"
@@ -1211,9 +1334,17 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
         "connection=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)\n"
         "connection.connect(sys.argv[sys.argv.index('--qualification-control')+1])\n"
         f"state={state()!r}\nadmissions={admissions!r}\n"
+        f"state['installed_organizer']={installed_opening_view()!r}\n"
+        "def close_period():\n"
+        "    state['advance_request_id']=state['durable_tick']+1\n"
+        "    state['archive_verified_tick']=state['durable_tick']\n"
+        "    state['durable_tick']+=1; state['generation']+=1\n"
+        "    state['viewed_tick']=state['organizer_period']=state['durable_tick']\n"
+        "    state['installed_organizer']['period']=state['durable_tick']\n"
+        "    state['tick_content_hash']='b'*64; state['world_hash']='c'*64\n"
         "with connection,connection.makefile('rb') as source:\n"
         "    admission=json.loads(source.readline())\n"
-        f"    assert admission=={{'version':4,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
+        f"    assert admission=={{'version':5,'campaign_id':{CAMPAIGN!r},'phase':'capture_ready'}}\n"
         "    for line in source:\n"
         "        request=json.loads(line); action=request['action']; event='applied'\n"
         "        if action=='status': event='observed'\n"
@@ -1227,14 +1358,30 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
         "            event='preview_admitted'\n"
         "        elif action=='confirm':\n"
         "            state['commitment']=accepted; state['reviewed_command']=state['preview']=None; event='acceptance_admitted'\n"
-        "        elif action=='step':\n"
-        "            state['durable_tick']+=1; state['generation']+=1\n"
-        "            state['viewed_tick']=state['organizer_period']=state['archive_verified_tick']=state['durable_tick']\n"
-        "            state['tick_content_hash']='b'*64; event='committed_and_installed'\n"
+        "        elif action=='step': close_period(); event='committed_and_installed'\n"
+        "        elif action=='arm_one_play_advance':\n"
+        "            state['play_interlock']={'phase':'armed','arm_sequence':request['sequence'],'play_sequence':None,\n"
+        "                'campaign_id':state['campaign_id'],'scope_epoch':state['scope_epoch'],'start_tick':state['durable_tick'],\n"
+        "                'start_generation':state['generation'],'target_tick':state['durable_tick']+1,'request_id':None,\n"
+        "                'pending_at_pause':False,'playing_after_pause':None}\n"
+        "        elif action=='play':\n"
+        "            close_period(); state['play_interlock'].update(phase='paused_after_enqueue',\n"
+        "                play_sequence=request['sequence'],request_id=state['advance_request_id'],pending_at_pause=True,playing_after_pause=False)\n"
+        "        elif action=='pause': assert not state['playing']\n"
+        "        elif action=='await_period_proof':\n"
+        "            assert state['archive_verified_tick']==state['durable_tick']-1\n"
+        "            state['archive_verified_tick']=state['durable_tick']; event='period_proof_published'\n"
+        "            state['period_proof']={'campaign_id':state['campaign_id'],'scope_epoch':state['scope_epoch'],\n"
+        "                'foundation_sha256':state['foundation_sha256'],'policy_sha256':'d'*64,'generation':state['generation'],\n"
+        "                'tick':state['durable_tick'],'tick_content_hash':state['tick_content_hash'],'world_hash':state['world_hash'],\n"
+        "                'envelope_digest':'e'*64,'request_id':state['advance_request_id'],'archive_verified_tick':state['durable_tick'],\n"
+        "                'material_record_sha256':'f'*64}\n"
         "        elif action=='reopen':\n"
+        "            assert state['period_proof'] is not None\n"
+        "            state['period_proof']=state['advance_request_id']=state['play_interlock']=None\n"
         "            state['scope_epoch']+=1; state['generation']+=3; event='reopened_and_installed'\n"
         "        elif action=='quit': state['quit_requested']=True; event='quit_requested'\n"
-        "        reply={'version':4,'sequence':request['sequence'],'event':event,'reason':None,'state':state}\n"
+        "        reply={'version':5,'sequence':request['sequence'],'event':event,'reason':None,'state':state}\n"
         "        connection.sendall(json.dumps(reply).encode()+b'\\n')\n"
         "        if action=='quit': break\n"
     )
@@ -1258,7 +1405,10 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
             client,
             tmp_path,
             {},
-            {},
+            {
+                "BABYLON_QUALIFICATION_MATERIAL_DIRECTORY": str(tmp_path),
+                "BABYLON_NATIVE_MEASUREMENT_MODE": mode,
+            },
             defines_path=tmp_path / "unused-defines.toml",
             initial_target=windowed.launcher.OpenCampaignTarget(windowed.UUID(CAMPAIGN)),
             initial_tick=0,
@@ -1269,6 +1419,7 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
             on_boundary=boundaries.append,
             on_recovery=recoveries.append,
             choices=plan,
+            play_penultimate_close=play_close,
         )
         == 0
     )
@@ -1276,27 +1427,46 @@ def test_driver_reviews_and_confirms_the_three_period_aid_schedule(tmp_path: Pat
     assert [(r.durable_tick, r.scope_epoch) for r in recoveries] == [(1, 8), (2, 9), (3, 10)]
     saved = json.loads((tmp_path / "native-controls.json").read_bytes())
     applied = [entry["action"] for entry in saved["actions"] if entry["action"] != "status"]
-    assert applied == [
+    expected = [
         "inspect_practices",
         "choose_remote_aid",
         "review",
         "confirm",
         "step",
+        "await_period_proof",
         "reopen",
         "open_direction",
         "choose_pause_standing",
         "review",
         "confirm",
         "step",
+        "await_period_proof",
         "reopen",
         "inspect_practices",
         "choose_local_aid",
         "review",
         "confirm",
         "step",
+        "await_period_proof",
         "reopen",
         "quit",
     ]
+    if play_close:
+        second = expected.index("step", expected.index("step") + 1)
+        expected[second : second + 1] = ["arm_one_play_advance", "play", "pause"]
+    assert applied == expected
+    for tick in (1, 2, 3):
+        rows = saved["actions"]
+        fence = next(
+            row
+            for row in rows
+            if row["action"] == "await_period_proof" and row["state"]["durable_tick"] == tick
+        )
+        index = rows.index(fence)
+        assert rows[index - 1]["action"] == "status"
+        assert rows[index - 1]["state"]["archive_verified_tick"] == tick - 1
+        assert rows[index + 1]["action"] == "reopen"
+        assert boundaries[tick].period_proof is not None
 
 
 @pytest.mark.parametrize("choice", ["pause_standing", "resume_standing"])
@@ -1343,7 +1513,7 @@ def test_standing_choice_uses_the_acknowledged_inspector_state(
                 peer.sendall(
                     json.dumps(
                         {
-                            "version": 4,
+                            "version": 5,
                             "sequence": request["sequence"],
                             "event": event,
                             "reason": reason,
@@ -1816,7 +1986,7 @@ def test_editor_refuses_a_mutation_that_preserves_the_review() -> None:
                 peer.sendall(
                     json.dumps(
                         {
-                            "version": 4,
+                            "version": 5,
                             "sequence": request["sequence"],
                             "event": "applied",
                             "reason": None,
@@ -1905,7 +2075,7 @@ def test_delayed_one_play_acknowledgement_preserves_authenticated_pending(raced_
                 (
                     json.dumps(
                         {
-                            "version": 4,
+                            "version": 5,
                             "sequence": seq,
                             "event": event,
                             "reason": None,
@@ -1923,7 +2093,8 @@ def test_delayed_one_play_acknowledgement_preserves_authenticated_pending(raced_
 
 
 @pytest.mark.parametrize("crossing", ["between_requests", "while_waiting"])
-def test_smoke_clock_bounds_next_send_and_outstanding_reply(crossing, monkeypatch):
+@pytest.mark.parametrize("action", ["status", "await_period_proof"])
+def test_smoke_clock_bounds_next_send_and_outstanding_reply(crossing, action, monkeypatch):
     import time
 
     stream, peer = socket.socketpair()
@@ -1936,7 +2107,7 @@ def test_smoke_clock_bounds_next_send_and_outstanding_reply(crossing, monkeypatc
         if crossing == "between_requests":
             monkeypatch.setattr(windowed.time, "monotonic", lambda: deadline + 1)
         with pytest.raises(windowed.ControlRefusal, match="smoke wall"):
-            channel.observe(2)
+            channel.perform(action, 2)
         assert channel.state == installed
         peer.setblocking(False)
         remaining = peer.recv(4096)

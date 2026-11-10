@@ -1,6 +1,7 @@
 """Independent storage budget, acknowledgment and restart evidence controls."""
 
 import hashlib
+import json
 from copy import deepcopy
 from pathlib import Path
 
@@ -2717,10 +2718,26 @@ def native_join_evidence(directory, *, named_smoke=False):
 
     def state(tick, **extra):
         return {
+            "advance_request_id": None,
+            "period_proof": None,
             "campaign_id": campaign,
             "scope_epoch": epoch,
             "play_interlock": None,
-            "installed_organizer": None,
+            "installed_organizer": {
+                "period": tick,
+                "actor_id": 1,
+                "authority_id": [1] * 16,
+                "content_digest": [1] * 32,
+                "resource_digest": [2] * 32,
+                "standing": {"authorized": True, "partner_actor_id": 10, "paused_reason": None},
+                "available_hours": 2,
+                "contact_hours": 0,
+                "hold_reviewable": True,
+                "pause_reviewable": True,
+                "resume_reviewable": False,
+                "pending_freight": [],
+                "aid_response_history": [],
+            },
             "durable_tick": tick,
             "viewed_tick": tick,
             "generation": generation,
@@ -2974,7 +2991,33 @@ def native_join_evidence(directory, *, named_smoke=False):
                 json.dumps(records[f"material-{n}.json"]).encode()
             ).hexdigest(),
         }
-        action("step", "committed_and_installed", state(n))
+        early = state(n, archive_verified_tick=n - 1, advance_request_id=n)
+        action("step", "committed_and_installed", early)
+        action("status", "observed", deepcopy(early))
+        action(
+            "await_period_proof",
+            "period_proof_published",
+            state(
+                n,
+                advance_request_id=n,
+                period_proof={
+                    "campaign_id": campaign,
+                    "scope_epoch": epoch,
+                    "foundation_sha256": h,
+                    "policy_sha256": h,
+                    "generation": generation,
+                    "tick": n,
+                    "tick_content_hash": h,
+                    "world_hash": h,
+                    "envelope_digest": h,
+                    "request_id": n,
+                    "archive_verified_tick": n,
+                    "material_record_sha256": records[f"advance-{n}.json"][
+                        "material_record_sha256"
+                    ],
+                },
+            ),
+        )
         old_epoch = epoch
         epoch += 1
         generation += 1
@@ -3012,7 +3055,7 @@ def native_join_evidence(directory, *, named_smoke=False):
         action("reopen", "reopened_and_installed", state(n))
     action("quit", "quit_requested", state(2, quit_requested=True))
     records["native-controls.json"] = {
-        "version": 4,
+        "version": 5,
         "status": "completed",
         "campaign": campaign,
         "initial_tick": 0,
@@ -3031,8 +3074,8 @@ def native_join_evidence(directory, *, named_smoke=False):
     (directory / "inputs.sha256").write_bytes(b"Designed input manifest")
     (directory / "inputs.sha256").chmod(0o600)
     manifest = {
-        "version": 5,
-        "scope": "native_material_timing_recovery_join_v5",
+        "version": 6,
+        "scope": "native_material_timing_recovery_join_v6",
         "measurement_mode": "memory_capture",
         "started_monotonic_ns": 0,
         "completed_monotonic_ns": native.run.elapsed_ns,
@@ -3084,6 +3127,119 @@ def native_join_result(directory, manifest, report, native, memory, opening, tic
         playable_result(report, timing=native),
         memory,
     )
+
+
+def test_native_trace_requires_period_proof_before_reopen(tmp_path):
+    from tools.devtools.national_native_evidence import _trace
+    from tools.devtools.national_windowed_qualification import ControlsEvidence
+
+    *_values, records = native_join_evidence(tmp_path)
+    controls = records["native-controls.json"]
+    controls["actions"] = [
+        row for row in controls["actions"] if row["action"] != "await_period_proof"
+    ]
+    with pytest.raises(ValueError, match="proof"):
+        _trace(ControlsEvidence.model_validate(controls))
+
+
+def rewrite_native_artifact(directory, manifest, name, record):
+    raw = json.dumps(record).encode()
+    (directory / name).write_bytes(raw)
+    for entry in [
+        manifest["controls"],
+        manifest["opening"],
+        *manifest["boundaries"],
+        *manifest["advances"],
+        *manifest["archives"],
+        *manifest["recoveries"],
+    ]:
+        if entry["name"] == name:
+            entry["sha256"] = hashlib.sha256(raw).hexdigest()
+            return
+    raise AssertionError("fixture artifact is not admitted")
+
+
+def test_native_late_period_proof_extends_original_clock_without_extending_early_ready(tmp_path):
+    from tools.devtools.national_storage_qualification import NativeTimings
+
+    manifest, report, native, memory, opening, ticks, records = native_join_evidence(tmp_path)
+    record = records["advance-1.json"]
+    record["archive_elapsed_ns"] = 10
+    rewrite_native_artifact(tmp_path, manifest, "advance-1.json", record)
+    timing = native.model_dump(mode="json")
+    timing["archive_catchups"][0]["elapsed_ns"] = 10
+    actions = records["native-controls.json"]["actions"]
+    step = next(a for a in actions if a["action"] == "step")
+    fence = next(a for a in actions if a["action"] == "await_period_proof")
+    total = record["advance_elapsed_ns"] + record["archive_elapsed_ns"]
+    assert total > step["completed_monotonic_ns"] - step["started_monotonic_ns"]
+    assert total <= fence["completed_monotonic_ns"] - step["started_monotonic_ns"]
+    assert (
+        native_join_result(
+            tmp_path, manifest, report, NativeTimings.model_validate(timing), memory, opening, ticks
+        )["status"]
+        == "qualified"
+    )
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "reordered",
+        "duplicate",
+        "stale_generation",
+        "wrong_request",
+        "unaccepted_status",
+        "material_digest",
+        "archive_outside",
+        "memory_fence",
+    ],
+)
+def test_native_period_proof_join_refuses_broken_cause_ready_fence(tmp_path, fault):
+    from tools.devtools.national_storage_qualification import NativeTimings
+
+    manifest, report, native, memory, opening, ticks, records = native_join_evidence(tmp_path)
+    controls = records["native-controls.json"]
+    actions = controls["actions"]
+    fence = next(a for a in actions if a["action"] == "await_period_proof")
+    index = actions.index(fence)
+    if fault == "reordered":
+        actions[index - 1], actions[index] = actions[index], actions[index - 1]
+    elif fault == "duplicate":
+        actions.insert(index, deepcopy(fence))
+    elif fault == "stale_generation":
+        fence["state"]["generation"] += 1
+        fence["state"]["period_proof"]["generation"] += 1
+    elif fault == "wrong_request":
+        for row in actions[index - 2 : index + 1]:
+            row["state"]["advance_request_id"] += 100
+        fence["state"]["period_proof"]["request_id"] += 100
+    elif fault == "unaccepted_status":
+        actions[index - 1].update(event="refused", reason="control_stale_or_unavailable")
+    elif fault == "material_digest":
+        fence["state"]["period_proof"]["material_record_sha256"] = "fe" * 32
+    elif fault == "archive_outside":
+        records["advance-1.json"]["archive_elapsed_ns"] = 100_000
+        rewrite_native_artifact(tmp_path, manifest, "advance-1.json", records["advance-1.json"])
+        timing = native.model_dump(mode="json")
+        timing["archive_catchups"][0]["elapsed_ns"] = 100_000
+        native = NativeTimings.model_validate(timing)
+    elif fault == "memory_fence":
+        # Still within the original run wall, beyond the retained sampler.
+        shift = memory.interval_end_monotonic_ns - fence["started_monotonic_ns"] + 1
+        for row in actions[index:]:
+            row["started_monotonic_ns"] += shift
+            row["completed_monotonic_ns"] += shift
+    if fault in ("reordered", "duplicate"):
+        for sequence, row in enumerate(actions, 1):
+            row.update(
+                sequence=sequence,
+                started_monotonic_ns=sequence * 10,
+                completed_monotonic_ns=sequence * 10 + 5,
+            )
+    rewrite_native_artifact(tmp_path, manifest, "native-controls.json", controls)
+    with pytest.raises(ValueError):
+        native_join_result(tmp_path, manifest, report, native, memory, opening, ticks)
 
 
 def test_native_previous_evidence_format_cannot_be_relabelled(tmp_path):

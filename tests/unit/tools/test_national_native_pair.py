@@ -448,6 +448,14 @@ def bind_dated_decisions(store, records, originals, manifest, timing, defect):
     return timing
 
 
+def rebind_period_proofs(store, records, manifest):
+    for action in records["native-controls.json"]["actions"]:
+        if proof := action["state"]["period_proof"]:
+            proof["material_record_sha256"] = manifest["boundaries"][proof["tick"] - 1]["sha256"]
+    (store.path / "native-controls.json").write_bytes(wire(records["native-controls.json"]))
+    manifest["controls"]["sha256"] = store.reference("native-controls.json").sha256
+
+
 def member_bundle(releases, mode, *, defect=None, retire=True):
     """Rebind valid designed material, timing, and memory leaves to a fresh fixture."""
     from tools.devtools import national_native_pair as pair
@@ -609,6 +617,7 @@ def member_bundle(releases, mode, *, defect=None, retire=True):
         (base / name).write_bytes(wire(records[name]))
         (base / name).chmod(0o600)
         artifact["sha256"] = store.reference(name).sha256
+    rebind_period_proofs(store, records, manifest)
     manifest.update(
         campaign=campaign,
         policy_sha256=selected.sha256,
@@ -1093,6 +1102,24 @@ def test_each_cold_segment_uses_its_actual_clock_and_terminal_archive_span(tmp_p
     assert pair.verify_segment_timing(store, segment, mode, policy(), receipt, controls) == str(
         (folder / clock_path.path).relative_to(tmp_path)
     )
+    if segment == "smoke":
+        proof = controls.model_copy(
+            update={
+                "actions": (
+                    action("await_period_proof", 4, second, 121 * second, "period_proof_published"),
+                )
+            }
+        )
+        pair.verify_segment_timing(store, segment, mode, policy(), receipt, proof)
+        too_long = controls.model_copy(
+            update={
+                "actions": (
+                    action("await_period_proof", 4, second, 902 * second, "period_proof_published"),
+                )
+            }
+        )
+        with pytest.raises(ValueError, match="ceiling"):
+            pair.verify_segment_timing(store, segment, mode, policy(), receipt, too_long)
     for changed in (
         pair.ColdControlWindow(16, clock.maximum_seconds),
         pair.ColdControlWindow(17, clock.maximum_seconds + 1),

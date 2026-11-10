@@ -1,0 +1,6 @@
+{"action":{"amount_key":{"character":"1"}},"campaign_id":"00000000-0000-0000-0000-002616317031","expected_generation":1,"expected_tick":0,"scope_epoch":1,"sequence":1,"version":5}
+{"action":"inspect_practices","campaign_id":"00000000-0000-0000-0000-002616317031","expected_generation":1,"expected_tick":0,"scope_epoch":1,"sequence":2,"version":5}
+{"action":"choose_collect","campaign_id":"00000000-0000-0000-0000-002616317031","expected_generation":1,"expected_tick":0,"scope_epoch":1,"sequence":3,"version":5}
+{"action":{"focus_amount":"contribution"},"campaign_id":"00000000-0000-0000-0000-002616317031","expected_generation":1,"expected_tick":0,"scope_epoch":1,"sequence":4,"version":5}
+{"action":{"amount_key":"backspace"},"campaign_id":"00000000-0000-0000-0000-002616317031","expected_generation":1,"expected_tick":0,"scope_epoch":1,"sequence":5,"version":5}
+{"action":{"amount_key":{"character":"-"}},"campaign_id":"00000000-0000-0000-0000-002616317031","expected_generation":1,"expected_tick":0,"scope_epoch":1,"sequence":6,"version":5}

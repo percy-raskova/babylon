@@ -2,7 +2,7 @@
 
 use super::MaterialAudit;
 use super::{Configuration, NativeAudit, Record};
-use crate::observer::{ObserverSession, SessionPhase};
+use crate::observer::{ObservationContext, ObserverSession, Perspective, SessionPhase};
 use babylon_kernel::content_digest;
 use babylon_persistence::runtime_session::{
     RuntimeSessionRequest, RuntimeSessionScope, RuntimeSessionTail,
@@ -19,12 +19,22 @@ pub(in crate::observer_io) struct Pending {
     started: Instant,
     committed: Option<Committed>,
     archive_elapsed_ns: Option<u64>,
+    perspective: Perspective,
+    source: CloseSource,
+}
+
+#[derive(PartialEq, Eq)]
+enum CloseSource {
+    Manual,
+    Play,
+    BoundedPlay,
 }
 
 struct Committed {
     tail: RuntimeSessionTail,
     started: Instant,
     advance_elapsed_ns: u64,
+    context: ObservationContext,
 }
 
 #[derive(Serialize)]
@@ -53,6 +63,26 @@ fn interval(started: Instant, completed: Instant) -> Result<u64, String> {
 }
 
 impl Pending {
+    pub(super) fn archive_completed(&self, session: &ObserverSession) -> bool {
+        self.live_known_request(session).is_some()
+            && self.archive_elapsed_ns.is_some()
+            && session.archive_verified_tick == session.durable_tick
+    }
+
+    pub(super) fn live_known_request(&self, session: &ObserverSession) -> Option<u64> {
+        let committed = self.committed.as_ref()?;
+        (self.source != CloseSource::Play
+            && self.perspective == Perspective::PlayerKnowledge
+            && self.matches_scope(session)
+            && session.accepts(&committed.context)
+            && session.viewed_tick == session.durable_tick
+            && session.durable_tick == committed.tail.resolve_tick
+            && session.content_hash == committed.tail.tick_content_hash
+            && session.world_hash == committed.tail.world_hash
+            && !session.advance_pending())
+        .then_some(self.request_id)
+    }
+
     fn matches_scope(&self, session: &ObserverSession) -> bool {
         session.runtime_scope() == Some(&self.scope)
             && self.scope.campaign_id.as_deref()
@@ -126,6 +156,7 @@ impl Pending {
 impl NativeAudit {
     pub(crate) fn can_arm_play(&self, session: &ObserverSession) -> bool {
         self.advance.is_none()
+            && self.proof_allows_next_source()
             && self.recovery.is_none()
             && self.configuration.policy.verify().is_ok()
             && self.scope.as_ref().is_some_and(|bound| {
@@ -169,6 +200,7 @@ impl NativeAudit {
             .as_ref()
             .ok_or("native timing authenticated source boundary absent")?;
         if self.advance.is_some()
+            || !self.proof_allows_next_source()
             || self.recovery.is_some()
             || *protocol_version != RUNTIME_SESSION_PROTOCOL_VERSION
             || session.campaign != self.configuration.campaign
@@ -199,11 +231,42 @@ impl NativeAudit {
             started: Instant::now(),
             committed: None,
             archive_elapsed_ns: None,
+            perspective: session.perspective,
+            source: if session.playing {
+                CloseSource::Play
+            } else {
+                CloseSource::Manual
+            },
         })
     }
 
     pub(in crate::observer_io) fn advance_sent(&mut self, pending: Pending) {
         self.advance = Some(pending);
+        self.proof = None;
+    }
+
+    pub(in crate::observer_io) fn bounded_play_enqueued(
+        &mut self,
+        session: &ObserverSession,
+        request_id: u64,
+    ) -> Result<(), String> {
+        let pending = self
+            .advance
+            .as_mut()
+            .ok_or("native bounded Play lacks its sent Advance")?;
+        if pending.source != CloseSource::Play
+            || pending.request_id != request_id
+            || pending.committed.is_some()
+            || !pending.matches_scope(session)
+            || session.playing
+            || session.pending_advance_request() != Some(request_id)
+        {
+            return Err(
+                "native bounded Play differs from its actual paused enqueue witness".into(),
+            );
+        }
+        pending.source = CloseSource::BoundedPlay;
+        Ok(())
     }
 
     pub(in crate::observer_io) fn advance_committed(
@@ -237,6 +300,7 @@ impl NativeAudit {
             },
             started: completed,
             advance_elapsed_ns,
+            context: session.context(),
         });
         Ok(())
     }

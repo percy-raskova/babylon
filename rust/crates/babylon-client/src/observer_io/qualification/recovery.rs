@@ -223,6 +223,7 @@ impl NativeAudit {
             || !matches!(session.phase, SessionPhase::Ready | SessionPhase::Complete)
             || session.advance_pending()
             || self.advance.is_some()
+            || !self.proof_allows_next_source()
             || session.organizer_control_pending()
             || session.archive_verified_tick != source.tick
         {

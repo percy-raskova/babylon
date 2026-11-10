@@ -41,11 +41,31 @@ V4_DIGESTS = {
 }
 
 
-def frames(kind: str) -> list[bytes]:
+@pytest.mark.parametrize("kind", sorted(V4_DIGESTS))
+def test_preserved_rust_v4_capture_refused_by_current_envelope(kind: str) -> None:
     data = (
         FIXTURES / "national_qualification_v4" / f"qualification-v4-wire-{kind}.jsonl"
     ).read_bytes()
     assert hashlib.sha256(data).hexdigest() == V4_DIGESTS[kind]
+    model = wire.ControlInput if kind == "requests" else wire.ControlResponse
+    for frame in data.splitlines():
+        with pytest.raises(ValidationError):
+            model.model_validate_json(frame)
+
+
+# Exact current producer output from the scoped Rust editor/status tests.
+V5_DIGESTS = {
+    "requests": "6ef7d0cbef4a5685452ecfeb89aad2acaaeb3f3b895f1dae3e11fd1fd85bccdc",
+    "responses": "3d3d779730bb5c8c0219f6a3d7d437e41d18311717d4be071f1b0a186b267d6e",
+    "reviewed-accepted": "aa33cb765d562c2019bc9a25bc2e00a329b19665c7a4cada5059ecf3042e6fe9",
+}
+
+
+def frames(kind: str) -> list[bytes]:
+    data = (
+        FIXTURES / "national_qualification_v5" / f"qualification-v5-wire-{kind}.jsonl"
+    ).read_bytes()
+    assert hashlib.sha256(data).hexdigest() == V5_DIGESTS[kind]
     return data.splitlines()
 
 
@@ -96,6 +116,8 @@ def test_rust_observed_statuses_preserve_the_reviewed_and_accepted_original() ->
         "aid_allocation",
         "installed_organizer",
         "play_interlock",
+        "advance_request_id",
+        "period_proof",
     ],
 )
 def test_absent_editor_field_is_not_null(key: str) -> None:
@@ -107,7 +129,7 @@ def test_absent_editor_field_is_not_null(key: str) -> None:
         wire.ControlResponse.model_validate(data)
 
 
-@pytest.mark.parametrize("bad", [2, 3, True, "4", 4.0])
+@pytest.mark.parametrize("bad", [2, 3, 4, True, "5", 5.0])
 def test_every_control_envelope_requires_exact_version(bad: object) -> None:
     request = json.loads(frames("requests")[0])
     response = json.loads(frames("responses")[0])
@@ -214,7 +236,7 @@ def test_oversize_refusal_sentinel_is_never_a_numbered_control_result() -> None:
     with pytest.raises(ValidationError):
         wire.ControlResponse.model_validate(
             {
-                "version": 4,
+                "version": 5,
                 "sequence": None,
                 "event": "refused",
                 "reason": "control_response_not_bounded",

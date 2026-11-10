@@ -734,6 +734,12 @@ class NativeRun:
         self.verify_sources()
         if state.campaign_id != self.campaign or state.foundation_sha256 is None:
             raise NativeRunRefusal("native UI admitted a different campaign foundation")
+        if state.durable_tick and (
+            not state.period_actionable
+            or state.period_proof is None
+            or state.archive_verified_tick != state.durable_tick
+        ):
+            raise NativeRunRefusal("native independent checks require the published period proof")
         record = read_record(self.directory / f"material-{state.durable_tick}.json", MaterialRecord)
         if (record.tick, record.tick_content_hash) != (state.durable_tick, state.tick_content_hash):
             raise NativeRunRefusal(
@@ -776,6 +782,30 @@ class NativeRun:
         if record.facts is None or record.aid is None or record.tick != len(self.boundaries) + 1:
             raise NativeRunRefusal("native committed facts omit or duplicate a requested period")
         advance = read_record(self.directory / f"advance-{record.tick}.json", AdvanceRecord)
+        proof = state.period_proof
+        if (
+            proof is None
+            or proof.request_id != advance.request_id
+            or state.advance_request_id != advance.request_id
+            or proof.scope_epoch != record.runtime_epoch
+            or proof.scope_epoch != state.scope_epoch
+            or proof.generation != record.observation_generation
+            or proof.generation != state.generation
+            or proof.campaign_id != self.campaign
+            or proof.tick != record.tick
+            or proof.foundation_sha256 != state.foundation_sha256
+            or proof.policy_sha256 != self.policy_hash
+            or proof.tick_content_hash != record.tick_content_hash
+            or proof.world_hash != record.facts.nominal_world_hash
+            or proof.envelope_digest != record.facts.envelope_digest
+            or proof.archive_verified_tick != record.tick
+            or proof.material_record_sha256 != advance.material_record_sha256
+            or proof.material_record_sha256
+            != memory.executable_digest(self.directory / f"material-{record.tick}.json")
+        ):
+            raise NativeRunRefusal(
+                "native proof differs from actual material and Advance publication"
+            )
         self.progress(record.tick, "committed", advance.model_dump(mode="json"))
         self.check_budget(
             "advance",
@@ -1010,8 +1040,8 @@ class NativeRun:
 
         manifest = NativeRunEvidence.model_validate(
             {
-                "version": 5,
-                "scope": "native_material_timing_recovery_join_v5",
+                "version": 6,
+                "scope": "native_material_timing_recovery_join_v6",
                 "measurement_mode": self.mode,
                 "started_monotonic_ns": self.started,
                 "completed_monotonic_ns": completed,

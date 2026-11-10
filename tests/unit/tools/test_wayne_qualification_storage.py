@@ -15,11 +15,23 @@ def test_three_media_profiles_require_the_exact_run_and_horizon(monkeypatch, mod
         ("walk-01", "national_storage", "10", "walk-01"),
     ):
         lane = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop")
-        run = lane / "qualification-10" / leaf
+        run = lane / "qualification-11" / leaf
         evidence = (run if profile == "sql-01" else run / mode) / "evidence"
         with pytest.raises(storage.StorageRefusal):
             storage.profile_run(
                 profile, focus, periods, lane / "qualification-01" / leaf / "evidence"
+            )
+        with pytest.raises(storage.StorageRefusal):
+            storage.profile_run(
+                profile,
+                focus,
+                periods,
+                (
+                    lane / "qualification-10" / leaf
+                    if profile == "sql-01"
+                    else lane / "qualification-10" / leaf / mode
+                )
+                / "evidence",
             )
         assert storage.profile_run(profile, focus, periods, evidence) == evidence.parent
         with pytest.raises(storage.StorageRefusal):

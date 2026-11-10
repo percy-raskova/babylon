@@ -130,8 +130,8 @@ class OriginalDecision(NativeRecord):
 
 
 class NativeRunEvidence(NativeRecord):
-    version: Literal[5]
-    scope: Literal["native_material_timing_recovery_join_v5"]
+    version: Literal[6]
+    scope: Literal["native_material_timing_recovery_join_v6"]
     measurement_mode: MeasurementMode
     started_monotonic_ns: Nonnegative
     completed_monotonic_ns: Positive
@@ -580,7 +580,7 @@ def _stale_poll(action: ActionObservation) -> bool:
 
 def _trace(
     controls: ControlsEvidence,
-) -> tuple[tuple[ActionObservation, ...], tuple[ActionObservation, ...]]:
+) -> tuple[tuple[PeriodClose, ...], tuple[ActionObservation, ...]]:
     prior: ActionObservation | None = None
     bound: ActionObservation | None = None
     steps: list[ActionObservation] = []
@@ -636,19 +636,22 @@ def _trace(
         if action.action in {"step", "reopen"}:
             if (
                 current.phase not in {"Ready", "Complete"}
-                or current.archive_verified_tick != current.durable_tick
                 or current.advance_pending
                 or current.lifecycle_pending
-                or current.organizer_pending
-                or current.organizer_status_due
-                or current.organizer_period != current.durable_tick
+                or action.action == "reopen"
+                and (
+                    current.archive_verified_tick != current.durable_tick
+                    or current.organizer_pending
+                    or current.organizer_status_due
+                    or current.organizer_period != current.durable_tick
+                )
             ):
                 raise ValueError("native boundary still has unresolved material or Archive work")
             (steps if action.action == "step" else reopens).append(action)
         prior = action
     if bound is None:
         raise ValueError("native trace has no authenticated installed opening")
-    return tuple(steps), tuple(reopens)
+    return _bind_period_proofs(controls, tuple(steps)), tuple(reopens)
 
 
 @dataclass(frozen=True)
@@ -658,13 +661,106 @@ class ObservedPlayClose:
     state: ControlState
 
 
+@dataclass(frozen=True)
+class PeriodClose:
+    cause: ActionObservation | ObservedPlayClose
+    actionable: ActionObservation
+    fence: ActionObservation
+
+    @property
+    def state(self) -> ControlState:
+        return self.fence.state
+
+    @property
+    def started_monotonic_ns(self) -> int:
+        return self.cause.started_monotonic_ns
+
+    @property
+    def completed_monotonic_ns(self) -> int:
+        return self.fence.completed_monotonic_ns
+
+
+def _bind_period_proofs(
+    controls: ControlsEvidence, causes: tuple[ActionObservation | ObservedPlayClose, ...]
+) -> tuple[PeriodClose, ...]:
+    """Bind each original close to its ordinary ready poll and later publication fence."""
+    fences = [a for a in controls.actions if a.action == "await_period_proof"]
+    result = []
+    used = set()
+    for cause in causes:
+        matches = [
+            a
+            for a in fences
+            if (a.state.scope_epoch, a.state.durable_tick)
+            == (cause.state.scope_epoch, cause.state.durable_tick)
+        ]
+        if len(matches) != 1:
+            raise ValueError("native period proof is missing, duplicated or substituted")
+        fence = matches[0]
+        polls = [
+            a
+            for a in controls.actions
+            if (
+                a.action == "status"
+                and a.event == "observed"
+                and a.reason is None
+                and a.completed_monotonic_ns >= cause.completed_monotonic_ns
+                and a.completed_monotonic_ns <= fence.started_monotonic_ns
+                and a.state.period_identity() == cause.state.period_identity()
+            )
+        ]
+        if not polls:
+            raise ValueError("native period proof lacks its accepted actionable status")
+        actionable = polls[-1]
+        proof = fence.state.period_proof
+        if (
+            not actionable.state.period_actionable
+            or not fence.state.period_actionable
+            or actionable.state.advance_request_id is None
+            or actionable.state.period_proof is not None
+            or proof is None
+            or fence.event != "period_proof_published"
+            or fence.reason is not None
+            or fence.state.period_identity() != actionable.state.period_identity()
+            or (
+                proof.campaign_id,
+                proof.scope_epoch,
+                proof.foundation_sha256,
+                proof.generation,
+                proof.tick,
+                proof.tick,
+                proof.tick_content_hash,
+                proof.world_hash,
+                proof.request_id,
+            )
+            != actionable.state.period_identity()
+            or proof.archive_verified_tick != proof.tick
+            or fence.state.archive_verified_tick != proof.tick
+            or fence.state.play_interlock != actionable.state.play_interlock
+            or fence.state.play_interlock != cause.state.play_interlock
+            or any(
+                a.action not in ("status", "pause", "await_period_proof")
+                for a in controls.actions
+                if cause.completed_monotonic_ns <= a.started_monotonic_ns
+                and a.completed_monotonic_ns <= fence.completed_monotonic_ns
+            )
+        ):
+            raise ValueError("native period proof differs from its ordered actionable close")
+        used.add(fence.sequence)
+        result.append(PeriodClose(cause, actionable, fence))
+    if len(used) != len(fences):
+        raise ValueError("native period proof has no original close cause")
+    return tuple(result)
+
+
 def _walk_trace(
     controls: ControlsEvidence,
-) -> tuple[tuple[ActionObservation | ObservedPlayClose, ...], tuple[ActionObservation, ...]]:
+) -> tuple[tuple[PeriodClose, ...], tuple[ActionObservation, ...]]:
     """Verify observed ordinary UI traces including historical, refused, and automatic inputs."""
     previous: ActionObservation | None = None
     first_ready = False
     playing: ActionObservation | None = None
+    enqueued: ActionObservation | None = None
     settling = False
     arm: ActionObservation | None = None
     steps: list[ActionObservation | ObservedPlayClose] = []
@@ -772,6 +868,12 @@ def _walk_trace(
                 ):
                     raise ValueError("walk Play is not a fresh armed ordinary admission")
                 playing = action
+            lock = state.play_interlock
+            if playing is not None and lock is not None and lock.phase == "paused_after_enqueue":
+                if enqueued is not None and lock != enqueued.state.play_interlock:
+                    raise ValueError("walk Play changed its frozen enqueue request")
+                if enqueued is None:
+                    enqueued = action
             if changed:
                 if changed != 1 or (
                     action.action != "step"
@@ -814,9 +916,10 @@ def _walk_trace(
                     )
                 )
                 and state.organizer_period == 9
-                and state.archive_verified_tick == 9
+                and action.action == "status"
+                and state.period_actionable
             ):
-                if playing is None:
+                if playing is None or enqueued is None:
                     raise ValueError("final automatic close has no Play admission")
                 steps.append(
                     ObservedPlayClose(
@@ -824,6 +927,7 @@ def _walk_trace(
                     )
                 )
                 playing = None
+                enqueued = None
                 settling = False
             if state.viewed_tick != state.durable_tick:
                 if state.viewed_tick != state.durable_tick - 1 or action.action not in (
@@ -864,7 +968,7 @@ def _walk_trace(
         or (controls.actions[-1].action != "quit" or not controls.actions[-1].state.quit_requested)
     ):
         raise ValueError("walk segment lacks verified installation and ordinary close")
-    return tuple(steps), tuple(reopens)
+    return _bind_period_proofs(controls, tuple(steps)), tuple(reopens)
 
 
 def _originals(
@@ -1021,7 +1125,7 @@ def evaluate_native(
         tuple(a.state.durable_tick for a in steps) != actual
         or tuple(a.state.durable_tick for a in reopens) != actual
         or wayne_walk
-        and [a.state.durable_tick for a in steps if isinstance(a, ObservedPlayClose)] != [9]
+        and [a.state.durable_tick for a in steps if isinstance(a.cause, ObservedPlayClose)] != [9]
     ):
         raise ValueError("native advance/reopen trace must cover exact committed material periods")
     if tuple(a.name for a in evidence.boundaries) != tuple(
@@ -1141,7 +1245,7 @@ def evaluate_native(
             _artifact(directory, advance_artifact, MATERIAL_RECORD_BYTES)
         )
         request = (advance.runtime_scope.epoch, advance.request_id)
-        if isinstance(step, ObservedPlayClose):
+        if isinstance(step.cause, ObservedPlayClose):
             lock = step.state.play_interlock
             if (
                 lock is None
@@ -1175,6 +1279,14 @@ def evaluate_native(
                 world_hash=facts.nominal_world_hash,
             )
             or advance.material_record_sha256 != artifact.sha256
+            or step.fence.state.period_proof is None
+            or step.fence.state.period_proof.material_record_sha256 != artifact.sha256
+            or step.fence.state.period_proof.request_id != advance.request_id
+            or step.fence.state.period_proof.policy_sha256 != policy_sha256
+            or step.fence.state.period_proof.envelope_digest != facts.envelope_digest
+            or record.observation_generation != step.actionable.state.generation
+            or advance.advance_elapsed_ns
+            > step.actionable.completed_monotonic_ns - step.started_monotonic_ns
             or advance_times.get(tick.tick) != advance.advance_elapsed_ns
             or archive_times.get(tick.tick) != advance.archive_elapsed_ns
             or advance.advance_elapsed_ns + advance.archive_elapsed_ns
@@ -1456,7 +1568,7 @@ def evaluate_native(
         and material_status == "qualified"
     )
     return {
-        "version": 5,
+        "version": 6,
         "measurement_mode": evidence.measurement_mode,
         "graph_foundation_sha256": evidence.graph_foundation_sha256,
         "status": "failed" if failed else ("qualified" if qualified else "incomplete"),

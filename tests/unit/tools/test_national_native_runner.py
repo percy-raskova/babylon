@@ -366,40 +366,85 @@ def test_wait_uses_actual_campaign_citation_after_autosave(tmp_path, monkeypatch
     assert (run.directory / "citation-prior-00.json").read_bytes() == prior
 
 
-def test_over_budget_boundary_records_and_aborts_before_archive(tmp_path, monkeypatch):
+def boundary_run(tmp_path):
+    from tools.devtools.national_windowed_qualification import ControlState
+
+    from tests.unit.tools.test_national_storage_qualification import native_join_evidence, policy
+
+    manifest, _report, _timing, _memory, _opening, ticks, records = native_join_evidence(tmp_path)
+    state = ControlState.model_validate(
+        next(
+            row["state"]
+            for row in records["native-controls.json"]["actions"]
+            if row["action"] == "await_period_proof"
+        )
+    )
     run = object.__new__(runner.NativeRun)
     run.directory = tmp_path
-    run.campaign = "c"
+    run.campaign = manifest["campaign"]
     run.stage = "walk"
-    run._foundation = "f"
+    run._foundation = manifest["foundation_sha256"]
+    run.policy_hash = manifest["policy_sha256"]
     run.mode = "normal_play"
     run.wayne_profile = "walk-01"
     run.boundaries = []
+    run.material = []
+    run.advances = []
+    run.snapshots = []
     run.started = 0
-    run.policy = SimpleNamespace(
-        maximum_production_read_seconds=180,
-        maximum_advance_p95_seconds=120,
-        maximum_archive_catchup_seconds=180,
-    )
+    run.policy = policy()
     run.verify_sources = lambda: None
-    state = SimpleNamespace(
-        campaign_id="c",
-        foundation_sha256="f",
-        durable_tick=1,
-        tick_content_hash="h",
-        model_dump=lambda **_kwargs: {"durable_tick": 1, "tick_content_hash": "h"},
-    )
-    material = SimpleNamespace(
-        tick=1, tick_content_hash="h", facts=object(), aid=object(), production_read_elapsed_ns=1
-    )
-    advance = SimpleNamespace(
-        advance_elapsed_ns=121_000_000_000,
-        archive_elapsed_ns=1,
-        model_dump=lambda **_kw: {"advance_elapsed_ns": 121_000_000_000},
-    )
-    monkeypatch.setattr(
-        runner, "read_record", lambda path, _t: advance if "advance-" in path.name else material
-    )
+    run.progress = lambda *_args: None
+    calls = []
+
+    def archive(_record):
+        calls.append("archive")
+        raw = records["archive-1.json"]["archive"]
+        return runner.ArchiveBoundary.model_validate(
+            {
+                key: raw[key]
+                for key in (
+                    "expected_tick",
+                    "durable_tick",
+                    "processed_tick",
+                    "pending_count",
+                    "dossier_sha256",
+                )
+            }
+        )
+
+    def snapshot(_stage):
+        calls.append("storage")
+        return ticks[0]
+
+    run.archive = archive
+    run.snapshot = snapshot
+    return run, state, calls, records
+
+
+@pytest.mark.parametrize("fault", [None, "missing", "substituted"])
+def test_actual_boundary_checks_follow_matching_published_proof(tmp_path, fault):
+    from tools.devtools.national_windowed_qualification import ControlState
+
+    run, state, calls, _records = boundary_run(tmp_path)
+    if fault:
+        raw = state.model_dump(mode="json")
+        if fault == "missing":
+            raw["period_proof"] = None
+        else:
+            raw["period_proof"]["material_record_sha256"] = "de" * 32
+        with pytest.raises(runner.NativeRunRefusal, match="proof"):
+            run.on_boundary(ControlState.model_validate(raw))
+        assert calls == []
+    else:
+        run.on_boundary(state)
+        assert calls == ["archive", "storage"] and len(run.boundaries) == 1
+
+
+def test_over_budget_boundary_records_and_aborts_before_archive(tmp_path):
+    run, state, _calls, records = boundary_run(tmp_path)
+    records["advance-1.json"]["advance_elapsed_ns"] = 121_000_000_000
+    (tmp_path / "advance-1.json").write_text(json.dumps(records["advance-1.json"]))
     run.archive = lambda *_: pytest.fail("over-budget close advanced to Archive")
     with pytest.raises(runner.NativeRunRefusal, match="advance"):
         run.on_boundary(state)

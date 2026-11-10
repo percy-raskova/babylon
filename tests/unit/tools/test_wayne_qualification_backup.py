@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import struct
 import subprocess
 import tarfile
@@ -76,6 +77,7 @@ def fixture() -> tuple[dict[str, bytes | None], backup.PhysicalWitness]:
         "cluster": str(SYSTEM),
     }
     before[RELATION] = backup.Member("file", 0o600, 71, 73, 8192, None)
+    physical["source_checkpoint"] = "0/100028"
     physical["pgss"] = {"preload": "pg_stat_statements", "save": "on", "version": "1.11"}
     physical["relation_sizes"] = {RELATION: 8192}
     physical["relation_page_occupancy"] = {RELATION: "01"}
@@ -308,7 +310,11 @@ def _physical_scan_fixture(
     receipts: Path,
 ) -> dict[str, Any]:
     physical = {
-        **witness.physical,
+        **{
+            k: v
+            for k, v in witness.physical.items()
+            if k not in ("source_checkpoint", "pgss", "relation_sizes", "relation_page_occupancy")
+        },
         "container_root": {**witness.physical["container_root"], "major": 0, "minor": 1},
         "lineage": LINEAGE.decode(),
         "pg_version": "17\n",
@@ -328,14 +334,14 @@ def _physical_scan_fixture(
             events.append("checkpoint-and-scan")
         elif "current_user::text" in stmt:
             cursor.fetchall.return_value = [
-                ("test", "test", owner[7], owner[2], str(SYSTEM), owner[9])
+                ("test", "test", owner[7], owner[2], physical["cluster"], owner[9])
             ]
         elif "pg_control_checkpoint()" in stmt:
-            cursor.fetchall.return_value = [("0/100050",)]
+            cursor.fetchall.return_value = [("0/100028",)]
         elif "pg_tablespace" in stmt:
             cursor.fetchall.return_value = [("pg_default",), ("pg_global",)]
         elif "pg_walfile_name" in stmt:
-            cursor.fetchall.return_value = [(551, str(SYSTEM), SEGMENT, wal[:40])]
+            cursor.fetchall.return_value = [(551, physical["cluster"], SEGMENT, wal[:40])]
         elif "pg_control_version" in stmt:
             cursor.fetchall.return_value = [
                 (
@@ -823,7 +829,9 @@ def test_restricted_roles_must_read_production_data_and_receive_exact_denials(
                 ]
             elif "v_archive_revision_known_v2" in query:
                 cursor.fetchall.return_value = (
-                    [] if fault == "missing_dossier" else [("county", "26163", 2, "hash", "body")]
+                    []
+                    if fault == "missing_dossier"
+                    else [("county", "26163", 2, "ab" * 32, "cd" * 32)]
                 )
             elif "v_observer_material_state_v1" in query:
                 cursor.fetchall.return_value = [(2, "material", "marker")]
@@ -1658,7 +1666,8 @@ def test_physical_inventory_uses_busybox_advertised_interfaces(
     result = backup._physical_witness(run, physical, source)
     assert result.members[RELATION] == backup.Member("file", 0o600, 71, 73, 8192, None)
     assert result.members["PG_VERSION"].sha256 == hashlib.sha256(b"17\n").hexdigest()
-    assert result.physical["source_checkpoint"] == "0/100050"
+    assert "source_checkpoint" not in physical
+    assert result.physical["source_checkpoint"] == "0/100028"
     assert events == ["checkpoint-and-scan"]
 
 
@@ -1907,41 +1916,67 @@ def test_container_inventory_matches_real_portable_utilities_on_tiny_fixture(
 
 
 def designed_custom_dump(database: str) -> bytes:
-    """PostgreSQL custom archive v1.14, with a single table definition in its TOC."""
+    """PG17 custom archive v1.16: one table and one readable COPY data block."""
 
     def integer(n: int) -> bytes:
         return bytes((int(n < 0),)) + abs(n).to_bytes(4, "little")
 
-    def string(s: str | None) -> bytes:
-        return integer(-1) if s is None else integer(len(s)) + s.encode("ascii")
+    def strings(*items: str | None) -> bytes:
+        return b"".join(
+            integer(-1) if s is None else integer(len(s)) + s.encode("ascii") for s in items
+        )
 
-    header = b"PGDMP" + bytes((1, 14, 0, 4, 8, 1)) + integer(0)
+    header = b"PGDMP" + bytes((1, 16, 0, 4, 8, 1, 0))
     date = b"".join(integer(n) for n in (0, 0, 0, 9, 10, 126, 0))
-    toc = integer(1) + integer(1) + integer(0)
+    table = (
+        integer(1)
+        + integer(0)
+        + strings("1259", "16386", "tick_commit", "TABLE")
+        + integer(2)
+        + strings(
+            "CREATE TABLE babylon_state.tick_commit(resolve_tick bigint);",
+            "DROP TABLE babylon_state.tick_commit;",
+            None,
+            "babylon_state",
+            None,
+            "heap",
+        )
+        + integer(ord("r"))
+        + strings("test", "false", None)
+        + bytes((3,))
+        + bytes(8)
+    )
+    data = (
+        integer(2)
+        + integer(1)
+        + strings("0", "16386", "tick_commit", "TABLE DATA")
+        + integer(3)
+        + strings(
+            None,
+            None,
+            "COPY babylon_state.tick_commit (resolve_tick) FROM stdin;\n",
+            "babylon_state",
+            None,
+            None,
+        )
+        + integer(0)
+        + strings("test", "false", "1", None)
+        + bytes((1,))
+        + bytes(8)
+    )
+    rows = b"2\n\\.\n\n\n"
     return (
         header
         + date
-        + string(database)
-        + string("17.11") * 2
-        + toc
-        + b"".join(string(k) for k in ("1259", "16386", "tick_commit", "TABLE"))
+        + strings(database, "17.11", "17.11")
         + integer(2)
-        + b"".join(
-            string(k)
-            for k in (
-                "CREATE TABLE babylon_state.tick_commit(resolve_tick bigint);",
-                "DROP TABLE babylon_state.tick_commit;",
-                None,
-                "babylon_state",
-                None,
-                "heap",
-                "test",
-                "false",
-                None,
-            )
-        )
-        + bytes((3,))
-        + bytes(8)
+        + table
+        + data
+        + bytes((1,))
+        + integer(2)
+        + integer(len(rows))
+        + rows
+        + integer(0)
     )
 
 
@@ -1991,7 +2026,24 @@ def retained_pair_recovery(run, evidence, backup_store, physical, functional):
         ("cluster-globals.sql", b"CREATE ROLE test;\n"),
         (
             "restore-list.txt",
-            f";     dbname: {database}\n;     Format: CUSTOM\n1; 1259 16386 TABLE babylon_state tick_commit test\n".encode(),
+            f""";
+; Archive created at 2026-11-09 00:00:00 UTC
+;     dbname: {database}
+;     TOC Entries: 2
+;     Compression: none
+;     Dump Version: 1.16-0
+;     Format: CUSTOM
+;     Integer: 4 bytes
+;     Offset: 8 bytes
+;     Dumped from database version: 17.11
+;     Dumped by pg_dump version: 17.11
+;
+;
+; Selected TOC Entries:
+;
+1; 1259 16386 TABLE babylon_state tick_commit test
+2; 0 16386 TABLE DATA babylon_state tick_commit test
+""".encode(),
         ),
         ("restore.stdout", b""),
     ):
@@ -2109,6 +2161,14 @@ def retained_pair_recovery(run, evidence, backup_store, physical, functional):
     wal = bytearray(payloads[WAL])
     struct.pack_into("<Q", wal, 24, int(physical["cluster"]))
     payloads[WAL] = bytes(wal)
+    source = MagicMock()
+    with pytest.MonkeyPatch.context() as probes:
+        admitted = _physical_scan_fixture(
+            probes, source, payloads, witness, owner, [], {}, "none", backup_store.path
+        )
+        assert physical == admitted and "source_checkpoint" not in admitted
+        witness = backup._physical_witness(run, admitted, source)
+    assert witness.physical["source_checkpoint"] == "0/100028"
     wref = record("pre-stop-physical.json", asdict(witness))
     attempt = evidence.publish_json(
         "native-fenced-stop-attempt-v1.json",
@@ -2203,3 +2263,110 @@ def retained_pair_recovery(run, evidence, backup_store, physical, functional):
             "retained": [r.model_dump() for r in files],
         },
     )
+
+
+@pytest.fixture(scope="module")
+def recovery_admission_bytes(tmp_path_factory: pytest.TempPathFactory) -> dict[str, bytes]:
+    """Reuse one full native admission as input to each independently sealed recovery."""
+    from tests.unit.tools.test_national_native_pair import member_bundle
+
+    root = tmp_path_factory.mktemp("admitted-native-member")
+    with pytest.MonkeyPatch.context() as paths:
+        paths.setattr(storage, "RUN_PARENT", root)
+        member_bundle(storage.PrivateEvidence(root), "normal_play")
+        evidence = storage.PrivateEvidence(
+            storage.member_run("smoke-01", "normal_play") / "evidence"
+        )
+    return {
+        name: evidence.read_reference(evidence.reference(name))
+        for name in (
+            "ownership",
+            "physical.json",
+            "completed-member.json",
+            "functional-terminal.json",
+        )
+    }
+
+
+@pytest.mark.parametrize(
+    ("fault", "reason"),
+    [
+        ("header-only", "unreadable PostgreSQL custom archive"),
+        ("data-truncated", "unreadable PostgreSQL custom archive"),
+        ("different-listing", "actual PostgreSQL table of contents"),
+        ("missing-revision", "Wayne reader revision"),
+        ("missing-row", "Wayne reader revision"),
+        ("malformed-row", "Wayne reader revision"),
+        ("late-period", "Wayne reader revision"),
+        ("negative-period", "Wayne reader revision"),
+        ("boolean-period", "Wayne reader revision"),
+        ("invalid-revision", "Wayne reader revision"),
+        ("invalid-body", "Wayne reader revision"),
+    ],
+)
+def test_checksum_consistent_logical_recovery_refuses_incomplete_observations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+    reason: str,
+    recovery_admission_bytes: dict[str, bytes],
+) -> None:
+    evidence, retained = (
+        storage.PrivateEvidence(tmp_path / "evidence"),
+        storage.PrivateEvidence(tmp_path / "backup"),
+    )
+    for store in (evidence, retained):
+        store.path.mkdir(mode=0o700)
+    for name, data in recovery_admission_bytes.items():
+        evidence.publish(name, data)
+    owner = tuple(recovery_admission_bytes["ownership"].decode().splitlines())
+    original = json.loads(recovery_admission_bytes["functional-terminal.json"])
+    physical = json.loads(recovery_admission_bytes["physical.json"])
+    run = backup.Run(storage.MEDIA_CHECKOUT, evidence.path, owner, original["campaign"], 2)
+    publish = storage.PrivateEvidence.publish
+
+    def acquire(store: storage.PrivateEvidence, name: str, data: bytes) -> storage.Reference:
+        if name == "database.dump" and fault == "header-only":
+            data = data[:5]
+        if name == "database.dump" and fault == "data-truncated":
+            data = data[:-10]
+        if name == "restore-list.txt" and fault == "different-listing":
+            data = data.replace(b"tick_commit test", b"wrong_table test")
+        if name in ("original-probes.json", "restored-probes.json"):
+            probes = json.loads(data)
+            row = probes["reader"]["allowed"]
+            if fault == "missing-revision":
+                del row[2:]
+            elif fault == "missing-row":
+                del probes["reader"]["allowed"]
+            elif fault == "malformed-row":
+                probes["reader"]["allowed"] = None
+            elif fault in ("late-period", "negative-period", "boolean-period"):
+                row[2] = {"late-period": 3, "negative-period": -1, "boolean-period": True}[fault]
+            elif fault in ("invalid-revision", "invalid-body"):
+                row[3 if fault == "invalid-revision" else 4] = "g" * 64
+            data = json.dumps(probes).encode()
+        return publish(store, name, data)
+
+    monkeypatch.setattr(storage.PrivateEvidence, "publish", acquire)
+    retained_pair_recovery(run, evidence, retained, physical, original)
+    seal = json.loads(retained.read_reference(retained.reference("recovery-seal.json")))
+    with pytest.raises(backup.Refusal, match=reason):
+        backup.verify_retained_backup(run, seal, original)
+
+
+@pytest.mark.parametrize("bad", [None, "", "0/000000000", "0/100029", "0/100058"])
+def test_shutdown_wal_requires_earlier_measured_source_checkpoint(
+    tmp_path: Path, bad: object
+) -> None:
+    files, witness = fixture()
+    if bad is None:
+        del witness.physical["source_checkpoint"]
+    else:
+        witness.physical["source_checkpoint"] = bad
+    archive(tmp_path / "copy.tar", files)
+    with (
+        (tmp_path / "copy.tar").open("rb") as stream,
+        pytest.raises(backup.Refusal, match="source checkpoint"),
+    ):
+        backup.archive_manifest(stream, witness)

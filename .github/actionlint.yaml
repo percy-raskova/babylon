@@ -1,0 +1,4 @@
+# This GitHub-hosted image label is missing from actionlint v1.7.12's registry.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

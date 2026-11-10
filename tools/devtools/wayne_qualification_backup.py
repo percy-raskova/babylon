@@ -5,10 +5,12 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import shutil
 import stat
 import struct
 import subprocess
 import tarfile
+import tempfile
 import time
 from collections.abc import Iterator
 from contextlib import ExitStack, closing, contextmanager
@@ -387,6 +389,18 @@ def _crc32c(data: bytes) -> int:
     return value ^ 0xFFFFFFFF
 
 
+def _source_checkpoint_lsn(value: object) -> int:
+    match = (
+        re.fullmatch(r"([0-9A-F]{1,8})/([0-9A-F]{1,8})", value) if isinstance(value, str) else None
+    )
+    if not match:
+        raise Refusal("source checkpoint has no measured WAL location")
+    lsn = int(match[1], 16) << 32 | int(match[2], 16)
+    if not lsn or lsn % 8:
+        raise Refusal("source checkpoint WAL location is zero or unaligned")
+    return lsn
+
+
 def _checkpoint(
     stream: BinaryIO, control: bytes, wal: dict[str, int], witness: PhysicalWitness
 ) -> None:
@@ -401,6 +415,8 @@ def _checkpoint(
     lsn, redo, timeline = struct.unpack_from("<QQI", control, 32)
     if not timeline or not lsn or lsn != redo or lsn % 8:
         raise Refusal("shutdown checkpoint lacks an aligned redo location and timeline")
+    if _source_checkpoint_lsn(witness.physical.get("source_checkpoint")) >= lsn:
+        raise Refusal("measured source checkpoint must precede the archived shutdown checkpoint")
     cursor = lsn
     record = bytearray()
     while len(record) < 114:
@@ -1408,6 +1424,23 @@ def _db_privileges(conn: Connection, name: str, catalog: dict[str, Any]) -> None
         raise Refusal("restored database owner, locale, settings or privileges differ")
 
 
+def _require_wayne_reader_revision(row: object, period: int) -> None:
+    if (
+        not isinstance(row, (list, tuple))
+        or len(row) != 5
+        or tuple(row[:2]) != ("county", "26163")
+        or type(row[2]) is not int
+        or not 0 < row[2] <= period
+        or any(
+            not isinstance(value, str) or not re.fullmatch("[0-9a-f]{64}", value)
+            for value in row[3:]
+        )
+    ):
+        raise Refusal(
+            "restricted Wayne reader revision lacks its subject, bounded period or SHA-256 digests"
+        )
+
+
 def _probes(
     admin: Connection,
     run: Run,
@@ -1451,6 +1484,7 @@ def _probes(
                 """,
                     (run.campaign, run.period),
                 )
+                _require_wayne_reader_revision(allowed, run.period)
             else:
                 allowed = _one(
                     conn,
@@ -1602,7 +1636,18 @@ def _restored_source(
     listing = _command(
         backup,
         "restore-list.txt",
-        ["docker", "exec", "-i", run.container, "pg_restore", "--list"],
+        [
+            "docker",
+            "exec",
+            "-i",
+            "-e",
+            "LC_ALL=C",
+            "-e",
+            "TZ=UTC",
+            run.container,
+            "pg_restore",
+            "--list",
+        ],
         source=dump,
     )
     if not all(ref.bytes for ref in (dump, globals_dump, listing)):
@@ -1837,8 +1882,7 @@ def _physical_witness(run: Run, physical: dict[str, Any], conn: Connection) -> P
     with conn.transaction():
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         (checkpoint,) = _one(conn, "SELECT (pg_control_checkpoint()).checkpoint_lsn::text")
-        if not isinstance(checkpoint, str) or not re.fullmatch("[0-9A-F]+/[0-9A-F]+", checkpoint):
-            raise Refusal("source checkpoint has no measured WAL location")
+        _source_checkpoint_lsn(checkpoint)
         physical = {**physical, "source_checkpoint": checkpoint}
         spaces = conn.execute("SELECT spcname FROM pg_tablespace ORDER BY spcname").fetchall()
         if spaces != [("pg_default",), ("pg_global",)]:
@@ -2173,6 +2217,64 @@ def _retained_record(directory: Evidence, name: str) -> Any:
     return strict_json_bytes(directory.read_reference(directory.reference(name), 512 * 1024**2))
 
 
+def _verify_logical_dump(backup: Evidence, refs: dict[str, Reference], database: str) -> None:
+    """Read the PG17 custom archive using a host PG17+ client in offline modes only."""
+    client = shutil.which("pg_restore")
+    if not client:
+        raise Refusal("offline logical recovery requires PostgreSQL 17+ pg_restore on PATH")
+    environment = {**os.environ, "LC_ALL": "C", "TZ": "UTC"}
+    listing = backup.read_reference(refs["restore-list.txt"])
+    try:
+        version = subprocess.run(
+            [client, "--version"], capture_output=True, check=True, timeout=10, env=environment
+        ).stdout
+        match = re.fullmatch(rb"pg_restore \(PostgreSQL\) ([0-9]+)\.[^\n]+\n?", version)
+        if not match or int(match[1]) < 17:
+            raise Refusal("offline logical recovery requires PostgreSQL 17+ pg_restore on PATH")
+        with backup.file(refs["database.dump"].path) as dump, tempfile.TemporaryFile() as actual:
+            subprocess.run(
+                [client, "--format=custom", "--list"],
+                stdin=dump,
+                stdout=actual,
+                stderr=subprocess.DEVNULL,
+                env=environment,
+                check=True,
+                timeout=900,
+            )
+            actual.seek(0)
+            if actual.read(len(listing) + 1) != listing:
+                raise Refusal(
+                    "retained restore listing differs from the actual PostgreSQL table of contents"
+                )
+            if (
+                not {
+                    f";     dbname: {database}".encode(),
+                    b";     Format: CUSTOM",
+                    b";     Dump Version: 1.16-0",
+                }
+                <= set(listing.splitlines())
+                or not refs["cluster-globals.sql"].bytes
+            ):
+                raise Refusal(
+                    "logical dump metadata or globals differ from the admitted PG17 database"
+                )
+            # Listing reads only the TOC. Rendering SQL consumes the original data blocks.
+            dump.seek(0)
+            subprocess.run(
+                [client, "--format=custom", "--file=" + os.devnull],
+                stdin=dump,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=environment,
+                check=True,
+                timeout=900,
+            )
+    except subprocess.TimeoutExpired as exc:
+        raise Refusal("offline pg_restore exceeded its archive-read watchdog") from exc
+    except (subprocess.CalledProcessError, OSError) as exc:
+        raise Refusal("unreadable PostgreSQL custom archive or failed offline pg_restore") from exc
+
+
 def _restore_clients(
     run: Run, backup: Evidence, refs: dict[str, Reference], original: dict[str, Any]
 ) -> tuple[Backend, ...]:
@@ -2200,32 +2302,20 @@ def _restore_clients(
         != {name: refs[name].model_dump() for name in RESTORE_FILES}
     ):
         raise Refusal("verification database, restore inputs, privileges or held slots differ")
-    with backup.file("database.dump") as dump:
-        if dump.read(5) != b"PGDMP":
-            raise Refusal("retained restore input lacks a PostgreSQL custom-format header")
-    listing = backup.read_reference(refs["restore-list.txt"]).decode().splitlines()
-    if (
-        f";     dbname: {run.database}" not in listing
-        or ";     Format: CUSTOM" not in listing
-        or not refs["cluster-globals.sql"].bytes
-    ):
-        raise Refusal("logical dump listing or globals differ from the original database")
+    _verify_logical_dump(backup, refs, run.database)
     probes = _retained_record(backup, "original-probes.json")
     if set(probes) != {"reader", "observer"} or probes != _retained_record(
         backup, "restored-probes.json"
     ):
         raise Refusal("restored restricted reader/observer evidence differs")
     for kind, probe in probes.items():
-        if (
-            probe["role"] != "national_" + kind + "_" + run.owner[2][:12]
-            or probe["denied_sqlstates"] != ["42501", "42501"]
-            or not all(probe["allowed"])
-        ):
+        if probe["role"] != "national_" + kind + "_" + run.owner[2][:12] or probe[
+            "denied_sqlstates"
+        ] != ["42501", "42501"]:
             raise Refusal("restored access did not retain actual confined roles and denied probes")
     marker = original["markers"][-1]
-    if probes["observer"]["allowed"] != [run.period, marker["identity"], marker["hash"]] or probes[
-        "reader"
-    ]["allowed"][:2] != ["county", "26163"]:
+    _require_wayne_reader_revision(probes["reader"].get("allowed"), run.period)
+    if probes["observer"].get("allowed") != [run.period, marker["identity"], marker["hash"]]:
         raise Refusal("restored probe differs from the terminal marker or required Wayne grant")
     baseline = admission["baseline"]
     totals = {k: dict(v) for k, v in baseline["databases"].items()}
@@ -2350,7 +2440,7 @@ def verify_retained_backup(run: Run, record: dict[str, Any], original: dict[str,
         {
             k: v
             for k, v in witness.physical.items()
-            if k not in ("relation_sizes", "relation_page_occupancy", "pgss")
+            if k not in ("source_checkpoint", "relation_sizes", "relation_page_occupancy", "pgss")
         }
         != physical
         or witness.database_oid != int(run.owner[9])

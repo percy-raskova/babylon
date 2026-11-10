@@ -391,7 +391,7 @@ def member_bundle(releases, mode, *, defect=None):
     physical = {
         k: v
         for k, v in witness.physical.items()
-        if k not in ("relation_sizes", "relation_page_occupancy", "pgss")
+        if k not in ("source_checkpoint", "relation_sizes", "relation_page_occupancy", "pgss")
     }
     physical.update(
         {
@@ -406,6 +406,9 @@ def member_bundle(releases, mode, *, defect=None):
             "pid": offset + 3,
             "mounts": [],
             "port_request": {},
+            "container_root": {**physical["container_root"], "major": 0, "minor": 1},
+            "lineage": "reviewed lineage\n",
+            "pg_version": "17\n",
             "max_connections": 50,
             "max_wal_senders": 0,
         }

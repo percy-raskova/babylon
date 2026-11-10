@@ -45,6 +45,7 @@ use std::fmt::Formatter;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NationalOpeningError {
     SourceScope,
+    Grain(crate::national_economy::grain::NationalGrainError),
     MissingObservation,
     Policy,
     Identity,
@@ -100,6 +101,12 @@ pub(in crate::national_economy) struct ActorContext {
 
 pub(in crate::national_economy) struct Builder<'a> {
     pub(in crate::national_economy) policy: &'a NationalGamePolicy,
+    pub(in crate::national_economy) endowments:
+        BTreeMap<SiteId, crate::national_economy::grain::OpeningProductiveEndowment>,
+    pub(in crate::national_economy) financial_domains: BTreeMap<
+        babylon_material_circuit::AccountId,
+        crate::national_economy::grain::FinancialDomainId,
+    >,
     pub(in crate::national_economy) aid: NationalAidCapture,
     pub(in crate::national_economy) eligible_overrides: BTreeMap<FinalDemandPrincipalId, u64>,
     pub(in crate::national_economy) household_keys:
@@ -175,7 +182,32 @@ pub fn build_national_opening(
         &mut allocation,
         policy_source_hash,
     )?;
-    actors::domestic(&mut builder, counties, &allocation, &household_budgets)?;
+    let membership = crate::national_economy::grain::capture_membership(
+        counties,
+        transport,
+        &allocation,
+        &household_budgets,
+        &builder.aid,
+        policy,
+    )
+    .map_err(NationalOpeningError::Grain)?;
+    let roster = crate::national_economy::grain::coarsen_source_allocation(
+        allocation,
+        &household_budgets,
+        &time_controls,
+        &builder.aid,
+        policy,
+        &membership,
+    )
+    .map_err(NationalOpeningError::Grain)?;
+    builder.endowments = roster.workplace_endowments;
+    builder.financial_domains = roster.financial_domains;
+    actors::domestic(
+        &mut builder,
+        counties,
+        &roster.workplaces,
+        &roster.households,
+    )?;
     aid::fund(&mut builder)?;
     external::world(&mut builder, world)?;
     markets::wire(&mut builder)?;
@@ -183,22 +215,7 @@ pub fn build_national_opening(
     financial::wire(&mut builder)?;
     routes::finish(&mut builder)?;
     household_time::wire(&mut builder, &time_controls)?;
-    builder
-        .opening
-        .sites
-        .sort_unstable_by_key(|site| site.site_id);
-    builder
-        .opening
-        .households
-        .sort_unstable_by_key(|row| row.principal_id);
-    builder
-        .opening
-        .staffing
-        .sort_unstable_by_key(|row| row.pool.pool_id());
-    builder
-        .opening
-        .employment
-        .sort_unstable_by_key(|row| row.member_id);
+    sort_principals(&mut builder);
     builder
         .opening
         .policies
@@ -209,10 +226,28 @@ pub fn build_national_opening(
         opening: builder.opening,
         aid: builder.aid,
         detail,
+        representation: roster.representation,
     })
 }
 
 impl<'a> Builder<'a> {
+    pub(in crate::national_economy) fn domain(
+        &self,
+        account: babylon_material_circuit::AccountId,
+        location: EconomicLocation,
+    ) -> Result<crate::national_economy::grain::FinancialDomainId> {
+        if let Some(domain) = self.financial_domains.get(&account) {
+            return Ok(*domain);
+        }
+        match location {
+            EconomicLocation::County(_) => Err(NationalOpeningError::Grain(
+                crate::national_economy::grain::NationalGrainError::MissingFinancialDomain(account),
+            )),
+            EconomicLocation::Foreign(_) | EconomicLocation::Dependency(_) => Ok(
+                crate::national_economy::grain::FinancialDomainId::detailed(location),
+            ),
+        }
+    }
     fn new(
         policy: &'a NationalGamePolicy,
         transport: &'a NationalTransportReference,
@@ -224,6 +259,8 @@ impl<'a> Builder<'a> {
             templates::compile(policy, labor_unit)?;
         Ok(Self {
             policy,
+            endowments: BTreeMap::new(),
+            financial_domains: BTreeMap::new(),
             aid: NationalAidCapture::default(),
             eligible_overrides: BTreeMap::new(),
             household_keys: BTreeMap::new(),
@@ -379,8 +416,28 @@ pub(in crate::national_economy) fn sum_amount(left: Currency, right: Currency) -
 /// One current complete national capture; aid metadata must be installed by admission.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NationalOpening {
+    pub representation: crate::national_economy::grain::NationalGenerationWitness,
     pub opening: EconomicOpening,
     pub aid: NationalAidCapture,
     /// Authored foreground identities and conserved counted background cohorts.
     pub detail: NationalDetailPartition,
+}
+
+fn sort_principals(builder: &mut Builder<'_>) {
+    builder
+        .opening
+        .sites
+        .sort_unstable_by_key(|site| site.site_id);
+    builder
+        .opening
+        .households
+        .sort_unstable_by_key(|row| row.principal_id);
+    builder
+        .opening
+        .staffing
+        .sort_unstable_by_key(|row| row.pool.pool_id());
+    builder
+        .opening
+        .employment
+        .sort_unstable_by_key(|row| row.member_id);
 }

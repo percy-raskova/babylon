@@ -63,7 +63,7 @@ pub(super) fn partition(
             selection.partner_workplaces.insert(site);
         }
     }
-    national_household_refinement::consolidate_background(
+    national_household_refinement::classify_opening_detail(
         &builder.opening,
         &builder.household_keys,
         &builder.opening.policies.household_time,

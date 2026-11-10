@@ -7,7 +7,11 @@ use babylon_persistence::economic_catalog::EconomicOpening;
 use babylon_persistence::national_economy::NationalGamePolicy;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(super) fn assert_time(opening: &EconomicOpening, policy: &NationalGamePolicy) {
+pub(super) fn assert_time(
+    opening: &EconomicOpening,
+    policy: &NationalGamePolicy,
+    catchments: usize,
+) {
     let compiled = opening.compile().expect("the authored scenario compiles");
     let CircuitAccounting::Monetary(economy) = &compiled.state.accounting else {
         panic!("national play needs funded household accounts");
@@ -66,7 +70,11 @@ pub(super) fn assert_time(opening: &EconomicOpening, policy: &NationalGamePolicy
         }
     }
     assert_eq!(domestic_eligible, 270_181_636);
-    assert_eq!(domestic_locations.len(), 3_144);
+    assert_eq!(
+        domestic_locations.len(),
+        catchments,
+        "one real hub per final catchment"
+    );
     assert_eq!(external, 18);
 }
 

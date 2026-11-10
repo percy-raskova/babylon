@@ -407,3 +407,11 @@ evidence_class = "Designed"
 food = ["food"]
 essential_services = ["utility", "housing", "household_services", "public_provision"]
 participation_time = true
+
+[grain]
+evidence_class = "Designed"
+generation = "state_faf_reserve_positions"
+protected_counties = ["17031", "26163"]
+hub_selection = "largest_observed_population_then_geoid"
+access_capacity = "captured_hub_lane"
+capacity_refinement = "essential_food_lower_bound_first_fit"

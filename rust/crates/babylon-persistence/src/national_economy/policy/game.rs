@@ -19,6 +19,8 @@ use std::fmt::Result as FmtResult;
 /// One current policy decoded from captured bytes, independent of source paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NationalGamePolicy {
+    pub grain: crate::national_economy::grain::NationalGrainPolicy,
+    pub source_digest: [u8; 32],
     pub period_days: u64,
     pub work_hours_per_person: u64,
     pub default_wage: Currency,
@@ -148,6 +150,7 @@ pub struct ResidentOpeningCounts {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NationalGamePolicyError {
+    Grain(crate::national_economy::grain::NationalGrainError),
     Syntax,
     Bounds,
     Evidence,

@@ -138,7 +138,39 @@ fn capture_foundation() -> (MaterialRuntimeFoundation, [u8; 32]) {
     let started = Instant::now();
     let catalog = CapturedEconomicCatalog::capture(national_capture::input(), None)
         .expect("the fixture captures the authored state");
-    assert_eq!(catalog.opening().sites.len(), 60_634);
+    let witness = catalog
+        .national_generation()
+        .expect("captured current grain witness");
+    assert_eq!(
+        witness.counties.len(),
+        3_144,
+        "complete source county coverage"
+    );
+    let represented: std::collections::BTreeSet<_> = witness
+        .source_incidence
+        .iter()
+        .map(|i| i.destination_site)
+        .collect();
+    let domestic = catalog
+        .opening()
+        .sites
+        .iter()
+        .filter(|s| {
+            matches!(
+                s.location,
+                babylon_kernel::economic_location::EconomicLocation::County(_)
+            )
+        })
+        .count();
+    assert_eq!(
+        domestic,
+        represented.len(),
+        "each generated domestic site has source incidence"
+    );
+    assert!(
+        catalog.opening().sites.len() < 60_634,
+        "actual principal reduction before relation expansion"
+    );
     // Three aid children partition retained parent budgets; they add no people.
     assert_eq!(catalog.opening().households.len(), 15_696);
     let foundation = catalog

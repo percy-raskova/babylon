@@ -6,7 +6,7 @@ mod tests;
 mod refine;
 
 pub use refine::{
-    consolidate_background, refine_households, AuthoredCommitment, BackgroundHouseholdCohort,
+    classify_opening_detail, refine_households, AuthoredCommitment, BackgroundHouseholdCohort,
     BackgroundWorkplaceCohort, CohortConservation, ConsolidationError, DetailConservation,
     ForegroundIdentities, ForegroundSelection, HouseholdCohortCounts, HouseholdLeaf,
     HouseholdLeafMargins, HouseholdRefinementError, HouseholdRefinementSpec,

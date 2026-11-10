@@ -395,37 +395,6 @@ pub struct HouseholdCohortCounts {
     /// `contribution_available_hours` is the spendable remainder, not this value.
     pub endowment_hours: u64,
 }
-impl HouseholdCohortCounts {
-    fn checked_add(self, other: Self) -> Result<Self, ConsolidationError> {
-        Ok(Self {
-            persons: self
-                .persons
-                .checked_add(other.persons)
-                .ok_or(ConsolidationError::Arithmetic)?,
-            households: self
-                .households
-                .checked_add(other.households)
-                .ok_or(ConsolidationError::Arithmetic)?,
-            employed: self
-                .employed
-                .checked_add(other.employed)
-                .ok_or(ConsolidationError::Arithmetic)?,
-            reserve: self
-                .reserve
-                .checked_add(other.reserve)
-                .ok_or(ConsolidationError::Arithmetic)?,
-            eligible_persons: self
-                .eligible_persons
-                .checked_add(other.eligible_persons)
-                .ok_or(ConsolidationError::Arithmetic)?,
-            endowment_hours: self
-                .endowment_hours
-                .checked_add(other.endowment_hours)
-                .ok_or(ConsolidationError::Arithmetic)?,
-        })
-    }
-}
-
 /// One counted background household row; its exact causal key never blends.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BackgroundHouseholdCohort {
@@ -438,69 +407,24 @@ pub struct BackgroundHouseholdCohort {
     /// Pantry stock merged only within one (good, unit).
     pub opening_stock: Vec<OpeningCommodityStock>,
 }
-impl BackgroundHouseholdCohort {
-    fn absorb(&mut self, other: Self) -> Result<(), ConsolidationError> {
-        self.counts = self.counts.checked_add(other.counts)?;
-        self.opening_cash = Currency::from_micro_units(
-            self.opening_cash
-                .micro_units()
-                .checked_add(other.opening_cash.micro_units())
-                .ok_or(ConsolidationError::Arithmetic)?,
-        );
-        self.opening_stock.extend(other.opening_stock);
-        self.opening_stock = merge_stock(std::mem::take(&mut self.opening_stock))?;
-        Ok(())
-    }
-}
-
-/// One counted background workplace; equivalent sites share one row.
+/// One actual generated workplace retained for background display.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BackgroundWorkplaceCohort {
     /// Exact location, function and ownership axes.
     pub key: WorkplaceCohortKey,
-    /// Number of admitted source sites coalesced into this counted workplace.
-    pub sites: u64,
-    /// Employee residents assigned to the coalesced sites.
+    /// Current live principal; location and function do not identify a balance.
+    pub site_id: SiteId,
+    /// Employee residents assigned to this site.
     pub employed: u64,
     /// Assigned residents held in reserve.
     pub reserve: u64,
     /// Assigned resident labor force.
     pub labor_force: u64,
-    /// Opening cash owned by the coalesced sites.
+    /// Opening cash owned by the current site.
     pub opening_cash: Currency,
     /// Stock merged only within one (good, unit).
     pub opening_stock: Vec<OpeningCommodityStock>,
 }
-impl BackgroundWorkplaceCohort {
-    fn absorb(&mut self, other: Self) -> Result<(), ConsolidationError> {
-        self.sites = self
-            .sites
-            .checked_add(other.sites)
-            .ok_or(ConsolidationError::Arithmetic)?;
-        self.employed = self
-            .employed
-            .checked_add(other.employed)
-            .ok_or(ConsolidationError::Arithmetic)?;
-        self.reserve = self
-            .reserve
-            .checked_add(other.reserve)
-            .ok_or(ConsolidationError::Arithmetic)?;
-        self.labor_force = self
-            .labor_force
-            .checked_add(other.labor_force)
-            .ok_or(ConsolidationError::Arithmetic)?;
-        self.opening_cash = Currency::from_micro_units(
-            self.opening_cash
-                .micro_units()
-                .checked_add(other.opening_cash.micro_units())
-                .ok_or(ConsolidationError::Arithmetic)?,
-        );
-        self.opening_stock.extend(other.opening_stock);
-        self.opening_stock = merge_stock(std::mem::take(&mut self.opening_stock))?;
-        Ok(())
-    }
-}
-
 /// Exact conserved totals of one background population.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CohortConservation {
@@ -653,14 +577,14 @@ impl std::fmt::Display for ConsolidationError {
 }
 impl std::error::Error for ConsolidationError {}
 
-/// Split one admitted opening into authored foreground identities and counted background rows.
-/// Household rows coalesce only when owner, location and budget agree; workplace rows
-/// coalesce only when location, function and source ownership agree. In-flight goods with
-/// different principals, units or terms never blend.
+/// Classify the already-generated live opening for foreground display.
+/// This does not generate principals or own source-to-live incidence.
+/// Every generated household and workplace keeps its actual principal. This display
+/// selection does not coalesce budgets, stock owners or in-flight goods.
 /// # Errors
 /// Refuses unknown or duplicate foreground identities, missing source rows, and any partition
 /// whose background and foreground totals do not reproduce the admitted source exactly.
-pub fn consolidate_background(
+pub fn classify_opening_detail(
     opening: &EconomicOpening,
     household_budgets: &BTreeMap<FinalDemandPrincipalId, HouseholdBudgetKey>,
     time: &HouseholdTimeAccounting,
@@ -815,7 +739,8 @@ fn partition_households(
             opening_stock: stock,
         });
     }
-    let background = consolidate_household_rows(rows)?;
+    rows.sort_unstable_by_key(|row| row.key);
+    let background = rows;
     if background
         .iter()
         .any(|row| foreground.household_principals.contains(&row.key.principal))
@@ -850,12 +775,8 @@ fn partition_workplaces(
         }
         rows.push(row);
     }
-    let background = consolidate_workplace_rows(rows)?;
-    let background_sites = background.iter().try_fold(0_u64, |total, row| {
-        total
-            .checked_add(row.sites)
-            .ok_or(ConsolidationError::Arithmetic)
-    })?;
+    rows.sort_unstable_by_key(|row| row.site_id);
+    let background = rows;
     let expected_sites = opening
         .sites
         .iter()
@@ -864,9 +785,7 @@ fn partition_workplaces(
                 && !foreground.partner_workplaces.contains(&site.site_id)
         })
         .count();
-    if background_sites
-        != u64::try_from(expected_sites).map_err(|_| ConsolidationError::Arithmetic)?
-    {
+    if background.len() != expected_sites {
         return Err(ConsolidationError::Conservation);
     }
     Ok((background, foreground_total))
@@ -879,49 +798,13 @@ fn workplace_row(
     let (employed, reserve, labor_force) = work.get(&site.site_id).copied().unwrap_or_default();
     Ok(BackgroundWorkplaceCohort {
         key: workplace_key(site)?,
-        sites: 1,
+        site_id: site.site_id,
         employed,
         reserve,
         labor_force,
         opening_cash: site.opening_cash,
         opening_stock: merge_stock(site.opening_stock.clone())?,
     })
-}
-
-/// Coalesce rows that share one household causal key. The authored opening has
-/// one seed per owner, location and budget, so a valid partition normally keeps
-/// every row separate; a repeated equivalent owner would merge under checked
-/// arithmetic rather than publishing two rows for one causal key.
-pub(super) fn consolidate_household_rows(
-    mut rows: Vec<BackgroundHouseholdCohort>,
-) -> Result<Vec<BackgroundHouseholdCohort>, ConsolidationError> {
-    rows.sort_unstable_by_key(|row| row.key);
-    let mut merged: Vec<BackgroundHouseholdCohort> = Vec::with_capacity(rows.len());
-    for row in rows {
-        match merged.last_mut() {
-            Some(last) if last.key.equivalent_for_consolidation(&row.key) => last.absorb(row)?,
-            _ => merged.push(row),
-        }
-    }
-    Ok(merged)
-}
-
-/// Coalesce sites that share one counted background workplace key. The site
-/// identity itself is not part of this key: a background workplace is the
-/// county/function/ownership actor chapter 05 requires, and the retained `sites`
-/// count plus the key set conserve every admitted source site.
-pub(super) fn consolidate_workplace_rows(
-    mut rows: Vec<BackgroundWorkplaceCohort>,
-) -> Result<Vec<BackgroundWorkplaceCohort>, ConsolidationError> {
-    rows.sort_unstable_by_key(|row| row.key);
-    let mut merged: Vec<BackgroundWorkplaceCohort> = Vec::with_capacity(rows.len());
-    for row in rows {
-        match merged.last_mut() {
-            Some(last) if last.key.equivalent_for_consolidation(&row.key) => last.absorb(row)?,
-            _ => merged.push(row),
-        }
-    }
-    Ok(merged)
 }
 
 fn workplace_conservation(

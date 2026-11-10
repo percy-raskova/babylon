@@ -108,6 +108,16 @@ fn eligibility(
     let eligible = if let Some(eligible) = builder.eligible_overrides.get(&household.principal_id) {
         *eligible
     } else {
+        if builder
+            .domain(
+                babylon_material_circuit::AccountId::Household(household.principal_id),
+                household.location,
+            )?
+            .representative
+            .is_some()
+        {
+            return Err(NationalOpeningError::Identity);
+        }
         match household.location {
             EconomicLocation::County(county) => {
                 let rows = domestic

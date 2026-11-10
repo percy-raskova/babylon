@@ -5,12 +5,11 @@ use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
 use babylon_kernel::economic_location::{EconomicLocation, ForeignCounterpart};
 
-use babylon_kernel::content_digest;
+use crate::national_economy::grain::FinancialDomainId;
 use babylon_material_circuit::FinalDemandPrincipalId;
 use babylon_material_circuit::{
     AccountId, CashAccount, DistributionPolicy, EquityCarryingValue, InstitutionLocation,
-    OwnershipClaim, PublicAccountId, PublicAllocation, PublicBudget, PublicTransferTreatment,
-    TaxBasis, TaxPolicy,
+    OwnershipClaim, PublicAllocation, PublicBudget, PublicTransferTreatment, TaxBasis, TaxPolicy,
 };
 use std::collections::BTreeMap;
 
@@ -29,12 +28,23 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
             .checked_add(member.reserve)
             .ok_or(NationalOpeningError::Arithmetic)?;
     }
-    let mut budgets = BTreeMap::<EconomicLocation, Currency>::new();
+    let mut budgets = BTreeMap::<FinancialDomainId, Currency>::new();
     for household in &builder.opening.households {
-        budgets.insert(household.location, Currency::from_micro_units(0));
+        budgets.insert(
+            builder.domain(
+                AccountId::Household(household.principal_id),
+                household.location,
+            )?,
+            Currency::from_micro_units(0),
+        );
         builder.opening.institutions.taxes.push(TaxPolicy {
             payer: AccountId::Household(household.principal_id),
-            public_recipient: public(household.location),
+            public_recipient: builder
+                .domain(
+                    AccountId::Household(household.principal_id),
+                    household.location,
+                )?
+                .public_account(),
             basis: TaxBasis::WageIncome,
             rate_bps: builder.policy.financial.wage_tax_bps,
             cash_floor: Currency::from_micro_units(0),
@@ -47,7 +57,9 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
         ownership(builder, &actor, &private_owners)?;
         builder.opening.institutions.taxes.push(TaxPolicy {
             payer: AccountId::Site(actor.site_id),
-            public_recipient: public(actor.location),
+            public_recipient: builder
+                .domain(AccountId::Site(actor.site_id), actor.location)?
+                .public_account(),
             basis: TaxBasis::PositiveOperatingIncome,
             rate_bps: builder.policy.financial.operating_income_tax_bps,
             cash_floor: payroll(builder, &actor)?,
@@ -60,18 +72,25 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
                     .institutions
                     .public_allocations
                     .push(PublicAllocation {
-                        public_account: public(actor.location),
+                        public_account: builder
+                            .domain(AccountId::Site(actor.site_id), actor.location)?
+                            .public_account(),
                         recipient: AccountId::Site(actor.site_id),
                         treatment: PublicTransferTreatment::ProviderOperatingGrant,
                         priority: 0,
                         amount_per_period: grant,
                     });
-                add_budget(&mut budgets, actor.location, grant)?;
+                add_budget(
+                    &mut budgets,
+                    builder.domain(AccountId::Site(actor.site_id), actor.location)?,
+                    grant,
+                )?;
             }
         }
     }
-    for (location, period_cap) in budgets {
-        let account = public(location);
+    for (domain, period_cap) in budgets {
+        let account = domain.public_account();
+        let location = domain.location;
         builder.opening.institutional_cash.push(CashAccount {
             id: AccountId::Public(account),
             cash: super::amount(builder.policy.working_capital_periods, period_cap)?,
@@ -100,7 +119,7 @@ pub(super) fn wire(builder: &mut Builder<'_>) -> Result<()> {
 fn household_support(
     builder: &mut Builder<'_>,
     reserves: &BTreeMap<(FinalDemandPrincipalId, EconomicLocation), u64>,
-    budgets: &mut BTreeMap<EconomicLocation, Currency>,
+    budgets: &mut BTreeMap<FinancialDomainId, Currency>,
 ) -> Result<()> {
     let policy = &builder.policy.financial;
     if policy.reserve_food_support_periods == 0 {
@@ -130,18 +149,24 @@ fn household_support(
             .institutions
             .public_allocations
             .push(PublicAllocation {
-                public_account: public(*location),
+                public_account: builder
+                    .domain(AccountId::Household(*principal), *location)?
+                    .public_account(),
                 recipient: AccountId::Household(*principal),
                 treatment: PublicTransferTreatment::HouseholdIncomeSupport,
                 priority: 1,
                 amount_per_period: support,
             });
-        add_budget(budgets, *location, support)?;
+        add_budget(
+            budgets,
+            builder.domain(AccountId::Household(*principal), *location)?,
+            support,
+        )?;
     }
     Ok(())
 }
 
-type PrivateOwners = BTreeMap<EconomicLocation, Vec<(FinalDemandPrincipalId, u64)>>;
+type PrivateOwners = BTreeMap<FinancialDomainId, Vec<(FinalDemandPrincipalId, u64)>>;
 
 fn ownership(
     builder: &mut Builder<'_>,
@@ -164,14 +189,18 @@ fn ownership(
             claim(
                 builder,
                 actor,
-                AccountId::Public(public(actor.location)),
+                AccountId::Public(
+                    builder
+                        .domain(AccountId::Site(actor.site_id), actor.location)?
+                        .public_account(),
+                ),
                 10_000 - remote_share,
             );
         } else {
             private_claims(
                 builder,
                 actor,
-                actor.location,
+                builder.domain(AccountId::Site(actor.site_id), actor.location)?,
                 10_000 - remote_share,
                 private_owners,
             )?;
@@ -181,7 +210,7 @@ fn ownership(
         private_claims(
             builder,
             actor,
-            remote.ok_or(NationalOpeningError::Policy)?,
+            FinancialDomainId::detailed(remote.ok_or(NationalOpeningError::Policy)?),
             remote_share,
             private_owners,
         )?;
@@ -248,7 +277,7 @@ fn private_owners(builder: &Builder<'_>) -> Result<PrivateOwners> {
             .ok_or(NationalOpeningError::Identity)?;
         if key.owner_exposure() || *key == HouseholdBudgetKey::PooledExternal {
             by_location
-                .entry(row.location)
+                .entry(builder.domain(AccountId::Household(row.principal_id), row.location)?)
                 .or_default()
                 .push((row.principal_id, row.households));
         }
@@ -262,13 +291,15 @@ fn private_owners(builder: &Builder<'_>) -> Result<PrivateOwners> {
 fn private_claims(
     builder: &mut Builder<'_>,
     actor: &ActorContext,
-    location: EconomicLocation,
+    location: FinancialDomainId,
     total_shares: u64,
     private_owners: &PrivateOwners,
 ) -> Result<()> {
     let recipients = private_owners
         .get(&location)
-        .ok_or(NationalOpeningError::Identity)?;
+        .ok_or(NationalOpeningError::Grain(
+            crate::national_economy::grain::NationalGrainError::MissingOwnerBudget(location),
+        ))?;
     let weights: Vec<_> = recipients.iter().map(|row| row.1).collect();
     let shares = crate::national_resident_allocation::apportion(total_shares, &weights)
         .map_err(NationalOpeningError::Workforce)?;
@@ -339,8 +370,8 @@ fn scale(builder: &Builder<'_>, location: EconomicLocation) -> Result<u16> {
     }
 }
 fn add_budget(
-    budgets: &mut BTreeMap<EconomicLocation, Currency>,
-    location: EconomicLocation,
+    budgets: &mut BTreeMap<FinancialDomainId, Currency>,
+    location: FinancialDomainId,
     amount: Currency,
 ) -> Result<()> {
     let value = budgets
@@ -348,9 +379,4 @@ fn add_budget(
         .ok_or(NationalOpeningError::Identity)?;
     *value = super::sum_amount(*value, amount)?;
     Ok(())
-}
-fn public(location: EconomicLocation) -> PublicAccountId {
-    let mut bytes = b"NationalPublicProvisioningV1\0".to_vec();
-    bytes.extend_from_slice(&location.canonical_bytes());
-    PublicAccountId::from_bytes(content_digest::sha256_of(&bytes))
 }

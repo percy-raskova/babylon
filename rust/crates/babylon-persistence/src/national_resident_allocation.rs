@@ -11,10 +11,11 @@ pub use weights::{ImputedWeight, PeerScope, WorkforceAllocationWeight};
 mod allocation;
 
 pub(crate) use allocation::apportion;
+pub(crate) use allocation::member;
 pub use allocation::{
     allocate_home_county, AllocationError, AssignedResidentMember, AssignedResidentWorkplace,
     ResidentAttendanceMode, ResidentCountyAllocation, ResidentWorkplaceAllocation,
 };
-use allocation::{member, PendingAssignedWorkplace, PendingResidentMember, Result};
+use allocation::{PendingAssignedWorkplace, PendingResidentMember, Result};
 
 use crate::national_household_allocation::CountyHouseholdAllocation;

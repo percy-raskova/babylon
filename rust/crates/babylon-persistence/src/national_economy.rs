@@ -2,6 +2,7 @@
 //! Source observations establish coverage and allocation, not physical recipes.
 
 pub(crate) mod city_pd;
+pub mod grain;
 mod identity;
 mod opening;
 pub(crate) mod organizer;

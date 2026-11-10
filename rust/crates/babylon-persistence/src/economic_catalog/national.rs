@@ -21,6 +21,7 @@ type Result<T> = StdResult<T, EconomicCatalogError>;
 pub(super) struct NationalSources {
     pub(super) counties: NationalCountyReference,
     pub(super) aid: NationalAidCapture,
+    pub(super) representation: crate::national_economy::grain::NationalGenerationWitness,
     /// Authored foreground identities and counted background cohorts fixed at opening.
     pub(super) detail: NationalDetailPartition,
     cohorts: NationalCohortReference,
@@ -119,6 +120,7 @@ impl NationalSources {
         Ok((
             Self {
                 aid: opening.aid,
+                representation: opening.representation,
                 detail: opening.detail,
                 counties,
                 cohorts,

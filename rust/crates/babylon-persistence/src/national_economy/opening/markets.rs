@@ -348,10 +348,16 @@ fn households(
     preferences: &mut Preferences,
 ) -> Result<()> {
     let households = builder.opening.households.clone();
+    let domain_retailers = representative_retailers(builder)?;
     let mut retail_requirements = BTreeMap::<(SiteId, String), u64>::new();
     for household in households {
-        let retailer = *retailers
-            .get(&household.location)
+        let domain = builder.domain(
+            AccountId::Household(household.principal_id),
+            household.location,
+        )?;
+        let retailer = *domain_retailers
+            .get(&domain)
+            .or_else(|| retailers.get(&household.location))
             .ok_or(NationalOpeningError::Identity)?;
         for need in builder.policy.household_needs.clone() {
             if household.kind == HouseholdKind::CollectiveResidence
@@ -758,6 +764,29 @@ pub(super) fn payroll(builder: &Builder<'_>, site: SiteId) -> Result<Currency> {
         super::quantity(actor.employee_persons, builder.policy.work_hours_per_person)?,
         actor.wage,
     )
+}
+
+fn representative_retailers(
+    builder: &Builder<'_>,
+) -> Result<BTreeMap<crate::national_economy::grain::FinancialDomainId, SiteId>> {
+    let mut domain_retailers = BTreeMap::new();
+    for actor in builder
+        .actors
+        .values()
+        .filter(|a| a.employed > 0 && a.function == EconomicFunction::DistributionTransport)
+    {
+        let domain = builder.domain(AccountId::Site(actor.site_id), actor.location)?;
+        let selected = domain_retailers.entry(domain).or_insert(actor.site_id);
+        if (actor.employed, std::cmp::Reverse(actor.site_id))
+            > (
+                builder.actors[selected].employed,
+                std::cmp::Reverse(*selected),
+            )
+        {
+            *selected = actor.site_id;
+        }
+    }
+    Ok(domain_retailers)
 }
 
 #[cfg(test)]

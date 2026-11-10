@@ -24,6 +24,7 @@ from tools.devtools.national_native_evidence import (
     ColdInstallation,
     NativeRecord,
     NativeRunEvidence,
+    OriginalDecision,
     PracticeReceipt,
     WalkStage,
     _artifact,
@@ -55,6 +56,7 @@ from tools.devtools.national_windowed_qualification import (
     SMOKE_DECISIONS,
     WALK_FIXED_DECISIONS,
     Bytes16,
+    ColdControlWindow,
     Command,
     Commitment,
     ControlsEvidence,
@@ -90,18 +92,6 @@ class ProcessPair(NativeRecord):
     postgres: Process
     container: Sha256
     owner_sha256: Sha256
-
-
-class OriginalDecision(NativeRecord):
-    period: Positive
-    consumed: Positive
-    nonce: StrictStr
-    command_hex: StrictStr
-    commitment_hex: StrictStr
-    commitment_id: Sha256
-    marker: Sha256
-    receipt_id: Sha256
-    receipt_hex: StrictStr
 
 
 class Decision(SelectedAllocation):
@@ -279,13 +269,24 @@ def declaration_for(base: Path, *, create: bool = False) -> tuple[Reference, Dec
     release = Reference.model_validate(creation["native_expectations"])
     release_store = PrivateEvidence(storage.RUN_PARENT)
     expected = storage.read_typed(release_store, release, storage.NativeExpectations)
+    capacity = storage.read_typed(release_store, expected.capacity, storage.DiskReservation)
     selected_policy(base / "policy.json")
     if base.resolve(strict=True) != base:
         raise ValueError("native member path contains redirected ancestry")
     if (
         release.path != f"{profile}-native-expectations.json"
+        or expected.capacity.path != f"{profile}-capacity.json"
+        or (capacity.profile, capacity.source_head) != (profile, expected.source_head)
+        or creation.get("reservation") != expected.capacity.model_dump()
+        or storage.canonical_json(creation.get("capacity"))
+        != storage.canonical_json(capacity.model_dump())
         or creation["profile"] != profile
         or creation["run"] != str(base.parent)
+        or store.reference("inputs.sha256").sha256 != expected.inputs_sha256
+        or store.reference("source-before.sha256").sha256 != expected.source_sha256
+        or creation["image"]["id"] != expected.image_id
+        or release_store.reference("host-process-context.json").sha256
+        != expected.host_context_sha256
         or creation["source_head"] != expected.source_head
         or store.read_reference(store.reference("source-head"))
         != (expected.source_head + "\n").encode()
@@ -305,8 +306,8 @@ def declaration_for(base: Path, *, create: bool = False) -> tuple[Reference, Dec
         campaign=campaign,
         periods=int(storage.PROFILES[profile][1]),
         source_head=expected.source_head,
-        inputs_sha256=store.reference("inputs.sha256").sha256,
-        source_sha256=store.reference("source-before.sha256").sha256,
+        inputs_sha256=expected.inputs_sha256,
+        source_sha256=expected.source_sha256,
         policy_sha256=store.reference("policy.json").sha256,
         release=release,
     )
@@ -327,7 +328,7 @@ def declaration_for(base: Path, *, create: bool = False) -> tuple[Reference, Dec
 
 def _custody(
     store: PrivateEvidence, native: NativeRunEvidence, declaration: Declaration
-) -> tuple[list[str], dict[str, Reference]]:
+) -> tuple[list[str], dict[str, Reference], storage.HostContext, int]:
     fields = store.read_reference(store.reference("ownership"), 4096).decode().splitlines()
     if (
         len(fields) != 21
@@ -350,9 +351,23 @@ def _custody(
     for ref in products.values():
         store.verify(ref)
     physical = _json(store, "physical.json")
+    release_store = PrivateEvidence(storage.RUN_PARENT)
+    host_ref = release_store.reference("host-process-context.json")
+    if host_ref.sha256 != expected.host_context_sha256:
+        raise ValueError("host context differs from the released witness")
+    released_host = storage.read_typed(release_store, host_ref, storage.HostContext)
+    admitted_host = storage.read_typed(
+        store, store.reference("host-native-admission.json"), storage.HostContext
+    )
+    creation = _json(store, "media-creation.json")
     host = physical["host"]
     if (
-        physical["container"] != fields[4]
+        admitted_host != released_host
+        or physical["image"] != creation["image"]
+        or fields[6] != expected.image_id
+        or type(physical["pid"]) is not int
+        or physical["pid"] <= 0
+        or physical["container"] != fields[4]
         or physical["label"] != fields[2]
         or physical["image"]["id"] != fields[6]
         or physical["cluster"] != fields[20]
@@ -384,7 +399,7 @@ def _custody(
         raise ValueError(
             "native source, executables, owner, input or campaign differs from declaration"
         )
-    return fields, products
+    return fields, products, admitted_host, physical["pid"]
 
 
 def _checksum_manifest(store: PrivateEvidence, name: str) -> dict[str, str]:
@@ -455,6 +470,63 @@ def _verify_capsules(store: PrivateEvidence, declaration: Declaration, names: se
     return source["tools/devtools/national_game_memory.py"]
 
 
+def verify_segment_timing(
+    store: PrivateEvidence,
+    segment: str,
+    mode: MeasurementMode,
+    policy: Policy,
+    cold: ColdInstallation,
+    trace: ControlsEvidence,
+) -> str:
+    prefix = "segment-" + segment + "/" if segment in ("opening", "completed") else ""
+    name = prefix + "native-cold-clock.json"
+    captured = mode == "memory_capture"
+    watchdog = policy.maximum_routine_smoke_seconds
+    clock = ColdControlWindow(
+        cold.started_monotonic_ns, watchdog if captured else policy.maximum_cold_open_seconds
+    )
+    if (
+        storage.canonical_json(_json(store, name)) != storage.canonical_json(clock.clock_record())
+        or cold.installed_monotonic_ns >= clock.deadline_ns
+    ):
+        raise ValueError("process-cold installation differs from its prelaunch clock or deadline")
+    for action in trace.actions:
+        duration = action.completed_monotonic_ns - action.started_monotonic_ns
+        focused = action.action not in ("step", "reopen", "status", "play", "quit") and (
+            action.action not in ("open_organizer", "dismiss_splash")
+            or action.sequence > cold.readiness_sequence
+        )
+        limit = policy.maximum_focused_control_seconds if focused and not captured else watchdog
+        if duration > limit * 10**9:
+            raise ValueError("focused control or operation exceeded its phase ceiling")
+    if segment == "walk":
+        reports = [a for a in trace.actions if a.action == "archive_report"]
+        opens = [
+            a
+            for a in trace.actions
+            if a.action == "open_archive_evidence" and a.event == "applied" and a.reason is None
+        ]
+        if (
+            len(reports) != 1
+            or len(opens) != 1
+            or not (
+                reports[0].state.durable_tick == opens[0].state.durable_tick == 10
+                and cold.readiness_sequence < reports[0].sequence < opens[0].sequence
+                and any(
+                    a.sequence > opens[0].sequence
+                    and a.action == "open_organizer"
+                    and a.event == "applied"
+                    for a in trace.actions
+                )
+            )
+        ):
+            raise ValueError("terminal Archive and Return do not follow installation")
+        limit = watchdog if captured else policy.maximum_archive_catchup_seconds
+        if opens[0].completed_monotonic_ns - reports[0].completed_monotonic_ns > limit * 10**9:
+            raise ValueError("terminal Archive report and evidence exceeded their total deadline")
+    return name
+
+
 def evaluate_member(base: Path) -> CompletedMember:
     """Reopen every required input from the selected workload/mode's private retained bundle."""
     profile, mode = storage.native_path(base)
@@ -466,7 +538,7 @@ def evaluate_member(base: Path) -> CompletedMember:
     captured = mode == "memory_capture"
     if native.status != "completed" or native.measurement_mode != mode:
         raise ValueError("native member has a different measurement mode or incomplete run")
-    owner, products = _custody(store, native, declaration)
+    owner, products, host, postmaster = _custody(store, native, declaration)
     periods = range(1, declaration.periods + 1)
     names = {
         "policy.json",
@@ -591,18 +663,33 @@ def evaluate_member(base: Path) -> CompletedMember:
     if store.read_reference(store.reference("campaign")).decode().strip() != declaration.campaign:
         raise ValueError("actual campaign differs from the declaration")
     functional = _json(store, "functional-terminal.json", CONTROLS_RECORD_BYTES)
-    markers = {t.tick: t.marker_and_encoded_package_hashes[-1][1] for t in ticks}
+    from tools.devtools.wayne_qualification_backup import validate_terminal
+
+    terminal = validate_terminal(functional, native.campaign, native.requested_periods)
     if (
-        functional["campaign"] != native.campaign
-        or functional["period"] != native.requested_periods
-        or {m["tick"]: m["hash"] for m in functional["markers"]} != markers
+        terminal.identity[3:5] != (native.foundation_sha256, native.graph_foundation_sha256)
+        or terminal.database.owner != owner[8]
+        or not terminal.database.allows_connections
+        or any(
+            (m.tick, m.hash, m.envelope, m.world_after, m.receipt)
+            != (
+                b.tick,
+                b.tick_content_hash,
+                b.envelope_digest,
+                b.nominal_world_hash,
+                b.canonical_receipt_sha256,
+            )
+            for m, b in zip(terminal.markers, material.boundaries, strict=True)
+        )
     ):
-        raise ValueError("functional recovery markers differ from measured member")
+        raise ValueError("functional recovery markers or foundations differ from measured member")
+    markers = {m.tick: m.hash for m in terminal.markers}
     segments = ("opening", "walk", "completed") if walk else ("smoke",)
     processes = []
     confirmed = []
     recipients = []
-    boot = _json(store, "host-native-admission.json")["boot_id"]
+    boot = host.boot_id
+    last_segment_end = native.started_monotonic_ns
     for segment in segments:
         prefix = "segment-" + segment + "/" if segment in ("opening", "completed") else ""
         trace_name = prefix + "native-controls.json"
@@ -612,8 +699,11 @@ def evaluate_member(base: Path) -> CompletedMember:
         trace = ControlsEvidence.model_validate(_json(store, trace_name, CONTROLS_RECORD_BYTES))
         pair = ProcessPair.model_validate(_json(store, proc_name))
         cold = ColdInstallation.model_validate(_json(store, cold_name))
+        names.add(verify_segment_timing(store, segment, mode, policy, cold, trace))
         if (
             pair.segment != segment
+            or pair.postgres[0] != postmaster
+            or len({pair.runtime[0], pair.client[0], pair.postgres[0]}) != 3
             or cold.processes != (pair.runtime, pair.client)
             or pair.boot_id != boot
             or pair.container != owner[4]
@@ -621,7 +711,7 @@ def evaluate_member(base: Path) -> CompletedMember:
             or cold.ownership_sha256 != pair.owner_sha256
             or cold.source_head != declaration.source_head
             or cold.elapsed_ns != cold.installed_monotonic_ns - cold.started_monotonic_ns
-            or not native.started_monotonic_ns
+            or not last_segment_end
             <= cold.started_monotonic_ns
             <= trace.actions[0].started_monotonic_ns
             or not cold.installed_monotonic_ns
@@ -630,6 +720,9 @@ def evaluate_member(base: Path) -> CompletedMember:
             or not cold.state.cold_organizer_ready
             or cold.state.foundation_sha256 != native.foundation_sha256
             or cold.state.tick_content_hash != markers.get(cold.state.durable_tick)
+            or (
+                segment == "completed" and cold.state.world_hash != terminal.markers[-1].world_after
+            )
             or not any(
                 a.sequence == cold.readiness_sequence
                 and a.action == "status"
@@ -650,14 +743,7 @@ def evaluate_member(base: Path) -> CompletedMember:
             raise ValueError(
                 "actual process-cold installation differs from release, controls or mode"
             )
-        if not captured and any(
-            a.completed_monotonic_ns - a.started_monotonic_ns
-            > policy.maximum_focused_control_seconds * 10**9
-            for a in trace.actions
-            if a.action
-            not in ("step", "reopen", "status", "play", "open_organizer", "dismiss_splash", "quit")
-        ):
-            raise ValueError("normal focused control exceeded its phase ceiling")
+        last_segment_end = trace.actions[-1].completed_monotonic_ns
         if captured:
             interval: FixedPeriodMemory | CombinedMemoryEvidence
             if prefix:
@@ -816,7 +902,19 @@ def evaluate_member(base: Path) -> CompletedMember:
                 "functional-terminal-reopened.json",
             )
         )
-        if functional != _json(store, "functional-terminal-reopened.json", CONTROLS_RECORD_BYTES):
+        reopened_terminal = validate_terminal(
+            _json(store, "functional-terminal-reopened.json", CONTROLS_RECORD_BYTES),
+            native.campaign,
+            native.requested_periods,
+        )
+        final_stage = stages[declaration.periods]
+        if (
+            final_stage.facts.get("campaign_identity") != list(terminal.identity[:5])
+            or final_stage.facts.get("markers")
+            != [[m.tick, m.hash, m.hash] for m in terminal.markers]
+            or final_stage.facts.get("world_hash") != terminal.markers[-1].world_after
+            or reopened_terminal != terminal
+        ):
             raise ValueError("restored terminal differs from actual original")
     artifacts = [run.reference("evidence/" + name) for name in sorted(names)]
     if walk:
@@ -850,6 +948,11 @@ def verify_retirement(run: Path) -> RetiredMember:
     evidence = PrivateEvidence(run / "evidence")
     _, mode = storage.native_path(evidence.path)
     backup = PrivateEvidence(run / "backup")
+    if any(
+        os.path.lexists(evidence.path / name)
+        for name in ("native-run-incomplete.json", "failure-summary.json")
+    ):
+        raise ValueError("failed native owner cannot continue as a retired member")
     completed = evidence.reference("completed-member.json")
     member = CompletedMember.model_validate(
         strict_json_bytes(evidence.read_reference(completed, CONTROLS_RECORD_BYTES))
@@ -877,8 +980,11 @@ def verify_retirement(run: Path) -> RetiredMember:
     from tools.devtools.wayne_qualification_backup import Run, verify_retained_backup
 
     owner = tuple(evidence.read_reference(evidence.reference("ownership")).decode().splitlines())
+    _, declaration = declaration_for(evidence.path)
     verify_retained_backup(
-        Run(storage.MEDIA_CHECKOUT, evidence.path, owner, original["campaign"], original["period"]),
+        Run(
+            storage.MEDIA_CHECKOUT, evidence.path, owner, declaration.campaign, declaration.periods
+        ),
         record,
         original,
     )
@@ -938,11 +1044,46 @@ def verify_completed(evidence: PrivateEvidence) -> CompletedMember:
         _json(evidence, "completed-member.json", CONTROLS_RECORD_BYTES)
     )
     member = evaluate_member(evidence.path)
-    if old.model_dump(mode="json") != member.model_dump(mode="json"):
+    if storage.canonical_json(old.model_dump(mode="json")) != storage.canonical_json(
+        member.model_dump(mode="json")
+    ):
         raise ValueError("substituted member evidence differs from original completion")
     for ref in member.evidence:
         PrivateEvidence(evidence.path.parent).verify(ref)
     return member
+
+
+def verify_retired_predecessor(profile: str, release: Reference) -> None:
+    run = storage.member_run(profile, "normal_play")
+    evidence = PrivateEvidence(run / "evidence")
+    if declaration_for(evidence.path)[1].release != release:
+        raise ValueError("retired normal member differs from the selected release")
+    verify_completed(evidence)
+    verify_retirement(run)
+
+
+def operator_next(profile: str) -> str:
+    """Select the next create-only operation under the actual national lease."""
+    control = storage.held_native_lock(storage.MEDIA_CHECKOUT)
+    if os.path.lexists(control / "active"):
+        raise ValueError("active national ownership requires exact recovery")
+    reference, _ = storage.verify_release_inputs(storage.MEDIA_CHECKOUT, profile)
+    normal, memory = (storage.member_run(profile, mode) for mode in MODES)
+    if not os.path.lexists(normal.parent):
+        return "normal_play"
+    if normal.parent.resolve(strict=True) != normal.parent:
+        raise ValueError("redirected workload directory")
+    if not os.path.lexists(normal):
+        raise ValueError("partial workload directory without its admitted normal member")
+    if not os.path.lexists(memory):
+        if os.path.lexists(normal.parent / "qualification.json"):
+            raise ValueError("published qualification exists without its memory member")
+        verify_retired_predecessor(profile, reference)
+        return "memory_capture"
+    if declaration_for(normal / "evidence")[1].release != reference:
+        raise ValueError("recorded pair differs from the selected release")
+    publish_pair(profile)
+    return "complete"
 
 
 def qualify_pair(profile: str) -> dict[str, object]:
@@ -974,28 +1115,34 @@ def qualify_pair(profile: str) -> dict[str, object]:
         "enjoyment_status": "unqualified",
     }
 
-    if (pair_store.path / "qualification.json").exists():
+    if os.path.lexists(pair_store.path / "qualification.json"):
         existing = _json(pair_store, "qualification.json")
-        if existing != result:
+        if storage.canonical_json(existing) != storage.canonical_json(result):
             raise ValueError(
                 "published qualification differs from the two authenticated member bundles"
             )
     return result
 
 
+def publish_pair(profile: str) -> None:
+    packet = qualify_pair(profile)
+    pair = PrivateEvidence(storage.member_run(profile, "normal_play").parent)
+    if not os.path.lexists(pair.path / "qualification.json"):
+        pair.publish_json("qualification.json", packet)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "operation", choices=("path", "admit", "member", "verify-member", "qualify")
+        "operation", choices=("path", "admit", "member", "verify-member", "qualify", "next")
     )
     parser.add_argument("workload", choices=("smoke-01", "walk-01"))
     args = parser.parse_args()
     try:
         if args.operation == "qualify":
-            packet = qualify_pair(args.workload)
-            pair = PrivateEvidence(storage.member_run(args.workload, "normal_play").parent)
-            if not (pair.path / "qualification.json").exists():
-                pair.publish_json("qualification.json", packet)
+            publish_pair(args.workload)
+        elif args.operation == "next":
+            print(operator_next(args.workload))
         else:
             mode = measurement_mode(os.environ.get("BABYLON_NATIVE_MEASUREMENT_MODE"))
             evidence = PrivateEvidence(storage.member_run(args.workload, mode) / "evidence")

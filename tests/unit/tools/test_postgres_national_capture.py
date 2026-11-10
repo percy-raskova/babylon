@@ -952,9 +952,12 @@ def test_native_handoff_binary_admission_refuses_before_process_pair(tmp_path, f
     assert "private-reader" not in result.stdout + result.stderr
 
 
-@pytest.mark.parametrize("fail_retirement", [True, False])
+@pytest.mark.parametrize(
+    "initial,fail_retirement",
+    [("normal_play", True), ("normal_play", False), ("memory_capture", False), ("complete", False)],
+)
 def test_pair_operator_completes_each_retirement_before_next_run_and_final_evaluation(
-    tmp_path, fail_retirement
+    tmp_path, initial, fail_retirement
 ):
     import os
     import subprocess
@@ -965,6 +968,13 @@ def test_pair_operator_completes_each_retirement_before_next_run_and_final_evalu
     folder.mkdir()
     # Subprocess boundaries replace real fixture operations in this ordering test.
     for name, body in {
+        "git": 'printf "%s\\n" "$PAIR_FIXTURE/common"',
+        "flock": """shift 4
+            [ "$1" = "$PAIR_FIXTURE/common/babylon-national-storage/runner.lock" ]
+            if [ -f "$PAIR_FIXTURE/memory_capture/retired" ]; then
+                echo final >> "$PAIR_FIXTURE/calls"
+                echo complete
+            else echo "$INITIAL_MEMBER"; fi""",
         "mise": """case "$9" in
         path) printf '%s/%s\\n' "$PAIR_FIXTURE" "$BABYLON_NATIVE_MEASUREMENT_MODE";;
         qualify) echo final >> "$PAIR_FIXTURE/calls";; *) exit 93;; esac""",
@@ -975,23 +985,35 @@ def test_pair_operator_completes_each_retirement_before_next_run_and_final_evalu
         elif [ "$2" = --wayne-backup-retire ] && [ "$3" = same-campaign ]; then
             echo "retire $BABYLON_NATIVE_MEASUREMENT_MODE" >> "$PAIR_FIXTURE/calls"
             [ "$FAIL_RETIRE" = no ] || exit 64
+            touch "$BABYLON_STORAGE_REPORT_DIRECTORY/retired"
         else exit 92; fi""",
     }.items():
         exe = folder / name
         exe.write_text("#!/bin/sh\nset -eu\n" + body + "\n")
         exe.chmod(0o700)
+    if initial in ("complete", "memory_capture"):
+        (tmp_path / "normal_play").mkdir()
+        (tmp_path / "normal_play/retired").write_bytes(b"preserve first member")
+    if initial == "complete":
+        (tmp_path / "memory_capture").mkdir()
+        (tmp_path / "memory_capture/retired").touch()
     result = subprocess.run(
         ["/bin/bash", str(script), "--wayne-native-pair", "smoke-01"],
         env={
             "PATH": str(folder) + ":" + os.defpath,
             "PAIR_FIXTURE": str(tmp_path),
             "FAIL_RETIRE": "yes" if fail_retirement else "no",
+            "INITIAL_MEMBER": initial,
         },
         capture_output=True,
     )
-    expected = ["create normal_play", "retire normal_play"]
+    expected = ["create normal_play", "retire normal_play"] if initial == "normal_play" else []
+    if initial != "complete" and not fail_retirement:
+        expected += ["create memory_capture", "retire memory_capture"]
     if not fail_retirement:
-        expected += ["create memory_capture", "retire memory_capture", "final"]
+        expected += ["final"]
+    if initial != "normal_play":
+        assert (tmp_path / "normal_play/retired").read_bytes() == b"preserve first member"
     assert (tmp_path / "calls").read_text().splitlines() == expected
     assert result.returncode == (64 if fail_retirement else 0)
 

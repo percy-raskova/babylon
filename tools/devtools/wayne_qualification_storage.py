@@ -25,6 +25,7 @@ from psycopg import sql
 from pydantic import BaseModel, ConfigDict, Field
 from tools.devtools.national_storage_qualification import (
     MeasurementMode,
+    Sha256,
     measurement_mode,
     selected_policy,
     strict_json_bytes,
@@ -133,6 +134,10 @@ def verify_transcript(raw: bytes, status: int) -> None:
         raise StorageRefusal(
             "exact ignored test, single passing transcript and exit status required"
         )
+
+
+def canonical_json(record: object) -> bytes:
+    return (json.dumps(record, allow_nan=False, sort_keys=True) + "\n").encode()
 
 
 def _path_components(name: str) -> list[str]:
@@ -248,9 +253,7 @@ class PrivateEvidence:
             os.close(fd)
 
     def publish_json(self, name: str, record: object) -> Reference:
-        return self.publish(
-            name, (json.dumps(record, allow_nan=False, sort_keys=True) + "\n").encode()
-        )
+        return self.publish(name, canonical_json(record))
 
 
 def _acl(fd: int, name: str) -> list[tuple[int, int, int]]:
@@ -637,6 +640,10 @@ class DiskReservation(Record):
 
 
 class NativeExpectations(Record):
+    source_sha256: Sha256
+    inputs_sha256: Sha256
+    host_context_sha256: Sha256
+    image_id: Annotated[str, Field(pattern=r"^sha256:[0-9a-f]{64}$")]
     source_head: Annotated[str, Field(pattern="^[0-9a-f]{40}$")]
     capacity: Reference
     runtime: Reference
@@ -673,6 +680,48 @@ def _native_expectations(
     ):
         raise StorageRefusal("released native expectations name a different capacity or product")
     return ref, packet
+
+
+def released_inventory(root: Path) -> tuple[str, str]:
+    """Hash the two manifests using the same source closure and preset order as capture."""
+    result = subprocess.run(
+        [
+            "bash",
+            "-euo",
+            "pipefail",
+            "-c",
+            'die() { echo "$*" >&2; exit 2; }; source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"; national_release_inventory',
+        ],
+        cwd=root,
+        env={**os.environ, "REPO_ROOT": str(root)},
+        capture_output=True,
+        timeout=120,
+        check=False,
+    )
+    hashes = result.stdout.decode("ascii").splitlines()
+    if (
+        result.returncode
+        or len(hashes) != 2
+        or not all(re.fullmatch(r"[0-9a-f]{64}  -", row) for row in hashes)
+    ):
+        raise StorageRefusal("cannot enumerate both native release manifests")
+    return hashes[0][:64], hashes[1][:64]
+
+
+def verify_release_inputs(root: Path, profile: str) -> tuple[Reference, NativeExpectations]:
+    parent = PrivateEvidence(RUN_PARENT)
+    reference, expected = _native_expectations(parent, profile)
+    if (
+        expected.capacity != parent.reference(f"{profile}-capacity.json")
+        or expected.image_id != os.environ.get("BABYLON_POSTGRES_IMAGE_ID")
+        or expected.host_context_sha256 != os.environ.get("BABYLON_WAYNE_HOST_CONTEXT_SHA256")
+        or expected.host_context_sha256 != parent.reference("host-process-context.json").sha256
+        or expected.source_head != exact_output(["git", "-C", str(root), "rev-parse", "HEAD"])
+        or exact_output(["git", "-C", str(root), "status", "--porcelain"])
+        or (expected.source_sha256, expected.inputs_sha256) != released_inventory(root)
+    ):
+        raise StorageRefusal("released native source, inputs, host context or image differ")
+    return reference, expected
 
 
 def _exec_bytes(args: list[str], *, timeout: int = 15) -> bytes:
@@ -820,6 +869,8 @@ def reserve_run(profile: str, focus: str, periods: str, evidence: Path, root: Pa
     # The released operator supplies measured capacity values before each run.
     # statvfs already accounts for all previously retained primary and evidence bytes.
     if not RUN_PARENT.is_dir():
+        if profile != "sql-01":
+            raise StorageRefusal("native admission requires its existing private release directory")
         with pinned_ancestry(RUN_PARENT.parent):
             RUN_PARENT.mkdir(mode=0o700)
     with pinned_ancestry(RUN_PARENT) as parent_pins:
@@ -836,7 +887,7 @@ def reserve_run(profile: str, focus: str, periods: str, evidence: Path, root: Pa
         reservation_ref = reservations.reference(f"{profile}-capacity.json")
         native_ref = None
         if profile != "sql-01":
-            native_ref, expected = _native_expectations(reservations, profile)
+            native_ref, expected = verify_release_inputs(root, profile)
             if head != expected.source_head or reservation_ref != expected.capacity:
                 raise StorageRefusal("released native source HEAD or capacity reference differs")
         reservation = read_typed(reservations, reservation_ref, DiskReservation)
@@ -862,9 +913,10 @@ def reserve_run(profile: str, focus: str, periods: str, evidence: Path, root: Pa
             raise StorageRefusal("available media space is below the measured run reservation")
         if profile != "sql-01":
             if run.name == "memory_capture":
-                from tools.devtools.national_native_pair import verify_retirement
+                from tools.devtools.national_native_pair import verify_retired_predecessor
 
-                verify_retirement(member_run(profile, "normal_play"))
+                assert native_ref is not None
+                verify_retired_predecessor(profile, native_ref)
             run.parent.mkdir(mode=0o700, exist_ok=True)
             with pinned_ancestry(run.parent) as workload_pins:
                 if (

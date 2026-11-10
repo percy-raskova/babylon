@@ -734,7 +734,22 @@ its longer walk separately. Supply exactly these external release inputs:
 The expectation path is ``smoke-01-native-expectations.json`` or
 ``walk-01-native-expectations.json``. Each record binds the clean source head,
 measured capacity and actual installed runtime, client and material-audit
-program references for that workload.
+program references for that workload. Set its ``image_id`` and
+``host_context_sha256`` to the two external image and host pins above.
+From the clean released checkout, generate the source and input manifest
+digests with the same enumeration that reservation and capture use.
+
+.. code-block:: bash
+
+    mise exec -- uv run --frozen python - <<'PY'
+    from pathlib import Path
+    from tools.devtools.wayne_qualification_storage import released_inventory
+
+    print(*released_inventory(Path.cwd()), sep="\n")
+    PY
+
+Use the first digest for ``source_sha256`` and the second for ``inputs_sha256``.
+Reservation checks both against the clean checkout before creating a member.
 
 Have ``PostgreSQL`` 17+ ``pg_restore`` on PATH. Retained recovery validation uses it
 only to list and fully read custom dumps offline, without a database connection.
@@ -764,6 +779,11 @@ and all member custody. ``sql-01`` remains unpaired at the parent's ``sql-01``.
 Earlier namespaces and artifacts remain unchanged. A failed member stops the
 command and retains failure/ownership evidence for exact recovery.
 
+If the command stops after clean normal retirement and before memory creation,
+rerun it with the same workload and release inputs. It verifies the normal member's
+completion and retirement under the common lease before admitting memory.
+With two retired members it checks and publishes the final pair.
+
 Reread the retained pair through the public evaluator:
 
 .. code-block:: bash
@@ -775,7 +795,7 @@ Select ``walk-01`` to check that workload. This evaluator returns the
 validated packet. The pair operator's ``qualify`` action publishes
 ``<workload>/qualification.json`` with create-only publication and equality
 checking on replay. Its module is ``tools.devtools.national_native_pair`` with
-``{path,admit,member,verify-member,qualify} {smoke-01,walk-01}``.
+``{path,admit,member,verify-member,next,qualify} {smoke-01,walk-01}``.
 ``member_run(profile, mode)`` and ``native_path(evidence)`` resolve the layout.
 Use the paired shell producer for the full operation.
 

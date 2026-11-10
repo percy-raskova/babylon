@@ -17,14 +17,22 @@ from contextlib import ExitStack, closing, contextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Annotated, Any, BinaryIO, Literal
 from uuid import UUID
 
 import psycopg
 from psycopg import sql
 from psycopg.abc import QueryNoTemplate
+from pydantic import Field, StrictBool, StrictInt, StrictStr, ValidationError
 from tools.devtools import wayne_qualification_storage as storage
-from tools.devtools.national_storage_qualification import strict_json_bytes
+from tools.devtools.national_native_evidence import OriginalDecision
+from tools.devtools.national_storage_qualification import (
+    FrozenRecord,
+    Nonnegative,
+    Positive,
+    Sha256,
+    strict_json_bytes,
+)
 
 Refusal = storage.StorageRefusal
 Connection = psycopg.Connection[Any]
@@ -186,7 +194,7 @@ def _campaign_rows(conn: Connection, campaign: str) -> dict[str, list[str]]:
 def _markers(rows: list[tuple[Any, ...]], period: int, foundation: str) -> list[dict[str, Any]]:
     # IdentifiedMaterialTick::decode in babylon-tick/material_replay.rs.
     domain = b"babylon.material-tick-content.v3\0"
-    if [row[0] for row in rows] != list(range(1, period + 1)):
+    if len(rows) != period or any(row[0] != tick for tick, row in enumerate(rows, 1)):
         raise Refusal("durable markers and checkpoints are not contiguous through terminal")
     entries = []
     previous = None
@@ -196,7 +204,13 @@ def _markers(rows: list[tuple[Any, ...]], period: int, foundation: str) -> list[
             for v in (digest, envelope, checkpoint)
         ):
             raise Refusal("commit marker, envelope or checkpoint digest is incomplete")
-        raw = bytes.fromhex(encoded or "")
+        if (
+            not isinstance(encoded, str)
+            or not re.fullmatch("[a-f0-9]+", encoded)
+            or len(encoded) != 2 * (len(domain) + 12 + 224)
+        ):
+            raise Refusal("commit marker does not match its canonical material identity")
+        raw = bytes.fromhex(encoded)
         header = domain + struct.pack(">IQ", 3, tick)
         if (
             not raw.startswith(header)
@@ -290,6 +304,136 @@ def _archive_terminal(
     }
 
 
+class TerminalMarker(FrozenRecord):
+    tick: Positive
+    hash: Sha256
+    envelope: Sha256
+    identity: StrictStr
+    checkpoint: Sha256
+    world_before: Sha256
+    world_after: Sha256
+    receipt: Sha256
+
+
+class ArchiveConsumption(FrozenRecord):
+    tick: Positive
+    marker: Sha256
+    batch: Sha256
+    worker: Sha256
+    knowledge: Sha256
+
+
+class DrainedArchive(FrozenRecord):
+    terminal_marker: Sha256
+    watermark: Nonnegative
+    pending: Nonnegative
+    receipts: tuple[ArchiveConsumption, ...]
+
+
+class TerminalDatabase(FrozenRecord):
+    owner: StrictStr
+    encoding: Literal["UTF8"]
+    collate: StrictStr
+    ctype: StrictStr
+    provider: Literal["b"]
+    locale: Literal["C.UTF-8"]
+    icu_rules: None
+    connection_limit: StrictInt
+    acl_default: StrictBool
+    allows_connections: StrictBool
+    acl: tuple[tuple[StrictStr, StrictStr | None, StrictStr, StrictBool], ...]
+    settings: tuple[tuple[StrictStr | None, StrictStr], ...]
+
+
+AuthorityRow = tuple[
+    StrictStr,
+    StrictStr,
+    StrictStr,
+    StrictStr,
+    StrictStr | None,
+    StrictStr | None,
+    StrictStr | None,
+    StrictBool | None,
+]
+
+
+class FunctionalTerminal(FrozenRecord):
+    campaign: StrictStr
+    period: Positive
+    identity: tuple[
+        StrictStr, Literal["national-world"], Sha256, Sha256, Sha256, Sha256, Sha256, Sha256, Sha256
+    ]
+    markers: Annotated[tuple[TerminalMarker, ...], Field(min_length=1)]
+    archive_terminal: DrainedArchive
+    organizer_decisions: tuple[OriginalDecision, ...]
+    campaign_rows_sha256: dict[StrictStr, tuple[Sha256, ...]]
+    database: TerminalDatabase
+    object_authority: tuple[AuthorityRow, ...]
+
+
+def validate_terminal(raw: object, campaign: str, period: int) -> FunctionalTerminal:
+    """Replay the repeatable-read terminal contract without a database connection."""
+    try:
+        terminal = FunctionalTerminal.model_validate(raw)
+    except ValidationError as error:
+        raise Refusal("functional terminal has incomplete or malformed SQL evidence") from error
+    if (terminal.campaign, terminal.identity[0], terminal.period) != (campaign, campaign, period):
+        raise Refusal("functional terminal campaign or period differs")
+    chain = _markers(
+        [(m.tick, m.hash, m.envelope, m.identity, m.checkpoint) for m in terminal.markers],
+        period,
+        terminal.identity[3],
+    )
+    if chain != [m.model_dump() for m in terminal.markers]:
+        raise Refusal("terminal world or receipt differs from its canonical material identity")
+    archive = terminal.archive_terminal
+    if (archive.terminal_marker, archive.pending, archive.watermark) != (
+        terminal.markers[-1].hash,
+        0,
+        period,
+    ) or [(r.tick, r.marker) for r in archive.receipts] != [
+        (m.tick, m.hash) for m in terminal.markers
+    ]:
+        raise Refusal("Archive is not drained through each terminal marker")
+    tables = terminal.campaign_rows_sha256
+    if not REQUIRED_ROWS <= {name for name, rows in tables.items() if rows} or any(
+        tuple(sorted(rows)) != rows for rows in tables.values()
+    ):
+        raise Refusal("terminal lacks required ordered campaign-table row hashes")
+    per_period = (
+        "babylon_state.tick_commit",
+        "babylon_state.material_tick_v3",
+        "babylon_state.checkpoint_manifest",
+        "babylon_state.archive_dirty_receipt_v1",
+        "babylon_meta.archive_receipt_consumption_v1",
+        "babylon_meta.archive_tick_knowledge_v3",
+    )
+    if any(len(tables.get(name, ())) != period for name in per_period):
+        raise Refusal("terminal campaign row counts differ from the drained marker chain")
+    authority = terminal.object_authority
+    if not {"babylon_meta", "babylon_ref", "babylon_state", "public"} <= {
+        ns for kind, ns, ident, *_ in authority if kind == "schema" and not ident
+    } or not tables.keys() <= {
+        f"{ns}.{ident}" for kind, ns, ident, *_ in authority if kind in ("r", "p")
+    }:
+        raise Refusal("terminal object authority lacks campaign tables or schemas")
+    grants = {
+        (ident, grantee)
+        for kind, ns, ident, _, _, grantee, privilege, grantable in authority
+        if kind == "v" and ns == "public" and privilege == "SELECT" and grantable is False
+    }
+    if (
+        not {
+            ("v_observer_material_foundation_v1", "babylon_observer"),
+            ("v_observer_material_state_v1", "babylon_observer"),
+            ("v_archive_revision_known_v2", "babylon_reader"),
+        }
+        <= grants
+    ):
+        raise Refusal("terminal object authority lacks its foundation and restricted probe grants")
+    return terminal
+
+
 def terminal_snapshot(connection: Connection, campaign: str, period: int) -> dict[str, Any]:
     from tools.devtools.national_native_pair import terminal_decisions
 
@@ -328,7 +472,7 @@ def terminal_snapshot(connection: Connection, campaign: str, period: int) -> dic
             (campaign,),
         ).fetchall()
         chain = _markers(markers, period, identity[0][3])
-        return {
+        packet = {
             "campaign": campaign,
             "period": period,
             "identity": list(identity[0]),
@@ -339,6 +483,8 @@ def terminal_snapshot(connection: Connection, campaign: str, period: int) -> dic
             "database": _catalog(connection),
             "object_authority": _object_authority(connection),
         }
+        validate_terminal(packet, campaign, period)
+        return packet
 
 
 @dataclass(frozen=True)
@@ -2306,7 +2452,11 @@ def _restore_clients(
     probes = _retained_record(backup, "original-probes.json")
     restored_probes = _retained_record(backup, "restored-probes.json")
     for observed in (probes, restored_probes):
-        if set(observed) != {"reader", "observer"}:
+        if (
+            not isinstance(observed, dict)
+            or set(observed) != {"reader", "observer"}
+            or not all(isinstance(probe, dict) for probe in observed.values())
+        ):
             raise Refusal("restricted probe evidence must include the reader and observer")
         _require_wayne_reader_revision(observed["reader"].get("allowed"), run.period)
     if probes != restored_probes:
@@ -2419,19 +2569,23 @@ def verify_retained_backup(run: Run, record: dict[str, Any], original: dict[str,
         raise Refusal("recovery seal differs from the complete restore and physical archive roster")
     for ref in references:
         backup.verify(ref)
-    closed = {**original, "database": {**original["database"], "allows_connections": False}}
-    if (
-        any(
-            _retained_record(backup, name) != original
-            for name in (
-                "original-terminal.json",
-                "pre-checkpoint-terminal.json",
-                "post-physical-terminal.json",
-            )
-        )
-        or _retained_record(backup, "restored-terminal.json") != closed
+    source = validate_terminal(original, run.campaign, run.period)
+    for name in (
+        "original-terminal.json",
+        "pre-checkpoint-terminal.json",
+        "post-physical-terminal.json",
+        "restored-terminal.json",
     ):
-        raise Refusal("restored or physical checkpoint state differs from the original")
+        retained = validate_terminal(_retained_record(backup, name), run.campaign, run.period)
+        expected = source
+        if name == "restored-terminal.json":
+            expected = source.model_copy(
+                update={
+                    "database": source.database.model_copy(update={"allows_connections": False})
+                }
+            )
+        if retained != expected:
+            raise Refusal("restored or physical checkpoint state differs from the original")
     held = _restore_clients(run, backup, refs, original)
     physical = _retained_record(evidence, "physical.json")
     raw = _retained_record(backup, "pre-stop-physical.json")

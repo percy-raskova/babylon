@@ -1099,3 +1099,60 @@ def test_walk_uses_all_three_cold_segments_and_only_constructs_requested_sampler
     else:
         assert [p for _, p in captures] == [0, None, 10]
         assert all(s[3:] == (900, "designed memory monitor") for s in segments)
+
+
+@pytest.mark.parametrize(
+    "mode,focused,remaining", [("normal_play", 60, 1), ("memory_capture", 900, 721)]
+)
+def test_terminal_archive_retries_share_deadline_and_return_uses_mode_limit(
+    tmp_path, monkeypatch, mode, focused, remaining
+):
+    state = SimpleNamespace(
+        durable_tick=10, viewed_tick=10, selected_subject="partner", selected_report_id="report"
+    )
+    calls = []
+
+    def perform(action, limit):
+        calls.append((action, limit))
+        if action == "previous_period":
+            return SimpleNamespace(durable_tick=10, viewed_tick=9)
+        return state
+
+    replies = iter((("refused", "control_stale_or_unavailable"), ("applied", None)))
+
+    def exchange(action, limit):
+        calls.append((action, limit))
+        event, reason = next(replies)
+        return SimpleNamespace(event=event, reason=reason)
+
+    # The acknowledged report completed at t=10. The second attempt starts
+    # 179 seconds later, irrespective of time spent inside earlier requests.
+    now = iter((11, 189))
+    monkeypatch.setattr(
+        runner, "time", SimpleNamespace(monotonic=lambda: next(now), sleep=lambda _: None)
+    )
+    channel = SimpleNamespace(
+        state=state,
+        records=[SimpleNamespace(completed_monotonic_ns=10**10)],
+        perform=perform,
+        _exchange=exchange,
+    )
+    walk = SimpleNamespace(
+        run=SimpleNamespace(
+            mode=mode,
+            timeout=900,
+            policy=SimpleNamespace(
+                maximum_archive_catchup_seconds=180, maximum_focused_control_seconds=60
+            ),
+        ),
+        draft=lambda: {},
+        capture_stage=lambda *_: {},
+        frame=lambda *_: None,
+    )
+    runner.WayneWalk.terminal_navigation(walk, channel, tmp_path)
+    assert calls[-4:] == [
+        ("archive_report", focused),
+        ("open_archive_evidence", min(899 if mode == "memory_capture" else 179, focused)),
+        ("open_archive_evidence", remaining),
+        ("open_organizer", focused),
+    ]

@@ -443,6 +443,7 @@ national_verify_disposable() {
 national_source_paths() {
   local crate dependency
   for crate in babylon-client babylon-persistence babylon-tick babylon-material-circuit babylon-bsl babylon-graph babylon-kernel babylon-practice-contract; do
+    [ -f "rust/crates/$crate/Cargo.toml" ] || return 1
     # This is the measured target's complete current local dependency closure.
     # A new local dependency requires an explicit roster update, never omission.
     while IFS= read -r dependency; do
@@ -451,7 +452,7 @@ national_source_paths() {
         *) die "unrecorded local native dependency: $dependency" ;;
       esac
     done < <(sed -n 's/.*path = "\.\.\/\([^"/]*\)".*/\1/p' "rust/crates/$crate/Cargo.toml")
-    find "rust/crates/$crate" -type f -print0
+    find "rust/crates/$crate" -type f -print0 || return 1
   done
   find rust -maxdepth 1 -type f -print0
   if [ -d rust/.cargo ]; then find rust/.cargo -type f -print0; fi
@@ -462,7 +463,7 @@ national_source_paths() {
     if [ -f "$configuration" ]; then printf '%s\0' "$configuration"; fi
   done
   find content -type f -print0
-  national_input_paths
+  national_input_paths || return 1
   printf '%s\0' tools/run_rust_postgres.sh tools/postgres_national_lifecycle.sh tools/run_observer_session.py tools/devtools/national_windowed_qualification.py tools/devtools/national_native_evidence.py tools/devtools/national_native_pair.py tools/devtools/national_native_runner.py tools/devtools/national_game_memory.py tools/devtools/wayne_qualification_storage.py tools/devtools/wayne_qualification_backup.py tools/devtools/national_storage_qualification.py tools/devtools/national_storage_snapshot.py tools/devtools/national_storage_relations.sql
 }
 
@@ -481,6 +482,15 @@ national_input_paths() {
   [ "$count" -eq 15 ] || return 1
 }
 
+national_input_manifest() {
+  (cd "$REPO_ROOT" && national_input_paths | xargs -0 sha256sum)
+}
+
+national_release_inventory() {
+  national_source_manifest | sha256sum || return 1
+  national_input_manifest | sha256sum
+}
+
 national_reproducibility() {
   local cache="$REPO_ROOT/reports/test-results/national-storage-runner/reproducibility" digest temporary destination
   case "${BABYLON_WAYNE_PROFILE:-}" in
@@ -489,7 +499,7 @@ national_reproducibility() {
   mkdir -p "$cache"
   national_source_manifest > "$BABYLON_STORAGE_REPORT_DIRECTORY/source-before.sha256"
   national_input_paths > "$BABYLON_STORAGE_REPORT_DIRECTORY/input-paths.nul"
-  (cd "$REPO_ROOT" && xargs -0 sha256sum < "$BABYLON_STORAGE_REPORT_DIRECTORY/input-paths.nul") > "$BABYLON_STORAGE_REPORT_DIRECTORY/inputs.sha256"
+  national_input_manifest > "$BABYLON_STORAGE_REPORT_DIRECTORY/inputs.sha256"
   # Immutable, content-addressed inputs are retained once; no database backups.
   digest="$(sha256sum "$BABYLON_STORAGE_REPORT_DIRECTORY/inputs.sha256")"; digest="${digest%% *}"
   destination="$cache/inputs-$digest.tar.gz"

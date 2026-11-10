@@ -12,6 +12,19 @@ readonly CARGO_BUILD_JOBS
 # after it proves exact ownership of the random-canary container below.
 readonly TEST_HARNESS_ACK="I_UNDERSTAND_THIS_DISPOSABLE_RUNTIME_DROPS_ITS_SCRATCH_DATABASES_AND_ROLES"
 readonly LIVE_FOCUS="${BABYLON_POSTGRES_LIVE_FOCUS-runtime_smoke}"
+die() {
+  printf 'run_rust_postgres: %s\n' "$*" >&2
+  exit 2
+}
+
+if [ "${1:-}" = --wayne-pair-next-locked ]; then
+  [ "$#" = 2 ] || die "expected native workload"
+  # shellcheck source=tools/postgres_national_lifecycle.sh disable=SC1091
+  source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"
+  national_existing_game_guard
+  cd "$REPO_ROOT"
+  exec mise exec -- uv run --frozen python -m tools.devtools.national_native_pair next "$2"
+fi
 if [ "${1:-}" = --help ]; then
   printf '%s\n' 'Run an isolated PostgreSQL test with BABYLON_POSTGRES_LIVE_FOCUS.' \
     'For paired native qualification use --wayne-native-pair {smoke-01|walk-01}.' \
@@ -27,7 +40,18 @@ if [ "${1:-}" = --wayne-native-pair ]; then
   export BABYLON_NATIONAL_CAPTURE_MODE=playable-aid BABYLON_NATIONAL_STORAGE_PERIODS="$periods"
   export BABYLON_NATIONAL_STORAGE_QUALIFICATION=report-only BABYLON_NATIONAL_SUCCESS_DISPOSITION=retain-for-native BABYLON_NATIONAL_QUALIFY_TIMING=0
   cd "$REPO_ROOT"
+  # shellcheck source=tools/postgres_national_lifecycle.sh disable=SC1091
+  source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"
+  control="$(national_control_directory)"
+  umask 077
+  mkdir -p -- "$control"
+  next_member() {
+    flock --nonblock --close --conflict-exit-code 75 "$control/runner.lock" bash "$REPO_ROOT/tools/run_rust_postgres.sh" --wayne-pair-next-locked "$1"
+  }
+  next="$(next_member "$2")"
+  case "$next" in normal_play|memory_capture) ;; complete) exit 0;; *) die "invalid pair disposition";; esac
   for mode in normal_play memory_capture; do
+    if [ "$mode" = normal_play ] && [ "$next" = memory_capture ]; then continue; fi
     export BABYLON_NATIVE_MEASUREMENT_MODE="$mode"
     BABYLON_STORAGE_REPORT_DIRECTORY="$(mise exec -- uv run --frozen python -m tools.devtools.national_native_pair path "$2")"
     export BABYLON_STORAGE_REPORT_DIRECTORY
@@ -35,14 +59,14 @@ if [ "${1:-}" = --wayne-native-pair ]; then
     campaign="$(cat "$BABYLON_STORAGE_REPORT_DIRECTORY/campaign")"
     bash "$REPO_ROOT/tools/run_rust_postgres.sh" --wayne-backup-retire "$campaign"
   done
-  exec mise exec -- uv run --frozen python -m tools.devtools.national_native_pair qualify "$2"
+  final="$(next_member "$2")"
+  [ "$final" = complete ] || die "both retired native members required for final evaluation"
+  exit 0
 fi
 if [ "${1:-}" = --wayne-backup-retire ] || [ "${1:-}" = --national-native-open ] || [ "${1:-}" = --national-native-lock-held ]; then
   # The hook does not follow external sources; this helper calls die indirectly.
   # shellcheck source=tools/postgres_national_lifecycle.sh disable=SC1091
   source "$REPO_ROOT/tools/postgres_national_lifecycle.sh"
-  # shellcheck disable=SC2329
-  die() { printf 'run_rust_postgres: %s\n' "$*" >&2; exit 2; }
   national_native_open "$@"
   exit "$?"
 fi
@@ -59,11 +83,6 @@ VOLUME=""
 OWNED=0
 CONTAINER_ID=""
 RUNTIME_TEMPLATE_CREATED=0
-
-die() {
-  printf 'run_rust_postgres: %s\n' "$*" >&2
-  exit 2
-}
 
 emit_runtime_logs() {
   [ "$OWNED" -eq 1 ] || return 0

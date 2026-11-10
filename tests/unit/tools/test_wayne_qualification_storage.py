@@ -901,7 +901,27 @@ def native_release(tmp_path, monkeypatch):
             "measured_basis": "synthetic capacity",
         },
     )
-    packet = {"source_head": head, "capacity": capacity.model_dump()}
+    host = {
+        "tag": "wayne-host-process-context-v2",
+        "mount_namespace": "mnt:[1]",
+        "init_start_ticks": 1,
+        "init_comm": "systemd",
+        "boot_id": "00000000-0000-0000-0000-000000000002",
+        "pid_namespace": "pid:[2]",
+        "proc_mount_id": 3,
+        "operator_uid": 1000,
+    }
+    host_ref = store.publish_json("host-process-context.json", host)
+    monkeypatch.setenv("BABYLON_WAYNE_HOST_CONTEXT_SHA256", host_ref.sha256)
+    packet = {
+        "source_head": head,
+        "capacity": capacity.model_dump(),
+        "source_sha256": "d" * 64,
+        "inputs_sha256": "e" * 64,
+        "image_id": "sha256:" + "1" * 64,
+        "host_context_sha256": host_ref.sha256,
+    }
+    monkeypatch.setattr(storage, "released_inventory", lambda _: ("d" * 64, "e" * 64))
     for slot, name in (
         ("runtime", "babylon-runtime"),
         ("client", "babylon-client"),
@@ -950,11 +970,32 @@ def native_release(tmp_path, monkeypatch):
     return root, store, packet
 
 
-@pytest.mark.parametrize("change", ["head", "capacity", "missing", "malformed", "wrong-product"])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "head",
+        "capacity",
+        "missing",
+        "malformed",
+        "wrong-product",
+        "inventory",
+        "inputs",
+        "image",
+        "host",
+    ],
+)
 def test_native_reserve_refuses_before_profile_creation(native_release, monkeypatch, change):
     root, store, packet = native_release
     if change == "head":
         packet["source_head"] = "b" * 40
+    elif change in ("inventory", "inputs", "host", "image"):
+        key = {
+            "inventory": "source_sha256",
+            "inputs": "inputs_sha256",
+            "host": "host_context_sha256",
+            "image": "image_id",
+        }[change]
+        packet[key] = "sha256:" + "f" * 64 if change == "image" else "f" * 64
     elif change == "capacity":
         (store.path / "smoke-01-capacity.json").write_bytes(
             (store.path / "smoke-01-capacity.json").read_bytes().replace(b"synthetic", b"refreshed")

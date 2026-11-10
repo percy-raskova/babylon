@@ -2290,6 +2290,34 @@ def recovery_admission_bytes(tmp_path_factory: pytest.TempPathFactory) -> dict[s
     }
 
 
+def altered_probes(data: bytes, name: str, fault: str) -> bytes:
+    probes = json.loads(data)
+    row = probes["reader"]["allowed"]
+    if fault == "missing-revision":
+        del row[2:]
+    elif fault == "missing-row":
+        del probes["reader"]["allowed"]
+    elif fault == "malformed-row":
+        probes["reader"]["allowed"] = None
+    elif fault in ("late-period", "negative-period", "boolean-period"):
+        row[2] = {"late-period": 3, "negative-period": -1, "boolean-period": True}[fault]
+    elif fault in ("invalid-revision", "invalid-body"):
+        row[3 if fault == "invalid-revision" else 4] = "g" * 64
+    elif name == "restored-probes.json" and fault == "restored-null":
+        probes = None
+    elif name == "restored-probes.json" and fault == "restored-null-reader":
+        probes["reader"] = None
+    elif name == "restored-probes.json" and fault == "restored-period-float":
+        assert type(row[2]) is int and row[2] == 2
+        row[2] = 2.0
+    elif name == "restored-probes.json" and fault == "restored-period-boolean":
+        assert type(row[2]) is int and row[2] == 1
+        row[2] = True
+    else:
+        return data
+    return json.dumps(probes).encode()
+
+
 @pytest.mark.parametrize(
     ("fault", "reason"),
     [
@@ -2302,6 +2330,8 @@ def recovery_admission_bytes(tmp_path_factory: pytest.TempPathFactory) -> dict[s
         ("late-period", "Wayne reader revision"),
         ("negative-period", "Wayne reader revision"),
         ("boolean-period", "Wayne reader revision"),
+        ("restored-null", "restricted probe evidence"),
+        ("restored-null-reader", "restricted probe evidence"),
         ("restored-period-float", "Wayne reader revision"),
         ("restored-period-boolean", "Wayne reader revision"),
         ("invalid-revision", "Wayne reader revision"),
@@ -2337,27 +2367,7 @@ def test_checksum_consistent_logical_recovery_refuses_incomplete_observations(
         if name == "restore-list.txt" and fault == "different-listing":
             data = data.replace(b"tick_commit test", b"wrong_table test")
         if name in ("original-probes.json", "restored-probes.json"):
-            probes = json.loads(data)
-            row = probes["reader"]["allowed"]
-            if fault == "missing-revision":
-                del row[2:]
-            elif fault == "missing-row":
-                del probes["reader"]["allowed"]
-            elif fault == "malformed-row":
-                probes["reader"]["allowed"] = None
-            elif fault in ("late-period", "negative-period", "boolean-period"):
-                row[2] = {"late-period": 3, "negative-period": -1, "boolean-period": True}[fault]
-            elif fault in ("invalid-revision", "invalid-body"):
-                row[3 if fault == "invalid-revision" else 4] = "g" * 64
-            elif name == "restored-probes.json" and fault == "restored-period-float":
-                assert type(row[2]) is int and row[2] == 2
-                row[2] = 2.0
-            elif name == "restored-probes.json" and fault == "restored-period-boolean":
-                assert type(row[2]) is int and row[2] == 1
-                row[2] = True
-            else:
-                return publish(store, name, data)
-            data = json.dumps(probes).encode()
+            data = altered_probes(data, name, fault)
         return publish(store, name, data)
 
     monkeypatch.setattr(storage.PrivateEvidence, "publish", acquire)

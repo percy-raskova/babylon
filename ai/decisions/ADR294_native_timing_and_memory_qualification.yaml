@@ -62,19 +62,22 @@ ADR294_native_timing_and_memory_qualification:
     release inputs are BABYLON_POSTGRES_IMAGE_ID (cached full image ID),
     BABYLON_WAYNE_HOST_CONTEXT_SHA256 (actual host-context digest), and
     BABYLON_WAYNE_NATIVE_EXPECTATION_REF (serialized per-workload Reference JSON,
-    not a filename). Reference has path, bytes and sha256. Source creates the
+    not a filename). The expectation pins source_sha256 and inputs_sha256 from
+    the clean release inventory plus image_id and host_context_sha256.
+    Reference has path, bytes and sha256. Source creates the
     fresh shared UUID and P0 evidence. PostgreSQL 17+ pg_restore on PATH is an
     executable prerequisite for offline custom-dump listing and complete reading,
     not a fourth release record. These offline checks never connect to a database.
 
     tools.devtools.national_native_pair exposes path, admit, member, verify-member
-    and qualify for smoke-01 or walk-01. The canonical resolver member_run(profile,
+    plus next and qualify for smoke-01 or walk-01. The canonical resolver member_run(profile,
     mode), with native_path(evidence), places each member at qualification-10/
     <workload>/<mode>/ and evidence below evidence/. The unpaired sql-01 remains
     qualification-10/sql-01. Earlier namespaces remain unchanged.
     tools.devtools.national_storage_qualification --qualify-native-pair <workload>
     rereads the canonical pair. qualify_pair(profile) returns the packet. The
-    pair operator's qualify action publishes qualification.json with create-only
+    pair operator resumes at a verified retirement under the common lease. Its
+    final join publishes qualification.json with create-only
     publication and equality checking on replay.
   current_contract: |
     NativeRunEvidence v5 uses native_material_timing_recovery_join_v5 and explicit

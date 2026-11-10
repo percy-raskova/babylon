@@ -1121,10 +1121,10 @@ class NativeRun:
             self.verify_sources()
             self.reports()
             return 0
+        cold_start = time.monotonic_ns()
         capture = self.capture() if self.mode == "memory_capture" else None
         reauthenticate_native_owner(self.root, self.directory, self.owner_fields)
         self.stage = "windowed_new_play_recovery"
-        cold_start = time.monotonic_ns()
         self.segment = "smoke"
 
         def started(runtime: subprocess.Popen[bytes], client: subprocess.Popen[bytes]) -> None:
@@ -1950,8 +1950,13 @@ class WayneWalk:
         if rid is None:
             raise NativeRunRefusal("terminal partner report has no actual evidence identity")
         self.frame(channel, socket_root, "answer-report")
-        channel.perform("archive_report", self.run.timeout)
-        deadline = time.monotonic() + (
+        focused = (
+            self.run.policy.maximum_focused_control_seconds
+            if self.run.mode == "normal_play"
+            else self.run.timeout
+        )
+        channel.perform("archive_report", focused)
+        deadline = channel.records[-1].completed_monotonic_ns / 10**9 + (
             self.run.policy.maximum_archive_catchup_seconds
             if self.run.mode == "normal_play"
             else self.run.timeout
@@ -1960,14 +1965,14 @@ class WayneWalk:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise NativeRunRefusal("restricted Archive report did not become ready")
-            reply = channel._exchange("open_archive_evidence", remaining)
+            reply = channel._exchange("open_archive_evidence", min(remaining, focused))
             if reply.event == "applied" and reply.reason is None:
                 break
             if reply.event != "refused" or reply.reason != "control_stale_or_unavailable":
                 raise NativeRunRefusal("ordinary Archive evidence request refused")
             time.sleep(min(POLL_SECONDS, remaining))
         self.frame(channel, socket_root, "archive-report")
-        after = channel.perform("open_organizer", self.run.timeout)
+        after = channel.perform("open_organizer", focused)
         if (
             after.viewed_tick,
             after.durable_tick,

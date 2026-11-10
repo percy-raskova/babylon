@@ -117,6 +117,18 @@ class Artifact(NativeRecord):
     sha256: Sha256
 
 
+class OriginalDecision(NativeRecord):
+    period: Positive
+    consumed: Positive
+    nonce: StrictStr
+    command_hex: StrictStr
+    commitment_hex: StrictStr
+    commitment_id: Sha256
+    marker: Sha256
+    receipt_id: Sha256
+    receipt_hex: StrictStr
+
+
 class NativeRunEvidence(NativeRecord):
     version: Literal[5]
     scope: Literal["native_material_timing_recovery_join_v5"]

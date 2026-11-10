@@ -223,7 +223,7 @@ pub fn read_archive_boundary(
 
 pub struct ReadSession {
     scope: Scope,
-    observer: Config,
+    observer: ObserverEconomyReader,
     archive: SemanticArchiveReader,
     cursor: Option<ObserverMaterialCursor>,
     audit: MaterialAudit,
@@ -234,14 +234,14 @@ impl ReadSession {
     /// Refuses invalid scope or credentials outside the confined reader contract.
     pub fn new(scope: Scope, observer: &Config, archive_dsn: &str) -> Result<Self, Refusal> {
         let audit = MaterialAudit::new(scope).map_err(Refusal::Material)?;
-        // Admit authority before any costly capture. This capability is dropped;
-        // the cursor cannot extend the foundation graph's lifetime.
-        ObserverEconomyReader::connect(observer, ObserverVisibility::FullObserver)
+        // Keep the admission owner with the incremental cursor, which holds only
+        // a weak reference. Every read still authenticates database authority.
+        let observer = ObserverEconomyReader::connect(observer, ObserverVisibility::FullObserver)
             .map_err(|_| Refusal::Reader)?;
         let archive = SemanticArchiveReader::from_dsn(archive_dsn).map_err(|_| Refusal::Archive)?;
         Ok(Self {
             scope,
-            observer: observer.clone(),
+            observer,
             archive,
             cursor: None,
             audit,
@@ -262,18 +262,14 @@ impl ReadSession {
         let archive = archive_facts(&self.archive, self.scope, request, &tail)?;
         let started = Instant::now();
         let mut cursor = self.cursor.clone();
-        let observation = {
-            let reader =
-                ObserverEconomyReader::connect(&self.observer, ObserverVisibility::FullObserver)
-                    .map_err(|_| Refusal::Reader)?;
-            reader
-                .committed_material_observation_with_cursor(
-                    self.scope.campaign,
-                    request.tick,
-                    &mut cursor,
-                )
-                .map_err(|_| Refusal::Reader)?
-        };
+        let observation = self
+            .observer
+            .committed_material_observation_with_cursor(
+                self.scope.campaign,
+                request.tick,
+                &mut cursor,
+            )
+            .map_err(|_| Refusal::Reader)?;
         let production_read_elapsed_ns = nanos(started.elapsed().as_nanos())?;
         if super::hex(
             observation

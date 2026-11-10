@@ -62,6 +62,7 @@ fn native_source_view_keeps_foreign_scope_and_suppressed_jobs_without_michigan_l
     let mut opening = source.view().opening.clone();
     for site in &mut opening.sites {
         site.source = EconomicSiteSource::Designed {
+            source_ownership: None,
             key: "bounded-projection-control".into(),
         };
     }

@@ -1,4 +1,6 @@
 //! Material actor identities; location, technical function and ownership are separate.
+use super::grain::RepresentativeHouseholdKey;
+use super::grain::RepresentativeWorkplaceKey;
 
 use super::NationalGamePolicyError;
 use crate::national_cohorts::CohortKey;
@@ -17,7 +19,7 @@ pub const NATIONAL_SCENARIO_ID: &str = "economy/national-world";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResidentWorkplaceSource {
     Qcew(CohortKey),
-    Representative(super::grain::RepresentativeWorkplaceKey),
+    Representative(RepresentativeWorkplaceKey),
     HouseholdEnterprise,
     ResidentEmployerFallback,
 }
@@ -171,7 +173,7 @@ fn target(
 
 /// Construct the current representative from the complete occupied source key.
 pub(super) fn representative_workplace(
-    key: super::grain::RepresentativeWorkplaceKey,
+    key: RepresentativeWorkplaceKey,
     location: EconomicLocation,
 ) -> ResidentWorkplaceTarget {
     let mut bytes = b"NationalRepresentativeWorkplaceV1\0".to_vec();
@@ -194,7 +196,7 @@ pub(super) fn representative_workplace(
 }
 /// Household ownership is fixed by catchment, position and captured budget kind.
 pub(super) fn representative_household(
-    key: super::grain::RepresentativeHouseholdKey,
+    key: RepresentativeHouseholdKey,
 ) -> (FinalDemandPrincipalId, StableElementKey) {
     let mut bytes = b"NationalRepresentativeHouseholdV1\0".to_vec();
     bytes.extend_from_slice(&key.catchment.0);

@@ -5,6 +5,7 @@ use crate::economic_catalog::{
     HouseholdTemplateId, MerchantSeed, OpeningCommodityStock, ProcessInstallation,
 };
 use crate::national_counties::NationalCountyReference;
+use crate::national_economy::grain::OpeningHouseholdAllocation;
 use crate::national_economy::ResidentWorkplaceSource;
 use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_resident_allocation::{ResidentAttendanceMode, ResidentWorkplaceAllocation};
@@ -32,7 +33,7 @@ pub(super) fn domestic(
     builder: &mut Builder<'_>,
     counties: &NationalCountyReference,
     allocation: &ResidentWorkplaceAllocation,
-    household_budgets: &[crate::national_economy::grain::OpeningHouseholdAllocation],
+    household_budgets: &[OpeningHouseholdAllocation],
 ) -> Result<()> {
     domestic_households(builder, household_budgets)?;
     for row in &allocation.workplaces {
@@ -56,15 +57,18 @@ pub(super) fn domestic(
         let source = match &target.source {
             ResidentWorkplaceSource::Qcew(key) => EconomicSiteSource::Qcew(*key),
             ResidentWorkplaceSource::Representative(_) => EconomicSiteSource::Designed {
+                source_ownership: Some(target.ownership),
                 key: format!(
                     "representative-{}",
                     national_economy::identity::base32(&target.site_id.as_bytes())
                 ),
             },
             ResidentWorkplaceSource::HouseholdEnterprise => EconomicSiteSource::Designed {
+                source_ownership: None,
                 key: "household-enterprise".into(),
             },
             ResidentWorkplaceSource::ResidentEmployerFallback => EconomicSiteSource::Designed {
+                source_ownership: None,
                 key: format!("resident-employer-{}", target.ownership.source_code()),
             },
         };
@@ -496,7 +500,7 @@ pub(super) fn validate_people(opening: &EconomicOpening) -> Result<()> {
 
 fn domestic_households(
     builder: &mut Builder<'_>,
-    household_budgets: &[crate::national_economy::grain::OpeningHouseholdAllocation],
+    household_budgets: &[OpeningHouseholdAllocation],
 ) -> Result<()> {
     for household in household_budgets {
         let budget = &household.margins;

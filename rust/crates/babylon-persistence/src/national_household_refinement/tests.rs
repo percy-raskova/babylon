@@ -14,6 +14,7 @@ use crate::national_cohorts;
 use crate::national_cohorts::WorkplaceCohortKey;
 use crate::national_counties;
 use crate::national_economy;
+use crate::national_economy::grain::HouseholdIncidence;
 use crate::national_economy::GameCommodity;
 use crate::national_economy::NationalAidCapture;
 use crate::national_economy::NationalGamePolicy;
@@ -186,7 +187,7 @@ fn collective_residence_keeps_positive_people_without_fabricating_households() {
 
 struct NationalFixture {
     catchments: usize,
-    household_incidence: Vec<crate::national_economy::grain::HouseholdIncidence>,
+    household_incidence: Vec<HouseholdIncidence>,
     source_counties: usize,
     opening: EconomicOpening,
     aid: NationalAidCapture,
@@ -912,8 +913,15 @@ fn expected_workplace_key(site: &EconomicSiteSeed) -> WorkplaceCohortKey {
     match &site.source {
         EconomicSiteSource::Qcew(key) => WorkplaceCohortKey::source_backed(*key, site.location)
             .expect("the admitted QCEW site keeps its source county"),
-        EconomicSiteSource::MichiganSector { .. } | EconomicSiteSource::Designed { .. } => {
+        EconomicSiteSource::MichiganSector { .. } => {
             WorkplaceCohortKey::designed(site.location, site.function)
+        }
+        EconomicSiteSource::Designed {
+            source_ownership, ..
+        } => {
+            let mut key = WorkplaceCohortKey::designed(site.location, site.function);
+            key.ownership = *source_ownership;
+            key
         }
     }
 }

@@ -1,4 +1,5 @@
 //! Source-only durable capture and deterministic importer selection.
+use crate::national_economy::grain::NationalGenerationWitness;
 
 use super::national::NationalSources;
 use super::{
@@ -248,9 +249,7 @@ impl CapturedEconomicCatalog {
     }
     /// The source-authenticated generation witness is regenerated once on admission.
     #[must_use]
-    pub fn national_generation(
-        &self,
-    ) -> Option<&crate::national_economy::grain::NationalGenerationWitness> {
+    pub fn national_generation(&self) -> Option<&NationalGenerationWitness> {
         match &self.sources {
             CapturedSources::National(sources) => Some(&sources.representation),
             CapturedSources::Michigan(_) => None,

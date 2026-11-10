@@ -1013,8 +1013,15 @@ fn workplace_key(site: &EconomicSiteSeed) -> Result<WorkplaceCohortKey, Consolid
     match &site.source {
         EconomicSiteSource::Qcew(key) => WorkplaceCohortKey::source_backed(*key, site.location)
             .ok_or(ConsolidationError::SourceRoster),
-        EconomicSiteSource::MichiganSector { .. } | EconomicSiteSource::Designed { .. } => {
+        EconomicSiteSource::MichiganSector { .. } => {
             Ok(WorkplaceCohortKey::designed(site.location, site.function))
+        }
+        EconomicSiteSource::Designed {
+            source_ownership, ..
+        } => {
+            let mut key = WorkplaceCohortKey::designed(site.location, site.function);
+            key.ownership = *source_ownership;
+            Ok(key)
         }
     }
 }

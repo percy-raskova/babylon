@@ -4,6 +4,9 @@ use super::{
     GamePrice, GameProfile, GameRecipe, GameServiceReach, NationalGamePolicy,
     NationalGamePolicyError,
 };
+use crate::national_economy::grain::NationalGrainError;
+use crate::national_economy::grain::NationalGrainGeneration;
+use crate::national_economy::grain::NationalGrainPolicy;
 use crate::national_transport::CargoClass;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::EconomicFunction;
@@ -688,12 +691,10 @@ struct RawGrain {
     access_capacity: String,
     capacity_refinement: String,
 }
-fn grain(raw: &RawGrain) -> Result<crate::national_economy::grain::NationalGrainPolicy, Error> {
+fn grain(raw: &RawGrain) -> Result<NationalGrainPolicy, Error> {
     use babylon_kernel::geography::CountyGeoid;
     if raw.generation != "state_faf_reserve_positions" {
-        return Err(Error::Grain(
-            crate::national_economy::grain::NationalGrainError::UnsupportedGeneration,
-        ));
+        return Err(Error::Grain(NationalGrainError::UnsupportedGeneration));
     }
     if raw.evidence_class != "Designed"
         || raw.hub_selection != "largest_observed_population_then_geoid"
@@ -716,9 +717,8 @@ fn grain(raw: &RawGrain) -> Result<crate::national_economy::grain::NationalGrain
     {
         return Err(Error::Profile("protected national counties".into()));
     }
-    Ok(crate::national_economy::grain::NationalGrainPolicy {
-        generation:
-            crate::national_economy::grain::NationalGrainGeneration::StateFafReservePositions,
+    Ok(NationalGrainPolicy {
+        generation: NationalGrainGeneration::StateFafReservePositions,
         protected_counties,
     })
 }

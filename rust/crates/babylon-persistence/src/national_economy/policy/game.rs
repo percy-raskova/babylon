@@ -1,4 +1,6 @@
 //! Leaf implementation for the parent module; public paths stay on the parent.
+use crate::national_economy::grain::NationalGrainError;
+use crate::national_economy::grain::NationalGrainPolicy;
 
 use super::admission;
 use babylon_practice_contract::OrganizerSharingBasis;
@@ -19,7 +21,7 @@ use std::fmt::Result as FmtResult;
 /// One current policy decoded from captured bytes, independent of source paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NationalGamePolicy {
-    pub grain: crate::national_economy::grain::NationalGrainPolicy,
+    pub grain: NationalGrainPolicy,
     pub source_digest: [u8; 32],
     pub period_days: u64,
     pub work_hours_per_person: u64,
@@ -150,7 +152,7 @@ pub struct ResidentOpeningCounts {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NationalGamePolicyError {
-    Grain(crate::national_economy::grain::NationalGrainError),
+    Grain(NationalGrainError),
     Syntax,
     Bounds,
     Evidence,

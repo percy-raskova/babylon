@@ -3,6 +3,7 @@ use super::{Builder, NationalOpeningError, Result};
 use crate::economic_catalog::EconomicHouseholdSeed;
 use crate::national_household_allocation::HouseholdBudgetKey;
 use crate::national_household_time_allocation::NationalHouseholdTimeAllocation;
+use babylon_material_circuit::AccountId;
 
 use babylon_kernel::economic_location::EconomicLocation;
 use babylon_material_circuit::{
@@ -110,7 +111,7 @@ fn eligibility(
     } else {
         if builder
             .domain(
-                babylon_material_circuit::AccountId::Household(household.principal_id),
+                AccountId::Household(household.principal_id),
                 household.location,
             )?
             .representative

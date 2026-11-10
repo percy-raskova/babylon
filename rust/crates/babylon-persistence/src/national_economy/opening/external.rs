@@ -99,6 +99,7 @@ fn add(
             context,
             subject.clone(),
             EconomicSiteSource::Designed {
+                source_ownership: None,
                 key: "bounded-counterpart-function".into(),
             },
             format!("{label}: {}", function.source_key()),

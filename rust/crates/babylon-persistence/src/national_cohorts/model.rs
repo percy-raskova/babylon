@@ -19,7 +19,8 @@ pub struct WorkplaceCohortKey {
     pub location: EconomicLocation,
     /// Technical function, independent of ownership.
     pub function: EconomicFunction,
-    /// Source ownership axis; `None` is an explicitly Designed workplace.
+    /// Retained source ownership axis; `None` means unspecified ownership.
+    /// An ownership label does not make a Designed live representative Observed.
     pub ownership: Option<QcewOwnership>,
 }
 impl WorkplaceCohortKey {

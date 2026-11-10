@@ -1,6 +1,7 @@
 //! Finite supplier preferences, recurring household purchases and funded offers.
 use super::routes::Network;
 use super::{actors, ActorContext, Builder, NationalOpeningError, Result};
+use crate::national_economy::grain::FinancialDomainId;
 
 use crate::economic_catalog::{MerchantSeed, ResidentStaffingPoolSeed};
 use crate::national_transport::CargoClass;
@@ -766,9 +767,7 @@ pub(super) fn payroll(builder: &Builder<'_>, site: SiteId) -> Result<Currency> {
     )
 }
 
-fn representative_retailers(
-    builder: &Builder<'_>,
-) -> Result<BTreeMap<crate::national_economy::grain::FinancialDomainId, SiteId>> {
+fn representative_retailers(builder: &Builder<'_>) -> Result<BTreeMap<FinancialDomainId, SiteId>> {
     let mut domain_retailers = BTreeMap::new();
     for actor in builder
         .actors

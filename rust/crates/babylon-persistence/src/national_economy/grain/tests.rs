@@ -1,5 +1,31 @@
 //! Finite membership and real-opening contracts.
-use super::*;
+use super::build;
+use super::build::Screen;
+use super::{
+    CatchmentId, CatchmentReason, ContributionDestination, FinancialDomainId,
+    NationalGenerationWitness, NationalGrainError, OpeningProductiveEndowment,
+    RepresentativeHouseholdKey, ReservePosition,
+};
+use crate::economic_catalog::CapturedEconomicCatalog;
+use crate::economic_catalog::CompiledEconomicOpening;
+use crate::economic_catalog::EconomicOpening;
+use crate::national_economy::{NationalAidCapture, NationalGamePolicy};
+use crate::national_household_allocation::HouseholdBudgetKey;
+use crate::national_resident_allocation::{
+    self, AssignedResidentWorkplace, ResidentAttendanceMode, ResidentWorkplaceAllocation,
+};
+use babylon_bsl::structural_verbs::CollectingSink;
+use babylon_kernel::currency::Currency;
+use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
+use babylon_kernel::economic_location::EconomicLocation;
+use babylon_kernel::geography::CountyGeoid;
+use babylon_kernel::replay::ReplaySeed;
+use babylon_kernel::replay::ReplaySessionId;
+use babylon_material_circuit::AccountId;
+use babylon_practice_contract::OrderedPracticeActionBatch;
+use babylon_tick::replay_session::ReplayCommitDisposition;
+use std::cmp::Ordering;
+use std::collections::{BTreeMap, BTreeSet};
 fn row(county: &str, demand: u128) -> Screen {
     Screen {
         county: CountyGeoid::try_from(county).expect("valid county"),
@@ -12,7 +38,7 @@ fn row(county: &str, demand: u128) -> Screen {
 #[test]
 fn capacity_refinement_preserves_independent_twenty_billion_gram_lanes() {
     let rows = vec![row("26001", 1_000_000), row("26003", 1_000_000)];
-    let bins = refine(rows, 1, 1, 14_000).expect("finite screening");
+    let bins = build::refine(rows, 1, 1, 14_000).expect("finite screening");
     assert_eq!(
         bins.len(),
         2,
@@ -20,7 +46,7 @@ fn capacity_refinement_preserves_independent_twenty_billion_gram_lanes() {
     );
     for bin in bins {
         assert_eq!(
-            bound(&bin, 1, 1, 14_000).expect("bound").3,
+            build::bound(&bin, 1, 1, 14_000).expect("bound").3,
             14_000_000_000,
             "individual lanes remain sufficient"
         );
@@ -28,7 +54,7 @@ fn capacity_refinement_preserves_independent_twenty_billion_gram_lanes() {
 }
 #[test]
 fn existing_excess_is_kept_as_its_own_scarce_singleton() {
-    let bins = refine(vec![row("26001", 2_000_000), row("26003", 1)], 1, 1, 14_000)
+    let bins = build::refine(vec![row("26001", 2_000_000), row("26003", 1)], 1, 1, 14_000)
         .expect("finite screening");
     assert_eq!(
         bins.len(),
@@ -49,8 +75,8 @@ fn insertion_order_cannot_change_subdivisions_or_membership_identity() {
         row("26005", 500_000),
         row("26007", 500_000),
     ];
-    let forward = refine(rows.clone(), 1, 1, 14_000).expect("screen");
-    let reverse = refine(rows.into_iter().rev().collect(), 1, 1, 14_000).expect("screen");
+    let forward = build::refine(rows.clone(), 1, 1, 14_000).expect("screen");
+    let reverse = build::refine(rows.into_iter().rev().collect(), 1, 1, 14_000).expect("screen");
     assert_eq!(
         forward, reverse,
         "canonical first-fit is insertion-order independent"
@@ -58,7 +84,7 @@ fn insertion_order_cannot_change_subdivisions_or_membership_identity() {
     let cells: Vec<_> = forward
         .into_iter()
         .map(|bin| {
-            cell(
+            build::cell(
                 &bin,
                 *b"26",
                 *b"261",
@@ -325,7 +351,7 @@ fn real_opening_preserves_source_controls_and_separates_same_hub_domains() {
     }
     assert_independent_balances(&opening.opening, &mut compiled);
     eprintln!("grain census: cells={} protected={} special={} source_sites={} sites={} households={} members={} routes={} service_connections={}",witness.catchments.len(),witness.catchments.iter().filter(|c|c.reason==CatchmentReason::Protected).count(),witness.catchments.iter().filter(|c|matches!(c.reason,CatchmentReason::SpecialAccess|CatchmentReason::NotSingleRoadAccess)).count(),witness.source_incidence.len(),opening.opening.sites.len(),opening.opening.households.len(),opening.opening.staffing.iter().map(|s|s.members.len()).sum::<usize>(),opening.opening.logistics.supplier_routes.len(),opening.opening.policies.service_connections.len());
-    let captured = crate::economic_catalog::CapturedEconomicCatalog::capture(
+    let captured = CapturedEconomicCatalog::capture(
         crate::economic_catalog::national_catalog_input(),
         Some(&opening.opening),
     )
@@ -337,17 +363,14 @@ fn real_opening_preserves_source_controls_and_separates_same_hub_domains() {
     );
     let foundation = captured
         .create_foundation(
-            babylon_kernel::replay::ReplaySessionId::try_from("grain-live-period")
-                .expect("session identity"),
-            babylon_kernel::replay::ReplaySeed::new(319),
+            ReplaySessionId::try_from("grain-live-period").expect("session identity"),
+            ReplaySeed::new(319),
         )
         .expect("ordinary replay foundation");
     let mut session = foundation.into_session().expect("replay session");
-    let actions = babylon_practice_contract::OrderedPracticeActionBatch::empty(
-        session.graph_session().session_identity().clone(),
-        1,
-    )
-    .expect("empty practice batch");
+    let actions =
+        OrderedPracticeActionBatch::empty(session.graph_session().session_identity().clone(), 1)
+            .expect("empty practice batch");
     let next = session
         .prepare_advance(&actions)
         .expect("ordinary coarse replay period");
@@ -357,11 +380,9 @@ fn real_opening_preserves_source_controls_and_separates_same_hub_domains() {
         "detached advance has not published"
     );
     session
-        .commit_prepared_and_publish(
-            &mut babylon_bsl::structural_verbs::CollectingSink::default(),
-            next,
-            |_, _| Ok::<_, ()>(babylon_tick::replay_session::ReplayCommitDisposition::Committed),
-        )
+        .commit_prepared_and_publish(&mut CollectingSink::default(), next, |_, _| {
+            Ok::<_, ()>(ReplayCommitDisposition::Committed)
+        })
         .expect("publish atomic period");
     assert_eq!(
         session.completed_tick(),
@@ -370,10 +391,7 @@ fn real_opening_preserves_source_controls_and_separates_same_hub_domains() {
     );
 }
 
-fn assert_independent_balances(
-    opening: &crate::economic_catalog::EconomicOpening,
-    compiled: &mut crate::economic_catalog::CompiledEconomicOpening,
-) {
+fn assert_independent_balances(opening: &EconomicOpening, compiled: &mut CompiledEconomicOpening) {
     use babylon_material_circuit::{CashTransferPurpose, CircuitAccounting, MonetaryError};
     let taxes: BTreeMap<_, _> = opening
         .institutions
@@ -520,9 +538,9 @@ fn assert_final_membership(witness: &NationalGenerationWitness) {
                 } else {
                     match (u128::from(row.controls.reserve) * force).cmp(&(reserve * county_force))
                     {
-                        std::cmp::Ordering::Less => ReservePosition::BelowCellReserveRate,
-                        std::cmp::Ordering::Equal => ReservePosition::AtCellReserveRate,
-                        std::cmp::Ordering::Greater => ReservePosition::AboveCellReserveRate,
+                        Ordering::Less => ReservePosition::BelowCellReserveRate,
+                        Ordering::Equal => ReservePosition::AtCellReserveRate,
+                        Ordering::Greater => ReservePosition::AboveCellReserveRate,
                     }
                 };
                 assert_eq!(
@@ -577,7 +595,7 @@ fn incomplete_county_membership_is_refused_before_source_expansion() {
         counties: vec![],
     };
     assert_eq!(
-        capture_membership(
+        build::capture_membership(
             counties,
             crate::national_transport::national_transport_reference().expect("transport"),
             &source,

@@ -1,5 +1,6 @@
 //! Explicit budget and ownership opening assumptions, separate from source class.
 use super::{ActorContext, Builder, NationalOpeningError, Result};
+use crate::national_economy::grain::NationalGrainError;
 use crate::national_household_allocation::HouseholdBudgetKey;
 use babylon_kernel::currency::Currency;
 use babylon_kernel::economic_identity::{EconomicFunction, QcewOwnership};
@@ -298,7 +299,7 @@ fn private_claims(
     let recipients = private_owners
         .get(&location)
         .ok_or(NationalOpeningError::Grain(
-            crate::national_economy::grain::NationalGrainError::MissingOwnerBudget(location),
+            NationalGrainError::MissingOwnerBudget(location),
         ))?;
     let weights: Vec<_> = recipients.iter().map(|row| row.1).collect();
     let shares = crate::national_resident_allocation::apportion(total_shares, &weights)

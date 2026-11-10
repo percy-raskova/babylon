@@ -4,6 +4,7 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_persistence::economic_catalog::CapturedEconomicCatalog;
 use babylon_persistence::identity::CampaignId;
 use babylon_persistence::material_runtime::{DurableMaterialRuntime, MaterialRuntimeFoundation};
+use std::collections::BTreeSet;
 
 use postgres::{Config, NoTls};
 use std::fs;
@@ -146,7 +147,7 @@ fn capture_foundation() -> (MaterialRuntimeFoundation, [u8; 32]) {
         3_144,
         "complete source county coverage"
     );
-    let represented: std::collections::BTreeSet<_> = witness
+    let represented: BTreeSet<_> = witness
         .source_incidence
         .iter()
         .map(|i| i.destination_site)
@@ -171,8 +172,45 @@ fn capture_foundation() -> (MaterialRuntimeFoundation, [u8; 32]) {
         catalog.opening().sites.len() < 60_634,
         "actual principal reduction before relation expansion"
     );
-    // Three aid children partition retained parent budgets; they add no people.
-    assert_eq!(catalog.opening().households.len(), 15_696);
+    let mut represented_households: BTreeSet<_> = witness
+        .household_incidence
+        .iter()
+        .map(|incidence| incidence.destination)
+        .collect();
+    let aid = catalog
+        .national_aid_capture()
+        .expect("captured protected children");
+    for child in &aid.children {
+        assert!(
+            represented_households.contains(&child.parent),
+            "protected parent remains live"
+        );
+        assert!(
+            represented_households.insert(child.principal),
+            "each child is distinct"
+        );
+    }
+    let domestic_households: BTreeSet<_> = catalog
+        .opening()
+        .households
+        .iter()
+        .filter(|household| {
+            matches!(
+                household.location,
+                babylon_kernel::economic_location::EconomicLocation::County(_)
+            )
+        })
+        .map(|household| household.principal_id)
+        .collect();
+    assert_eq!(
+        domestic_households, represented_households,
+        "exact current household incidence"
+    );
+    assert_eq!(
+        catalog.opening().households.len(),
+        domestic_households.len() + 18,
+        "twelve external groups and six dependencies remain separate"
+    );
     let foundation = catalog
         .create_foundation(
             ReplaySessionId::try_from("national-save-growth-current17")

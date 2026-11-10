@@ -376,14 +376,18 @@ fn approach_terms(
     } else {
         text.push_str("Scheduled material resolution unavailable. Refresh before choosing aid.\n");
     }
-    let consent = match preview.receiving_consent {
+    let food_consent = match preview.receiving_consent {
         OrganizerGiftConsent::Accept => "accepted",
-        OrganizerGiftConsent::Refuse => "refused; gift unavailable",
+        OrganizerGiftConsent::Refuse => "refused",
+    };
+    let cash_consent = match preview.cash_receiving_consent {
+        OrganizerGiftConsent::Accept => "accepted",
+        OrganizerGiftConsent::Refuse => "refused",
     };
     if recipient.is_some() {
-        let _ = writeln!(text, "Current recipient receiving consent: {consent}; later practice needs a separate agreement.");
+        let _ = writeln!(text, "Current recipient receiving consent: food {food_consent}; cash {cash_consent}; later practice needs a separate agreement.");
     } else {
-        let _ = writeln!(text, "Current receiving consent is unverified; preview recorded {consent}. Refresh before choosing aid.");
+        let _ = writeln!(text, "Current receiving consent is unverified; preview recorded food {food_consent}; cash {cash_consent}. Refresh before choosing aid.");
     }
     text.push_str(&aid_terms(preview));
     text.push_str(if view.standing.authorized {
@@ -522,7 +526,7 @@ fn append_aid_constraints(text: &mut String, food: &OrganizerAidFoodPreview) {
         ),
     }
     match &food.transport {
-        OrganizerAidTransportPreview::Local => text.push_str("Local aid can reach the pantry in its dispatch period; own needs, cash and time still constrain fulfillment.\n"),
+        OrganizerAidTransportPreview::Local => text.push_str("Local food can reach the pantry in its dispatch period; the donor's own food needs and available household hours still constrain fulfillment.\n"),
         OrganizerAidTransportPreview::Routed { stages, .. } => {
             let earliest = stages.last().and_then(|stage| stage.departure_period.checked_add(u64::from(stage.travel_periods)));
             if let Some(period) = earliest { let _ = writeln!(text, "Earliest possible arrival: period {period}; not a delivery guarantee."); }
@@ -1963,6 +1967,99 @@ mod tests {
     }
 
     #[test]
+    fn aid_card_keeps_food_refusal_separate_from_available_cash_receiving() {
+        let mut view = view();
+        view.period = 0;
+        view.aid_options = aid_options();
+        view.aid_options[1].receiving_consent = OrganizerGiftConsent::Refuse;
+        let mut terms = aid_preview();
+        terms.receiving_consent = OrganizerGiftConsent::Refuse;
+        let client = OrganizerClient {
+            view: Some(view.clone()),
+            aid: vec![terms],
+            ..OrganizerClient::default()
+        };
+
+        assert!(
+            client.choice_available(OrganizerChoice::RemoteAid),
+            "accepted cash receiving keeps the mixed-consent choice available"
+        );
+        let text = client_approach(&client, &view, OrganizerChoice::RemoteAid);
+        assert!(
+            text.contains("Current recipient receiving consent: food refused; cash accepted"),
+            "{text}"
+        );
+        assert!(!text.contains("gift unavailable"), "{text}");
+        assert!(
+            text.contains("later practice needs a separate agreement"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn local_food_only_review_keeps_pantry_and_hours_independent_of_cash_funding() {
+        let mut view = view();
+        view.period = 0;
+        view.aid_options = aid_options();
+        let mut terms = aid_preview();
+        terms.kind = OrganizerAidKind::Local;
+        terms.recipient_actor_id = 94;
+        terms.funding = OrganizerAidFunding::Unavailable;
+        terms
+            .food
+            .as_mut()
+            .expect("the fixture carries food terms")
+            .transport = babylon_persistence::runtime_session::OrganizerAidTransportPreview::Local;
+        let client = OrganizerClient {
+            view: Some(view.clone()),
+            aid: vec![terms],
+            preview: Some(OrganizerPreview {
+                allocation: OrganizerAllocation::Aid {
+                    food_quantity: 1,
+                    cash_micros: 0,
+                },
+                choice: OrganizerChoice::LocalAid,
+                current_period: 0,
+                resolves_period: 1,
+                available_hours: 16,
+                required_hours: 0,
+                replaces_standing_work: false,
+                refusal: None,
+                observations: vec![],
+            }),
+            ..OrganizerClient::default()
+        };
+
+        assert!(
+            client.choice_available(OrganizerChoice::LocalAid),
+            "food receiving permits the food-only choice without cash funding"
+        );
+        let detail = client_approach(&client, &view, OrganizerChoice::LocalAid);
+        let review = review(&client, false, false, false);
+        assert!(
+            review.contains("Selected: 1 food parcels and $0"),
+            "{review}"
+        );
+        for text in [&detail, &review] {
+            assert!(text.contains("protected surplus: 8"), "{text}");
+            assert!(
+                text.contains("Fulfillment: 2 household hours per dispatched unit"),
+                "{text}"
+            );
+            assert!(text.contains("Cash funding unavailable"), "{text}");
+            assert!(
+                text.contains("Local food can reach the pantry in its dispatch period; the donor's own food needs and available household hours still constrain fulfillment"),
+                "{text}"
+            );
+            assert!(!text.contains("own needs, cash and time"), "{text}");
+        }
+        assert!(
+            review.contains("Partner participation is independent"),
+            "{review}"
+        );
+    }
+
+    #[test]
     fn aid_cards_show_selected_partner_dates_and_current_consent() {
         for (kind, selected, label, other_label) in [
             (
@@ -2006,7 +2103,7 @@ mod tests {
                 "{text}"
             );
             assert!(
-                text.contains("Current recipient receiving consent: accepted"),
+                text.contains("Current recipient receiving consent: food accepted; cash accepted"),
                 "{text}"
             );
             assert!(
@@ -2068,7 +2165,7 @@ mod tests {
         assert!(!stale.contains("protected surplus: 8"), "{stale}");
         assert!(!stale.contains(label), "{stale}");
         assert!(
-            !stale.contains("Current recipient receiving consent: accepted"),
+            !stale.contains("Current recipient receiving consent: food accepted; cash accepted"),
             "{stale}"
         );
 
@@ -2094,7 +2191,7 @@ mod tests {
         let refused = client_approach(&client, &view, OrganizerChoice::RemoteAid);
         assert!(refused.contains(label), "{refused}");
         assert!(
-            refused.contains("Current recipient receiving consent: refused; gift unavailable"),
+            refused.contains("Current recipient receiving consent: food refused; cash accepted"),
             "{refused}"
         );
         assert!(
@@ -2233,7 +2330,7 @@ mod tests {
             OrganizerChoice::RemoteAid,
         );
         assert!(
-            text.contains("Current recipient receiving consent: refused; gift unavailable"),
+            text.contains("Current recipient receiving consent: food refused; cash accepted"),
             "{text}"
         );
         assert!(!text.contains("remains in transit"), "{text}");

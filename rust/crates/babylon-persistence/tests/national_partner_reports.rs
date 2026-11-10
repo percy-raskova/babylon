@@ -3,6 +3,7 @@ use babylon_kernel::replay::{ReplaySeed, ReplaySessionId};
 use babylon_material_circuit::AccountId;
 use babylon_material_circuit::MaterialCatalog;
 use babylon_material_circuit::MaterialCircuitState;
+use babylon_material_circuit::SiteId;
 use babylon_material_circuit::{
     CircuitAccounting, FinalDemandPrincipalId, HouseholdTimeAccounting, HouseholdTimeBook,
 };
@@ -19,6 +20,132 @@ use babylon_tick::material_world::MaterialReceiptHandle;
 use babylon_tick::material_world::MaterialTickReceipts;
 use std::collections::BTreeSet;
 use uuid::Uuid;
+
+#[test]
+fn undisclosed_representative_stock_and_price_leave_local_disclosure_unchanged() {
+    use babylon_tick::material_world::MaterialWorldRegister;
+
+    let captured = CapturedEconomicCatalog::capture_national_campaign(
+        economic_catalog::national_catalog_input(),
+        CampaignId::from_uuid(Uuid::from_u128(0x0026_1631_7032)),
+    )
+    .expect("admitted current national opening");
+    let representatives = captured
+        .national_generation()
+        .expect("admitted generation witness")
+        .source_incidence
+        .iter()
+        .filter(|row| row.source_site != row.destination_site)
+        .map(|row| row.destination_site)
+        .collect::<BTreeSet<_>>();
+    let session = captured
+        .create_foundation(
+            ReplaySessionId::try_from("remote-representative-disclosure").expect("identity"),
+            ReplaySeed::new(319),
+        )
+        .expect("ordinary national foundation")
+        .into_session()
+        .expect("national session");
+    let original = session.material();
+    let mut state = original.state().clone();
+    mutate_representative_stock_and_quote(&mut state, &representatives);
+    let catalog = session.catalog();
+    let mut changed = MaterialWorldRegister::try_new(catalog, 0, state)
+        .expect("changed stock and price pass ordinary material admission")
+        .with_organizer(
+            catalog,
+            original
+                .organizer_config()
+                .expect("organizer config")
+                .clone(),
+            original.organizer_state().expect("organizer state").clone(),
+            original
+                .organizer_journal()
+                .expect("organizer journal")
+                .clone(),
+        )
+        .expect("authenticated organizer binding");
+    let resolver = session.graph_session().stable_resolver();
+    if let Some(venue) = original.public_venue() {
+        changed = changed
+            .with_public_venue(catalog, venue.clone(), Some(resolver))
+            .expect("same public venue binding");
+    }
+    if let Some(city_pd) = original.city_pd() {
+        changed = changed
+            .with_city_pd(catalog, city_pd.clone(), resolver)
+            .expect("same opponent binding");
+    }
+    assert_ne!(
+        original.digest(),
+        changed.digest(),
+        "full material identity must change"
+    );
+    let mut before = aid::material_disclosure(catalog, original, session.duration())
+        .expect("original disclosure");
+    let mut after = aid::material_disclosure(catalog, &changed, session.duration())
+        .expect("changed disclosure");
+    // Authentication of the entire world is not an actor's disclosed content.
+    before.body_scope.source = None;
+    after.body_scope.source = None;
+    assert_eq!(
+        before, after,
+        "remote account changes cannot disclose unrelated stock or prices"
+    );
+}
+
+fn mutate_representative_stock_and_quote(
+    state: &mut MaterialCircuitState,
+    representatives: &BTreeSet<SiteId>,
+) {
+    use babylon_kernel::currency::Currency;
+    use babylon_material_circuit::PricePolicy;
+
+    let CircuitAccounting::Monetary(economy) = &mut state.accounting else {
+        panic!("national monetary opening")
+    };
+    let recurring = economy.recurring.as_mut().expect("recurring economy");
+    let offer = recurring
+        .offers
+        .iter_mut()
+        .find(|offer| {
+            representatives.contains(&offer.site_id)
+                && state.inventory.iter().any(|row| {
+                    row.site_id == offer.site_id
+                        && row.good_id == offer.good_id
+                        && row.unit_id == offer.unit_id
+                        && row.quantity > 0
+                })
+                && matches!(offer.pricing, PricePolicy::Responsive { maximum, .. } if maximum > offer.unit_price)
+        })
+        .expect("actual generated background seller with stock and room to change quote");
+    let stock = state
+        .inventory
+        .iter_mut()
+        .find(|row| {
+            row.site_id == offer.site_id
+                && row.good_id == offer.good_id
+                && row.unit_id == offer.unit_id
+        })
+        .expect("same seller stock");
+    let before_quantity = stock.quantity;
+    let before_price = offer.unit_price;
+    stock.quantity = stock
+        .quantity
+        .checked_add(1)
+        .expect("bounded stock mutation");
+    offer.unit_price = Currency::from_micro_units(
+        offer
+            .unit_price
+            .micro_units()
+            .checked_add(1)
+            .expect("bounded quote mutation"),
+    );
+    assert_ne!(stock.quantity, before_quantity);
+    assert_ne!(offer.unit_price, before_price);
+    // Existing historical carrying cost stays with the stock. A different
+    // quantity/quote does not revalue that independently owned cost book.
+}
 
 #[test]
 fn national_opening_shares_only_dated_food_assessments_for_the_known_partners() {

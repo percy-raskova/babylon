@@ -361,6 +361,29 @@ def functional_snapshot(campaign, owner, originals, markers):
         rows[table] = sorted(
             hashlib.sha256(f"{table}:{n}".encode()).hexdigest() for n in range(count)
         )
+    # Hash designed rows of the same five SQL columns in JSONB key order.
+    subjects = [
+        ("workplace", "31", "Wayne workplace"),
+        ("organization", "1", "Wayne Organizing Collective"),
+        ("organization", "10", "Wayne Workplace Committee"),
+        ("organization", "11", "Wayne Neighborhood Contact Group"),
+        ("organization", "12", "Wayne Local Aid Partners"),
+        ("organization", "17", "Cook Independent Solidarity Partners"),
+    ]
+    rows["babylon_state.organizer_subject_v1"] = sorted(
+        hashlib.sha256(
+            json.dumps(
+                {
+                    "title": title,
+                    "actor_id": "1",
+                    "subject_id": subject_id,
+                    "campaign_id": campaign,
+                    "subject_kind": kind,
+                }
+            ).encode()
+        ).hexdigest()
+        for kind, subject_id, title in subjects
+    )
     return {
         "campaign": campaign,
         "period": len(markers),

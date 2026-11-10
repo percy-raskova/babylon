@@ -371,6 +371,45 @@ class FunctionalTerminal(FrozenRecord):
     object_authority: tuple[AuthorityRow, ...]
 
 
+def _validate_wayne_campaign_rows(tables: dict[str, tuple[str, ...]], period: int) -> None:
+    # Rust's current-schema census includes every installed base relation. The
+    # current DDL scopes all state and meta relations to campaign_id except the
+    # schema singleton. Reference relations have no campaign_id.
+    census = (
+        Path(__file__).resolve().parents[2]
+        / "rust/crates/babylon-persistence/src/fixtures/current_schema_census.txt"
+    )
+    expected = {
+        f"{schema}.{table}"
+        for schema, table in re.findall(
+            r"^relation\|(babylon_state|babylon_meta)\|([^|\n]+)\|",
+            census.read_text(),
+            re.MULTILINE,
+        )
+    }
+    if tables.keys() != expected - {"babylon_meta.current_schema"}:
+        raise Refusal("functional terminal differs from the complete campaign-table roster")
+    if not REQUIRED_ROWS <= {name for name, rows in tables.items() if rows} or any(
+        tuple(sorted(rows)) != rows for rows in tables.values()
+    ):
+        raise Refusal("terminal lacks required ordered campaign-table row hashes")
+    # organizer_archive::subject_definitions creates four base subjects. The
+    # named national opening adds one local and one remote aid-partner subject.
+    subjects = tables["babylon_state.organizer_subject_v1"]
+    if len(subjects) != 6 or len(set(subjects)) != 6:
+        raise Refusal("native Wayne terminal requires its six distinct organizer subject rows")
+    per_period = (
+        "babylon_state.tick_commit",
+        "babylon_state.material_tick_v3",
+        "babylon_state.checkpoint_manifest",
+        "babylon_state.archive_dirty_receipt_v1",
+        "babylon_meta.archive_receipt_consumption_v1",
+        "babylon_meta.archive_tick_knowledge_v3",
+    )
+    if any(len(tables[name]) != period for name in per_period):
+        raise Refusal("terminal campaign row counts differ from the drained marker chain")
+
+
 def validate_terminal(raw: object, campaign: str, period: int) -> FunctionalTerminal:
     """Replay the repeatable-read terminal contract without a database connection."""
     try:
@@ -396,20 +435,7 @@ def validate_terminal(raw: object, campaign: str, period: int) -> FunctionalTerm
     ]:
         raise Refusal("Archive is not drained through each terminal marker")
     tables = terminal.campaign_rows_sha256
-    if not REQUIRED_ROWS <= {name for name, rows in tables.items() if rows} or any(
-        tuple(sorted(rows)) != rows for rows in tables.values()
-    ):
-        raise Refusal("terminal lacks required ordered campaign-table row hashes")
-    per_period = (
-        "babylon_state.tick_commit",
-        "babylon_state.material_tick_v3",
-        "babylon_state.checkpoint_manifest",
-        "babylon_state.archive_dirty_receipt_v1",
-        "babylon_meta.archive_receipt_consumption_v1",
-        "babylon_meta.archive_tick_knowledge_v3",
-    )
-    if any(len(tables.get(name, ())) != period for name in per_period):
-        raise Refusal("terminal campaign row counts differ from the drained marker chain")
+    _validate_wayne_campaign_rows(tables, period)
     authority = terminal.object_authority
     if not {"babylon_meta", "babylon_ref", "babylon_state", "public"} <= {
         ns for kind, ns, ident, *_ in authority if kind == "schema" and not ident

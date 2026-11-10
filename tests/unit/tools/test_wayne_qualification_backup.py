@@ -2290,6 +2290,58 @@ def recovery_admission_bytes(tmp_path_factory: pytest.TempPathFactory) -> dict[s
     }
 
 
+@pytest.mark.parametrize(
+    ("table", "replacement", "reason"),
+    [
+        ("babylon_state.organizer_subject_v1", None, "campaign-table roster"),
+        ("babylon_meta.watchlist", None, "campaign-table roster"),
+        ("babylon_ref.county_identity", [], "campaign-table roster"),
+        ("babylon_state.organizer_subject_v1", [], "organizer subject"),
+        ("babylon_state.organizer_subject_v1", ["ab" * 32] * 6, "organizer subject"),
+    ],
+)
+def test_resealed_campaign_table_roster(
+    tmp_path: Path,
+    recovery_admission_bytes: dict[str, bytes],
+    table: str,
+    replacement: list[str] | None,
+    reason: str,
+) -> None:
+    evidence = storage.PrivateEvidence(tmp_path / "evidence")
+    retained = storage.PrivateEvidence(tmp_path / "backup")
+    for store in (evidence, retained):
+        store.path.mkdir(mode=0o700)
+    for name in ("ownership", "physical.json"):
+        evidence.publish(name, recovery_admission_bytes[name])
+
+    original = json.loads(recovery_admission_bytes["functional-terminal.json"])
+    rows = original["campaign_rows_sha256"]
+    assert any(r[0] == "r" and ".".join(r[1:3]) == table for r in original["object_authority"])
+    if replacement is None:
+        del rows[table]
+    else:
+        rows[table] = replacement
+    changed = evidence.publish_json("functional-terminal.json", original)
+    completed = json.loads(recovery_admission_bytes["completed-member.json"])
+    entry = next(
+        r for r in completed["evidence"] if r["path"] == "evidence/functional-terminal.json"
+    )
+    entry.update({"bytes": changed.bytes, "sha256": changed.sha256})
+    evidence.publish_json("completed-member.json", completed)
+
+    owner = tuple(recovery_admission_bytes["ownership"].decode().splitlines())
+    run = backup.Run(storage.MEDIA_CHECKOUT, evidence.path, owner, original["campaign"], 2)
+    physical = json.loads(recovery_admission_bytes["physical.json"])
+    retained_pair_recovery(run, evidence, retained, physical, original)
+    seal = json.loads(retained.read_reference(retained.reference("recovery-seal.json")))
+    # All four independent backup files carry the same coordinated alteration.
+    for name in ("original", "pre-checkpoint", "post-physical", "restored"):
+        ref = retained.reference(f"{name}-terminal.json")
+        assert json.loads(retained.read_reference(ref))["campaign_rows_sha256"] == rows
+    with pytest.raises(backup.Refusal, match=reason):
+        backup.verify_retained_backup(run, seal, original)
+
+
 def altered_probes(data: bytes, name: str, fault: str) -> bytes:
     probes = json.loads(data)
     row = probes["reader"]["allowed"]

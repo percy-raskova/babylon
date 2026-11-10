@@ -223,6 +223,18 @@ packed bytes and RSS separately. Retained baseline bytes follow.
 Measure input to useful dated/pending brief with usable next controls. Each must take ≤10s. Report all three without
 claiming p95. Internal ticks and typed drivers cannot prove visible readiness.
 
+Use a separate ordinary companion through the existing installed callback. Close three periods without interruption,
+using the first three `WALK_FIXED_DECISIONS`. Then accept P4 Pause without closing P4. Remove all four qualification
+audit variables from companion environment copies. Keep the qualified normal and full-memory smoke and ten-period
+walk members unchanged.
+
+For each close, capture the first strict ready status, exact rendered frame and next accepted original. Report the
+intervals from input to ready status and from input to capture. Use the later completion of capture or next acceptance
+for the usable endpoint, including all overhead. Keep raw pixels and incomplete evidence.
+
+This prefix does not prove a full ten-period walk, recovery, storage or qualification. Use `qualification-15` as the
+fresh disposable namespace. Keep `qualification-14` and its artifacts.
+
 - [ ] **Step 5:** Apply the measured-failure bound.
 
 Allow at most one targeted diagnostic per demonstrated blocker and ONE corrective iteration. Separate pre-measurement

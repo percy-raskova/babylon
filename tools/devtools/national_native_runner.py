@@ -79,6 +79,7 @@ from tools.devtools.national_windowed_qualification import (
     UnitAction,
     drive_pair,
     submit_choice,
+    wait_period_ready,
     walk_cash,
     walk_resume,
 )
@@ -2315,6 +2316,207 @@ class WayneWalk:
             "walk-wall.json",
             {"start_ns": started, "end_ns": time.monotonic_ns(), "campaign": self.run.campaign},
         )
+
+
+class OrdinaryWarmSample(FrozenRecord):
+    """One ordinary close and its rendered, genuinely usable next decision."""
+
+    period: Annotated[StrictInt, Field(ge=1, le=3)]
+    accepted: ActionObservation
+    step: ActionObservation
+    ready: ActionObservation
+    capture: ActionObservation
+    next_acceptance: ActionObservation
+    png: Reference
+    ready_elapsed_ns: Nonnegative
+    capture_elapsed_ns: Nonnegative
+    usable_elapsed_ns: Nonnegative
+
+
+class OrdinaryWarmEvidence(FrozenRecord):
+    version: Literal[1] = 1
+    scope: Literal["ordinary_three_close_tenwalk_prefix_plus_p4_acceptance"] = (
+        "ordinary_three_close_tenwalk_prefix_plus_p4_acceptance"
+    )
+    status: Literal["completed", "incomplete"]
+    width: Literal[1366] = 1366
+    height: Literal[768] = 768
+    audit_enabled: Literal[False] = False
+    memory_sampler_enabled: Literal[False] = False
+    maximum_usable_elapsed_ns: Literal[10000000000] = 10_000_000_000
+    samples: tuple[OrdinaryWarmSample, ...]
+    actions: tuple[ActionObservation, ...]
+    failures: tuple[NativeFailureCause, ...]
+
+
+class OrdinaryWarmPrefix:
+    """Existing installed callback only; no accounting or qualification claim.
+
+    The caller owns frozen-source/binary admission and the fresh campaign. Drive
+    through the existing owned launcher without changing either qualified member.
+    """
+
+    def __init__(self, run: NativeRun) -> None:
+        self.run = run
+        self.walk = WayneWalk(run)
+        self.walk.stage = "ordinary-prefix"
+        self.used = False
+
+    def drive(
+        self,
+        writer: dict[str, str],
+        reader: dict[str, str],
+        *,
+        on_started: Callable[[subprocess.Popen[bytes], subprocess.Popen[bytes]], None],
+    ) -> int:
+        if self.used or os.path.lexists(self.run.directory / "ordinary-warm-prefix.json"):
+            raise NativeRunRefusal("ordinary warm prefix refuses repeated execution or evidence")
+        environments = [dict(writer), dict(reader)]
+        for environment in environments:
+            for name in (
+                "BABYLON_QUALIFICATION_POLICY",
+                "BABYLON_QUALIFICATION_POLICY_SHA256",
+                "BABYLON_QUALIFICATION_PERIODS",
+                "BABYLON_QUALIFICATION_MATERIAL_DIRECTORY",
+            ):
+                environment.pop(name, None)
+        return drive_pair(
+            self.run.runtime,
+            self.run.client,
+            self.run.root,
+            environments[0],
+            environments[1],
+            defines_path=launcher.DEFAULT_DEFINES,
+            initial_target=launcher.NewCampaignTarget(UUID(self.run.campaign), "national-world"),
+            initial_tick=0,
+            periods=0,
+            directory=self.run.directory,
+            operation_timeout=self.run.timeout,
+            on_started=on_started,
+            on_boundary=lambda _state: None,
+            on_recovery=lambda _state: None,
+            choices=(),
+            on_installed=self,
+            on_stopped=self.walk.retain_stopped_frame,
+            capture_lifecycle=None,
+        )
+
+    @staticmethod
+    def require_live(state: ControlState, opening: ControlState, period: int) -> None:
+        if (
+            not state.period_actionable
+            or state.phase != "Ready"
+            or state.inspector != "Closed"
+            or state.larger_interface
+            or state.production_details_open
+            or state.selected_report_id is not None
+            or state.period_proof is not None
+            or state.advance_request_id is not None
+            or state.durable_tick != period
+            or state.viewed_tick != period
+            or state.generation != opening.generation + period
+            or (state.campaign_id, state.scope_epoch, state.foundation_sha256)
+            != (opening.campaign_id, opening.scope_epoch, opening.foundation_sha256)
+            or period > 0
+            and (state.tick_content_hash is None or state.world_hash is None)
+        ):
+            raise NativeRunRefusal("ordinary warm endpoint lacks its exact live actionable context")
+
+    def accept(self, channel: ControlChannel, planned: PlannedChoice) -> ActionObservation:
+        before = len(channel.records)
+        submit_choice(channel, planned, self.run.timeout)
+        accepted = [record for record in channel.records[before:] if record.action == "confirm"]
+        if len(accepted) != 1:
+            raise NativeRunRefusal("ordinary next choice lacks exactly one actual acceptance")
+        original = accepted[0]
+        commitment = original.state.commitment
+        if (
+            original.event != "acceptance_admitted"
+            or original.reason is not None
+            or commitment is None
+            or commitment.command.choice != planned.choice
+            or commitment.command.allocation != planned.allocation
+            or commitment.command.expected_period != planned.period - 1
+            or commitment.resolves_period != planned.period
+        ):
+            raise NativeRunRefusal("ordinary accepted original differs from its planned period")
+        return original
+
+    def __call__(self, channel: ControlChannel, socket_root: Path, opening: ControlState) -> None:
+        destination = self.run.directory / "ordinary-warm-prefix.json"
+        if self.used or os.path.lexists(destination):
+            raise NativeRunRefusal("ordinary warm prefix refuses repeated execution or evidence")
+        self.used = True
+        samples: list[OrdinaryWarmSample] = []
+        failure: BaseException | None = None
+        try:
+            self.require_live(opening, opening, 0)
+            channel.perform("standard_interface", self.run.timeout)
+            current = channel.perform("resize1366x768", self.run.timeout)
+            self.require_live(current, opening, 0)
+            accepted = self.accept(channel, WALK_FIXED_DECISIONS[0])
+            for period in range(1, 4):
+                channel.perform("step", self.run.timeout)
+                step = channel.records[-1]
+                current = wait_period_ready(channel, self.run.timeout)
+                ready = channel.records[-1]
+                self.require_live(current, opening, period)
+                if (
+                    step.action != "step"
+                    or step.event != "committed_and_installed"
+                    or ready.action != "status"
+                    or ready.event != "observed"
+                    or ready.reason is not None
+                    or step.state.period_identity() != ready.state.period_identity()
+                ):
+                    raise NativeRunRefusal(
+                        "ordinary warm close lacks its first strict ready status"
+                    )
+                _, pixels = self.walk.capture_frame(
+                    channel, socket_root, f"p{period}", current, 1366, 768
+                )
+                capture = channel.records[-1]
+                png = self.walk.raw.publish(f"ordinary-p{period}-seq{capture.sequence}.png", pixels)
+                self.walk.raw.publish_json(
+                    f"ordinary-p{period}-seq{capture.sequence}.json",
+                    capture.model_dump(mode="json"),
+                )
+                following = self.accept(channel, WALK_FIXED_DECISIONS[period])
+                self.require_live(following.state, opening, period)
+                if following.state.period_identity() != ready.state.period_identity():
+                    raise NativeRunRefusal("ordinary next acceptance changed its captured source")
+                samples.append(
+                    OrdinaryWarmSample(
+                        period=period,
+                        accepted=accepted,
+                        step=step,
+                        ready=ready,
+                        capture=capture,
+                        next_acceptance=following,
+                        png=png,
+                        ready_elapsed_ns=ready.completed_monotonic_ns - step.started_monotonic_ns,
+                        capture_elapsed_ns=capture.completed_monotonic_ns
+                        - step.started_monotonic_ns,
+                        usable_elapsed_ns=max(
+                            capture.completed_monotonic_ns, following.completed_monotonic_ns
+                        )
+                        - step.started_monotonic_ns,
+                    )
+                )
+                accepted = following
+            if any(sample.usable_elapsed_ns > 10_000_000_000 for sample in samples):
+                raise NativeRunRefusal("ordinary warm usable endpoint exceeded ten seconds")
+        except BaseException as error:
+            failure = error
+            raise
+        finally:
+            report = OrdinaryWarmEvidence(
+                status="incomplete" if failure else "completed",
+                samples=tuple(samples),
+                actions=tuple(channel.records),
+                failures=failure_causes(failure) if failure else (),
+            )
+            self.walk.evidence.publish_json(destination.name, report.model_dump(mode="json"))
 
 
 def main() -> int:

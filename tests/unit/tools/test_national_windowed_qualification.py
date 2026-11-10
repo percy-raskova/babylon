@@ -2124,3 +2124,223 @@ def test_smoke_clock_bounds_next_send_and_outstanding_reply(crossing, action, mo
     finally:
         stream.close()
         peer.close()
+
+
+class OrdinaryPrefixPeer:
+    """Bounded native-control stand-in with actual sequenced socket responses."""
+
+    def __init__(self, peer, frames, pixels, fault):
+        self.peer, self.frames, self.pixels, self.fault = peer, frames, pixels, fault
+        self.current = state()
+        self.current["installed_organizer"] = installed_opening_view()
+        self.calls, self.failures = [], []
+        self.accepted = None
+
+    def select(self, action):
+        planned = windowed.WALK_FIXED_DECISIONS[self.current["durable_tick"]]
+        assert action == "choose_" + planned.choice
+        self.current.update(choice=planned.choice, inspector="Closed")
+        allocation = (
+            "none" if planned.allocation == "none" else planned.allocation.model_dump(mode="json")
+        )
+        self.current["collection_allocation"] = (
+            allocation if planned.choice == "collect" else "none"
+        )
+        self.current["aid_allocation"] = (
+            allocation if planned.choice in ("local_aid", "remote_aid") else "none"
+        )
+
+    def review(self):
+        tick = self.current["durable_tick"]
+        planned = windowed.WALK_FIXED_DECISIONS[tick]
+        command, preview, self.accepted = admission_fields(planned.choice, tick, 42 + tick)
+        allocation = (
+            "none" if planned.allocation == "none" else planned.allocation.model_dump(mode="json")
+        )
+        command["allocation"] = preview["allocation"] = allocation
+        self.accepted["command"] = command
+        self.current["reviewed_command"], self.current["preview"] = command, preview
+
+    def close(self):
+        tick = self.current["durable_tick"] + 1
+        self.current.update(
+            durable_tick=tick,
+            viewed_tick=tick,
+            organizer_period=tick,
+            generation=self.current["generation"] + 1,
+            tick_content_hash="b" * 64,
+            world_hash="c" * 64,
+            commitment=None,
+        )
+        self.current["installed_organizer"]["period"] = tick
+        mutations = {
+            "generation": ("generation", self.current["generation"] - 1),
+            "period": ("viewed_tick", tick - 1),
+            "source": ("foundation_sha256", "f" * 64),
+            "complete": ("phase", "Complete"),
+            "overlay": ("inspector", "Archive"),
+        }
+        if self.fault in mutations:
+            key, value = mutations[self.fault]
+            self.current[key] = value
+
+    def capture(self, request):
+        path = self.frames / f"frame-{request['sequence']}.png"
+        path.write_bytes(self.pixels)
+        path.chmod(0o600)
+        if self.fault == "capture_context":
+            self.current["selected_subject"] = "changed"
+        return (
+            ("refused", "capture_context_changed")
+            if self.fault == "capture_refused"
+            else ("frame_captured", None)
+        )
+
+    def dispatch(self, request):
+        import copy
+
+        action = request["action"]
+        self.calls.append(action)
+        event = "applied"
+        if action == "status":
+            event = "observed"
+        elif action == "inspect_practices":
+            self.current["inspector"] = "Practices"
+        elif action == "open_direction":
+            self.current["inspector"] = "Direction"
+        elif action == "close_inspector":
+            self.current["inspector"] = "Closed"
+        elif action.startswith("choose_"):
+            self.select(action)
+        elif action == "review":
+            self.review()
+            event = "preview_admitted"
+        elif action == "confirm":
+            self.current["commitment"] = copy.deepcopy(self.accepted)
+            if self.fault == "nonce" and self.current["durable_tick"] == 1:
+                self.current["commitment"]["command"]["nonce"] = [99] * 16
+            self.current["reviewed_command"] = self.current["preview"] = None
+            event = "acceptance_admitted"
+        elif action == "step":
+            self.close()
+            event = "committed_and_installed"
+        elif action == "capture_frame":
+            return self.capture(request)
+        else:
+            assert action in ("standard_interface", "resize1366x768")
+        return event, None
+
+    def serve(self):
+        try:
+            with self.peer, self.peer.makefile("rb") as source:
+                for line in source:
+                    request = json.loads(line)
+                    event, reason = self.dispatch(request)
+                    self.peer.sendall(
+                        json.dumps(
+                            {
+                                "version": 5,
+                                "sequence": request["sequence"],
+                                "event": event,
+                                "reason": reason,
+                                "state": self.current,
+                            }
+                        ).encode()
+                        + b"\n"
+                    )
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except BaseException as error:
+            self.failures.append(error)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "late",
+        "capture_refused",
+        "capture_context",
+        "generation",
+        "period",
+        "source",
+        "complete",
+        "overlay",
+        "nonce",
+    ],
+)
+def test_ordinary_prefix_retains_three_actual_closes_and_next_acceptances(tmp_path, fault):
+    """Real control transport and capture; no native process or accounting proof."""
+    import io
+    from types import SimpleNamespace
+
+    from PIL import Image
+    from tools.devtools import national_native_runner as runner
+
+    evidence = tmp_path / "evidence"
+    evidence.mkdir(mode=0o700)
+    (tmp_path / "raw").mkdir(mode=0o700)
+    frames = tmp_path / "frames"
+    frames.mkdir(mode=0o700)
+    image = io.BytesIO()
+    Image.new("RGB", (1366, 768)).save(image, format="PNG")
+    pixels = image.getvalue()
+    sock, peer = socket.socketpair()
+    standin = OrdinaryPrefixPeer(peer, frames, pixels, fault)
+    calls, peer_failures = standin.calls, standin.failures
+    companion = runner.OrdinaryWarmPrefix(SimpleNamespace(directory=evidence, timeout=1))
+    thread = threading.Thread(target=standin.serve)
+    thread.start()
+    channel = windowed.ControlChannel(sock, CAMPAIGN, 0)
+    opening = channel.observe(1)
+    # Deterministic exact boundary and over-budget evidence, without wall-clock sleeps.
+    if fault in (None, "late"):
+        original_capture = companion.walk.capture_frame
+
+        def capture(*args):
+            result = original_capture(*args)
+            observation = channel.records[-1]
+            step = next(r for r in reversed(channel.records) if r.action == "step")
+            changed = observation.model_dump()
+            changed["completed_monotonic_ns"] = (
+                step.started_monotonic_ns + 10_000_000_000 + int(fault == "late")
+            )
+            channel.records[-1] = windowed.ActionObservation.model_validate(changed)
+            return result
+
+        companion.walk.capture_frame = capture
+    try:
+        if fault is None:
+            companion(channel, frames, opening)
+        else:
+            with pytest.raises(ValueError):
+                companion(channel, frames, opening)
+    finally:
+        channel.close()
+        thread.join(2)
+    assert not thread.is_alive() and not peer_failures
+    saved = json.loads((evidence / "ordinary-warm-prefix.json").read_bytes())
+    assert saved["status"] == ("completed" if fault is None else "incomplete")
+    assert "await_period_proof" not in calls and "reopen" not in calls
+    assert all(record["state"]["period_proof"] is None for record in saved["actions"])
+    if fault in (None, "late"):
+        assert calls.count("step") == 3 and calls.count("confirm") == 4
+        assert [sample["period"] for sample in saved["samples"]] == [1, 2, 3]
+        for sample in saved["samples"]:
+            assert sample["usable_elapsed_ns"] == 10_000_000_000 + int(fault == "late")
+            assert (
+                sample["step"]["sequence"]
+                < sample["ready"]["sequence"]
+                < sample["capture"]["sequence"]
+                < sample["next_acceptance"]["sequence"]
+            )
+            assert (tmp_path / "raw" / sample["png"]["path"]).read_bytes() == pixels
+            assert (
+                sample["next_acceptance"]["state"]["commitment"]["resolves_period"]
+                == sample["period"] + 1
+            )
+        assert saved["samples"][-1]["next_acceptance"]["state"]["choice"] == "pause_standing"
+    if fault in ("capture_context", "capture_refused"):
+        assert list((tmp_path / "raw").glob("incomplete-*.json"))
+    with pytest.raises(ValueError):
+        companion(channel, frames, opening)

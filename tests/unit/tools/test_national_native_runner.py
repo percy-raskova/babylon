@@ -1418,3 +1418,58 @@ def test_authentic_boundary_failure_retains_diagnostics_and_publication_faults(
             (tmp_path / "native-run-incomplete.json").read_bytes()
         )
         assert failure.failures[0].safe_reason == str(original)
+
+
+def test_ordinary_drive_strips_audit_only_on_copies_and_reuses_existing_owned_launcher(
+    tmp_path, monkeypatch
+):
+    """The companion keeps the qualified originals and process-custody callbacks."""
+    audit = {
+        "BABYLON_QUALIFICATION_POLICY": "policy",
+        "BABYLON_QUALIFICATION_POLICY_SHA256": "a" * 64,
+        "BABYLON_QUALIFICATION_PERIODS": "10",
+        "BABYLON_QUALIFICATION_MATERIAL_DIRECTORY": "material",
+    }
+    writer = {**audit, "BABYLON_POSTGRES_URL": "writer", "BABYLON_WRITER_SCOPE": "retained"}
+    reader = {**audit, "BABYLON_POSTGRES_URL": "reader", "BABYLON_READER_SCOPE": "retained"}
+    originals = dict(writer), dict(reader)
+    run = SimpleNamespace(
+        root=tmp_path,
+        directory=tmp_path / "evidence",
+        timeout=12,
+        runtime=tmp_path / "runtime",
+        client=tmp_path / "client",
+        campaign="81b979ee-a9c1-48fd-8835-06cbfe594675",
+    )
+    companion = runner.OrdinaryWarmPrefix(run)
+
+    def started(*_args):
+        return None
+
+    calls = []
+
+    def drive(runtime, client, root, runtime_environment, client_environment, **options):
+        calls.append(options)
+        assert (runtime, client, root) == (run.runtime, run.client, tmp_path)
+        assert not any(
+            key in environment
+            for key in audit
+            for environment in (runtime_environment, client_environment)
+        )
+        assert runtime_environment == {
+            key: value for key, value in writer.items() if key not in audit
+        }
+        assert client_environment == {
+            key: value for key, value in reader.items() if key not in audit
+        }
+        assert options["periods"] == 0 and options["choices"] == ()
+        assert options["capture_lifecycle"] is None and options["on_installed"] is companion
+        assert options["on_started"] is started
+        assert options["on_stopped"] == companion.walk.retain_stopped_frame
+        assert options["initial_tick"] == 0
+        assert options["initial_target"].campaign == runner.UUID(run.campaign)
+        return 0
+
+    monkeypatch.setattr(runner, "drive_pair", drive)
+    assert companion.drive(writer, reader, on_started=started) == 0
+    assert (writer, reader) == originals and len(calls) == 1

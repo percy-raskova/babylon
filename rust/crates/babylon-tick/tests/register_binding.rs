@@ -18,6 +18,7 @@ use babylon_practice_contract::{
     CityPdCase, CityPdCaseSource, CityPdCaseStatus, CityPdConfig, OrganizerConfig,
     OrganizerPeriodJournal, OrganizerState, PublicVenueHistory, PublicVenuePolicy,
 };
+use babylon_tick::material_world;
 use babylon_tick::material_world::{
     CityPdRegister, CityPdRegisterError, MaterialWorldError, MaterialWorldRegister,
 };
@@ -399,5 +400,233 @@ fn incompatible_foreign_catalog_bindings_preserve_full_admission_error() {
             &fixture.resolver
         ),
         Err(expected),
+    );
+}
+
+const REGISTER_HEADER: usize = b"babylon.material-world-register.v7\0".len() + 12;
+
+fn register_sections(register: &MaterialWorldRegister) -> [&[u8]; 3] {
+    let mut remaining = &register.canonical_bytes()[REGISTER_HEADER..];
+    std::array::from_fn(|_| {
+        let count = usize::try_from(u64::from_be_bytes(
+            remaining[..8].try_into().expect("section length"),
+        ))
+        .expect("fixture section fits memory");
+        let section = &remaining[8..8 + count];
+        remaining = &remaining[8 + count..];
+        section
+    })
+}
+
+fn purpose_frame(register: &MaterialWorldRegister, tick: u64, sections: [&[u8]; 3]) -> Vec<u8> {
+    let mut bytes = register.canonical_bytes()[..REGISTER_HEADER].to_vec();
+    bytes[REGISTER_HEADER - 8..].copy_from_slice(&tick.to_be_bytes());
+    for section in sections {
+        bytes.extend_from_slice(
+            &u64::try_from(section.len())
+                .expect("fixture length")
+                .to_be_bytes(),
+        );
+        bytes.extend_from_slice(section);
+    }
+    bytes
+}
+
+#[test]
+fn historical_purpose_decode_preserves_complete_material_and_organizer_evidence() {
+    let fixture = fixture();
+    let organized = fixture.organized(&fixture.catalog);
+    let public = fixture.public(&fixture.catalog);
+    let complete = public
+        .clone()
+        .with_city_pd(&fixture.catalog, fixture.city_pd.clone(), &fixture.resolver)
+        .expect("captured opponent binding");
+    for register in [&fixture.bare, &organized, &public, &complete] {
+        let decoded = material_world::decode_material_organizer_evidence(
+            &fixture.catalog,
+            register.canonical_bytes(),
+        )
+        .expect("historical purpose admits original complete bytes without a private resolver");
+        assert_eq!(decoded.completed_tick, register.completed_tick());
+        assert_eq!(&decoded.material, register.state());
+        assert_eq!(
+            decoded.organizer.as_ref().map(|value| &value.0),
+            register.organizer_config()
+        );
+        assert_eq!(
+            decoded.organizer.as_ref().map(|value| &value.1),
+            register.organizer_state()
+        );
+        assert_eq!(
+            decoded.organizer.as_ref().map(|value| &value.2),
+            register.organizer_journal()
+        );
+        assert_eq!(decoded.public_venue.as_ref(), register.public_venue());
+        assert_eq!(
+            babylon_material_circuit::encode_material_circuit_state(
+                &fixture.catalog,
+                &decoded.material
+            )
+            .expect("admitted material retains exact canonical bytes"),
+            register_sections(register)[0],
+        );
+    }
+}
+
+#[test]
+fn historical_purpose_decode_preserves_refusals_and_error_precedence() {
+    let fixture = fixture();
+    let register = fixture.public(&fixture.catalog);
+    let [state, organizer, private] = register_sections(&register);
+    let foreign = fixture.compatible_foreign_catalog();
+    assert_eq!(
+        material_world::decode_material_organizer_evidence(&foreign, register.canonical_bytes()),
+        Err(MaterialWorldError::Circuit(
+            MaterialCircuitError::WireDomain
+        )),
+    );
+    // Outer/private framing precedes material, material precedes period, and
+    // period precedes organizer parsing even when several inputs are malformed.
+    let mut trailing = register.canonical_bytes().to_vec();
+    trailing.push(0);
+    for bytes in [
+        register.canonical_bytes()[..REGISTER_HEADER - 1].to_vec(),
+        trailing,
+        purpose_frame(&register, 1, [&[], &[2], &[2]]),
+    ] {
+        assert_eq!(
+            material_world::decode_material_organizer_evidence(&fixture.catalog, &bytes),
+            Err(MaterialWorldError::Wire)
+        );
+    }
+    let mut trailing_state = state.to_vec();
+    trailing_state.push(0);
+    let mut version = state.to_vec();
+    let schema = babylon_material_circuit::MATERIAL_CIRCUIT_STATE_DOMAIN_BYTES.len() + 1;
+    version[schema..schema + 2].copy_from_slice(&u16::MAX.to_be_bytes());
+    for (wire, expected) in [
+        (&[][..], MaterialCircuitError::WireTruncated),
+        (
+            &state[..state.len() - 1],
+            MaterialCircuitError::WireTruncated,
+        ),
+        (
+            trailing_state.as_slice(),
+            MaterialCircuitError::WireTrailing,
+        ),
+        (version.as_slice(), MaterialCircuitError::WireVersion),
+    ] {
+        let bytes = purpose_frame(&register, 1, [wire, &[2], private]);
+        assert_eq!(
+            material_world::decode_material_organizer_evidence(&fixture.catalog, &bytes),
+            Err(MaterialWorldError::Circuit(expected))
+        );
+    }
+    for tick in [1, u64::MAX] {
+        let bytes = purpose_frame(&register, tick, [state, &[2], private]);
+        assert_eq!(
+            material_world::decode_material_organizer_evidence(&fixture.catalog, &bytes),
+            Err(MaterialWorldError::PeriodMismatch)
+        );
+    }
+    let bytes = purpose_frame(&register, 0, [state, &[2], private]);
+    assert_eq!(
+        material_world::decode_material_organizer_evidence(&fixture.catalog, &bytes),
+        Err(MaterialWorldError::Wire)
+    );
+    let mut invalid_version = register.canonical_bytes().to_vec();
+    invalid_version[REGISTER_HEADER - 12..REGISTER_HEADER - 8]
+        .copy_from_slice(&u32::MAX.to_be_bytes());
+    assert_eq!(
+        material_world::decode_material_organizer_evidence(&fixture.catalog, &invalid_version),
+        Err(MaterialWorldError::Wire)
+    );
+    // Opaque private contents remain outside this purpose decoder's authority.
+    let opaque = purpose_frame(&register, 0, [state, organizer, &[1, 255]]);
+    assert_eq!(
+        material_world::decode_material_organizer_evidence(&fixture.catalog, &opaque),
+        material_world::decode_material_organizer_evidence(
+            &fixture.catalog,
+            register.canonical_bytes()
+        ),
+    );
+    assert!(MaterialWorldRegister::decode_external_with_resolver(
+        &fixture.catalog,
+        opaque,
+        &fixture.resolver
+    )
+    .is_err());
+}
+
+#[test]
+fn historical_purpose_decode_rejects_noncanonical_material_before_organizer() {
+    let fixture = fixture();
+    let register = fixture.organized(&fixture.catalog);
+    let [state, _, private] = register_sections(&register);
+    let mut inventory = Vec::new();
+    for row in &register.state().inventory {
+        inventory.extend_from_slice(&row.site_id.as_bytes());
+        inventory.extend_from_slice(&row.good_id.as_bytes());
+        inventory.extend_from_slice(&row.unit_id.as_bytes());
+        inventory.extend_from_slice(&row.quantity.to_be_bytes());
+    }
+    let matches: Vec<usize> = state
+        .windows(inventory.len())
+        .enumerate()
+        .filter_map(|(index, bytes)| (bytes == inventory).then_some(index))
+        .collect();
+    assert_eq!(
+        matches.len(),
+        1,
+        "the actual inventory rows identify one wire region"
+    );
+    let mut noncanonical = state.to_vec();
+    let row_length = 32 * 3 + 8;
+    let offset = matches[0];
+    for index in 0..row_length {
+        noncanonical.swap(offset + index, offset + row_length + index);
+    }
+    let bytes = purpose_frame(&register, 1, [&noncanonical, &[2], private]);
+    assert_eq!(
+        material_world::decode_material_organizer_evidence(&fixture.catalog, &bytes),
+        Err(MaterialWorldError::Circuit(
+            MaterialCircuitError::WireNoncanonical
+        )),
+    );
+}
+
+#[test]
+fn historical_purpose_decode_retains_organizer_binding_refusal() {
+    let fixture = fixture();
+    let register = fixture.organized(&fixture.catalog);
+    let [material, _, private] = register_sections(&register);
+    let mut unbound = fixture.organizer_state.clone();
+    unbound.period = 1;
+    let mut organizer = vec![1];
+    for section in [
+        babylon_practice_contract::encode_organizer_config(&fixture.organizer)
+            .expect("valid captured config"),
+        babylon_practice_contract::encode_organizer_state(&unbound)
+            .expect("independently valid state with a different period"),
+        babylon_practice_contract::encode_organizer_journal(
+            &fixture.organizer,
+            &OrganizerPeriodJournal::empty(),
+        )
+        .expect("independently valid opening journal"),
+        vec![0],
+    ] {
+        organizer.extend_from_slice(
+            &u64::try_from(section.len())
+                .expect("fixture length")
+                .to_be_bytes(),
+        );
+        organizer.extend_from_slice(&section);
+    }
+    let bytes = purpose_frame(&register, 0, [material, &organizer, private]);
+    assert_eq!(
+        material_world::decode_material_organizer_evidence(&fixture.catalog, &bytes),
+        Err(MaterialWorldError::Organizer(
+            babylon_practice_contract::OrganizerError::InvalidState,
+        )),
     );
 }

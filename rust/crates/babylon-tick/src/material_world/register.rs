@@ -1181,19 +1181,27 @@ pub fn decode_material_organizer_evidence(
     {
         return Err(MaterialWorldError::Wire);
     }
-    let material = babylon_material_circuit::decode_material_circuit_state(catalog, state_wire)?;
-    if tick.checked_add(1) != Some(material.period) {
+    let decoded =
+        babylon_material_circuit::decode_material_circuit_state_for_encoding(catalog, state_wire)?;
+    if tick.checked_add(1) != Some(decoded.state().period) {
         return Err(MaterialWorldError::PeriodMismatch);
     }
     let (organizer, public_venue) = decode_organizer_frame(organizer_wire)?;
-    if babylon_material_circuit::encode_material_circuit_state(catalog, &material)? != state_wire
-        || encode_bound_organizer(
-            catalog,
-            tick,
-            &material,
-            organizer.as_ref(),
-            public_venue.as_ref(),
-        )? != organizer_wire
+    let material = {
+        // Serialize the same admitted state and release its bytes before organizer binding.
+        let (material, canonical_state) = decoded.into_state_and_canonical_bytes()?;
+        if canonical_state != state_wire {
+            return Err(MaterialWorldError::Wire);
+        }
+        material
+    };
+    if encode_bound_organizer(
+        catalog,
+        tick,
+        &material,
+        organizer.as_ref(),
+        public_venue.as_ref(),
+    )? != organizer_wire
     {
         return Err(MaterialWorldError::Wire);
     }

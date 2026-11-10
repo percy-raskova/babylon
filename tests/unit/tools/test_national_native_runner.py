@@ -95,6 +95,7 @@ def test_main_retains_safe_failure_leaves_and_exact_incomplete_counts(
         boundaries=[object()],
         recoveries=[],
         run=fail,
+        publish_verification_diagnostics=lambda: None,
     )
     monkeypatch.setenv("BABYLON_STORAGE_REPORT_DIRECTORY", str(tmp_path))
     monkeypatch.setattr(runner, "NativeRun", lambda _root, _directory: run)
@@ -195,6 +196,12 @@ def test_native_opening_mismatch_cannot_bind_or_publish_the_capture(tmp_path, mo
     run.opening = None
     run.directory = tmp_path
     run.operation_lock = threading.RLock()
+    run.verification_spans = []
+    run.verification_dropped = 0
+    run.verification_sequence = 0
+    run.verification_state = None
+    run.verification_published = False
+    run.segment = None
     calls = []
     run.verify_sources = lambda: None
     run.snapshot = lambda stage: calls.append(stage)
@@ -218,8 +225,11 @@ def test_native_opening_mismatch_cannot_bind_or_publish_the_capture(tmp_path, mo
         campaign_id=run.campaign,
         foundation_sha256="a" * 64,
         durable_tick=0,
+        scope_epoch=0,
+        generation=0,
         tick_content_hash=None,
     )
+    run.stage = "opening"
     with pytest.raises(runner.NativeRunRefusal, match="independent committed identity"):
         run.on_boundary(state)
     assert run._foundation is None and run.opening is None and not calls
@@ -392,6 +402,12 @@ def boundary_run(tmp_path):
     run.advances = []
     run.snapshots = []
     run.started = 0
+    run.verification_spans = []
+    run.verification_dropped = 0
+    run.verification_sequence = 0
+    run.verification_state = None
+    run.verification_published = False
+    run.segment = None
     run.policy = policy()
     run.verify_sources = lambda: None
     run.progress = lambda *_args: None
@@ -1225,3 +1241,180 @@ def test_terminal_archive_retries_share_deadline_and_return_uses_mode_limit(
         ("open_archive_evidence", remaining),
         ("open_organizer", focused),
     ]
+
+
+@pytest.mark.parametrize("fault", [None, "source", "client"])
+def test_verification_diagnostics_preserve_authentication_order_and_refusals(
+    tmp_path, monkeypatch, fault
+):
+    run = object.__new__(runner.NativeRun)
+    run.root = tmp_path
+    run.directory = tmp_path
+    run.campaign = "81b979ee-a9c1-48fd-8835-06cbfe594675"
+    run.mode = "memory_capture"
+    run.stage = "committed"
+    run.segment = "smoke"
+    run.supervisor = {"PRIVATE": PRIVATE}
+    run.verification_spans = []
+    run.verification_dropped = 0
+    run.verification_sequence = 0
+    run.verification_state = None
+    run.verification_published = False
+    run.binaries = {tmp_path / name: name for name in ("runtime", "client", "audit")}
+    calls = []
+
+    def shell(arguments, **options):
+        calls.append("source")
+        assert arguments[2] == 'source "$1"; national_verify_source_capture'
+        assert options == {
+            "env": run.supervisor,
+            "cwd": tmp_path,
+            "capture_output": True,
+            "timeout": 60,
+            "check": False,
+        }
+        return SimpleNamespace(returncode=int(fault == "source"))
+
+    def digest(path):
+        calls.append(path.name)
+        return "changed" if fault == path.name else path.name
+
+    monkeypatch.setattr(runner.subprocess, "run", shell)
+    monkeypatch.setattr(memory, "executable_digest", digest)
+    clock = iter(range(100, 1000, 10))
+    cpu = iter(range(1, 100))
+    monkeypatch.setattr(runner.time, "monotonic_ns", lambda: next(clock))
+    monkeypatch.setattr(runner.time, "thread_time_ns", lambda: next(cpu))
+    usage_calls = []
+
+    def usage(scope):
+        usage_calls.append(scope)
+        return SimpleNamespace(
+            ru_utime=len(usage_calls) / 100,
+            ru_stime=len(usage_calls) / 200,
+            ru_inblock=len(usage_calls) * 2,
+            ru_oublock=len(usage_calls) * 3,
+        )
+
+    monkeypatch.setattr(runner.resource, "getrusage", usage)
+    writes = []
+    original_publish = runner.publish
+
+    def write(path, value):
+        writes.append(path.name)
+        original_publish(path, value)
+
+    monkeypatch.setattr(runner, "publish", write)
+    if fault:
+        with pytest.raises(runner.NativeRunRefusal, match="source capture|executable changed"):
+            run.verify_sources()
+    else:
+        run.verify_sources()
+    assert calls == (
+        ["source"]
+        if fault == "source"
+        else ["source", "runtime", "client"]
+        if fault
+        else ["source", "runtime", "client", "audit"]
+    )
+    assert writes == []
+    run.publish_verification_diagnostics()
+    assert writes == ["verification-diagnostics.json"]
+    data = json.loads((tmp_path / writes[0]).read_bytes())
+    assert data["version"] == 1 and data["purpose"] == "diagnostics_only"
+    assert data["mode"] == "memory_capture" and data["dropped_spans"] == 0
+    spans = data["spans"]
+    assert [row["phase"] for row in spans] == [
+        "source-shell",
+        *["executable-" + name for name in calls[1:]],
+    ]
+    assert [row["sequence"] for row in spans] == list(range(1, len(spans) + 1))
+    for row in spans:
+        assert row["segment"] == "smoke" and row["stage"] == "committed"
+        assert row["tick"] is None and row["scope_epoch"] is None
+        assert row["end_monotonic_ns"] > row["start_monotonic_ns"]
+        assert row["thread_cpu_ns"] == 1
+        assert row["thread_inblock_operations"] > 0 and row["thread_oublock_operations"] > 0
+    assert spans[0]["reaped_children_cpu_ns"] == 15000000
+    assert spans[0]["reaped_children_inblock_operations"] == 2
+    assert spans[0]["reaped_children_oublock_operations"] == 3
+    assert all(row["reaped_children_cpu_ns"] is None for row in spans[1:])
+    assert all(row["completed"] for row in spans[:-1])
+    assert spans[-1]["completed"] == (fault is None)
+    assert PRIVATE not in json.dumps(data)
+    assert set(usage_calls) == {runner.resource.RUSAGE_THREAD, runner.resource.RUSAGE_CHILDREN}
+
+
+def test_boundary_diagnostics_bind_callback_scope_and_keep_progress_inside_the_tail(
+    tmp_path, monkeypatch
+):
+    run, state, calls, _records = boundary_run(tmp_path)
+    run.segment = "smoke"
+    run.verification_spans = []
+    run.verification_dropped = 0
+    run.verification_sequence = 0
+    run.verification_state = None
+    run.verification_published = False
+    # Exercise actual progress publication; all other boundary evidence uses the existing fixture.
+    run.progress = runner.NativeRun.progress.__get__(run)
+    run.on_boundary(state)
+    assert calls == ["archive", "storage"]
+    assert not (tmp_path / "verification-diagnostics.json").exists()
+    run.publish_verification_diagnostics()
+    spans = json.loads((tmp_path / "verification-diagnostics.json").read_bytes())["spans"]
+    boundary = next(row for row in spans if row["phase"] == "boundary-callback")
+    tail = next(row for row in spans if row["phase"] == "progress-production")
+    binding = next(row for row in spans if row["phase"] == "advance-proof-binding")
+    first = next(row for row in spans if row["phase"] == "progress-committed")
+    assert boundary["start_monotonic_ns"] <= binding["start_monotonic_ns"]
+    assert binding["end_monotonic_ns"] <= first["start_monotonic_ns"]
+    assert first["end_monotonic_ns"] <= tail["start_monotonic_ns"]
+    assert tail["end_monotonic_ns"] <= boundary["end_monotonic_ns"]
+    assert all(
+        (row["tick"], row["scope_epoch"], row["generation"])
+        == (state.durable_tick, state.scope_epoch, state.generation)
+        for row in spans
+    )
+    assert run.verification_state is None
+
+
+@pytest.mark.parametrize("publication_fault", [False, True])
+def test_authentic_boundary_failure_retains_diagnostics_and_publication_faults(
+    tmp_path, monkeypatch, publication_fault
+):
+    run, state, _calls, _records = boundary_run(tmp_path)
+    run.failed_pair = None
+    run.recoveries = []
+    original = runner.NativeRunRefusal("national source capture changed during the native run")
+
+    def refuse():
+        raise original
+
+    run.verify_sources = refuse
+    run.run = lambda: run.on_boundary(state)
+    monkeypatch.setenv("BABYLON_STORAGE_REPORT_DIRECTORY", str(tmp_path))
+    monkeypatch.setattr(runner, "NativeRun", lambda *_args: run)
+    original_publish = runner.publish
+    failed_publication = OSError("private diagnostic write failed")
+
+    def publish(path, data):
+        if publication_fault and path.name == "verification-diagnostics.json":
+            raise failed_publication
+        original_publish(path, data)
+
+    monkeypatch.setattr(runner, "publish", publish)
+    if publication_fault:
+        with pytest.raises(BaseExceptionGroup) as caught:
+            runner.main()
+        assert caught.value.exceptions == (original, failed_publication)
+        assert not (tmp_path / "native-run-incomplete.json").exists()
+    else:
+        assert runner.main() == 1
+        data = json.loads((tmp_path / "verification-diagnostics.json").read_bytes())
+        assert len(data["spans"]) == 1
+        assert data["spans"][0]["phase"] == "boundary-callback"
+        assert data["spans"][0]["completed"] is False
+        failure = NativeRunIncomplete.model_validate_json(
+            (tmp_path / "native-run-incomplete.json").read_bytes()
+        )
+        assert failure.failures[0].safe_reason == str(original)

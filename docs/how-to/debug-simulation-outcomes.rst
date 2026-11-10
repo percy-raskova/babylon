@@ -772,7 +772,7 @@ cold processes. The source creates one fresh shared UUID4 for the pair's two
 new empty databases and authenticates their installed P0 state.
 
 The canonical parent is
-``/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-13``.
+``/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-14``.
 Each member retains its own ``<workload>/<mode>/evidence/``, ``backup/``, ``raw/``,
 ``pgdata/`` and ``xdg/``. Keep the shared ``<workload>/pair-declaration.json``
 and all member custody. ``sql-01`` remains unpaired at the parent's ``sql-01``.

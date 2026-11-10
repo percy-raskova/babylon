@@ -11,11 +11,13 @@ import hashlib
 import json
 import os
 import re
+import resource
 import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
@@ -140,6 +142,27 @@ def aid_identity(value: object) -> tuple[int, ...]:
     return tuple(result)
 
 
+class VerificationSpan(FrozenRecord):
+    """Private observer counters, never qualification or mechanical proof."""
+
+    sequence: Nonnegative
+    phase: str
+    stage: str
+    segment: str | None
+    tick: Nonnegative | None
+    scope_epoch: Nonnegative | None
+    generation: Nonnegative | None
+    start_monotonic_ns: Nonnegative
+    end_monotonic_ns: Nonnegative
+    thread_cpu_ns: Nonnegative
+    thread_inblock_operations: Nonnegative
+    thread_oublock_operations: Nonnegative
+    reaped_children_cpu_ns: Nonnegative | None
+    reaped_children_inblock_operations: Nonnegative | None
+    reaped_children_oublock_operations: Nonnegative | None
+    completed: bool
+
+
 class NativeRun:
     def __init__(self, root: Path, directory: Path) -> None:
         self.mode = measurement_mode(os.environ.get("BABYLON_NATIVE_MEASUREMENT_MODE"))
@@ -245,6 +268,11 @@ class NativeRun:
         self.segment: str | None = None
         self.pair_identity: list[tuple[int, int, str]] = []
         self.operation_lock = threading.RLock()
+        self.verification_spans: list[VerificationSpan] = []
+        self.verification_dropped = 0
+        self.verification_sequence = 0
+        self.verification_state: ControlState | None = None
+        self.verification_published = False
         self.verify_live()
         self.verify_credentials(fields[2], fields[7], fields[8])
         self.verify_sources()
@@ -376,40 +404,121 @@ class NativeRun:
         if result.returncode or result.stdout:
             raise NativeRunRefusal("national supervisor live ownership admission refused")
 
-    def verify_sources(self) -> None:
-        result = subprocess.run(
-            [
-                "bash",
-                "-c",
-                'source "$1"; national_verify_source_capture',
-                "national-native",
-                str(self.root / "tools/postgres_national_lifecycle.sh"),
-            ],
-            env=self.supervisor,
-            cwd=self.root,
-            capture_output=True,
-            timeout=60,
-            check=False,
+    @contextmanager
+    def verification_span(self, phase: str, *, children: bool = False) -> Iterator[None]:
+        # The released workloads have at most ten closes. Keep even a faulty caller bounded.
+        self.verification_sequence += 1
+        sequence = self.verification_sequence
+        if sequence > 2048:
+            self.verification_dropped += 1
+            yield
+            return
+        state = self.verification_state
+        stage, segment = self.stage, self.segment
+        started = time.monotonic_ns()
+        cpu = time.thread_time_ns()
+        thread = resource.getrusage(resource.RUSAGE_THREAD)
+        child = resource.getrusage(resource.RUSAGE_CHILDREN) if children else None
+        completed = False
+        try:
+            yield
+            completed = True
+        finally:
+            reaped = resource.getrusage(resource.RUSAGE_CHILDREN) if children else None
+            finished_thread = resource.getrusage(resource.RUSAGE_THREAD)
+            cpu_elapsed = time.thread_time_ns() - cpu
+            ended = time.monotonic_ns()
+            self.verification_spans.append(
+                VerificationSpan(
+                    sequence=sequence,
+                    phase=phase,
+                    stage=stage,
+                    segment=segment,
+                    tick=state.durable_tick if state is not None else None,
+                    scope_epoch=state.scope_epoch if state is not None else None,
+                    generation=state.generation if state is not None else None,
+                    start_monotonic_ns=started,
+                    end_monotonic_ns=ended,
+                    thread_cpu_ns=cpu_elapsed,
+                    thread_inblock_operations=finished_thread.ru_inblock - thread.ru_inblock,
+                    thread_oublock_operations=finished_thread.ru_oublock - thread.ru_oublock,
+                    reaped_children_cpu_ns=round(
+                        ((reaped.ru_utime + reaped.ru_stime) - (child.ru_utime + child.ru_stime))
+                        * 1_000_000_000
+                    )
+                    if reaped is not None and child is not None
+                    else None,
+                    reaped_children_inblock_operations=reaped.ru_inblock - child.ru_inblock
+                    if reaped is not None and child is not None
+                    else None,
+                    reaped_children_oublock_operations=reaped.ru_oublock - child.ru_oublock
+                    if reaped is not None and child is not None
+                    else None,
+                    completed=completed,
+                )
+            )
+
+    def publish_verification_diagnostics(self) -> None:
+        if self.verification_published:
+            return
+        publish(
+            self.directory / "verification-diagnostics.json",
+            {
+                "version": 1,
+                "purpose": "diagnostics_only",
+                "campaign": self.campaign,
+                "mode": self.mode,
+                "clock": "monotonic",
+                "cpu_scope": "supervisor_thread",
+                "child_scope": "all_children_reaped_during_source_shell_including_other_children",
+                "block_units": "operations_not_bytes",
+                "dropped_spans": self.verification_dropped,
+                "spans": [
+                    row.model_dump(mode="json")
+                    for row in sorted(self.verification_spans, key=lambda row: row.sequence)
+                ],
+            },
         )
-        if result.returncode:
-            raise NativeRunRefusal("national source capture changed during the native run")
-        if any(memory.executable_digest(p) != digest for p, digest in self.binaries.items()):
-            raise NativeRunRefusal("national executable changed during the native run")
+        self.verification_published = True
+
+    def verify_sources(self) -> None:
+        with self.verification_span("source-shell", children=True):
+            result = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    'source "$1"; national_verify_source_capture',
+                    "national-native",
+                    str(self.root / "tools/postgres_national_lifecycle.sh"),
+                ],
+                env=self.supervisor,
+                cwd=self.root,
+                capture_output=True,
+                timeout=60,
+                check=False,
+            )
+            if result.returncode:
+                raise NativeRunRefusal("national source capture changed during the native run")
+        for path, digest in self.binaries.items():
+            with self.verification_span("executable-" + path.name):
+                if memory.executable_digest(path) != digest:
+                    raise NativeRunRefusal("national executable changed during the native run")
 
     def progress(self, tick: int, stage: str, evidence: dict[str, object]) -> None:
         self.stage = stage
-        publish(
-            self.directory / f"progress-{tick:03}-{stage}.json",
-            {
-                "version": 2,
-                "status": "incomplete",
-                "campaign": self.campaign,
-                "tick": tick,
-                "completed_stage": stage,
-                "elapsed_ns": time.monotonic_ns() - self.started,
-                "evidence": evidence,
-            },
-        )
+        with self.verification_span("progress-" + stage):
+            publish(
+                self.directory / f"progress-{tick:03}-{stage}.json",
+                {
+                    "version": 2,
+                    "status": "incomplete",
+                    "campaign": self.campaign,
+                    "tick": tick,
+                    "completed_stage": stage,
+                    "elapsed_ns": time.monotonic_ns() - self.started,
+                    "evidence": evidence,
+                },
+            )
 
     def snapshot(self, stage: str) -> Snapshot:
         with self.operation_lock:
@@ -731,26 +840,42 @@ class NativeRun:
             raise NativeRunRefusal(f"{stage} exceeded its released timing budget")
 
     def on_boundary(self, state: ControlState) -> None:
+        self.verification_state = state
+        try:
+            with self.verification_span("boundary-callback"):
+                self._on_boundary(state)
+        finally:
+            self.verification_state = None
+
+    def _on_boundary(self, state: ControlState) -> None:
         self.verify_sources()
-        if state.campaign_id != self.campaign or state.foundation_sha256 is None:
-            raise NativeRunRefusal("native UI admitted a different campaign foundation")
-        if state.durable_tick and (
-            not state.period_actionable
-            or state.period_proof is None
-            or state.archive_verified_tick != state.durable_tick
-        ):
-            raise NativeRunRefusal("native independent checks require the published period proof")
-        record = read_record(self.directory / f"material-{state.durable_tick}.json", MaterialRecord)
-        if (record.tick, record.tick_content_hash) != (state.durable_tick, state.tick_content_hash):
-            raise NativeRunRefusal(
-                "native material publication differs from its installed UI boundary"
+        with self.verification_span("material-admission"):
+            if state.campaign_id != self.campaign or state.foundation_sha256 is None:
+                raise NativeRunRefusal("native UI admitted a different campaign foundation")
+            if state.durable_tick and (
+                not state.period_actionable
+                or state.period_proof is None
+                or state.archive_verified_tick != state.durable_tick
+            ):
+                raise NativeRunRefusal(
+                    "native independent checks require the published period proof"
+                )
+            record = read_record(
+                self.directory / f"material-{state.durable_tick}.json", MaterialRecord
             )
-        self.check_budget(
-            "production-read",
-            record.production_read_elapsed_ns,
-            self.policy.maximum_production_read_seconds,
-            state,
-        )
+            if (record.tick, record.tick_content_hash) != (
+                state.durable_tick,
+                state.tick_content_hash,
+            ):
+                raise NativeRunRefusal(
+                    "native material publication differs from its installed UI boundary"
+                )
+            self.check_budget(
+                "production-read",
+                record.production_read_elapsed_ns,
+                self.policy.maximum_production_read_seconds,
+                state,
+            )
         if not record.tick:
             if record.opening is None or self.opening is not None:
                 raise NativeRunRefusal("native run requires one authenticated opening")
@@ -777,42 +902,49 @@ class NativeRun:
             self.snapshot("opening-created")
             self.progress(0, "native-opening", {"opening": record.opening.model_dump(mode="json")})
             return
-        if state.foundation_sha256 != self.foundation:
-            raise NativeRunRefusal("native UI admitted a different campaign foundation")
-        if record.facts is None or record.aid is None or record.tick != len(self.boundaries) + 1:
-            raise NativeRunRefusal("native committed facts omit or duplicate a requested period")
-        advance = read_record(self.directory / f"advance-{record.tick}.json", AdvanceRecord)
-        proof = state.period_proof
-        if (
-            proof is None
-            or advance.runtime_scope.campaign_id != self.campaign
-            or advance.runtime_scope.epoch != state.scope_epoch
-            or advance.foundation_sha256 != self.foundation
-            or advance.policy_sha256 != self.policy_hash
-            or advance.committed_tail.resolve_tick != record.tick
-            or advance.committed_tail.tick_content_hash != record.tick_content_hash
-            or advance.committed_tail.world_hash != record.facts.nominal_world_hash
-            or proof.request_id != advance.request_id
-            or state.advance_request_id != advance.request_id
-            or proof.scope_epoch != record.runtime_epoch
-            or proof.scope_epoch != state.scope_epoch
-            or proof.generation != record.observation_generation
-            or proof.generation != state.generation
-            or proof.campaign_id != self.campaign
-            or proof.tick != record.tick
-            or proof.foundation_sha256 != state.foundation_sha256
-            or proof.policy_sha256 != self.policy_hash
-            or proof.tick_content_hash != record.tick_content_hash
-            or proof.world_hash != record.facts.nominal_world_hash
-            or proof.envelope_digest != record.facts.envelope_digest
-            or proof.archive_verified_tick != record.tick
-            or proof.material_record_sha256 != advance.material_record_sha256
-            or proof.material_record_sha256
-            != memory.executable_digest(self.directory / f"material-{record.tick}.json")
-        ):
-            raise NativeRunRefusal(
-                "native proof differs from actual material and Advance publication"
-            )
+        with self.verification_span("advance-proof-binding"):
+            if state.foundation_sha256 != self.foundation:
+                raise NativeRunRefusal("native UI admitted a different campaign foundation")
+            if (
+                record.facts is None
+                or record.aid is None
+                or record.tick != len(self.boundaries) + 1
+            ):
+                raise NativeRunRefusal(
+                    "native committed facts omit or duplicate a requested period"
+                )
+            advance = read_record(self.directory / f"advance-{record.tick}.json", AdvanceRecord)
+            proof = state.period_proof
+            if (
+                proof is None
+                or advance.runtime_scope.campaign_id != self.campaign
+                or advance.runtime_scope.epoch != state.scope_epoch
+                or advance.foundation_sha256 != self.foundation
+                or advance.policy_sha256 != self.policy_hash
+                or advance.committed_tail.resolve_tick != record.tick
+                or advance.committed_tail.tick_content_hash != record.tick_content_hash
+                or advance.committed_tail.world_hash != record.facts.nominal_world_hash
+                or proof.request_id != advance.request_id
+                or state.advance_request_id != advance.request_id
+                or proof.scope_epoch != record.runtime_epoch
+                or proof.scope_epoch != state.scope_epoch
+                or proof.generation != record.observation_generation
+                or proof.generation != state.generation
+                or proof.campaign_id != self.campaign
+                or proof.tick != record.tick
+                or proof.foundation_sha256 != state.foundation_sha256
+                or proof.policy_sha256 != self.policy_hash
+                or proof.tick_content_hash != record.tick_content_hash
+                or proof.world_hash != record.facts.nominal_world_hash
+                or proof.envelope_digest != record.facts.envelope_digest
+                or proof.archive_verified_tick != record.tick
+                or proof.material_record_sha256 != advance.material_record_sha256
+                or proof.material_record_sha256
+                != memory.executable_digest(self.directory / f"material-{record.tick}.json")
+            ):
+                raise NativeRunRefusal(
+                    "native proof differs from actual material and Advance publication"
+                )
         self.progress(record.tick, "committed", advance.model_dump(mode="json"))
         self.check_budget(
             "advance",
@@ -1156,6 +1288,7 @@ class NativeRun:
             WayneWalk(self).drive(writer, reader)
             self.verify_live()
             self.verify_sources()
+            self.publish_verification_diagnostics()
             self.reports()
             return 0
         cold_start = time.monotonic_ns()
@@ -1247,6 +1380,7 @@ class NativeRun:
             raise NativeRunRefusal("windowed national pair did not exit cleanly")
         self.verify_live()
         self.verify_sources()
+        self.publish_verification_diagnostics()
         self.reports()
         return 0
 
@@ -2194,6 +2328,12 @@ def main() -> int:
     except (Exception, KeyboardInterrupt, BaseExceptionGroup) as error:
         causes = failure_causes(error)
         if run is not None:
+            try:
+                run.publish_verification_diagnostics()
+            except BaseException as diagnostic_error:
+                raise BaseExceptionGroup(
+                    "native run and diagnostic publication failed", [error, diagnostic_error]
+                ) from None
             publish(
                 run.directory / "native-run-incomplete.json",
                 NativeRunIncomplete(

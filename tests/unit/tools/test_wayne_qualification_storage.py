@@ -1094,3 +1094,169 @@ def test_native_pin_publishes_only_released_normal_copies(
         assert result == 1 and reason in capsys.readouterr().err
         assert not roster.exists()
         assert not (evidence / "native-executables.sha256").exists()
+
+
+def test_ordinary_profile_is_independent_normal_only_and_never_a_qualified_member(monkeypatch):
+    root = storage.RUN_PARENT / "ordinary-01"
+    evidence = root / "normal_play/evidence"
+    monkeypatch.setenv("BABYLON_NATIVE_MEASUREMENT_MODE", "normal_play")
+    assert storage.profile_run("ordinary-01", "national_storage", "10", evidence) == evidence.parent
+    assert storage.owned_native_path(evidence) == ("ordinary-01", "normal_play")
+    with pytest.raises(storage.StorageRefusal):
+        storage.native_path(evidence)
+    for mode, periods, selected in (
+        ("memory_capture", "10", root / "memory_capture/evidence"),
+        ("normal_play", "3", evidence),
+        ("normal_play", "10", storage.RUN_PARENT / "walk-01/normal_play/evidence"),
+    ):
+        monkeypatch.setenv("BABYLON_NATIVE_MEASUREMENT_MODE", mode)
+        with pytest.raises(storage.StorageRefusal):
+            storage.profile_run("ordinary-01", "national_storage", periods, selected)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [None, "clients", "race", "custody", "stop-running", "stop-stopped", "lease", "restart"],
+)
+def test_ordinary_preservation_releases_only_a_stopped_matching_owner(tmp_path, monkeypatch, fault):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from tools.devtools.national_native_runner import OrdinaryWarmEvidence
+
+    monkeypatch.setenv("BABYLON_NATIVE_MEASUREMENT_MODE", "normal_play")
+    monkeypatch.setattr(storage, "RUN_PARENT", tmp_path)
+    run = tmp_path / "ordinary-01/normal_play"
+    evidence = run / "evidence"
+    evidence.mkdir(parents=True, mode=0o700)
+    raw = run / "raw"
+    raw.mkdir(mode=0o700)
+    (run / "pgdata").mkdir(mode=0o700)
+    control = tmp_path / "control"
+    control.mkdir(mode=0o700)
+    store = storage.PrivateEvidence(evidence)
+    host = {"inode": 42}
+    cid, image = "ab" * 32, "sha256:" + "cd" * 32
+    campaign = "81b979ee-a9c1-48fd-8835-06cbfe594675"
+    owner = ["0"] * 21
+    owner[0], owner[1], owner[2], owner[4], owner[6] = (
+        "national-storage-runner-media-v2",
+        str(tmp_path),
+        "private-canary",
+        cid,
+        image,
+    )
+    owner[7], owner[9], owner[10], owner[11] = "national_owned", "42", str(evidence), "ordinary-01"
+    owner_bytes = ("\n".join(owner) + "\n").encode()
+    store.publish("ownership", owner_bytes)
+    storage.PrivateEvidence(control).publish("active", owner_bytes)
+    store.publish("campaign", (campaign + "\n").encode())
+    store.publish_json(
+        "physical.json",
+        {"container": cid, "port": 54321, "host": host, "mounts": [], "port_request": {}},
+    )
+    for name in (
+        "source-head",
+        "source-before.sha256",
+        "inputs.sha256",
+        "normal-binaries.json",
+        "native-role-oids.json",
+        "host-native-admission.json",
+    ):
+        store.publish(name, b"retained admitted source")
+    # A measured late/refused prefix is preserved as incomplete, never upgraded.
+    store.publish_json(
+        "ordinary-warm-prefix.json",
+        OrdinaryWarmEvidence(status="incomplete", samples=(), actions=(), failures=()).model_dump(
+            mode="json"
+        ),
+    )
+    storage.PrivateEvidence(raw).publish("incomplete.png", b"partial-pixels")
+    calls = []
+    stopped = False
+    zero_calls = 0
+
+    def execute(query, parameters=None):
+        nonlocal zero_calls
+        value = str(query)
+        if "count(*)" in value:
+            zero_calls += 1
+            calls.append("zero")
+            count = int(fault == "clients" or fault == "race" and zero_calls == 2)
+            return SimpleNamespace(fetchone=lambda: (count,))
+        if "SELECT datallowconn" in value:
+            assert parameters == (owner[7], owner[9])
+            return SimpleNamespace(fetchone=lambda: (True,))
+        assert "ALTER DATABASE" in value
+        calls.append("restore" if " true" in value else "fence")
+        return None
+
+    connection = SimpleNamespace(execute=execute)
+    monkeypatch.setattr(
+        storage, "physical_session", lambda _port, _supplied: nullcontext(connection)
+    )
+    monkeypatch.setattr(storage, "held_native_lock", lambda _root: control)
+    monkeypatch.setattr(storage, "_host_identity", lambda _path: host)
+    monkeypatch.setattr(storage, "process_guard", lambda _directory: calls.append("processes"))
+    monkeypatch.setattr(storage, "source_unchanged", lambda *_args: calls.append("source"))
+
+    def authenticate(root, directory, actual, *, physical_connection):
+        assert (
+            actual == tuple(owner) and directory == evidence and physical_connection is connection
+        )
+        calls.append("custody")
+        if fault == "custody":
+            raise storage.StorageRefusal("changed owner")
+
+    def stop(directory, actual_cid, *, fenced_image):
+        nonlocal stopped
+        assert actual_cid == cid and fenced_image == image
+        calls.append("stop")
+        if fault == "stop-running":
+            raise storage.StorageRefusal("refused stop")
+        stopped = True
+        if fault == "stop-stopped":
+            raise storage.StorageRefusal("stopped without clean acknowledgement")
+        directory.publish_json("native-fenced-stop-v1.json", {"exact_clean_stop": True})
+        if fault == "lease":
+            (control / "active").write_bytes(b"changed exact lease")
+
+    monkeypatch.setattr(storage, "reauthenticate_native_owner", authenticate)
+    monkeypatch.setattr(storage, "stop_checked", stop)
+    monkeypatch.setattr(
+        storage, "container_mounts", lambda *_args: {"mounts": [], "port_request": {}}
+    )
+    monkeypatch.setattr(
+        storage,
+        "_one_docker",
+        lambda *_args: {
+            "Id": cid,
+            "Image": image,
+            "State": {
+                "Status": "exited" if stopped and fault != "restart" else "running",
+                "Running": not stopped or fault == "restart",
+                "ExitCode": 0,
+                "OOMKilled": False,
+                "Pid": 0,
+            },
+        },
+    )
+    if fault:
+        with pytest.raises(storage.StorageRefusal):
+            storage.retain_ordinary(tmp_path, evidence, cid, 1)
+        assert (control / "active").exists()
+        assert not (evidence / "ordinary-retained.json").exists()
+        assert ("restore" in calls) == (fault in ("race", "stop-running"))
+    else:
+        storage.retain_ordinary(tmp_path, evidence, cid, 1)
+        result = storage.OrdinaryRetention.model_validate_json(
+            (evidence / "ordinary-retained.json").read_bytes()
+        )
+        assert result.measurement_status == "incomplete" and result.measurement_exit_status == 1
+        assert result.campaign_connections_allowed is False
+        assert result.container == cid and result.pgdata == str(run / "pgdata")
+        assert not (control / "active").exists()
+        assert calls == ["custody", "zero", "fence", "zero", "stop", "processes", "source"]
+        assert "private-canary" not in (evidence / "ordinary-retained.json").read_text()
+        assert storage.PrivateEvidence(raw).read_reference(result.raw[0]) == b"partial-pixels"
+    assert (run / "pgdata").exists() and raw.exists()

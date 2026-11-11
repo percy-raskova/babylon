@@ -1437,6 +1437,7 @@ def test_ordinary_drive_strips_audit_only_on_copies_and_reuses_existing_owned_la
         root=tmp_path,
         directory=tmp_path / "evidence",
         timeout=12,
+        policy=SimpleNamespace(maximum_cold_open_seconds=180),
         runtime=tmp_path / "runtime",
         client=tmp_path / "client",
         campaign="81b979ee-a9c1-48fd-8835-06cbfe594675",
@@ -1462,6 +1463,7 @@ def test_ordinary_drive_strips_audit_only_on_copies_and_reuses_existing_owned_la
         assert client_environment == {
             key: value for key, value in reader.items() if key not in audit
         }
+        assert options["cold_window"].maximum_seconds == 180
         assert options["periods"] == 0 and options["choices"] == ()
         assert options["capture_lifecycle"] is None and options["on_installed"] is companion
         assert options["on_started"] is started
@@ -1473,3 +1475,88 @@ def test_ordinary_drive_strips_audit_only_on_copies_and_reuses_existing_owned_la
     monkeypatch.setattr(runner, "drive_pair", drive)
     assert companion.drive(writer, reader, on_started=started) == 0
     assert (writer, reader) == originals and len(calls) == 1
+
+
+def test_public_native_run_routes_ordinary_before_qualified_audit_installation(
+    tmp_path, monkeypatch
+):
+    run = object.__new__(runner.NativeRun)
+    run.directory, run.wayne_profile = tmp_path, "ordinary-01"
+    calls = []
+    writer, reader = {"writer": "private"}, {"reader": "private"}
+    run.prepare = lambda: calls.append("prepare")
+    run.marker = lambda: SimpleNamespace(foundation_sha256=None)
+    run.environments = lambda: (writer, reader)
+
+    def ordinary(actual_writer, actual_reader):
+        assert actual_writer is writer and actual_reader is reader
+        assert not any(key.startswith("BABYLON_QUALIFICATION_") for key in actual_reader)
+        calls.append("ordinary")
+        return 0
+
+    run.ordinary = ordinary
+    assert run.run() == 0
+    assert calls == ["prepare", "ordinary"]
+    assert reader == {"reader": "private"}
+
+
+@pytest.mark.parametrize("fault", [None, "period", "foundation", "pair_exit"])
+def test_admitted_ordinary_branch_invokes_existing_helper_and_binds_actual_terminal(
+    tmp_path, monkeypatch, fault
+):
+    run = object.__new__(runner.NativeRun)
+    run.directory = run.root = tmp_path
+    run.wayne_profile, run.mode, run.periods = "ordinary-01", "normal_play", 10
+    run.campaign = "81b979ee-a9c1-48fd-8835-06cbfe594675"
+    run.runtime, run.client = tmp_path / "runtime", tmp_path / "client"
+    run.owner_fields = ("private-owner",)
+    calls = []
+    run.verify_live = lambda: calls.append("live")
+    run.verify_sources = lambda: calls.append("source")
+    run.publish_verification_diagnostics = lambda: calls.append("diagnostics")
+    run.process_identity = lambda process, binary: (process.pid, 42, binary.name)
+    run.record_processes = lambda segment: calls.append(segment)
+    run.marker = lambda: memory.CampaignMemoryMarker(
+        campaign=run.campaign,
+        foundation_sha256=("c" if fault == "foundation" else "a") * 64,
+        campaign_age_ticks=2 if fault == "period" else 3,
+        tick_content_hash="b" * 64,
+    )
+    report = SimpleNamespace(
+        status="completed",
+        samples=[
+            SimpleNamespace(
+                ready=SimpleNamespace(
+                    state=SimpleNamespace(foundation_sha256="a" * 64, tick_content_hash="b" * 64)
+                )
+            )
+        ]
+        * 3,
+    )
+    monkeypatch.setattr(runner, "read_record", lambda *_args: report)
+    monkeypatch.setattr(runner, "reauthenticate_native_owner", lambda *_args: calls.append("owner"))
+
+    class Companion:
+        def __init__(self, admitted):
+            assert admitted is run
+
+        def drive(self, writer, reader, *, on_started):
+            assert writer == {"writer": "owned"} and reader == {"reader": "owned"}
+            calls.append("existing-helper")
+            on_started(SimpleNamespace(pid=101), SimpleNamespace(pid=102))
+            return int(fault == "pair_exit")
+
+    monkeypatch.setattr(runner, "OrdinaryWarmPrefix", Companion)
+    if fault:
+        with pytest.raises(runner.NativeRunRefusal):
+            run.ordinary({"writer": "owned"}, {"reader": "owned"})
+        assert not (tmp_path / "ordinary-terminal.json").exists()
+    else:
+        assert run.ordinary({"writer": "owned"}, {"reader": "owned"}) == 0
+        terminal = memory.CampaignMemoryMarker.model_validate_json(
+            (tmp_path / "ordinary-terminal.json").read_bytes()
+        )
+        assert terminal.campaign == run.campaign and terminal.campaign_age_ticks == 3
+        assert calls[-1] == "diagnostics"
+    assert calls[:3] == ["owner", "existing-helper", "ordinary-prefix"]
+    assert run.pair_identity == [(101, 42, "runtime"), (102, 42, "client")]

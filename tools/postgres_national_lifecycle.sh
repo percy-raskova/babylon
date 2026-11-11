@@ -19,6 +19,15 @@ national_success_selection() {
         [ "${BABYLON_NATIONAL_CAPTURE_MODE:-raw-economic}" = playable-aid ] ||
         die "native retention requires playable national scope"
       ;;
+    retain-ordinary)
+      if [ "${BABYLON_POSTGRES_LIVE_FOCUS:-}" != national_storage ] ||
+        [ "${BABYLON_NATIONAL_CAPTURE_MODE:-}" != playable-aid ] ||
+        [ "${BABYLON_WAYNE_PROFILE:-}" != ordinary-01 ] ||
+        [ "${BABYLON_NATIVE_MEASUREMENT_MODE:-}" != normal_play ] ||
+        [ "${BABYLON_NATIONAL_STORAGE_PERIODS:-}" != 10 ]; then
+        die "ordinary retention requires its separate normal-only profile"
+      fi
+      ;;
     *) die "unsupported national success disposition" ;;
   esac
 }
@@ -166,7 +175,10 @@ national_begin() {
   printf '%s\n' "$NATIONAL_QUALIFY_TIMING" > "$BABYLON_STORAGE_REPORT_DIRECTORY/timing-qualification-mode"
   printf '%s\n' "$NATIONAL_STORAGE_QUALIFICATION" > "$BABYLON_STORAGE_REPORT_DIRECTORY/storage-qualification-mode"
   national_reproducibility
-  if [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
+  if [ "${BABYLON_WAYNE_PROFILE:-}" = ordinary-01 ]; then
+    BABYLON_NATIONAL_STORAGE_CAMPAIGN="$(cat /proc/sys/kernel/random/uuid)"
+    export BABYLON_NATIONAL_STORAGE_CAMPAIGN
+  elif [ -n "${BABYLON_WAYNE_PROFILE:-}" ]; then
     BABYLON_NATIONAL_STORAGE_CAMPAIGN="$(wayne_pair admit)" || die "native pair declaration refused"
     export BABYLON_NATIONAL_STORAGE_CAMPAIGN
   fi
@@ -494,7 +506,7 @@ national_release_inventory() {
 national_reproducibility() {
   local cache="$REPO_ROOT/reports/test-results/national-storage-runner/reproducibility" digest temporary destination
   case "${BABYLON_WAYNE_PROFILE:-}" in
-    smoke-01|walk-01) cache="$BABYLON_STORAGE_REPORT_DIRECTORY" ;;
+    smoke-01|walk-01|ordinary-01) cache="$BABYLON_STORAGE_REPORT_DIRECTORY" ;;
   esac
   mkdir -p "$cache"
   national_source_manifest > "$BABYLON_STORAGE_REPORT_DIRECTORY/source-before.sha256"

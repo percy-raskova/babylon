@@ -1076,3 +1076,87 @@ national_reproducibility
             f"inputs-{inputs.sha256}.tar.gz",
             f"source-{sources.sha256}.tar.gz",
         }
+
+
+def test_public_ordinary_prefix_selects_its_owned_profile_before_any_fixture_work(tmp_path):
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    script = tools / "run_rust_postgres.sh"
+    script.write_bytes((REPOSITORY / "tools/run_rust_postgres.sh").read_bytes())
+    (tools / "postgres_national_lifecycle.sh").write_text(
+        'national_capture_selection() { printf "%s\\n" "$BABYLON_WAYNE_PROFILE" '
+        '"$BABYLON_NATIVE_MEASUREMENT_MODE" "$BABYLON_NATIONAL_STORAGE_PERIODS" '
+        '"$BABYLON_NATIONAL_SUCCESS_DISPOSITION" "$BABYLON_STORAGE_REPORT_DIRECTORY"; exit 42; }\n'
+    )
+    denied = tmp_path / "denied"
+    denied.mkdir()
+    for name in ("docker", "psql", "cargo", "mise"):
+        command = denied / name
+        command.write_text(
+            '#!/bin/sh\nprintf "unexpected external call" > "'
+            + str(tmp_path / "external-called")
+            + '"\nexit 97\n'
+        )
+        command.chmod(0o700)
+    from shutil import which
+
+    isolated_path = f"{denied}:{os.defpath}"
+    for name in ("docker", "psql", "cargo", "mise"):
+        assert which(name, path=isolated_path) == str(denied / name)
+    result = subprocess.run(
+        ["bash", str(script), "--wayne-ordinary-prefix"],
+        env={"PATH": isolated_path},
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert not (tmp_path / "external-called").exists()
+    assert result.returncode == 42, result.stderr
+    assert result.stdout.splitlines() == [
+        "ordinary-01",
+        "normal_play",
+        "10",
+        "retain-ordinary",
+        str(tmp_path.parent / "qualification-15/ordinary-01/normal_play/evidence"),
+    ]
+
+
+@pytest.mark.parametrize("status", [0, 1])
+def test_ordinary_cleanup_preserves_measurement_status_and_avoids_qualified_retirement(
+    tmp_path, status
+):
+    source = (REPOSITORY / "tools/run_rust_postgres.sh").read_text()
+    body = source[source.index("cleanup_checked() {") : source.index("wait_for_runtime() {")]
+    script = (
+        r"""
+set -euo pipefail
+die() { printf 'refused: %s\n' "$*" >&2; exit 98; }
+wayne_media() { printf '%s\n' "$*"; }
+national_retain_success() { echo 'unexpected qualification' >&2; exit 97; }
+national_verify_disposable() { echo 'unexpected removal' >&2; exit 97; }
+timeout() { echo 'unexpected external' >&2; exit 97; }
+"""
+        + body
+        + '\ncleanup_checked\nprintf "status=%s\\n" "$status"\n'
+    )
+    result = subprocess.run(
+        ["bash", "-c", script],
+        env={
+            "PATH": os.defpath,
+            "OWNED": "1",
+            "LIVE_FOCUS": "national_storage",
+            "status": str(status),
+            "BABYLON_WAYNE_PROFILE": "ordinary-01",
+            "CONTAINER_ID": "ab" * 32,
+        },
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        f"retain-ordinary --container {'ab' * 32} --exit-status {status}",
+        f"status={status}",
+    ]

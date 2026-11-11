@@ -235,6 +235,16 @@ for the usable endpoint, including all overhead. Keep raw pixels and incomplete 
 This prefix does not prove a full ten-period walk, recovery, storage or qualification. Use `qualification-15` as the
 fresh disposable namespace. Keep `qualification-14` and its artifacts.
 
+Invoke `tools/run_rust_postgres.sh --wayne-ordinary-prefix` for the separate normal-only `ordinary-01` profile.
+Its independent evidence path is `qualification-15/ordinary-01/normal_play/evidence`. The source horizon stays at ten
+periods. Existing source, capacity, binary, ownership and role checks apply.
+
+After the prefix, stop and keep the exact container, primary data and evidence. Record late or incomplete measurements
+without claiming qualification or backup. Release only the matching lease after checked shutdown. A refused stop keeps
+the lease. The stopped campaign keeps its connection flag closed.
+
+This uses the existing disposable campaign fence, not continuous exclusion of all SQL clients.
+
 - [ ] **Step 5:** Apply the measured-failure bound.
 
 Allow at most one targeted diagnostic per demonstrated blocker and ONE corrective iteration. Separate pre-measurement

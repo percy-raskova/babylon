@@ -201,7 +201,7 @@ class NativeRun:
             raise NativeRunRefusal("national runner original ownership differs from the live lease")
         fields = self.ownership.decode().splitlines()
         self.wayne_profile = os.environ.get("BABYLON_WAYNE_PROFILE")
-        if self.wayne_profile not in ("smoke-01", "walk-01"):
+        if self.wayne_profile not in ("smoke-01", "walk-01", "ordinary-01"):
             raise NativeRunRefusal(
                 "native qualification requires a released smoke or walk workload"
             )
@@ -1272,11 +1272,52 @@ class NativeRun:
             },
         )
 
+    def ordinary(self, writer: dict[str, str], reader: dict[str, str]) -> int:
+        """Run only the independently admitted ordinary prefix, then hand back custody."""
+        if self.wayne_profile != "ordinary-01" or self.mode != "normal_play" or self.periods != 10:
+            raise NativeRunRefusal(
+                "ordinary prefix requires its separate normal ten-period fixture"
+            )
+        reauthenticate_native_owner(self.root, self.directory, self.owner_fields)
+        self.stage = "ordinary-prefix"
+        self.segment = "ordinary-prefix"
+
+        def started(runtime: subprocess.Popen[bytes], client: subprocess.Popen[bytes]) -> None:
+            self.pair_identity = [
+                self.process_identity(process, binary)
+                for process, binary in ((runtime, self.runtime), (client, self.client))
+            ]
+            self.record_processes("ordinary-prefix")
+            self.verify_live()
+            self.verify_sources()
+
+        result = OrdinaryWarmPrefix(self).drive(writer, reader, on_started=started)
+        if result:
+            raise NativeRunRefusal("ordinary prefix pair did not exit cleanly")
+        self.verify_live()
+        self.verify_sources()
+        recorded = read_record(self.directory / "ordinary-warm-prefix.json", OrdinaryWarmEvidence)
+        marker = self.marker()
+        if (
+            recorded.status != "completed"
+            or len(recorded.samples) != 3
+            or marker.campaign != self.campaign
+            or marker.campaign_age_ticks != 3
+            or marker.foundation_sha256 != recorded.samples[-1].ready.state.foundation_sha256
+            or marker.tick_content_hash != recorded.samples[-1].ready.state.tick_content_hash
+        ):
+            raise NativeRunRefusal("ordinary terminal marker differs from its three-close evidence")
+        publish(self.directory / "ordinary-terminal.json", marker.model_dump(mode="json"))
+        self.publish_verification_diagnostics()
+        return 0
+
     def run(self) -> int:
         self.prepare()
         if self.marker().foundation_sha256 is not None:
             raise NativeRunRefusal("declared campaign already exists before native New")
         writer, reader = self.environments()
+        if self.wayne_profile == "ordinary-01":
+            return self.ordinary(writer, reader)
         reader.update(
             {
                 "BABYLON_QUALIFICATION_POLICY": str(self.directory / "policy.json"),
@@ -2398,6 +2439,9 @@ class OrdinaryWarmPrefix:
             choices=(),
             on_installed=self,
             on_stopped=self.walk.retain_stopped_frame,
+            cold_window=ColdControlWindow(
+                time.monotonic_ns(), self.run.policy.maximum_cold_open_seconds
+            ),
             capture_lifecycle=None,
         )
 

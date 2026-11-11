@@ -42,6 +42,7 @@ PROFILES = {
     "sql-01": ("organizer_allocation_atomic", ""),
     "smoke-01": ("national_storage", "2"),
     "walk-01": ("national_storage", "10"),
+    "ordinary-01": ("national_storage", "10"),
 }
 STAGES = (
     "bootstrap",
@@ -99,9 +100,23 @@ def native_path(evidence: Path) -> tuple[str, MeasurementMode]:
     return profile, mode
 
 
+def owned_native_path(evidence: Path) -> tuple[str, MeasurementMode]:
+    """Resolve media custody paths without admitting ordinary evidence to a pair."""
+    if evidence == RUN_PARENT / "ordinary-01/normal_play/evidence":
+        return "ordinary-01", "normal_play"
+    return native_path(evidence)
+
+
 def profile_run(profile: str, focus: str, periods: str, evidence: Path) -> Path:
     if PROFILES.get(profile) != (focus, periods):
         raise StorageRefusal("Wayne media profile, focus and period count disagree")
+    if profile == "ordinary-01":
+        if measurement_mode(os.environ.get("BABYLON_NATIVE_MEASUREMENT_MODE")) != "normal_play":
+            raise StorageRefusal("ordinary prefix requires normal-only measurement")
+        run = RUN_PARENT / profile / "normal_play"
+        if evidence != run / "evidence":
+            raise StorageRefusal("ordinary evidence does not name its independent normal-only run")
+        return run
     run = (
         RUN_PARENT / profile
         if profile == "sql-01"
@@ -628,7 +643,7 @@ MEDIA_CHECKOUT = RUN_PARENT.parent / "babylon"
 
 class DiskReservation(Record):
     tag: Literal["wayne-disk-reservation-v1"]
-    profile: Literal["sql-01", "smoke-01", "walk-01"]
+    profile: Literal["sql-01", "smoke-01", "walk-01", "ordinary-01"]
     source_head: str
     build_bytes: Annotated[int, Field(ge=0)]
     primary_bytes: Annotated[int, Field(gt=0)]
@@ -984,7 +999,7 @@ def released_head(directory: PrivateEvidence, root: Path) -> str:
     profile = (
         "sql-01"
         if directory.path == RUN_PARENT / "sql-01/evidence"
-        else native_path(directory.path)[0]
+        else owned_native_path(directory.path)[0]
     )
     reference = parent.reference(f"{profile}-capacity.json")
     reservation = read_typed(parent, reference, DiskReservation)
@@ -1869,7 +1884,7 @@ def _fenced_stop(directory: PrivateEvidence, cid: str, image: str) -> None:
     from datetime import UTC, datetime
 
     run = directory.path.parent
-    native_path(directory.path)
+    owned_native_path(directory.path)
     physical = strict_json_bytes(directory.read_reference(directory.reference("physical.json")))
     if (
         not isinstance(physical, dict)
@@ -2160,7 +2175,7 @@ def owner_lines(
     host = physical["host"]
     creator = physical["creator"]
     run = directory.path.parent
-    profile, _mode = native_path(directory.path)
+    profile, _mode = owned_native_path(directory.path)
     fields = [
         "national-storage-runner-media-v2",
         str(root),
@@ -2269,7 +2284,7 @@ def reauthenticate_native_owner(
         or owner[0] != "national-storage-runner-media-v2"
         or owner[1] != str(root)
         or owner[10] != str(evidence)
-        or owner[11] not in ("smoke-01", "walk-01")
+        or owner[11] not in ("smoke-01", "walk-01", "ordinary-01")
     ):
         raise StorageRefusal("native backup needs its complete current media owner")
     profile_run(owner[11], "national_storage", "2" if owner[11] == "smoke-01" else "10", evidence)
@@ -2313,6 +2328,232 @@ def reauthenticate_native_owner(
                 raise StorageRefusal("archived and installed native binary differ")
 
 
+class OrdinaryRetention(Record):
+    tag: Literal["ordinary-prefix-retained-v1"] = "ordinary-prefix-retained-v1"
+    scope: Literal["ordinary_prefix_only_not_qualification_or_backup"] = (
+        "ordinary_prefix_only_not_qualification_or_backup"
+    )
+    measurement_status: Literal["completed", "incomplete"]
+    measurement_exit_status: Annotated[int, Field(ge=0, le=255)]
+    campaign: str
+    container: Annotated[str, Field(pattern="^[0-9a-f]{64}$")]
+    image: Annotated[str, Field(pattern="^sha256:[0-9a-f]{64}$")]
+    pgdata: str
+    host: dict[str, int]
+    campaign_connections_allowed: Literal[False] = False
+    owner: Reference
+    shutdown: Reference
+    evidence: tuple[Reference, ...]
+    raw: tuple[Reference, ...]
+
+
+def _ordinary_stopped(
+    directory: PrivateEvidence, root: Path, owner: tuple[str, ...], physical: dict[str, Any]
+) -> None:
+    current = _one_docker("container", owner[4])
+    state = current["State"]
+    if (
+        current["Id"] != owner[4]
+        or current["Image"] != owner[6]
+        or state["Status"] != "exited"
+        or state["Running"] is not False
+        or state["ExitCode"] != 0
+        or state["OOMKilled"] is not False
+        or state["Pid"] != 0
+        or container_mounts(current, root, directory.path.parent, owner[2], owner[4], owner[6])
+        != {"mounts": physical["mounts"], "port_request": physical["port_request"]}
+        or _host_identity(directory.path.parent / "pgdata") != physical["host"]
+    ):
+        raise StorageRefusal(
+            "ordinary preservation requires the exact still-stopped container and primary"
+        )
+
+
+def retain_ordinary(root: Path, evidence: Path, cid: str, exit_status: int) -> None:
+    """Preserve an ordinary fixture after exact clean stop; never remove or qualify it."""
+    from tools.devtools.national_native_runner import OrdinaryWarmEvidence
+
+    if type(exit_status) is not int or not 0 <= exit_status <= 255:
+        raise StorageRefusal(
+            "ordinary preservation requires the actual bounded process exit status"
+        )
+    profile_run("ordinary-01", "national_storage", "10", evidence)
+    directory = PrivateEvidence(evidence)
+    owner_ref = directory.reference("ownership")
+    owner_bytes = directory.read_reference(owner_ref, 4096)
+    owner = tuple(owner_bytes.decode().splitlines())
+    if len(owner) != 21 or owner[11] != "ordinary-01" or owner[4] != cid:
+        raise StorageRefusal("ordinary preservation requires its exact independent fixture owner")
+    campaign = directory.read_reference(directory.reference("campaign"), 128).decode().strip()
+    if str(UUID(campaign)) != campaign or UUID(campaign).int == 0:
+        raise StorageRefusal("ordinary preservation lacks its canonical actual campaign")
+    physical = strict_json_bytes(directory.read_reference(directory.reference("physical.json")))
+    if not isinstance(physical, dict) or physical.get("container") != cid:
+        raise StorageRefusal("ordinary preservation physical record differs from its owner")
+    report_ref = None
+    measurement: Literal["completed", "incomplete"] = "incomplete"
+    if os.path.lexists(evidence / "ordinary-warm-prefix.json"):
+        report_ref = directory.reference("ordinary-warm-prefix.json")
+        report = OrdinaryWarmEvidence.model_validate(
+            strict_json_bytes(directory.read_reference(report_ref, 32 * 1024 * 1024))
+        )
+        if report.status == "completed" and exit_status == 0:
+            if (
+                tuple(sample.period for sample in report.samples) != (1, 2, 3)
+                or any(sample.usable_elapsed_ns > 10_000_000_000 for sample in report.samples)
+                or any(sample.ready.state.campaign_id != campaign for sample in report.samples)
+                or not os.path.lexists(evidence / "ordinary-terminal.json")
+            ):
+                raise StorageRefusal(
+                    "completed ordinary evidence lacks its exact three-close terminal"
+                )
+            measurement = "completed"
+    names = (
+        "campaign",
+        "source-head",
+        "source-before.sha256",
+        "inputs.sha256",
+        "physical.json",
+        "normal-binaries.json",
+        "native-role-oids.json",
+        "host-native-admission.json",
+    )
+    references = [directory.reference(name) for name in names]
+    references.extend(
+        directory.reference(name)
+        for name in (
+            "ordinary-warm-prefix.json",
+            "ordinary-terminal.json",
+            "native-controls.json",
+            "native-run-incomplete.json",
+            "verification-diagnostics.json",
+            "processes-ordinary-prefix.json",
+        )
+        if os.path.lexists(evidence / name)
+    )
+    raw = PrivateEvidence(evidence.parent / "raw")
+    pixels = tuple(raw.reference(path.name) for path in sorted(raw.path.iterdir()))
+    control = held_native_lock(root)
+    lease = control / "active"
+    lease_identity = lease.lstat()
+    fenced = False
+    with physical_session(physical["port"], None) as connection:
+        reauthenticate_native_owner(root, evidence, owner, physical_connection=connection)
+        _zero_sessions(connection)
+        allowed = connection.execute(
+            "SELECT datallowconn FROM pg_catalog.pg_database WHERE datname=%s AND oid=%s::oid",
+            (owner[7], owner[9]),
+        ).fetchone()
+        if allowed != (True,):
+            raise StorageRefusal("ordinary campaign connection flag differs before preservation")
+        try:
+            connection.execute(
+                sql.SQL("ALTER DATABASE {} ALLOW_CONNECTIONS false").format(
+                    sql.Identifier(owner[7])
+                )
+            )
+            fenced = True
+            directory.publish_json(
+                "ordinary-stop-attempt.json",
+                {
+                    "measurement_status": measurement,
+                    "measurement_exit_status": exit_status,
+                    "owner": owner_ref.model_dump(),
+                    "campaign": campaign,
+                    "campaign_connections_allowed": False,
+                    "ordinary": report_ref.model_dump() if report_ref else None,
+                },
+            )
+            _zero_sessions(connection)
+            stop_checked(directory, cid, fenced_image=owner[6])
+        except BaseException as failure:
+            if fenced:
+                try:
+                    current = _one_docker("container", cid)
+                    if (
+                        current["Id"] == cid
+                        and current["Image"] == owner[6]
+                        and current["State"]["Status"] == "running"
+                        and current["State"]["Running"] is True
+                    ):
+                        connection.execute(
+                            sql.SQL("ALTER DATABASE {} ALLOW_CONNECTIONS true").format(
+                                sql.Identifier(owner[7])
+                            )
+                        )
+                        directory.publish_json(
+                            "ordinary-fence-restored.json", {"campaign_connections_allowed": True}
+                        )
+                except BaseException as restoration:
+                    raise BaseExceptionGroup(
+                        "ordinary stop and running-flag restoration failed", [failure, restoration]
+                    ) from None
+            raise
+    process_guard(directory)
+    source_unchanged(root, evidence)
+    shutdown = directory.reference("native-fenced-stop-v1.json")
+    for reference in references:
+        directory.verify(reference)
+    for reference in pixels:
+        raw.verify(reference)
+    directory.verify(owner_ref)
+    _ordinary_stopped(directory, root, owner, physical)
+    current_lease = lease.lstat()
+    if (
+        (current_lease.st_dev, current_lease.st_ino)
+        != (lease_identity.st_dev, lease_identity.st_ino)
+        or private_owner_bytes(control) != owner_bytes
+        or directory.read_reference(owner_ref, 4096) != owner_bytes
+        or _host_identity(evidence.parent / "pgdata") != physical["host"]
+    ):
+        raise StorageRefusal("ordinary stopped fixture or matching lease changed before release")
+    retained = OrdinaryRetention(
+        measurement_status=measurement,
+        measurement_exit_status=exit_status,
+        campaign=campaign,
+        container=cid,
+        image=owner[6],
+        pgdata=str(evidence.parent / "pgdata"),
+        host=physical["host"],
+        owner=owner_ref,
+        shutdown=shutdown,
+        evidence=tuple(references),
+        raw=pixels,
+    )
+    receipt = directory.publish_json("ordinary-retained.json", retained.model_dump())
+    directory.verify(receipt)
+    _ordinary_stopped(directory, root, owner, physical)
+    final_lease = lease.lstat()
+    if (
+        held_native_lock(root) != control
+        or private_owner_bytes(control) != owner_bytes
+        or (
+            final_lease.st_dev,
+            final_lease.st_ino,
+            final_lease.st_mtime_ns,
+            final_lease.st_ctime_ns,
+        )
+        != (
+            current_lease.st_dev,
+            current_lease.st_ino,
+            current_lease.st_mtime_ns,
+            current_lease.st_ctime_ns,
+        )
+    ):
+        raise StorageRefusal("ordinary lease changed after stopped preservation receipt")
+    lease.unlink()
+    descriptor = os.open(control, DIR_FLAGS)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def private_owner_bytes(control: Path) -> bytes:
+    directory = PrivateEvidence(control)
+    return directory.read_reference(directory.reference("active"), 4096)
+
+
 def main() -> int:
     import argparse
     import sys
@@ -2330,6 +2571,7 @@ def main() -> int:
             "sql",
             "pin-binaries",
             "pin-roles",
+            "retain-ordinary",
         ),
     )
     parser.add_argument("--root", type=Path, required=True)
@@ -2340,6 +2582,7 @@ def main() -> int:
     parser.add_argument("--canary", required=True)
     parser.add_argument("--container")
     parser.add_argument("--database-oid")
+    parser.add_argument("--exit-status", type=int)
     args = parser.parse_args()
     os.umask(0o077)
     try:
@@ -2357,7 +2600,13 @@ def main() -> int:
         else:
             if not args.container:
                 raise StorageRefusal("complete selected container ID is required")
-            if args.operation == "physical":
+            if args.operation == "retain-ordinary":
+                if args.profile != "ordinary-01" or args.exit_status is None:
+                    raise StorageRefusal(
+                        "ordinary retention requires its profile and actual exit status"
+                    )
+                retain_ordinary(args.root, args.evidence, args.container, args.exit_status)
+            elif args.operation == "physical":
                 directory.publish_json(
                     "physical.json",
                     physical_observation(directory, args.root, args.container, args.canary, image),
@@ -2434,6 +2683,7 @@ def main() -> int:
         KeyError,
         ValueError,
         subprocess.SubprocessError,
+        BaseExceptionGroup,
     ) as error:
         # SQL and Docker exception representations may embed connection secrets.
         reason = str(error) if isinstance(error, StorageRefusal) else type(error).__name__

@@ -17,6 +17,16 @@ die() {
   exit 2
 }
 
+if [ "${1:-}" = --wayne-ordinary-prefix ]; then
+  [ "$#" = 1 ] || die "usage: --wayne-ordinary-prefix"
+  export BABYLON_WAYNE_PROFILE=ordinary-01 BABYLON_POSTGRES_LIVE_FOCUS=national_storage
+  export BABYLON_NATIVE_MEASUREMENT_MODE=normal_play BABYLON_NATIONAL_STORAGE_PERIODS=10
+  export BABYLON_NATIONAL_CAPTURE_MODE=playable-aid BABYLON_NATIONAL_STORAGE_QUALIFICATION=report-only
+  export BABYLON_NATIONAL_SUCCESS_DISPOSITION=retain-ordinary BABYLON_NATIONAL_QUALIFY_TIMING=0
+  BABYLON_STORAGE_REPORT_DIRECTORY="$(dirname -- "$REPO_ROOT")/qualification-15/ordinary-01/normal_play/evidence"
+  export BABYLON_STORAGE_REPORT_DIRECTORY
+  exec bash "$REPO_ROOT/tools/run_rust_postgres.sh"
+fi
 if [ "${1:-}" = --wayne-pair-next-locked ]; then
   [ "$#" = 2 ] || die "expected native workload"
   # shellcheck source=tools/postgres_national_lifecycle.sh disable=SC1091
@@ -28,6 +38,7 @@ fi
 if [ "${1:-}" = --help ]; then
   printf '%s\n' 'Run an isolated PostgreSQL test with BABYLON_POSTGRES_LIVE_FOCUS.' \
     'For paired native qualification use --wayne-native-pair {smoke-01|walk-01}.' \
+    'For a separately owned ordinary three-close prefix use --wayne-ordinary-prefix.' \
     'Supply the released PostgreSQL image, host context and native expectation references.' \
     'The operator drives and restore-verifies both members in order.'
   exit 0
@@ -120,6 +131,16 @@ if [ -n "${BABYLON_WAYNE_PROFILE:-}" ] || [ "$LIVE_FOCUS" = organizer_allocation
         [ "${BABYLON_NATIONAL_QUALIFY_TIMING:-}" = 0 ] ||
         die "Wayne native profile requires its explicit playable capture and retention"
       ;;
+    national_storage:ordinary-01)
+      if [ "${BABYLON_NATIVE_MEASUREMENT_MODE:-}" != normal_play ] ||
+        [ "${BABYLON_NATIONAL_STORAGE_PERIODS:-}" != 10 ] ||
+        [ "${BABYLON_NATIONAL_CAPTURE_MODE:-}" != playable-aid ] ||
+        [ "${BABYLON_NATIONAL_STORAGE_QUALIFICATION:-}" != report-only ] ||
+        [ "${BABYLON_NATIONAL_SUCCESS_DISPOSITION:-}" != retain-ordinary ] ||
+        [ "${BABYLON_NATIONAL_QUALIFY_TIMING:-}" != 0 ]; then
+        die "ordinary prefix requires its independent normal-only capture and retention"
+      fi
+      ;;
     *) die "Wayne qualification profile does not match the requested workload" ;;
   esac
 fi
@@ -211,6 +232,11 @@ cleanup_checked() {
   fi
   [ "$OWNED" -eq 1 ] || return 0
   if [ "$LIVE_FOCUS" = national_storage ]; then
+    if [ "${BABYLON_WAYNE_PROFILE:-}" = ordinary-01 ]; then
+      wayne_media retain-ordinary --container "$CONTAINER_ID" --exit-status "$status" ||
+        die "ordinary preservation refused; inspect exact fixture, evidence and lease"
+      return 0
+    fi
     [ "$status" -eq 0 ] || die "national failure retains the exact game and lease for diagnosis"
     if [ "$NATIONAL_SUCCESS_DISPOSITION" = retain-for-native ]; then
       national_retain_success || die "national retention refused; exact target and lease preserved"
@@ -527,7 +553,7 @@ if [ "$status" -eq 0 ]; then
           actual_encoded_national_tick_measures_postgresql_growth_and_recovery \
           --locked -- --ignored --nocapture --test-threads=1 || status=$?
       fi
-      if [ "$status" -eq 0 ]; then
+      if [ "$status" -eq 0 ] && [ "${BABYLON_WAYNE_PROFILE:-}" != ordinary-01 ]; then
         cd "$REPO_ROOT"
         national_measure || status=$?
       fi
@@ -790,6 +816,10 @@ fi
 cleanup_checked
 trap - EXIT INT TERM HUP
 if [ "$LIVE_FOCUS" = national_storage ]; then
+  if [ "${BABYLON_WAYNE_PROFILE:-}" = ordinary-01 ]; then
+    printf 'Ordinary prefix fixture stopped and preserved; measurement exit=%s; no qualification or backup claim\n' "$status"
+    exit "$status"
+  fi
   if [ "$NATIONAL_SUCCESS_DISPOSITION" = retain-for-native ]; then
     printf 'National lifecycle status=retained member pending verified backup and pair evaluation\n'
     exit "$status"

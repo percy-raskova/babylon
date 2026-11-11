@@ -165,7 +165,28 @@ fn support_changes(out: &mut Vec<(Notice, String)>, row: &OrganizerAidResolution
     }
 }
 
-pub(super) fn current_support(rows: &[OrganizerAidResolution], period: u64) -> String {
+/// Material stages stay separate from the independently authorized response.
+pub(super) fn material_support(row: &OrganizerAidResolution, period: u64) -> String {
+    let mut changes = Vec::new();
+    support_changes(&mut changes, row, period);
+    let mut lines: Vec<_> = changes
+        .into_iter()
+        .filter(|(notice, _)| !matches!(notice, Notice::Response(_, _)))
+        .map(|(_, line)| line)
+        .collect();
+    if row.support.period == period && row.support.status == OrganizerFoodDelivery::AwaitingDelivery
+    {
+        lines.push(format!(
+            "Food remains in transit in P{period}; no food delivery is recorded."
+        ));
+    }
+    lines.join("\n")
+}
+
+pub(super) fn current_support<'resolution>(
+    rows: impl IntoIterator<Item = &'resolution OrganizerAidResolution>,
+    period: u64,
+) -> String {
     let mut changes = Vec::new();
     for row in rows {
         support_changes(&mut changes, row, period);

@@ -9,8 +9,8 @@ use super::workspace;
 use super::{OrganizerClient, OrganizerInspector};
 use crate::observer::{ObservationContext, ObserverSession, Perspective};
 use crate::organizer::workspace::{
-    ChoiceAvailability, DispatchCoverage, DispatchDestination, DispatchRows, HourUse,
-    PossibleBenefit, PracticeChoice, RoutineEffect,
+    ChoiceAvailability, ChoiceComparison, DispatchCoverage, DispatchDestination, DispatchRows,
+    HourUse, PossibleBenefit, PracticeChoice, RoutineEffect,
 };
 use babylon_kernel::clock::CampaignDuration;
 use babylon_persistence::identity::CampaignId;
@@ -98,7 +98,7 @@ pub(super) fn availability(term: ChoiceAvailability) -> String {
         ChoiceAvailability::PendingAid {
             admitted_period,
             dispatch_period,
-        } => format!("Pending · admitted P{admitted_period}, dispatch P{dispatch_period}"),
+        } => format!("Route pending · admitted P{admitted_period}, dispatch P{dispatch_period}"),
         ChoiceAvailability::PeriodOverflow => "Resolution period unavailable".into(),
     }
 }
@@ -129,6 +129,9 @@ fn aid_card_terms(choice: &PracticeChoice) -> Option<String> {
             OrganizerAidTransportPreview::Local => "local handoff",
             OrganizerAidTransportPreview::Routed { .. } => "freight · delay and loss possible",
         });
+    if matches!(choice.availability, ChoiceAvailability::PendingAid { .. }) {
+        return Some(format!("{name} · {route}\nUnsubmitted draft: {food_quantity} parcels + {}.\nEarlier support is still open on this route.", crate::human_numbers::currency(cash_micros)));
+    }
     let cash = if aid.cash_receiving_consent == OrganizerGiftConsent::Refuse {
         "cash receiving refused"
     } else {
@@ -140,6 +143,34 @@ fn aid_card_terms(choice: &PracticeChoice) -> Option<String> {
         "Displaces routine once."
     };
     Some(format!("{name} · {route}\n{food_quantity} parcels + {} · {cash}\nUp to {} fulfillment h · {} possible coordination h\n{routine}",crate::human_numbers::currency(cash_micros),hours.map_or_else(||"unknown".into(),|h|h.to_string()),aid.coordination_hours))
+}
+
+/// Explain a blocked selected route beside its Review control.
+pub(super) fn review_reason(
+    client: &OrganizerClient,
+    comparison: Option<&ChoiceComparison>,
+) -> String {
+    let Some(comparison) = comparison else {
+        return String::new();
+    };
+    let Some(selected) = comparison
+        .all_practices
+        .iter()
+        .find(|row| row.choice == comparison.draft_choice)
+    else {
+        return String::new();
+    };
+    let saving = if !client.draft_writable {
+        "Draft saving unavailable; these amounts remain unsubmitted."
+    } else if client.draft_dirty {
+        "Draft changes awaiting save; these amounts remain unsubmitted."
+    } else {
+        "Amounts are a saved, unsubmitted draft."
+    };
+    match selected.availability {
+        ChoiceAvailability::PendingAid { admitted_period, dispatch_period } => format!("Review blocked on this route: earlier support is open (admitted P{admitted_period}, dispatch P{dispatch_period}). {saving}"),
+        _ => String::new(),
+    }
 }
 
 pub(super) fn terms(choice: &PracticeChoice) -> String {
@@ -420,8 +451,14 @@ pub(super) fn bulletin(scope: &Scope) -> Bulletin {
     };
     bulletin.copy = presentation::dispatch_practices(&dispatch);
     bulletin.copy.push('\n');
-    let support =
-        super::developments::current_support(&scope.client.aid_resolutions, dispatch.period);
+    let unlinked = scope.client.aid_resolutions.iter().filter(|resolution| {
+        !dispatch
+            .current
+            .practices
+            .iter()
+            .any(|row| row.aid == Some(*resolution))
+    });
+    let support = super::developments::current_support(unlinked, dispatch.period);
     if !support.is_empty() {
         let _ = writeln!(bulletin.copy, "{support}");
     }

@@ -203,6 +203,10 @@ All practices remains one reachable list, including both inquiries, collection,
 local aid, remote solidarity, pause and resume. Keep collection shared material
 time and later aid coordination distinct from fulfilled delivery or performed
 organizer time. Paused routines stay paused unless explicitly resumed.
+Collection Review names the shared material cost without dividing it by organizer pledges.
+A pending route keeps its amounts in the personal draft and reports its saving state.
+The draft submits nothing. Explain the reason beside a disabled Review control. Keep Direction / routine in the fixed
+deck toolbar so the player can review Pause or choose another eligible practice.
 
 Use one inspector for deeper evidence, notes, relationships, practice history and
 review. Keep both alternatives' essential comparison visible at ordinary sizes,
@@ -219,6 +223,12 @@ After a durable advance, show a period dispatch that leaves the workspace usable
 Include only receipts for the exact viewed period and authorized actor.
 Show newly acquired reports with both observed and acquired dates, and actually
 disclosed public City PD encounters.
+The deck gives a short dated acknowledgement. Full results remain in the dispatch,
+reports and exact receipt reading. Errors and police interruptions stay visible.
+
+Give one original aid commitment one heading. Name its admission, material and
+independent response stages. Lead with the actual response when present. Never
+add hours across stages. Keep separate commitments and every exact receipt.
 
 Keep older receipts, reports and encounters in explicitly dated history. Period 0
 has no completed-period result. If the snapshot has no receipt for the inspected

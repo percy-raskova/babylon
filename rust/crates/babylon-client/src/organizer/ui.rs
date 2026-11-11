@@ -167,6 +167,7 @@ pub(super) enum TextPart {
     Context,
     Aftermath,
     ChoiceHeading,
+    ReviewAvailability,
     Approach(OrganizerChoice),
     ChoiceMarker(OrganizerChoice),
     SceneModeMarker(OrganizerSceneMode),
@@ -2078,6 +2079,7 @@ fn paint_text(scope: &Scope, focus: &InputFocus, paint: &mut Paint) {
             TextPart::Means | TextPart::InspectorMeans => copy::resource_masthead(&scope.client, &scope.session),
             TextPart::Context => scope.client.view.as_ref().filter(|view| view.period == scope.session.viewed_tick).map_or_else(String::new, presentation::context),
             TextPart::Aftermath => continue,
+            TextPart::ReviewAvailability => copy::review_reason(&scope.client, comparison.as_ref()),
             TextPart::ChoiceHeading => if complete { "Campaign complete".into() } else if historical { "Past commitments".into() } else { format!("Work for period {}", scope.session.viewed_tick.saturating_add(1)) },
             TextPart::Approach(_) if historical => String::new(),
             TextPart::Approach(choice) => if complete { "No further period remains. Inspect our practice history and retained reports.".into() } else { scope.client.view.as_ref().map_or_else(String::new, |view| presentation::client_approach(&scope.client, view, *choice)) },
@@ -4236,7 +4238,16 @@ pub(crate) mod tests {
         );
     }
 
-    fn measured_pending_support_dispatch(viewport: UVec2, scale: f32) -> (App, Entity) {
+    enum ReceiptOrder {
+        Original,
+        Reversed,
+    }
+
+    fn measured_pending_support_dispatch(
+        viewport: UVec2,
+        scale: f32,
+        receipt_order: ReceiptOrder,
+    ) -> (App, Entity) {
         use babylon_persistence::runtime_session::{
             OrganizerOutcome, OrganizerPartnerResponse, OrganizerReceipt,
         };
@@ -4274,7 +4285,20 @@ pub(crate) mod tests {
                 time_use: Vec::new(),
             })
             .collect();
-            view.total_receipt_count = 2;
+            let mut actual = view.receipts[0].clone();
+            actual.receipt_id = [4; 32];
+            actual.outcome = OrganizerOutcome::AidPracticeCompleted;
+            actual.hours_spent = 2;
+            actual.partner_actor_id = Some(view.neighborhood_partner_id);
+            actual.partner_response = OrganizerPartnerResponse::Participated;
+            view.receipts.push(actual.clone());
+            actual.receipt_id = [5; 32];
+            actual.commitment_id = Some([6; 32]);
+            view.receipts.push(actual);
+            if matches!(receipt_order, ReceiptOrder::Reversed) {
+                view.receipts.reverse();
+            }
+            view.total_receipt_count = 4;
         }
         app.update();
         app.update();
@@ -4309,6 +4333,43 @@ pub(crate) mod tests {
         (app, aftermath)
     }
 
+    fn assert_current_aid_stages(app: &App, aftermath: Entity, viewport: UVec2, scale: f32) {
+        let (reversed, reverse_aftermath) =
+            measured_pending_support_dispatch(viewport, scale, ReceiptOrder::Reversed);
+        assert_eq!(
+            app.world().get::<Text>(aftermath),
+            reversed.world().get::<Text>(reverse_aftermath),
+            "commitment stages must not depend on input order"
+        );
+        let world = app.world();
+        let body = world.get::<Text>(aftermath).expect("typed P1 dispatch");
+        assert!(
+            body.0
+                .contains("Support committed; awaiting material resolution")
+                && body.0.contains("Support remains in transit"),
+            "both actual stages remain distinct: {}",
+            body.0
+        );
+        assert_eq!(body.0.matches("Period 1 · accepted ruling").count(), 2,
+                "one heading per actual commitment; independent same-choice commitment stays distinct: {}", body.0);
+        assert_eq!(
+            body.0.matches("Organize remote solidarity").count(),
+            2,
+            "one action heading per commitment: {}",
+            body.0
+        );
+        assert!(
+            body.0.contains("Independent response") && body.0.contains("2 organizer-hours spent"),
+            "actual response and hours lead the stages: {}",
+            body.0
+        );
+        assert!(
+            body.0.find("Independent response") < body.0.find("awaiting material resolution"),
+            "current result precedes original provisional stage: {}",
+            body.0
+        );
+    }
+
     #[test]
     fn native_workspace_dispatch_exposes_its_two_stage_receipt_continuation() {
         for (viewport, scale) in [
@@ -4316,16 +4377,10 @@ pub(crate) mod tests {
             (UVec2::new(1920, 1080), 1.0),
             (UVec2::new(1920, 1080), 1.25),
         ] {
-            let (mut app, aftermath) = measured_pending_support_dispatch(viewport, scale);
+            let (mut app, aftermath) =
+                measured_pending_support_dispatch(viewport, scale, ReceiptOrder::Original);
+            assert_current_aid_stages(&app, aftermath, viewport, scale);
             let world = app.world();
-            let body = world.get::<Text>(aftermath).expect("typed P1 dispatch");
-            assert!(
-                body.0
-                    .contains("Support committed; awaiting material resolution")
-                    && body.0.contains("Support remains in transit"),
-                "both actual stages remain distinct: {}",
-                body.0
-            );
             let target = world
                 .get::<ObserverFocusTarget>(aftermath)
                 .expect("existing reading target");
@@ -4569,6 +4624,155 @@ pub(crate) mod tests {
                     assert_in_view(&app, message, bounds);
                 }
             }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum InterfaceSize {
+        Standard,
+        Larger,
+    }
+
+    fn measured_pending_aid(viewport: UVec2, interface: InterfaceSize) -> App {
+        use bevy::asset::AssetApp as _;
+        let larger = matches!(interface, InterfaceSize::Larger);
+        let fitted = if viewport.x > 1400 { 1.25 } else { 1.0 };
+        let scale = fitted * if larger { 1.15 } else { 1.0 };
+        let mut app = measured_board(viewport, scale, larger, false);
+        app.init_asset::<Image>()
+            .init_asset::<TextureAtlasLayout>()
+            .add_systems(
+                PostUpdate,
+                bevy::ui::widget::text_system.after(bevy::ui::ui_layout_system),
+            );
+        let font = {
+            let world = app.world_mut();
+            world
+                .query::<(&TextPart, &TextFont)>()
+                .iter(world)
+                .find_map(|(part, font)| {
+                    matches!(part, TextPart::Situation).then_some(font.font.clone())
+                })
+                .expect("embedded reading face")
+        };
+        let snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
+            "../../../babylon-persistence/tests/fixtures/national_organizer_pending_v19.json"
+        ))
+        .expect("actual national pending remote aid");
+        {
+            let mut session = app.world_mut().resource_mut::<ObserverSession>();
+            session.ready(1, None);
+            let context = session.context();
+            assert!(session.installed(&context));
+        }
+        {
+            let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+            client.draft_writable = true;
+            client.draft_dirty = false;
+            client.view = Some(snapshot.view);
+            client.aid = snapshot.aid;
+            client.pending_aid = snapshot.pending_aid;
+            let draft = client.draft.as_mut().expect("saved personal draft");
+            draft.choice = OrganizerChoice::RemoteAid;
+            draft.aid_allocation = babylon_persistence::runtime_session::OrganizerAllocation::Aid {
+                food_quantity: 2,
+                cash_micros: 280_000_000,
+            };
+        }
+        for _ in 0..6 {
+            app.update();
+        }
+        {
+            let world = app.world_mut();
+            for (role, mut text) in world
+                .query::<(&ObserverFontRole, &mut TextFont)>()
+                .iter_mut(world)
+            {
+                if matches!(role, ObserverFontRole::Body) {
+                    text.font = font.clone();
+                }
+            }
+        }
+        for _ in 0..4 {
+            app.update();
+        }
+        app
+    }
+
+    #[test]
+    fn pending_aid_keeps_reason_and_routine_navigation_in_the_initial_native_view() {
+        for (viewport, interface) in [
+            (UVec2::new(1366, 768), InterfaceSize::Standard),
+            (UVec2::new(1366, 768), InterfaceSize::Larger),
+            (UVec2::new(1920, 1080), InterfaceSize::Standard),
+            (UVec2::new(1920, 1080), InterfaceSize::Larger),
+        ] {
+            let mut app = measured_pending_aid(viewport, interface);
+            let bounds = Rect::from_corners(Vec2::ZERO, viewport.as_vec2());
+            let (direction, reason) = {
+                let world = app.world_mut();
+                let direction = world
+                    .query::<(Entity, &ActionButton)>()
+                    .iter(world)
+                    .find_map(|(entity, action)| {
+                        (action.0 == OrganizerAction::Inspect(OrganizerInspector::Direction))
+                            .then_some(entity)
+                    })
+                    .expect("existing Direction action");
+                let reason = world
+                    .query::<(Entity, &Text)>()
+                    .iter(world)
+                    .find_map(|(entity, text)| {
+                        (text.0.contains("Review blocked") && text.0.contains("saved, unsubmitted"))
+                            .then_some(entity)
+                    })
+                    .expect("specific route reason beside disabled Review");
+                (direction, reason)
+            };
+            assert_in_view(&app, direction, bounds);
+            assert_in_view(&app, reason, bounds);
+            assert_glyphs_in(&app, reason, bounds);
+            assert!(
+                app.world()
+                    .get::<ObserverFocusTarget>(direction)
+                    .is_some_and(|target| target.available),
+                "fixed Direction remains focusable at {viewport:?}, {interface:?}"
+            );
+            let client = app.world().resource::<OrganizerClient>();
+            let session = app.world().resource::<ObserverSession>();
+            assert!(!enabled(OrganizerAction::Review, client, session));
+            assert!(workspace::reviewable(
+                client,
+                session,
+                OrganizerChoice::LocalAid
+            ));
+            assert_eq!(client.choice(), OrganizerChoice::RemoteAid);
+            assert_eq!(
+                client.draft.as_ref().expect("saved draft").aid_allocation,
+                babylon_persistence::runtime_session::OrganizerAllocation::Aid {
+                    food_quantity: 2,
+                    cash_micros: 280_000_000
+                }
+            );
+            app.world_mut()
+                .resource_mut::<OrganizerClient>()
+                .draft_dirty = true;
+            app.update();
+            let pending_save = &app.world().get::<Text>(reason).expect("same reason").0;
+            assert!(
+                pending_save.contains("awaiting save")
+                    && !pending_save.contains("saved, unsubmitted"),
+                "editing a blocked draft must not invent disk persistence: {pending_save}"
+            );
+            app.world_mut()
+                .resource_mut::<OrganizerClient>()
+                .draft_writable = false;
+            app.update();
+            let refused_save = &app.world().get::<Text>(reason).expect("same reason").0;
+            assert!(
+                refused_save.contains("saving unavailable"),
+                "saving failure remains visible near the blocked action: {refused_save}"
+            );
         }
     }
 

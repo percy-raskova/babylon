@@ -575,6 +575,8 @@ impl OrganizerClient {
         snapshot: OrganizerSnapshot,
         session: &mut ObserverSession,
     ) -> Result<StatusDisposition, String> {
+        use std::fmt::Write as _;
+
         let pending = self.take_response(request_id, RequestKind::Status)?;
         let context = pending
             .status_context
@@ -660,13 +662,19 @@ impl OrganizerClient {
         // new developments, pending operations and actionable failures.
         if new_city_pd_notice {
             self.pause_for_city_pd_notice(session);
-            if let Some(line) = development {
-                self.message.push_str(" · ");
-                self.message.push_str(&line);
+            if development.is_some() {
+                let _ = write!(
+                    self.message,
+                    " · P{} dispatch updated. Read the period dispatch.",
+                    session.durable_tick
+                );
             }
-        } else if let Some(line) = development {
+        } else if development.is_some() {
             session.pause_playback();
-            self.message = format!("P{} dispatch · {line}", session.durable_tick);
+            self.message = format!(
+                "P{} dispatch updated. Read the period dispatch.",
+                session.durable_tick
+            );
         } else if self.draft_writable {
             self.message.clear();
         }

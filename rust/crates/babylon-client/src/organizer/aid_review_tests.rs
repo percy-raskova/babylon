@@ -217,6 +217,7 @@ fn collection_review_names_captured_gift_and_paused_or_displaced_routine() {
             let mut client = app.world_mut().resource_mut::<OrganizerClient>();
             let preview = client.preview.as_mut().expect("review");
             preview.required_hours = 2;
+            preview.available_hours = 7;
             preview.replaces_standing_work = active;
         }
         app.world_mut()
@@ -238,6 +239,10 @@ fn collection_review_names_captured_gift_and_paused_or_displaced_routine() {
         ] {
             assert!(review.contains(term), "missing {term:?}: {review}");
         }
+        assert!(
+            !review.contains("Cost: 2 of 7 organizer-hours"),
+            "shared material work must not be divided by organizer pledges: {review}"
+        );
         assert!(
             review.contains(if active {
                 "Replaces neighborhood work once"
@@ -353,4 +358,104 @@ fn native_collection_card_is_reachable_and_history_navigation_cannot_act() {
         [OrganizerArchiveTarget::Collective]
     );
     assert!(app.world().resource::<OrganizerClient>().outbox.is_none());
+}
+
+#[test]
+fn pending_route_navigation_keeps_the_draft_and_pause_needs_its_own_review() {
+    let mut app = aid_review_fixture(OrganizerAidKind::Remote, "Remote recipient", true);
+    let mut snapshot: OrganizerSnapshot = serde_json::from_str(include_str!(
+        "../../../babylon-persistence/tests/fixtures/national_organizer_pending_v19.json"
+    ))
+    .expect("actual pending remote support");
+    {
+        let mut client = app.world_mut().resource_mut::<OrganizerClient>();
+        client.pending_aid.push(snapshot.pending_aid.remove(0));
+        let draft = client.draft.as_mut().expect("saved draft");
+        draft.choice = OrganizerChoice::RemoteAid;
+        draft.aid_allocation = OrganizerAllocation::Aid {
+            food_quantity: 2,
+            cash_micros: 7,
+        };
+    }
+    app.update();
+    let before = app.world().resource::<OrganizerClient>().draft.clone();
+    {
+        let client = app.world().resource::<OrganizerClient>();
+        let session = app.world().resource::<ObserverSession>();
+        assert!(
+            !enabled(OrganizerAction::Review, client, session),
+            "only the pending route remains blocked"
+        );
+        assert!(!confirmation_enabled(&app));
+    }
+    press_named(&mut app, "Direction / routine");
+    assert_eq!(
+        app.world().resource::<OrganizerClient>().inspector,
+        OrganizerInspector::Direction
+    );
+    assert_eq!(
+        app.world().resource::<OrganizerClient>().draft,
+        before,
+        "navigation preserves draft and amounts"
+    );
+    press_named(&mut app, "Pause neighborhood work");
+    {
+        let client = app.world().resource::<OrganizerClient>();
+        assert_eq!(client.choice(), OrganizerChoice::PauseStanding);
+        assert_eq!(
+            client.draft.as_ref().expect("draft").aid_allocation,
+            before.as_ref().expect("prior draft").aid_allocation
+        );
+        assert!(
+            client.commitment.is_none() && client.pending.is_none(),
+            "choosing Pause submits nothing"
+        );
+        assert!(
+            !confirmation_enabled(&app),
+            "authenticated Review is still required"
+        );
+    }
+    press_named(&mut app, "Review choice");
+    app.world_mut()
+        .resource_scope(|world, mut client: Mut<OrganizerClient>| {
+            let Some(RuntimeSessionRequest::PreviewOrganizer {
+                request_id,
+                command,
+                ..
+            }) = client.outbox.take()
+            else {
+                panic!("Review requests an authenticated preview");
+            };
+            let mut session = world.resource_mut::<ObserverSession>();
+            client
+                .previewed(request_id, preview_for(&command), &mut session)
+                .expect("matching authenticated preview reply");
+        });
+    app.update();
+    assert!(confirmation_enabled(&app));
+    assert!(
+        app.world()
+            .resource::<OrganizerClient>()
+            .commitment
+            .is_none(),
+        "Review does not Confirm"
+    );
+    press_named(&mut app, "Confirm ruling");
+    let client = app.world().resource::<OrganizerClient>();
+    assert!(
+        client
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.kind == RequestKind::Submit),
+        "Confirm alone requests durable admission"
+    );
+    assert!(
+        client.commitment.is_none(),
+        "no acceptance is invented before runtime replies"
+    );
+    assert_eq!(
+        app.world().resource::<ObserverSession>().durable_tick,
+        3,
+        "navigation, Review and Confirm never Advance"
+    );
 }

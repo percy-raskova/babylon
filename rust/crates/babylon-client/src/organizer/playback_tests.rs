@@ -3,6 +3,7 @@
 use super::client;
 use super::tests;
 use super::OrganizerClient;
+use super::RequestKind;
 use crate::observer::ObserverSession;
 use crate::observer_io::tests as transport_tests;
 use crate::observer_io::ObserverSet;
@@ -297,6 +298,119 @@ fn a_matched_status_refusal_pauses_but_an_unrelated_response_cannot_change_play(
         assert_eq!(
             session.playing, !matched,
             "a real failure stops future scheduling"
+        );
+        if matched {
+            assert_eq!(
+                client.message, "Refresh refused",
+                "actionable failure stays visible"
+            );
+        }
+    }
+}
+
+use babylon_persistence::runtime_session::{
+    OrganizerAidResolution, OrganizerBodyDisclosure, OrganizerBodyScope,
+    OrganizerCollectionResolution, OrganizerView,
+};
+
+#[derive(serde::Deserialize)]
+struct DevelopmentPeriod {
+    view: OrganizerView,
+    collection_resolutions: Vec<OrganizerCollectionResolution>,
+    aid_resolutions: Vec<OrganizerAidResolution>,
+}
+
+#[test]
+fn new_national_developments_pause_with_short_feedback_and_retain_full_dated_facts() {
+    let periods: Vec<DevelopmentPeriod> = serde_json::from_str(include_str!(
+        "../../tests/fixtures/wayne_public_developments_v19.json"
+    ))
+    .expect("captured national collection, payment and shortfalls");
+    let opening: OrganizerSnapshot = serde_json::from_str(include_str!(
+        "../../../babylon-persistence/tests/fixtures/national_organizer_opening_v19.json"
+    ))
+    .expect("actual opening seeds existing notices");
+    let (mut client, mut session) = tests::ready();
+    client.developments.install(&opening.view, &[], &[]);
+    for row in periods {
+        let period = row.view.period;
+        session.ready(period, None);
+        assert!(session.installed(&session.context()));
+        client.view = None;
+        client.queue(&mut session, RequestKind::Status, None);
+        let RuntimeSessionRequest::OrganizerStatus { request_id, .. } =
+            client.outbox.take().expect("status")
+        else {
+            panic!("only Status requested");
+        };
+        let body_scope = OrganizerBodyScope {
+            campaign_id: *session.campaign.canonical_bytes(),
+            actor_id: row.view.actor_id,
+            period,
+            content_digest: row.view.content_digest,
+            source: None,
+        };
+        let snapshot = OrganizerSnapshot {
+            view: row.view,
+            collection_resolutions: row.collection_resolutions,
+            aid_resolutions: row.aid_resolutions,
+            body: OrganizerBodyDisclosure::Unavailable,
+            body_scope,
+            duration: opening.duration,
+            pending: None,
+            collection: None,
+            aid: vec![],
+            pending_aid: vec![],
+            city_pd_encounters: vec![],
+        };
+        session.playing = true;
+        client
+            .status(request_id, snapshot, &mut session)
+            .expect("admitted factual status");
+        assert!(!session.playing, "new P{period} development pauses Play");
+        assert!(
+            client.message.contains(&format!("P{period} dispatch"))
+                && client.message.contains("Read"),
+            "dated acknowledgement points to existing reading: {}",
+            client.message
+        );
+        assert!(
+            !client.message.contains("unmet") && !client.message.contains("Requested $"),
+            "full result belongs to dispatch/report, not persistent decision feedback: {}",
+            client.message
+        );
+        let view = client.view.as_ref().expect("admitted view");
+        let dispatch = super::workspace::dispatch(&client, period).expect("dated dispatch");
+        let practices = super::presentation::dispatch_practices(&dispatch);
+        let reports = view
+            .observations
+            .iter()
+            .filter(|row| row.acquired_period == period)
+            .map(|row| {
+                format!(
+                    "{} {}",
+                    super::presentation::report_caption(row),
+                    super::presentation::report(&row.report)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if period == 1 {
+            assert!(
+                practices.contains("$1,450.00") && practices.contains("2 shared material hours"),
+                "{practices}"
+            );
+        }
+        if period == 2 {
+            let support = super::developments::current_support(&client.aid_resolutions, period);
+            assert!(
+                support.contains("$1,450.00") && support.contains("P2 partner response"),
+                "{support}"
+            );
+        }
+        assert!(
+            reports.contains("unmet") && reports.contains(&format!("{period}")),
+            "exact current reports remain: {reports}"
         );
     }
 }

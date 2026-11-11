@@ -683,13 +683,138 @@ pub(super) fn dispatch_practices(dispatch: &PeriodDispatch) -> String {
             format!("No receipt from this period is included in the recent window. Open Our practice Archive to review period {period}.")
         };
     }
-    dispatch
-        .current
-        .practices
-        .iter()
-        .map(practice_summary)
-        .collect::<Vec<_>>()
-        .join("\n\n")
+    let mut rows: Vec<_> = dispatch.current.practices.iter().collect();
+    // Identity sorts commitments, while typed outcomes order their stages.
+    // Receipt IDs only break ties; they never select a supposedly latest result.
+    rows.sort_by_key(|row| {
+        let receipt = row.receipt;
+        (
+            receipt.actor_id,
+            receipt.period,
+            receipt.commitment_id.unwrap_or(receipt.receipt_id),
+            choice(receipt.choice),
+            aid_stage_order(receipt.outcome),
+            receipt.receipt_id,
+        )
+    });
+    let mut summaries = Vec::new();
+    let mut index = 0;
+    while let Some(first) = rows.get(index) {
+        let mut end = index + 1;
+        if first.receipt.commitment_id.is_some()
+            && matches!(
+                first.receipt.choice,
+                OrganizerChoice::LocalAid | OrganizerChoice::RemoteAid
+            )
+        {
+            while rows
+                .get(end)
+                .is_some_and(|next| same_aid_commitment(first, next))
+            {
+                end += 1;
+            }
+            summaries.push(aid_commitment_summary(&rows[index..end]));
+        } else {
+            summaries.push(practice_summary(first));
+        }
+        index = end;
+    }
+    summaries.join("\n\n")
+}
+
+fn same_aid_commitment(first: &DispatchPractice, next: &DispatchPractice) -> bool {
+    first.receipt.actor_id == next.receipt.actor_id
+        && first.receipt.period == next.receipt.period
+        && first.receipt.choice == next.receipt.choice
+        && first.receipt.commitment_id == next.receipt.commitment_id
+}
+
+fn aid_stage_order(outcome: OrganizerOutcome) -> u8 {
+    match outcome {
+        OrganizerOutcome::AidPracticeCompleted
+        | OrganizerOutcome::AidPracticeUncompleted
+        | OrganizerOutcome::InsufficientTime
+        | OrganizerOutcome::AidResponseRetained => 0,
+        OrganizerOutcome::NoQualifyingSupport => 1,
+        OrganizerOutcome::AidAwaitingSupport => 2,
+        OrganizerOutcome::AidScheduled => 3,
+        OrganizerOutcome::EvidenceObtained
+        | OrganizerOutcome::EvidenceWithheld
+        | OrganizerOutcome::ContactCompleted
+        | OrganizerOutcome::ContactUncompleted
+        | OrganizerOutcome::CollectionCompleted
+        | OrganizerOutcome::CollectionRefused
+        | OrganizerOutcome::StandingPaused
+        | OrganizerOutcome::StandingResumed
+        | OrganizerOutcome::NoAuthorizedPractice => 4,
+    }
+}
+
+fn aid_commitment_summary(rows: &[&DispatchPractice]) -> String {
+    let Some(first) = rows.first() else {
+        return String::new();
+    };
+    let mut text = format!(
+        "Period {} · accepted ruling\n{}",
+        first.receipt.period,
+        choice(first.receipt.choice)
+    );
+    for row in rows {
+        let receipt = row.receipt;
+        let stage = match receipt.outcome {
+            OrganizerOutcome::AidScheduled => "Admission / scheduled support",
+            OrganizerOutcome::AidAwaitingSupport => "Material delivery pending",
+            OrganizerOutcome::AidResponseRetained => "Independent response retained",
+            OrganizerOutcome::AidPracticeCompleted
+            | OrganizerOutcome::AidPracticeUncompleted
+            | OrganizerOutcome::InsufficientTime => "Independent response",
+            OrganizerOutcome::NoQualifyingSupport => "Material resolution",
+            OrganizerOutcome::EvidenceObtained
+            | OrganizerOutcome::EvidenceWithheld
+            | OrganizerOutcome::ContactCompleted
+            | OrganizerOutcome::ContactUncompleted
+            | OrganizerOutcome::CollectionCompleted
+            | OrganizerOutcome::CollectionRefused
+            | OrganizerOutcome::StandingPaused
+            | OrganizerOutcome::StandingResumed
+            | OrganizerOutcome::NoAuthorizedPractice => "Resolution",
+        };
+        let _ = write!(text, "\n{stage} · {}", outcome(receipt.outcome));
+        if matches!(
+            receipt.outcome,
+            OrganizerOutcome::AidPracticeCompleted
+                | OrganizerOutcome::AidPracticeUncompleted
+                | OrganizerOutcome::InsufficientTime
+        ) {
+            let participant = row
+                .partner
+                .map_or("Partner participation", |partner| partner.label);
+            let _ = write!(
+                text,
+                "\n{} organizer-hours spent · {participant}: {}",
+                receipt.hours_spent,
+                response(receipt.partner_response)
+            );
+        }
+        if let Some(resolution) = row.aid {
+            if receipt.outcome == OrganizerOutcome::AidResponseRetained {
+                if let Some(prior) = &resolution.pending.response {
+                    let _ = write!(
+                        text,
+                        "\nRecorded P{}: {} · {} organizer-hours used then; no new coordination.",
+                        prior.period,
+                        response(prior.partner_response),
+                        prior.hours_spent
+                    );
+                }
+            }
+            let material = super::developments::material_support(resolution, receipt.period);
+            if !material.is_empty() {
+                let _ = write!(text, "\nMaterial dispatch / delivery\n{material}");
+            }
+        }
+    }
+    text
 }
 
 fn practice_summary(row: &DispatchPractice) -> String {
@@ -942,12 +1067,6 @@ fn preview_review(client: &OrganizerClient, preview: &OrganizerPreview) -> Strin
         }
         OrganizerChoice::Collect => {
             let _ = write!(text, "\n{}", collection_review_terms(client));
-            let _ = write!(
-                text,
-                "\nCost: {} of {} organizer-hours",
-                crate::observer_ui::grouped(preview.required_hours),
-                crate::observer_ui::grouped(preview.available_hours)
-            );
         }
         _ => {
             let _ = write!(
@@ -1701,6 +1820,29 @@ mod tests {
         assert!(
             now.contains("lost in P5") && !now.contains("$37") && !now.contains("partner response"),
             "{now}"
+        );
+        let current = client.aid_resolutions[0].practice.clone();
+        let earlier = client.aid_resolutions[0]
+            .pending
+            .response
+            .clone()
+            .expect("first response");
+        client.view.as_mut().expect("admitted P5").receipts = vec![earlier.clone(), current];
+        let dispatch = super::super::workspace::dispatch(&client, 5).expect("current dispatch");
+        let copy = dispatch_practices(&dispatch);
+        assert!(
+            copy.contains("Independent response retained")
+                && copy.contains("Recorded P3:")
+                && copy.contains("3 organizer-hours used then; no new coordination"),
+            "{copy}"
+        );
+        assert!(
+            !copy.contains("Independent response ·") && !copy.contains("3 organizer-hours spent"),
+            "later freight cannot report earlier response as new work: {copy}"
+        );
+        assert_eq!(
+            dispatch.history.practices[0].receipt, &earlier,
+            "exact prior receipt remains in dated history"
         );
     }
 

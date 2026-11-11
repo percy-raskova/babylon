@@ -229,7 +229,6 @@ fn dossier(root: &mut ChildSpawnerCommands) {
                 for (label, dest) in [
                     ("Acquired reports", OrganizerInspector::Evidence),
                     ("Relationships", OrganizerInspector::Relationships),
-                    ("Direction / routine", OrganizerInspector::Direction),
                     ("Practice history", OrganizerInspector::Receipts),
                     ("Personal notes", OrganizerInspector::Notes),
                 ] {
@@ -339,6 +338,12 @@ fn deck(root: &mut ChildSpawnerCommands) {
                         ..default()
                     },
                 ));
+            let direction = ui::button(
+                bar,
+                "Direction / routine",
+                OrganizerAction::Inspect(OrganizerInspector::Direction),
+            );
+            bar.commands().entity(direction).insert(PaperAction);
             let practices = ui::button(
                 bar,
                 "All practices",
@@ -348,6 +353,7 @@ fn deck(root: &mut ChildSpawnerCommands) {
             let review = ui::button(bar, "Review choice", OrganizerAction::Review);
             bar.commands().entity(review).insert(PaperAction);
         });
+        deck.spawn((ui::text("", 13.0, RUST), TextPart::ReviewAvailability));
         super::amount_editor::spawn(deck);
         deck.spawn((
             ChoicePair,

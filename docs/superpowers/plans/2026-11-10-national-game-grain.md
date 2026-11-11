@@ -247,11 +247,11 @@ For each close, capture the first strict ready status, exact rendered frame and 
 intervals from input to ready status and from input to capture. Use the later completion of capture or next acceptance
 for the usable endpoint, including all overhead. Keep raw pixels and incomplete evidence.
 
-This prefix does not prove a full ten-period walk, recovery, storage or qualification. Use `qualification-16` as the
+This prefix does not prove a full ten-period walk, recovery, storage or qualification. Use `qualification-22` as the
 fresh disposable namespace. Keep `qualification-15` and its artifacts.
 
 Invoke `tools/run_rust_postgres.sh --wayne-ordinary-prefix` for the separate normal-only `ordinary-01` profile.
-Its independent evidence path is `qualification-16/ordinary-01/normal_play/evidence`. The source horizon stays at ten
+Its independent evidence path is `qualification-22/ordinary-01/normal_play/evidence`. The source horizon stays at ten
 periods. Existing source, capacity, binary, ownership and role checks apply.
 
 After the prefix, stop and keep the exact container, primary data and evidence. Record late or incomplete measurements
@@ -588,3 +588,28 @@ Do not add compatibility by profile or new overrides. Do not release or run a ga
 Root owns this step. Keep the matched byte comparison, both smoke and ten-period play tests in normal and memory modes.
 Keep restart, rendered/input variants, the player session, final gates and reviewable PR open.
 Defer optional census work. Continue game play once the agreed limits pass. This task claims no census speed gain.
+
+
+### Task 16: Make the current decision readable
+
+The Director's 11 November handoff requires these focused presentation fixes. The warm limit is 30 seconds.
+Keep the current rules, permissions, personal draft and all other limits. Do not start more performance work.
+
+One client owner handles these changes and scoped checks. Root owns independent review and native qualification.
+The inspected Native23 frames identify defects. They do not qualify the new source.
+
+- [x] Name collection work as shared material hours. Keep organizer pledges separate. Test with different quantities.
+- [x] Give successful updates a short dated acknowledgement. Keep full facts in the dispatch, reports and exact receipt reading.
+- [x] Keep errors, saving feedback and police interruptions visible.
+- [x] Give each original aid commitment one heading and clear stage names. Lead with the actual response when present.
+- [x] Keep separate commitments separate. Keep every exact receipt in history and Archive.
+- [x] Keep a pending route's amounts in the personal draft. State why Review cannot proceed.
+- [x] Distinguish saved drafts, changes awaiting save and saving failures. A draft alone submits nothing.
+- [x] Put the existing Direction / routine action in the fixed deck toolbar.
+- [x] Keep the local alternative, authenticated Review, separate Confirm and Advance, and every consent and time check.
+- [x] Never choose for the player.
+- [x] Run meaningful scoped client regressions and applicable format, Clippy and BSL checks serially. No docs builds.
+- [ ] Inspect the final native screen at both sizes and interface scales, then exercise its input and return paths.
+
+Keep overlapping county labels as follow-up polish unless the final play evidence shows a blocking problem.
+No new art, map system, report store, practice or game rule belongs in this repair.

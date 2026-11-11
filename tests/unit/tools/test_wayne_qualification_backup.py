@@ -23,6 +23,10 @@ WAL = "pg_wal/000000010000000000000001"
 SEGMENT = 1024 * 1024
 RELATION = "base/551/2930"
 LINEAGE = b"reviewed lineage\n"
+DOCKER_ZERO = "0001-01-01T00:00:00Z"
+SOURCE_STARTED = "2026-11-07T10:59:00.123456789Z"
+SOURCE_FINISHED = "2026-11-07T11:00:04.000000999Z"
+HELPER_STARTED = "2026-11-07T11:00:05.123456789Z"
 
 
 def fixture() -> tuple[dict[str, bytes | None], backup.PhysicalWitness]:
@@ -603,6 +607,9 @@ def _held_retirement_fixture(
         "stale-stop",
         "stale-server-time",
         "changed-log",
+        "restart-between-copies",
+        "restart-after-copies",
+        "restart-before-remove",
     ],
 )
 def test_retirement_needs_both_stopped_reads_and_reread_source_seals(
@@ -624,17 +631,32 @@ def test_retirement_needs_both_stopped_reads_and_reread_source_seals(
 
     owner = _held_retirement_fixture(tmp_path, monkeypatch, events, fault, saved, payloads, witness)
     cid = owner[4]
-    monkeypatch.setattr(backup, "_stopped", lambda *_args: events.append("stopped auth"))
+
+    def stopped_source(*_args: Any) -> dict[str, Any]:
+        events.append("stopped auth")
+        changed = (
+            fault == "restart-between-copies"
+            and "pgdata.tar.partial" in events
+            or fault == "restart-after-copies"
+            and "pgdata-second.tar.partial" in events
+            or fault == "restart-before-remove"
+            and (tmp_path / "backup/recovery-seal.json").exists()
+        )
+        return {"incarnation": "different" if changed else "captured"}
+
+    monkeypatch.setattr(backup, "_stopped", stopped_source)
 
     def inventory(
         _run: backup.Run,
         target: backup.Evidence,
         current: backup.PhysicalWitness,
         _ref: backup.Reference,
+        _fenced_stop: backup.Reference,
     ) -> tuple[backup.Reference, dict[str, backup.Member]]:
         assert "stop" in events and "released sockets" in events
         return target.publish_json(
-            "stopped-source-v1.json", {"scope": "separate reader fixture"}
+            "stopped-source-v1.json",
+            {"scope": "separate reader fixture", "source": {"incarnation": "captured"}},
         ), stopped_members(payloads, current)
 
     monkeypatch.setattr(backup, "_stopped_inventory", inventory)
@@ -2287,6 +2309,7 @@ def retained_pair_recovery(
         {
             "version": 1,
             "pre_stop": wref.model_dump(),
+            "fenced_stop": stop.model_dump(),
             "source": {
                 "container": run.container,
                 "image": run.owner[6],
@@ -2299,21 +2322,21 @@ def retained_pair_recovery(
                     "ExitCode": 0,
                     "OOMKilled": False,
                     "Pid": 0,
-                    "StartedAt": "start",
-                    "FinishedAt": "stop",
+                    "StartedAt": SOURCE_STARTED,
+                    "FinishedAt": SOURCE_FINISHED,
                 },
             },
             "helper_created": {
                 "confinement": confinement,
                 "status": "created",
                 "pid": 0,
-                "started": "zero",
+                "started": DOCKER_ZERO,
             },
             "helper_running": {
                 "confinement": confinement,
                 "status": "running",
                 "pid": 12,
-                "started": "start",
+                "started": HELPER_STARTED,
             },
             "members": {k: asdict(v) for k, v in stopped.items()},
             "changes": backup._source_changes(witness, stopped),
@@ -2685,6 +2708,22 @@ def test_stopped_oracle_refuses_same_length_damage_and_roster_changes(
         backup.archive_manifest(stream, witness, stopped)
 
 
+def stopped_fence(
+    directory: backup.Evidence, run: backup.Run, witness: backup.PhysicalWitness
+) -> backup.Reference:
+    return directory.publish_json(
+        "native-fenced-stop-v1.json",
+        {
+            "container": run.container,
+            "image": run.owner[6],
+            "host": witness.physical["host"],
+            "exit_code": 0,
+            "oom_killed": False,
+            "finished": "2026-11-07T11:00:04+00:00",
+        },
+    )
+
+
 def helper_container(run: backup.Run, cid: str, token: str) -> dict[str, Any]:
     return {
         "Id": cid,
@@ -2727,7 +2766,7 @@ def helper_container(run: backup.Run, cid: str, token: str) -> dict[str, Any]:
             "Running": False,
             "OOMKilled": False,
             "Pid": 0,
-            "StartedAt": "zero",
+            "StartedAt": DOCKER_ZERO,
         },
     }
 
@@ -2770,6 +2809,7 @@ def test_stopped_helper_refuses_before_use_and_cleans_exact_owned_id(
     run = _inventory_run(tmp_path)
     directory = backup.Evidence(tmp_path)
     wref = directory.publish_json("pre-stop-physical.json", {})
+    fence = stopped_fence(directory, run, witness)
     cid = "c" * 64
     record: dict[str, Any] = {}
     events: list[str] = []
@@ -2786,8 +2826,8 @@ def test_stopped_helper_refuses_before_use_and_cleans_exact_owned_id(
             "ExitCode": 0,
             "OOMKilled": False,
             "Pid": 0,
-            "StartedAt": "start",
-            "FinishedAt": "stop",
+            "StartedAt": SOURCE_STARTED,
+            "FinishedAt": SOURCE_FINISHED,
         },
     }
 
@@ -2816,7 +2856,7 @@ def test_stopped_helper_refuses_before_use_and_cleans_exact_owned_id(
             return (cid + "\n").encode()
         if args == ["docker", "start", cid]:
             events.append("start")
-            record["State"].update(Status="running", Running=True, Pid=12, StartedAt="start")
+            record["State"].update(Status="running", Running=True, Pid=12, StartedAt=HELPER_STARTED)
             return (cid + "\n").encode()
         assert args == ["docker", "container", "rm", "--force", cid]
         events.append("removed")
@@ -2836,13 +2876,13 @@ def test_stopped_helper_refuses_before_use_and_cleans_exact_owned_id(
     monkeypatch.setattr(backup, "_read_stopped", read)
     monkeypatch.setattr(backup, "_reader_mounts", lambda _command: None)
     if fault == "none":
-        reference, members = backup._stopped_inventory(run, directory, witness, wref)
+        reference, members = backup._stopped_inventory(run, directory, witness, wref, fence)
         directory.verify(reference)
         packet = json.loads(directory.read_reference(reference))
-        assert backup._retained_stopped(packet, run, witness, wref) == members
+        assert backup._retained_stopped(packet, run, witness, wref, fence) == members
     else:
         with pytest.raises(backup.Refusal):
-            backup._stopped_inventory(run, directory, witness, wref)
+            backup._stopped_inventory(run, directory, witness, wref, fence)
         assert not (tmp_path / "stopped-source-v1.json").exists()
     assert events[-1] == "removed"
     if fault in ("image", "rw", "network", "user", "groups", "create-error"):
@@ -2880,6 +2920,11 @@ def test_stopped_reader_mount_namespace_is_readonly_and_has_no_nested_mount(
         "readonly-integer",
         "source",
         "pre-stop-ref",
+        "created-null",
+        "created-list",
+        "created-object",
+        "running-timestamp",
+        "finished-incarnation",
     ],
 )
 def test_stopped_receipt_refuses_malformed_or_substituted_independent_proof(
@@ -2891,11 +2936,13 @@ def test_stopped_receipt_refuses_malformed_or_substituted_independent_proof(
     witness.physical["mounts"] = []
     run = _inventory_run(tmp_path)
     wref = backup.Reference(path="pre-stop-physical.json", bytes=2, sha256="a" * 64)
+    fence = stopped_fence(backup.Evidence(tmp_path), run, witness)
     members = stopped_members(files, witness)
     confinement = backup._helper_expected(run, witness, "c" * 64, "d" * 32)
     packet = {
         "version": 1,
         "pre_stop": wref.model_dump(),
+        "fenced_stop": fence.model_dump(),
         "source": {
             "container": run.container,
             "image": run.owner[6],
@@ -2908,26 +2955,26 @@ def test_stopped_receipt_refuses_malformed_or_substituted_independent_proof(
                 "ExitCode": 0,
                 "OOMKilled": False,
                 "Pid": 0,
-                "StartedAt": "start",
-                "FinishedAt": "stop",
+                "StartedAt": SOURCE_STARTED,
+                "FinishedAt": SOURCE_FINISHED,
             },
         },
         "helper_created": {
             "confinement": confinement,
             "status": "created",
             "pid": 0,
-            "started": "zero",
+            "started": DOCKER_ZERO,
         },
         "helper_running": {
             "confinement": dict(confinement),
             "status": "running",
             "pid": 12,
-            "started": "start",
+            "started": HELPER_STARTED,
         },
         "members": {k: asdict(v) for k, v in members.items()},
         "changes": backup._source_changes(witness, members),
     }
-    assert backup._retained_stopped(packet, run, witness, wref) == members
+    assert backup._retained_stopped(packet, run, witness, wref, fence) == members
     if fault == "version":
         packet["version"] = 2
     if fault == "missing":
@@ -2946,8 +2993,19 @@ def test_stopped_receipt_refuses_malformed_or_substituted_independent_proof(
         packet["source"]["container"] = "other"
     if fault == "pre-stop-ref":
         packet["pre_stop"]["sha256"] = "0" * 64
+    if fault == "created-null":
+        packet["helper_created"]["started"] = None
+    if fault == "created-list":
+        packet["helper_created"]["started"] = []
+    if fault == "created-object":
+        packet["helper_created"]["started"] = {}
+    if fault == "running-timestamp":
+        packet["helper_running"]["started"] = "not-a-timestamp"
+    if fault == "finished-incarnation":
+        packet["source"]["state"]["FinishedAt"] = "2026-11-07T11:00:05Z"
+
     with pytest.raises(backup.Refusal):
-        backup._retained_stopped(packet, run, witness, wref)
+        backup._retained_stopped(packet, run, witness, wref, fence)
 
 
 @pytest.mark.parametrize("fault", ["old-seal", "missing-proof", "tampered-proof"])
@@ -2972,5 +3030,101 @@ def test_recovery_admission_requires_new_seal_and_immutable_stopped_source(
         seal["retained"] = [r for r in seal["retained"] if r["path"] != "stopped-source-v1.json"]
     else:
         (retained.path / "stopped-source-v1.json").write_bytes(b"{}")
+    with pytest.raises(backup.Refusal):
+        backup.verify_retained_backup(run, seal, original)
+
+
+@pytest.mark.parametrize(
+    "finished,accepted",
+    [
+        ("2026-11-07T11:00:04.000000999Z", True),
+        ("2026-11-07T11:00:04.000001000Z", False),
+        ("2026-11-07T11:00:05.000000999Z", False),
+        ("not-a-timestamp", False),
+        ("2026-99-07T11:00:04Z", False),
+    ],
+)
+def test_live_stopped_source_must_be_the_authenticated_fenced_incarnation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, finished: str, accepted: bool
+) -> None:
+    from contextlib import nullcontext
+
+    _, witness = fixture()
+    witness.physical["mounts"] = []
+    evidence = tmp_path / "evidence"
+    active = tmp_path / "active-lock"
+    evidence.mkdir(mode=0o700)
+    active.mkdir(mode=0o700)
+    run = _inventory_run(evidence)
+    owner = ("\n".join(run.owner) + "\n").encode()
+    store = backup.Evidence(evidence)
+    store.publish("ownership", owner)
+    backup.Evidence(active).publish("active", owner)
+    fence = store.publish_json(
+        "native-fenced-stop-v1.json",
+        {
+            "container": run.container,
+            "image": run.owner[6],
+            "host": witness.physical["host"],
+            "exit_code": 0,
+            "oom_killed": False,
+            "finished": "2026-11-07T11:00:04+00:00",
+        },
+    )
+    record = {
+        "State": {
+            "Status": "exited",
+            "Running": False,
+            "ExitCode": 0,
+            "OOMKilled": False,
+            "Pid": 0,
+            "StartedAt": "2026-11-07T10:59:00Z",
+            "FinishedAt": finished,
+        }
+    }
+    monkeypatch.setattr(storage, "_daemon_endpoint", lambda: None)
+    monkeypatch.setattr(storage, "held_native_lock", lambda _root: active)
+    monkeypatch.setattr(storage, "pinned_ancestry", lambda _path: nullcontext([]))
+    monkeypatch.setattr(
+        storage, "_media_creation", lambda *_args: {"daemon": witness.physical["daemon"]}
+    )
+    monkeypatch.setattr(storage, "_one_docker", lambda *_args: record)
+    monkeypatch.setattr(storage, "container_mounts", lambda *_args: {"mounts": []})
+    monkeypatch.setattr(storage, "_host_identity", lambda _path: witness.physical["host"])
+    if accepted:
+        assert backup._stopped(run, witness, fence)["state"]["FinishedAt"] == finished
+    else:
+        with pytest.raises(backup.Refusal, match="timestamp|incarnation"):
+            backup._stopped(run, witness, fence)
+
+
+def test_resealed_stopped_receipt_cannot_substitute_a_later_clean_incarnation(
+    tmp_path: Path, recovery_admission_bytes: dict[str, bytes], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    evidence = storage.PrivateEvidence(tmp_path / "evidence")
+    retained = storage.PrivateEvidence(tmp_path / "backup")
+    for store in (evidence, retained):
+        store.path.mkdir(mode=0o700)
+    for name, content in recovery_admission_bytes.items():
+        evidence.publish(name, content)
+    owner = tuple(recovery_admission_bytes["ownership"].decode().splitlines())
+    original = json.loads(recovery_admission_bytes["functional-terminal.json"])
+    physical = json.loads(recovery_admission_bytes["physical.json"])
+    run = backup.Run(storage.MEDIA_CHECKOUT, evidence.path, owner, original["campaign"], 2)
+    publish = storage.PrivateEvidence.publish
+
+    def substitute(store: storage.PrivateEvidence, name: str, data: bytes) -> storage.Reference:
+        if name == "stopped-source-v1.json":
+            packet = json.loads(data)
+            packet["source"]["state"]["StartedAt"] = "2026-11-07T11:00:04.100000000Z"
+            packet["source"]["state"]["FinishedAt"] = "2026-11-07T11:00:05.000000000Z"
+            data = storage.canonical_json(packet)
+        return publish(store, name, data)
+
+    monkeypatch.setattr(storage.PrivateEvidence, "publish", substitute)
+    retained_pair_recovery(run, evidence, retained, physical, original)
+    seal = json.loads(retained.read_reference(retained.reference("recovery-seal.json")))
+    # Every outer size/digest/manifest was authored over this internally consistent
+    # later incarnation; only the independent canonical stop must reject it.
     with pytest.raises(backup.Refusal):
         backup.verify_retained_backup(run, seal, original)

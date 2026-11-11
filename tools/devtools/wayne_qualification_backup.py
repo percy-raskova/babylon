@@ -2137,6 +2137,76 @@ def _stopped_contract(witness: PhysicalWitness, members: dict[str, Member]) -> N
             raise Refusal("stopped stable bytes differ from the independent running source")
 
 
+DOCKER_CREATED_AT = "0001-01-01T00:00:00Z"
+
+
+def _docker_timestamp(value: object, label: str) -> datetime:
+    match = (
+        re.fullmatch(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z", value)
+        if isinstance(value, str)
+        else None
+    )
+    if match is None:
+        raise Refusal(label + " Docker timestamp is malformed")
+    # Docker retains nanoseconds; the authenticated Python datetime fence stores
+    # microseconds. Deliberately truncate both to that common precision.
+    fraction = (match[2] or "").ljust(6, "0")[:6]
+    try:
+        return datetime.fromisoformat(match[1] + "." + fraction + "+00:00")
+    except ValueError as error:
+        raise Refusal(label + " Docker timestamp is malformed") from error
+
+
+def _helper_timestamp(value: object, status: str) -> None:
+    if status == "created":
+        if value != DOCKER_CREATED_AT:
+            raise Refusal("created helper timestamp differs from the Docker zero value")
+    elif value == DOCKER_CREATED_AT:
+        raise Refusal("running helper still has the Docker zero timestamp")
+    else:
+        _docker_timestamp(value, "running helper")
+
+
+def _fenced_finished(run: Run, witness: PhysicalWitness, reference: Reference) -> datetime:
+    evidence = Evidence(run.evidence)
+    if reference != evidence.reference("native-fenced-stop-v1.json"):
+        raise Refusal("stopped source substituted its canonical fenced-stop reference")
+    record = strict_json_bytes(evidence.read_reference(reference))
+    if (
+        not isinstance(record, dict)
+        or record.get("container") != run.container
+        or record.get("image") != run.owner[6]
+        or storage.canonical_json(record.get("host"))
+        != storage.canonical_json(witness.physical["host"])
+        or type(record.get("exit_code")) is not int
+        or record["exit_code"] != 0
+        or record.get("oom_killed") is not False
+    ):
+        raise Refusal("stopped source fenced-stop authority differs from its container or bind")
+    value = record.get("finished")
+    if (
+        not isinstance(value, str)
+        or re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)", value)
+        is None
+    ):
+        raise Refusal("authenticated fenced-stop finished timestamp is malformed")
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError as error:
+        raise Refusal("authenticated fenced-stop finished timestamp is malformed") from error
+
+
+def _bind_stopped_state(state: dict[str, Any], finished: datetime) -> None:
+    started_at = _docker_timestamp(state["StartedAt"], "stopped source StartedAt")
+    finished_at = _docker_timestamp(state["FinishedAt"], "stopped source FinishedAt")
+    if (
+        state["StartedAt"] == DOCKER_CREATED_AT
+        or not started_at < finished_at
+        or finished_at != finished
+    ):
+        raise Refusal("stopped source incarnation differs from the authenticated fenced stop")
+
+
 HELPER_SCRIPT = "exec sleep 2147483647"
 
 
@@ -2227,6 +2297,7 @@ def _inspect_helper(run: Run, witness: PhysicalWitness, cid: str, token: str) ->
         or (state["Pid"] > 0) != (state["Status"] == "running")
     ):
         raise Refusal("stopped helper process state differs")
+    _helper_timestamp(state["StartedAt"], state["Status"])
     return {
         "confinement": proof,
         "status": state["Status"],
@@ -2361,6 +2432,7 @@ class StoppedFile(FrozenRecord):
 class StoppedSource(FrozenRecord):
     version: Literal[1]
     pre_stop: Reference
+    fenced_stop: Reference
     source: dict[str, Any]
     helper_created: dict[str, Any]
     helper_running: dict[str, Any]
@@ -2369,7 +2441,7 @@ class StoppedSource(FrozenRecord):
 
 
 def _retained_stopped(
-    raw: object, run: Run, witness: PhysicalWitness, witness_ref: Reference
+    raw: object, run: Run, witness: PhysicalWitness, witness_ref: Reference, fenced_stop: Reference
 ) -> dict[str, Member]:
     try:
         packet = StoppedSource.model_validate(raw)
@@ -2379,10 +2451,14 @@ def _retained_stopped(
         expected = _helper_expected(run, witness, cid, token)
         source = packet.source
         state = source["state"]
+        _helper_timestamp(created["started"], created["status"])
+        _helper_timestamp(running["started"], running["status"])
+        _bind_stopped_state(state, _fenced_finished(run, witness, fenced_stop))
         members = {k: Member(**v.model_dump()) for k, v in packet.members.items()}
         if (
             type(packet.version) is not int
             or packet.pre_stop != witness_ref
+            or packet.fenced_stop != fenced_stop
             or re.fullmatch("[0-9a-f]{64}", cid) is None
             or re.fullmatch("[0-9a-f]{32}", token) is None
             or storage.canonical_json(proof) != storage.canonical_json(expected)
@@ -2426,6 +2502,8 @@ def _retained_stopped(
             )
         _stopped_contract(witness, members)
         return members
+    except Refusal:
+        raise
     except (ValidationError, KeyError, TypeError, ValueError) as error:
         raise Refusal("stopped source receipt is malformed or unsupported") from error
 
@@ -2447,9 +2525,13 @@ def _reader_mounts(command: list[str]) -> None:
 
 
 def _stopped_inventory(
-    run: Run, backup: Evidence, witness: PhysicalWitness, witness_ref: Reference
+    run: Run,
+    backup: Evidence,
+    witness: PhysicalWitness,
+    witness_ref: Reference,
+    fenced_stop: Reference,
 ) -> tuple[Reference, dict[str, Member]]:
-    before = _stopped(run, witness)
+    before = _stopped(run, witness, fenced_stop)
     token = uuid4().hex
     cid = ""
     failure: BaseException | None = None
@@ -2501,7 +2583,7 @@ def _stopped_inventory(
             running = _inspect_helper(run, witness, cid, token)
             if running["status"] != "running":
                 raise Refusal("stopped helper did not start")
-            if _stopped(run, witness) != before:
+            if _stopped(run, witness, fenced_stop) != before:
                 raise Refusal("stopped original source changed before inventory")
             reader = ["docker", "exec", "-w", storage.PGDATA, cid]
             _reader_mounts(reader)
@@ -2509,18 +2591,19 @@ def _stopped_inventory(
             _reader_mounts(reader)
             if _inspect_helper(run, witness, cid, token) != running:
                 raise Refusal("stopped helper mutated during inventory")
-            if _stopped(run, witness) != before:
+            if _stopped(run, witness, fenced_stop) != before:
                 raise Refusal("stopped original source mutated during inventory")
             packet = {
                 "version": 1,
                 "pre_stop": witness_ref.model_dump(),
+                "fenced_stop": fenced_stop.model_dump(),
                 "source": before,
                 "helper_created": created,
                 "helper_running": running,
                 "members": {k: asdict(v) for k, v in members.items()},
                 "changes": _source_changes(witness, members),
             }
-            _retained_stopped(packet, run, witness, witness_ref)
+            _retained_stopped(packet, run, witness, witness_ref, fenced_stop)
         except BaseException as error:
             failure = error
             raise
@@ -2569,7 +2652,7 @@ def _stopped_inventory(
     return backup.publish_json("stopped-source-v1.json", packet), members
 
 
-def _stopped(run: Run, witness: PhysicalWitness) -> dict[str, Any]:
+def _stopped(run: Run, witness: PhysicalWitness, fenced_stop: Reference) -> dict[str, Any]:
     directory = Evidence(run.evidence)
     storage._daemon_endpoint()
     active = Evidence(storage.held_native_lock(run.root))
@@ -2597,6 +2680,7 @@ def _stopped(run: Run, witness: PhysicalWitness) -> dict[str, Any]:
             raise Refusal("stopped container, clean shutdown or retained bind identity differs")
         if record["State"]["Pid"] != 0:
             raise Refusal("stopped source still has a process")
+        _bind_stopped_state(record["State"], _fenced_finished(run, witness, fenced_stop))
         return {
             "container": run.container,
             "image": run.owner[6],
@@ -2618,6 +2702,15 @@ def _stopped(run: Run, witness: PhysicalWitness) -> dict[str, Any]:
         }
 
 
+def _require_stopped_incarnation(
+    run: Run, witness: PhysicalWitness, fenced_stop: Reference, captured: dict[str, Any]
+) -> None:
+    if storage.canonical_json(_stopped(run, witness, fenced_stop)) != storage.canonical_json(
+        captured
+    ):
+        raise Refusal("stopped source incarnation changed after its independent inventory")
+
+
 def _seal_archive(directory: Evidence, ref: Reference, final: str) -> Reference:
     directory.verify(ref)
     fd = os.open(directory.path, storage.DIR_FLAGS)
@@ -2632,23 +2725,30 @@ def _seal_archive(directory: Evidence, ref: Reference, final: str) -> Reference:
 
 
 def _offline(
-    run: Run, backup: Evidence, witness: PhysicalWitness, witness_ref: Reference
+    run: Run,
+    backup: Evidence,
+    witness: PhysicalWitness,
+    witness_ref: Reference,
+    fenced_stop: Reference,
 ) -> list[Reference]:
-    stopped_ref, stopped = _stopped_inventory(run, backup, witness, witness_ref)
+    stopped_ref, stopped = _stopped_inventory(run, backup, witness, witness_ref, fenced_stop)
+    captured = _retained_record(backup, stopped_ref.path)["source"]
     names = ("pgdata.tar", "pgdata-second.tar")
     first: dict[str, Member] | None = None
     namespace = ""
     partials = []
     refs = [stopped_ref]
     for name in names:
-        _stopped(run, witness)
+        _require_stopped_incarnation(run, witness, fenced_stop, captured)
         partial = _command(
             backup,
             name + ".partial",
             ["docker", "cp", "-a", run.container + ":" + storage.PGDATA + "/.", "-"],
         )
+        _require_stopped_incarnation(run, witness, fenced_stop, captured)
         with backup.file(partial.path) as stream:
             members, current = archive_manifest(stream, witness, stopped)
+        _require_stopped_incarnation(run, witness, fenced_stop, captured)
         if first is not None and (first != members or current != namespace):
             raise Refusal(
                 "second independent stopped archive differs from the first complete manifest"
@@ -2667,6 +2767,7 @@ def _offline(
         }
         refs.append(backup.publish_json(name + ".manifest.json", manifest))
         partials.append(partial)
+    _require_stopped_incarnation(run, witness, fenced_stop, captured)
     for partial, name in zip(partials, names, strict=True):
         refs.append(_seal_archive(backup, partial, name))
     # Both verified final names now retain the exact archived inodes.
@@ -2743,10 +2844,13 @@ def _shutdown_evidence(
         start_record.get("image"),
     ) != (run.container, run.owner[6]):
         raise Refusal("fenced stop attempt does not identify the source image and container")
-    since = datetime.fromisoformat(start_record["since"])
-    fast, clean, finished = (
-        datetime.fromisoformat(record[k]) for k in ("fast", "clean", "finished")
-    )
+    try:
+        since = datetime.fromisoformat(start_record["since"])
+        fast, clean, finished = (
+            datetime.fromisoformat(record[k]) for k in ("fast", "clean", "finished")
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise Refusal("fenced shutdown timestamp is malformed") from error
     if (
         any(stamp.tzinfo is None for stamp in (since, fast, clean, finished))
         or not since <= fast <= clean <= finished
@@ -3120,6 +3224,7 @@ def verify_retained_backup(run: Run, record: dict[str, Any], original: dict[str,
         run,
         witness,
         refs["pre-stop-physical.json"],
+        evidence.reference("native-fenced-stop-v1.json"),
     )
     prior = None
     for name in ("pgdata.tar", "pgdata-second.tar"):
@@ -3194,7 +3299,7 @@ def backup_and_retire(
             directory, backup, run, physical, (held.gate.admin_backend, *held.admitted)
         )
         logical.append(exits)
-    archives = _offline(run, backup, witness, witness_ref)
+    archives = _offline(run, backup, witness, witness_ref, fenced_stop)
     retained = [*logical, witness_ref, *archives]
     seal = backup.publish_json(
         "recovery-seal.json",
@@ -3215,5 +3320,6 @@ def backup_and_retire(
     directory.verify(shutdown)
     directory.verify(fenced_stop)
     directory.verify(attempt)
-    _stopped(run, witness)
+    captured = _retained_record(backup, "stopped-source-v1.json")["source"]
+    _require_stopped_incarnation(run, witness, fenced_stop, captured)
     storage.remove_stopped(directory, root, run.container, owner[2], owner[6])

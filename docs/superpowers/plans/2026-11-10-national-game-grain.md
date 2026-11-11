@@ -232,11 +232,11 @@ For each close, capture the first strict ready status, exact rendered frame and 
 intervals from input to ready status and from input to capture. Use the later completion of capture or next acceptance
 for the usable endpoint, including all overhead. Keep raw pixels and incomplete evidence.
 
-This prefix does not prove a full ten-period walk, recovery, storage or qualification. Use `qualification-15` as the
-fresh disposable namespace. Keep `qualification-14` and its artifacts.
+This prefix does not prove a full ten-period walk, recovery, storage or qualification. Use `qualification-16` as the
+fresh disposable namespace. Keep `qualification-15` and its artifacts.
 
 Invoke `tools/run_rust_postgres.sh --wayne-ordinary-prefix` for the separate normal-only `ordinary-01` profile.
-Its independent evidence path is `qualification-15/ordinary-01/normal_play/evidence`. The source horizon stays at ten
+Its independent evidence path is `qualification-16/ordinary-01/normal_play/evidence`. The source horizon stays at ten
 periods. Existing source, capacity, binary, ownership and role checks apply.
 
 After the prefix, stop and keep the exact container, primary data and evidence. Record late or incomplete measurements
@@ -244,6 +244,10 @@ without claiming qualification or backup. Release only the matching lease after 
 the lease. The stopped campaign keeps its connection flag closed.
 
 This uses the existing disposable campaign fence, not continuous exclusion of all SQL clients.
+
+The next try uses the single corrective iteration. The checker accepts default report selection with a closed inspector.
+An open inspector still causes refusal. If the measured conditions still fail, report evidence and options without
+another candidate.
 
 - [ ] **Step 5:** Apply the measured-failure bound.
 

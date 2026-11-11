@@ -2450,10 +2450,10 @@ class OrdinaryWarmPrefix:
         if (
             not state.period_actionable
             or state.phase != "Ready"
+            # The default selected report persists with its inspector closed.
             or state.inspector != "Closed"
             or state.larger_interface
             or state.production_details_open
-            or state.selected_report_id is not None
             or state.period_proof is not None
             or state.advance_request_id is not None
             or state.durable_tick != period

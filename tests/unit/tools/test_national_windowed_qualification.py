@@ -2132,6 +2132,12 @@ class OrdinaryPrefixPeer:
     def __init__(self, peer, frames, pixels, fault):
         self.peer, self.frames, self.pixels, self.fault = peer, frames, pixels, fault
         self.current = state()
+        # Rust publishes the default selected assessment even with no inspector open.
+        self.current.update(
+            selected_report_id="d" * 64,
+            selected_report_observed_period=0,
+            selected_report_acquired_period=0,
+        )
         self.current["installed_organizer"] = installed_opening_view()
         self.calls, self.failures = [], []
         self.accepted = None
@@ -2178,7 +2184,7 @@ class OrdinaryPrefixPeer:
             "period": ("viewed_tick", tick - 1),
             "source": ("foundation_sha256", "f" * 64),
             "complete": ("phase", "Complete"),
-            "overlay": ("inspector", "Archive"),
+            "overlay": ("inspector", "Evidence"),
         }
         if self.fault in mutations:
             key, value = mutations[self.fault]
@@ -2293,6 +2299,7 @@ def test_ordinary_prefix_retains_three_actual_closes_and_next_acceptances(tmp_pa
     thread.start()
     channel = windowed.ControlChannel(sock, CAMPAIGN, 0)
     opening = channel.observe(1)
+    assert opening.selected_report_id is not None and opening.inspector == "Closed"
     # Deterministic exact boundary and over-budget evidence, without wall-clock sleeps.
     if fault in (None, "late"):
         original_capture = companion.walk.capture_frame
@@ -2327,6 +2334,11 @@ def test_ordinary_prefix_retains_three_actual_closes_and_next_acceptances(tmp_pa
         assert calls.count("step") == 3 and calls.count("confirm") == 4
         assert [sample["period"] for sample in saved["samples"]] == [1, 2, 3]
         for sample in saved["samples"]:
+            assert all(
+                sample[endpoint]["state"]["selected_report_id"] is not None
+                and sample[endpoint]["state"]["inspector"] == "Closed"
+                for endpoint in ("ready", "capture", "next_acceptance")
+            )
             assert sample["usable_elapsed_ns"] == 10_000_000_000 + int(fault == "late")
             assert (
                 sample["step"]["sequence"]
@@ -2340,6 +2352,9 @@ def test_ordinary_prefix_retains_three_actual_closes_and_next_acceptances(tmp_pa
                 == sample["period"] + 1
             )
         assert saved["samples"][-1]["next_acceptance"]["state"]["choice"] == "pause_standing"
+    if fault == "overlay":
+        assert calls.count("step") == 1 and "capture_frame" not in calls
+        assert saved["actions"][-1]["state"]["inspector"] == "Evidence"
     if fault in ("capture_context", "capture_refused"):
         assert list((tmp_path / "raw").glob("incomplete-*.json"))
     with pytest.raises(ValueError):

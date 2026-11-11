@@ -1118,7 +1118,7 @@ def test_public_ordinary_prefix_selects_its_owned_profile_before_any_fixture_wor
         "normal_play",
         "10",
         "retain-ordinary",
-        str(tmp_path.parent / "qualification-15/ordinary-01/normal_play/evidence"),
+        str(tmp_path.parent / "qualification-16/ordinary-01/normal_play/evidence"),
     ]
 
 

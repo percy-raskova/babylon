@@ -247,11 +247,11 @@ For each close, capture the first strict ready status, exact rendered frame and 
 intervals from input to ready status and from input to capture. Use the later completion of capture or next acceptance
 for the usable endpoint, including all overhead. Keep raw pixels and incomplete evidence.
 
-This prefix does not prove a full ten-period walk, recovery, storage or qualification. Use `qualification-22` as the
+This prefix does not prove a full ten-period walk, recovery, storage or qualification. Use `qualification-24` as the
 fresh disposable namespace. Keep `qualification-15` and its artifacts.
 
 Invoke `tools/run_rust_postgres.sh --wayne-ordinary-prefix` for the separate normal-only `ordinary-01` profile.
-Its independent evidence path is `qualification-22/ordinary-01/normal_play/evidence`. The source horizon stays at ten
+Its independent evidence path is `qualification-24/ordinary-01/normal_play/evidence`. The source horizon stays at ten
 periods. Existing source, capacity, binary, ownership and role checks apply.
 
 After the prefix, stop and keep the exact container, primary data and evidence. Record late or incomplete measurements
@@ -633,3 +633,36 @@ identify a use-after-free fix during executor destruction. Use the smallest comp
 Local dependency checks use installed cargo-deny 0.19.0. Hosted CI uses 0.20.2.
 The retained final22 programs describe the earlier source. Native qualification remains open.
 Preserve those programs and earlier evidence. Root owns the later final gates and native qualification.
+
+
+### Task 20: Isolate the native resize failure
+
+The controlled probe at `03c4ac65` began at actual 1080x768, outer position (0, 0), on portrait DP-3.
+The component request to 1366x768, including unmaximize, failed its three-second acknowledgement.
+A direct native request without unmaximize also failed there. Moving the same owned window to
+(1112, 1112) on the landscape primary and repeating the direct request produced a fresh resize,
+matching native and component extents, and acknowledgement in 51,937 microseconds.
+
+This is placement-dependent intervention evidence. Q22's exact server and visibility were not
+recorded. The probe does not establish a universal window-manager policy or cache cause, and it
+is not campaign qualification. Retain the probe and earlier qualification evidence unchanged.
+
+### Task 21: Place the initial window on primary and qualify fresh source
+
+- [x] Center the durable window's initial position on the primary monitor. Keep its title,
+  1366x768 extent, Bevy 0.20, input, resize acknowledgement, camera behavior and deadlines.
+- [x] Route current qualification consumers to fresh `qualification-24`, including Task 3's
+  ordinary prefix. Task 16's completed `qualification-22` routing is historical and superseded.
+  Preserve every earlier namespace and artifact.
+- [ ] Demonstrate a true native 1080-to-1366 component transition after primary centering.
+- [ ] Complete independent review, final gates and real campaign qualification at the new source.
+
+The recorded primary is 1920x1080 and fits the requested extent plus its observed 43-pixel frame.
+Missing or undersized primary monitors remain unguaranteed. This candidate adds no monitor recovery,
+native bypass, retry or timing change. Existing storage, privacy, integrity, durability, nationwide
+and international-trade behavior and default allocations remain unchanged.
+
+Binding limits remain warm P1–P3 complete usable endpoints at most 30 seconds each, cold below
+180 seconds, advance at most 120 seconds, Archive at most 180 seconds, and normal two-period smoke
+at most 900 seconds. Aggregate memory stays at most 10,000,000,000 bytes with sample gaps at most
+five seconds; save limits stay 10 GB and 40 MB per tick. Warm acceptance is not a p95 statistic.

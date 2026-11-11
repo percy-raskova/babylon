@@ -15,7 +15,7 @@ def test_three_media_profiles_require_the_exact_run_and_horizon(monkeypatch, mod
         ("walk-01", "national_storage", "10", "walk-01"),
     ):
         lane = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop")
-        run = lane / "qualification-22" / leaf
+        run = lane / "qualification-24" / leaf
         evidence = (run if profile == "sql-01" else run / mode) / "evidence"
         with pytest.raises(storage.StorageRefusal):
             storage.profile_run(
@@ -1110,7 +1110,7 @@ def test_native_pin_publishes_only_released_normal_copies(
 
 def test_ordinary_profile_is_independent_normal_only_and_never_a_qualified_member(monkeypatch):
     root = Path(
-        "/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-22/ordinary-01"
+        "/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-24/ordinary-01"
     )
     evidence = root / "normal_play/evidence"
     monkeypatch.setenv("BABYLON_NATIVE_MEASUREMENT_MODE", "normal_play")

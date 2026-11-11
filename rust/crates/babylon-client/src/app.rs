@@ -202,6 +202,11 @@ fn install_window_camera_coherence(app: &mut App) {
             .chain()
             .run_if(window_camera_mismatch),
     );
+    app.add_systems(
+        WindowCameraCoherence,
+        crate::organizer::qualification_input::observe_window_after_last
+            .after(bevy::render::camera::camera_system),
+    );
 }
 
 // Closing the desktop window follows the same draft flush and acknowledged

@@ -2359,3 +2359,247 @@ def test_ordinary_prefix_retains_three_actual_closes_and_next_acceptances(tmp_pa
         assert list((tmp_path / "raw").glob("incomplete-*.json"))
     with pytest.raises(ValueError):
         companion(channel, frames, opening)
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        None,
+        "primary_window_resize_timeout",
+        "primary_window_extent_unobserved",
+        "control_context_changed",
+        "control_stale_or_unavailable",
+    ],
+)
+def test_window_diagnostic_resize_keeps_only_expected_refusals_open_for_quit(reason):
+    """Use actual authenticated exchanges; no socket reset or refusal weakening."""
+    stream, peer = socket.socketpair()
+    requests = []
+    failures = []
+
+    def serve():
+        try:
+            with peer, peer.makefile("rb") as source:
+                for line in source:
+                    request = json.loads(line)
+                    requests.append(request["action"])
+                    current = state()
+                    event, refusal = "applied", None
+                    if request["action"] == "status":
+                        event = "observed"
+                    elif request["action"] == "resize1366x768":
+                        event, refusal = ("refused", reason) if reason else ("applied", None)
+                    elif request["action"] == "quit":
+                        current["quit_requested"] = True
+                        event = "quit_requested"
+                    else:
+                        raise AssertionError(request)
+                    peer.sendall(
+                        json.dumps(
+                            {
+                                "version": 5,
+                                "sequence": request["sequence"],
+                                "event": event,
+                                "reason": refusal,
+                                "state": current,
+                            }
+                        ).encode()
+                        + b"\n"
+                    )
+        except BaseException as error:
+            failures.append(error)
+
+    thread = threading.Thread(target=serve)
+    thread.start()
+    channel = windowed.ControlChannel(stream, CAMPAIGN, 0)
+    try:
+        channel.observe(1)
+        if reason in (None, "primary_window_resize_timeout", "primary_window_extent_unobserved"):
+            if reason:
+                with pytest.raises(windowed.ControlRefusal):
+                    channel._diagnose_window_resize(1)
+            else:
+                channel._diagnose_window_resize(1)
+            assert channel.records[-1].reason == reason
+            assert not channel.closed
+            channel.perform("quit", 1)
+            assert channel.records[-1].state.quit_requested
+        else:
+            with pytest.raises(windowed.ControlRefusal):
+                channel._diagnose_window_resize(1)
+            assert channel.closed
+    finally:
+        channel.close()
+        thread.join(2)
+    assert not thread.is_alive() and not failures
+    assert requests == ["status", "resize1366x768"] + (
+        ["quit"]
+        if reason in (None, "primary_window_resize_timeout", "primary_window_extent_unobserved")
+        else []
+    )
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "primary_window_resize_timeout",
+        "primary_window_extent_unobserved",
+        "control_context_changed",
+        "missing_log",
+        "changed_marker",
+        "startup",
+    ],
+)
+def test_owned_window_diagnostic_retains_actual_zero_gameplay_lifecycle(
+    tmp_path, monkeypatch, fault
+):
+    from tools.devtools import national_native_runner as runner
+
+    evidence = tmp_path / "evidence"
+    evidence.mkdir(mode=0o700)
+    (tmp_path / "raw").mkdir(mode=0o700)
+    (evidence / "source-head").write_text("a" * 40 + "\n")
+    log = tmp_path / "xdg/data/babylon/logs/babylon-client.log"
+    log.parent.mkdir(parents=True, mode=0o700)
+    run = object.__new__(runner.NativeRun)
+    run.directory, run.root = evidence, tmp_path
+    run.window_diagnostic = True
+    run.wayne_profile, run.mode, run.periods = "ordinary-01", "normal_play", 10
+    run.campaign, run.timeout = CAMPAIGN, 1
+    run.runtime, run.client = tmp_path / "runtime", tmp_path / "client"
+    run.owner_fields = ("owned",)
+    from types import SimpleNamespace
+
+    run.policy = SimpleNamespace(maximum_cold_open_seconds=180)
+    run.process_identity = lambda process, binary: (process.pid, 42, binary.name)
+    run.record_processes = lambda _segment: None
+    run.verify_live = run.verify_sources = run.publish_verification_diagnostics = lambda: None
+    monkeypatch.setattr(runner, "reauthenticate_native_owner", lambda *_args: None)
+    markers = []
+
+    def marker():
+        result = memory.CampaignMemoryMarker(
+            campaign=CAMPAIGN,
+            foundation_sha256="a" * 64,
+            campaign_age_ticks=int(fault == "changed_marker" and bool(markers)),
+            tick_content_hash="b" * 64 if fault == "changed_marker" and markers else None,
+        )
+        markers.append(result)
+        return result
+
+    run.marker = marker
+    calls = []
+
+    def pair(_runtime, _client, _root, writer, reader, **options):
+        assert runner.WINDOW_DIAGNOSTIC_SELECTOR not in writer
+        assert reader[runner.WINDOW_DIAGNOSTIC_SELECTOR] == "1"
+        assert reader["RUST_LOG"] == "off,babylon_client=off,babylon_window_diagnostic=info"
+        assert "BABYLON_QUALIFICATION_POLICY" not in reader
+        assert options["periods"] == 0 and options["choices"] == ()
+        assert options["capture_lifecycle"] is None
+        options["on_started"](SimpleNamespace(pid=10), SimpleNamespace(pid=11))
+        stream, peer = socket.socketpair()
+
+        class DiagnosticPeer(OrdinaryPrefixPeer):
+            def dispatch(self, request):
+                if request["action"] == "quit":
+                    self.calls.append("quit")
+                    self.current["quit_requested"] = True
+                    return "quit_requested", None
+                if request["action"] == "resize1366x768" and fault in (
+                    "primary_window_resize_timeout",
+                    "primary_window_extent_unobserved",
+                    "control_context_changed",
+                ):
+                    self.calls.append(request["action"])
+                    return "refused", fault
+                return super().dispatch(request)
+
+        standin = DiagnosticPeer(peer, tmp_path, b"", None)
+        thread = threading.Thread(target=standin.serve)
+        thread.start()
+        channel = windowed.ControlChannel(stream, CAMPAIGN, 0)
+        failure = None
+        try:
+            opening = channel.observe(1)
+            if fault == "startup":
+                raise runner.NativeRunRefusal("startup fixture failure")
+            options["on_installed"](channel, tmp_path, opening)
+            channel.perform("quit", 1)
+        except BaseException as error:
+            failure = error
+            raise
+        finally:
+            windowed.finish_observations(
+                evidence / "native-controls.json",
+                channel,
+                "incomplete" if failure else "completed",
+                failure,
+            )
+            channel.close()
+            thread.join(2)
+            assert not thread.is_alive() and not standin.failures
+            calls.extend(standin.calls)
+            if fault not in ("missing_log", "startup"):
+                sequence = next(
+                    row.sequence for row in channel.records if row.action == "resize1366x768"
+                )
+                log.write_text(
+                    "".join(
+                        "INFO window_diagnostic "
+                        + json.dumps({"sequence": sequence, "phase": phase})
+                        + "\n"
+                        for phase in (
+                            ("request", "final")
+                            if fault == "primary_window_extent_unobserved"
+                            else ("request", "first_complete", "post_last", "final")
+                        )
+                    )
+                )
+                log.chmod(0o600)
+        return 0
+
+    monkeypatch.setattr(runner, "drive_pair", pair)
+    writer = {runner.WINDOW_DIAGNOSTIC_SELECTOR: "stale"}
+    reader = {"RUST_LOG": "off,babylon_client=off", "BABYLON_QUALIFICATION_POLICY": "absent"}
+    if fault in ("control_context_changed", "missing_log", "changed_marker", "startup"):
+        with pytest.raises(ValueError):
+            run.ordinary(writer, reader)
+    else:
+        assert run.ordinary(writer, reader) == 0
+    report = runner.read_record(
+        tmp_path / "raw/window-diagnostic.json", runner.WindowDiagnosticEvidence
+    )
+    expected = (
+        "incomplete"
+        if fault in ("control_context_changed", "missing_log", "changed_marker", "startup")
+        else "refused"
+        if fault
+        else "applied"
+    )
+    assert report.outcome == expected
+    assert report.steps == report.plays == report.captures == report.commitment_acceptances == 0
+    assert report.gameplay_qualified is False
+    assert calls == (
+        ["status"]
+        if fault == "startup"
+        else ["status", "standard_interface", "resize1366x768"]
+        + ([] if fault == "control_context_changed" else ["quit"])
+    )
+    assert tuple(row.action for row in report.actions) == tuple(calls)
+    assert not (evidence / "ordinary-terminal.json").exists()
+    assert not (evidence / "ordinary-warm-prefix.json").exists()
+    assert writer[runner.WINDOW_DIAGNOSTIC_SELECTOR] == "stale"
+    if expected == "incomplete":
+        assert report.failures
+    else:
+        assert report.opening_marker == report.final_marker
+        assert report.final.quit_requested
+        assert report.native_window_log_records == (
+            2 if fault == "primary_window_extent_unobserved" else 4
+        )
+        assert (
+            report.native_window_log.sha256
+            == __import__("hashlib").sha256(log.read_bytes()).hexdigest()
+        )

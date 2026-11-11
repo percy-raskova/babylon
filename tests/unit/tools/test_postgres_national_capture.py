@@ -1078,7 +1078,10 @@ national_reproducibility
         }
 
 
-def test_public_ordinary_prefix_selects_its_owned_profile_before_any_fixture_work(tmp_path):
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_public_ordinary_prefix_selects_its_owned_profile_before_any_fixture_work(
+    tmp_path, diagnostic
+):
     tools = tmp_path / "tools"
     tools.mkdir()
     script = tools / "run_rust_postgres.sh"
@@ -1086,7 +1089,7 @@ def test_public_ordinary_prefix_selects_its_owned_profile_before_any_fixture_wor
     (tools / "postgres_national_lifecycle.sh").write_text(
         'national_capture_selection() { printf "%s\\n" "$BABYLON_WAYNE_PROFILE" '
         '"$BABYLON_NATIVE_MEASUREMENT_MODE" "$BABYLON_NATIONAL_STORAGE_PERIODS" '
-        '"$BABYLON_NATIONAL_SUCCESS_DISPOSITION" "$BABYLON_STORAGE_REPORT_DIRECTORY"; exit 42; }\n'
+        '"$BABYLON_NATIONAL_SUCCESS_DISPOSITION" "$BABYLON_STORAGE_REPORT_DIRECTORY" "${BABYLON_WAYNE_WINDOW_DIAGNOSTIC-unset}"; exit 42; }\n'
     )
     denied = tmp_path / "denied"
     denied.mkdir()
@@ -1104,8 +1107,13 @@ def test_public_ordinary_prefix_selects_its_owned_profile_before_any_fixture_wor
     for name in ("docker", "psql", "cargo", "mise"):
         assert which(name, path=isolated_path) == str(denied / name)
     result = subprocess.run(
-        ["bash", str(script), "--wayne-ordinary-prefix"],
-        env={"PATH": isolated_path},
+        [
+            "bash",
+            str(script),
+            "--wayne-ordinary-prefix",
+            *(["--window-diagnostic"] if diagnostic else []),
+        ],
+        env={"PATH": isolated_path, "BABYLON_WAYNE_WINDOW_DIAGNOSTIC": "stale"},
         capture_output=True,
         text=True,
         timeout=5,
@@ -1118,7 +1126,8 @@ def test_public_ordinary_prefix_selects_its_owned_profile_before_any_fixture_wor
         "normal_play",
         "10",
         "retain-ordinary",
-        str(tmp_path.parent / "qualification-16/ordinary-01/normal_play/evidence"),
+        str(tmp_path.parent / "qualification-17/ordinary-01/normal_play/evidence"),
+        "1" if diagnostic else "unset",
     ]
 
 
@@ -1160,3 +1169,44 @@ timeout() { echo 'unexpected external' >&2; exit 97; }
         f"retain-ordinary --container {'ab' * 32} --exit-status {status}",
         f"status={status}",
     ]
+
+
+@pytest.mark.parametrize(
+    "arguments,selector,profile,mode,horizon",
+    [
+        (["--window-diagnostic"], None, None, None, None),
+        (["--wayne-ordinary-prefix", "--window-diagnostic", "extra"], None, None, None, None),
+        (["--wayne-ordinary-prefix", "--other"], None, None, None, None),
+        (["--wayne-native-pair", "walk-01"], "1", "walk-01", "normal_play", "10"),
+        ([], "0", "ordinary-01", "normal_play", "10"),
+        ([], "1", "ordinary-01", "memory_capture", "10"),
+        ([], "1", "ordinary-01", "normal_play", "2"),
+    ],
+)
+def test_window_diagnostic_public_refusal_precedes_fixture_work(
+    tmp_path, arguments, selector, profile, mode, horizon
+):
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    script = tools / "run_rust_postgres.sh"
+    script.write_bytes((REPOSITORY / "tools/run_rust_postgres.sh").read_bytes())
+    environment = {"PATH": os.defpath}
+    for name, value in (
+        ("BABYLON_WAYNE_WINDOW_DIAGNOSTIC", selector),
+        ("BABYLON_WAYNE_PROFILE", profile),
+        ("BABYLON_NATIVE_MEASUREMENT_MODE", mode),
+        ("BABYLON_NATIONAL_STORAGE_PERIODS", horizon),
+    ):
+        if value is not None:
+            environment[name] = value
+    result = subprocess.run(
+        ["bash", str(script), *arguments],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode == 2 and "diagnostic" in result.stderr
+    assert not result.stdout
+    assert list(tools.iterdir()) == [script]

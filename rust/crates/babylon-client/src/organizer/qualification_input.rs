@@ -14,6 +14,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use bevy::ecs::message::{MessageCursor, MessageId, Messages};
+use bevy::ecs::system::NonSendMarker;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
@@ -56,6 +57,10 @@ use mpsc::TryRecvError;
 use thread::Builder;
 use ui::OrganizerAction;
 use uuid::Uuid;
+
+#[path = "window_diagnostic.rs"]
+mod window_diagnostic;
+use window_diagnostic::WindowDiagnostic;
 
 // Designed bounds for instrumentation, independent of the captured game policy.
 const INPUT_BYTES: u64 = 4096;
@@ -781,7 +786,7 @@ fn installed_organizer(client: &OrganizerClient, session: &ObserverSession) -> O
 }
 
 #[derive(Resource)]
-struct Controls {
+pub(crate) struct Controls {
     next_sequence: Option<u64>,
     pending: Option<Pending>,
     reply: Option<Vec<u8>>,
@@ -790,6 +795,8 @@ struct Controls {
     capture_result: Option<Result<(), &'static str>>,
     observed_extent: Option<(Entity, UVec2)>,
     resize_cursor: MessageCursor<WindowResized>,
+    diagnostic_enabled: bool,
+    resize_diagnostic: Option<WindowDiagnostic>,
 }
 
 impl Default for Controls {
@@ -803,6 +810,9 @@ impl Default for Controls {
             capture_result: None,
             observed_extent: None,
             resize_cursor: MessageCursor::default(),
+            diagnostic_enabled: std::env::var("BABYLON_WAYNE_WINDOW_DIAGNOSTIC").as_deref()
+                == Ok("1"),
+            resize_diagnostic: None,
         }
     }
 }
@@ -1486,6 +1496,38 @@ fn request_resize(
     Ok(())
 }
 
+fn begin_resize(
+    controls: &mut Controls,
+    windows: &mut Query<(Entity, &mut Window), With<PrimaryWindow>>,
+    resized: &Messages<WindowResized>,
+    sequence: u64,
+    action: Action,
+) -> Result<(), &'static str> {
+    if controls.diagnostic_enabled {
+        controls.resize_diagnostic = Some(WindowDiagnostic::new(
+            sequence,
+            action,
+            controls.observed_extent,
+            windows.single().ok(),
+        ));
+    }
+    // Skip only this adapter's pre-request events, not the shared messages.
+    controls.resize_cursor.clear(resized);
+    let result = request_resize(controls, windows, action);
+    if let Err(reason) = result {
+        if let Some(mut diagnostic) = controls.resize_diagnostic.take() {
+            diagnostic.snapshot(
+                "final",
+                windows.single().ok(),
+                controls.observed_extent,
+                false,
+                Some(reason),
+            );
+        }
+    }
+    result
+}
+
 fn admitted_input(
     transport: &Transport,
     controls: &mut Controls,
@@ -1635,6 +1677,7 @@ fn dispatch(
     mut commands: Commands,
     mut windows: Query<(Entity, &mut Window), With<PrimaryWindow>>,
     resized: Res<Messages<WindowResized>>,
+    _main_thread: NonSendMarker,
 ) {
     let Some(input) = admitted_input(&transport, &mut controls, &mut situation, &mut observer)
     else {
@@ -1694,9 +1737,9 @@ fn dispatch(
                 }
             }
             action @ (Action::Resize1366x768 | Action::Resize1920x1080) => {
-                // Skip only this adapter's pre-request events, not the shared messages.
-                controls.resize_cursor.clear(&resized);
-                if let Err(reason) = request_resize(&mut controls, &mut windows, action) {
+                if let Err(reason) =
+                    begin_resize(&mut controls, &mut windows, &resized, sequence, action)
+                {
                     controls.respond(Some(sequence), "refused", Some(reason), &situation);
                     return;
                 }
@@ -2203,21 +2246,29 @@ fn resize_outcome(
     }
 }
 
-fn complete(
-    mut controls: ResMut<Controls>,
-    mut receipt: ResMut<HandlerReceipt>,
-    mut situation: Situation,
-    evidence: Res<ArchiveEvidenceReceipt>,
-    mut windows: Query<(Entity, &mut Window), With<PrimaryWindow>>,
-    resized: Res<Messages<WindowResized>>,
-) {
+fn observe_resize_events(
+    controls: &mut Controls,
+    windows: &Query<(Entity, &mut Window), With<PrimaryWindow>>,
+    resized: &Messages<WindowResized>,
+) -> Option<Entity> {
     let mut observation = None;
-    for event in controls.resize_cursor.read(&resized) {
-        if let Ok((entity, window)) = windows.single_mut() {
-            if event.window == entity
+    let Controls {
+        resize_cursor,
+        resize_diagnostic,
+        ..
+    } = controls;
+    for event in resize_cursor.read(resized) {
+        let current = windows.single().ok();
+        let accepted = current.is_some_and(|(entity, window)| {
+            event.window == entity
                 && (event.width - window.width()).abs() < 0.5
                 && (event.height - window.height()).abs() < 0.5
-            {
+        });
+        if let Some(diagnostic) = resize_diagnostic.as_mut() {
+            diagnostic.event(event, current, accepted);
+        }
+        if let Some((entity, window)) = current {
+            if accepted {
                 observation = Some((
                     entity,
                     UVec2::new(window.physical_width(), window.physical_height()),
@@ -2228,15 +2279,44 @@ fn complete(
     if observation.is_some() {
         controls.observed_extent = observation;
     }
-    let observed_resize = observation.map(|(entity, _)| entity);
+    observation.map(|(entity, _)| entity)
+}
+
+fn complete(
+    mut controls: ResMut<Controls>,
+    mut receipt: ResMut<HandlerReceipt>,
+    mut situation: Situation,
+    evidence: Res<ArchiveEvidenceReceipt>,
+    mut windows: Query<(Entity, &mut Window), With<PrimaryWindow>>,
+    resized: Res<Messages<WindowResized>>,
+    _main_thread: NonSendMarker,
+) {
+    let observed_resize = observe_resize_events(&mut controls, &windows, &resized);
     if controls.reply.is_some() || controls.disabled {
         return;
     }
     let capture_result = controls.capture_result.take();
     let observed_extent = controls.observed_extent;
-    let Some(pending) = controls.pending.as_mut() else {
+    let Controls {
+        pending,
+        resize_diagnostic,
+        ..
+    } = &mut *controls;
+    let Some(pending) = pending.as_mut() else {
         return;
     };
+    if let Some(diagnostic) = resize_diagnostic.as_mut() {
+        diagnostic.checks = diagnostic.checks.saturating_add(1);
+        if diagnostic.checks == 1 {
+            diagnostic.snapshot(
+                "first_complete",
+                windows.single().ok(),
+                observed_extent,
+                pending.resize_armed,
+                None,
+            );
+        }
+    }
     let extent = pending.input.action.extent();
     let captured = if pending.handled {
         Ok(())
@@ -2281,11 +2361,58 @@ fn complete(
         Err(reason) => Some(Err(reason)),
     };
     if let Some(result) = result {
+        if let Some(mut diagnostic) = resize_diagnostic.take() {
+            diagnostic.snapshot(
+                "final",
+                windows.single().ok(),
+                observed_extent,
+                pending.resize_armed,
+                Some(match result {
+                    Ok(event) => event,
+                    Err(reason) => reason,
+                }),
+            );
+        }
         let sequence = pending.input.sequence;
         let action = pending.input.action;
         controls.stage_result(sequence, action, result, &mut situation);
         controls.pending = None;
         receipt.tracked = None;
+    }
+}
+
+/// Read the real backend after Bevy Last; never acknowledge or change a request.
+pub(crate) fn observe_window_after_last(
+    controls: Option<ResMut<Controls>>,
+    windows: Query<(Entity, &Window), With<PrimaryWindow>>,
+    _main_thread: NonSendMarker,
+) {
+    let Some(mut controls) = controls else {
+        return;
+    };
+    let observed = controls.observed_extent;
+    let armed = controls
+        .pending
+        .as_ref()
+        .is_some_and(|pending| pending.resize_armed);
+    let active = controls.pending.is_some();
+    if !active {
+        if let Some(mut diagnostic) = controls.resize_diagnostic.take() {
+            diagnostic.snapshot(
+                "final",
+                windows.single().ok(),
+                observed,
+                armed,
+                Some("request_abandoned"),
+            );
+        }
+        return;
+    }
+    if let Some(diagnostic) = controls.resize_diagnostic.as_mut() {
+        diagnostic.post_last = diagnostic.post_last.saturating_add(1);
+        if diagnostic.post_last <= 8 {
+            diagnostic.snapshot("post_last", windows.single().ok(), observed, armed, None);
+        }
     }
 }
 
@@ -2835,6 +2962,72 @@ mod tests {
         assert_eq!(reply["event"], "refused");
         assert_eq!(reply["reason"], "primary_window_extent_unobserved");
         assert!(controls.pending.is_none());
+    }
+
+    #[test]
+    fn diagnostic_logging_is_bounded_and_keeps_the_fresh_resize_requirement() {
+        let mut window = Window::default();
+        window.resolution.set_physical_resolution(1366, 768);
+        let (mut app, incoming, entity, _peer, _output) = resize_fixture(window);
+        app.world_mut()
+            .resource_mut::<Controls>()
+            .diagnostic_enabled = true;
+        app.add_systems(Last, observe_window_after_last);
+        app.world_mut().write_message(WindowResized {
+            window: entity,
+            width: 1366.0,
+            height: 768.0,
+        });
+        app.update();
+        let input = pending(
+            app.world().resource::<ObserverSession>(),
+            app.world().resource::<OrganizerClient>(),
+            Action::Resize1366x768,
+        )
+        .input;
+        incoming.send(Incoming::Input(input)).expect("receiver");
+        app.update();
+        for _ in 0..40 {
+            app.world_mut().write_message(WindowResized {
+                window: entity,
+                width: 999.0,
+                height: 999.0,
+            });
+            app.update();
+        }
+        let mut controls = app.world_mut().resource_mut::<Controls>();
+        let diagnostic = controls
+            .resize_diagnostic
+            .as_ref()
+            .expect("diagnostic retained");
+        assert_eq!(diagnostic.events, 40, "count every event after the request");
+        assert_eq!(
+            diagnostic.accepted_events, 0,
+            "do not accept logical mismatch"
+        );
+        assert_eq!(
+            diagnostic.records, 26,
+            "request + first check + 16 events + 8 frames"
+        );
+        controls
+            .pending
+            .as_mut()
+            .expect("no synthetic acknowledgement")
+            .presentation_started = Instant::now()
+            .checked_sub(PRESENTATION_TIMEOUT)
+            .expect("monotonic clock");
+        app.update();
+        let controls = app.world().resource::<Controls>();
+        assert!(
+            controls.resize_diagnostic.is_none(),
+            "final outcome releases diagnostic"
+        );
+        let reply: Value =
+            serde_json::from_slice(controls.reply.as_ref().expect("refused")).expect("JSON");
+        assert_eq!(
+            reply["reason"], "primary_window_resize_timeout",
+            "diagnostics preserve behavior"
+        );
     }
 
     #[test]

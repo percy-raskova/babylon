@@ -1506,6 +1506,7 @@ def test_admitted_ordinary_branch_invokes_existing_helper_and_binds_actual_termi
 ):
     run = object.__new__(runner.NativeRun)
     run.directory = run.root = tmp_path
+    run.window_diagnostic = False
     run.wayne_profile, run.mode, run.periods = "ordinary-01", "normal_play", 10
     run.campaign = "81b979ee-a9c1-48fd-8835-06cbfe594675"
     run.runtime, run.client = tmp_path / "runtime", tmp_path / "client"
@@ -1560,3 +1561,32 @@ def test_admitted_ordinary_branch_invokes_existing_helper_and_binds_actual_termi
         assert calls[-1] == "diagnostics"
     assert calls[:3] == ["owner", "existing-helper", "ordinary-prefix"]
     assert run.pair_identity == [(101, 42, "runtime"), (102, 42, "client")]
+
+
+@pytest.mark.parametrize(
+    "selector,profile,mode,periods,expected",
+    [
+        (None, "ordinary-01", "normal_play", 10, False),
+        ("1", "ordinary-01", "normal_play", 10, True),
+        ("0", "ordinary-01", "normal_play", 10, None),
+        ("", "ordinary-01", "normal_play", 10, None),
+        ("1", "walk-01", "normal_play", 10, None),
+        ("1", "ordinary-01", "memory_capture", 10, None),
+        ("1", "ordinary-01", "normal_play", 2, None),
+    ],
+)
+def test_window_diagnostic_selector_is_exact(
+    selector, profile, mode, periods, expected, tmp_path, monkeypatch
+):
+    if expected is None:
+        with pytest.raises(runner.NativeRunRefusal, match="window diagnostic"):
+            runner.window_diagnostic_selected(selector, profile, mode, periods)
+        monkeypatch.setenv(runner.WINDOW_DIAGNOSTIC_SELECTOR, selector)
+        monkeypatch.setenv("BABYLON_WAYNE_PROFILE", profile)
+        monkeypatch.setenv("BABYLON_NATIVE_MEASUREMENT_MODE", mode)
+        monkeypatch.setenv("BABYLON_NATIONAL_STORAGE_PERIODS", str(periods))
+        with pytest.raises(runner.NativeRunRefusal, match="window diagnostic"):
+            runner.NativeRun(tmp_path, tmp_path / "not-created")
+        assert not (tmp_path / "not-created").exists()
+    else:
+        assert runner.window_diagnostic_selected(selector, profile, mode, periods) is expected

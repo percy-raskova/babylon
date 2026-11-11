@@ -1205,6 +1205,22 @@ class ControlChannel:
         ):
             raise self._refuse("invalid allocation action changed state or escaped refusal")
 
+    def _diagnose_window_resize(self, timeout: float) -> ControlState:
+        """One diagnostic exchange; only the two resize refusals permit final Quit."""
+        prior = self.state
+        reply = self._exchange("resize1366x768", timeout)
+        if reply.state != prior:
+            raise self._refuse("diagnostic resize changed its authenticated source state")
+        if reply.event == "applied" and reply.reason is None:
+            return reply.state
+        if reply.event == "refused" and reply.reason in (
+            "primary_window_resize_timeout",
+            "primary_window_extent_unobserved",
+        ):
+            # Preserve the authenticated response and usable socket for driver-owned Quit.
+            raise ControlRefusal("observed diagnostic resize refusal: " + reply.reason)
+        raise self._refuse("diagnostic resize refused outside its expected window outcome")
+
     def perform(
         self, action: Action, timeout: float, *, allow_review_refusal: bool = False
     ) -> ControlState:

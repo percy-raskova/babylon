@@ -20,12 +20,12 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal, Self, cast
 from uuid import UUID
 
 import psycopg
 from psycopg.conninfo import conninfo_to_dict
-from pydantic import BaseModel, Field, StrictInt, StrictStr
+from pydantic import BaseModel, Field, StrictInt, StrictStr, model_validator
 from tools import run_observer_session as launcher
 from tools.devtools import national_game_memory as memory
 from tools.devtools.national_native_evidence import (
@@ -70,6 +70,8 @@ from tools.devtools.national_windowed_qualification import (
     Command,
     Commitment,
     ControlChannel,
+    ControlRefusal,
+    ControlsEvidence,
     ControlState,
     FrozenRecord,
     Nonnegative,
@@ -92,6 +94,20 @@ from tools.devtools.wayne_qualification_storage import (
 
 class NativeRunRefusal(ValueError):
     """A specific operator refusal safe to display without credential details."""
+
+
+WINDOW_DIAGNOSTIC_SELECTOR = "BABYLON_WAYNE_WINDOW_DIAGNOSTIC"
+WINDOW_DIAGNOSTIC_LOG = "babylon_window_diagnostic=info"
+
+
+def window_diagnostic_selected(
+    selector: str | None, profile: str | None, mode: str, periods: int
+) -> bool:
+    if selector is None:
+        return False
+    if selector != "1" or (profile, mode, periods) != ("ordinary-01", "normal_play", 10):
+        raise NativeRunRefusal("window diagnostic requires ordinary-01 normal_play horizon ten")
+    return True
 
 
 def failure_causes(error: BaseException) -> tuple[NativeFailureCause, ...]:
@@ -167,6 +183,15 @@ class VerificationSpan(FrozenRecord):
 class NativeRun:
     def __init__(self, root: Path, directory: Path) -> None:
         self.mode = measurement_mode(os.environ.get("BABYLON_NATIVE_MEASUREMENT_MODE"))
+        self.window_diagnostic = window_diagnostic_selected(
+            os.environ.get(WINDOW_DIAGNOSTIC_SELECTOR),
+            os.environ.get("BABYLON_WAYNE_PROFILE"),
+            self.mode,
+            int(os.environ.get("BABYLON_NATIONAL_STORAGE_PERIODS", "0"))
+            if os.environ.get("BABYLON_NATIONAL_STORAGE_PERIODS", "0").isdigit()
+            and len(os.environ.get("BABYLON_NATIONAL_STORAGE_PERIODS", "0")) <= 10
+            else 0,
+        )
         self.root = root
         self.directory = directory
         self.policy = Policy.model_validate_json((directory / "policy.json").read_bytes())
@@ -345,7 +370,8 @@ class NativeRun:
         common = {
             key: value
             for key, value in os.environ.items()
-            if not key.upper().startswith("PG")
+            if key != WINDOW_DIAGNOSTIC_SELECTOR
+            and not key.upper().startswith("PG")
             and not key.endswith("_DSN")
             and not key.startswith(
                 (
@@ -1291,11 +1317,22 @@ class NativeRun:
             self.verify_live()
             self.verify_sources()
 
-        result = OrdinaryWarmPrefix(self).drive(writer, reader, on_started=started)
+        companion = _WindowDiagnostic(self) if self.window_diagnostic else OrdinaryWarmPrefix(self)
+        result = companion.drive(writer, reader, on_started=started)
         if result:
             raise NativeRunRefusal("ordinary prefix pair did not exit cleanly")
         self.verify_live()
         self.verify_sources()
+        if self.window_diagnostic:
+            recorded_diagnostic = read_record(
+                self.directory.parent / "raw/window-diagnostic.json", WindowDiagnosticEvidence
+            )
+            if recorded_diagnostic.outcome == "incomplete":
+                raise NativeRunRefusal(
+                    "window diagnostic did not finish its zero-gameplay lifecycle"
+                )
+            self.publish_verification_diagnostics()
+            return 0
         recorded = read_record(self.directory / "ordinary-warm-prefix.json", OrdinaryWarmEvidence)
         marker = self.marker()
         if (
@@ -2421,6 +2458,13 @@ class OrdinaryWarmPrefix:
                 "BABYLON_QUALIFICATION_MATERIAL_DIRECTORY",
             ):
                 environment.pop(name, None)
+            environment.pop(WINDOW_DIAGNOSTIC_SELECTOR, None)
+        if isinstance(self, _WindowDiagnostic):
+            environments[1][WINDOW_DIAGNOSTIC_SELECTOR] = "1"
+            ambient_filter = environments[1].get("RUST_LOG", "")
+            environments[1]["RUST_LOG"] = ",".join(
+                directive for directive in (ambient_filter, WINDOW_DIAGNOSTIC_LOG) if directive
+            )
         return drive_pair(
             self.run.runtime,
             self.run.client,
@@ -2561,6 +2605,306 @@ class OrdinaryWarmPrefix:
                 failures=failure_causes(failure) if failure else (),
             )
             self.walk.evidence.publish_json(destination.name, report.model_dump(mode="json"))
+
+
+class WindowDiagnosticEvidence(FrozenRecord):
+    version: Literal[1] = 1
+    scope: Literal["startup_window_acknowledgement_only"] = "startup_window_acknowledgement_only"
+    outcome: Literal["applied", "refused", "incomplete"]
+    campaign: StrictStr
+    source_head: Annotated[StrictStr, Field(pattern="^[0-9a-f]{40}$")]
+    opening: ControlState | None
+    final: ControlState | None
+    opening_marker: memory.CampaignMemoryMarker | None
+    final_marker: memory.CampaignMemoryMarker | None
+    resize: ActionObservation | None
+    actions: tuple[ActionObservation, ...]
+    native_controls: Reference | None
+    native_window_log: Reference | None
+    native_window_log_records: Nonnegative
+    commitment_acceptances: Nonnegative
+    steps: Nonnegative
+    plays: Nonnegative
+    captures: Nonnegative
+    failures: tuple[NativeFailureCause, ...]
+    audit_enabled: Literal[False] = False
+    memory_sampler_enabled: Literal[False] = False
+    gameplay_qualified: Literal[False] = False
+
+    @model_validator(mode="after")
+    def actual_zero_gameplay(self) -> Self:
+        counts = (
+            sum(row.event == "acceptance_admitted" for row in self.actions),
+            sum(row.action == "step" for row in self.actions),
+            sum(row.action == "play" for row in self.actions),
+            sum(row.action == "capture_frame" for row in self.actions),
+        )
+        if counts != (self.commitment_acceptances, self.steps, self.plays, self.captures):
+            raise ValueError("window diagnostic counts differ from the actual actions")
+        if self.outcome != "incomplete":
+            if any(counts) or self.opening is None or self.final is None or self.resize is None:
+                raise ValueError("window diagnostic lacks its zero-gameplay states")
+            if (
+                self.opening_marker is None
+                or self.final_marker != self.opening_marker
+                or self.final_marker.campaign != self.campaign
+                or self.final_marker.campaign_age_ticks != 0
+                or self.final_marker.foundation_sha256 != self.opening.foundation_sha256
+                or self.opening.period_identity() != self.final.period_identity()
+                or not self.final.quit_requested
+                or self.native_controls is None
+                or self.native_window_log is None
+                or not 2 <= self.native_window_log_records <= 28
+                or self.resize.event != self.outcome
+                or self.resize.action != "resize1366x768"
+                or sum(row.action == "resize1366x768" for row in self.actions) != 1
+                or sum(row.action == "standard_interface" for row in self.actions) != 1
+                or sum(row.action == "quit" for row in self.actions) != 1
+                or any(
+                    row.action
+                    not in (
+                        "status",
+                        "continue_warning",
+                        "continue_title",
+                        "open_organizer",
+                        "standard_interface",
+                        "resize1366x768",
+                        "quit",
+                    )
+                    for row in self.actions
+                )
+                or self.opening.commitment is not None
+                or self.opening_marker.tick_content_hash != self.opening.tick_content_hash
+                or self.final_marker.tick_content_hash != self.final.tick_content_hash
+                or any(
+                    row.state.commitment is not None
+                    or row.state.period_proof is not None
+                    or row.state.durable_tick != 0
+                    or row.state.playing
+                    for row in self.actions
+                )
+            ):
+                raise ValueError("window diagnostic changed its opening or lacks final Quit")
+        return self
+
+
+class _WindowDiagnostic(OrdinaryWarmPrefix):
+    """Private installed callback on the ordinary owned lifecycle, without gameplay."""
+
+    def __init__(self, run: NativeRun) -> None:
+        super().__init__(run)
+        self.channel: ControlChannel | None = None
+        self.controls: ControlsEvidence | None = None
+        self.opening: ControlState | None = None
+        self.opening_marker: memory.CampaignMemoryMarker | None = None
+        self.resize: ActionObservation | None = None
+        self.expected_failure: ControlRefusal | None = None
+
+    def __call__(self, channel: ControlChannel, _socket_root: Path, opening: ControlState) -> None:
+        if self.used:
+            raise NativeRunRefusal("window diagnostic refuses repeated execution")
+        self.used = True
+        self.channel, self.opening = channel, opening
+        self.require_live(opening, opening, 0)
+        if opening.commitment is not None or opening.reviewed_command is not None:
+            raise NativeRunRefusal("window diagnostic opening already has a gameplay commitment")
+        self.opening_marker = self.run.marker()
+        if (
+            self.opening_marker.campaign != self.run.campaign
+            or self.opening_marker.campaign_age_ticks != 0
+            or self.opening_marker.foundation_sha256 != opening.foundation_sha256
+            or self.opening_marker.tick_content_hash != opening.tick_content_hash
+        ):
+            raise NativeRunRefusal("window diagnostic opening marker differs from actual P0")
+        channel.perform("standard_interface", self.run.timeout)
+        before = len(channel.records)
+        try:
+            channel._diagnose_window_resize(self.run.timeout)
+        except ControlRefusal as error:
+            records = channel.records[before:]
+            if (
+                channel.closed
+                or len(records) != 1
+                or records[0].action != "resize1366x768"
+                or records[0].event != "refused"
+                or records[0].reason
+                not in ("primary_window_resize_timeout", "primary_window_extent_unobserved")
+            ):
+                raise
+            self.expected_failure = error
+        finally:
+            if len(channel.records) > before:
+                self.resize = channel.records[-1]
+        if self.resize is None:
+            raise NativeRunRefusal("window diagnostic lacks its actual resize response")
+        self.require_live(self.resize.state, opening, 0)
+
+    def _window_log(self) -> tuple[Reference, int]:
+        directory = PrivateEvidence(self.run.directory.parent / "xdg/data/babylon/logs")
+        try:
+            reference = directory.reference("babylon-client.log")
+        except OSError as error:
+            raise NativeRunRefusal(
+                "window diagnostic native observation stream is absent"
+            ) from error
+        data = private_bytes(directory.path / reference.path, 10 * 1024 * 1024)
+        if self.resize is None:
+            raise NativeRunRefusal("window diagnostic lacks its resize response")
+        records = []
+        for line in data.splitlines():
+            if b"window_diagnostic " not in line:
+                continue
+            record = strict_json_bytes(line.split(b"window_diagnostic ", 1)[1])
+            if not isinstance(record, dict) or record.get("sequence") != self.resize.sequence:
+                raise NativeRunRefusal("window diagnostic log contains a different request")
+            records.append(record)
+        phases = [record.get("phase") for record in records]
+        if (
+            not 2 <= len(records) <= 28
+            or phases[0] != "request"
+            or phases[-1] != "final"
+            or phases.count("request") != 1
+            or phases.count("final") != 1
+            or phases.count("event") > 16
+            or phases.count("post_last") > 8
+            or any(
+                phase not in ("request", "first_complete", "event", "post_last", "final")
+                for phase in phases
+            )
+            or (
+                self.resize.reason != "primary_window_extent_unobserved"
+                and (phases.count("first_complete") != 1 or phases.count("post_last") < 1)
+            )
+        ):
+            raise NativeRunRefusal(
+                "window diagnostic native observation stream is absent or incomplete"
+            )
+        return reference, len(records)
+
+    def _report(
+        self,
+        source_head: str,
+        outcome: Literal["applied", "refused", "incomplete"],
+        final_marker: memory.CampaignMemoryMarker | None,
+        controls: Reference | None,
+        log: Reference | None,
+        log_records: int,
+        failure: BaseException | None,
+    ) -> WindowDiagnosticEvidence:
+        actions = (
+            tuple(self.channel.records)
+            if self.channel is not None
+            else self.controls.actions
+            if self.controls is not None
+            else ()
+        )
+        return WindowDiagnosticEvidence(
+            outcome=outcome,
+            campaign=self.run.campaign,
+            source_head=source_head,
+            opening=self.opening,
+            final=self.channel.state if self.channel else actions[-1].state if actions else None,
+            opening_marker=self.opening_marker,
+            final_marker=final_marker,
+            resize=self.resize,
+            actions=actions,
+            native_controls=controls,
+            native_window_log=log,
+            native_window_log_records=log_records,
+            commitment_acceptances=sum(row.event == "acceptance_admitted" for row in actions),
+            steps=sum(row.action == "step" for row in actions),
+            plays=sum(row.action == "play" for row in actions),
+            captures=sum(row.action == "capture_frame" for row in actions),
+            failures=tuple(
+                leaf
+                for error in (self.expected_failure, failure)
+                if error
+                for leaf in failure_causes(error)
+            ),
+        )
+
+    def drive(
+        self,
+        writer: dict[str, str],
+        reader: dict[str, str],
+        *,
+        on_started: Callable[[subprocess.Popen[bytes], subprocess.Popen[bytes]], None],
+    ) -> int:
+        destination = self.run.directory.parent / "raw/window-diagnostic.json"
+        if self.used or os.path.lexists(destination):
+            raise NativeRunRefusal("window diagnostic refuses existing or repeated evidence")
+        source_head = (self.run.directory / "source-head").read_text().strip()
+        failure: BaseException | None = None
+        final_marker = None
+        controls_reference = None
+        log_reference = None
+        log_records = 0
+        report = None
+        result = 1
+        try:
+            result = super().drive(writer, reader, on_started=on_started)
+            final_marker = self.run.marker()
+            controls = read_record(self.run.directory / "native-controls.json", ControlsEvidence)
+            self.controls = controls
+            controls_reference = self.walk.evidence.reference("native-controls.json")
+            if (
+                result
+                or controls.status != "completed"
+                or controls.campaign != self.run.campaign
+                or self.channel is None
+                or controls.actions != tuple(self.channel.records)
+                or self.resize is None
+            ):
+                raise NativeRunRefusal("window diagnostic pair did not finish cleanly")
+            log_reference, log_records = self._window_log()
+            report = self._report(
+                source_head,
+                cast(Literal["applied", "refused"], self.resize.event),
+                final_marker,
+                controls_reference,
+                log_reference,
+                log_records,
+                None,
+            )
+        except BaseException as error:
+            failure = error
+            try:
+                final_marker = self.run.marker()
+                if (self.run.directory / "native-controls.json").exists():
+                    self.controls = read_record(
+                        self.run.directory / "native-controls.json", ControlsEvidence
+                    )
+                    controls_reference = self.walk.evidence.reference("native-controls.json")
+            except BaseException as final_observation_error:
+                failure = BaseExceptionGroup(
+                    "window diagnostic and final observation failed",
+                    [error, final_observation_error],
+                )
+                raise failure from None
+            raise
+        finally:
+            try:
+                if report is None:
+                    report = self._report(
+                        source_head,
+                        "incomplete",
+                        final_marker,
+                        controls_reference,
+                        log_reference,
+                        log_records,
+                        failure,
+                    )
+                self.walk.raw.publish_json(destination.name, report.model_dump(mode="json"))
+                if read_record(destination, WindowDiagnosticEvidence) != report:
+                    raise NativeRunRefusal("window diagnostic readback differs")
+            except BaseException as publication_error:
+                if failure is not None:
+                    raise BaseExceptionGroup(
+                        "window diagnostic and evidence publication failed",
+                        [failure, publication_error],
+                    ) from None
+                raise
+        return result
 
 
 def main() -> int:

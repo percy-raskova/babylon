@@ -1,5 +1,8 @@
 //! Atomic installation and exact admission of the one supported database schema.
 
+use std::time::Instant;
+
+use crate::advance_timing::SchemaTiming;
 use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Transaction};
 
 use crate::postgres_catalog;
@@ -391,6 +394,14 @@ fn inspect(client: &mut impl GenericClient) -> Result<Presence, CurrentSchemaErr
 pub(crate) fn require_current_schema(
     client: &mut impl GenericClient,
 ) -> Result<CurrentSchemaIdentity, CurrentSchemaError> {
+    require_current_schema_timed(client, &mut SchemaTiming::default())
+}
+
+pub(crate) fn require_current_schema_timed(
+    client: &mut impl GenericClient,
+    timing: &mut SchemaTiming,
+) -> Result<CurrentSchemaIdentity, CurrentSchemaError> {
+    let started = Instant::now();
     let settings = client.query_one("SELECT pg_catalog.current_setting('search_path'), pg_catalog.current_setting('quote_all_identifiers')", &[])
         .map_err(|error| database(CurrentSchemaOperation::VerifySettings, &error))?;
     if settings
@@ -406,7 +417,9 @@ pub(crate) fn require_current_schema(
     }
     verify_owner_and_server(client)?;
     verify_sentinels(client)?;
-    verify_current_census(client)?;
+    timing.settings_owner_sentinels = started.elapsed();
+    verify_current_census_timed(client, timing)?;
+    let started = Instant::now();
     let rows = client
         .query(
             "SELECT singleton, schema_sha256 FROM babylon_meta.current_schema LIMIT 2",
@@ -426,6 +439,7 @@ pub(crate) fn require_current_schema(
     if !singleton || digest != expected {
         return Err(CurrentSchemaError::IdentityMismatch);
     }
+    timing.source_identity = started.elapsed();
     Ok(CurrentSchemaIdentity(expected))
 }
 
@@ -487,8 +501,16 @@ fn compare_fresh_census(actual: &[CatalogCensusEntry]) -> Result<(), CurrentSche
     })
 }
 fn verify_current_census(client: &mut impl GenericClient) -> Result<(), CurrentSchemaError> {
-    let mut actual =
-        postgres_catalog::read_census_rows(client).map_err(CurrentSchemaError::Census)?;
+    verify_current_census_timed(client, &mut SchemaTiming::default())
+}
+
+fn verify_current_census_timed(
+    client: &mut impl GenericClient,
+    timing: &mut SchemaTiming,
+) -> Result<(), CurrentSchemaError> {
+    let mut actual = postgres_catalog::read_census_rows_timed(client, &mut timing.census)
+        .map_err(CurrentSchemaError::Census)?;
+    let started = Instant::now();
     // The sole admitted optional cluster object has an independently pinned complete signature.
     // Reader and observer role provisioning is pinned by the four complete ACL configurations.
     let with_intel = postgres_catalog::parse_catalog_census(FRESH_CENSUS_WITH_INTEL)
@@ -503,6 +525,7 @@ fn verify_current_census(client: &mut impl GenericClient) -> Result<(), CurrentS
         let expected = postgres_catalog::parse_catalog_census(fixture)
             .map_err(CurrentSchemaError::CensusFixture)?;
         if postgres_catalog::compare_catalog_census(&expected, &actual).is_ok() {
+            timing.fixture_match = started.elapsed();
             return Ok(());
         }
     }

@@ -2,7 +2,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::IpAddr;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+use crate::advance_timing::CensusTiming;
 
 use postgres::config::Host;
 use postgres::{Config, Row};
@@ -451,6 +453,13 @@ pub fn validate_connection_target(config: &Config) -> Result<(), CatalogError> {
 pub(crate) fn read_census_rows(
     transaction: &mut impl postgres::GenericClient,
 ) -> Result<Vec<CatalogCensusEntry>, CatalogError> {
+    read_census_rows_timed(transaction, &mut CensusTiming::default())
+}
+
+pub(crate) fn read_census_rows_timed(
+    transaction: &mut impl postgres::GenericClient,
+    timing: &mut CensusTiming,
+) -> Result<Vec<CatalogCensusEntry>, CatalogError> {
     let operation = CatalogOperation::Census;
     let row_limit = bounded_limit(MAX_CATALOG_CENSUS_ROWS, CatalogBoundedResource::CensusRows)?;
     let partition_limit = bounded_limit(
@@ -473,6 +482,7 @@ pub(crate) fn read_census_rows(
         MAX_CATALOG_SEQUENCE_OWNERSHIP,
         CatalogBoundedResource::SequenceOwnership,
     )?;
+    let started = Instant::now();
     let rows = transaction
         .query(
             CATALOG_CENSUS_SQL,
@@ -486,7 +496,11 @@ pub(crate) fn read_census_rows(
             ],
         )
         .map_err(|error| query_error(&error, operation))?;
-    decode_census_rows(rows.as_slice())
+    timing.query_fetch = started.elapsed();
+    let started = Instant::now();
+    let entries = decode_census_rows(rows.as_slice())?;
+    timing.decode = started.elapsed();
+    Ok(entries)
 }
 
 fn decode_census_rows(rows: &[Row]) -> Result<Vec<CatalogCensusEntry>, CatalogError> {

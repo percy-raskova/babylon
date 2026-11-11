@@ -1,5 +1,6 @@
 //! Rust-owned `PostgreSQL` persistence contracts and adapters.
 
+mod advance_timing;
 mod allocator;
 
 // Share the integration fixture with private reconstruction tests in this crate.

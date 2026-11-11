@@ -15,7 +15,7 @@ def test_three_media_profiles_require_the_exact_run_and_horizon(monkeypatch, mod
         ("walk-01", "national_storage", "10", "walk-01"),
     ):
         lane = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop")
-        run = lane / "qualification-18" / leaf
+        run = lane / "qualification-21" / leaf
         evidence = (run if profile == "sql-01" else run / mode) / "evidence"
         with pytest.raises(storage.StorageRefusal):
             storage.profile_run(
@@ -33,7 +33,13 @@ def test_three_media_profiles_require_the_exact_run_and_horizon(monkeypatch, mod
                 )
                 / "evidence",
             )
-        for reserved in ("qualification-17", "qualification-19", "qualification-20"):
+        for reserved in (
+            "qualification-17",
+            "qualification-18",
+            "qualification-19",
+            "qualification-20",
+            "qualification-22",
+        ):
             unused = lane / reserved / leaf
             unused_evidence = (unused if profile == "sql-01" else unused / mode) / "evidence"
             with pytest.raises(storage.StorageRefusal):
@@ -1102,11 +1108,21 @@ def test_native_pin_publishes_only_released_normal_copies(
 
 
 def test_ordinary_profile_is_independent_normal_only_and_never_a_qualified_member(monkeypatch):
-    root = storage.RUN_PARENT / "ordinary-01"
+    root = Path(
+        "/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-21/ordinary-01"
+    )
     evidence = root / "normal_play/evidence"
     monkeypatch.setenv("BABYLON_NATIVE_MEASUREMENT_MODE", "normal_play")
     assert storage.profile_run("ordinary-01", "national_storage", "10", evidence) == evidence.parent
     assert storage.owned_native_path(evidence) == ("ordinary-01", "normal_play")
+    for namespace in (17, 18, 19, 20, 22):
+        other = (
+            root.parent.with_name(f"qualification-{namespace}") / "ordinary-01/normal_play/evidence"
+        )
+        with pytest.raises(storage.StorageRefusal):
+            storage.profile_run("ordinary-01", "national_storage", "10", other)
+        with pytest.raises(storage.StorageRefusal):
+            storage.owned_native_path(other)
     with pytest.raises(storage.StorageRefusal):
         storage.native_path(evidence)
     for mode, periods, selected in (

@@ -80,6 +80,8 @@ use std::borrow::Cow;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 use std::time::{Duration, Instant};
+
+use crate::advance_timing::{AdvanceTiming, PublicationTiming};
 use stored_tick::CapturedArchiveReceiptRows;
 use stored_tick::CapturedCheckpointRows;
 use stored_tick::CapturedChoiceReceiptRows;
@@ -819,6 +821,7 @@ impl DurableMaterialRuntime {
         progress: &mut dyn FnMut(MaterialAdvanceStage),
     ) -> Result<IdentifiedMaterialTick, MaterialRuntimeError> {
         let started = Instant::now();
+        let mut detail = AdvanceTiming::default();
         let next_period = self
             .session
             .completed_tick()
@@ -841,10 +844,21 @@ impl DurableMaterialRuntime {
         let choices = candidate.graph_report().report().choice_receipts.clone();
         let tick = CommittedResolveTick::try_from(identity.resolve_tick())
             .map_err(|_| MaterialRuntimeError::Bounds)?;
+        detail.preparation.diagnostic_choices = adjudicated.elapsed();
+        let checkpoint_started = Instant::now();
         let checkpoint =
             CommittedFullCheckpoint::capture(self.campaign, tick, candidate.graph_report())?;
-        let families = runtime::prepare_committed_tick(candidate.graph_report())?
-            .into_material_families(identity.tick_content_hash())?;
+        detail.preparation.full_checkpoint = checkpoint_started.elapsed();
+        let families_started = Instant::now();
+        let families = runtime::prepare_committed_tick_timed(
+            candidate.graph_report(),
+            &mut detail.preparation,
+        )?;
+        detail.preparation.report_families = families_started.elapsed();
+        let families_started = Instant::now();
+        let families = families.into_material_families(identity.tick_content_hash())?;
+        detail.preparation.envelope_families = families_started.elapsed();
+        let envelope_started = Instant::now();
         let envelope = CommittedMaterialTickEnvelope::compose(
             self.campaign,
             &identity,
@@ -852,12 +866,15 @@ impl DurableMaterialRuntime {
             candidate.material().register().canonical_bytes(),
             candidate.material().receipt_bytes(),
         )?;
+        detail.preparation.envelope = envelope_started.elapsed();
+        let encode_started = Instant::now();
         let encoded = material_storage::encode(
             candidate.material().register(),
             candidate.material().receipt_bytes(),
             &self.lookup,
             self.lookup_chain,
         )?;
+        detail.preparation.material_encode = encode_started.elapsed();
         let prepared = Instant::now();
         progress(MaterialAdvanceStage::SavingPeriod);
         let mut client = self.config.connect(NoTls)?;
@@ -871,7 +888,7 @@ impl DurableMaterialRuntime {
             return Err(MaterialRuntimeError::MissingCampaign);
         }
         let schema_started = Instant::now();
-        runtime::verify_runtime_schema_client(&mut tx)?;
+        runtime::verify_runtime_schema_client_timed(&mut tx, &mut detail.schema)?;
         let schema_verified = Instant::now();
         let timing = [
             started,
@@ -911,7 +928,8 @@ impl DurableMaterialRuntime {
             diagnostic.acknowledge(ReplayCommitDisposition::ReconciledAfterAmbiguousCommit);
             self.last_receipt = Some(diagnostic);
             self.last_choice_receipts = choices;
-            record_advance_timing(ack.resolve_tick(), timing);
+            detail.publication.reconciliation = Some(schema_verified.elapsed());
+            record_advance_timing(self.campaign, ack.resolve_tick(), timing, &detail);
             return Ok(ack);
         }
         if durable != self.session.completed_tick() {
@@ -924,6 +942,8 @@ impl DurableMaterialRuntime {
         }
         let tick_sql =
             i64::try_from(identity.resolve_tick()).map_err(|_| MaterialRuntimeError::Bounds)?;
+        detail.publication.tail_admission = schema_verified.elapsed();
+        let typed_started = Instant::now();
         runtime::insert_typed_tick_pre_marker_rows(
             &mut tx,
             self.campaign,
@@ -931,8 +951,13 @@ impl DurableMaterialRuntime {
             candidate.graph_report(),
             &checkpoint,
             identity.tick_content_hash(),
+            &mut detail.publication,
         )?;
+        detail.publication.typed_families = typed_started.elapsed();
+        let material_started = Instant::now();
         tx.execute("INSERT INTO babylon_state.material_tick_v3 (campaign_id,resolve_tick,identity_bytes,register_storage_bytes,receipt_storage_bytes,lookup_delta_bytes) VALUES ($1::uuid,$2,$3,$4,$5,$6)",&[self.campaign.as_uuid(),&tick_sql,&identity.canonical_bytes(),&encoded.register_storage_bytes,&encoded.receipt_storage_bytes,&encoded.lookup_delta_bytes])?;
+        detail.publication.material_register_receipt = material_started.elapsed();
+        let organizer_started = Instant::now();
         crate::organizer_archive::insert_projection(
             &mut tx,
             self.campaign,
@@ -944,12 +969,15 @@ impl DurableMaterialRuntime {
                 return Err(MaterialRuntimeError::TailConflict);
             }
         }
+        detail.publication.organizer = organizer_started.elapsed();
+        let catalog_started = Instant::now();
         crate::metadata::advance_campaign_catalog_tick(
             &mut tx,
             self.campaign,
             tick_sql - 1,
             tick_sql,
         )?;
+        detail.publication.catalog = catalog_started.elapsed();
         let scope = candidate
             .graph_report()
             .result_stable_graph()
@@ -978,7 +1006,10 @@ impl DurableMaterialRuntime {
                         receipt_witness: None,
                         previous: None,
                     },
-                    (&encoded.lookup, encoded.lookup_chain),
+                    MaterialCommitObservation {
+                        expected_lookup: (&encoded.lookup, encoded.lookup_chain),
+                        timing: &mut detail.publication,
+                    },
                 )
             })
             .map_err(commit_error)?;
@@ -988,9 +1019,14 @@ impl DurableMaterialRuntime {
         diagnostic.acknowledge(disposition);
         self.last_receipt = Some(diagnostic);
         self.last_choice_receipts = choices;
-        record_advance_timing(ack.resolve_tick(), timing);
+        record_advance_timing(self.campaign, ack.resolve_tick(), timing, &detail);
         Ok(ack)
     }
+}
+
+pub(crate) struct MaterialCommitObservation<'observation> {
+    expected_lookup: (&'observation TypedLookup, [u8; 32]),
+    timing: &'observation mut PublicationTiming,
 }
 
 // Commit the marker last, then reconcile an ambiguous acknowledgement against
@@ -1002,9 +1038,12 @@ pub(crate) fn commit_material_envelope(
     identity: &IdentifiedMaterialTick,
     envelope: &CommittedMaterialTickEnvelope,
     authority: MaterialReadAuthority<'_, '_>,
-    expected_lookup: (&TypedLookup, [u8; 32]),
+    observation: MaterialCommitObservation<'_>,
 ) -> Result<ReplayCommitDisposition, MaterialRuntimeError> {
-    let (expected_lookup, expected_lookup_chain) = expected_lookup;
+    let MaterialCommitObservation {
+        expected_lookup: (expected_lookup, expected_lookup_chain),
+        timing,
+    } = observation;
     let MaterialReadAuthority {
         scope,
         components,
@@ -1016,6 +1055,7 @@ pub(crate) fn commit_material_envelope(
     let tick = i64::try_from(identity.resolve_tick()).map_err(|_| MaterialRuntimeError::Bounds)?;
     #[cfg(test)]
     inject_marker_trigger_failure(&mut tx)?;
+    let marker_started = Instant::now();
     tx.execute(
         "INSERT INTO babylon_state.tick_commit \
          (campaign_id,resolve_tick,envelope_layout_version,tick_content_hash,envelope_digest) \
@@ -1027,9 +1067,11 @@ pub(crate) fn commit_material_envelope(
             &&envelope.digest()[..],
         ],
     )?;
-    match commit_material_transaction(tx) {
+    timing.marker = Some(marker_started.elapsed());
+    match commit_material_transaction(tx, timing) {
         Ok(()) => Ok(ReplayCommitDisposition::Committed),
         Err(error) => {
+            let reconciliation_started = Instant::now();
             let mut retry_client = config.connect(NoTls)?;
             let mut retry = retry_client.transaction()?;
             runtime::verify_runtime_schema_client(&mut retry)?;
@@ -1067,6 +1109,7 @@ pub(crate) fn commit_material_envelope(
             {
                 return Err(MaterialRuntimeError::TailConflict);
             }
+            timing.reconciliation = Some(reconciliation_started.elapsed());
             Ok(ReplayCommitDisposition::ReconciledAfterAmbiguousCommit)
         }
     }
@@ -1099,7 +1142,10 @@ pub(crate) fn inject_marker_trigger_failure(
 
 // Keep commit acknowledgement loss inside the same reconciliation boundary as
 // transport failure: only the persisted complete candidate can authorize publication.
-pub(crate) fn commit_material_transaction(tx: Transaction<'_>) -> Result<(), MaterialRuntimeError> {
+pub(crate) fn commit_material_transaction(
+    tx: Transaction<'_>,
+    timing: &mut PublicationTiming,
+) -> Result<(), MaterialRuntimeError> {
     #[cfg(test)]
     let fault = COMMIT_FAULT.with(|slot| slot.replace(None));
     #[cfg(test)]
@@ -1107,7 +1153,10 @@ pub(crate) fn commit_material_transaction(tx: Transaction<'_>) -> Result<(), Mat
         tx.rollback()?;
         return Err(MaterialRuntimeError::InjectedCommitLoss);
     }
-    tx.commit()?;
+    let commit_started = Instant::now();
+    let committed = tx.commit();
+    timing.commit_ack = Some(commit_started.elapsed());
+    committed?;
     #[cfg(test)]
     if fault == Some(CommitFault::AfterCommit) {
         return Err(MaterialRuntimeError::InjectedCommitLoss);
@@ -1129,14 +1178,17 @@ thread_local! {
 }
 
 // Operator diagnostics only: clocks never enter state, hashes, receipts or the
-// protocol. Emit one bounded record after successful durable publication.
+// protocol. Emit two campaign/period-correlated bounded records after successful publication.
 pub(crate) fn record_advance_timing(
+    campaign: CampaignId,
     period: u64,
     [started, adjudicated, prepared, connected, schema_started, schema_verified]: [Instant; 6],
+    detail: &AdvanceTiming,
 ) {
     if std::env::var("BABYLON_TIMINGS").as_deref() == Ok("1") {
+        let campaign_uuid = campaign.as_uuid();
         eprintln!(
-            "babylon-timing period={period} simulation_us={} preparation_us={} writer_connect_us={} writer_lock_us={} schema_verify_us={} write_publish_us={} durable_write_publish_us={} total_us={}",
+            "babylon-timing period={period} campaign={campaign_uuid} simulation_us={} preparation_us={} writer_connect_us={} writer_lock_us={} schema_verify_us={} write_publish_us={} durable_write_publish_us={} total_us={}",
             adjudicated.duration_since(started).as_micros(),
             prepared.duration_since(adjudicated).as_micros(),
             connected.duration_since(prepared).as_micros(),
@@ -1146,7 +1198,44 @@ pub(crate) fn record_advance_timing(
             prepared.elapsed().as_micros(),
             started.elapsed().as_micros(),
         );
+        record_advance_detail(campaign, period, detail);
     }
+}
+
+fn record_advance_detail(campaign: CampaignId, period: u64, detail: &AdvanceTiming) {
+    let campaign = campaign.as_uuid();
+    let preparation = &detail.preparation;
+    let schema = &detail.schema;
+    let publication = &detail.publication;
+    eprintln!(
+        "babylon-timing-detail campaign={campaign} period={period} preparation_diagnostic_choices_us={} preparation_full_checkpoint_us={} preparation_report_families_us={} report_graph_event_choice_us={} report_material_state_us={} report_second_checkpoint_us={} second_checkpoint_source_us={} second_checkpoint_rows_us={} report_archive_receipt_us={} preparation_envelope_families_us={} preparation_envelope_us={} preparation_material_encode_us={} schema_settings_owner_sentinels_us={} schema_census_query_fetch_us={} schema_census_decode_us={} schema_fixture_match_us={} schema_source_identity_us={} publication_tail_admission_us={} publication_typed_families_us={} typed_full_checkpoint_us={} publication_material_register_receipt_us={} publication_organizer_us={} publication_catalog_us={} publication_marker_us={:?} publication_commit_ack_us={:?} publication_reconciliation_us={:?}",
+        preparation.diagnostic_choices.as_micros(),
+        preparation.full_checkpoint.as_micros(),
+        preparation.report_families.as_micros(),
+        preparation.graph_event_choice.as_micros(),
+        preparation.material_state.as_micros(),
+        preparation.second_checkpoint.as_micros(),
+        preparation.second_checkpoint_source.as_micros(),
+        preparation.second_checkpoint_rows.as_micros(),
+        preparation.archive_receipt.as_micros(),
+        preparation.envelope_families.as_micros(),
+        preparation.envelope.as_micros(),
+        preparation.material_encode.as_micros(),
+        schema.settings_owner_sentinels.as_micros(),
+        schema.census.query_fetch.as_micros(),
+        schema.census.decode.as_micros(),
+        schema.fixture_match.as_micros(),
+        schema.source_identity.as_micros(),
+        publication.tail_admission.as_micros(),
+        publication.typed_families.as_micros(),
+        publication.full_checkpoint.as_micros(),
+        publication.material_register_receipt.as_micros(),
+        publication.organizer.as_micros(),
+        publication.catalog.as_micros(),
+        publication.marker.map(|duration| duration.as_micros()),
+        publication.commit_ack.map(|duration| duration.as_micros()),
+        publication.reconciliation.map(|duration| duration.as_micros()),
+    );
 }
 
 pub(crate) fn commit_error(

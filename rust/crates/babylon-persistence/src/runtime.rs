@@ -7,8 +7,9 @@ mod session;
 pub(crate) use session::BslSqlValue;
 pub(crate) use session::{
     bytea_copy_text, capture_campaign_foundation, finish_csv_copy, insert_campaign_foundation_rows,
-    insert_typed_tick_pre_marker_rows, reconstruct_graph_foundation_session,
-    verify_captured_foundation_components, verify_runtime_schema, verify_runtime_schema_client,
+    insert_typed_tick_pre_marker_rows, prepare_committed_tick_timed,
+    reconstruct_graph_foundation_session, verify_captured_foundation_components,
+    verify_runtime_schema, verify_runtime_schema_client, verify_runtime_schema_client_timed,
     write_bsl_csv_row, write_csv_row, CapturedCampaignFoundation,
 };
 pub use session::{

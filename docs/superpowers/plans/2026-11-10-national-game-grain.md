@@ -405,3 +405,62 @@ capture and normal ceremony check. Do not invent a generated baseline blessing o
 Root then runs the existing live reference-integrity checks. Check fresh and repeated installs, all four role
 configurations and unchanged drift refusals. Only then resume the still-unperformed window observation in Task 6.
 The original measured retry and all completion conditions remain unchanged.
+
+
+### 11 November extension: one measured ordinary Advance repair
+
+The Director approved one instrumented three-turn diagnostic, one checkpoint/publication repair supported by its
+measurements, and one acceptance retry. This extension takes precedence over earlier limits for this pass.
+Stop and report if the cause remains unclear or the retry fails. If the retry passes, continue the original qualification.
+Keep every numerical limit, economic candidate, schema check, durability guarantee and proof checks unchanged.
+
+### Task 9: Instrument ordinary Advance and run the single diagnostic
+
+**Ownership:** One implementer owns instrumentation, the current namespace and scoped checks. Root owns independent
+review, the normal build, release custody and the one real diagnostic. Source completion means a clean reviewed commit.
+It does not mean the diagnostic ran or native acceptance passed.
+
+- [ ] Extend existing opt-in `BABYLON_TIMINGS` records with fixed private nested phase observations.
+
+Measure full checkpoint capture, report and envelope preparation, the second checkpoint source and row composition,
+and material register/receipt encoding. Split schema settings/owner/sentinels, the complete census SQL query and received rows,
+local decode, fixture matching and source identity checks.
+
+Measure typed/checkpoint writes, material writes,
+organizer/catalog/marker publication and actual COMMIT acknowledgement. Include campaign and period identity.
+Keep clocks out of canonical bytes and errors. Preserve all work and its ordering, fresh complete per-write schema
+admission, marker-last writes and authenticated ambiguous-commit reconciliation. Add no optimization or SQL change.
+
+- [ ] Move current storage and public ordinary references from qualification18 to fresh qualification21.
+
+Refuse retained qualification17/18/19/20 and reserved qualification22 through the existing admission contracts.
+Preserve those earlier runs, binaries and evidence. Use the existing normal ten-horizon `--wayne-ordinary-prefix`
+entry. Change no launcher, workload, endpoint, clock, capture, authentication or presentation guard.
+
+- [ ] Complete meaningful namespace RED/GREEN, scoped persistence contracts, strict source checks and review.
+
+Run heavy work serially through installed v13 Main controls. Generate no documentation. Do not run full Python or
+workspace Rust gates here. Both passed at the accepted base, and final gates follow the measured repair.
+
+- [ ] Root builds and releases the reviewed source, then runs qualification21 once.
+
+Keep normal four confirmations and three closes: P1 Collect1450, P2 local food1/cash0 and P3 remote food2/cash280.
+Then accept P4 Pause at P3, followed by the existing driver-owned Quit. Keep all ten-second endpoint and context checks.
+
+Clear the window diagnostic selector and strip NativeAudit variables as before. Add no sampler. A timing miss remains
+failure or incomplete evidence. It cannot become diagnostic success by relaxing a guard.
+
+### Task 10: Apply the measured repair and make one acceptance retry
+
+Task 10 starts only after Root reports the actual cause and selects a checkpoint/publication repair supported by
+qualification21 evidence. Do not assume checkpoint reuse or a schema optimization before those measurements.
+
+- [ ] Apply the one supported repair, preserve byte and authority contracts, and complete focused checks and review.
+- [ ] Root freezes the normal build and release, then uses fresh qualification22 for the one acceptance retry.
+
+Preserve qualification21 and all earlier evidence. Stop and report if the cause is unclear or this retry fails.
+Review and unit corrections do not allow a second diagnostic or acceptance loop. If the retry passes, continue full Goal A qualification.
+Keep saved-byte, normal and full-memory smoke/walk, and ten-period decision-loop checks.
+Complete restart/lifecycle, render, input, human, final CI and PR work.
+
+Keep existing storage and custody limits. This source task proves none of those outcomes.

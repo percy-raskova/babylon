@@ -1126,7 +1126,7 @@ def test_public_ordinary_prefix_selects_its_owned_profile_before_any_fixture_wor
         "normal_play",
         "10",
         "retain-ordinary",
-        str(tmp_path.parent / "qualification-18/ordinary-01/normal_play/evidence"),
+        str(tmp_path.parent / "qualification-21/ordinary-01/normal_play/evidence"),
         "1" if diagnostic else "unset",
     ]
 
@@ -1282,12 +1282,12 @@ def test_public_window_diagnostic_crosses_real_flock_and_authenticates_before_fi
         "ordinary-01",
         "normal_play",
         "10",
-        str(runner.parents[2] / "qualification-18/ordinary-01/normal_play/evidence"),
+        str(runner.parents[2] / "qualification-21/ordinary-01/normal_play/evidence"),
     ]
     assert "flock: executing bash" in result.stdout
     assert (control / "runner.lock").exists()
     assert not (control / "active").exists()
-    assert not (runner.parents[2] / "qualification-18").exists()
+    assert not (runner.parents[2] / "qualification-21").exists()
     assert not (tmp_path / "external-called").exists()
     released = subprocess.run(
         ["flock", "--nonblock", str(control / "runner.lock"), "true"], check=False

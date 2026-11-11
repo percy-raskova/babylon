@@ -478,7 +478,7 @@ accounting authority, durability rule and original delivery obligation stays fix
 **Ownership:** One implementer owns native context, safe refusal codes, current namespace and focused source checks.
 Root owns independent review, build custody and the real diagnostic. Keep the current economic candidate unchanged.
 
-- [ ] Keep four bounded window snapshots in the ordinary native control path.
+- [x] Keep four bounded window snapshots in the ordinary native control path.
 
 Capture before mutation, immediately after the resize call, at the first after-Last boundary, and at terminal
 acknowledgement or refusal. Reuse private diagnostic facts. Include the branch, base/effective scale and override,
@@ -494,19 +494,19 @@ no-op and fresh-observation conditions, authentication, camera behavior and erro
 belongs in this task. Private Bevy cache and actual native submission remain unobserved unless directly proved.
 Record sampled facts without claiming window-manager or surface causes.
 
-- [ ] Carry allowlisted native window refusal codes into the combined failure record.
+- [x] Carry allowlisted native window refusal codes into the combined failure record.
 
 Keep raw peer, transport, SQL and arbitrary exception text private. Unknown reasons get safe generic codes.
 Capture any private evidence format change explicitly, without compatibility layers.
 
-- [ ] Use fresh qualification23 for the normal diagnostic and preserve qualification22 for acceptance.
+- [x] Use fresh qualification23 for the normal diagnostic and preserve qualification22 for acceptance.
 
 Refuse retained qualification17 through21 and reserved22 through the existing admission tests. Preserve earlier campaigns,
 binaries and evidence. Keep the public ten-horizon ordinary entry, its four confirmations and three closes.
 Keep P1 Collect1450, P2 local food1/cash0, P3 remote food2/cash280, then P4 Pause without advancing P4.
 Change no launcher, workload, endpoint or numerical guard. Use no window-only selector, NativeAudit or memory sampler.
 
-- [ ] Run meaningful focused RED/GREEN, applicable source checks and independent review.
+- [x] Run meaningful focused RED/GREEN, applicable source checks and independent review.
 
 Use installed v13 Main storage controls, serial heavy work, no documentation generation and no speculative full reruns.
 Test context preservation, refusal privacy and unchanged successful/refused native behavior. Then Root freezes the normal
@@ -518,3 +518,60 @@ when evidence supports it.
 
 Stop for steering if the cause remains ambiguous or further attempts would repeat without useful progress. A passing window resize is not game acceptance. Task10 and every original Goal A and Wayne obligation
 remain required. Keep qualification22 for its acceptance retry.
+
+
+### Task 13: Refresh first-publication statistics and finish grain law contracts
+
+**Authority:** Continue the Director-approved delivery without routine approval stops.
+Return for direction if useful progress stops. Keep every numerical limit and both original outcomes.
+
+**Evidence:** Actual23 published three national periods. Its unchanged usable endpoints took
+10.703, 12.345 and 10.594 seconds. Second-checkpoint work averaged 8.343 milliseconds, so reject that repair hypothesis.
+
+The copied database had no statistics for all eleven measured graph/event tables.
+Default column statistics changed the fifteen original validation SELECTs from 1,264.081 to 776.235 milliseconds on the committed copy.
+All 155 census rows kept the same bytes. These separate statements do not prove native commit performance or qualify the game.
+
+Keep both plans, statistics, source identity and clean shutdown evidence in the working evidence folder.
+Do not ship the column grouping draft. Its inner data sets were empty in the measured case.
+
+In a cold Michigan test, this SQL refresh took 2.009935 seconds. Its retry spent 0.006352 seconds.
+Both values include the client round trip. They do not measure national play.
+
+**Ownership:** One implementer owns the persistence changes and focused checks in Main.
+Root owns native lifecycle, qualification and independent review. Run heavy checks one at a time.
+
+- [x] Refresh the eleven approved graph/event column statistics after the first positive publication inserts its typed rows.
+
+Run this refresh after the marker insert and before its deferred checks. Follow the existing Archive statistics pattern.
+Use only the measured tables, columns and first-period identity.
+Do not add persistent markers, policy thresholds, planner settings or caches.
+
+Keep the refresh cost inside the unchanged first-turn endpoint.
+Keep schema admission, every deferred check, atomic publication, locks, command identity, restart and all material and canonical bytes.
+
+- [x] Add independent household composition and complete opening contracts for reversed input order.
+
+Read source budgets, time and actual live consumer output. Add each protected child back once.
+The two successive groupings must each merge positive contributions.
+Compare the full typed witness and use the existing production material byte format.
+
+Keep this exact accounting claim separate from the Designed grouping of live owners.
+Do not add a witness byte format, new primitive, production grouping helper or claim that transitions stay the same.
+
+- [ ] Show RED/GREEN with real SQL publication and actual contribution and order faults.
+
+Restore temporary faults exactly. Run scoped tests, formatting, strict Clippy and BSL checks one at a time.
+Build no documentation. Complete independent source review.
+Keep normal23 programs before checks can replace them.
+
+- [x] Route all current qualification profiles to the reserved fresh `qualification-22` folder.
+
+Keep earlier `qualification-23` artifacts unchanged. Refuse them as current input.
+Do not add compatibility by profile or new overrides. Do not release or run a game during this source change.
+
+- [ ] Measure native results with fresh authenticated programs under the reserved qualification22 acceptance folder.
+
+Root owns this step. Keep the matched byte comparison, both smoke and ten-period play tests in normal and memory modes.
+Keep restart, rendered/input variants, the player session, final gates and reviewable PR open.
+Further census node timing can support a separate repair. This task claims no census speed gain.

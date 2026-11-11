@@ -1029,6 +1029,43 @@ pub(crate) struct MaterialCommitObservation<'observation> {
     timing: &'observation mut PublicationTiming,
 }
 
+fn refresh_first_publication_statistics(
+    tx: &mut Transaction<'_>,
+    campaign: CampaignId,
+    tick: i64,
+) -> Result<(), MaterialRuntimeError> {
+    if tick != 1 {
+        return Ok(());
+    }
+    // Chunk rows can represent thousands of logical values before automatic
+    // analysis runs. Populate their estimates before the deferred marker checks.
+    let refresh_started = Instant::now();
+    let refreshed = tx.batch_execute(
+        "ANALYZE babylon_state.event_field_chunk_v1 (campaign_id,resolve_tick,value_tag,event_ordinals); \
+         ANALYZE babylon_state.event_parent_chunk_v1 (campaign_id,resolve_tick,event_ordinals); \
+         ANALYZE babylon_state.event_text_lookup_v1 (campaign_id,text_id,first_tick); \
+         ANALYZE babylon_state.event_key_lookup_v1 (campaign_id,key_id,first_tick); \
+         ANALYZE babylon_state.graph_string_lookup_v1 (campaign_id,string_id,first_tick); \
+         ANALYZE babylon_state.tick_choice_receipt_v1 (campaign_id,resolve_tick,encounter_ordinal); \
+         ANALYZE babylon_state.tick_commit (campaign_id,resolve_tick); \
+         ANALYZE babylon_state.graph_node_chunk_v1 (campaign_id,resolve_tick,vector_id,ordinal); \
+         ANALYZE babylon_state.graph_node_f64_chunk_v1 (campaign_id,resolve_tick,vector_id,qname_id,ordinal); \
+         ANALYZE babylon_state.graph_node_vector_v1 (campaign_id,vector_id,node_ids,first_tick); \
+         ANALYZE babylon_state.graph_node_lookup_v1 (campaign_id,node_id,name_id,type_id,first_tick)",
+    );
+    let refresh_elapsed = refresh_started.elapsed();
+    if std::env::var("BABYLON_TIMINGS").as_deref() == Ok("1") {
+        eprintln!(
+            "babylon-publication-statistics campaign={} period={tick} first_positive=true refresh_us={} sql_completed={}",
+            campaign.as_uuid(),
+            refresh_elapsed.as_micros(),
+            refreshed.is_ok(),
+        );
+    }
+    refreshed?;
+    Ok(())
+}
+
 // Commit the marker last, then reconcile an ambiguous acknowledgement against
 // the complete authenticated candidate before permitting live publication.
 pub(crate) fn commit_material_envelope(
@@ -1068,6 +1105,7 @@ pub(crate) fn commit_material_envelope(
         ],
     )?;
     timing.marker = Some(marker_started.elapsed());
+    refresh_first_publication_statistics(&mut tx, campaign, tick)?;
     match commit_material_transaction(tx, timing) {
         Ok(()) => Ok(ReplayCommitDisposition::Committed),
         Err(error) => {

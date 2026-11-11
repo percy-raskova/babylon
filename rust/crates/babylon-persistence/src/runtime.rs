@@ -151,6 +151,49 @@ mod live_tests {
         encoded.receipt_storage_bytes
     }
 
+    fn publication_statistics(client: &mut Client) -> Vec<(String, String, String)> {
+        client
+            .query(
+                "SELECT relation.relname,attribute.attname,statistics.xmin::text \
+                 FROM pg_catalog.pg_statistic AS statistics \
+                 JOIN pg_catalog.pg_class AS relation ON relation.oid=statistics.starelid \
+                 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=relation.relnamespace \
+                 JOIN pg_catalog.pg_attribute AS attribute \
+                   ON attribute.attrelid=relation.oid AND attribute.attnum=statistics.staattnum \
+                 WHERE namespace.nspname='babylon_state' AND relation.relname IN (\
+                 'event_field_chunk_v1','event_parent_chunk_v1','event_text_lookup_v1',\
+                 'event_key_lookup_v1','graph_string_lookup_v1','tick_choice_receipt_v1',\
+                 'tick_commit','graph_node_chunk_v1','graph_node_f64_chunk_v1',\
+                 'graph_node_vector_v1','graph_node_lookup_v1') \
+                 ORDER BY relation.relname,attribute.attname",
+                &[],
+            )
+            .expect("publication statistics are visible in the owned database")
+            .iter()
+            .map(|row| (row.get(0), row.get(1), row.get(2)))
+            .collect()
+    }
+
+    fn assert_first_publication_statistics(rows: &[(String, String, String)]) {
+        for (relation, column) in [
+            ("event_field_chunk_v1", "event_ordinals"),
+            ("event_parent_chunk_v1", "event_ordinals"),
+            ("event_text_lookup_v1", "text_id"),
+            ("graph_string_lookup_v1", "string_id"),
+            ("tick_commit", "resolve_tick"),
+            ("graph_node_chunk_v1", "vector_id"),
+            ("graph_node_f64_chunk_v1", "qname_id"),
+            ("graph_node_vector_v1", "node_ids"),
+            ("graph_node_lookup_v1", "node_id"),
+        ] {
+            assert!(
+                rows.iter()
+                    .any(|(table, attribute, _)| table == relation && attribute == column),
+                "first committed rows need planner statistics for {relation}.{column}"
+            );
+        }
+    }
+
     #[test]
     #[ignore = "requires the task-owned disposable PostgreSQL runtime"]
     #[allow(
@@ -177,6 +220,13 @@ mod live_tests {
         let campaign = CampaignId::from_uuid(Uuid::from_u128(0x0033_0c01_1055));
         let mut runtime = DurableMaterialRuntime::create(&config, campaign, foundation)
             .expect("the test database creates the fixture campaign");
+        let mut owner = config
+            .connect(NoTls)
+            .expect("the test database accepts the connection");
+        assert!(
+            publication_statistics(&mut owner).is_empty(),
+            "cold tables have no statistics"
+        );
         let before = runtime.session().material().canonical_bytes().to_vec();
         let mut sink = CollectingSink::default();
         let actions = OrderedPracticeActionBatch::empty(
@@ -190,9 +240,10 @@ mod live_tests {
         assert_eq!(runtime.session().material().canonical_bytes(), before);
         assert!(runtime.diagnostic_receipt().is_none());
         assert_eq!(sink.events.len(), 0);
-        let mut owner = config
-            .connect(NoTls)
-            .expect("the test database accepts the connection");
+        assert!(
+            publication_statistics(&mut owner).is_empty(),
+            "failed publication rolls back statistics"
+        );
         let count: i64 = owner
             .query_one(
                 "SELECT count(*) FROM babylon_state.tick_commit WHERE campaign_id=$1::uuid",
@@ -205,6 +256,8 @@ mod live_tests {
         runtime
             .advance_and_commit(&mut sink, &actions)
             .expect("the prepared tick advances and commits");
+        let first_statistics = publication_statistics(&mut owner);
+        assert_first_publication_statistics(&first_statistics);
         let mut stale = DurableMaterialRuntime::open(&config, campaign, digest)
             .expect("the fixture opens the authored source");
         let actions = OrderedPracticeActionBatch::empty(
@@ -222,6 +275,11 @@ mod live_tests {
                 .expect("the fixture call `diagnostic_receipt` succeeds for the authored inputs")
                 .commit_disposition(),
             ReplayCommitDisposition::ReconciledAfterAmbiguousCommit
+        );
+        assert_eq!(
+            publication_statistics(&mut owner),
+            first_statistics,
+            "second publication and acknowledgement recovery do not refresh statistics"
         );
         let reopened = DurableMaterialRuntime::open(&config, campaign, digest)
             .expect("the fixture opens the authored source");
@@ -258,6 +316,11 @@ mod live_tests {
                 .advance_and_commit(&mut refused_sink, &actions)
                 .expect("the prepared tick advances and commits"),
             identity
+        );
+        assert_eq!(
+            publication_statistics(&mut owner),
+            first_statistics,
+            "reopening and stale-command reconciliation preserve the first refresh"
         );
         drop(owner);
         drop(reopened);

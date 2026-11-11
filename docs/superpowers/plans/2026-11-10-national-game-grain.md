@@ -247,11 +247,11 @@ For each close, capture the first strict ready status, exact rendered frame and 
 intervals from input to ready status and from input to capture. Use the later completion of capture or next acceptance
 for the usable endpoint, including all overhead. Keep raw pixels and incomplete evidence.
 
-This prefix does not prove a full ten-period walk, recovery, storage or qualification. Use `qualification-24` as the
+This prefix does not prove a full ten-period walk, recovery, storage or qualification. Use `qualification-25` as the
 fresh disposable namespace. Keep `qualification-15` and its artifacts.
 
 Invoke `tools/run_rust_postgres.sh --wayne-ordinary-prefix` for the separate normal-only `ordinary-01` profile.
-Its independent evidence path is `qualification-24/ordinary-01/normal_play/evidence`. The source horizon stays at ten
+Its independent evidence path is `qualification-25/ordinary-01/normal_play/evidence`. The source horizon stays at ten
 periods. Existing source, capacity, binary, ownership and role checks apply.
 
 After the prefix, stop and keep the exact container, primary data and evidence. Record late or incomplete measurements
@@ -666,3 +666,21 @@ Binding limits remain warm P1–P3 complete usable endpoints at most 30 seconds 
 180 seconds, advance at most 120 seconds, Archive at most 180 seconds, and normal two-period smoke
 at most 900 seconds. Aggregate memory stays at most 10,000,000,000 bytes with sample gaps at most
 five seconds; save limits stay 10 GB and 40 MB per tick. Warm acceptance is not a p95 statistic.
+
+
+### Task 22: stopped-source archive oracle
+
+The source at `1c84ad59e6166c83ab441e1f4690c81dbb879f64` completed the ordinary three-period
+prefix in namespace 24. Its full smoke reached both authenticated reopens and Archive, then
+retirement refused a shared-catalog VM member absent from the running witness. A confined
+read of the stopped original confirmed that file and the shortened catalog heap matched
+the retained tar. This proves a phase mismatch. The maintenance process remains unproven.
+
+Keep that failed source, stopped campaign and partial archive unchanged. The repair retains
+running SQL, checkpoint, game-main extents, occupancy and stable-file authority. A separate
+confined reader inventories and hashes every stopped original file. Both archive passes
+must match that exact stopped source, and recovery admission verifies the sealed receipt.
+
+Current consumers use fresh namespace 25. Scoped checks prove only the operator
+contract. Fresh native smoke, memory capture, release adaptation and human acceptance
+remain pending. Old namespace 24 evidence cannot qualify the changed source.

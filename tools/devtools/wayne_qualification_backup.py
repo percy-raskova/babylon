@@ -18,7 +18,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, BinaryIO, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import psycopg
 from psycopg import sql
@@ -793,17 +793,6 @@ def _pgss_source(witness: PhysicalWitness) -> None:
         )
 
 
-def _shutdown_change(path: str, *, added: bool) -> bool:
-    if path in (PGSS_STOPPED, "pg_stat/pgstat.stat"):
-        return added
-    if path in (PGSS_RUNNING, "postmaster.pid"):
-        return not added
-    return (
-        WAL_NAME.fullmatch(path) is not None
-        or re.fullmatch(r"pg_wal/archive_status/[A-F0-9]{24}\.(ready|done)", path) is not None
-    )
-
-
 def _valid_wal(path: str, header: bytes, size: int, witness: PhysicalWitness) -> bool:
     match = WAL_NAME.fullmatch(path)
     if match is None or len(header) < 40 or size != witness.segment_bytes:
@@ -823,7 +812,9 @@ def _valid_wal(path: str, header: bytes, size: int, witness: PhysicalWitness) ->
     )
 
 
-def archive_manifest(stream: BinaryIO, witness: PhysicalWitness) -> tuple[dict[str, Member], str]:
+def archive_manifest(
+    stream: BinaryIO, witness: PhysicalWitness, stopped: dict[str, Member]
+) -> tuple[dict[str, Member], str]:
     result: dict[str, Member] = {}
     extent_files = _extent_files(witness.physical["relation_sizes"])
     encoded = witness.physical["relation_page_occupancy"]
@@ -922,39 +913,23 @@ def archive_manifest(stream: BinaryIO, witness: PhysicalWitness) -> tuple[dict[s
         raise Refusal("pg_stat_statements shutdown transition is incomplete")
     if any(path.startswith("pg_tblspc/") for path in result):
         raise Refusal("physical archive contains an external tablespace")
+    _stopped_contract(witness, stopped)
+    if set(result) != set(stopped):
+        raise Refusal("archive and independent stopped source roster differ")
     modes = {"host", "container"}
-    root = witness.physical["container_root"]
-    for path in set(witness.members) | set(result):
-        actual = result.get(path)
-        expected = witness.members.get(path)
-        if path == ".":
-            expected = Member("dir", root["mode"], root["uid"], root["gid"], None, None)
-        if actual is None or expected is None:
-            if not _shutdown_change(path, added=expected is None):
-                raise Refusal("archive and independent stable member inventory differ: " + path)
-            if actual is None:
-                continue
-            expected = Member(
-                "file",
-                0o600,
-                witness.physical["server_uid"],
-                witness.physical["server_gid"],
-                None,
-                None,
-            )
+    for path, expected in stopped.items():
+        actual = result[path]
         if (
             actual.kind != expected.kind
             or actual.mode != expected.mode
-            or expected.sha256 is not None
-            and actual.size != expected.size
-            or expected.sha256 is not None
-            and actual.sha256 != expected.sha256
+            or actual.size != expected.size
+            or actual.sha256 != expected.sha256
         ):
-            raise Refusal("archive metadata or stable bytes differ from running source: " + path)
-        inside = (expected.uid, expected.gid)
-        host = (
-            storage._mapped(expected.uid, witness.physical["uid_map"]),
-            storage._mapped(expected.gid, witness.physical["gid_map"]),
+            raise Refusal("archive metadata or bytes differ from stopped source: " + path)
+        host = (expected.uid, expected.gid)
+        inside = (
+            _unmapped(expected.uid, witness.physical["uid_map"]),
+            _unmapped(expected.gid, witness.physical["gid_map"]),
         )
         if (actual.uid, actual.gid) != inside:
             modes.discard("container")
@@ -2122,7 +2097,479 @@ def _physical_witness(run: Run, physical: dict[str, Any], conn: Connection) -> P
     return witness
 
 
-def _stopped(run: Run, witness: PhysicalWitness) -> None:
+def _unmapped(value: int, mapping: str) -> int:
+    matches = [
+        inside + value - host
+        for inside, host, length in (map(int, row.split()) for row in mapping.splitlines())
+        if host <= value < host + length
+    ]
+    if len(matches) != 1:
+        raise Refusal("stopped source owner has no unique captured container ID")
+    return matches[0]
+
+
+def _stopped_contract(witness: PhysicalWitness, members: dict[str, Member]) -> None:
+    root = witness.physical["host"]
+    expected_root = Member("dir", root["mode"], root["uid"], root["gid"], 0, None)
+    if members.get(".") != expected_root:
+        raise Refusal("stopped source root differs from the admitted bind")
+    for path, member in members.items():
+        if path != _member_name(path) or path.startswith("pg_tblspc/"):
+            raise Refusal("stopped source contains a noncanonical or external member")
+        if member.kind == "file":
+            if member.size is None or member.sha256 is None:
+                raise Refusal("stopped ordinary file lacks its independent length or SHA256")
+        elif member.kind != "dir" or member.size != 0 or member.sha256 is not None:
+            raise Refusal("stopped member kind or directory payload differs")
+    for path, before in witness.members.items():
+        after = members.get(path)
+        # Stable version, lineage and configuration remain independent running authority.
+        if before.sha256 is not None and (
+            after is None
+            or (after.kind, after.mode, after.size, after.sha256)
+            != (before.kind, before.mode, before.size, before.sha256)
+            or (after.uid, after.gid)
+            != (
+                storage._mapped(before.uid, witness.physical["uid_map"]),
+                storage._mapped(before.gid, witness.physical["gid_map"]),
+            )
+        ):
+            raise Refusal("stopped stable bytes differ from the independent running source")
+
+
+HELPER_SCRIPT = "exec sleep 2147483647"
+
+
+def _helper_expected(run: Run, witness: PhysicalWitness, cid: str, token: str) -> dict[str, Any]:
+    physical = witness.physical
+    return {
+        "id": cid,
+        "image": run.owner[6],
+        "name": "/babylon-stopped-" + token,
+        "label": token,
+        "user": f"{storage._mapped(physical['server_uid'], physical['uid_map'])}:"
+        f"{storage._mapped(physical['server_gid'], physical['gid_map'])}",
+        "path": "/bin/sh",
+        "args": ["-ceu", HELPER_SCRIPT],
+        "entrypoint": ["/bin/sh"],
+        "healthcheck": ["NONE"],
+        "network": "none",
+        "userns": "host",
+        "pid_mode": "",
+        "ipc_mode": "private",
+        "readonly": True,
+        "privileged": False,
+        "cap_add": [],
+        "cap_drop": ["ALL"],
+        "groups": [],
+        "devices": [],
+        "security": ["no-new-privileges"],
+        "restart": "no",
+        "restarts": 0,
+        "mounts": [
+            {
+                "Type": "bind",
+                "Source": str(run.evidence.parent / "pgdata"),
+                "Destination": storage.PGDATA,
+                "RW": False,
+                "Propagation": "rprivate",
+            }
+        ],
+    }
+
+
+def _inspect_helper(run: Run, witness: PhysicalWitness, cid: str, token: str) -> dict[str, Any]:
+    raw = storage._one_docker("container", cid)
+    config, host = raw["Config"], raw["HostConfig"]
+    proof = {
+        "id": raw["Id"],
+        "image": raw["Image"],
+        "name": raw["Name"],
+        "label": config["Labels"].get("babylon.stopped-source"),
+        "user": config["User"],
+        "path": raw["Path"],
+        "args": raw["Args"],
+        "entrypoint": config["Entrypoint"],
+        "healthcheck": config["Healthcheck"]["Test"],
+        "network": host["NetworkMode"],
+        "userns": host["UsernsMode"],
+        "pid_mode": host["PidMode"],
+        "ipc_mode": host["IpcMode"],
+        "readonly": host["ReadonlyRootfs"],
+        "privileged": host["Privileged"],
+        "cap_add": host["CapAdd"] or [],
+        "cap_drop": host["CapDrop"],
+        "groups": host["GroupAdd"] or [],
+        "devices": host["Devices"] or [],
+        "security": host["SecurityOpt"],
+        "restart": host["RestartPolicy"]["Name"],
+        "restarts": raw["RestartCount"],
+        "mounts": [
+            {k: m[k] for k in ("Type", "Source", "Destination", "RW", "Propagation")}
+            for m in raw["Mounts"]
+        ],
+    }
+    if (
+        storage.canonical_json(proof)
+        != storage.canonical_json(_helper_expected(run, witness, cid, token))
+        or proof["readonly"] is not True
+        or proof["privileged"] is not False
+        or any(m["RW"] is not False for m in proof["mounts"])
+        or type(proof["restarts"]) is not int
+    ):
+        raise Refusal("stopped helper image, identity or complete confinement differs")
+    state = raw["State"]
+    if (
+        state["Status"] not in ("created", "running")
+        or state["OOMKilled"] is not False
+        or state["Running"] is not (state["Status"] == "running")
+        or type(state["Pid"]) is not int
+        or (state["Pid"] > 0) != (state["Status"] == "running")
+    ):
+        raise Refusal("stopped helper process state differs")
+    return {
+        "confinement": proof,
+        "status": state["Status"],
+        "pid": state["Pid"],
+        "started": state["StartedAt"],
+    }
+
+
+def _reader_batches(names: list[str], command: list[str]) -> Iterator[list[str]]:
+    used = sum(len(os.fsencode(arg)) + 9 for arg in command)
+    fixed = used
+    batch: list[str] = []
+    for name in names:
+        length = len(os.fsencode(name)) + 9
+        if fixed + length > 32768:
+            raise Refusal("stopped source name exceeds bounded reader argument budget")
+        if used + length > 32768:
+            yield batch
+            batch, used = [], fixed
+        batch.append(name)
+        used += length
+    if batch:
+        yield batch
+
+
+def _read_stopped(command: list[str], witness: PhysicalWitness) -> dict[str, Member]:
+    names = _container_paths(command)
+    root = witness.physical["host"]
+    device = os.makedev(root["major"], root["minor"])
+    members: dict[str, Member] = {}
+    inodes: set[int] = set()
+    # Bound each argv batch. Capture only metadata and SHA256, while the helper
+    # streams payloads. Validate all metadata before asking it to hash any file.
+    metadata = [*command, "stat", "-c", "%f|%a|%u|%g|%s|%d|%i|%h|%y|%z", "--"]
+    observations: list[tuple[list[str], bytes]] = []
+    for batch in _reader_batches(list(names.values()), metadata):
+        before = storage._exec_bytes([*metadata, *batch], timeout=120)
+        observations.append((batch, before))
+        rows = before.splitlines(keepends=True)
+        if len(rows) != len(batch):
+            raise Refusal("stopped source metadata is truncated or has extra rows")
+        regular: list[str] = []
+        for original, row in zip(batch, rows, strict=True):
+            match = re.fullmatch(
+                rb"([0-9a-fA-F]{1,4})\|([0-7]{1,4})\|([0-9]{1,10})\|([0-9]{1,10})\|"
+                rb"([0-9]{1,19})\|([0-9]{1,20})\|([0-9]{1,20})\|([0-9]{1,20})\|([^|\n]+)\|([^|\n]+)\n",
+                row,
+            )
+            if match is None:
+                raise Refusal("stopped source numeric metadata is malformed")
+            raw_mode, mode = int(match[1], 16), int(match[2], 8)
+            uid, gid, size, dev, inode, links = (int(match[i]) for i in range(3, 9))
+            kind = stat.S_IFMT(raw_mode)
+            if (
+                kind not in (stat.S_IFDIR, stat.S_IFREG)
+                or stat.S_IMODE(raw_mode) != mode
+                or dev != device
+                or max(uid, gid) > 2**32 - 1
+                or size > 2**63 - 1
+                or inode in inodes
+                or kind == stat.S_IFREG
+                and links != 1
+            ):
+                raise Refusal(
+                    "stopped source has a cross-mount, alias, link, special or invalid member"
+                )
+            if original == "." and inode != root["inode"]:
+                raise Refusal("stopped helper traversal root differs from the admitted bind inode")
+            inodes.add(inode)
+            path = "." if original == "." else original[2:]
+            members[path] = Member(
+                "dir" if kind == stat.S_IFDIR else "file",
+                mode,
+                uid,
+                gid,
+                0 if kind == stat.S_IFDIR else size,
+                None,
+            )
+            if kind == stat.S_IFREG:
+                regular.append(original)
+        hashing = [
+            *command,
+            "/bin/sh",
+            "-ceu",
+            'for file do sha256sum < "$file"; done',
+            "stopped-sha256",
+        ]
+        for files in _reader_batches(regular, hashing):
+            hashes = storage._exec_bytes([*hashing, *files], timeout=120).splitlines()
+            if len(hashes) != len(files):
+                raise Refusal("stopped source SHA256 output is truncated or has extra rows")
+            for original, raw in zip(files, hashes, strict=True):
+                found = re.fullmatch(rb"([0-9a-f]{64})  -", raw)
+                if found is None:
+                    raise Refusal("stopped source SHA256 output is malformed")
+                path = original[2:]
+                m = members[path]
+                members[path] = Member(
+                    m.kind, m.mode, m.uid, m.gid, m.size, found[1].decode("ascii")
+                )
+        if storage._exec_bytes([*metadata, *batch], timeout=120) != before:
+            raise Refusal("stopped source member mutated during hashing")
+    if _container_paths(command) != names:
+        raise Refusal("stopped source roster mutated during inventory")
+    for batch, before in observations:
+        if storage._exec_bytes([*metadata, *batch], timeout=120) != before:
+            raise Refusal("stopped source mutated before inventory completion")
+    _stopped_contract(witness, members)
+    return members
+
+
+def _source_changes(witness: PhysicalWitness, members: dict[str, Member]) -> dict[str, Any]:
+    return {
+        path: {
+            "running": asdict(witness.members[path]) if path in witness.members else None,
+            "stopped": asdict(members[path]) if path in members else None,
+        }
+        for path in sorted(set(witness.members) | set(members))
+        if witness.members.get(path) != members.get(path)
+    }
+
+
+class StoppedFile(FrozenRecord):
+    kind: Literal["dir", "file"]
+    mode: Annotated[StrictInt, Field(ge=0, le=0o7777)]
+    uid: Annotated[StrictInt, Field(ge=0, le=2**32 - 1)]
+    gid: Annotated[StrictInt, Field(ge=0, le=2**32 - 1)]
+    size: Nonnegative
+    sha256: Sha256 | None
+
+
+class StoppedSource(FrozenRecord):
+    version: Literal[1]
+    pre_stop: Reference
+    source: dict[str, Any]
+    helper_created: dict[str, Any]
+    helper_running: dict[str, Any]
+    members: dict[str, StoppedFile]
+    changes: dict[str, Any]
+
+
+def _retained_stopped(
+    raw: object, run: Run, witness: PhysicalWitness, witness_ref: Reference
+) -> dict[str, Member]:
+    try:
+        packet = StoppedSource.model_validate(raw)
+        created, running = packet.helper_created, packet.helper_running
+        proof = created["confinement"]
+        cid, token = proof["id"], proof["label"]
+        expected = _helper_expected(run, witness, cid, token)
+        source = packet.source
+        state = source["state"]
+        members = {k: Member(**v.model_dump()) for k, v in packet.members.items()}
+        if (
+            type(packet.version) is not int
+            or packet.pre_stop != witness_ref
+            or re.fullmatch("[0-9a-f]{64}", cid) is None
+            or re.fullmatch("[0-9a-f]{32}", token) is None
+            or storage.canonical_json(proof) != storage.canonical_json(expected)
+            or storage.canonical_json(running["confinement"]) != storage.canonical_json(expected)
+            or set(created) != {"confinement", "status", "pid", "started"}
+            or set(running) != set(created)
+            or created["status"] != "created"
+            or type(created["pid"]) is not int
+            or created["pid"] != 0
+            or running["status"] != "running"
+            or type(running["pid"]) is not int
+            or running["pid"] <= 0
+            or not isinstance(running["started"], str)
+            or not running["started"]
+            or storage.canonical_json(source)
+            != storage.canonical_json(
+                {
+                    "container": run.container,
+                    "image": run.owner[6],
+                    "daemon": witness.physical["daemon"],
+                    "mounts": witness.physical["mounts"],
+                    "host": witness.physical["host"],
+                    "state": state,
+                }
+            )
+            or set(state)
+            != {"Status", "Running", "ExitCode", "OOMKilled", "Pid", "StartedAt", "FinishedAt"}
+            or state["Status"] != "exited"
+            or state["Running"] is not False
+            or state["OOMKilled"] is not False
+            or type(state["ExitCode"]) is not int
+            or state["ExitCode"] != 0
+            or type(state["Pid"]) is not int
+            or state["Pid"] != 0
+            or not all(isinstance(state[k], str) and state[k] for k in ("StartedAt", "FinishedAt"))
+            or storage.canonical_json(packet.changes)
+            != storage.canonical_json(_source_changes(witness, members))
+        ):
+            raise Refusal(
+                "stopped source receipt differs from its independent source or confinement"
+            )
+        _stopped_contract(witness, members)
+        return members
+    except (ValidationError, KeyError, TypeError, ValueError) as error:
+        raise Refusal("stopped source receipt is malformed or unsupported") from error
+
+
+def _reader_mounts(command: list[str]) -> None:
+    rows = storage._exec_bytes([*command, "cat", "/proc/self/mountinfo"]).splitlines()
+    bound = []
+    for row in rows:
+        fields = row.split()
+        if len(fields) < 10 or b"-" not in fields:
+            raise Refusal("stopped helper mount namespace observation is malformed")
+        destination = fields[4]
+        if destination == storage.PGDATA.encode() or destination.startswith(
+            storage.PGDATA.encode() + b"/"
+        ):
+            bound.append((destination, fields[5].split(b",")))
+    if len(bound) != 1 or bound[0][0] != storage.PGDATA.encode() or b"ro" not in bound[0][1]:
+        raise Refusal("stopped helper has a nested mount or non-readonly PGDATA")
+
+
+def _stopped_inventory(
+    run: Run, backup: Evidence, witness: PhysicalWitness, witness_ref: Reference
+) -> tuple[Reference, dict[str, Member]]:
+    before = _stopped(run, witness)
+    token = uuid4().hex
+    cid = ""
+    failure: BaseException | None = None
+    with tempfile.TemporaryDirectory(prefix="babylon-stopped-") as temporary:
+        cidfile = Path(temporary) / "cid"
+        expected = _helper_expected(run, witness, cid, token)
+        command = [
+            "docker",
+            "create",
+            "--no-healthcheck",
+            "--pull",
+            "never",
+            "--name",
+            expected["name"][1:],
+            "--label",
+            "babylon.stopped-source=" + token,
+            "--cidfile",
+            str(cidfile),
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--user",
+            expected["user"],
+            "--userns",
+            "host",
+            "--ipc",
+            "private",
+            "--mount",
+            f"type=bind,source={run.evidence.parent / 'pgdata'},destination={storage.PGDATA},readonly",
+            "--entrypoint",
+            "/bin/sh",
+            run.owner[6],
+            "-ceu",
+            HELPER_SCRIPT,
+        ]
+        try:
+            raw = storage._exec_bytes(command)
+            cid = cidfile.read_text(encoding="ascii").strip()
+            if re.fullmatch("[0-9a-f]{64}", cid) is None or raw.strip() != cid.encode():
+                raise Refusal("stopped helper creation CID differs")
+            created = _inspect_helper(run, witness, cid, token)
+            if created["status"] != "created":
+                raise Refusal("stopped helper was already started")
+            storage._exec_bytes(["docker", "start", cid])
+            running = _inspect_helper(run, witness, cid, token)
+            if running["status"] != "running":
+                raise Refusal("stopped helper did not start")
+            if _stopped(run, witness) != before:
+                raise Refusal("stopped original source changed before inventory")
+            reader = ["docker", "exec", "-w", storage.PGDATA, cid]
+            _reader_mounts(reader)
+            members = _read_stopped(reader, witness)
+            _reader_mounts(reader)
+            if _inspect_helper(run, witness, cid, token) != running:
+                raise Refusal("stopped helper mutated during inventory")
+            if _stopped(run, witness) != before:
+                raise Refusal("stopped original source mutated during inventory")
+            packet = {
+                "version": 1,
+                "pre_stop": witness_ref.model_dump(),
+                "source": before,
+                "helper_created": created,
+                "helper_running": running,
+                "members": {k: asdict(v) for k, v in members.items()},
+                "changes": _source_changes(witness, members),
+            }
+            _retained_stopped(packet, run, witness, witness_ref)
+        except BaseException as error:
+            failure = error
+            raise
+        finally:
+            try:
+                if not cid and cidfile.is_file():
+                    cid = cidfile.read_text(encoding="ascii").strip()
+                if not cid:
+                    candidates = storage._exec_bytes(
+                        [
+                            "docker",
+                            "ps",
+                            "-aq",
+                            "--no-trunc",
+                            "--filter",
+                            "name=^" + expected["name"] + "$",
+                            "--filter",
+                            "label=babylon.stopped-source=" + token,
+                        ]
+                    ).splitlines()
+                    if candidates:
+                        if len(candidates) != 1:
+                            raise Refusal("stopped helper cleanup identity is not unique")
+                        cid = candidates[0].decode("ascii")
+                if cid:
+                    if re.fullmatch("[0-9a-f]{64}", cid) is None:
+                        raise Refusal("stopped helper cleanup CID is malformed")
+                    # Authenticate the exact created identity even on a confinement
+                    # refusal; never remove the original or a name-selected container.
+                    cleanup_record = storage._one_docker("container", cid)
+                    if (
+                        cleanup_record["Id"] != cid
+                        or cleanup_record["Config"]["Labels"].get("babylon.stopped-source") != token
+                        or cleanup_record["Name"] != expected["name"]
+                    ):
+                        raise Refusal("stopped helper cleanup identity differs")
+                    removed = storage._exec_bytes(["docker", "container", "rm", "--force", cid])
+                    if removed.strip() != cid.encode():
+                        raise Refusal("stopped helper removal receipt differs")
+            except BaseException as cleanup:
+                if failure is not None:
+                    raise BaseExceptionGroup(
+                        "stopped inventory and exact helper cleanup failed", [failure, cleanup]
+                    ) from None
+                raise
+    return backup.publish_json("stopped-source-v1.json", packet), members
+
+
+def _stopped(run: Run, witness: PhysicalWitness) -> dict[str, Any]:
     directory = Evidence(run.evidence)
     storage._daemon_endpoint()
     active = Evidence(storage.held_native_lock(run.root))
@@ -2148,6 +2595,27 @@ def _stopped(run: Run, witness: PhysicalWitness) -> None:
             or record["State"]["OOMKilled"] is not False
         ):
             raise Refusal("stopped container, clean shutdown or retained bind identity differs")
+        if record["State"]["Pid"] != 0:
+            raise Refusal("stopped source still has a process")
+        return {
+            "container": run.container,
+            "image": run.owner[6],
+            "daemon": created["daemon"],
+            "mounts": mounts["mounts"],
+            "host": witness.physical["host"],
+            "state": {
+                k: record["State"][k]
+                for k in (
+                    "Status",
+                    "Running",
+                    "ExitCode",
+                    "OOMKilled",
+                    "Pid",
+                    "StartedAt",
+                    "FinishedAt",
+                )
+            },
+        }
 
 
 def _seal_archive(directory: Evidence, ref: Reference, final: str) -> Reference:
@@ -2166,11 +2634,12 @@ def _seal_archive(directory: Evidence, ref: Reference, final: str) -> Reference:
 def _offline(
     run: Run, backup: Evidence, witness: PhysicalWitness, witness_ref: Reference
 ) -> list[Reference]:
+    stopped_ref, stopped = _stopped_inventory(run, backup, witness, witness_ref)
     names = ("pgdata.tar", "pgdata-second.tar")
     first: dict[str, Member] | None = None
     namespace = ""
     partials = []
-    refs = []
+    refs = [stopped_ref]
     for name in names:
         _stopped(run, witness)
         partial = _command(
@@ -2179,7 +2648,7 @@ def _offline(
             ["docker", "cp", "-a", run.container + ":" + storage.PGDATA + "/.", "-"],
         )
         with backup.file(partial.path) as stream:
-            members, current = archive_manifest(stream, witness)
+            members, current = archive_manifest(stream, witness, stopped)
         if first is not None and (first != members or current != namespace):
             raise Refusal(
                 "second independent stopped archive differs from the first complete manifest"
@@ -2187,6 +2656,8 @@ def _offline(
         first, namespace = members, current
         refs.append(backup.reference(partial.path + ".stderr"))
         manifest = {
+            "version": 2,
+            "stopped_source": stopped_ref.model_dump(),
             "archive": Reference(
                 path=name, bytes=partial.bytes, sha256=partial.sha256
             ).model_dump(),
@@ -2374,6 +2845,7 @@ RECOVERY_FILES = RESTORE_FILES | {
     "pre-checkpoint-quiescence.json",
     "pre-stop-quiescence.json",
     "pre-stop-physical.json",
+    "stopped-source-v1.json",
     "fenced-client-exits.json",
     "pgdata.tar",
     "pgdata-second.tar",
@@ -2589,6 +3061,8 @@ def _restore_clients(
 def verify_retained_backup(run: Run, record: dict[str, Any], original: dict[str, Any]) -> None:
     """Replay the retained restore, fenced shutdown and both offline archive witnesses."""
     evidence, backup = Evidence(run.evidence), Evidence(run.evidence.parent / "backup")
+    if record.get("version") != 2 or type(record["version"]) is not int:
+        raise Refusal("unsupported recovery seal version")
     references = [Reference.model_validate(row) for row in record["retained"]]
     refs = {ref.path: ref for ref in references}
     if set(refs) != RECOVERY_FILES or len(refs) != len(references):
@@ -2641,14 +3115,22 @@ def verify_retained_backup(run: Run, record: dict[str, Any], original: dict[str,
             refs["fenced-client-exits.json"].model_dump() if key == "held_exits" else record[key]
         ) != ref.model_dump():
             raise Refusal("seal substituted its canonical stop evidence")
+    stopped = _retained_stopped(
+        _retained_record(backup, "stopped-source-v1.json"),
+        run,
+        witness,
+        refs["pre-stop-physical.json"],
+    )
     prior = None
     for name in ("pgdata.tar", "pgdata-second.tar"):
         with backup.file(name) as stream:
-            members, namespace = archive_manifest(stream, witness)
+            members, namespace = archive_manifest(stream, witness, stopped)
         manifest = _retained_record(backup, name + ".manifest.json")
         if (
             manifest
             != {
+                "version": 2,
+                "stopped_source": refs["stopped-source-v1.json"].model_dump(),
                 "archive": refs[name].model_dump(),
                 "root_and_source": refs["pre-stop-physical.json"].model_dump(),
                 "numeric_id_space": namespace,
@@ -2717,6 +3199,7 @@ def backup_and_retire(
     seal = backup.publish_json(
         "recovery-seal.json",
         {
+            "version": 2,
             "completed_member": directory.reference("completed-member.json").model_dump(),
             "owner": directory.reference("ownership").model_dump(),
             "functional": functional_ref.model_dump(),

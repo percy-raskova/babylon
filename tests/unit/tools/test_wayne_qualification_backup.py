@@ -68,6 +68,7 @@ def fixture() -> tuple[dict[str, bytes | None], backup.PhysicalWitness]:
         for name, content in payloads.items()
     }
     physical = {
+        "daemon": {"id": "fixture-daemon"},
         "server_uid": 71,
         "server_gid": 73,
         "uid_map": "0 100000 65536",
@@ -94,6 +95,35 @@ def fixture() -> tuple[dict[str, bytes | None], backup.PhysicalWitness]:
     return payloads, witness
 
 
+def stopped_members(
+    files: dict[str, bytes | None], witness: backup.PhysicalWitness
+) -> dict[str, backup.Member]:
+    result = {}
+    for name, content in files.items():
+        before = witness.members.get(name)
+        uid, gid = (
+            (before.uid, before.gid)
+            if before
+            else (witness.physical["server_uid"], witness.physical["server_gid"])
+        )
+        if name == ".":
+            uid, gid = (
+                witness.physical["container_root"]["uid"],
+                witness.physical["container_root"]["gid"],
+            )
+        result[name] = backup.Member(
+            "dir" if content is None else "file",
+            0o700 if content is None else 0o600,
+            storage._mapped(uid, witness.physical["uid_map"]),
+            storage._mapped(gid, witness.physical["gid_map"]),
+            len(content or b""),
+            hashlib.sha256(content).hexdigest() if content is not None else None,
+        )
+    root = witness.physical["host"]
+    result.setdefault(".", backup.Member("dir", root["mode"], root["uid"], root["gid"], 0, None))
+    return result
+
+
 def archive(
     path: Path,
     payloads: dict[str, bytes | None],
@@ -104,7 +134,7 @@ def archive(
     owners: dict[str, tuple[int, int]] | None = None,
 ) -> None:
     with tarfile.open(path, "x:") as output:
-        for name, content in payloads.items():
+        for name, content in {".": None, **payloads}.items():
             member = tarfile.TarInfo("./" + name)
             member.uid, member.gid = (owners or {}).get(name, (uid, gid))
             member.mode = 0o700 if content is None else 0o600
@@ -122,10 +152,11 @@ def test_independent_members_prove_bind_and_numeric_translation(
     tmp_path: Path, uid: int, gid: int, namespace: str
 ) -> None:
     files, witness = fixture()
+    stopped = stopped_members(files, witness)
     path = tmp_path / "copy.tar"
     archive(path, files, uid=uid, gid=gid)
     with path.open("rb") as stream:
-        members, translation = backup.archive_manifest(stream, witness)
+        members, translation = backup.archive_manifest(stream, witness, stopped)
     assert translation == namespace
     assert members[RELATION].sha256 == hashlib.sha256(files[RELATION] or b"").hexdigest()
     assert members[RELATION].size == 8192
@@ -139,6 +170,7 @@ def test_backup_distinguishes_server_root_and_existing_member_ownership(
     from dataclasses import replace
 
     files, witness = fixture()
+    stopped = stopped_members(files, witness)
     witness.physical.update(server_uid=70, server_gid=70)
     witness.physical["container_root"].update(uid=70, gid=1000)
     witness.physical["host"].update(uid=100070, gid=201000)
@@ -155,6 +187,7 @@ def test_backup_distinguishes_server_root_and_existing_member_ownership(
         owners[RELATION] = (70, 70)
     uid_shift, gid_shift = (100000, 200000) if host_namespace else (0, 0)
     path = tmp_path / "copy.tar"
+    stopped = stopped_members(files, witness)
     archive(
         path,
         files,
@@ -165,9 +198,9 @@ def test_backup_distinguishes_server_root_and_existing_member_ownership(
     with path.open("rb") as stream:
         if fault:
             with pytest.raises(backup.Refusal):
-                backup.archive_manifest(stream, witness)
+                backup.archive_manifest(stream, witness, stopped)
         else:
-            members, mode = backup.archive_manifest(stream, witness)
+            members, mode = backup.archive_manifest(stream, witness, stopped)
             assert mode == ("host" if host_namespace else "container")
             assert members["."].gid == gid_shift + 1000
             assert members[backup.PGSS_STOPPED].gid == gid_shift + 70
@@ -194,6 +227,7 @@ def test_backup_distinguishes_server_root_and_existing_member_ownership(
 )
 def test_copy_visibility_refuses_unsafe_or_unrelated_archive(tmp_path: Path, fault: str) -> None:
     files, witness = fixture()
+    stopped = stopped_members(files, witness)
     extra = None
     if fault == "image_directory":
         files.clear()
@@ -235,7 +269,7 @@ def test_copy_visibility_refuses_unsafe_or_unrelated_archive(tmp_path: Path, fau
         with path.open("r+b") as trunc:
             trunc.truncate(end + 512)
     with path.open("rb") as stream, pytest.raises(backup.Refusal):
-        backup.archive_manifest(stream, witness)
+        backup.archive_manifest(stream, witness, stopped)
 
 
 def tick(tick_number: int, prior: bytes, after: bytes) -> tuple[int, str, str, str, str]:
@@ -591,6 +625,19 @@ def test_retirement_needs_both_stopped_reads_and_reread_source_seals(
     owner = _held_retirement_fixture(tmp_path, monkeypatch, events, fault, saved, payloads, witness)
     cid = owner[4]
     monkeypatch.setattr(backup, "_stopped", lambda *_args: events.append("stopped auth"))
+
+    def inventory(
+        _run: backup.Run,
+        target: backup.Evidence,
+        current: backup.PhysicalWitness,
+        _ref: backup.Reference,
+    ) -> tuple[backup.Reference, dict[str, backup.Member]]:
+        assert "stop" in events and "released sockets" in events
+        return target.publish_json(
+            "stopped-source-v1.json", {"scope": "separate reader fixture"}
+        ), stopped_members(payloads, current)
+
+    monkeypatch.setattr(backup, "_stopped_inventory", inventory)
     monkeypatch.setattr(storage, "remove_stopped", lambda *_args: events.append("remove"))
 
     def copy(target: backup.Evidence, name: str, args: list[str]) -> backup.Reference:
@@ -935,19 +982,22 @@ def test_numeric_namespace_requires_unique_translation_or_globally_identity_maps
     tmp_path: Path, identical: bool
 ) -> None:
     files, witness = fixture()
+    stopped = stopped_members(files, witness)
     mapping = "0 0 4294967295" if identical else "0 0 100\n100 20000 65536"
     witness.physical.update(uid_map=mapping, gid_map=mapping)
     witness.physical["host"].update(uid=71, gid=73)
     path = tmp_path / "copy.tar"
+    stopped = stopped_members(files, witness)
     archive(path, files)
     with path.open("rb") as stream:
         if identical:
             assert (
-                backup.archive_manifest(stream, witness)[1] == "identity-mapped-host-and-container"
+                backup.archive_manifest(stream, witness, stopped)[1]
+                == "identity-mapped-host-and-container"
             )
         else:
             with pytest.raises(backup.Refusal, match="ambiguous"):
-                backup.archive_manifest(stream, witness)
+                backup.archive_manifest(stream, witness, stopped)
 
 
 @pytest.mark.parametrize(
@@ -969,6 +1019,7 @@ def test_numeric_namespace_requires_unique_translation_or_globally_identity_maps
 )
 def test_independent_stopped_bind_witness_rejects_corruption(tmp_path: Path, fault: str) -> None:
     files, witness = fixture()
+    stopped = stopped_members(files, witness)
     if fault in ("control-version", "catalog-version", "control-crc"):
         control = bytearray(files["global/pg_control"] or b"")
         control[{"control-version": 8, "catalog-version": 12, "control-crc": 288}[fault]] ^= 1
@@ -996,7 +1047,7 @@ def test_independent_stopped_bind_witness_rejects_corruption(tmp_path: Path, fau
         path = tmp_path / name
         archive(path, files)
         with path.open("rb") as stream, pytest.raises(backup.Refusal):
-            backup.archive_manifest(stream, witness)
+            backup.archive_manifest(stream, witness, stopped)
 
 
 @pytest.mark.parametrize(
@@ -1189,6 +1240,7 @@ def test_shutdown_checkpoint_can_span_a_segment_with_an_authenticated_continuati
     tmp_path: Path, fault: str
 ) -> None:
     files, witness = fixture()
+    stopped = stopped_members(files, witness)
     control = bytes.fromhex(
         "52b2070000000000a40600008979100c010000000000000000f1536500000000e0ff1f0000000000e0ff1f0000000000010000000100000001000000010000000003000000000000014000000000000000000000000000000000000000000000000000000000000000f15365000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000087d632410020000000000200002000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003b7e7914"
     ).ljust(8192, b"\0")
@@ -1217,13 +1269,14 @@ def test_shutdown_checkpoint_can_span_a_segment_with_an_authenticated_continuati
         following[80] ^= 1
     files["pg_wal/000000010000000000000002"] = bytes(following)
     path = tmp_path / "cross.tar"
+    stopped = stopped_members(files, witness)
     archive(path, files)
     with path.open("rb") as stream:
         if fault == "none":
-            assert backup.archive_manifest(stream, witness)[1] == "container"
+            assert backup.archive_manifest(stream, witness, stopped)[1] == "container"
         else:
             with pytest.raises(backup.Refusal):
-                backup.archive_manifest(stream, witness)
+                backup.archive_manifest(stream, witness, stopped)
 
 
 def test_command_monitor_failure_syncs_both_streams_and_directory(
@@ -1266,6 +1319,7 @@ def test_stopped_middle_block_requires_complete_source_occupancy(
     tmp_path: Path, middle: str
 ) -> None:
     files, witness = fixture()
+    stopped = stopped_members(files, witness)
     page = files[RELATION]
     assert isinstance(page, bytes)
     src = page + (page if middle == "populated" else bytes(backup.PAGE)) + page
@@ -1285,13 +1339,14 @@ def test_stopped_middle_block_requires_complete_source_occupancy(
     files[RELATION] = page + bytes(backup.PAGE) + page
     for filename in ["first.tar", "second.tar"]:
         target = tmp_path / filename
+        stopped = stopped_members(files, witness)
         archive(target, files)
         with target.open("rb") as stream:
             if middle == "new":
-                assert backup.archive_manifest(stream, witness)[1] == "container"
+                assert backup.archive_manifest(stream, witness, stopped)[1] == "container"
             else:
                 with pytest.raises(backup.Refusal):
-                    backup.archive_manifest(stream, witness)
+                    backup.archive_manifest(stream, witness, stopped)
 
 
 @pytest.mark.parametrize(
@@ -1302,6 +1357,7 @@ def test_toast_payload_and_index_require_their_measured_extents(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
 ) -> None:
     files, witness = fixture()
+    stopped = stopped_members(files, witness)
     root_name = "babylon_state.tick_commit"
     monkeypatch.setattr(backup, "REQUIRED_ROWS", {root_name})
     toast = "base/551/4000"
@@ -1331,13 +1387,14 @@ def test_toast_payload_and_index_require_their_measured_extents(
         files[toast if fault == "toast-heap-truncated" else index] = b""
     for filename in ["first.tar", "second.tar"]:
         target = tmp_path / filename
+        stopped = stopped_members(files, witness)
         archive(target, files)
         with target.open("rb") as stream:
             if fault == "none":
-                assert backup.archive_manifest(stream, witness)[1] == "container"
+                assert backup.archive_manifest(stream, witness, stopped)[1] == "container"
             else:
                 with pytest.raises(backup.Refusal):
-                    backup.archive_manifest(stream, witness)
+                    backup.archive_manifest(stream, witness, stopped)
 
 
 @pytest.mark.parametrize("fault", ["none", "wrong-prefix", "locale-not-set", "set-denied"])
@@ -1619,11 +1676,12 @@ def test_stopped_archive_refuses_missing_or_unmeasured_occupancy(
     occupancy: dict[str, str],
 ) -> None:
     files, witness = fixture()
+    stopped = stopped_members(files, witness)
     witness.physical["relation_page_occupancy"] = occupancy
     path = tmp_path / "copy.tar"
     archive(path, files)
     with path.open("rb") as stream, pytest.raises(backup.Refusal):
-        backup.archive_manifest(stream, witness)
+        backup.archive_manifest(stream, witness, stopped)
 
 
 @pytest.mark.parametrize("database", [None, "verified"])
@@ -2221,6 +2279,46 @@ def retained_pair_recovery(
     )
     *_, exits = backup._shutdown_evidence(evidence, backup_store, run, physical, tuple(held))
     files.append(exits)
+    stopped = stopped_members(payloads, witness)
+    cid, token = "c" * 64, "d" * 32
+    confinement = backup._helper_expected(run, witness, cid, token)
+    stopped_ref = record(
+        "stopped-source-v1.json",
+        {
+            "version": 1,
+            "pre_stop": wref.model_dump(),
+            "source": {
+                "container": run.container,
+                "image": run.owner[6],
+                "daemon": physical["daemon"],
+                "mounts": physical["mounts"],
+                "host": physical["host"],
+                "state": {
+                    "Status": "exited",
+                    "Running": False,
+                    "ExitCode": 0,
+                    "OOMKilled": False,
+                    "Pid": 0,
+                    "StartedAt": "start",
+                    "FinishedAt": "stop",
+                },
+            },
+            "helper_created": {
+                "confinement": confinement,
+                "status": "created",
+                "pid": 0,
+                "started": "zero",
+            },
+            "helper_running": {
+                "confinement": confinement,
+                "status": "running",
+                "pid": 12,
+                "started": "start",
+            },
+            "members": {k: asdict(v) for k, v in stopped.items()},
+            "changes": backup._source_changes(witness, stopped),
+        },
+    )
     for name in ("pgdata.tar", "pgdata-second.tar"):
         archive(backup_store.path / name, payloads)
         (backup_store.path / name).chmod(0o600)
@@ -2228,10 +2326,12 @@ def retained_pair_recovery(
         files.append(ref)
         raw(name + ".partial.stderr", b"")
         with backup_store.file(name) as stream:
-            members, namespace = backup.archive_manifest(stream, witness)
+            members, namespace = backup.archive_manifest(stream, witness, stopped)
         record(
             name + ".manifest.json",
             {
+                "version": 2,
+                "stopped_source": stopped_ref.model_dump(),
                 "archive": ref.model_dump(),
                 "root_and_source": wref.model_dump(),
                 "numeric_id_space": namespace,
@@ -2256,6 +2356,7 @@ def retained_pair_recovery(
     backup_store.publish_json(
         "recovery-seal.json",
         {
+            "version": 2,
             "completed_member": evidence.reference("completed-member.json").model_dump(),
             "owner": evidence.reference("ownership").model_dump(),
             "functional": evidence.reference("functional-terminal.json").model_dump(),
@@ -2441,6 +2542,7 @@ def test_shutdown_wal_requires_earlier_measured_source_checkpoint(
     tmp_path: Path, bad: object
 ) -> None:
     files, witness = fixture()
+    stopped = stopped_members(files, witness)
     if bad is None:
         del witness.physical["source_checkpoint"]
     else:
@@ -2450,4 +2552,425 @@ def test_shutdown_wal_requires_earlier_measured_source_checkpoint(
         (tmp_path / "copy.tar").open("rb") as stream,
         pytest.raises(backup.Refusal, match="source checkpoint"),
     ):
-        backup.archive_manifest(stream, witness)
+        backup.archive_manifest(stream, witness, stopped)
+
+
+def test_stopped_catalog_roster_is_independent_of_running_witness(tmp_path: Path) -> None:
+    files, witness = fixture()
+    stopped = stopped_members(files, witness)
+    # Independent stopped input: catalog maintenance adds VM after the live census.
+    files["global/1214_vm"] = bytes(8192)
+    path = tmp_path / "stopped.tar"
+    stopped = stopped_members(files, witness)
+    archive(path, files)
+    with path.open("rb") as stream:
+        members, _ = backup.archive_manifest(stream, witness, stopped)
+    assert members["global/1214_vm"].sha256 == hashlib.sha256(bytes(8192)).hexdigest()
+    assert "global/1214_vm" not in witness.members
+
+
+def local_stopped_source(tmp_path: Path) -> tuple[list[str], backup.PhysicalWitness]:
+    import os
+    from dataclasses import replace
+
+    files, witness = fixture()
+    root = tmp_path / "pgdata"
+    root.mkdir(mode=0o700)
+    for name, content in files.items():
+        path = root / name
+        if content is None:
+            path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        else:
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            path.write_bytes(content)
+            path.chmod(0o600)
+    info = root.stat()
+    witness.physical.update(
+        server_uid=info.st_uid,
+        server_gid=info.st_gid,
+        uid_map="0 0 4294967295",
+        gid_map="0 0 4294967295",
+        host={
+            "mode": 0o700,
+            "uid": info.st_uid,
+            "gid": info.st_gid,
+            "major": os.major(info.st_dev),
+            "minor": os.minor(info.st_dev),
+            "inode": info.st_ino,
+        },
+    )
+    witness.members.update(
+        {name: replace(m, uid=info.st_uid, gid=info.st_gid) for name, m in witness.members.items()}
+    )
+    return ["env", "-C", str(root)], witness
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "none",
+        "symlink",
+        "hardlink",
+        "fifo",
+        "hash-mutation",
+        "late-mutation",
+        "wrong-root",
+        "cross-device",
+    ],
+)
+def test_stopped_reader_hashes_actual_files_and_refuses_unsafe_or_mutating_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    import os
+
+    command, witness = local_stopped_source(tmp_path)
+    root = tmp_path / "pgdata"
+    vm = root / "global/1214_vm"
+    vm.write_bytes(bytes(8192))
+    vm.chmod(0o600)
+    if fault == "symlink":
+        (root / "alias").symlink_to("global/1214_vm")
+    elif fault == "hardlink":
+        os.link(vm, root / "alias")
+    elif fault == "fifo":
+        os.mkfifo(root / "pipe")
+    if fault == "wrong-root":
+        witness.physical["host"]["inode"] += 1
+    if fault == "cross-device":
+        witness.physical["host"]["minor"] += 1
+    execute = storage._exec_bytes
+    reads = 0
+
+    def observed(args: list[str], **kwargs: Any) -> bytes:
+        nonlocal reads
+        result = execute(args, **kwargs)
+        if "sha256sum" in " ".join(args) and fault == "hash-mutation":
+            vm.write_bytes(b"x" * 8192)
+        if "find" in args:
+            reads += 1
+            if reads == 2 and fault == "late-mutation":
+                vm.write_bytes(b"x" * 8192)
+        return result
+
+    monkeypatch.setattr(storage, "_exec_bytes", observed)
+    if fault == "none":
+        members = backup._read_stopped(command, witness)
+        assert members["global/1214_vm"].sha256 == hashlib.sha256(vm.read_bytes()).hexdigest()
+        assert all(m.sha256 is not None for m in members.values() if m.kind == "file")
+    else:
+        with pytest.raises(backup.Refusal):
+            backup._read_stopped(command, witness)
+
+
+@pytest.mark.parametrize("fault", ["extra", "missing", "vm-bytes", "heap-bytes"])
+def test_stopped_oracle_refuses_same_length_damage_and_roster_changes(
+    tmp_path: Path, fault: str
+) -> None:
+    files, witness = fixture()
+    files["global/1214_vm"] = bytes(8192)
+    files["global/1214"] = b"catalog" * 100
+    stopped = stopped_members(files, witness)
+    if fault == "extra":
+        files["global/other_vm"] = bytes(8192)
+    elif fault == "missing":
+        del files["global/1214_vm"]
+    else:
+        name = "global/1214_vm" if fault == "vm-bytes" else "global/1214"
+        value = files[name]
+        assert value is not None
+        files[name] = b"x" + value[1:]
+    path = tmp_path / "damaged.tar"
+    archive(path, files)
+    with path.open("rb") as stream, pytest.raises(backup.Refusal, match="stopped source"):
+        backup.archive_manifest(stream, witness, stopped)
+
+
+def helper_container(run: backup.Run, cid: str, token: str) -> dict[str, Any]:
+    return {
+        "Id": cid,
+        "Image": run.owner[6],
+        "Name": "/babylon-stopped-" + token,
+        "Path": "/bin/sh",
+        "Args": ["-ceu", "exec sleep 2147483647"],
+        "RestartCount": 0,
+        "Config": {
+            "Labels": {"babylon.stopped-source": token},
+            "User": "100071:200073",
+            "Entrypoint": ["/bin/sh"],
+            "Healthcheck": {"Test": ["NONE"]},
+        },
+        "HostConfig": {
+            "NetworkMode": "none",
+            "UsernsMode": "host",
+            "PidMode": "",
+            "IpcMode": "private",
+            "ReadonlyRootfs": True,
+            "Privileged": False,
+            "CapAdd": None,
+            "CapDrop": ["ALL"],
+            "GroupAdd": None,
+            "Devices": None,
+            "SecurityOpt": ["no-new-privileges"],
+            "RestartPolicy": {"Name": "no"},
+        },
+        "Mounts": [
+            {
+                "Type": "bind",
+                "Source": str(run.evidence.parent / "pgdata"),
+                "Destination": storage.PGDATA,
+                "RW": False,
+                "Propagation": "rprivate",
+            }
+        ],
+        "State": {
+            "Status": "created",
+            "Running": False,
+            "OOMKilled": False,
+            "Pid": 0,
+            "StartedAt": "zero",
+        },
+    }
+
+
+def damage_helper(record: dict[str, Any], fault: str) -> None:
+    if fault == "image":
+        record["Image"] = "wrong"
+    if fault == "rw":
+        record["Mounts"][0]["RW"] = True
+    if fault == "network":
+        record["HostConfig"]["NetworkMode"] = "host"
+    if fault == "user":
+        record["Config"]["User"] = "0:0"
+    if fault == "groups":
+        record["HostConfig"]["GroupAdd"] = ["0"]
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "none",
+        "image",
+        "rw",
+        "network",
+        "user",
+        "groups",
+        "source",
+        "helper-mutation",
+        "create-error",
+        "read-error",
+    ],
+)
+def test_stopped_helper_refuses_before_use_and_cleans_exact_owned_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    import copy
+
+    files, witness = fixture()
+    witness.physical["mounts"] = []
+    run = _inventory_run(tmp_path)
+    directory = backup.Evidence(tmp_path)
+    wref = directory.publish_json("pre-stop-physical.json", {})
+    cid = "c" * 64
+    record: dict[str, Any] = {}
+    events: list[str] = []
+    states = 0
+    source = {
+        "container": run.container,
+        "image": run.owner[6],
+        "daemon": witness.physical["daemon"],
+        "mounts": [],
+        "host": witness.physical["host"],
+        "state": {
+            "Status": "exited",
+            "Running": False,
+            "ExitCode": 0,
+            "OOMKilled": False,
+            "Pid": 0,
+            "StartedAt": "start",
+            "FinishedAt": "stop",
+        },
+    }
+
+    def stopped(*_args: Any) -> dict[str, Any]:
+        nonlocal states
+        states += 1
+        value = copy.deepcopy(source)
+        if fault == "source" and states == 2:
+            value["host"]["inode"] = 999
+        return value
+
+    def execute(args: list[str], **_kwargs: Any) -> bytes:
+        if args[:2] == ["docker", "create"]:
+            assert args[args.index("--pull") + 1] == "never"
+            assert args[args.index("--entrypoint") + 1] == "/bin/sh"
+            assert args[args.index("--user") + 1] == "100071:200073"
+            assert args[args.index("--mount") + 1].endswith(
+                ",destination=" + storage.PGDATA + ",readonly"
+            )
+            token = args[args.index("--label") + 1].split("=", 1)[1]
+            record.update(helper_container(run, cid, token))
+            Path(args[args.index("--cidfile") + 1]).write_text(cid)
+            damage_helper(record, fault)
+            if fault == "create-error":
+                raise backup.Refusal("create interrupted")
+            return (cid + "\n").encode()
+        if args == ["docker", "start", cid]:
+            events.append("start")
+            record["State"].update(Status="running", Running=True, Pid=12, StartedAt="start")
+            return (cid + "\n").encode()
+        assert args == ["docker", "container", "rm", "--force", cid]
+        events.append("removed")
+        return (cid + "\n").encode()
+
+    def read(*_args: Any) -> dict[str, backup.Member]:
+        events.append("read")
+        if fault == "read-error":
+            raise backup.Refusal("read interrupted")
+        if fault == "helper-mutation":
+            record["State"]["StartedAt"] = "different"
+        return stopped_members(files, witness)
+
+    monkeypatch.setattr(storage, "_exec_bytes", execute)
+    monkeypatch.setattr(storage, "_one_docker", lambda _kind, _target: copy.deepcopy(record))
+    monkeypatch.setattr(backup, "_stopped", stopped)
+    monkeypatch.setattr(backup, "_read_stopped", read)
+    monkeypatch.setattr(backup, "_reader_mounts", lambda _command: None)
+    if fault == "none":
+        reference, members = backup._stopped_inventory(run, directory, witness, wref)
+        directory.verify(reference)
+        packet = json.loads(directory.read_reference(reference))
+        assert backup._retained_stopped(packet, run, witness, wref) == members
+    else:
+        with pytest.raises(backup.Refusal):
+            backup._stopped_inventory(run, directory, witness, wref)
+        assert not (tmp_path / "stopped-source-v1.json").exists()
+    assert events[-1] == "removed"
+    if fault in ("image", "rw", "network", "user", "groups", "create-error"):
+        assert events == ["removed"]
+
+
+@pytest.mark.parametrize("fault", ["none", "rw", "nested", "same-device-nested", "missing"])
+def test_stopped_reader_mount_namespace_is_readonly_and_has_no_nested_mount(
+    monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    row = b"31 23 0:1 / /var/lib/postgresql/data ro,relatime - ext4 /dev/data rw\n"
+    if fault == "rw":
+        row = row.replace(b"ro,relatime", b"rw,relatime")
+    if fault in ("nested", "same-device-nested"):
+        row += b"32 31 0:1 / /var/lib/postgresql/data/global ro - ext4 /dev/data rw\n"
+    if fault == "missing":
+        row = b""
+    monkeypatch.setattr(storage, "_exec_bytes", lambda *_a, **_kw: row)
+    if fault == "none":
+        backup._reader_mounts(["confined"])
+    else:
+        with pytest.raises(backup.Refusal):
+            backup._reader_mounts(["confined"])
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "version",
+        "missing",
+        "unknown",
+        "hash",
+        "kind",
+        "owner-boolean",
+        "readonly-integer",
+        "source",
+        "pre-stop-ref",
+    ],
+)
+def test_stopped_receipt_refuses_malformed_or_substituted_independent_proof(
+    tmp_path: Path, fault: str
+) -> None:
+    from dataclasses import asdict
+
+    files, witness = fixture()
+    witness.physical["mounts"] = []
+    run = _inventory_run(tmp_path)
+    wref = backup.Reference(path="pre-stop-physical.json", bytes=2, sha256="a" * 64)
+    members = stopped_members(files, witness)
+    confinement = backup._helper_expected(run, witness, "c" * 64, "d" * 32)
+    packet = {
+        "version": 1,
+        "pre_stop": wref.model_dump(),
+        "source": {
+            "container": run.container,
+            "image": run.owner[6],
+            "daemon": witness.physical["daemon"],
+            "mounts": [],
+            "host": witness.physical["host"],
+            "state": {
+                "Status": "exited",
+                "Running": False,
+                "ExitCode": 0,
+                "OOMKilled": False,
+                "Pid": 0,
+                "StartedAt": "start",
+                "FinishedAt": "stop",
+            },
+        },
+        "helper_created": {
+            "confinement": confinement,
+            "status": "created",
+            "pid": 0,
+            "started": "zero",
+        },
+        "helper_running": {
+            "confinement": dict(confinement),
+            "status": "running",
+            "pid": 12,
+            "started": "start",
+        },
+        "members": {k: asdict(v) for k, v in members.items()},
+        "changes": backup._source_changes(witness, members),
+    }
+    assert backup._retained_stopped(packet, run, witness, wref) == members
+    if fault == "version":
+        packet["version"] = 2
+    if fault == "missing":
+        del packet["members"]
+    if fault == "unknown":
+        packet["extra"] = "unadmitted"
+    if fault == "hash":
+        packet["members"][RELATION]["sha256"] = "0" * 64
+    if fault == "kind":
+        packet["members"][RELATION]["kind"] = "symlink"
+    if fault == "owner-boolean":
+        packet["members"][RELATION]["uid"] = True
+    if fault == "readonly-integer":
+        packet["helper_created"]["confinement"]["readonly"] = 1
+    if fault == "source":
+        packet["source"]["container"] = "other"
+    if fault == "pre-stop-ref":
+        packet["pre_stop"]["sha256"] = "0" * 64
+    with pytest.raises(backup.Refusal):
+        backup._retained_stopped(packet, run, witness, wref)
+
+
+@pytest.mark.parametrize("fault", ["old-seal", "missing-proof", "tampered-proof"])
+def test_recovery_admission_requires_new_seal_and_immutable_stopped_source(
+    tmp_path: Path, recovery_admission_bytes: dict[str, bytes], fault: str
+) -> None:
+    evidence = storage.PrivateEvidence(tmp_path / "evidence")
+    retained = storage.PrivateEvidence(tmp_path / "backup")
+    for store in (evidence, retained):
+        store.path.mkdir(mode=0o700)
+    for name, content in recovery_admission_bytes.items():
+        evidence.publish(name, content)
+    owner = tuple(recovery_admission_bytes["ownership"].decode().splitlines())
+    original = json.loads(recovery_admission_bytes["functional-terminal.json"])
+    physical = json.loads(recovery_admission_bytes["physical.json"])
+    run = backup.Run(storage.MEDIA_CHECKOUT, evidence.path, owner, original["campaign"], 2)
+    retained_pair_recovery(run, evidence, retained, physical, original)
+    seal = json.loads(retained.read_reference(retained.reference("recovery-seal.json")))
+    if fault == "old-seal":
+        del seal["version"]
+    elif fault == "missing-proof":
+        seal["retained"] = [r for r in seal["retained"] if r["path"] != "stopped-source-v1.json"]
+    else:
+        (retained.path / "stopped-source-v1.json").write_bytes(b"{}")
+    with pytest.raises(backup.Refusal):
+        backup.verify_retained_backup(run, seal, original)

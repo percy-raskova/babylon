@@ -2449,6 +2449,7 @@ def test_window_diagnostic_resize_keeps_only_expected_refusals_open_for_quit(rea
         "missing_log",
         "changed_marker",
         "startup",
+        "startup_marker",
     ],
 )
 def test_owned_window_diagnostic_retains_actual_zero_gameplay_lifecycle(
@@ -2477,8 +2478,12 @@ def test_owned_window_diagnostic_retains_actual_zero_gameplay_lifecycle(
     run.verify_live = run.verify_sources = run.publish_verification_diagnostics = lambda: None
     monkeypatch.setattr(runner, "reauthenticate_native_owner", lambda *_args: None)
     markers = []
+    startup_failure = runner.NativeRunRefusal("startup fixture failure")
+    marker_failure = OSError("marker unavailable")
 
     def marker():
+        if fault == "startup_marker":
+            raise marker_failure
         result = memory.CampaignMemoryMarker(
             campaign=CAMPAIGN,
             foundation_sha256="a" * 64,
@@ -2523,8 +2528,8 @@ def test_owned_window_diagnostic_retains_actual_zero_gameplay_lifecycle(
         failure = None
         try:
             opening = channel.observe(1)
-            if fault == "startup":
-                raise runner.NativeRunRefusal("startup fixture failure")
+            if fault in ("startup", "startup_marker"):
+                raise startup_failure
             options["on_installed"](channel, tmp_path, opening)
             channel.perform("quit", 1)
         except BaseException as error:
@@ -2541,7 +2546,7 @@ def test_owned_window_diagnostic_retains_actual_zero_gameplay_lifecycle(
             thread.join(2)
             assert not thread.is_alive() and not standin.failures
             calls.extend(standin.calls)
-            if fault not in ("missing_log", "startup"):
+            if fault not in ("missing_log", "startup", "startup_marker"):
                 sequence = next(
                     row.sequence for row in channel.records if row.action == "resize1366x768"
                 )
@@ -2563,7 +2568,11 @@ def test_owned_window_diagnostic_retains_actual_zero_gameplay_lifecycle(
     monkeypatch.setattr(runner, "drive_pair", pair)
     writer = {runner.WINDOW_DIAGNOSTIC_SELECTOR: "stale"}
     reader = {"RUST_LOG": "off,babylon_client=off", "BABYLON_QUALIFICATION_POLICY": "absent"}
-    if fault in ("control_context_changed", "missing_log", "changed_marker", "startup"):
+    if fault == "startup_marker":
+        with pytest.raises(BaseExceptionGroup) as caught:
+            run.ordinary(writer, reader)
+        assert caught.value.exceptions == (startup_failure, marker_failure)
+    elif fault in ("control_context_changed", "missing_log", "changed_marker", "startup"):
         with pytest.raises(ValueError):
             run.ordinary(writer, reader)
     else:
@@ -2573,7 +2582,8 @@ def test_owned_window_diagnostic_retains_actual_zero_gameplay_lifecycle(
     )
     expected = (
         "incomplete"
-        if fault in ("control_context_changed", "missing_log", "changed_marker", "startup")
+        if fault
+        in ("control_context_changed", "missing_log", "changed_marker", "startup", "startup_marker")
         else "refused"
         if fault
         else "applied"
@@ -2583,7 +2593,7 @@ def test_owned_window_diagnostic_retains_actual_zero_gameplay_lifecycle(
     assert report.gameplay_qualified is False
     assert calls == (
         ["status"]
-        if fault == "startup"
+        if fault in ("startup", "startup_marker")
         else ["status", "standard_interface", "resize1366x768"]
         + ([] if fault == "control_context_changed" else ["quit"])
     )
@@ -2591,6 +2601,14 @@ def test_owned_window_diagnostic_retains_actual_zero_gameplay_lifecycle(
     assert not (evidence / "ordinary-terminal.json").exists()
     assert not (evidence / "ordinary-warm-prefix.json").exists()
     assert writer[runner.WINDOW_DIAGNOSTIC_SELECTOR] == "stale"
+    if fault == "startup_marker":
+        assert report.final_marker is None
+        assert report.final == report.actions[-1].state
+        assert report.native_controls == runner.PrivateEvidence(evidence).reference(
+            "native-controls.json"
+        )
+        assert [leaf.failure_type for leaf in report.failures] == ["NativeRunRefusal", "OSError"]
+        assert report.failures[0].safe_reason == "startup fixture failure"
     if expected == "incomplete":
         assert report.failures
     else:

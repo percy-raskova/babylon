@@ -2868,17 +2868,22 @@ class _WindowDiagnostic(OrdinaryWarmPrefix):
             )
         except BaseException as error:
             failure = error
+            observation_failures: list[BaseException] = [error]
             try:
                 final_marker = self.run.marker()
+            except BaseException as marker_error:
+                observation_failures.append(marker_error)
+            try:
                 if (self.run.directory / "native-controls.json").exists():
                     self.controls = read_record(
                         self.run.directory / "native-controls.json", ControlsEvidence
                     )
                     controls_reference = self.walk.evidence.reference("native-controls.json")
-            except BaseException as final_observation_error:
+            except BaseException as controls_error:
+                observation_failures.append(controls_error)
+            if len(observation_failures) > 1:
                 failure = BaseExceptionGroup(
-                    "window diagnostic and final observation failed",
-                    [error, final_observation_error],
+                    "window diagnostic and final observation failed", observation_failures
                 )
                 raise failure from None
             raise

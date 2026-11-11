@@ -2400,7 +2400,7 @@ def retain_ordinary(root: Path, evidence: Path, cid: str, exit_status: int) -> N
         if report.status == "completed" and exit_status == 0:
             if (
                 tuple(sample.period for sample in report.samples) != (1, 2, 3)
-                or any(sample.usable_elapsed_ns > 10_000_000_000 for sample in report.samples)
+                or any(sample.usable_elapsed_ns > 30_000_000_000 for sample in report.samples)
                 or any(sample.ready.state.campaign_id != campaign for sample in report.samples)
                 or not os.path.lexists(evidence / "ordinary-terminal.json")
             ):

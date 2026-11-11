@@ -19,6 +19,17 @@ TOML and typed canonical encoding.
 Both national reduction and Wayne play must pass before completing the goal. The retained 10 November candidate design
 and baseline supply evidence, without separate live authority.
 
+## Director amendment: 11 November 2026
+
+The ordinary national warm-turn limit is now thirty seconds, replacing the earlier ten-second limit.
+Keep the complete endpoint: Advance input through a useful dated report or pending brief, rendered evidence and usable next controls.
+Each of the first three samples at 1366×768 Standard must meet thirty seconds. Three samples do not prove p95.
+
+Keep earlier measurements and their source/workload boundaries unchanged. This decision changes acceptance, without claiming a speed improvement.
+Every other performance, memory, storage, correctness limit and period horizon stays the same.
+After the final source meets the agreed limits, continue game play qualification. Defer optional performance work.
+The proposed statistics experiment on three system catalogs remains deferred without execution.
+
 ## Global Constraints
 
 - Include all 3,144 captured county contributions exactly once.
@@ -50,7 +61,7 @@ qualification blockers, then make one measured retry. Keep the economic candidat
 The only guard change permitted here synchronizes SQL and Python with the existing native receipt format.
 
 Ordinary P1–P3 Advance must each reach a dated actionable or legitimate pending brief, with usable next controls, within
-10 seconds. Measure at 1366×768 Standard. Three samples do not prove p95. Measure startup and recovery separately.
+30 seconds. Measure at 1366×768 Standard. Three samples do not prove p95. Measure startup and recovery separately.
 
 Both normal AND full-memory national smoke/walk members remain required. Complete the ten-period decision loop,
 restart/lifecycle checks, native input/frame checks and human acceptance. Limits remain: cold <180s, advance ≤120s,
@@ -224,7 +235,7 @@ packed bytes and RSS separately. Retained baseline bytes follow.
 
 - [ ] **Step 4:** Measure ordinary native P1–P3 at 1366×768 Standard.
 
-Measure input to useful dated/pending brief with usable next controls. Each must take ≤10s. Report all three without
+Measure input to useful dated/pending brief with usable next controls. Each must take ≤30s. Report all three without
 claiming p95. Internal ticks and typed drivers cannot prove visible readiness.
 
 Use a separate ordinary companion through the existing installed callback. Close three periods without interruption,
@@ -445,7 +456,8 @@ workspace Rust gates here. Both passed at the accepted base, and final gates fol
 - [ ] Root builds and releases the reviewed source, then runs qualification21 once.
 
 Keep normal four confirmations and three closes: P1 Collect1450, P2 local food1/cash0 and P3 remote food2/cash280.
-Then accept P4 Pause at P3, followed by the existing driver-owned Quit. Keep all ten-second endpoint and context checks.
+Then accept P4 Pause at P3, followed by the existing driver-owned Quit. Earlier qualification21 used ten-second endpoint checks.
+Current qualification uses the thirty-second limit above. Keep every context check.
 
 Clear the window diagnostic selector and strip NativeAudit variables as before. Add no sampler. A timing miss remains
 failure or incomplete evidence. It cannot become diagnostic success by relaxing a guard.
@@ -523,7 +535,8 @@ remain required. Keep qualification22 for its acceptance retry.
 ### Task 13: Refresh first-publication statistics and finish grain law contracts
 
 **Authority:** Continue the Director-approved delivery without routine approval stops.
-Return for direction if useful progress stops. Keep every numerical limit and both original outcomes.
+Return for direction if useful progress stops. Keep the current limits and both original outcomes.
+The dated amendment above owns the warm limit.
 
 **Evidence:** Actual23 published three national periods. Its unchanged usable endpoints took
 10.703, 12.345 and 10.594 seconds. Second-checkpoint work averaged 8.343 milliseconds, so reject that repair hypothesis.
@@ -574,4 +587,4 @@ Do not add compatibility by profile or new overrides. Do not release or run a ga
 
 Root owns this step. Keep the matched byte comparison, both smoke and ten-period play tests in normal and memory modes.
 Keep restart, rendered/input variants, the player session, final gates and reviewable PR open.
-Further census node timing can support a separate repair. This task claims no census speed gain.
+Defer optional census work. Continue game play once the agreed limits pass. This task claims no census speed gain.

@@ -464,12 +464,27 @@ Defer marginal storage redesign when measured development limits allow play.
 The 23 MB storage target remains an optimization target.
 The earlier 10 MB ambition is not an acceptance gate.
 
+* Ordinary national P1–P3 warm response: at most thirty seconds for each
+  complete usable endpoint.
 * Focused economic and game play controls: under sixty seconds, excluding compilation.
 * National committed advance: aim for sixty to ninety seconds. The p95 limit is 120 seconds.
 * Cold load: under 180 seconds, with visible progress.
 * National smoke check: two periods and recovery within 900 seconds.
 * Full 52-period qualification: preferably under four hours, including recovery.
 
+
+On 11 November 2026, the Director changed the ordinary warm limit from ten to
+thirty seconds. Measure Advance input through a useful dated report or
+legitimate pending brief, rendered evidence and usable next controls.
+Each of the first three samples at 1366×768 Standard must meet thirty seconds.
+Three samples do not prove p95. Measure startup and recovery separately.
+
+The earlier three-close run recorded 10.703, 12.345 and 10.594 seconds.
+Those measurements describe their recorded source and workload.
+The changed limit reports no speed improvement. Keep the historical
+ten-second failures unchanged. Every other benchmark, memory, storage and
+correctness limit stays the same. After final source meets the agreed limits,
+continue game play qualification and defer optional performance work.
 
 The four-hour preference cannot truncate required proof. One advance cannot
 prove p95.

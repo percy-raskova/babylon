@@ -2310,7 +2310,7 @@ def test_ordinary_prefix_retains_three_actual_closes_and_next_acceptances(tmp_pa
             step = next(r for r in reversed(channel.records) if r.action == "step")
             changed = observation.model_dump()
             changed["completed_monotonic_ns"] = (
-                step.started_monotonic_ns + 10_000_000_000 + int(fault == "late")
+                step.started_monotonic_ns + 30_000_000_000 + int(fault == "late")
             )
             channel.records[-1] = windowed.ActionObservation.model_validate(changed)
             return result
@@ -2327,6 +2327,7 @@ def test_ordinary_prefix_retains_three_actual_closes_and_next_acceptances(tmp_pa
         thread.join(2)
     assert not thread.is_alive() and not peer_failures
     saved = json.loads((evidence / "ordinary-warm-prefix.json").read_bytes())
+    assert saved["maximum_usable_elapsed_ns"] == 30_000_000_000
     assert saved["status"] == ("completed" if fault is None else "incomplete")
     assert "await_period_proof" not in calls and "reopen" not in calls
     assert all(record["state"]["period_proof"] is None for record in saved["actions"])
@@ -2339,7 +2340,7 @@ def test_ordinary_prefix_retains_three_actual_closes_and_next_acceptances(tmp_pa
                 and sample[endpoint]["state"]["inspector"] == "Closed"
                 for endpoint in ("ready", "capture", "next_acceptance")
             )
-            assert sample["usable_elapsed_ns"] == 10_000_000_000 + int(fault == "late")
+            assert sample["usable_elapsed_ns"] == 30_000_000_000 + int(fault == "late")
             assert (
                 sample["step"]["sequence"]
                 < sample["ready"]["sequence"]

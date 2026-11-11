@@ -2482,7 +2482,7 @@ class OrdinaryWarmEvidence(FrozenRecord):
     height: Literal[768] = 768
     audit_enabled: Literal[False] = False
     memory_sampler_enabled: Literal[False] = False
-    maximum_usable_elapsed_ns: Literal[10000000000] = 10_000_000_000
+    maximum_usable_elapsed_ns: Literal[30000000000] = 30_000_000_000
     samples: tuple[OrdinaryWarmSample, ...]
     actions: tuple[ActionObservation, ...]
     failures: tuple[NativeFailureCause, ...]
@@ -2653,8 +2653,8 @@ class OrdinaryWarmPrefix:
                     )
                 )
                 accepted = following
-            if any(sample.usable_elapsed_ns > 10_000_000_000 for sample in samples):
-                raise NativeRunRefusal("ordinary warm usable endpoint exceeded ten seconds")
+            if any(sample.usable_elapsed_ns > 30_000_000_000 for sample in samples):
+                raise NativeRunRefusal("ordinary warm usable endpoint exceeded thirty seconds")
         except BaseException as error:
             failure = error
             raise

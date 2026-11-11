@@ -557,8 +557,8 @@ def test_collector_v3_refuses_old_wrapper_and_malformed_descriptor_claims(fault)
 @pytest.mark.parametrize(
     "field,maximum",
     [
-        ("canonical_receipt_bytes", 874_709_881),
-        ("receipt_storage_bytes", 874_712_176),
+        ("canonical_receipt_bytes", 925_434_745),
+        ("receipt_storage_bytes", 925_437_040),
     ],
 )
 def test_current_receipt_cap_boundary(field, maximum):
@@ -577,7 +577,7 @@ def test_current_receipt_cap_boundary(field, maximum):
 
 def test_collector_current_receipt_requires_complete_37_family_framing():
     state, receipt, lookup = current_headers()
-    # Current V19 has 37 mandatory 59-byte storage family frames, including empty rows.
+    # Current receipts have 37 mandatory 59-byte storage family frames, including empty rows.
     minimum = len(b"BabylonReceiptStorageV3\0") + 88 + 37 * 59
     claim = package_claim_from_headers(1, state, receipt, lookup, 200, minimum, len(lookup) + 7)
     assert claim.receipt_storage_bytes == minimum

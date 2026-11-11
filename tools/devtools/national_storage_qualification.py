@@ -323,11 +323,11 @@ class PackageClaim(FrozenRecord):
             raise ValueError("lookup packed bytes exceed current Rust bound")
         limits = (
             (self.canonical_register_bytes, 1_000_000_000),
-            (self.canonical_receipt_bytes, 874_709_881),
+            (self.canonical_receipt_bytes, 925_434_745),
             (self.register_storage_bytes, 1_000_000_000 + 1_000_000_000 // 256 + 16_384),
             (
                 self.receipt_storage_bytes,
-                874_709_881 + len(b"BabylonReceiptStorageV3\0") + 88 + 37 * 59,
+                925_434_745 + len(b"BabylonReceiptStorageV3\0") + 88 + 37 * 59,
             ),
             (self.lookup_delta_bytes, 1_000_000_000 + 1_000_000_000 // 256 + 1024),
         )

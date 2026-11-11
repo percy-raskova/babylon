@@ -1075,7 +1075,7 @@ CREATE TABLE babylon_state.material_tick_v3 (
     resolve_tick bigint NOT NULL CHECK (resolve_tick > 0),
     identity_bytes bytea NOT NULL CHECK (octet_length(identity_bytes) <= 1024),
     register_storage_bytes bytea NOT NULL CHECK (octet_length(register_storage_bytes) <= 1003922634),
-    receipt_storage_bytes bytea NOT NULL CHECK (octet_length(receipt_storage_bytes) <= 874712176),
+    receipt_storage_bytes bytea NOT NULL CHECK (octet_length(receipt_storage_bytes) <= 925437040),
     lookup_delta_bytes bytea NOT NULL CHECK (octet_length(lookup_delta_bytes) <= 1003907274),
     PRIMARY KEY (campaign_id, resolve_tick)
 );

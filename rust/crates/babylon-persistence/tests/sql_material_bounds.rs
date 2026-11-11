@@ -62,11 +62,16 @@ fn collection_adds_only_one_bounded_receipt_row_and_its_storage_frame() {
         receipt_row_limit, RECEIPT_FAMILY_COUNT, RECEIPT_ROW_BYTES,
     };
     assert_eq!(RECEIPT_FAMILY_COUNT, 37);
+    assert_eq!(RECEIPT_ROW_BYTES[34], 387);
+    assert_eq!(receipt_row_limit(34), 7 * 65_536);
+    assert_eq!(RECEIPT_ROW_BYTES[35], 317);
+    assert_eq!(receipt_row_limit(35), 1);
     assert_eq!(RECEIPT_ROW_BYTES.last(), Some(&192));
     assert_eq!(receipt_row_limit(RECEIPT_FAMILY_COUNT - 1), 1);
-    // Previous complete storage bound +9B family envelope +317B row +59B frame.
+    // Previous complete storage bound + collection envelope/row/frame, attendance
+    // widening and family, then two more independent-leg aid rows per material row.
     assert_eq!(
         babylon_persistence::MAX_STORED_MATERIAL_RECEIPT_BYTES,
-        872_614_379 + 9 + 317 + 59 + 16 * 131_072 + 9 + 192 + 59
+        872_614_379 + 9 + 317 + 59 + 16 * 131_072 + 9 + 192 + 59 + 2 * 65_536 * 387
     );
 }

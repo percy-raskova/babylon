@@ -45,6 +45,10 @@ primitive.
 Allow one initial measured candidate and ONE corrective iteration after a measured acceptance failure. Allow at most one
 targeted diagnostic per demonstrated blocker. Do not repeat unchanged full runs or the completed sole baseline profile.
 
+The Director approved one further repair pass on 10 November. Tasks 5 and 6 carry that extension. Repair the known
+qualification blockers, then make one measured retry. Keep the economic candidate and qualification limits fixed.
+The only guard change permitted here synchronizes SQL and Python with the existing native receipt format.
+
 Ordinary P1–P3 Advance must each reach a dated actionable or legitimate pending brief, with usable next controls, within
 10 seconds. Measure at 1366×768 Standard. Three samples do not prove p95. Measure startup and recovery separately.
 
@@ -294,3 +298,68 @@ review and resolve load-bearing findings.
 
 Target `dev`. Update authorized Linear issues with verified delivery and remaining acceptance. Preserve PR1052 and
 broader issue scope. Do not merge or close umbrella scope.
+
+
+### Task 5: Synchronize receipt guards and current dossier tests
+
+**Ownership:** One fresh implementer owns source edits and scoped checks in the existing task worktree. Window tracing
+can run read-only. Keep heavy checks serial and return ownership before native work.
+
+**Files:** `rust/crates/babylon-persistence/migrations/current_schema.sql`,
+`tools/devtools/national_storage_qualification.py`, their directly affected boundary tests, and
+`rust/crates/babylon-client/tests/dossier_card.rs`. Include this approved plan extension in the source commit.
+
+**Interfaces:** The existing v20 native format allows seven aid receipts per material-row allowance. Preserve its
+65,536-row allowance, 387-byte aid row and all mechanics. Synchronize canonical admission from 874,709,881 to
+925,434,745 bytes, and stored admission from 874,712,176 to 925,437,040 bytes. This raises old SQL/Python guards by
+50,724,864 bytes. It changes no Designed qualification-policy ceiling.
+
+- [ ] **Step 1:** Use the saved full-gate failures as RED for unchanged source.
+
+Add a focused Python admission boundary regression before changing its guard. Keep exact acceptance and rejection boundaries.
+
+- [ ] **Step 2:** Update every directly coupled SQL/Python consumer.
+
+Keep independent complete-family arithmetic, collection's one-row increment, framing, format refusal and checked overflow.
+Add no native row allowance or format.
+
+- [ ] **Step 3:** Correct the dossier integration flows.
+
+Assert readable evidence first, then use the real Technical evidence control for exact Source/Locator/Field.
+Identify the footer through its unique history control and current displayed caption. Keep all geometry, history, pending-state, citation and
+reading-region assertions. Change no production presentation for these tests.
+
+- [ ] **Step 4:** Run focused GREEN, applicable lint/type/format checks and normal commit hooks.
+
+Report exact commands, results and remaining concerns. Do not rerun the full workspace or launch a game in this task.
+
+Keep `contracts/national_storage_qualification_v6.json`, game costs and money/time resources unchanged. Do not
+change native format bounds, weaken equality checks, add compatibility or bless a baseline. The source diagnosis files
+in the current SDD workspace explain the inherited mismatches.
+
+### Task 6: Repair window acknowledgement and exercise the approved retry
+
+**Ownership:** A separate implementer owns window/render/control work after Task 5 returns source ownership. Root owns
+all real runtime work and the serial build slot.
+
+- [ ] **Step 1:** Trace the window size change from application to OS observation and render acknowledgement.
+
+If the saved evidence cannot identify the actual missing condition, gather one startup-to-resize diagnostic through the
+existing admitted launcher and control path. Submit no game commitment or Advance. Keep the observations and exact fixture.
+
+- [ ] **Step 2:** Repair the demonstrated cause.
+
+Preserve real physical dimensions, window identity, source context and capture verification at 1366×768 and 1920×1080.
+Keep presentation and game time limits unchanged. Add no launcher.
+
+- [ ] **Step 3:** Complete focused RED/GREEN and independent reviews, then freeze the repaired source and normal build.
+
+Use a fresh disposable namespace and preserve earlier fixtures, binaries and evidence.
+
+- [ ] **Step 4:** Make one measured retry of the ordinary three-close path.
+
+Report all endpoints and raw frames. If it passes, continue the original required normal/full-memory smoke, full funded
+walk, input, human and publishing checks at that frozen candidate. If it misses, return evidence/options before another candidate.
+
+This extension permits the three known repair areas only. Nationwide coverage, foreign trade, existing economic
+mechanics and the original completion conditions remain required. The Director has not authorized a merge or umbrella closure.

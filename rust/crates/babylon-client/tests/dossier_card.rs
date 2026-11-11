@@ -591,7 +591,7 @@ fn reader_absent_is_the_terminal_honest_line_never_a_panic() {
     );
 }
 
-/// The typed retained response drives the complete card. Evidence starts collapsed, then the real control exposes exact citations and publication changes.
+/// The retained response drives the complete card. Readable evidence precedes exact technical citations and publication changes.
 #[test]
 fn seeded_projection_renders_the_whole_card_after_one_update() {
     let (_dsn_guard, mut app) = new_app();
@@ -632,6 +632,9 @@ fn seeded_projection_renders_the_whole_card_after_one_update() {
     let actions = zone_entity(&mut app, DossierZone::Actions);
     let evidence = chip_node_with_text(&mut app, actions, "Evidence and changes");
     click_entity(&mut app, evidence);
+    assert_readable_employment_evidence(&mut app);
+    let technical = chip_node_with_text(&mut app, actions, "Technical evidence");
+    click_entity(&mut app, technical);
     let signals = zone_text(&mut app, DossierZone::Signals);
     for exact in ["Source: src", "Locator: loc", "Field: employment"] {
         assert!(signals.contains(exact), "{signals}");
@@ -668,6 +671,18 @@ fn seeded_projection_renders_the_whole_card_after_one_update() {
         "publication changes never imply verification"
     );
     assert!(zone_text(&mut app, DossierZone::Actions).ends_with(INVESTIGATE_SEALED_CHIP));
+}
+
+fn assert_readable_employment_evidence(app: &mut App) {
+    let signals = zone_text(app, DossierZone::Signals);
+    assert!(signals.contains("Employment: ") && signals.contains("728576 jobs"));
+    assert!(
+        signals.contains("Source: retained Archive citation."),
+        "{signals}"
+    );
+    for exact in ["Source: src", "Locator:", "Field:"] {
+        assert!(!signals.contains(exact), "readable evidence: {signals}");
+    }
 }
 
 fn pending_and_verified_fixture() -> (ArchiveDossierRead, ArchiveDossierRead) {
@@ -1007,7 +1022,18 @@ fn assert_observer_archive_geometry(app: &mut App, root: Entity) {
         .expect("the real shell must calculate a world viewport");
     let world = Rect::from_corners(world.min / scale, world.max / scale);
     let context_entity = root_containing_text(app, "Read the cited Archive [I]");
-    let footer = root_containing_text(app, "Return Live");
+    // The unique Trends [H] control paints its current History caption.
+    let history_caption = if app
+        .world()
+        .resource::<babylon_client::observer_ui::ObserverUiState>()
+        .history_open
+    {
+        "History - [H]"
+    } else {
+        "History + [H]"
+    };
+    let footer = root_containing_text(app, history_caption);
+    assert!(find_entity_with_text(app, footer, "Return Live").is_some());
     let archive = laid_out_rect(app, root);
     let context = laid_out_rect(app, context_entity);
     let footer = laid_out_rect(app, footer);

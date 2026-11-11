@@ -247,11 +247,11 @@ For each close, capture the first strict ready status, exact rendered frame and 
 intervals from input to ready status and from input to capture. Use the later completion of capture or next acceptance
 for the usable endpoint, including all overhead. Keep raw pixels and incomplete evidence.
 
-This prefix does not prove a full ten-period walk, recovery, storage or qualification. Use `qualification-25` as the
+This prefix does not prove a full ten-period walk, recovery, storage or qualification. Use `qualification-26` as the
 fresh disposable namespace. Keep `qualification-15` and its artifacts.
 
 Invoke `tools/run_rust_postgres.sh --wayne-ordinary-prefix` for the separate normal-only `ordinary-01` profile.
-Its independent evidence path is `qualification-25/ordinary-01/normal_play/evidence`. The source horizon stays at ten
+Its independent evidence path is `qualification-26/ordinary-01/normal_play/evidence`. The source horizon stays at ten
 periods. Existing source, capacity, binary, ownership and role checks apply.
 
 After the prefix, stop and keep the exact container, primary data and evidence. Record late or incomplete measurements
@@ -681,6 +681,33 @@ running SQL, checkpoint, game-main extents, occupancy and stable-file authority.
 confined reader inventories and hashes every stopped original file. Both archive passes
 must match that exact stopped source, and recovery admission verifies the sealed receipt.
 
-Current consumers use fresh namespace 25. Scoped checks prove only the operator
+This repair routed consumers to namespace 25. Its scoped checks proved only the operator
 contract. Fresh native smoke, memory capture, release adaptation and human acceptance
-remain pending. Old namespace 24 evidence cannot qualify the changed source.
+remained pending. Old namespace 24 evidence cannot qualify the changed source.
+
+
+### Task 25: Keep one storage model identity at CLI entry
+
+The actual `python -m tools.devtools.wayne_qualification_storage` memory reservation
+created `__main__.Reference` while the paired consumer imported the canonical storage
+module. Their identical path, length and digest could not satisfy strict typed equality.
+Canonical-import probes missed this entry behavior. Namespace 25's completed normal
+member and failed memory admissions remain historical evidence, not a qualified pair.
+
+- [x] Reproduce the unchanged-reference refusal through the actual module-as-main entry.
+- [x] Delegate that entry to the canonical module before defining any storage models.
+  Keep the strict typed comparison and all source, custody and admission guards.
+- [x] Route current storage, ordinary-prefix consumers and coupled tests to fresh
+  `qualification-26`. Preserve every earlier namespace and its measurements and failures.
+- [ ] Complete independent review, final gates and fresh final-source qualification in
+  namespace 26. No earlier normal member or failed memory admission qualifies this source.
+
+The public command stays unchanged. The regression crosses the real reservation and paired
+consumer without SQL, Docker or native programs; a changed reference must still refuse
+before creating its memory member. Scoped GREEN does not establish campaign qualification.
+
+Keep the full 30-second endpoint from Advance to a useful dated report or pending brief,
+real rendered pixels and accepted next controls. Cold stays below 180 seconds, advance at most 120 seconds,
+Archive at most 180 seconds and normal smoke at most 900 seconds. Aggregate RSS and saves
+stay at most 10 GB, sample gaps at most five seconds and save growth at most 40 MB per tick.
+No optional performance work or qualification bypass belongs to this repair.

@@ -31,7 +31,13 @@ from tools.devtools.national_storage_qualification import (
     strict_json_bytes,
 )
 
-RUN_PARENT = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-25")
+# Delegate before defining models so CLI and imported consumers share their types.
+if __name__ == "__main__":
+    from tools.devtools.wayne_qualification_storage import main as _canonical_main
+
+    raise SystemExit(_canonical_main())
+
+RUN_PARENT = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-26")
 MEDIA = Path("/media/user/data")
 PGDATA: Literal["/var/lib/postgresql/data"] = "/var/lib/postgresql/data"
 TEST_NAME = (
@@ -2690,7 +2696,3 @@ def main() -> int:
         print("Wayne media qualification refused: " + reason, file=sys.stderr)
         return 1
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

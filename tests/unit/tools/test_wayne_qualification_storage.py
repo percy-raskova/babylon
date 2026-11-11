@@ -15,7 +15,7 @@ def test_three_media_profiles_require_the_exact_run_and_horizon(monkeypatch, mod
         ("walk-01", "national_storage", "10", "walk-01"),
     ):
         lane = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop")
-        run = lane / "qualification-25" / leaf
+        run = lane / "qualification-26" / leaf
         evidence = (run if profile == "sql-01" else run / mode) / "evidence"
         with pytest.raises(storage.StorageRefusal):
             storage.profile_run(
@@ -40,6 +40,8 @@ def test_three_media_profiles_require_the_exact_run_and_horizon(monkeypatch, mod
             "qualification-20",
             "qualification-21",
             "qualification-23",
+            "qualification-24",
+            "qualification-25",
         ):
             unused = lane / reserved / leaf
             unused_evidence = (unused if profile == "sql-01" else unused / mode) / "evidence"
@@ -1002,6 +1004,121 @@ def native_release(tmp_path, monkeypatch):
     return root, store, packet
 
 
+@pytest.mark.parametrize("changed_release", [False, True])
+def test_module_main_memory_reserve_uses_the_consumers_typed_reference(
+    native_release, monkeypatch, capsys, changed_release
+):
+    import runpy
+    import sys
+    from types import SimpleNamespace
+
+    from tools.devtools import national_native_pair as pair
+
+    root, store, packet = native_release
+    ref = store.publish_json("smoke-01-native-expectations.json", packet)
+    monkeypatch.setenv("BABYLON_WAYNE_NATIVE_EXPECTATION_REF", ref.model_dump_json())
+    monkeypatch.setenv("BABYLON_NATIVE_MEASUREMENT_MODE", "memory_capture")
+    expected = (
+        storage.Reference(path=ref.path, bytes=ref.bytes + 1, sha256=ref.sha256)
+        if changed_release
+        else ref
+    )
+    retired = store.path / "smoke-01/normal_play"
+    checked = []
+    incoming = []
+    verify_retired = pair.verify_retired_predecessor
+
+    def verify_predecessor(profile, release):
+        incoming.append(release)
+        verify_retired(profile, release)
+
+    monkeypatch.setattr(pair, "verify_retired_predecessor", verify_predecessor)
+
+    def declaration(path):
+        assert path == retired / "evidence"
+        return None, SimpleNamespace(release=expected)
+
+    monkeypatch.setattr(pair, "declaration_for", declaration)
+    monkeypatch.setattr(pair, "verify_completed", lambda evidence: checked.append(evidence.path))
+    monkeypatch.setattr(pair, "verify_retirement", lambda run: checked.append(run))
+    evidence = store.path / "smoke-01/memory_capture/evidence"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            storage.__file__,
+            "reserve",
+            "--root",
+            str(root),
+            "--evidence",
+            str(evidence),
+            "--profile",
+            "smoke-01",
+            "--focus",
+            "national_storage",
+            "--periods",
+            "2",
+            "--canary",
+            "a" * 32,
+        ],
+    )
+
+    entry_patches = pytest.MonkeyPatch()
+
+    def enter_cli(frame, event, _arg):
+        if (
+            event == "call"
+            and frame.f_code.co_name == "main"
+            and frame.f_code.co_filename == storage.__file__
+        ):
+            # Install only the fixture's external boundaries. The actual CLI,
+            # reserve path, evidence reader and model definitions stay active.
+            for name in (
+                "RUN_PARENT",
+                "MEDIA_CHECKOUT",
+                "actual_host_context",
+                "selected_policy",
+                "_daemon_endpoint",
+                "_daemon",
+                "_image",
+                "exact_output",
+                "pinned_ancestry",
+                "released_inventory",
+            ):
+                entry_patches.setitem(frame.f_globals, name, getattr(storage, name))
+
+    previous_profile = sys.getprofile()
+    previous_umask = storage.os.umask(0o077)
+    try:
+        sys.setprofile(enter_cli)
+        with (
+            pytest.warns(RuntimeWarning, match="found in sys.modules"),
+            pytest.raises(SystemExit) as exited,
+        ):
+            runpy.run_module(storage.__name__, run_name="__main__", alter_sys=True)
+    finally:
+        sys.setprofile(previous_profile)
+        entry_patches.undo()
+        storage.os.umask(previous_umask)
+
+    assert len(incoming) == 1 and incoming[0].model_dump() == ref.model_dump()
+    if changed_release:
+        assert exited.value.code == 1
+        assert capsys.readouterr().err == "Wayne media qualification refused: ValueError\n"
+        assert not evidence.parent.exists()
+        assert checked == []
+    else:
+        assert exited.value.code == 0, (
+            capsys.readouterr().err,
+            type(incoming[0]),
+            type(expected),
+            incoming[0] == expected,
+        )
+        assert checked == [retired / "evidence", retired]
+        creation = storage.strict_json_bytes((evidence / "media-creation.json").read_bytes())
+        assert creation["native_expectations"] == ref.model_dump()
+
+
 @pytest.mark.parametrize(
     "change",
     [
@@ -1110,13 +1227,13 @@ def test_native_pin_publishes_only_released_normal_copies(
 
 def test_ordinary_profile_is_independent_normal_only_and_never_a_qualified_member(monkeypatch):
     root = Path(
-        "/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-25/ordinary-01"
+        "/media/user/data/worktrees/per364-wayne-solidarity-loop/qualification-26/ordinary-01"
     )
     evidence = root / "normal_play/evidence"
     monkeypatch.setenv("BABYLON_NATIVE_MEASUREMENT_MODE", "normal_play")
     assert storage.profile_run("ordinary-01", "national_storage", "10", evidence) == evidence.parent
     assert storage.owned_native_path(evidence) == ("ordinary-01", "normal_play")
-    for namespace in (17, 18, 19, 20, 21, 23):
+    for namespace in (17, 18, 19, 20, 21, 23, 24, 25):
         other = (
             root.parent.with_name(f"qualification-{namespace}") / "ordinary-01/normal_play/evidence"
         )

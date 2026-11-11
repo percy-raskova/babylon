@@ -135,6 +135,9 @@ POLL_SECONDS = 0.25
 
 ControlFailureReason = Literal[
     "control_refused",
+    "primary_window_resize_timeout",
+    "primary_window_extent_unobserved",
+    "primary_window_unavailable",
     "cold_deadline",
     "wall_deadline",
     "readiness_deadline",
@@ -156,6 +159,24 @@ ControlPhase = Literal[
     "recovery",
     "finalization",
 ]
+
+
+NativeWindowFailureReason = Literal[
+    "primary_window_resize_timeout",
+    "primary_window_extent_unobserved",
+    "primary_window_unavailable",
+]
+
+
+def native_window_failure_reason(reason: object) -> NativeWindowFailureReason | None:
+    """Admit exact private native window codes, never arbitrary peer text."""
+    if reason == "primary_window_resize_timeout":
+        return "primary_window_resize_timeout"
+    if reason == "primary_window_extent_unobserved":
+        return "primary_window_extent_unobserved"
+    if reason == "primary_window_unavailable":
+        return "primary_window_unavailable"
+    return None
 
 
 class ControlRefusal(ValueError):
@@ -1218,7 +1239,10 @@ class ControlChannel:
             "primary_window_extent_unobserved",
         ):
             # Preserve the authenticated response and usable socket for driver-owned Quit.
-            raise ControlRefusal("observed diagnostic resize refusal: " + reply.reason)
+            raise ControlRefusal(
+                "observed diagnostic resize refusal: " + reply.reason,
+                reason=native_window_failure_reason(reply.reason) or "control_refused",
+            )
         raise self._refuse("diagnostic resize refused outside its expected window outcome")
 
     def perform(
@@ -1244,7 +1268,12 @@ class ControlChannel:
             reply.event != expected_event(action) or reply.reason is not None
         ):
             reason = f": {reply.reason}" if reply.reason is not None else ""
-            raise self._refuse("ordinary native handler refused the requested action" + reason)
+            raise self._refuse(
+                "ordinary native handler refused the requested action" + reason,
+                reason=(native_window_failure_reason(reply.reason) or "control_refused")
+                if reply.event == "refused" and action in ("resize1366x768", "resize1920x1080")
+                else "control_refused",
+            )
         if action == "step" and (
             reply.state.phase not in {"Ready", "Complete"}
             or reply.state.viewed_tick != reply.state.durable_tick

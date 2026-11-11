@@ -1688,3 +1688,37 @@ def test_window_diagnostic_selector_is_exact(
         assert not (tmp_path / "not-created").exists()
     else:
         assert runner.window_diagnostic_selected(selector, profile, mode, periods) is expected
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "primary_window_resize_timeout",
+        "primary_window_extent_unobserved",
+        "primary_window_unavailable",
+        "control_refused",
+        "response_deadline",
+        "primary_window_future",
+        "primary_window_resize_timeout" + PRIVATE,
+        PRIVATE,
+    ],
+)
+def test_aggregate_control_failure_preserves_known_reason_and_redacts_peer_text(reason):
+    error = runner.ControlRefusal(PRIVATE)
+    error.reason = reason  # Runtime peers and callers are not constrained by annotations.
+    failure = BaseExceptionGroup(PRIVATE, [error, OSError(PRIVATE), ValueError(PRIVATE)])
+    causes = runner.failure_causes(failure)
+    expected = (
+        reason
+        if reason
+        in (
+            "primary_window_resize_timeout",
+            "primary_window_extent_unobserved",
+            "primary_window_unavailable",
+        )
+        else None
+    )
+    assert causes[0].failure_type == "ControlRefusal"
+    assert causes[0].safe_reason == expected
+    assert all(cause.safe_reason is None for cause in causes[1:])
+    assert PRIVATE not in str(causes)

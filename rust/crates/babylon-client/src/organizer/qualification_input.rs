@@ -61,7 +61,7 @@ use uuid::Uuid;
 
 #[path = "window_diagnostic.rs"]
 mod window_diagnostic;
-use window_diagnostic::WindowDiagnostic;
+use window_diagnostic::{DetailMode, ResizeBranch, WindowDiagnostic};
 
 // Designed bounds for instrumentation, independent of the captured game policy.
 const INPUT_BYTES: u64 = 4096;
@@ -1498,9 +1498,12 @@ fn request_resize(
     windows: &mut Query<(Entity, &mut Window), With<PrimaryWindow>>,
     action: Action,
 ) -> Result<(), &'static str> {
-    let (entity, mut window) = windows
-        .single_mut()
-        .map_err(|_| "primary_window_unavailable")?;
+    let (entity, mut window) = windows.single_mut().map_err(|_| {
+        if let Some(diagnostic) = controls.resize_diagnostic.as_mut() {
+            diagnostic.request_branch(ResizeBranch::PrimaryUnavailable);
+        }
+        "primary_window_unavailable"
+    })?;
     let backend = WindowBackend::read(entity);
     request_window_resize(controls, entity, &mut window, action, backend)
 }
@@ -1537,16 +1540,28 @@ fn request_window_resize(
                 && actual.scale.to_bits() == window.resolution.base_scale_factor().to_bits()
         })
     {
+        if let Some(diagnostic) = controls.resize_diagnostic.as_mut() {
+            diagnostic.request_branch(ResizeBranch::VerifiedWindowedNoOp);
+        }
         return Ok(());
     }
     if window.mode == mode && previously_observed && action == Action::Resize1920x1080 {
+        if let Some(diagnostic) = controls.resize_diagnostic.as_mut() {
+            diagnostic.request_branch(ResizeBranch::ObservedFullscreenNoOp);
+        }
         return Ok(());
     }
     if window.mode == mode
         && !previously_observed
         && UVec2::new(window.physical_width(), window.physical_height()) == extent
     {
+        if let Some(diagnostic) = controls.resize_diagnostic.as_mut() {
+            diagnostic.request_branch(ResizeBranch::ExtentUnobserved);
+        }
         return Err("primary_window_extent_unobserved");
+    }
+    if let Some(diagnostic) = controls.resize_diagnostic.as_mut() {
+        diagnostic.request_branch(ResizeBranch::ComponentRequest);
     }
     controls.observed_extent = None;
     window.mode = mode;
@@ -1566,17 +1581,29 @@ fn begin_resize(
     sequence: u64,
     action: Action,
 ) -> Result<(), &'static str> {
-    if controls.diagnostic_enabled {
-        controls.resize_diagnostic = Some(WindowDiagnostic::new(
-            sequence,
-            action,
-            controls.observed_extent,
-            windows.single().ok(),
-        ));
-    }
+    controls.resize_diagnostic = Some(WindowDiagnostic::new(
+        sequence,
+        action,
+        controls.observed_extent,
+        windows.single().ok(),
+        if controls.diagnostic_enabled {
+            DetailMode::Detailed
+        } else {
+            DetailMode::Compact
+        },
+    ));
     // Skip only this adapter's pre-request events, not the shared messages.
     controls.resize_cursor.clear(resized);
     let result = request_resize(controls, windows, action);
+    if let Some(diagnostic) = controls.resize_diagnostic.as_mut() {
+        diagnostic.snapshot(
+            "requested",
+            windows.single().ok(),
+            controls.observed_extent,
+            false,
+            None,
+        );
+    }
     if let Err(reason) = result {
         if let Some(mut diagnostic) = controls.resize_diagnostic.take() {
             diagnostic.snapshot(
@@ -2370,7 +2397,7 @@ fn complete(
     };
     if let Some(diagnostic) = resize_diagnostic.as_mut() {
         diagnostic.checks = diagnostic.checks.saturating_add(1);
-        if diagnostic.checks == 1 {
+        if diagnostic.detailed_enabled() && diagnostic.checks == 1 {
             diagnostic.snapshot(
                 "first_complete",
                 windows.single().ok(),
@@ -2473,7 +2500,8 @@ pub(crate) fn observe_window_after_last(
     }
     if let Some(diagnostic) = controls.resize_diagnostic.as_mut() {
         diagnostic.post_last = diagnostic.post_last.saturating_add(1);
-        if diagnostic.post_last <= 8 {
+        if diagnostic.post_last == 1 || (diagnostic.detailed_enabled() && diagnostic.post_last <= 8)
+        {
             diagnostic.snapshot("post_last", windows.single().ok(), observed, armed, None);
         }
     }

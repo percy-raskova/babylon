@@ -464,3 +464,57 @@ Keep saved-byte, normal and full-memory smoke/walk, and ten-period decision-loop
 Complete restart/lifecycle, render, input, human, final CI and PR work.
 
 Keep existing storage and custody limits. This source task proves none of those outcomes.
+
+## 11 November continuation: keep native window context
+
+The Director approved the logging change and one further normal three-turn diagnostic. The Director also gave standing
+direction to proceed with investigations, supported repairs and necessary checks without routine permission questions.
+Return for steering if the evidence stops narrowing the problem or work repeats with little progress. This direction
+supersedes earlier permission stops for routine work. Every numerical limit, nationwide and international coverage,
+accounting authority, durability rule and original delivery obligation stays fixed.
+
+### Task 12: Keep bounded window context and diagnose the real run
+
+**Ownership:** One implementer owns native context, safe refusal codes, current namespace and focused source checks.
+Root owns independent review, build custody and the real diagnostic. Keep the current economic candidate unchanged.
+
+- [ ] Keep four bounded window snapshots in the ordinary native control path.
+
+Capture before mutation, immediately after the resize call, at the first after-Last boundary, and at terminal
+acknowledgement or refusal. Reuse private diagnostic facts. Include the branch, base/effective scale and override,
+copied pending maximize flag, component/native identity and geometry. Include target and observed extent, predicates,
+event counts, last event, elapsed time, and exact action/sequence.
+
+Keep the detailed stream opt-in. Keep the compact record on both success and failure. Use private compact format
+version 1 in the existing observer log target. Preserve the detailed stream's phase contract. Do not add per-frame
+native probes, a shadow cache or dependency patches.
+
+Keep clocks and observations out of decisions and canonical bytes. Preserve the three-second timeout, existing verified
+no-op and fresh-observation conditions, authentication, camera behavior and error ordering. No functional resize change
+belongs in this task. Private Bevy cache and actual native submission remain unobserved unless directly proved.
+Record sampled facts without claiming window-manager or surface causes.
+
+- [ ] Carry allowlisted native window refusal codes into the combined failure record.
+
+Keep raw peer, transport, SQL and arbitrary exception text private. Unknown reasons get safe generic codes.
+Capture any private evidence format change explicitly, without compatibility layers.
+
+- [ ] Use fresh qualification23 for the normal diagnostic and preserve qualification22 for acceptance.
+
+Refuse retained qualification17 through21 and reserved22 through the existing admission tests. Preserve earlier campaigns,
+binaries and evidence. Keep the public ten-horizon ordinary entry, its four confirmations and three closes.
+Keep P1 Collect1450, P2 local food1/cash0, P3 remote food2/cash280, then P4 Pause without advancing P4.
+Change no launcher, workload, endpoint or numerical guard. Use no window-only selector, NativeAudit or memory sampler.
+
+- [ ] Run meaningful focused RED/GREEN, applicable source checks and independent review.
+
+Use installed v13 Main storage controls, serial heavy work, no documentation generation and no speculative full reruns.
+Test context preservation, refusal privacy and unchanged successful/refused native behavior. Then Root freezes the normal
+build and runs the one combined observation. Keep all source, logs, frames, database and shutdown evidence.
+
+If the native boundary fails, inspect its actual retained predicates before choosing a repair. If it succeeds, use the same
+run's P1–P3 phase observations to select the supported checkpoint/publication repair. Continue the original qualification
+when evidence supports it.
+
+Stop for steering if the cause remains ambiguous or further attempts would repeat without useful progress. A passing window resize is not game acceptance. Task10 and every original Goal A and Wayne obligation
+remain required. Keep qualification22 for its acceptance retry.

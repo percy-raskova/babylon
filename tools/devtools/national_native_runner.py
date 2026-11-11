@@ -80,6 +80,7 @@ from tools.devtools.national_windowed_qualification import (
     SelectAidPartner,
     UnitAction,
     drive_pair,
+    native_window_failure_reason,
     submit_choice,
     wait_period_ready,
     walk_cash,
@@ -173,6 +174,8 @@ def failure_causes(error: BaseException) -> tuple[NativeFailureCause, ...]:
                     failure_type=type(current).__name__,
                     safe_reason=str(current)
                     if isinstance(current, (NativeRunRefusal, memory.CaptureRefusal))
+                    else native_window_failure_reason(current.reason)
+                    if isinstance(current, ControlRefusal)
                     else None,
                 )
             )

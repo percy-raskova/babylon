@@ -2621,3 +2621,45 @@ def test_owned_window_diagnostic_retains_actual_zero_gameplay_lifecycle(
             report.native_window_log.sha256
             == __import__("hashlib").sha256(log.read_bytes()).hexdigest()
         )
+
+
+@pytest.mark.parametrize(
+    "native_reason",
+    [
+        "primary_window_resize_timeout",
+        "primary_window_extent_unobserved",
+        "primary_window_unavailable",
+        "postgresql://private-user:private-password@private-host/private-database",
+        "unrecognized_reason",
+        "primary_window_future",
+    ],
+)
+def test_ordinary_resize_carries_only_allowlisted_native_reason(native_reason):
+    parent, peer = socket.socketpair()
+    channel = windowed.ControlChannel(parent, CAMPAIGN, 0)
+    peer.sendall(response(1))
+    channel.observe(1)
+    peer.sendall(
+        response(2, "refused").replace(
+            b'"reason": null', json.dumps({"reason": native_reason})[1:-1].encode()
+        )
+    )
+    try:
+        with pytest.raises(windowed.ControlRefusal) as raised:
+            channel.perform("resize1366x768", 1)
+        expected = (
+            native_reason
+            if native_reason
+            in (
+                "primary_window_resize_timeout",
+                "primary_window_extent_unobserved",
+                "primary_window_unavailable",
+            )
+            else "control_refused"
+        )
+        assert raised.value.reason == expected
+        assert channel.records[-1].reason == native_reason
+        assert channel.closed
+    finally:
+        channel.close()
+        peer.close()

@@ -613,3 +613,23 @@ The inspected Native23 frames identify defects. They do not qualify the new sour
 
 Keep overlapping county labels as follow-up polish unless the final play evidence shows a blocking problem.
 No new art, map system, report store, practice or game rule belongs in this repair.
+
+
+### Task 19: Repair the withdrawn executor dependency
+
+Hosted run 43077137687 passed its 3,809 selected Rust tests, then rejected the withdrawn
+`async-executor` 1.14.0 dependency. The other eight jobs passed. CI remains open.
+
+The [crate registry](https://index.crates.io/as/yn/async-executor) marks 1.14.0 withdrawn
+and 1.14.1 available. The [upstream release notes](https://github.com/smol-rs/async-executor/blob/master/CHANGELOG.md)
+identify a use-after-free fix during executor destruction. Use the smallest compatible patch.
+
+- [x] Reproduce the withdrawal refusal after refreshing registry metadata.
+- [x] Update only `async-executor` to 1.14.1 and its checksum in `rust/Cargo.lock`.
+- [x] Keep Bevy 0.20.0, all other dependency pins and all four policy checks.
+- [x] Run the complete dependency policy check and compile its direct Bevy consumer.
+- [ ] Complete independent review and exact-head hosted CI.
+
+Local dependency checks use installed cargo-deny 0.19.0. Hosted CI uses 0.20.2.
+The retained final22 programs describe the earlier source. Native qualification remains open.
+Preserve those programs and earlier evidence. Root owns the later final gates and native qualification.

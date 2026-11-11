@@ -363,3 +363,45 @@ walk, input, human and publishing checks at that frozen candidate. If it misses,
 
 This extension permits the three known repair areas only. Nationwide coverage, foreign trade, existing economic
 mechanics and the original completion conditions remain required. The Director has not authorized a merge or umbrella closure.
+
+
+### Task 7: Complete the receipt guard's trusted schema consumers
+
+This task completes the approved receipt-limit synchronization after namespace19 refused schema initialization.
+It precedes the remaining Task 6 window observation. It introduces no economic candidate or qualification exception.
+
+**Ownership:** One fresh implementer owns source and focused checks. Root owns every real database operation.
+Run heavy work serially. Preserve earlier fixtures and all original evidence.
+
+**Files:** The four current schema census fixtures, the existing schema provenance tests, and the native runner's
+bootstrap failure evidence with its directly affected Python tests. Roll current disposable references to qualification20.
+Include this plan clarification in the commit.
+Do not change schema authentication, numeric limits, roles, grants, game rules or supported formats.
+
+- [ ] **Step 1:** Run the existing current census provenance test as RED before changing any fixture.
+
+- [ ] **Step 2:** Reuse the preserved four-role catalog capture process against the exact current SQL and pinned image.
+
+Root creates one fresh isolated schema-only database. Capture actual catalog rows for every role configuration.
+Compare every row with its corresponding trusted fixture. Allow only the receipt table's changed constraint signature.
+
+The existing test enforces four SQL headers. Refresh existing provenance headers from the exact captured source bytes,
+including the informational Rust headers. Keep the header roster fixed.
+
+Refuse other catalog drift. Keep raw rows, actual source hashes and capture evidence.
+Do not guess or edit a digest without that evidence.
+
+- [ ] **Step 3:** Install only the authenticated captured fixture changes and preserve detailed bootstrap failures.
+
+Use the existing private evidence mechanism for bounded command status and output before a generic initialization
+refusal. Preserve the original failure if evidence publication also fails. Expose no credentials in public output.
+Add no general tracing framework or launcher.
+
+The governed baseline estate is `tests/baselines/`. These schema contracts lie outside that estate. Record the real
+capture and normal ceremony check. Do not invent a generated baseline blessing or unrelated baseline change.
+
+- [ ] **Step 4:** Run focused GREEN, strict source checks and an independent task review.
+
+Root then runs the existing live reference-integrity checks. Check fresh and repeated installs, all four role
+configurations and unchanged drift refusals. Only then resume the still-unperformed window observation in Task 6.
+The original measured retry and all completion conditions remain unchanged.

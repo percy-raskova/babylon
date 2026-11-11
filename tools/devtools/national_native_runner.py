@@ -96,6 +96,55 @@ class NativeRunRefusal(ValueError):
     """A specific operator refusal safe to display without credential details."""
 
 
+class NativePreparationFailure(FrozenRecord):
+    """Private child status and bounded output references, never qualification proof."""
+
+    version: Literal[1] = 1
+    command: Literal["bootstrap", "provision-readers"]
+    returncode: StrictInt
+    stdout: Reference
+    stderr: Reference
+    stdout_bytes: Nonnegative
+    stderr_bytes: Nonnegative
+
+
+class NativePreparationRefusal(NativeRunRefusal):
+    """Keep the child diagnostic private even when evidence publication fails."""
+
+    def __init__(
+        self,
+        command: Literal["bootstrap", "provision-readers"],
+        result: subprocess.CompletedProcess[bytes],
+    ) -> None:
+        super().__init__(
+            "owned native schema bootstrap refused"
+            if command == "bootstrap"
+            else "owned native reader provisioning refused"
+        )
+        self.command = command
+        self.returncode = result.returncode
+        # Match the existing private Docker diagnostic bound.
+        self.private_stdout = result.stdout[:65_536]
+        self.private_stderr = result.stderr[:65_536]
+        self.stdout_bytes = len(result.stdout)
+        self.stderr_bytes = len(result.stderr)
+
+    def retain(self, directory: Path) -> None:
+        evidence = PrivateEvidence(directory)
+        prefix = f"native-{self.command}"
+        stdout = evidence.publish(f"{prefix}-stdout.bin", self.private_stdout)
+        stderr = evidence.publish(f"{prefix}-stderr.bin", self.private_stderr)
+        record = NativePreparationFailure(
+            command=self.command,
+            returncode=self.returncode,
+            stdout=stdout,
+            stderr=stderr,
+            stdout_bytes=self.stdout_bytes,
+            stderr_bytes=self.stderr_bytes,
+        )
+        evidence.publish_json(f"{prefix}-failure.json", record.model_dump(mode="json"))
+
+
 WINDOW_DIAGNOSTIC_SELECTOR = "BABYLON_WAYNE_WINDOW_DIAGNOSTIC"
 WINDOW_DIAGNOSTIC_LOG = "babylon_window_diagnostic=info"
 
@@ -634,10 +683,11 @@ class NativeRun:
             },
         )
         environment, _reader = self.environments()
-        for command, failure in (
-            ("bootstrap", "owned native schema bootstrap refused"),
-            ("provision-readers", "owned native reader provisioning refused"),
-        ):
+        commands: tuple[Literal["bootstrap", "provision-readers"], ...] = (
+            "bootstrap",
+            "provision-readers",
+        )
+        for command in commands:
             result = subprocess.run(
                 [str(self.runtime), command],
                 cwd=self.root,
@@ -647,7 +697,15 @@ class NativeRun:
                 check=False,
             )
             if result.returncode:
-                raise NativeRunRefusal(failure)
+                failure = NativePreparationRefusal(command, result)
+                try:
+                    failure.retain(self.directory)
+                except BaseException as publication_error:
+                    raise BaseExceptionGroup(
+                        "native preparation and evidence publication failed",
+                        [failure, publication_error],
+                    ) from None
+                raise failure
         self.snapshot("schema-baseline")
         self.verify_sources()
 

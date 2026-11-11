@@ -1,6 +1,7 @@
 """The real failure writer preserves compound refusals without exporting secrets."""
 
 import json
+import stat
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -35,7 +36,7 @@ def test_preparation_admits_confined_readers_before_absent_campaign_capture(
         assert arguments[0] == str(run.runtime)
         assert options["env"] == {"PRIVATE": PRIVATE}
         calls.append(arguments[1])
-        return SimpleNamespace(returncode=int(arguments[1] == failed_stage))
+        return SimpleNamespace(returncode=int(arguments[1] == failed_stage), stdout=b"", stderr=b"")
 
     monkeypatch.setattr(runner.subprocess, "run", execute)
     if failed_stage:
@@ -49,6 +50,103 @@ def test_preparation_admits_confined_readers_before_absent_campaign_capture(
         run.prepare()
         assert calls == ["bootstrap", "provision-readers", "schema-baseline", "verified"]
     assert not list(tmp_path.glob("material-*.json"))
+
+
+@pytest.mark.parametrize("failed_stage", ["bootstrap", "provision-readers"])
+@pytest.mark.parametrize("publication_failure", [None, "stdout", "stderr", "record"])
+def test_preparation_retains_bounded_private_failure_and_publication_leaves(
+    tmp_path, monkeypatch, capsys, failed_stage, publication_failure
+):
+    tmp_path.chmod(0o700)
+    run = object.__new__(runner.NativeRun)
+    run.root = tmp_path
+    run.directory = tmp_path
+    run.campaign = "81b979ee-a9c1-48fd-8835-06cbfe594675"
+    run.policy_hash = "c" * 64
+    run.periods = 2
+    run.runtime = Path("/owned/babylon-runtime")
+    run.timeout = 900
+    run.stage = "starting"
+    run.failed_pair = None
+    run.boundaries = []
+    run.recoveries = []
+    run.progress = lambda *_args: None
+    run.environments = lambda: ({"PRIVATE": PRIVATE}, {})
+    run.publish_verification_diagnostics = lambda: None
+    run.run = run.prepare
+    calls = []
+    run.snapshot = lambda stage: calls.append(stage)
+    run.verify_sources = lambda: calls.append("verified")
+    stdout = PRIVATE.encode() + b" output" * 12_000
+    stderr = b"CurrentSchema(CurrentCensusMismatch) " + PRIVATE.encode() + b" error" * 12_000
+
+    def execute(arguments, **options):
+        assert arguments[0] == str(run.runtime)
+        assert options["capture_output"] is True
+        assert options["env"] == {"PRIVATE": PRIVATE}
+        calls.append(arguments[1])
+        return SimpleNamespace(
+            returncode=42 if arguments[1] == failed_stage else 0,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    publish = runner.PrivateEvidence.publish
+    suffix = {"stdout": "stdout.bin", "stderr": "stderr.bin", "record": "failure.json"}
+
+    def publish_or_fail(directory, name, data):
+        if publication_failure is not None and name.endswith(suffix[publication_failure]):
+            raise OSError(PRIVATE)
+        return publish(directory, name, data)
+
+    monkeypatch.setattr(runner.subprocess, "run", execute)
+    monkeypatch.setattr(runner.PrivateEvidence, "publish", publish_or_fail)
+    monkeypatch.setenv("BABYLON_STORAGE_REPORT_DIRECTORY", str(tmp_path))
+    monkeypatch.setattr(runner, "NativeRun", lambda _root, _directory: run)
+    if publication_failure is not None:
+        with pytest.raises(BaseExceptionGroup) as raised:
+            run.prepare()
+        original, publication = raised.value.exceptions
+        assert isinstance(original, runner.NativePreparationRefusal)
+        assert original.command == failed_stage
+        assert original.returncode == 42
+        assert original.private_stdout == stdout[:65_536]
+        assert original.private_stderr == stderr[:65_536]
+        assert isinstance(publication, OSError)
+        assert str(publication) == PRIVATE
+        causes = runner.failure_causes(raised.value)
+        assert [cause.failure_type for cause in causes] == ["NativePreparationRefusal", "OSError"]
+        assert causes[0].safe_reason == (
+            "owned native schema bootstrap refused"
+            if failed_stage == "bootstrap"
+            else "owned native reader provisioning refused"
+        )
+        assert causes[1].safe_reason is None
+        assert PRIVATE not in str(raised.value) + str(original)
+    else:
+        assert runner.main() == 1
+        record = runner.read_record(
+            tmp_path / f"native-{failed_stage}-failure.json", runner.NativePreparationFailure
+        )
+        assert record.command == failed_stage
+        assert record.returncode == 42
+        assert record.stdout_bytes == len(stdout)
+        assert record.stderr_bytes == len(stderr)
+        evidence = runner.PrivateEvidence(tmp_path)
+        for reference, expected in ((record.stdout, stdout), (record.stderr, stderr)):
+            assert evidence.read_reference(reference, 65_536) == expected[:65_536]
+            assert reference.bytes == 65_536
+            assert stat.S_IMODE((tmp_path / reference.path).stat().st_mode) == 0o600
+        incomplete = json.loads((tmp_path / "native-run-incomplete.json").read_text())
+        assert incomplete["failures"][0]["failure_type"] == "NativePreparationRefusal"
+        public = capsys.readouterr()
+        assert PRIVATE not in json.dumps(incomplete) + public.out + public.err
+    assert calls == (
+        ["bootstrap"] if failed_stage == "bootstrap" else ["bootstrap", "provision-readers"]
+    )
+    assert not (tmp_path / "schema-baseline.json").exists()
+    assert not list(tmp_path.glob("material-*.json"))
+    assert not list(tmp_path.glob("*.partial"))
 
 
 @pytest.mark.parametrize("kind", ["nested", "cancelled", "single"])

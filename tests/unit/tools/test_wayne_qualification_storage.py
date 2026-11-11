@@ -15,7 +15,7 @@ def test_three_media_profiles_require_the_exact_run_and_horizon(monkeypatch, mod
         ("walk-01", "national_storage", "10", "walk-01"),
     ):
         lane = Path("/media/user/data/worktrees/per364-wayne-solidarity-loop")
-        run = lane / "qualification-19" / leaf
+        run = lane / "qualification-20" / leaf
         evidence = (run if profile == "sql-01" else run / mode) / "evidence"
         with pytest.raises(storage.StorageRefusal):
             storage.profile_run(
@@ -33,7 +33,7 @@ def test_three_media_profiles_require_the_exact_run_and_horizon(monkeypatch, mod
                 )
                 / "evidence",
             )
-        for reserved in ("qualification-17", "qualification-18"):
+        for reserved in ("qualification-17", "qualification-18", "qualification-19"):
             unused = lane / reserved / leaf
             unused_evidence = (unused if profile == "sql-01" else unused / mode) / "evidence"
             with pytest.raises(storage.StorageRefusal):

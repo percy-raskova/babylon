@@ -19,6 +19,7 @@ use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode, WindowResized};
+use bevy::winit::WINIT_WINDOWS;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -1461,6 +1462,37 @@ fn request_frame(
     Ok(())
 }
 
+/// Actual backend facts, read on the main thread before changing the component.
+#[derive(Clone, Copy)]
+struct WindowBackend {
+    entity: Entity,
+    physical: UVec2,
+    scale: f32,
+    windowed: bool,
+    maximized: bool,
+}
+
+impl WindowBackend {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "Bevy stores the Winit scale as f32"
+    )]
+    fn read(entity: Entity) -> Option<Self> {
+        WINIT_WINDOWS.with(|windows| {
+            let windows = windows.try_borrow().ok()?;
+            let window = windows.get_window(entity)?;
+            let physical = window.inner_size();
+            Some(Self {
+                entity,
+                physical: UVec2::new(physical.width, physical.height),
+                scale: window.scale_factor() as f32,
+                windowed: window.fullscreen().is_none(),
+                maximized: window.is_maximized(),
+            })
+        })
+    }
+}
+
 fn request_resize(
     controls: &mut Controls,
     windows: &mut Query<(Entity, &mut Window), With<PrimaryWindow>>,
@@ -1469,6 +1501,17 @@ fn request_resize(
     let (entity, mut window) = windows
         .single_mut()
         .map_err(|_| "primary_window_unavailable")?;
+    let backend = WindowBackend::read(entity);
+    request_window_resize(controls, entity, &mut window, action, backend)
+}
+
+fn request_window_resize(
+    controls: &mut Controls,
+    entity: Entity,
+    window: &mut Window,
+    action: Action,
+    backend: Option<WindowBackend>,
+) -> Result<(), &'static str> {
     let extent = action.extent().expect("bounded resize action");
     let mode = match action {
         Action::Resize1366x768 => WindowMode::Windowed,
@@ -1476,6 +1519,26 @@ fn request_resize(
         _ => unreachable!("bounded resize action"),
     };
     let previously_observed = controls.observed_extent == Some((entity, extent));
+    // A real, already satisfied windowed request needs no OS resize event. Do not
+    // discard its acknowledgement or enqueue an unnecessary unmaximize request.
+    let mut internal = window.internal;
+    if action == Action::Resize1366x768
+        && window.mode == mode
+        && previously_observed
+        && window.resolution.physical_size() == extent
+        && internal.take_maximize_request().is_none()
+        && backend.is_some_and(|actual| {
+            actual.entity == entity
+                && actual.physical == extent
+                && actual.windowed
+                && !actual.maximized
+                && actual.scale.is_finite()
+                && actual.scale > 0.0
+                && actual.scale.to_bits() == window.resolution.base_scale_factor().to_bits()
+        })
+    {
+        return Ok(());
+    }
     if window.mode == mode && previously_observed && action == Action::Resize1920x1080 {
         return Ok(());
     }
@@ -2939,6 +3002,149 @@ mod tests {
             assert_eq!(reply["event"], "refused");
             assert_eq!(reply["reason"], "primary_window_resize_timeout");
             assert!(controls.pending.is_none());
+        }
+    }
+
+    #[test]
+    fn verified_windowed_resize_preserves_observation_and_applies_without_event() {
+        use bevy::ecs::system::RunSystemOnce;
+        for scale in [1.0, 2.0, 1.333_333_4] {
+            let mut window = Window::default();
+            window.resolution.set_scale_factor(scale);
+            window.resolution.set_scale_factor_override(Some(1.25));
+            window.resolution.set_physical_resolution(1366, 768);
+            let (mut app, _incoming, entity, _peer, _output) = resize_fixture(window);
+            app.world_mut().write_message(WindowResized {
+                window: entity,
+                width: 1366.0 / 1.25,
+                height: 768.0 / 1.25,
+            });
+            app.update();
+            let mut request = pending(
+                app.world().resource::<ObserverSession>(),
+                app.world().resource::<OrganizerClient>(),
+                Action::Resize1366x768,
+            );
+            request.handled = true;
+            app.world_mut().resource_mut::<Controls>().pending = Some(request);
+            app.world_mut()
+                .run_system_once(
+                    move |mut controls: ResMut<Controls>,
+                          mut windows: Query<(Entity, &mut Window), With<PrimaryWindow>>| {
+                        let (current, mut window) = windows.single_mut().expect("primary");
+                        let backend = WindowBackend {
+                            entity,
+                            physical: UVec2::new(1366, 768),
+                            scale,
+                            windowed: true,
+                            maximized: false,
+                        };
+                        assert_eq!(request_window_resize(
+                            &mut controls, current, &mut window,
+                            Action::Resize1366x768, Some(backend),
+                        ), Ok(()));
+                        assert_eq!(controls.observed_extent, Some((entity, backend.physical)));
+                        assert_eq!(window.internal.take_maximize_request(), None);
+                    },
+                )
+                .expect("request system");
+            app.update();
+            app.update();
+            let controls = app.world().resource::<Controls>();
+            let reply: Value = serde_json::from_slice(
+                controls.reply.as_ref().expect("no new resize event needed"),
+            )
+            .expect("JSON");
+            assert_eq!(reply["event"], "applied");
+            assert!(controls.pending.is_none());
+        }
+    }
+
+    #[test]
+    fn windowed_resize_requires_fresh_acknowledgement_for_unverified_state() {
+        let entity = Entity::from_bits(1);
+        let other = Entity::from_bits(2);
+        let target = UVec2::new(1366, 768);
+        for case in [
+            "unknown_backend",
+            "backend_entity",
+            "backend_extent",
+            "maximized",
+            "fullscreen",
+            "scale",
+            "invalid_scale",
+            "zero_scale",
+            "component_extent",
+            "component_mode",
+            "pending_maximize",
+            "observation_missing",
+            "observation_entity",
+            "observation_extent",
+        ] {
+            let mut window = Window::default();
+            window
+                .resolution
+                .set_physical_resolution(target.x, target.y);
+            let mut controls = Controls {
+                observed_extent: Some((entity, target)),
+                ..default()
+            };
+            let mut actual = WindowBackend {
+                entity,
+                physical: target,
+                scale: 1.0,
+                windowed: true,
+                maximized: false,
+            };
+            match case {
+                "backend_entity" => actual.entity = other,
+                "backend_extent" => actual.physical = UVec2::new(1920, 1080),
+                "maximized" => actual.maximized = true,
+                "fullscreen" => actual.windowed = false,
+                "scale" => actual.scale = 2.0,
+                "invalid_scale" => actual.scale = f32::NAN,
+                "zero_scale" => actual.scale = 0.0,
+                "component_extent" => window.resolution.set_physical_resolution(1920, 1080),
+                "component_mode" => {
+                    window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
+                }
+                "pending_maximize" => window.set_maximized(true),
+                "observation_missing" => controls.observed_extent = None,
+                "observation_entity" => controls.observed_extent = Some((other, target)),
+                "observation_extent" => {
+                    controls.observed_extent = Some((entity, UVec2::new(1920, 1080)));
+                }
+                "unknown_backend" => {}
+                _ => unreachable!("enumerated cases"),
+            }
+            let prior = controls.observed_extent;
+            let result = request_window_resize(
+                &mut controls,
+                entity,
+                &mut window,
+                Action::Resize1366x768,
+                (case != "unknown_backend").then_some(actual),
+            );
+            if case.starts_with("observation_") {
+                assert_eq!(result, Err("primary_window_extent_unobserved"), "{case}");
+                assert_eq!(
+                    controls.observed_extent, prior,
+                    "refusal is not an acknowledgement"
+                );
+                assert_eq!(window.internal.take_maximize_request(), None);
+            } else {
+                assert_eq!(result, Ok(()), "{case}");
+                assert_eq!(
+                    controls.observed_extent, None,
+                    "{case} needs a fresh observation"
+                );
+                assert_eq!(
+                    window.internal.take_maximize_request(),
+                    Some(false),
+                    "{case}"
+                );
+                assert_eq!(window.mode, WindowMode::Windowed);
+            }
         }
     }
 

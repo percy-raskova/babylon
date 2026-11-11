@@ -1126,7 +1126,7 @@ def test_public_ordinary_prefix_selects_its_owned_profile_before_any_fixture_wor
         "normal_play",
         "10",
         "retain-ordinary",
-        str(tmp_path.parent / "qualification-17/ordinary-01/normal_play/evidence"),
+        str(tmp_path.parent / "qualification-19/ordinary-01/normal_play/evidence"),
         "1" if diagnostic else "unset",
     ]
 
@@ -1210,3 +1210,150 @@ def test_window_diagnostic_public_refusal_precedes_fixture_work(
     assert result.returncode == 2 and "diagnostic" in result.stderr
     assert not result.stdout
     assert list(tools.iterdir()) == [script]
+
+
+def diagnostic_lock_fixture(tmp_path):
+    """Keep the real public entry and lock authentication; stop only at national_begin."""
+    repository = tmp_path / "repository"
+    subprocess.run(["git", "init", "-q", str(repository)], check=True)
+    tools = repository / "tools"
+    tools.mkdir()
+    runner = tools / "run_rust_postgres.sh"
+    runner.write_bytes((REPOSITORY / "tools/run_rust_postgres.sh").read_bytes())
+    lifecycle = (REPOSITORY / "tools/postgres_national_lifecycle.sh").read_text()
+    lifecycle += r"""
+# Test boundary: the real national_lock_entry must already have returned.
+national_begin() {
+  local directory identity descriptor
+  directory="$(national_control_directory)"
+  [ "$(cat "/proc/$PPID/comm")" = flock ] || die "missing real flock supervisor"
+  if flock --nonblock "$directory/runner.lock" true; then
+    die "authenticated lock is not actually held"
+  fi
+  identity="$(stat -Lc '%d:%i' "$directory/runner.lock")"
+  for descriptor in /proc/$$/fd/*; do
+    [ "$(stat -Lc '%d:%i' "$descriptor" 2>/dev/null || true)" != "$identity" ] ||
+      die "child inherited the supervisor lock descriptor"
+  done
+  printf '%s\n' authenticated "${BABYLON_WAYNE_WINDOW_DIAGNOSTIC-unset}" \
+    "$BABYLON_WAYNE_PROFILE" "$BABYLON_NATIVE_MEASUREMENT_MODE" \
+    "$BABYLON_NATIONAL_STORAGE_PERIODS" "$BABYLON_STORAGE_REPORT_DIRECTORY"
+  exit 42
+}
+"""
+    (tools / "postgres_national_lifecycle.sh").write_text(lifecycle)
+    denied = tmp_path / "denied"
+    denied.mkdir()
+    for name in ("docker", "psql", "cargo", "mise"):
+        command = denied / name
+        command.write_text(
+            '#!/bin/sh\nprintf "unexpected external call" > '
+            + shlex.quote(str(tmp_path / "external-called"))
+            + "\nexit 97\n"
+        )
+        command.chmod(0o700)
+    control = repository / ".git/babylon-national-storage"
+    return runner, control, {"PATH": f"{denied}:{os.defpath}"}
+
+
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_public_window_diagnostic_crosses_real_flock_and_authenticates_before_fixture(
+    tmp_path, diagnostic
+):
+    runner, control, environment = diagnostic_lock_fixture(tmp_path)
+    result = subprocess.run(
+        [
+            "bash",
+            str(runner),
+            "--wayne-ordinary-prefix",
+            *(["--window-diagnostic"] if diagnostic else []),
+        ],
+        env={**environment, "BABYLON_WAYNE_WINDOW_DIAGNOSTIC": "stale"},
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 42, result.stderr + result.stdout
+    lines = result.stdout.splitlines()
+    assert lines[:6] == [
+        "authenticated",
+        "1" if diagnostic else "unset",
+        "ordinary-01",
+        "normal_play",
+        "10",
+        str(runner.parents[2] / "qualification-19/ordinary-01/normal_play/evidence"),
+    ]
+    assert "flock: executing bash" in result.stdout
+    assert (control / "runner.lock").exists()
+    assert not (control / "active").exists()
+    assert not (runner.parents[2] / "qualification-19").exists()
+    assert not (tmp_path / "external-called").exists()
+    released = subprocess.run(
+        ["flock", "--nonblock", str(control / "runner.lock"), "true"], check=False
+    )
+    assert released.returncode == 0, "actual supervisor exited and released its lock"
+
+
+@pytest.mark.parametrize(
+    "fault", ["parent", "supervisor", "inode", "missing_argument", "extra_argument", "flag"]
+)
+def test_window_diagnostic_rejects_forged_internal_lock_handoff(tmp_path, fault):
+    runner, control, environment = diagnostic_lock_fixture(tmp_path)
+    environment.update(
+        {
+            "BABYLON_WAYNE_WINDOW_DIAGNOSTIC": "1",
+            "BABYLON_WAYNE_PROFILE": "ordinary-01",
+            "BABYLON_POSTGRES_LIVE_FOCUS": "national_storage",
+            "BABYLON_NATIVE_MEASUREMENT_MODE": "normal_play",
+            "BABYLON_NATIONAL_STORAGE_PERIODS": "10",
+            "BABYLON_NATIONAL_CAPTURE_MODE": "playable-aid",
+            "BABYLON_NATIONAL_STORAGE_QUALIFICATION": "report-only",
+            "BABYLON_NATIONAL_SUCCESS_DISPOSITION": "retain-ordinary",
+            "BABYLON_NATIONAL_QUALIFY_TIMING": "0",
+        }
+    )
+    command = ["bash", str(runner), "--national-lock-held", "0"]
+    expected = "window diagnostic requires"
+    if fault == "missing_argument":
+        command.pop()
+    elif fault == "extra_argument":
+        command.append("extra")
+    elif fault == "flag":
+        command = [
+            "bash",
+            "-c",
+            'bash "$1" --national-native-lock-held "$$"; status=$?; exit "$status"',
+            "probe",
+            str(runner),
+        ]
+    elif fault == "supervisor":
+        command = [
+            "bash",
+            "-c",
+            'bash "$1" --national-lock-held "$$"; status=$?; exit "$status"',
+            "probe",
+            str(runner),
+        ]
+        expected = "national lock supervisor is not flock"
+    elif fault == "inode":
+        control.mkdir()
+        (control / "runner.lock").touch()
+        command = [
+            "bash",
+            "-c",
+            'exec flock --close "$1" bash "$2" --national-lock-held "$$"',
+            "probe",
+            str(control / "other.lock"),
+            str(runner),
+        ]
+        expected = "national lock supervisor does not own the exact lock inode"
+    result = subprocess.run(
+        command, env=environment, capture_output=True, text=True, timeout=10, check=False
+    )
+    assert result.returncode == 2 and expected in result.stderr, result.stderr + result.stdout
+    assert "authenticated" not in result.stdout
+    assert not (control / "active").exists()
+    assert not (tmp_path / "external-called").exists()
+    if fault in ("parent", "missing_argument", "extra_argument", "flag"):
+        assert not control.exists(), "malformed invocation refuses before lock-directory writes"

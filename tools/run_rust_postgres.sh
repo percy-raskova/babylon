@@ -27,17 +27,23 @@ if [ "${1:-}" = --wayne-ordinary-prefix ]; then
   export BABYLON_NATIVE_MEASUREMENT_MODE=normal_play BABYLON_NATIONAL_STORAGE_PERIODS=10
   export BABYLON_NATIONAL_CAPTURE_MODE=playable-aid BABYLON_NATIONAL_STORAGE_QUALIFICATION=report-only
   export BABYLON_NATIONAL_SUCCESS_DISPOSITION=retain-ordinary BABYLON_NATIONAL_QUALIFY_TIMING=0
-  BABYLON_STORAGE_REPORT_DIRECTORY="$(dirname -- "$REPO_ROOT")/qualification-17/ordinary-01/normal_play/evidence"
+  BABYLON_STORAGE_REPORT_DIRECTORY="$(dirname -- "$REPO_ROOT")/qualification-19/ordinary-01/normal_play/evidence"
   export BABYLON_STORAGE_REPORT_DIRECTORY
   exec bash "$REPO_ROOT/tools/run_rust_postgres.sh"
 fi
 [ "${1:-}" != --window-diagnostic ] || die "window diagnostic requires --wayne-ordinary-prefix"
 if [ "${BABYLON_WAYNE_WINDOW_DIAGNOSTIC+x}" = x ]; then
-  [ "$BABYLON_WAYNE_WINDOW_DIAGNOSTIC" = 1 ] &&
-    [ "${BABYLON_WAYNE_PROFILE:-}" = ordinary-01 ] &&
-    [ "${BABYLON_NATIVE_MEASUREMENT_MODE:-}" = normal_play ] &&
-    [ "${BABYLON_NATIONAL_STORAGE_PERIODS:-}" = 10 ] &&
-    [ "$#" = 0 ] || die "window diagnostic requires the ordinary normal ten-period entry"
+  if [ "$BABYLON_WAYNE_WINDOW_DIAGNOSTIC" != 1 ] ||
+    [ "${BABYLON_WAYNE_PROFILE:-}" != ordinary-01 ] ||
+    [ "${BABYLON_NATIVE_MEASUREMENT_MODE:-}" != normal_play ] ||
+    [ "${BABYLON_NATIONAL_STORAGE_PERIODS:-}" != 10 ]; then
+    die "window diagnostic requires the ordinary normal ten-period entry"
+  fi
+  # The internal shape still requires national_lock_entry's real flock/inode proof.
+  if [ "$#" -ne 0 ] &&
+    { [ "$#" -ne 2 ] || [ "${1:-}" != --national-lock-held ] || [ "${2:-}" != "$PPID" ]; }; then
+    die "window diagnostic requires the ordinary normal ten-period entry"
+  fi
 fi
 if [ "${1:-}" = --wayne-pair-next-locked ]; then
   [ "$#" = 2 ] || die "expected native workload"
